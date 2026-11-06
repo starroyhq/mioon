@@ -159,7 +159,7 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
   // even for a prepared switch: replacing the file with an old/forged format
   // must not clear a pointer or rename any local record first.
   const recovery = recoverProjectFile(options.projectFile);
-  if (recovery.state === 'invalid' || recovery.state === 'locked' || recovery.state === 'missing' || recovery.state === 'open-here') throw failure('项目文件暂不能安全完成本机记录切换，已保留所有文件。');
+  if (recovery.state === 'invalid' || recovery.state === 'locked' || recovery.state === 'missing' || recovery.state === 'open-here' || recovery.state === 'access-denied') throw failure('项目文件暂不能安全完成本机记录切换，已保留所有文件。');
   const project = inspectProjectFileReadOnly(options.projectFile);
   if (project.projectId !== intent.input.projectId) throw failure('项目身份已变化，已保留所有文件。', 'PROJECT_HISTORY_BASELINE_CHANGED');
   if (intent.phase === 'prepared') {

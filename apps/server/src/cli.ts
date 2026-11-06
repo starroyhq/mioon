@@ -6,6 +6,7 @@ import {initializeNodePrivateStorage} from '@mioon/node-host/private-storage-boo
 import {createHeadlessAgentSecretCodec} from './headless-agent-secret-codec.ts';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await initializeNodePrivateStorage();
+const distDir = path.resolve(process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'));
 const service = await startServer({
   agentSecretCodecFactory:createHeadlessAgentSecretCodec,
   comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
@@ -13,7 +14,8 @@ const service = await startServer({
   cacheDir: process.env.MIOON_CACHE_DIR,
   projectsDir: process.env.MIOON_PROJECTS_DIR,
   port: Number(process.env.PORT || 4318),
-  distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),
+  distDir,
+  projectTemplatesDir: path.join(distDir, 'project-examples'),
   token: process.env.MIOON_TOKEN,
 });
 console.log(`Mioon ready at ${service.url}; local token file: ${service.tokenFile}`);

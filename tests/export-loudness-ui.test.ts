@@ -124,14 +124,21 @@ test('actual App hook wiring uses accepted live ownership, abort signal and exac
   const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{exportLoudness(?: as never)?\}/);
   const live = context() as {exports: Array<Record<string, unknown>>; assets: Array<Record<string, unknown>>}, calls: Array<{operation: string; input: Record<string, unknown>; options: unknown}> = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
   const workspaceRef = { current: {  } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
+  let readable=true;
   let controller!: ReturnType<typeof loudnessState.createExportLoudnessController>;
-  const env = {editorSession: {current:'normal'}, workspaceRef,currentProject,projectEpoch,navigationEpoch,panelIntent,viewRef,dataRef,
+  const env = {projectMedia:{canRead:(_asset:unknown)=>readable},editorSession: {current:'normal'}, workspaceRef,currentProject,projectEpoch,navigationEpoch,panelIntent,viewRef,dataRef,
     projectSessionReady: () => true,workbenchReady: true, online: true,auth: true,loading: false,rightDockTab: 'delivery',showDelivery: true,showExports: true,panelVisible: () => true,isTimelineRenderRecord,
     setAuth() { assert.fail('unexpected auth change'); }, async rpc(operation: string,input: {exportId: string; target?: unknown},options: unknown) { calls.push({operation,input,options}); return report(controller.getState().targets.find(t => t.exportId === input.exportId) as never,(input.target ?? undefined) as never); },
     useExportLoudness(options: never) { controller = loudnessState.createExportLoudnessController(options); controller.setContext((options as {context?: unknown}).context as never); return { state: controller.getState(),controller }; } };
   const actual = Function(...Object.keys(env),`${stripSourceTypes(block,{loader:'tsx'})};return {exportLoudness,exportSamplePeakContext};`)(...Object.values(env)) as {exportLoudness: unknown; exportSamplePeakContext: () => unknown}; assert.equal(calls.length,0);
   const target = controller.getState().targets[1]!; await controller.measure(target as never,controller.getState().scope as never,controller.getState().draftVersion as never);
   assert.equal(calls[0]!.operation,'timeline.export.loudness'); assert.equal(calls[0]!.input.expectedArtifactSha256,target.artifact.sha256); assert.deepEqual(Object.keys(calls[0]!.options as object),['signal']);
+  const rows=structuredClone(dataRef.current.exports),assets=structuredClone(dataRef.current.assets),before=calls.length;
+  readable=false;const denied=actual.exportSamplePeakContext() as {exports:unknown[];assets:unknown[]};assert.equal(denied.exports,dataRef.current.exports);assert.deepEqual(denied.assets,[]);
+  controller.setContext(denied as never);assert.equal(denied.exports.length,2);
+  await controller.measure(target as never,controller.getState().scope as never,controller.getState().draftVersion as never);assert.equal(calls.length,before);assert.equal(controller.getState().report,null);
+  assert.deepEqual(dataRef.current.exports,rows);assert.deepEqual(dataRef.current.assets,assets);
+  readable=true;controller.setContext(actual.exportSamplePeakContext() as never);
   projectEpoch.current++; controller.setContext(actual.exportSamplePeakContext() as never); assert.equal(controller.getState().report,null);
   const closed = { ...env, projectSessionReady: () => false, workbenchReady: false };
   const unopened = Function(...Object.keys(closed),`${stripSourceTypes(app.slice(start,contextEnd),{loader:'tsx'})};return exportSamplePeakContext();`)(...Object.values(closed)) as {projectId: unknown; connected: boolean; visible: boolean}; assert.equal(unopened.projectId,null); assert.equal(unopened.connected,false); assert.equal(unopened.visible,false);

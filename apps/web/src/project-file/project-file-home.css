@@ -89,3 +89,18 @@
 
 /* The open failures have no close button, so the title may use the full width. */
 .pf-open-dialog .wb-dialog-heading [data-slot="dialog-title"] { padding-right: 0; }
+.pf-open-copy, .pf-open-access { display: flex; flex-direction: column; gap: 12px; }
+.pf-open-path { display: block; padding: 6px 8px; border-radius: 4px; background: var(--wb-bg); color: var(--wb-muted); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); overflow-wrap: anywhere; }
+.pf-open-access [role="list"] { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; }
+.pf-open-access [role="listitem"] { display: list-item; list-style: disc; }
+.pf-open-system-action { margin-right: auto; }
+.pf-open-system-action:empty { display: none; }
+.pf-open-system-action > .wb-button { border-color: transparent; background: transparent; padding-inline: 0; }
+.pf-location-risks { display: flex; flex-direction: column; gap: 6px; }
+.pf-location-risk { display: flex; align-items: flex-start; gap: 7px; margin: 0; font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-location-risk > svg { flex: none; margin-top: 3px; }
+.pf-location-risk[data-tone="warning"] { color: var(--wb-warning); }
+.pf-location-risk[data-tone="danger"] { color: var(--wb-danger); }
+.pf-location-banner { display: flex; align-items: flex-start; gap: 16px; padding: 12px 16px; border-radius: var(--wb-radius-card); background: color-mix(in srgb, var(--wb-warning) 14%, var(--wb-panel)); }
+.pf-location-banner > .pf-location-risks { flex: 1; min-width: 0; }
+.pf-location-banner > .wb-button { flex: none; color: var(--wb-text); }

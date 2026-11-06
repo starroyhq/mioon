@@ -24,7 +24,7 @@ import { createImageSettings } from '@mioon/business/images/settings';
 import { createImageSettingsFile } from '@mioon/business/images/settings-file';
 import { createCustomImageSettingsV2 } from '@mioon/business/images/custom-settings-v2';
 import { createCustomImageSettingsV2File } from '@mioon/business/images/custom-settings-v2-file';
-import { createLastProject,readLastProjectTarget } from '@mioon/business/last-project';
+import { readLastProjectTarget } from '@mioon/business/last-project';
 import { boundedShutdown } from '@mioon/business/operation-lifecycle';
 import { isProjectStore } from '@mioon/business/project-file/index';
 import { createProjectPackageService } from '@mioon/business/project-package/service';
@@ -50,7 +50,6 @@ import { createEditTasksHttp } from './edit-tasks-http.ts';
 import { createExportFileRecovery } from './export-file-recovery.ts';
 import { createImageHttp } from './image-http.ts';
 import type { ServerOptions } from './index.ts';
-import { createLastProjectHttp } from './last-project-http.ts';
 import type { createProjectDeletionGate } from './project-deletion-gate.ts';
 import { createProjectPackageHttp } from './project-package-http.ts';
 import type { ProjectAddress } from './project-host/request.ts';
@@ -68,7 +67,6 @@ type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
 type VideoSettings = Awaited<ReturnType<typeof createVideoSettingsV2>>;
 type ComfySettings = Awaited<ReturnType<typeof createComfySettings>>;
-type LastProject = ReturnType<typeof createLastProject>;
 type WorkspacePreferences = ReturnType<typeof createWorkspacePreferences>;
 type ExportFileRecovery = ReturnType<typeof createExportFileRecovery>;
 
@@ -197,11 +195,6 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     uiPreferences = createUiPreferences({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock:ownsAppLock,isReadOnly:()=>false,hasProject}});
-    const lastProject: LastProject = createLastProject({root:appRoot,...appScope,...documents,channel:localDraftChannel,signal:shutdown.signal,
-      storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
-      guards:{ownsLock:ownsAppLock,
-        readProject:projectId=>application?(hasProject(projectId)?{id:projectId}:null):readLastProjectTarget(store.db,projectId)}});
-    const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
     // Imported generations are finished history, so they are archived out of the task center.
     const projectPackages = null;
     const projectPackageHttp = createProjectPackageHttp({service:()=>projectPackages!,available:()=>projectPackages!==null,signal:shutdown.signal});
@@ -237,8 +230,8 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     let backgroundActivated = !deferBackgroundRecovery;
     return {
       providers, services, serviceCall, serviceDrain, agentSettings, agentAuthorizations, uiPreferences, imageSettings, customImageSettings, videoSettings, comfySettings,
-      lastProject, draftsFactory,
-      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, lastProjectHttp, projectPackageHttp,
+      draftsFactory,
+      editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, projectPackageHttp,
       exportFileRecovery, audioPreviewHttp, continuousAudioHttp,
       taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, projectRules, closeSettings,
       backgroundTasks: createProjectBackgroundState(store),

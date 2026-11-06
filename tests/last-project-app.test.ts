@@ -1,14 +1,21 @@
-import type {AppFunctions, SelectionEnvironment, SelectionData} from './helpers/strict-last-project-app-types.ts';
+import type {AppFunctions, SelectionEnvironment as LegacySelectionEnvironment, SelectionData} from './helpers/strict-last-project-app-types.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard,preferenceCacheIdentity,assertLastProjectBootIdentity} from '../apps/web/src/last-project-navigation.ts';
+import {chooseInitialProject,retainLastProjectScope,createProjectBootGuard,preferenceCacheIdentity} from '../apps/web/src/last-project-navigation.ts';
 import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.ts';
 import {defaultWorkspaceState,writeWorkspaceState,reconcileWorkspaceState} from '../apps/web/src/workspace-state.ts';
 import {projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind} from '../apps/web/src/project-open-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
-import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
+import {projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import {projectDirectoryProjects} from '../apps/web/src/project-directory-presentation.ts';
+// Preserve the existing fixture's declared fields without carrying its retired
+// locator property. Strip the catch-all index before applying Omit.
+type DeclaredFields<T> = {[K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]};
+type SelectionEnvironment = Omit<DeclaredFields<LegacySelectionEnvironment>, 'lastProjectRef'> & Record<string,unknown> & {projectEntryIdentityRef:{current:ProjectEntryIdentityOwner}};
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
 import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
 import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
@@ -17,8 +24,8 @@ import { lenientFunction } from './helpers/eval-source.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const Function = lenientFunction;
 const id=(n: number)=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
-const scope='a'.repeat(64),otherScope='b'.repeat(64),stamp='2026-10-12T00:00:00.000Z';
-const envelope={supported:true,workspaceScope:scope,instanceId:id(9),revision:1,projectId:id(2),updatedAt:stamp,targetStatus:'matching'} as const;
+const scope='a'.repeat(64),otherScope='b'.repeat(64);
+const ignoredLegacyObservation=Object.freeze({projectId:id(2)});
 const projects=[{id:id(1)},{id:id(2)}];
 const deferred=()=>{let resolve!: (value?: unknown) => void,reject!: (value: unknown) => void;const promise=new Promise<unknown>((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
@@ -35,22 +42,22 @@ const readySource=section('  function projectSessionReady()', '  const workbench
 const settingsSource=section('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const guardSource=section('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource=section('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
-const selectSource=section('  async function selectProject(', '  async function reloadPreferences(');
-const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    bootGuard.current!.activate();');
+const selectSource=section('  function captureProjectFeatureAdmission(', '  function projectSessionReady()') + section('  async function selectProject(', '  async function reloadPreferences(');
+const bootSource=section('  async function boot(): Promise<void> {','  useEffect(() => {\n    const identity = projectEntryIdentityRef.current!;');
 const compile=<N extends keyof AppFunctions>(code: string,name: N,env: Record<string, unknown>): AppFunctions[N] =>Function(...Object.keys(env),`${code}\nreturn ${name};`)(...Object.values(env)) as AppFunctions[N];
 
-test('initial choice opens only a valid visible explicit URL and leaves locator observations unchanged',()=>{
- const frozen=structuredClone(envelope);
- assert.deepEqual(chooseInitialProject(projects,id(1),envelope),{projectId:id(1),source:'url',notice:null});
+test('initial choice opens only a valid visible explicit URL and ignores compatibility observations',()=>{
+ const frozen=structuredClone(ignoredLegacyObservation);
+ assert.deepEqual(chooseInitialProject(projects,id(1),ignoredLegacyObservation),{projectId:id(1),source:'url',notice:null});
  for(const explicit of [id(3),'not-a-project','']){
-  const choice=chooseInitialProject(projects,explicit,envelope);assert.equal(choice.projectId,null);assert.equal(choice.source,'none');
+  const choice=chooseInitialProject(projects,explicit,ignoredLegacyObservation);assert.equal(choice.projectId,null);assert.equal(choice.source,'none');
   assert.equal(renderCoreMessage('zh-Hans',choice.notice),'该项目暂时不可用，请在首页重试或选择其他项目');
  }
- for(const observed of [envelope,{...envelope,targetStatus:'missing' as const},{supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const,null]){
+ for(const observed of [ignoredLegacyObservation,{projectId:id(3)},Object.freeze({unsupported:true}),null]){
   assert.deepEqual(chooseInitialProject(projects,null,observed),{projectId:null,source:'none',notice:null});
  }
  assert.deepEqual(chooseInitialProject([],null,null),{projectId:null,source:'none',notice:null});
- assert.deepEqual(envelope,frozen);
+ assert.deepEqual(ignoredLegacyObservation,frozen);
 });
 test('verified identity cannot change on reconnect and read failure preserves an established scope',()=>{
  assert.equal(retainLastProjectScope(null,scope),scope);assert.equal(retainLastProjectScope(scope,null),scope);
@@ -65,8 +72,8 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 
 function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(projectId: string): unknown; confirm?: boolean; videoDirectory?(): unknown}={}){
  const calls: [string, ...unknown[]][]=[],currentProject={current:id(1) as string | null},projectEpoch={current:0},navigationEpoch={current:0};
- const view=defaultWorkspaceState();
- const env={canOfferBackupRecovery,backupFailure:null,projects,msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const view=defaultWorkspaceState(),identity=projectEntryOwnerFixture(()=>projectEntryFixture(projects),calls);
+ const env={canOfferBackupRecovery,backupFailure:null,projects,nativeLeaseRevoked:{current:false},msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
@@ -75,7 +82,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
-  lastProjectRef:{current:{invalidateNavigation:(epoch: number)=>calls.push(['invalidate',epoch]),rememberOpened:(projectId: string,epoch: number)=>calls.push(['remember',projectId,epoch])}},
+  projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,projectDirectoryProjects,
   requestCounter:{current:0},preferencesRef:{current:{flush:async()=>{},load:async()=>view,getStatus:()=>({phase:'saved'}),update:(...args: unknown[])=>calls.push(['preferences',...args])}},
   tasksRef:{current:{getState:()=>({phase:'idle'}),load:async()=>{}}},viewReady:{current:true},dataRef:{current:{project:{id:id(1)}}},
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
@@ -102,8 +109,8 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
  env.refresh=(...args: unknown[])=>{const scope={...env};delete (scope as {refresh?: unknown}).refresh;return compile(refreshSource,'refresh',scope)(...args);};
  return {env,calls,select:(...args: unknown[])=>compile(selectSource,'selectProject',env)(...args)};
 }
-test('actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view',async()=>{
- const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.equal(f.env.projectSessionReady(),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[['remember',id(2),1]]);
+test('actual App marks only successfully loaded selections and never mounts a retired locator writer',async()=>{
+ const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.equal(f.env.projectSessionReady(),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[]);assert.equal('lastProjectRef' in f.env,false);
  assert.deepEqual(f.calls.filter(x=>x[0]==='markOpened'),[['markOpened',id(2)]]);
  assert.deepEqual(f.calls.filter(x=>x[0]==='setSelectedTaskId'),[['setSelectedTaskId',undefined]],'Changing projects clears the previous project task-detail selection');
  assert.ok(f.calls.findIndex(x=>x[0]==='markOpened')>f.calls.findIndex(x=>x[0]==='setProjectOpening'&&(x[1] as {phase: string}).phase==='ready'),'recent-open time is recorded only after the actual project-open gate accepts');
@@ -118,9 +125,9 @@ test('actual App rejects failed, foreign, unmounted or overtaken load without re
  f.env.projectEpoch.current++;f.env.currentProject.current=id(3);(gate.resolve)!({project:{id:id(2)},shots:[],nodes:[]});assert.equal(await attempt,false);assert.equal(f.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);
  const g=selectionHarness();g.env.importSession.current.active=false;assert.equal(await g.select(id(2)),false);assert.equal(g.calls.some(x=>x[0]==='remember'||x[0]==='markOpened'),false);
 });
-test('actual same-project shortcut requires loaded project and a failed activation can be explicitly retried',async()=>{
- const f=selectionHarness();assert.equal(await f.select(id(1)),true);assert.deepEqual(f.calls,[['remember',id(1),0]]);
- const g=selectionHarness();g.env.dataRef.current={};assert.equal(await g.select(id(1)),true);assert.ok(g.calls.some(x=>x[0]==='invalidate'));assert.deepEqual(g.calls.filter(x=>x[0]==='remember'),[['remember',id(1),1]]);
+test('actual same-project shortcut requires loaded data and a failed activation still takes the guarded load path',async()=>{
+ const f=selectionHarness();await readProjectEntryIdentity(f.env.projectEntryIdentityRef.current);f.calls.length=0;assert.equal(await f.select(id(1)),true);assert.deepEqual(f.calls,[]);assert.equal(f.env.projectEpoch.current,0);
+ const g=selectionHarness();g.env.dataRef.current={};assert.equal(await g.select(id(1)),true);assert.equal(g.env.projectEpoch.current,1);assert.equal(g.env.openedProject.current?.projectId,id(1));assert.deepEqual(g.calls.filter(x=>x[0]==='remember'),[]);
 });
 test('actual preference-load setup rejection releases only its current loading owner and never remembers',async()=>{
  const f=selectionHarness();f.env.preferencesRef.current.load=async()=>{throw Error('Preference identity rejected');};
@@ -129,17 +136,17 @@ test('actual preference-load setup rejection releases only its current loading o
  assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='remember'||x[0]==='markOpened'||x[0]==='setLoading'&&x[1]===false||x[0]==='setProjectOpening'&&(x[1] as {phase: string}).phase==='error'),false);
 });
 
-function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),explicit=null,videoDirectory}: {discovery?: Promise<unknown>;  explicit?: string | null; videoDirectory?(): unknown}={}){
+function bootHarness({directory=()=>projectEntryFixture(projects),explicit=null,videoDirectory}: {directory?:()=>unknown; explicit?: string|null; videoDirectory?():unknown}={}){
  const selection=selectionHarness({videoDirectory}),{env,calls}=selection,epoch=env.projectEpoch;
+ env.projectEntryIdentityRef.current.dispose();env.projectEntryIdentityRef.current=projectEntryOwnerFixture(directory,calls);
  const guard=createProjectBootGuard(()=>epoch.current);guard.activate();const readRpc=env.rpc;
  env.currentProject.current=null;env.openedProject.current=null;env.dataRef.current={};env.viewReady.current=false;
  Object.assign(env,{bootGuard:{current:guard},migrateBrowserStorage:()=>{},editorSession: {current: 'normal'}, workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
 
-  rpc:async(op: string,input?: {projectId: string})=>op==='project.list'?projects:readRpc(op,input),
+  rpc:readRpc,
   setWorkspace:(x: unknown)=>calls.push(['workspace',x]),
-  lastProjectRef:{current:{...env.lastProjectRef.current,getState:()=>({identityBlocked:false,revision:null}),discover:()=>{calls.push(['discover']);return discovery;}}},
   setProjects:(x: unknown)=>calls.push(['projects',x]),setProviders:(x: unknown[])=>{env.providers=x;calls.push(['providers',x]);},setAuth:(x: boolean | string)=>{env.auth=x;calls.push(['auth',x]);},setOnline:()=>{},
-  retainLastProjectScope,chooseInitialProject,assertLastProjectBootIdentity,URLSearchParams,
+  retainLastProjectScope,chooseInitialProject,readProjectEntryIdentity,projectDirectoryProjects,URLSearchParams,
   window:{...env.window,location:{...env.window.location,search:explicit?'?project='+explicit:''}},
   selectProject:async(projectId: string,initial: boolean)=>{calls.push(['select',projectId,initial]);return selection.select(projectId,initial);},
  });
@@ -171,15 +178,19 @@ test('optional video directory 401 remains an authentication failure during expl
  }
 });
 test('actual App stale startup cannot replace newer selection, publish data after unmount',async()=>{
- const gate=deferred(),f=bootHarness({explicit:id(2),discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;(gate.resolve)!({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
- const held=deferred(),g=bootHarness({explicit:id(2),discovery:held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();(held.resolve)!({envelope,workspaceScope:scope});await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const gate=deferred(),f=bootHarness({explicit:id(2),directory:()=>gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;(gate.resolve)!(projectEntryFixture(projects));await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
+ const held=deferred(),g=bootHarness({explicit:id(2),directory:()=>held.promise}),pending=g.boot();await new Promise(setImmediate);g.guard.deactivate();(held.resolve)!(projectEntryFixture(projects));await pending;assert.equal(g.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);
 });
-test('initial foreign locator permits uncached explicit project selection; changed established identity blocks startup',async()=>{
- const first=bootHarness({explicit:id(1),discovery:Promise.resolve(null)});first.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision:null});await first.boot();
- assert.deepEqual(first.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);assert.equal(first.env.preferenceScope!.current,null);
- for(const revision of [0,1]){
-  const changed=bootHarness({explicit:id(1),discovery:Promise.resolve(null)});changed.env.lastProjectRef.current.getState=()=>({identityBlocked:true,revision});await changed.boot();
-  assert.equal(changed.calls.some(x=>x[0]==='select'),false);assert.ok(changed.calls.some(x=>x[0]==='auth'&&x[1]==='error'));assert.equal(changed.env.preferenceScope!.current,null);
+test('startup requires a strict directory and changed library or same-library instance blocks sticky',async()=>{
+ const first=bootHarness({explicit:id(1),directory:()=>null});await first.boot();
+ assert.deepEqual(first.calls.filter(x=>x[0]==='select'),[]);assert.equal(first.env.auth,'error');assert.equal(first.env.preferenceScope!.current,null);
+ for(const replacement of [projectEntryFixture(projects,{appLibraryScope:otherScope}),projectEntryFixture(projects,{instanceId:id(8)})]){
+  let value=projectEntryFixture(projects);const changed=bootHarness({explicit:id(1),directory:()=>value});await changed.boot();
+  assert.equal(changed.env.projectSessionReady(),true);const before=changed.calls.filter(x=>x[0]==='select').length;
+  value=replacement;await changed.boot();assert.equal(changed.env.auth,'error');assert.equal(changed.env.preferenceScope!.current,null);
+  assert.equal(changed.env.projectEntryIdentityRef.current.getState().identityBlocked,true);assert.equal(changed.calls.filter(x=>x[0]==='select').length,before);
+  value=projectEntryFixture(projects);await changed.boot();assert.equal(changed.env.auth,'error');assert.equal(changed.env.preferenceScope!.current,null);
+  assert.equal(changed.calls.filter(x=>x[0]==='select').length,before);
  }
 });
 
@@ -202,11 +213,15 @@ test('a new boot without verified scope cannot flush queued previous-scope view 
  const state=await prefs.load(id(1));(state)!.editing.playhead=80;prefs.update(id(1),state);verified=null;await prefs.flush();assert.deepEqual(requests,['GET']);
  assert.equal(((await prefs.load(id(1))))!.editing.playhead,0);await prefs.flush();assert.deepEqual(requests,['GET','GET']);
 });
-test('same-session locator mismatch disables previous workspace cache and queued preference writes immediately',async t=>{
- let remote=structuredClone(envelope);const locator=createLastProjectController({client:{get:async()=>remote,put:async()=>{throw Error('Not authorized by this test');}}});t.after(()=>locator.dispose());await locator.discover();
- const local=storage(),saved=defaultWorkspaceState();saved.activeMode='editing';saved.editing.playhead=57;writeWorkspaceState(`normal:${scope}:${id(1)}`,saved,local);
- const requests: unknown[]=[];const prefs=createWorkspacePreferences({storage:local,getStorageScope:()=>locator.getState().identityBlocked?null:scope,delayMs:60_000,maxWaitMs:60_000,fetchImpl:async(_url,init)=>{requests.push((init)!.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
- assert.equal(((await prefs.load(id(1))))!.editing.playhead,57);
- remote={...remote,workspaceScope:otherScope};await locator.recheck();assert.equal(locator.getState().identityBlocked,true);
- await prefs.flush();assert.deepEqual(requests,['GET']);assert.equal(((await prefs.load(id(1))))!.editing.playhead,0);await prefs.flush();assert.deepEqual(requests,['GET','GET']);
+test('same-session directory mismatch disables previous workspace cache and queued preference writes immediately',async t=>{
+ for(const replacement of [projectEntryFixture(projects,{appLibraryScope:otherScope}),projectEntryFixture(projects,{instanceId:id(8)})]){
+  let remote=projectEntryFixture(projects);const owner=projectEntryOwnerFixture(()=>remote);t.after(()=>owner.dispose());await readProjectEntryIdentity(owner);
+  const local=storage(),saved=defaultWorkspaceState();saved.activeMode='editing';saved.editing.playhead=57;writeWorkspaceState(`normal:${scope}:${id(1)}`,saved,local);
+  const requests: unknown[]=[];const prefs=createWorkspacePreferences({storage:local,getStorageScope:owner.getVerifiedScope,delayMs:60_000,maxWaitMs:60_000,fetchImpl:async(_url,init)=>{requests.push(init!.method);return response({projectId:id(1),revision:0,state:null});}});t.after(()=>prefs.dispose({flush:false}));
+  assert.equal((await prefs.load(id(1)))!.editing.playhead,57);const draft=defaultWorkspaceState();draft.editing.playhead=83;prefs.update(id(1),draft);
+  remote=replacement;await owner.refresh();assert.equal(owner.getState().identityBlocked,true);
+  await prefs.flush();assert.deepEqual(requests,['GET']);assert.equal((await prefs.load(id(1)))!.editing.playhead,0);await prefs.flush();assert.deepEqual(requests,['GET','GET']);
+  remote=projectEntryFixture(projects);owner.dispose();owner.activate();await owner.refresh();assert.equal(owner.getVerifiedScope(),null);
+  assert.equal(preferenceCacheIdentity(id(1),scope).cacheId,`normal:${scope}:${id(1)}`);
+ }
 });

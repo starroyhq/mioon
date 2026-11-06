@@ -1,12 +1,9 @@
 import path from 'node:path';
+import {PROJECT_OPEN_ERROR_CODES} from '../../../packages/contracts/src/project-file.ts';
 
-// OS file intents keep their queue until a backend runs. Opening a path is not
-// yet wired to S6's trusted project/window admission; never treat an ordinary
-// SQLite .mioon file as an archive upload to the retired package service.
 export const PROJECT_FILE_EXTENSION='.mioon';
-export type ProjectFileOpenFailure='PROJECT_FILE_OPEN_UNAVAILABLE'|'PROJECT_PACKAGE_NOT_MIOON'|'PROJECT_PACKAGE_NEWER_FORMAT'|'PROJECT_PACKAGE_CORRUPT'|'UNAVAILABLE';
-export type ProjectFileUpload=(file:string)=>Promise<void>;
-
+export type ProjectFileOpenFailure=typeof PROJECT_OPEN_ERROR_CODES[number]|'PROJECT_LOCATION_INVALID'|'PROJECT_LOCATION_REJECTED'|'UNAVAILABLE';
+export type ProjectFileOpen=(file:string)=>Promise<void>;
 export class ProjectFileOpenError extends Error {
  readonly code:ProjectFileOpenFailure;
  constructor(code:ProjectFileOpenFailure){super(code);this.code=code;}
@@ -17,31 +14,37 @@ export function projectFileArguments(argv:readonly string[]|undefined,cwd?:strin
  return (argv??[]).slice(1).filter(item=>!item.startsWith('-')&&item.toLowerCase().endsWith(PROJECT_FILE_EXTENSION)).map(item=>cwd?path.resolve(cwd,item):path.resolve(item));
 }
 
-/** Retained internal call shape for the desktop lifecycle. Fail before any
- * filesystem or network access until OS paths have trusted S6 admission. */
-export async function uploadProjectFile({base,token,file,signal,fetchImpl=fetch}:{base:string;token:string;file:string;signal?:AbortSignal;fetchImpl?:typeof fetch}):Promise<void>{
- throw new ProjectFileOpenError('PROJECT_FILE_OPEN_UNAVAILABLE');
-}
+const failureFor=(error:unknown):{code:ProjectFileOpenFailure;reason?:'read-only'}=>{
+ const source=error!==null&&typeof error==='object'?error as {code?:unknown;details?:unknown}:{};
+ const code=source.code,details=source.details!==null&&typeof source.details==='object'?source.details as {reason?:unknown;invalidReason?:unknown}:{};
+ const known=typeof code==='string'&&[...PROJECT_OPEN_ERROR_CODES,'PROJECT_LOCATION_INVALID','PROJECT_LOCATION_REJECTED'].includes(code)?code as ProjectFileOpenFailure:'UNAVAILABLE';
+ return {code:known,...(code==='PROJECT_INVALID'&&details.reason==='read-only'?{reason:'read-only' as const}:{})};
+};
 
-/** Queues files until a backend is running, then dispatches one at a time.
- * Files arriving before startup (macOS sends open-file before ready) wait. */
-export function createProjectFileOpener({opened,failed}:{opened:()=>void;failed:(file:string,code:ProjectFileOpenFailure)=>void}){
+/** OS intents wait for a trusted path-opening port. No project bytes are uploaded.
+ * Detaching invalidates completion callbacks from the old backend; an in-flight
+ * intent is never replayed after an unknown result. Later files remain queued. */
+export function createProjectFileOpener({opened,failed}:{opened:()=>void;failed:(file:string,code:ProjectFileOpenFailure,reason?:'read-only')=>void|Promise<void>}){
  const pending:string[]=[];
- let upload:ProjectFileUpload|null=null,draining=false;
- async function drain():Promise<void>{
-  if(draining)return;draining=true;
-  try{
-   while(upload&&pending.length){
-    const file=pending.shift()!,run=upload;
-    try{await run(file);opened();}
-    catch(error){failed(file,error instanceof ProjectFileOpenError?error.code:'UNAVAILABLE');}
+ let open:ProjectFileOpen|null=null,draining:Promise<void>|null=null,generation=0;
+ const connected=()=>open!==null;
+ function drain():Promise<void>{
+  if(draining)return draining;
+  const running=(async()=>{
+   while(open&&pending.length){
+    const file=pending.shift()!,run=open,epoch=generation;
+    try{await run(file);if(open===run&&generation===epoch)opened();}
+    catch(error){if(open===run&&generation===epoch){const failure=failureFor(error);await failed(file,failure.code,failure.reason);}}
    }
-  }finally{draining=false;}
+  })();
+  draining=running;
+  void running.finally(()=>{if(draining===running){draining=null;if(open&&pending.length)void drain();}});
+  return running;
  }
  return {
   add(files:readonly string[]):void{for(const file of files)if(!pending.includes(file))pending.push(file);void drain();},
-  attach(run:ProjectFileUpload):void{upload=run;void drain();},
-  detach(run:ProjectFileUpload):void{if(upload===run)upload=null;},
+  attach(run:ProjectFileOpen):Promise<void>{open=run;generation++;return (async()=>{do{await drain();}while(connected()&&pending.length);})();},
+  detach(run:ProjectFileOpen):void{if(open===run){open=null;generation++;}},
   get pending():readonly string[]{return [...pending];},
  };
 }

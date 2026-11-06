@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createProjectHistoryClient, ProjectHistoryError} from '../apps/web/src/project-history-client.ts';
 import type {ProjectHistoryClient} from '../apps/web/src/project-history-client.ts';
-import {createProjectHistoryRuntime} from '../apps/web/src/project-history-runtime.ts';
+import {createProjectHistoryRuntime,projectHistoryRuntime} from '../apps/web/src/project-history-runtime.ts';
 import type {ProjectVersionPreviewResponse} from '../packages/contracts/src/project-version-operations.ts';
 import type {ProjectBackupRestoreInput, ProjectBackupRestoreResponse} from '../packages/contracts/src/project-backups.ts';
 
@@ -133,4 +133,26 @@ test('a definitive restore refusal permits a new chosen target only with a fresh
   assert.notEqual(sent[0]!.requestId, sent[1]!.requestId); assert.notEqual(sent[0]!.projectFile, sent[1]!.projectFile); runtime.close();
   const unavailable = createProjectHistoryRuntime(projectId, fake({backups: async () => {throw new ProjectHistoryError('PROJECT_BACKUP_INDEX_INVALID', true);}}));
   unavailable.open('backups'); await settle(); assert.equal(unavailable.snapshot().backups.kind, 'error'); assert.equal(unavailable.snapshot().attempt, null); unavailable.close();
+});
+
+
+test('captured history admission blocks old callbacks and discards late version and app-only backup reads',async()=>{
+  for(const tab of ['versions','backups'] as const){let allowed=true,reads=0,writes=0;const pending=deferred<Awaited<ReturnType<ProjectHistoryClient['list']>>>(),backups=deferred<Awaited<ReturnType<ProjectHistoryClient['backups']>>>();
+    const runtime=createProjectHistoryRuntime(projectId,fake({list:async()=>{reads++;return pending.promise;},backups:async()=>{reads++;return backups.promise;},save:async input=>{writes++;return fake().save(input);}}),undefined,{scope:'a'.repeat(64),key:'library-A:instance-A:project',isCurrent:()=>allowed});
+    runtime.open(tab);await settle();const before=runtime.snapshot();allowed=false;await runtime.save('stale');await runtime.loadVersions();await runtime.loadBackups();await runtime.inspect(backupId);await runtime.retry();assert.equal(writes,0);assert.equal(reads,1);
+    pending.resolve({projectId,versions:[summary],nextCursor:null});backups.resolve({projectId,backups:[backup]});await settle();assert.equal(runtime.snapshot(),before,'late data does not replace the retained view');runtime.close();
+  }
+});
+
+test('lease loss during the OS picker prevents restore and a dispatched late ACK preserves the exact unknown intent',async()=>{
+  let allowed=true,writes=0;const picker=deferred<ProjectBackupRestoreInput|null>(),ack=deferred<Awaited<ReturnType<ProjectHistoryClient['save']>>>();
+  const runtime=createProjectHistoryRuntime(projectId,fake({restoreBackup:async input=>{writes++;return backupResult(input);},save:async()=>{writes++;return ack.promise;}}),undefined,{scope:'a'.repeat(64),key:'library-A:instance-A',isCurrent:()=>allowed});
+  runtime.open('backups');await settle();await runtime.inspect(backupId);let input!:ProjectBackupRestoreInput;const choosing=runtime.chooseBackup(async value=>{input={...value,projectFile:'/projects/recovered.mioon'};return picker.promise;});allowed=false;picker.resolve(input);await choosing;assert.equal(writes,0);runtime.close();allowed=true;runtime.open();await settle();const saving=runtime.save('exact original');const original=runtime.snapshot().attempt;assert.ok(original);allowed=false;ack.resolve({projectId,requestId:original.input.requestId,version:summary});await saving;
+  assert.equal(runtime.snapshot().attempt?.phase,'unknown');assert.deepEqual(runtime.snapshot().attempt?.input,original.input);await runtime.retry();assert.equal(writes,1);runtime.close();
+});
+
+test('retained unknown history for the same UUID is isolated by application scope and instance',async t=>{
+  const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('synthetic lost ACK');};t.after(()=>{globalThis.fetch=originalFetch;});
+  const id=randomUUID(),a=projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-A:instance-A',isCurrent:()=>true});a.open();await settle();await a.save('original');const pending=a.snapshot().attempt;assert.equal(pending?.phase,'unknown');a.close();
+  const b=projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-B:instance-B',isCurrent:()=>true});assert.notEqual(a,b);assert.equal(b.snapshot().attempt,null);assert.equal(projectHistoryRuntime(id,{scope:'a'.repeat(64),key:'scope-A:instance-A',isCurrent:()=>true}),a);assert.deepEqual(a.snapshot().attempt?.input,pending?.input);b.close();
 });

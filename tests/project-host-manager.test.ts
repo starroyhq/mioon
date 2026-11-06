@@ -442,6 +442,67 @@ test('a project moved while closed is found by file identity when it opens', asy
   lease.release();
 });
 
+test('prepareAcquire finds a moved file after its old directory disappears without opening any database', async t => {
+  let recoveryCalls = 0;
+  const {dataDir, manager, registry, opens, state} = await setup(t, {maintenance: {recoverProjectFile: () => {recoveryCalls++; return {state: 'clean'};}}});
+  const film = await manager.create({name: 'Film'}), moved = path.join(dataDir, 'projects', 'Moved Film');
+  renameSync(path.dirname(film.projectFile), moved);
+  assert.equal(existsSync(path.dirname(film.projectFile)), false);
+  const prepared = await manager.prepareAcquire(film.projectId), projectFile = path.join(moved, 'Film.mioon');
+  assert.equal(prepared.projectFile, projectFile);
+  assert.deepEqual(prepared.fileIdentity, film.fileIdentity);
+  assert.equal(registry.get(film.projectId)?.projectFile, projectFile);
+  assert.deepEqual([opens.count, state.calls, recoveryCalls], [0, 0, 0]);
+  const lease = await manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile});
+  assert.equal(lease.host.store.projectFile, projectFile);
+  lease.release();
+});
+
+test('a path admitted before a registry move cannot open the new path', async t => {
+  const {dataDir, manager, registry, opens} = await setup(t);
+  const film = await manager.create({name: 'Film'}), prepared = await manager.prepareAcquire(film.projectId);
+  const moved = path.join(dataDir, 'projects', 'Moved Film');
+  renameSync(path.dirname(film.projectFile), moved);
+  registry.upsert({...film, projectFile: path.join(moved, 'Film.mioon')});
+  await assert.rejects(manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile}), {code: 'PROJECT_FILE_MOVED', status: 409});
+  assert.equal(opens.count, 0);
+});
+
+test('a pinned acquire never searches for a moved file or opens an unapproved replacement path', async t => {
+  const {dataDir, manager, registry, opens} = await setup(t);
+  const film = await manager.create({name: 'Film'}), prepared = await manager.prepareAcquire(film.projectId);
+  renameSync(path.dirname(film.projectFile), path.join(dataDir, 'projects', 'Moved Film'));
+  let searches = 0;
+  registry.findMoved = async () => {searches++; return null;};
+  await assert.rejects(manager.acquire(film.projectId, 'window', {projectFile: prepared.projectFile}), {code: 'PROJECT_UNAVAILABLE', details: {projectId: film.projectId, reason: 'PROJECT_MISSING'}});
+  assert.equal(searches, 0);
+  assert.equal(opens.count, 1, 'only the admitted path reached the kernel');
+});
+
+test('a pinned acquire rechecks the registry after asynchronous host composition', async t => {
+  const {manager, registry, opens, state, gate} = await setup(t);
+  const film = await manager.create({name: 'Film'}), composing = gate();
+  state.gate = composing.promise;
+  const pending = manager.acquire(film.projectId, 'window', {projectFile: film.projectFile});
+  const refused = assert.rejects(pending, {code: 'PROJECT_FILE_MOVED', status: 409});
+  registry.upsert({...film, projectFile: path.join(path.dirname(film.projectFile), 'Other.mioon')});
+  composing.open();
+  await refused;
+  assert.equal(opens.count, 1);
+  assert.equal(manager.status(film.projectId), null, 'the obsolete composition was discarded');
+  assert.equal(registry.get(film.projectId)?.projectFile, path.join(path.dirname(film.projectFile), 'Other.mioon'));
+  assert.equal(registry.get(film.projectId)?.lastOpenedAt, null);
+});
+
+test('prepareAcquire preserves access denial instead of treating an unreadable location as missing', async t => {
+  let deny = false;
+  const {manager, opens} = await setup(t, {identity: file => {if (deny) throw Object.assign(new Error('private path'), {code: 'EACCES'}); return statProjectFileIdentity(file);}});
+  const film = await manager.create({name: 'Film'});
+  deny = true;
+  await assert.rejects(manager.prepareAcquire(film.projectId), {code: 'PROJECT_ACCESS_DENIED', status: 403});
+  assert.equal(opens.count, 0);
+});
+
 test('concurrent acquires open a project once and share its host', async t => {
   const {manager, state, opens, gate} = await setup(t);
   const film = await manager.create({name: 'Film'});
@@ -733,6 +794,84 @@ test('withExclusive reports PROJECT_HOST_BUSY when requests or work do not end, 
   assert.equal(window.signal.aborted, false);
   state.runtimes[0].busy = false;
   window.release();
+});
+
+test('close admission reads the paused real host before interrupt and preserves it when refused', async t => {
+  const f = await setup(t), film = await f.manager.create({name: 'Waiting Mio'});
+  const request = await f.manager.acquire(film.projectId, 'request'), host = request.host;
+  request.release();
+  const refused = new Error('waiting for a real user answer');
+  let checks = 0, ran = false;
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {ran = true;}, {rejectWindowLeases: true, assertCanClose: current => {
+    checks++;
+    assert.equal(current, host);
+    assert.equal(f.manager.status(film.projectId)?.paused, true);
+    assert.equal(current.store.db.isOpen, true);
+    assert.equal(f.manager.tryAcquireOpen(film.projectId, 'request'), null);
+    throw refused;
+  }}), error => error === refused);
+  assert.equal(checks, 1); assert.equal(ran, false);
+  assert.equal(f.manager.status(film.projectId)?.paused, false);
+  assert.equal(host.signal.aborted, false);
+  assert.equal(host.store.db.isOpen, true);
+  assert.equal(f.log.includes('interrupt'), false); assert.equal(f.log.includes('store.close'), false);
+  const window = await f.manager.acquire(film.projectId, 'window');
+  assert.equal(window.host, host); assert.equal(window.signal.aborted, false);
+  window.release();
+  const closed = f.ev.once('closed', film.projectId);
+  f.clock.advance(1000); await closed;
+  assert.equal(host.store.db.isOpen, false, 'refused admission restores idle-close scheduling');
+});
+
+test('close admission refuses async and thenable callbacks without silently closing the host', async t => {
+  const f = await setup(t), film = await f.manager.create({name: 'Synchronous fence'});
+  const request = await f.manager.acquire(film.projectId, 'request'), host = request.host;
+  request.release();
+  let asyncCalled = false, ran = false;
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {ran = true;}, {assertCanClose: async () => {asyncCalled = true;}}), TypeError);
+  assert.equal(asyncCalled, false);
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {ran = true;}, {assertCanClose: () => Promise.reject(new Error('late asynchronous refusal'))}), TypeError);
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {ran = true;}, {assertCanClose: () => ({then() {}})}), TypeError);
+  await tick();
+  assert.equal(ran, false); assert.equal(host.signal.aborted, false);
+  assert.equal(host.store.db.isOpen, true); assert.equal(f.manager.status(film.projectId)?.paused, false);
+  assert.equal(f.log.includes('interrupt'), false);
+});
+
+test('a rejected slow close admission restores an expired idle timer without closing as part of refusal', async t => {
+  const f = await setup(t), film = await f.manager.create({name: 'Slow inspection'});
+  const request = await f.manager.acquire(film.projectId, 'request'), host = request.host;
+  request.release();
+  const failure = new Error('persisted waiting run');
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {}, {assertCanClose: () => {
+    f.clock.advance(2000);
+    throw failure;
+  }}), error => error === failure);
+  assert.equal(host.signal.aborted, false); assert.equal(host.store.db.isOpen, true);
+  assert.equal(f.manager.status(film.projectId)?.paused, false); assert.equal(f.log.includes('interrupt'), false);
+  const closed = f.ev.once('closed', film.projectId);
+  f.clock.advance(50); await closed;
+  assert.equal(host.store.db.isOpen, false, 'normal idle scheduling resumes on its later timer');
+});
+
+test('close admission follows ordinary busy gates and succeeds only before the original close sequence', async t => {
+  const f = await setup(t), film = await f.manager.create({name: 'Admission order'});
+  const window = await f.manager.acquire(film.projectId, 'window');
+  let checks = 0;
+  const assertCanClose = () => {checks++; f.log.push('admission'); assert.equal(f.manager.status(film.projectId)?.paused, true);};
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {}, {rejectWindowLeases: true, assertCanClose}), {code: 'PROJECT_HOST_BUSY'});
+  assert.equal(checks, 0); assert.equal(window.signal.aborted, false);
+  const task = await f.manager.acquire(film.projectId, 'task'); window.release();
+  await assert.rejects(f.manager.withExclusive(film.projectId, () => {}, {assertCanClose}), {code: 'PROJECT_HOST_BUSY'});
+  assert.equal(checks, 0); assert.equal(task.signal.aborted, false);
+  const lastRequest = await f.manager.acquire(film.projectId, 'request');
+  task.release(); lastRequest.release();
+  const result = await f.manager.withExclusive(film.projectId, () => 'done', {rejectWindowLeases: true, assertCanClose});
+  assert.equal(result, 'done'); assert.equal(checks, 1);
+  assert.ok(f.log.indexOf('admission') < f.log.indexOf('interrupt'));
+  assert.equal(window.host.store.db.isOpen, false); assert.equal(f.manager.status(film.projectId), null);
+  await f.manager.withExclusive(film.projectId, () => {}, {assertCanClose});
+  assert.equal(checks, 1, 'a closed project is never reopened just to run admission');
 });
 
 // ---------------------------------------------------------------------------

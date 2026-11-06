@@ -6,10 +6,10 @@ import type {MioRunUsage} from '../packages/contracts/src/mio-run-usage.ts';
 import {usageFixture,USAGE_PROJECT_ID as projectId,USAGE_RUN_ID as runId} from './helpers/mio-usage-fixture.ts';
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
 const owner:MioUsageOwner={scope:'workspace-A',projectId,instanceId:'server-A',selectionKey:'conversation-A',visible:true};
-function harness(){
+function harness(isAdmissionAllowed?:()=>boolean){
   let state:MioUsageState=EMPTY_MIO_USAGE_STATE;
   const requests:Array<{projectId:string;runId:string;signal?:AbortSignal;resolve:(value:MioRunUsage)=>void;reject:(error:unknown)=>void}>=[];
-  const controller=createMioUsageController({onChange:value=>{state=value;},client:{read:async(projectId,runId,options)=>await new Promise<MioRunUsage>((resolve,reject)=>requests.push({projectId,runId,signal:options?.signal,resolve,reject}))}});
+  const controller=createMioUsageController({isAdmissionAllowed,onChange:value=>{state=value;},client:{read:async(projectId,runId,options)=>await new Promise<MioRunUsage>((resolve,reject)=>requests.push({projectId,runId,signal:options?.signal,resolve,reject}))}});
   const sync=(revision=1,terminal=false)=>controller.sync(owner,[{runId,revision,terminal}]);
   return{controller,requests,sync,get state(){return state;}};
 }
@@ -58,4 +58,24 @@ test('only actual terminal metadata verifies a final read; hidden return forces 
   const h=harness();h.sync(1,false);await flush();h.requests[0]!.resolve(usageFixture());await flush();assert.equal(h.state.rounds[runId]!.final,false);
   h.sync(1,true);await flush();h.requests[1]!.resolve(usageFixture());await flush();assert.equal(h.state.rounds[runId]!.final,true);
   h.controller.sync({...owner,visible:false},[{runId,revision:1,terminal:true}]);h.controller.sync(owner,[{runId,revision:1,terminal:true}]);await flush();assert.equal(h.requests.length,3);const before=h.state.revision;h.controller.dispose();h.requests[2]!.resolve(usageFixture());await flush();assert.equal(h.state.revision,before);
+});
+
+
+test('the live lease fence blocks queued usage dispatch and every explicit read without waiting for a render',async()=>{
+  let admitted=true;const h=harness(()=>admitted);
+  h.sync();const before=h.state;admitted=false;await flush();
+  assert.equal(h.requests.length,0,'a microtask queued under the old admission cannot dispatch');
+  h.controller.observe({runId,serial:1});h.controller.refresh(runId);h.controller.open(runId);await flush();
+  assert.equal(h.requests.length,0);assert.equal(h.state,before);assert.equal(h.state.detailRunId,null);
+  h.controller.dispose();
+});
+
+for(const outcome of ['success','failure'] as const)test(`a revoked live usage admission fences a late ${outcome} and does not queue its trailing read`,async()=>{
+  let admitted=true;const h=harness(()=>admitted);
+  h.sync();await flush();assert.equal(h.requests.length,1);
+  h.controller.observe({runId,serial:1});const before=h.state;admitted=false;
+  if(outcome==='success')h.requests[0]!.resolve(usageFixture());else h.requests[0]!.reject(new Error('late read failure'));
+  await flush();await flush();assert.equal(h.state,before);assert.equal(h.requests.length,1);
+  h.controller.open(runId);h.controller.refresh(runId);await flush();assert.equal(h.state,before);assert.equal(h.requests.length,1);
+  h.controller.dispose();
 });

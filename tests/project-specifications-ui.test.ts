@@ -13,6 +13,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+// Load the production context module. Standalone previews have no Provider;
+// null carries no claim that any media was verified by an owner.
+const standaloneMediaGate=(()=>{
+  const react={createContext:(value:unknown)=>({value}),useContext:(context:{value:unknown})=>context.value};
+  const module:{exports:Record<string,unknown>}={exports:{}};
+  const source=readFileSync(new URL('../apps/web/src/project-media-read-gate.tsx',import.meta.url),'utf8');
+  globalThis.Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(name:string)=>{
+    if(name==='react')return react;
+    if(name==='./project-file/MediaStatus.tsx')return {MediaStatusBadge:'MediaStatusBadge',MediaStatusNote:'MediaStatusNote'};
+    throw Error(`Unexpected standalone media gate dependency: ${name}`);
+  });
+  return module.exports;
+})();
+assert.equal((standaloneMediaGate.useProjectMediaReadGate as ()=>unknown)(),null);
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as exportRange from '../apps/web/src/export-range-state.ts';
 import * as format from '../apps/web/src/timeline-format-state.ts';
@@ -182,7 +196,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name:string,imports:Record<string,unknown> = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: (current: unknown) => ({ current }), useState: (value: () => unknown) => [typeof value === 'function' ? value() : value, () => {}] } as {createElement:typeof element;useEffect():void;useLayoutEffect():void;useRef(current:unknown):{current:unknown};useState(value:unknown):unknown[];default?:unknown}; (react as typeof react & {default: unknown}).default = react;
   const module = {exports:{}} as ComponentModule;
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (key: string) => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (key: string) => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './project-media-read-gate.tsx' ? standaloneMediaGate : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
 }
 

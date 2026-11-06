@@ -139,9 +139,21 @@ test('12-05 relink states: searching, nothing to do, failed, applying and apply 
   assert.ok(html('12-05-apply-error').includes(text('projectFile.media.relink.applyFailed')));
 });
 
+test('changed acceptance text declares a new identity and preserves existing clips in every locale', () => {
+  for (const locale of LOCALES) {
+    const help = translate(locale, 'projectFile.media.relink.changedHelp');
+    assert.ok(help.length > 30, locale);
+    assert.ok(translate(locale, 'projectFile.media.relink.newSelected').length > 0, locale);
+    assert.ok(translate(locale, 'projectFile.media.relink.newAdded', {count: 3}).includes('3'), locale);
+  }
+  assert.match(translate('zh-Hans', 'projectFile.media.relink.changedHelp'), /添加一个新素材.*旧素材、已有片段和历史引用不会更改/u);
+  assert.match(translate('en', 'projectFile.media.relink.changedHelp'), /adds a new asset.*existing clips.*remain unchanged/u);
+});
+
 test('12-06 outside locations: rows, the rules note and the buttons in each state', () => {
   const ready = html('12-06');
-  assert.ok(ready.includes(text('projectFile.media.outside.fromAnother')));
+  assert.equal(ready.includes(text('projectFile.media.outside.fromAnother')),false);
+  assert.ok(html('12-06-from-another').includes(text('projectFile.media.outside.fromAnother')));
   assert.ok(ready.includes(text('projectFile.media.outside.body', { count: 3 })));
   assert.equal((ready.match(/data-testid="pf-outside-row"/gu) ?? []).length, 3);
   assert.match(ready, /data-available="false"[^>]*>[\s\S]*?这台电脑上没有这个位置[\s\S]*?找不到/u);
@@ -164,6 +176,18 @@ test('12-06 outside locations: rows, the rules note and the buttons in each stat
   const allowing = html('12-06-allowing');
   assert.equal(busy(tagOf(allowing, 'pf-outside-allow')), true);
   assert.equal(disabled(tagOf(allowing, 'pf-outside-open')), true);
+});
+
+test('P6 gallery distinguishes staged new assets, absent native capabilities and explicit source facts in every language', () => {
+  for(const locale of LOCALES) {
+    const staged=ui.render('12-05-changed-selected',locale);assert.ok(staged.includes(escapeHtml(translate(locale,'projectFile.media.relink.newSelected'))));
+    const added=ui.render('12-05-new-added',locale);assert.ok(added.includes(escapeHtml(translate(locale,'projectFile.media.relink.newAdded',{count:1}))));
+    assert.equal((added.match(/data-testid="pf-relink-row-/gu)??[]).length,3,'Adding a new asset does not replace old rows');
+    const noChooser=ui.render('12-05-no-native-chooser',locale);assert.doesNotMatch(noChooser,/data-testid="pf-relink-(?:choose|use-new)-/u);assert.equal(disabled(tagOf(noChooser,'pf-relink-apply')),true);
+    assert.equal(ui.render('12-06',locale).includes(escapeHtml(translate(locale,'projectFile.media.outside.fromAnother'))),false);
+    assert.ok(ui.render('12-06-from-another',locale).includes(escapeHtml(translate(locale,'projectFile.media.outside.fromAnother'))));
+    assert.equal(disabled(tagOf(ui.render('12-06-allow-unavailable',locale),'pf-outside-allow')),true);
+  }
 });
 
 test('media screenshots match the scene table', async () => {

@@ -6,6 +6,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { translate } from '../packages/i18n/src/index.ts';
 import { clipLoudnessMessages } from '../packages/i18n/src/catalogs/clip-loudness.ts';
+import {evaluateSource} from './helpers/eval-source.ts';
+import {timelineAudioMediaReadable} from '../apps/web/src/project-media-readability.ts';
+import {timelineAudioPreviewSourceIdentity} from '../apps/web/src/use-timeline-audio-preview.ts';
+import {createDialogueLoudnessController} from '../apps/web/src/dialogue-loudness-state.ts';
+import type {DialogueLoudnessContext} from '../apps/web/src/dialogue-loudness-state.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -104,4 +109,23 @@ test('every dialogue loudness message exists in four locales and the delivery pa
   assert.match(app, /const mix = timelineMixLoudnessContext\(\)/, 'it shares the whole-timeline fences');
   assert.match(app, /rpc\('timeline\.clip\.loudness', input, options as never\)/);
   assert.match(app, /mutateTimeline\('timeline\.clip\.setGains', \{ gains \}, expectedRevision, \{ errorMessage: dialogueGainsError \}\)/);
+});
+
+test('the actual dialogue getter inherits the media gate without removing timeline rows or reading a blocked source', async () => {
+  const app=readFileSync(resolve(root,'apps/web/src/App.tsx'),'utf8');
+  const part=(start:string,end:string)=>{const first=app.indexOf(start),last=app.indexOf(end,first);assert.ok(first>=0&&last>first);return app.slice(first,last);};
+  const source=part('  function timelineMixLoudnessContext()', '  const timelineMixLoudness =')+part('  function dialogueLoudnessContext()', '  const dialogueLoudness =');
+  const clip={id:'voice-clip',name:'Voice',trackId:'voice-track',assetId:'voice',startFrame:0,durationFrames:60,gain:1,audioRole:'human'};
+  const saved={id:'timeline',revision:4,durationFrames:60,clips:[clip],tracks:[{id:'voice-track',name:'Voice',kind:'audio',orderIndex:0,muted:false}]};
+  const assets=[{id:'voice',projectId:'project',mimeType:'audio/wav',sha256:'a'.repeat(64),sizeBytes:128}];let readable=true,reads=0;
+  const env={dataRef:{current:{project:{id:'project'},timeline:saved,assets}},timelineAudioMediaReadable,timelineAudioPreviewSourceIdentity,
+    projectMedia:{canRead:()=>readable},editorSession:{current:'normal'},currentProject:{current:'project'},projectEpoch:{current:1},navigationEpoch:{current:0},panelIntent:{current:0},viewRef:{current:{activeMode:'editing'}},
+    projectSessionReady:()=>true,workbenchReady:true,online:true,auth:true,loading:false,showDelivery:true,showExports:false,
+    clipDirty:false,subtitleDirty:false,formatDirty:false,timelineBusy:false,isBusy:()=>false,clipDraftRef:{current:null},subtitlesRef:{current:null},timelineFormatRef:{current:null}};
+  const read=evaluateSource(`${source}\nreturn dialogueLoudnessContext;`,Object.keys(env),Object.values(env),{loader:'tsx'}) as ()=>DialogueLoudnessContext;
+  const controller=createDialogueLoudnessController({getContext:read,read:async()=>{reads++;throw Error('No blocked source read');},apply:async()=>{assert.fail('No blocked apply');}});
+  controller.attach(read());assert.equal(controller.setDraft({integratedLufs:'-14',truePeakCeilingDbtp:'-1'},controller.getState()),true);
+  const captured=controller.getState(),before=structuredClone({saved,assets});readable=false;
+  const blocked=read();assert.equal(blocked.connected,false);assert.equal(blocked.clips,saved.clips);assert.equal(blocked.tracks,saved.tracks);assert.deepEqual(blocked.assetHashes,{voice:'a'.repeat(64)});
+  assert.equal(await controller.analyze(captured),false);assert.equal(reads,0);assert.deepEqual({saved,assets},before);
 });

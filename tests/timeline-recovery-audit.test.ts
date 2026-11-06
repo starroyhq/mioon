@@ -21,6 +21,7 @@ import {message as msg, renderMessage, type DisplayMessage} from '../packages/i1
 import {touchesLockedTrack} from '../apps/web/src/timeline-track-locks.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import type { ServiceStore } from '../packages/business/src/services.ts';
 const Function = lenientFunction;
 // No application, HTTP server, browser, worker, media process or provider is started.
@@ -84,11 +85,13 @@ function taskPort({beforeDispatch,outcome='applied'}:{beforeDispatch?:()=>Promis
   };
   return port;
 }
-function appHarness(port:AuditPort, {revision = 7, refreshedRevision = 9, subtitleDirty = false} = {}) {
+async function appHarness(port:AuditPort, {revision = 7, refreshedRevision = 9, subtitleDirty = false} = {}) {
   const currentProject = {current:projectId}, busy = new Set();
   const dataRef = {current:{project:{id:projectId}, timeline:timeline(revision), timelineHistory:history(revision)}};
   const state:{epoch:number;ids:number;notices:{message:string;type:unknown}[];refreshes:unknown[];jobs:boolean;recoveredFormats:AuditTask[];recoveredSubtitles:AuditTask[]} = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
-  const scope = { msg, renderCoreMessage: renderMessage, application: null, trackLocksRef:{current:{}}, touchesLockedTrack, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
+  const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
+  assert.ok(await identity.discover());
+  const scope = { projectEntryIdentityRef: {current: identity}, msg, renderCoreMessage: renderMessage, application: null, trackLocksRef:{current:{}}, touchesLockedTrack, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }),
     timelineFormatRef:{current:{controller:{recovered:(task?: unknown)=>state.recoveredFormats.push(((copy(task)) as unknown as Parameters<typeof state.recoveredFormats.push>[0]))}}}, subtitlesRef:{current:{controller:{recovered:(task?: unknown)=>state.recoveredSubtitles.push(((copy(task)) as unknown as Parameters<typeof state.recoveredSubtitles.push>[0]))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,
@@ -116,7 +119,7 @@ function appHarness(port:AuditPort, {revision = 7, refreshedRevision = 9, subtit
 }
 
 test('App unsaved subtitle blocks both history directions before minting or dispatching an intent', async () => {
-  const port = taskPort(), h = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]), {subtitleDirty:true});
+  const port = taskPort(), h = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]), {subtitleDirty:true});
   assert.equal((await h.changeTimelineHistory('undo') as unknown), null); assert.equal((await h.changeTimelineHistory('redo') as unknown), null);
   assert.equal(h.state.ids, 0); assert.deepEqual((port.calls as unknown), []); assert.equal(h.busy.size, 0);
 });
@@ -124,7 +127,7 @@ test('App unsaved subtitle blocks both history directions before minting or disp
 for (const direction of (['undo', 'redo'] as const)) {
   test(`App ${direction}: held prepare and repeated shortcut/click create one exact intent`, async () => {
     const entered = deferred(), release = deferred();
-    const port = taskPort((({beforeDispatch:async () => { (entered.resolve)!(); await release.promise; }}) as unknown as Parameters<NonNullable<typeof taskPort>>[0])), h = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
+    const port = taskPort((({beforeDispatch:async () => { (entered.resolve)!(); await release.promise; }}) as unknown as Parameters<NonNullable<typeof taskPort>>[0])), h = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
     const key = {key:'z', ctrlKey:true, shiftKey:direction === 'redo', metaKey:false};
     assert.equal(timelineHistoryActionForKey(((key) as unknown as Parameters<typeof timelineHistoryActionForKey>[0])), direction);
     const first = h.changeTimelineHistory(direction); await entered.promise;
@@ -140,7 +143,7 @@ for (const direction of (['undo', 'redo'] as const)) {
   });
 
   test(`App ${direction}: bound not_applied conflict closes the task and refreshes current state`, async () => {
-    const port = taskPort({outcome:'not_applied'}), h = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
+    const port = taskPort({outcome:'not_applied'}), h = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
     assert.equal((await h.changeTimelineHistory(direction) as unknown), null);
     assert.deepEqual(port.calls.map(([kind]) => kind), ['submit', 'dispatch', 'acknowledge']);
     assert.deepEqual(h.state.refreshes, [projectId]); assert.equal(h.dataRef.current.timeline.revision, 9);
@@ -153,7 +156,7 @@ for (const direction of (['undo', 'redo'] as const)) {
   });
 
   test(`App ${direction}: ordinary 409 retains the original intent without automatic retry`, async () => {
-    const port = taskPort({outcome:'ordinary409'}), h = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
+    const port = taskPort({outcome:'ordinary409'}), h = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
     await h.changeTimelineHistory(direction);
     const original = port.task;
     assert.equal((await h.changeTimelineHistory(direction) as unknown), null);
@@ -163,9 +166,9 @@ for (const direction of (['undo', 'redo'] as const)) {
   });
 
   test(`App ${direction}: recreated function scope explicitly recovers a historical ACK without installing it`, async () => {
-    const port = taskPort({outcome:'lostACK'}), first = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
+    const port = taskPort({outcome:'lostACK'}), first = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
     await first.changeTimelineHistory(direction); const original = port.task, count = port.calls.length;
-    const reopened = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]), {revision:20, refreshedRevision:21});
+    const reopened = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]), {revision:20, refreshedRevision:21});
     assert.equal(port.calls.length, count, 'Recreating this App function scope does no automatic dispatch');
     assert.equal((await reopened.changeTimelineHistory(direction) as unknown), null);
     assert.equal(reopened.state.ids, 0, 'The unresolved task blocks a new request key');
@@ -178,7 +181,7 @@ for (const direction of (['undo', 'redo'] as const)) {
   });
 
   test(`App ${direction}: closing Tasks during lookup revokes the passed execution callback`, async () => {
-    const port = taskPort({outcome:'ordinary409'}), h = appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
+    const port = taskPort({outcome:'ordinary409'}), h = await appHarness(((port) as unknown as Parameters<typeof appHarness>[0]));
     await h.changeTimelineHistory(direction);
     const entered = deferred(), release = deferred(); let allowed;
     port.recover = async (_task, {canExecute}) => {

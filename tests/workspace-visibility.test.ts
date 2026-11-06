@@ -116,6 +116,8 @@ function createHarness(file: string, exportName = 'default') {
     if (modules.has(filename)) return modules.get(filename)!.exports;
     const module: UiModule = { exports: {} }; modules.set(filename, module);
     const require = (id: string) => {
+      if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, mediaReadIdentity: (asset: unknown, version?: {assetId?: string; projectId?: string}) => version ? {id: version.assetId, projectId: version.projectId} : asset, ProjectMediaImage: 'img'};
+      if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote'};
       if (mocks[id]) return mocks[id];
       if (id.endsWith('.css')) return {};
       if (id.startsWith('@mioon/ui/')) return ui;

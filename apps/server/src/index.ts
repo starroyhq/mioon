@@ -26,6 +26,7 @@ import {AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {calculateWorkspaceScope} from '../../../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {NativeAssetMediaPort, NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import {agentDiagnosticSummarySchema} from '../../../packages/contracts/src/agent-diagnostic-summary.ts';
 import {projectIdMismatch, isDatabaseMovedError, projectFileMoved} from './project-host/errors.ts';
@@ -34,6 +35,9 @@ import {validateApplicationStorage, createApplicationFileGuard} from './project-
 import {createProjectHostManager} from './project-host/manager.ts';
 import {createProjectBackups} from './project-host/backups.ts';
 import {createProjectCopies} from './project-host/copies.ts';
+import {createProjectTrash} from './project-host/trash.ts';
+import type {ProjectTrashPort} from '../../../packages/contracts/src/project-trash-native.ts';
+import {loadInstalledProjectTemplates} from './project-host/project-examples.ts';
 import type {ProjectTemplateCatalogEntry} from './project-host/templates.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {InspectProject} from './project-host/host.ts';
@@ -124,9 +128,15 @@ export interface ServerOptions {
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
+  /** Main-owned OS trash and window admission, never supplied by HTTP/env. */
+  projectTrash?: ProjectTrashPort;
+  projectTrashBoundaryForTest?: Parameters<typeof createProjectTrash>[0]['onBoundary'];
   /** Trusted installation catalog; requests can select an ID/version, never
    * provide a template file or media allowlist. */
   projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  /** Trusted installation resource root, not an HTTP/renderer path. Missing
+   * resources disable examples without preventing ordinary project opens. */
+  projectTemplatesDir?: string;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
 }
@@ -180,6 +190,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let background: ReturnType<typeof createBackgroundCoordinator> | undefined;
   let drainBackups: (() => Promise<void>) | undefined;
   let drainCopies: (() => Promise<void>) | undefined;
+  let drainTrash: (() => Promise<void>) | undefined;
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
@@ -249,12 +260,41 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }
     };
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      ...(options.projectTemplates === undefined ? {} : {projectTemplates: options.projectTemplates}),
+      projectTemplates: options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples')),
       ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies,
+    const trash = createProjectTrash({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
+      inspectProjectWork: backgroundTasks.inspectProjectWork,
+      ...(options.projectTrash === undefined ? {} : {port: options.projectTrash}),
+      ...(options.projectTrashBoundaryForTest === undefined ? {} : {onBoundary: options.projectTrashBoundaryForTest})});
+    drainTrash = trash.drain;
+    const nativeManager = manager;
+    const withNativeMedia = async <T>(projectId:string, options:NativeAssetMediaRequestOptions|undefined,
+      call:(port:NativeAssetMediaPort, options:NativeAssetMediaRequestOptions)=>Promise<T>):Promise<T> => {
+      // Private document-bound calls may only retain an already open host. In
+      // particular a late ticket discard must not reopen a closed project.
+      const runtime = opened.get(projectId);
+      if (!runtime || nativeManager.status(projectId)?.state !== 'open') throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+      const lease = nativeManager.tryAcquireOpen(projectId, 'request');
+      if (!lease) throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+      try {
+        const signal = AbortSignal.any([shutdown.signal, lease.signal, ...(options?.signal ? [options.signal] : [])]);
+        signal.throwIfAborted();
+        if (lease.host.runtime !== runtime) throw new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 409);
+        return await call(runtime.nativeAssetMedia, {signal, beforeEffect: options?.beforeEffect});
+      } finally { lease.release(); }
+    };
+    const nativeRelink:NativeAssetMediaPort = {
+      candidate:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.candidate(input,fence)),
+      preview:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.preview(input,fence)),
+      apply:(input,options)=>withNativeMedia(input.projectId,options,(port,fence)=>port.apply(input,fence)),
+      discard:async(input,options)=>{if (!opened.has(input.projectId) || nativeManager.status(input.projectId)?.state !== 'open') return;
+        return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
+    };
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink,
+      copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},
       channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});
         const identity = projectFileIdentity(appLibrary.databaseFile);
@@ -265,7 +305,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
@@ -297,6 +337,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!authenticated(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
         }
+        // The legacy selection document remains untouched in the application
+        // library. No production route may read, repair or write it.
+        if (url.pathname === '/api/last-project' || url.pathname.startsWith('/api/last-project/')) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在', details: {}, retryable: false}});
         if (projectEntries.handle(req, res, url)) return;
         if (backgroundHttp(req, res, url)) return;
         const route = parseProjectApiPath(url.pathname);
@@ -358,7 +401,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
           } catch (error) { const safe = sanitizeAgentSettingsError(error); return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}}); }
         }
         if (url.pathname === '/api/images/settings' || url.pathname === '/api/images/custom-settings') { await app.imageHttp(req, res, url); return; }
-        if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url) || await app.lastProjectHttp(req, res, url)) return;
+        if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url)) return;
         if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readApplicationWorkspaceInfo({directories, channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
         if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
           const input = await body(req, 64);
@@ -431,7 +474,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
-        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain()]), 'SERVER_STOP_TIMEOUT');
+        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain(), trash.drain()]), 'SERVER_STOP_TIMEOUT');
         await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), app.close()]), 'SERVER_STOP_TIMEOUT');
       } finally { clearTimeout(force); }
       appLibrary.close();
@@ -442,7 +485,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   } catch (error) {
     shutdown.abort(); background?.stop(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
-    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.(), drainTrash?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');
     library?.close(); lock.release(); throw error;
   }

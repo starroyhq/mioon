@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="52d76aa74f75c8527efd88479d98a7a7982f7e2778919aa9d612370943cf69e5";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="00ce8b4f939ab90086d22479377f01c2a22bd326428cf87d9806b5129dd4c887";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -244,14 +244,39 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0,
     "maximum": 9007199254740991
    },
-   "confirmPermanentDeletion": {
+   "projectFile": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 4096
+   },
+   "fileIdentity": {
+    "type": "object",
+    "properties": {
+     "dev": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]{0,39})$"
+     },
+     "ino": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]{0,39})$"
+     }
+    },
+    "required": [
+     "dev",
+     "ino"
+    ],
+    "additionalProperties": false
+   },
+   "confirmTrash": {
     "type": "boolean",
     "const": true
    }
   },
   "required": [
    "expectedRevision",
-   "confirmPermanentDeletion"
+   "projectFile",
+   "fileIdentity",
+   "confirmTrash"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

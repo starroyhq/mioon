@@ -17,7 +17,7 @@ export const PROJECT_ENTRY_ERROR_STATUS = Object.freeze({
   PROJECT_ENTRY_LIMIT: 413,
 } as const);
 export const projectEntryAvailabilitySchema = z.discriminatedUnion('state', [
-  z.object({state: z.enum(['open', 'busy', 'available', 'locked', 'missing'])}).strict(),
+  z.object({state: z.enum(['open', 'busy', 'available', 'locked', 'missing', 'access-denied'])}).strict(),
   z.object({state: z.literal('invalid'), reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
 ]);
 export type ProjectEntryAvailability = z.infer<typeof projectEntryAvailabilitySchema>;

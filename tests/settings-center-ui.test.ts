@@ -15,6 +15,7 @@ import { createI18nTestContext } from './helpers/i18n.ts';
 import { createSettingsNavigationRegistry, type SettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createWebSettingsNavigation } from '../apps/web/src/web-settings-navigation.ts';
 import { hasOpenWorkbenchModal } from '../apps/web/src/workbench-modal-state.ts';
+import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
 import {stripSourceTypes} from './helpers/eval-source.ts';
 import type { ProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
@@ -225,7 +226,7 @@ test('shared native center receives page routing and visibility without replacin
   assert.doesNotMatch(main, /home:(?:video-models|official|custom|comfy)|<VideoProviderSettings|<ImageSettings|<CustomImageServicesSettings|<ComfyImageSettings/u);
   const recovery = native.indexOf('<details className="settings-workspace-status settings-workspace-status-global"');
   assert.ok(recovery >= 0 && recovery < native.indexOf("workspace === 'ready' ? renderSettings"), 'Native recovery status must remain outside category selection');
-  assert.match(native, /<NativeLocatorStatus context=\{context\} bridge=\{bridge\} recovery/u);
+  assert.match(native, /<ProjectEntryIdentityStatus owner=\{identity\}/u);
   assert.match(native, /<ProjectHomeConnections selected="agent" page="general" connectionsAvailable=\{false\}/u);
   assert.match(native, /panes=\{\{ agent: null, official: null, custom: null, comfy: null \}\}/u);
   assert.doesNotMatch(native, /general:\s*<details/u);
@@ -286,14 +287,14 @@ test('unavailable connections leave General usable while disabled categories and
 
 function webHarness(confirm: { (): Promise<unknown>; (): Promise<unknown>; }|undefined = async () => true) {
   const hooks: RootHook[] = [], changes: unknown[] = [], controllers: { open: (next?: SettingsPage) => Promise<boolean>; selectPage: (next: SettingsPage) => Promise<boolean>; close: () => Promise<boolean>; activate(): void; dispose(): void; readonly opened: boolean; readonly page: SettingsPage; readonly selected: ProjectWindowSettingsSlot; readonly notice: ""|DisplayMessage; }[] = []; let cursor = 0, effects: (() => void)[] = [], locale = 'en';
-  const registry = createSettingsNavigationRegistry();
+  const registry = createSettingsNavigationRegistry(), effectCallbacks = new Map<number, () => void | (() => void)>();
   const password = {value: 'SYNTHETIC_RETAINED_WEB_KEY'}, input = {type: 'input', props: {'data-testid': 'retained-web-key', ref: {current: password}}};
   const react = { createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
     useRef: (initial: unknown) => hooks[cursor++] ||= { current: initial },
     useState(initial: unknown) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: typeof initial === 'function' ? initial() : initial };
       return [hooks[index].value, (next: unknown) => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
     useEffect(effect: () => void | (() => void), deps: readonly unknown[] | undefined) { const index = cursor++, previous = hooks[index];
-      if (!previous || deps!.some((value, i) => value !== previous.deps![i])) effects.push(() => { previous?.cleanup?.(); hooks[index] = { deps, cleanup: effect() }; }); },
+      if (!previous || deps!.some((value, i) => value !== previous.deps![i])) effects.push(() => { previous?.cleanup?.(); effectCallbacks.set(index, effect); hooks[index] = { deps, cleanup: effect() }; }); },
   }; (react as typeof react & {default?: unknown}).default = react;
   const Component = componentModule('WebSettingsCenter.tsx', react, {
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(((locale) as unknown as Parameters<typeof createI18nTestContext>[0])) },
@@ -304,9 +305,10 @@ function webHarness(confirm: { (): Promise<unknown>; (): Promise<unknown>; }|und
     './web-settings-navigation.ts': { createWebSettingsNavigation: (options: { registry: SettingsNavigationRegistry; confirm: (message: DisplayMessage) => Promise<boolean>; onChange?: () => void; }) => { const navigation = createWebSettingsNavigation(options); controllers.push(navigation); return navigation; } },
   }).default;
   const props = { request: null, registry, onOpenChange: (opened: unknown) => changes.push(opened), renderSettings: (props: unknown) => ({ type: 'SettingsConnectionForms', props: {...props as Record<string, unknown>, children: [input]} }) };
-  return { registry, changes, controllers, password, input, render(patch: { request?: { page: string; }|{ page: string; }|{ page: string; }|{ page: string; resolve: (value: unknown) => number; }|{ page: string; resolve: (value: unknown) => number; }|{ page: string; resolve: (value: unknown) => number; }; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: string|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; effects = [];
+  return { registry, changes, controllers, password, input, render(patch: { request?: { page: string; }|{ page: string; }|{ page: string; }|{ page: string; resolve: (value: unknown) => number; }|{ page: string; resolve: (value: unknown) => number; }|{ page: string; resolve: (value: unknown) => number; }; connectionsAvailable?: boolean; interactionBlocked?: boolean; }|undefined = {}, nextLocale: string|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; effects = [];
     const tree = Component(props as unknown as Parameters<typeof Component>[0]); for (const effect of effects) effect(); return tree; },
     unmount() { for (const hook of hooks) hook.cleanup?.(); },
+    strictReplay() {for (const [index, callback] of effectCallbacks) {hooks[index].cleanup?.(); hooks[index].cleanup = callback();}},
   };
 }
 
@@ -329,6 +331,81 @@ test('web dialog retains its guarded controller and form shell while closed, reo
   h.render({ request: { page: 'custom' } }); tree = h.render();
   assert.equal(tree.props.open, true); assert.equal(h.controllers[0], navigation); assert.equal(h.controllers.length, 1);
   h.unmount(); assert.equal(await navigation.open('general'), false);
+});
+
+test('blocked Web portal rejects stale navigation, close and DOM save/input events without hiding or clearing its owners', async () => {
+  const h = webHarness(), rejected: unknown[] = [];
+  h.render({request: {page: 'agent'}}); await new Promise(setImmediate); const before = h.render();
+  const forms = nodes(before).find(node => node.type === 'SettingsConnectionForms')!, body = find(before, 'web-settings-body');
+  const owner = h.registry.register('home:agent'); owner.update({dirty: true, busy: false, blocked: false, version: 1});
+  const retained = h.registry.capture(), version = forms.props.entryVersion, closes = h.changes.length;
+  let blocked = h.render({interactionBlocked: true, request: {page: 'custom', resolve: value => rejected.push(value)}});
+  forms.props.onSelect('custom'); forms.props.onPage('about'); assert.equal(await forms.props.beforeClose(), false);
+  find(before, 'settings-center-close').props.onClick(); let cancelled = 0;
+  before.props.onOpenChange(false, {cancel() {cancelled++;}});
+  assert.equal(cancelled, 1); assert.equal(find(blocked, 'settings-center-close').props.disabled, true);
+  assert.equal(find(blocked, 'web-settings-body').props.inert, true); assert.ok(find(blocked, 'web-settings-identity-blocked'));
+  let saves = 0, edits = 0;
+  for (const [handler, action] of [['onClickCapture', () => saves++], ['onSubmitCapture', () => saves++], ['onInputCapture', () => {edits++; h.password.value = 'changed';}], ['onChangeCapture', () => edits++], ['onKeyDownCapture', () => edits++], ['onPointerDownCapture', () => edits++]] as const) {
+    let prevented = false, stopped = false; const capture = body.props[handler]; assert.equal(typeof capture, 'function');
+    if (typeof capture !== 'function') assert.fail(handler);
+    capture({preventDefault() {prevented = true;}, stopPropagation() {stopped = true;}});
+    if (!stopped) action(); assert.equal(prevented, true); assert.equal(stopped, true);
+  }
+  await new Promise(setImmediate); blocked = h.render();
+  assert.equal(saves, 0); assert.equal(edits, 0); assert.deepEqual(rejected, [false]);
+  assert.equal(h.controllers[0].opened, true); assert.equal(h.controllers[0].page, 'agent'); assert.equal(h.changes.length, closes);
+  const kept = nodes(blocked).find(node => node.type === 'SettingsConnectionForms')!;
+  assert.equal(kept.props.visible, true); assert.equal(kept.props.connectionsAvailable, true); assert.equal(kept.props.entryVersion, version);
+  assert.equal(find(blocked, 'retained-web-key'), h.input); assert.equal(h.password.value, 'SYNTHETIC_RETAINED_WEB_KEY'); assert.deepEqual(h.registry.capture(), retained);
+  owner.update({dirty: true, busy: false, blocked: true, version: 2}); const unknown = h.registry.capture();
+  h.render({interactionBlocked: false}); await new Promise(setImmediate); const recovered = h.render();
+  assert.equal(find(recovered, 'web-settings-body').props.inert, false); assert.equal(h.controllers[0].page, 'agent', 'Rejected request is not automatically replayed');
+  assert.deepEqual(rejected, [false]); assert.deepEqual(h.registry.capture(), unknown); assert.equal(find(recovered, 'retained-web-key'), h.input);
+  h.unmount();
+});
+
+test('identity blocking revokes already-pending Web navigation or close confirmation before it can discard or advance an entry', async () => {
+  for (const action of ['request', 'close']) {
+    const answer = Promise.withResolvers<boolean>(), h = webHarness(() => answer.promise), rejected: unknown[] = [];
+    h.render({request: {page: 'agent'}}); await new Promise(setImmediate); const before = h.render();
+    const owner = h.registry.register('home:agent'); owner.update({dirty: true, busy: false, blocked: false, version: 1});
+    const retained = h.registry.capture(), version = nodes(before).find(node => node.type === 'SettingsConnectionForms')!.props.entryVersion;
+    if (action === 'request') h.render({request: {page: 'custom', resolve: value => rejected.push(value)}});
+    else find(before, 'settings-center-close').props.onClick();
+    h.render({interactionBlocked: true}); answer.resolve(true); await new Promise(setImmediate); const after = h.render();
+    assert.equal(h.controllers[0].opened, true); assert.equal(h.controllers[0].page, 'agent'); assert.deepEqual(h.registry.capture(), retained);
+    assert.equal(nodes(after).find(node => node.type === 'SettingsConnectionForms')!.props.entryVersion, version);
+    if (action === 'request') assert.deepEqual(rejected, [false]);
+    assert.equal(find(after, 'retained-web-key'), h.input); assert.equal(h.password.value, 'SYNTHETIC_RETAINED_WEB_KEY'); h.unmount();
+  }
+});
+
+test('Web settings keeps the same input through ordinary identity errors and cannot unblock a sticky scope or instance replacement', async () => {
+  for (const replacement of [{appLibraryScope: 'b'.repeat(64)}, {instanceId: '92000000-0000-4000-8000-000000000902'}]) {
+    const initial = {version: 1, appLibraryScope: 'a'.repeat(64), instanceId: '92000000-0000-4000-8000-000000000901', registered: []};
+    let value: unknown = initial;
+    const identity = createProjectEntryIdentityOwner({read: async () => {if (value instanceof Error) throw value; return value;}}); identity.activate(); await identity.discover();
+    const h = webHarness(); h.render({request: {page: 'agent'}}); await new Promise(setImmediate); const before = h.render();
+    value = Error('ordinary read failure'); await identity.refresh(); const failed = h.render({interactionBlocked: identity.getState().identityBlocked});
+    assert.equal(find(failed, 'web-settings-body').props.inert, false); assert.equal(find(failed, 'retained-web-key'), h.input);
+    value = initial; await identity.refresh(); const recovered = h.render({interactionBlocked: identity.getState().identityBlocked});
+    assert.equal(find(recovered, 'retained-web-key'), h.input); assert.equal(h.password.value, 'SYNTHETIC_RETAINED_WEB_KEY');
+    value = {...initial, ...replacement}; await identity.refresh(); h.render({interactionBlocked: identity.getState().identityBlocked});
+    value = initial; await identity.refresh(); const blocked = h.render({interactionBlocked: identity.getState().identityBlocked});
+    assert.equal(find(blocked, 'web-settings-body').props.inert, true); assert.equal(find(blocked, 'retained-web-key'), find(before, 'retained-web-key'));
+    assert.equal(identity.getVerifiedScope(), null); assert.equal(h.password.value, 'SYNTHETIC_RETAINED_WEB_KEY'); h.unmount(); identity.dispose();
+  }
+});
+
+test('Web opening request has one accepted entry across StrictMode effect replay and a blocked initial request is never replayed', async () => {
+  const accepted: unknown[] = [], h = webHarness();
+  h.render({request: {page: 'agent', resolve: value => accepted.push(value)}}); h.strictReplay(); await new Promise(setImmediate); const tree = h.render();
+  assert.deepEqual(accepted, [true]); assert.equal(nodes(tree).find(node => node.type === 'SettingsConnectionForms')!.props.entryVersion, 1); h.unmount();
+  const rejected: unknown[] = [], blocked = webHarness(); blocked.render({interactionBlocked: true, request: {page: 'custom', resolve: value => rejected.push(value)}});
+  blocked.strictReplay(); await new Promise(setImmediate); assert.deepEqual(rejected, [false]);
+  blocked.render({interactionBlocked: false}); await new Promise(setImmediate); assert.equal(blocked.render().props.open, false);
+  assert.deepEqual(rejected, [false]); blocked.unmount();
 });
 
 test('accepted Web same-slot requests advance only the entry version while cancelled requests and locale changes retain the exact input', async () => {
@@ -407,8 +484,8 @@ test('unavailable connection requests normalize to General and cannot activate m
 test('web center stays first keyed sibling across home and workbench rather than replacing the editor tree', () => {
   const app = source('App.tsx');
   assert.match(app, /const webSettingsCenter = nativeWindow \? null : <WebSettingsCenter key="global-settings-center" request=\{webSettingsRequest\} registry=\{settingsNavigation\.current\}/u);
-  assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip\) return <>\{webSettingsCenter\}\{historyLayer\}<ProjectHome/u);
-  assert.match(app, /return <>\{webSettingsCenter\}<main className=\{`workbench/u);
+  assert.match(app, /if \(!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked\.current\) return <>\{webSettingsCenter\}\{historyLayer\}<ProjectHome/u);
+  assert.match(app, /return <ProjectMediaProvider media=\{projectMedia\}>\{webSettingsCenter\}[\s\S]*?<main inert=\{retainWorkbenchForIdentity \|\| undefined\} className=\{`workbench/u);
   assert.doesNotMatch(app, /webSettingsOpen\s*\?\s*<WebSettingsCenter|webSettingsOpen\s*&&\s*<WebSettingsCenter/u);
   const web = source('WebSettingsCenter.tsx');
   assert.match(web, /import \{ Dialog, DialogContent, DialogTitle \} from '@mioon\/ui\/components\/dialog'/u);

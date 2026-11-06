@@ -1,3 +1,10 @@
+import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
+import {createProjectLocationHelp} from '../apps/desktop/src/project-location-help.ts';
+import {NATIVE_ASSET_MEDIA_CHANNEL} from '../packages/contracts/src/asset-media-native.ts';
+import {createDesktopHarnessAppearanceCache,createDesktopHarnessProjectBroker} from './helpers/strict-desktop-harness-types.ts';
+import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
+import {PROJECT_ENTRY_DESKTOP_CHANNEL} from '../packages/contracts/src/project-entry-desktop.ts';
+import {createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
 import {ASSET_IMPORT_CHANNEL,createAssetImportHost,importNativeAssetPath} from '../apps/desktop/src/asset-import-host.ts';
 import {desktopAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {isProjectId,projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -9,7 +16,7 @@ import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
-import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
+import { createProjectFileOpener, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -41,7 +48,7 @@ import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjec
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
-import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
+import { createDesktopWindowAppearance, desktopWindowBackground } from '../apps/desktop/src/window-appearance.ts';
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
@@ -64,7 +71,7 @@ const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(
 // Only OS boundaries are fake: no Electron, utility, native vault or media runs.
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
   const records: Omit<DesktopHarnessRecords<Window>, 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {starts: {report?: unknown; error?: {code?: string}}[]} = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
-  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL];
+  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
   const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
   const lutStoreCalls: unknown[] = [];
@@ -99,10 +106,13 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   function fork() {
     const index = records.children.length;
     const config = options.child?.(index) ?? {};
+    const projectBroker=createDesktopHarnessProjectBroker(message=>queueMicrotask(()=>child.emit('message',message)));
     const child = new EventEmitter() as DesktopHarnessChild;
     Object.assign(child, { pid: 30000 + index, messages: [], kills: 0, hardKills: 0,
       ready() { child.emit('message', { type: 'ready', url: `http://127.0.0.1:${44000 + index}`, runtime: { pid: child.pid } }); },
-      postMessage(message: { type: string; }) {
+      postMessage(message: { type: string; backendId?:string }) {
+        if(message.type==='start'){assert.equal(typeof message.backendId,'string');projectBroker.start(message.backendId!);}
+        if(projectBroker.handle(message))return;
         child.messages.push(message);
         if (message.type === 'start' && config.ready !== false) queueMicrotask(() => child.ready());
         if (message.type === 'stop' && config.exit !== false) queueMicrotask(() => {
@@ -158,20 +168,14 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'}), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
-    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, uploadProjectFile, projectFileArguments,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, projectFileArguments,
     nativeTheme: Object.assign(new EventEmitter(), { shouldUseDarkColors: true }),
-    createDesktopWindowAppearance: (configuration: Parameters<typeof createDesktopWindowAppearance>[0]) => createDesktopWindowAppearance({ ...configuration,
-      // Keep real scope/current/abort behavior; only private IO and OS watching
-      // are synthetic, with no saved appearance in this lifecycle fixture.
-      storage: { ...configuration.storage, readPrivateFile: (file, options) => {
-        assert.equal(file, '/synthetic/data/ui-preferences-v1.json');
-        assert.equal(options.private, true); return null;
-      } }, watchDirectory: () => Object.assign(new EventEmitter(), { close() {} }) }),
+    createDesktopWindowAppearance,
     createDesktopLutRecoveryStore: createLutStore,
     validatePrivateDirectory: (root: unknown) => { assert.equal(root, '/synthetic/data'); return lutDirectory; },
     validateManagedFile: (file: string, { root }: {root: string}) => {

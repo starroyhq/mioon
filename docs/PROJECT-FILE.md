@@ -159,6 +159,7 @@ Finder 直接复制出的同 ID 文件仍走副本检测；S5-B 的 `project.ado
   - `locked`：别的进程开着它，并且正在写，这里不用管，打开时会报 `PROJECT_LOCKED`；
   - `open-here`：本进程开着它，按内核的已持有文件登记表认出，不碰文件；
   - `missing`：找不到，按文件身份找新位置；
+  - `access-denied`：系统明确返回 EACCES/EPERM，打开时为 `PROJECT_ACCESS_DENIED`，不归入缺失、只读或损坏；
   - `invalid`：带打开时会报的 `PROJECT_INVALID` 原因，例如 `not-a-project-file`、`read-only`（只读位置上的热日志回滚不了）。
   - **没有热日志时不读项目文件**（10-31 定）：`lstat` 和本进程已持有的判断之后，先看项目文件旁边的 `-journal`：没有、是 0 字节或第一个字节是 0，就不是热日志，直接返回 `clean`，项目文件连文件头也不读。首页每次列项目都会调它；放在 iCloud 里、已经被系统移出本机的项目文件，一读文件头就会被整个下载回来。所以旁边没有热日志、又不是项目文件的普通文件，这里返回 `clean`，要等打开时才报 `PROJECT_INVALID`。
 - **事务：** `store.tx` 用 `BEGIN`，不用 `db.ts` 的 `BEGIN IMMEDIATE`，这是和 `db.ts` 唯一有意的差别。独占锁下 `BEGIN IMMEDIATE` 已经没有提前取锁的作用，反而让每次提交都把三个库拉进写事务、建一个超级日志。用 `BEGIN` 时只有写到的库进入写事务：只写本机记录的提交（例如 Mio 流式输出）不碰项目文件，也不建超级日志；同时写两个文件的提交照旧用超级日志。K1 实测，p50 从 1.11 ms 降到 0.34 ms。
@@ -232,6 +233,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 |---|---|---|
 | `PROJECT_MISSING` | 找不到项目文件（设计稿 12-03） | `projectFile`；`projectId` 在文件读不出来、也没有登记时为 `null` |
 | `PROJECT_LOCKED` | 已在另一个 Mioon 中打开（12-03b） | 同上 |
+| `PROJECT_ACCESS_DENIED` | 系统明确返回 EACCES/EPERM（含隐私授权拒绝），HTTP 403；不从通用 SQLITE_CANTOPEN 猜权限 | 同上；按项目寻址时 `PROJECT_UNAVAILABLE.details.reason` 保留此码，目录 availability 为 `access-denied` |
 | `PROJECT_FORMAT_NEWER` | 格式比当前 Mioon 支持的新（12-03c） | 另带 `database`（`project`、`history` 或 `cache`，本机记录有自己的格式版本）、`formatVersion`、`supportedFormatVersion` |
 | `PROJECT_INVALID` | 文件损坏、不是项目文件、结构对不上，或在只读位置（12-03d） | 同第一行，另带 `reason`（`PROJECT_INVALID_REASONS`） |
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |

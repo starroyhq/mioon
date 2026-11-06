@@ -35,3 +35,7 @@
 .pf-outside-rows > li { min-height: 56px; }
 .pf-outside-rules { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
 .pf-outside-rules > svg { flex: none; margin-top: 2px; }
+.pf-media-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center; }
+.asset-card[data-media-status="missing"] { border-color: var(--wb-danger-border, #b45650); }
+.asset-card[data-media-status="changed"], .asset-card[data-media-status="unconfirmed-maybe-changed"] { border-color: var(--wb-warning-border, #b88942); }
+.asset-card > .pf-media-badge, .asset-card > .pf-media-note { margin: 0 10px 6px; }

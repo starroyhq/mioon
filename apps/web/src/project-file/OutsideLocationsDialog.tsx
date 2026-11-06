@@ -21,6 +21,7 @@ export interface OutsideLocationsDialogProps {
   /** AGENTS.md is not trusted on this computer yet. */
   readonly rulesUntrusted: boolean;
   readonly action: ActionState<OutsideLocationsAction>;
+  readonly canAllow?: boolean;
   readonly homeDirectory?: string | null;
   /** Open without reading media outside the project folder. */
   readonly onOpenOnly: () => void;
@@ -61,7 +62,7 @@ export function OutsideLocationsDialog(props: OutsideLocationsDialogProps): Reac
         <span className="pf-row-end"><WorkbenchBadge tone={location.available ? 'success' : 'neutral'}>{t(location.available ? 'projectFile.media.outside.found' : 'projectFile.media.outside.notFound')}</WorkbenchBadge></span>
       </li>)}</ul>
     </>;
-    footer = <>{run('open', t('projectFile.media.outside.openOnly'), props.onOpenOnly, false)}{run('allow', t('projectFile.media.outside.allow'), props.onAllow, true)}</>;
+    footer = <>{run('open', t('projectFile.media.outside.openOnly'), props.onOpenOnly, false)}{run('allow', t('projectFile.media.outside.allow'), props.onAllow, true, !(props.canAllow ?? locations.some(location => location.available)))}</>;
   }
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !working) props.onClose(); }}>
     <WorkbenchDialogContent title={t('projectFile.media.outside.title', { name: props.projectName })} size="standard" className="pf-dialog pf-outside-dialog" data-testid="pf-outside-dialog"

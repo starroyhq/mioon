@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
 import {mkdtempSync, readFileSync, rmSync, unlinkSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
@@ -64,4 +66,54 @@ test('closed projects from a newer format retain their exact unavailable reason 
   }
   assert.equal(inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n), changes, 'metadata queries cannot retry opening or rewrite the index');
   assert.deepEqual(readFileSync(projectFile), original, 'a newer project file remains byte for byte unchanged');
+});
+
+for (const code of ['EACCES', 'EPERM']) test(`a closed project denied by ${code} keeps its independent access-denied reason in homepage background metadata`, async t => {
+  const root = mkdtempSync(path.join(tmpdir(), 's3-background-permission-')), token = 'synthetic-s3-permission-token';
+  const created = createServerProject(root, {name: 'Private permission project'});
+  const projectId = created.projectId, projectFile = created.store.projectFile;
+  created.store.close();
+  const before = fs.readFileSync(projectFile), app = openAppLibrary({dataDir: root});
+  const taskId = randomUUID();
+  app.taskIndex.upsert({projectId, projectFile, kind: 'job', taskId, indexedAt: new Date().toISOString()});
+  app.close();
+  const original = fs.lstatSync;
+  let deniedInspections = 0;
+  const replacement = (...args: unknown[]) => {
+    if (String(args[0]) === projectFile) {
+      deniedInspections++;
+      throw Object.assign(new Error('SYNTHETIC_PRIVATE_OS_DIAGNOSTIC'), {code});
+    }
+    return Reflect.apply(original, fs, args);
+  };
+  const mocked = t.mock.method(fs, 'lstatSync', replacement as typeof original);
+  syncBuiltinESMExports();
+  let server: Awaited<ReturnType<typeof startServer>> | undefined;
+  try {
+    let inspect!: InspectApplication;
+    server = await startServer({dataDir: root, port: 0, token, inspectApplication: read => {inspect = read;}});
+    assert.ok(deniedInspections > 0, 'startup actually inspected the selected closed project');
+    assert.deepEqual(server.projectEntries.listRecent().registered.find(entry => entry.project.projectId === projectId)!.availability,
+      {state: 'access-denied'}, 'the permission failure did not compose a project runtime');
+    const changes = inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n);
+    for (let read = 0; read < 2; read++) {
+      const response: Response = await fetch(server.url + '/api/background-tasks', {headers: {authorization: `Bearer ${token}`}});
+      const raw = await response.text();
+      assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
+      const data = backgroundTaskQueryResponseSchema.parse(JSON.parse(raw).data);
+      assert.deepEqual(data.projects, [{projectId, taskCount: 1, reasonCodes: ['PROJECT_ACCESS_DENIED']}]);
+      assert.equal(data.nextCursor, null);
+      for (const privateText of [root, projectFile, taskId, 'Private permission project', 'SYNTHETIC_PRIVATE_OS_DIAGNOSTIC']) {
+        assert.equal(raw.includes(privateText), false, 'the homepage response exposes only bounded public metadata');
+      }
+    }
+    assert.equal(inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n), changes, 'homepage reads do not rewrite the blocked index');
+  } finally {
+    try {await server?.close();}
+    finally {
+      mocked.mock.restore(); syncBuiltinESMExports();
+      assert.deepEqual(fs.readFileSync(projectFile), before);
+      rmSync(root, {recursive: true, force: true});
+    }
+  }
 });

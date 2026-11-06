@@ -22,4 +22,4 @@
 
 “打开所在位置”在桌面端只打开当前工作区目录，不接受调用方路径。浏览器展示可复制的规范路径；每个项目使用独立 `.mioon` 文件，本机历史、缓存与托管素材按项目隔离。
 
-项目永久删除的准入、受控事务和中断恢复见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。Mio授权见 [AGENT-AUTHORIZATION.md](AGENT-AUTHORIZATION.md)。
+项目文件移到废纸篓的准入、固定回执与不明结果规则见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)；素材和本机记录保留，不执行永久清理。Mio授权见 [AGENT-AUTHORIZATION.md](AGENT-AUTHORIZATION.md)。

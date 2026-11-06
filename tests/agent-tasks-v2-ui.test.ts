@@ -22,7 +22,7 @@ const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '4444
 const conversation=(run:AgentTaskSnapshot['run'])=>({id:run.conversationId??run.id,projectId:run.projectId,title:run.text,createdAt:run.createdAt,updatedAt:run.updatedAt,lastRunId:run.id,lastRunStatus:run.status,changeCount:0,runCount:1});
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
-function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore;getLocale?:()=>AgentTaskLocale}={}) {
+function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore;getLocale?:()=>AgentTaskLocale;isAdmissionAllowed?:()=>boolean}={}) {
   const receipts = new Map<string, AgentTaskPending>(); if (saved) receipts.set(projectId, saved);
   const store: AgentTaskReceiptStore = { read: id => receipts.get(id) ?? null, write(id, value) { if (value) receipts.set(id, value); else receipts.delete(id); } };
   const streams: { signal: AbortSignal; onEvent: (event: AgentTaskEvent) => void }[] = [], sent: unknown[] = [], actions: unknown[] = [];
@@ -31,7 +31,7 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
     policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), conversationPolicy: async (projectId, conversationId) => ({policy:{projectId,conversationId,revision:0,override:null,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), setConversationPolicy: async (projectId, conversationId, input) => ({policy:{projectId,conversationId,revision:input.expectedRevision+1,override:input.modes,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(input.modes??DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
-  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied,...(options.getLocale?{getLocale:options.getLocale}:{}) }); return { session, receipts, client, sent, actions, streams };
+  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied,isAdmissionAllowed:options.isAdmissionAllowed,...(options.getLocale?{getLocale:options.getLocale}:{}) }); return { session, receipts, client, sent, actions, streams };
 }
 test('one session captures the current locale at send and keeps drafts and unknown receipts when it changes',async t=>{
   let locale:AgentTaskLocale='ja',lookups=0;const sent:Parameters<AgentTaskClient['send']>[1][]=[];
@@ -40,6 +40,20 @@ test('one session captures the current locale at send and keeps drafts and unkno
   assert.equal(await f.session.send(),false);assert.equal(sent[0]!.locale,'ja');assert.equal(locale,'en');assert.equal(f.session.getState().draft,'keep my draft');
   const pending=f.session.getState().pending;assert.ok(pending);locale='zh-Hant';await f.session.reconcile();
   assert.equal(sent.length,1);assert.equal(lookups,1);assert.deepEqual(f.session.getState().pending,pending);assert.equal(f.session.getState().draft,'keep my draft');
+});
+
+test('a live native admission fence blocks independent Mio writes and preserves its composer and receipts',async t=>{
+  let allowed=true,authorizations=0,uploads=0,policies=0;const run=snapshot('completed').run;
+  const f=fixture({list:async()=>({...project(),runs:[run]}),authorize:async()=>{authorizations++;},upload:async()=>{uploads++;throw Error('Must not upload');},savePolicy:async()=>{policies++;throw Error('Must not save policy');},setConversationPolicy:async()=>{policies++;throw Error('Must not save conversation policy');}},undefined,()=>{},{isAdmissionAllowed:()=>allowed});t.after(()=>f.session.dispose());
+  await f.session.load();f.session.edit('Keep this unsent draft');assert.ok(f.session.getState().snapshot);const before=f.session.getState(),draft=before.draft,pending=before.pending;
+  allowed=false;assert.equal(await f.session.send(),false);assert.equal(await f.session.action('undo_all'),false);assert.equal(await f.session.authorize(),false);assert.equal(await f.session.choosePolicy(AGENT_TASK_POLICY_PRESETS.full),false);assert.equal(await f.session.setGlobalPolicy(AGENT_TASK_POLICY_PRESETS.full),false);assert.equal(await f.session.upload({name:'synthetic.png',type:'image/png',size:1,arrayBuffer:async()=>new Uint8Array([1]).buffer}),false);
+  assert.deepEqual(f.sent,[]);assert.deepEqual(f.actions,[]);assert.equal(authorizations+uploads+policies,0);assert.equal(f.session.getState().draft,draft);assert.equal(f.session.getState().pending,pending);assert.equal(f.receipts.size,0);
+});
+
+test('native revocation during attachment preparation or authorization cannot dispatch a later Mio upload or send',async t=>{
+  const bytes=deferred<ArrayBuffer>();let allowed=true,uploads=0;const f=fixture({upload:async()=>{uploads++;throw Error('Must not upload');}},undefined,()=>{},{isAdmissionAllowed:()=>allowed});t.after(()=>f.session.dispose());await f.session.load();f.session.edit('Retained attachment draft');
+  const pending=f.session.upload({name:'synthetic.png',type:'image/png',size:1,arrayBuffer:()=>bytes.promise});allowed=false;bytes.resolve(new Uint8Array([1]).buffer);assert.equal(await pending,false);assert.equal(uploads,0);assert.equal(f.session.getState().draft,'Retained attachment draft');assert.equal(f.receipts.size,0);
+  const authorized=deferred<void>();let ready=false;allowed=true;const g=fixture({list:async()=>({...project(),authorization:{revision:ready?2:1,scopes:ready?['project_agent']:[]}}),authorize:async()=>{await authorized.promise;ready=true;}},undefined,()=>{},{isAdmissionAllowed:()=>allowed});t.after(()=>g.session.dispose());await g.session.load();g.session.edit('Retained authorization draft');const review=g.session.authorizationReview();assert.ok(review);const sending=g.session.authorizeAndSend(review);allowed=false;authorized.resolve();assert.equal(await sending,false);assert.deepEqual(g.sent,[]);assert.equal(g.session.getState().draft,'Retained authorization draft');
 });
 test('the browser client forwards the chosen response locale and rejects unsupported values before fetch',async()=>{
   const calls:{body?:BodyInit|null}[]=[],client=createAgentTaskClient({fetchImpl:async(_url,options)=>{calls.push(options??{});return new Response(JSON.stringify({ok:true,data:snapshot()}),{status:200});}}),input={requestId:crypto.randomUUID(),text:'synthetic',expectedSettingsRevision:0};

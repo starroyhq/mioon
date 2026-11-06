@@ -9,6 +9,7 @@ import { schemas } from '../packages/contracts/src/index.ts';
 import { createLauncherClient } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
+import * as identityModule from '../apps/web/src/project-entry-identity.ts';
 
 const uuid = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
@@ -39,17 +40,16 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
       return { ok: true, reason: 'accepted', targetWindowId: uuid(90), targetPhase: 'opening' };
     },
   };
-  const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }),
-    invalidateNavigation() {}, rememberOpened() { assert.fail('Visibility refresh must not write a locator'); } };
   const module = {exports:{}} as {exports:typeof import('../apps/web/src/native-project-entry.ts')};
   Function('require', 'module', 'exports', 'window', 'document', code)((name: string) => {
     if (name === 'react') return { useEffect: (callback:()=>void|(()=>void)) => effects.push(callback), useState: (initial: () => unknown) => [typeof initial === 'function' ? initial() : initial, () => {}] };
     if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
     if (name === './launcher-state.ts') return { createLauncherClient };
     if (name === './project-entry-state.ts') return { createProjectEntryController };
+    if (name === './project-entry-identity.ts') return identityModule;
     assert.fail(`Unexpected hook dependency ${name}`);
   }, module, module.exports, window, document);
-  controller = module.exports.useNativeProjectEntry(({ context: initialContext, bridge, locator,
+  controller = module.exports.useNativeProjectEntry(({ context: initialContext, bridge,
     contractChecks: { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value),
       readDirectory: async () => {calls.push('directory.list'); return list ? list() : directory(catalog);} },
     rpc: async (operation: string|Error|undefined, input: unknown) => {

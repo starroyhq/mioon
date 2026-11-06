@@ -115,7 +115,7 @@ for (const checkpoint of ['prepare', 'flush']) {
       });
       assert.equal(result.event.defaultPrevented, true); assert.deepEqual((f.calls as unknown), []);
       assert.equal(f.admission.cancel(ticket.token), true);
-      await f.hidden(); assert.ok(f.calls.includes('clip-put')); assert.equal(f.calls.includes('locator-put'), false, 'Native locator belongs only to the retained launcher');
+      await f.hidden(); assert.ok(f.calls.includes('clip-put')); assert.equal(f.calls.includes('locator-put'), false, 'The retired locator is never written by the editor lifecycle');
     });
   }
 }
@@ -160,7 +160,9 @@ test('actual ordinary Web and native normal-close lifecycle paths retain their f
     const f = fixture({ native, unknown: false }); f.arm({ risk: false });
     assert.equal((await f.window.dispatch('beforeunload')).event.defaultPrevented, false);
     assert.ok(f.calls.includes('clip-put')); f.calls.length = 0;
-    await f.hidden(); assert.equal(f.calls.includes('locator-put'), !native); assert.ok(f.calls.includes('preferences-put')); f.calls.length = 0;
+    await f.hidden(); assert.equal(f.calls.includes('locator-put'), false);
+    for(const write of ['preferences-put','title-put','shot-put','clip-put']) assert.equal(f.calls.filter(call=>call===write).length,1,write);
+    f.calls.length = 0;
     await f.window.dispatch('pagehide'); assert.ok(f.calls.includes('preferences-put'));
   }
 });

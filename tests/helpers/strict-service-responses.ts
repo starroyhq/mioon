@@ -23,6 +23,7 @@ import type {TimelineExportCapabilitiesResponse} from '../../packages/contracts/
 import type {AudioPreviewPlan} from '../../packages/contracts/src/timeline-audio-preview.ts';
 import type {ContinuousAudioPlan} from '../../packages/contracts/src/timeline-audio-continuous.ts';
 import type {ProjectSummary} from '../../packages/contracts/src/project-home.ts';
+import type {ProjectDeleteResponse} from '../../packages/contracts/src/project-lifecycle.ts';
 import type {ComfyImageSettingsResult, ComfyImageCheckResult, ComfyRemoteResponse, ComfyObservationAcknowledgement} from '../../packages/contracts/src/comfy-images.ts';
 
 // Positive fixture rows are read after their owning setup call. Negative payloads
@@ -67,7 +68,7 @@ export interface ServiceResponseMap {
   'timeline.inspect': InspectionTimeline | null;
   'project.get': ProjectState;
   'project.rename': FixtureProject;
-  'project.delete': {requestId: string; projectId: string; deleted: true; cleanup: 'complete' | 'pending'};
+  'project.delete': ProjectDeleteResponse;
   'project.summary.list': ProjectSummary[];
   'asset.list': FixtureAsset[];
   'asset.disposition.set': AssetDispositionResponse;

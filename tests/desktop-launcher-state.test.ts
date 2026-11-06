@@ -6,7 +6,7 @@ import type { LauncherCreatedProject } from '../apps/web/src/launcher-state.ts';
 import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
 import type { ProjectEntriesResponse } from '../packages/contracts/src/project-entry.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
-import { createLastProjectController } from '../apps/web/src/last-project-state.ts';
+import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
 import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.ts';
@@ -14,7 +14,7 @@ import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.t
 type ControllerOptions = Parameters<typeof createProjectEntryController>[0];
 type LauncherContext = ControllerOptions['context'];
 type LauncherBridge = ControllerOptions['bridge'];
-type Locator = NonNullable<ControllerOptions['locator']>;
+type Identity = NonNullable<ControllerOptions['identity']>;
 type ContractChecks = Parameters<typeof createLauncherClient>[1];
 type Rpc = Parameters<typeof createLauncherClient>[0];
 type ProjectController = ReturnType<typeof createProjectEntryController>;
@@ -36,10 +36,10 @@ function directory(projects: readonly LauncherCreatedProject[], patch: Partial<P
 }
 const result = (patch: object = {}): EntryResult => ({ ok: true, reason: 'accepted', targetWindowId: uuid(11), targetPhase: 'opening', ...patch }) as EntryResult;
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
-function fixture({ context = ctx(), confirm = async () => true, rpc, readDirectory, invoke, locator = null, explicitProjectId = null }:
+function fixture({ context = ctx(), confirm = async () => true, rpc, readDirectory, invoke, identity: suppliedIdentity, explicitProjectId = null }:
   { context?: LauncherContext; confirm?: () => Promise<boolean>; rpc?: (operation: string, input?: Readonly<Record<string, unknown>>) => unknown;
     readDirectory?: () => unknown;
-    invoke?: (value: InvokeArgs) => unknown; locator?: Locator | null; explicitProjectId?: string | null } = {}) {
+    invoke?: (value: InvokeArgs) => unknown; identity?: Identity; explicitProjectId?: string | null } = {}) {
   const calls: Array<[string, unknown]> = [], opens: OpenRecord[] = []; let current = context, serial = 100;
   let controller: ProjectController;
   const bridge = { context: async () => current,
@@ -49,13 +49,14 @@ function fixture({ context = ctx(), confirm = async () => true, rpc, readDirecto
       assert.equal(controller.consume(entryToken, projectId).accepted, true);
       const value = result(); current = { ...current, entryReceipt: { entryToken, result: value } }; return value;
     } } as unknown as LauncherBridge;
+  const identity = suppliedIdentity ?? createProjectEntryIdentityOwner({read: async () => {calls.push(['directory.list', undefined]); return readDirectory ? readDirectory() : directory([row(), row(uuid(4))]);}});
   const client = createLauncherClient(async (operation, input) => {
     calls.push([operation, input]);
     if (rpc) return rpc(operation, input);
     if (operation === 'project.create') return row(uuid(5), String((input as { name?: unknown } | undefined)?.name));
     assert.fail(`Unexpected native RPC ${operation}`);
-  }, {...checks, readDirectory: async () => {calls.push(['directory.list', undefined]); return readDirectory ? readDirectory() : directory([row(), row(uuid(4))]);}});
-  controller = createProjectEntryController({ client, context, bridge, locator, explicitProjectId, confirm, newToken: () => uuid(++serial) });
+  }, {...checks, readDirectory: () => readProjectEntryIdentity(identity)});
+  controller = createProjectEntryController({ client, context, bridge, identity, explicitProjectId, confirm, newToken: () => uuid(++serial) });
   controller.activate();
   return { controller, calls, opens, client, bridge, context: () => current,
     receive(patch: object) { current = { ...current, ...patch } as LauncherContext; controller.updateContext(current); } };
@@ -152,16 +153,29 @@ test('native open confirms departure before a fresh directory read and uses only
   answer.resolve(true); assert.equal(await opening, true);
   assert.deepEqual(order, ['confirm', 'GET', 'open']); assert.deepEqual(f.opens.map(item => item.projectId), [uuid(4)]);
 });
-test('fresh native open cannot reuse cached membership after a failed read, malformed DTO or same-UUID library replacement', async () => {
-  for (const failure of ['offline', 'malformed', 'scope']) {
+test('fresh native open cannot reuse cached membership after a failed read, malformed DTO or same-UUID identity replacement', async () => {
+  for (const failure of ['offline', 'malformed', 'scope', 'instance']) {
     let catalog: unknown = directory([row()]);
     const f = fixture({readDirectory: () => {if (failure === 'offline' && catalog === null) throw Error('offline'); return catalog;}});
     await f.controller.boot();
-    catalog = failure === 'offline' ? null : failure === 'malformed' ? [row()] : directory([row()], {appLibraryScope: 'b'.repeat(64)});
+    catalog = failure === 'offline' ? null : failure === 'malformed' ? [row()] : failure === 'scope' ? directory([row()], {appLibraryScope: 'b'.repeat(64)}) : directory([row()], {instanceId: uuid(901)});
     assert.equal(await f.controller.open(uuid(3)), false); assert.equal(f.opens.length, 0);
     assert.equal(f.controller.getState().catalogReady, false); assert.equal(f.controller.getState().listBusy, false);
     assert.ok(f.controller.getState().listError); assert.equal(f.controller.getState().projects[0].id, uuid(3), 'Old display data is never fresh authority');
   }
+});
+test('identity replacement during a create keeps its acknowledgement unknown, retains the dirty owner and blocks replay', async () => {
+  const ack = Promise.withResolvers<unknown>(); let catalog = directory([row()]);
+  const f = fixture({readDirectory: () => catalog, rpc: () => ack.promise}); await f.controller.boot();
+  f.controller.reportCreate({dirty: true, busy: false, version: 1}); const creating = f.controller.create('new', ''); await tick();
+  assert.equal(f.calls.filter(([operation]) => operation === 'project.create').length, 1);
+  catalog = directory([row()], {instanceId: uuid(901)}); await f.controller.identity?.refresh();
+  ack.resolve(row(uuid(5), 'new')); assert.equal(await creating, false);
+  assert.equal(f.controller.getState().createUnknown, true); assert.equal(f.controller.getState().createdProjectId, null);
+  assert.equal(f.controller.readCloseSnapshot().dirty, true); assert.equal(f.controller.readCloseSnapshot().unknown, true);
+  assert.equal(await f.controller.open(uuid(3)), false); assert.equal(await f.controller.create('new', ''), false);
+  catalog = directory([row()]); await f.controller.refresh(); assert.equal(f.controller.identity?.getVerifiedScope(), null);
+  assert.equal(f.calls.filter(([operation]) => operation === 'project.create').length, 1); assert.equal(f.opens.length, 0);
 });
 test('a removed registration in a successful native read cannot be opened from its old card', async () => {
   let catalog = directory([row()]); const f = fixture({readDirectory: () => catalog}); await f.controller.boot();
@@ -291,24 +305,21 @@ test('confirmed create keeps one latch into open, and failed open never replays 
   assert.equal(f.calls.filter(([op]) => op === 'project.create').length, 1);
 });
 test('first startup stays home without a URL; an explicit target is read-only, consumed once, and cancelled by newer input', async () => {
-  const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }), invalidateNavigation() {}, rememberOpened() { assert.fail('startup cannot remember'); } } as unknown as Locator;
-  const f = fixture({ context: ctx({ autoOpen: true }), locator }); await f.controller.boot(); await f.controller.boot();
+  const f = fixture({ context: ctx({ autoOpen: true }) }); await f.controller.boot(); await f.controller.boot();
   assert.deepEqual(f.opens, []);
-  const explicit = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3) }); await explicit.controller.boot(); await explicit.controller.boot();
+  const explicit = fixture({ context: ctx({ autoOpen: true }), explicitProjectId: uuid(3) }); await explicit.controller.boot(); await explicit.controller.boot();
   assert.deepEqual(explicit.opens.map(value => [value.projectId, value.remember]), [[uuid(3), false]]);
-  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), locator, explicitProjectId: uuid(3), readDirectory: () => held.promise });
+  const held = Promise.withResolvers<unknown>(); const g = fixture({ context: ctx({ autoOpen: true }), explicitProjectId: uuid(3), readDirectory: () => held.promise });
   const boot = g.controller.boot(); g.controller.interacted(); held.resolve(directory([row()])); await boot; assert.equal(g.opens.length, 0);
 });
-test('launcher-only locator queue invalidates stale selections before a later ready target', async () => {
-  const writes: Array<[string, number]> = [], order: Array<[string, number]> = [];
-  const locator = { activate() {}, dispose() {}, discover: async () => null, getState: () => ({ identityBlocked: false }),
-    invalidateNavigation: (version: number) => order.push(['invalidate', version]), rememberOpened: (projectId: string, version: number) => writes.push([projectId, version]) } as unknown as Locator;
-  const f = fixture({ locator }); await f.controller.boot();
+test('legacy host selection metadata cannot choose, persist or replace the verified directory identity', async () => {
+  const f = fixture(); await f.controller.boot();
+  const before = f.controller.identity?.getState(), calls = f.calls.length;
   f.receive({ selectionVersion: 1, selectionProjectId: null });
   f.receive({ selectionVersion: 2, selectionProjectId: null });
-  f.receive({ selectionVersion: 1, selectionProjectId: uuid(3) }); assert.equal(writes.length, 0);
+  f.receive({ selectionVersion: 1, selectionProjectId: uuid(3) }); assert.equal(f.opens.length, 0);
   f.receive({ selectionVersion: 2, selectionProjectId: uuid(4) }); f.receive({ selectionVersion: 2, selectionProjectId: uuid(4) });
-  assert.deepEqual(writes, [[uuid(4), 2]]); assert.deepEqual(order, [['invalidate', 0], ['invalidate', 1], ['invalidate', 2]]);
+  assert.equal(f.controller.identity?.getState(), before); assert.equal(f.calls.length, calls); assert.equal(f.opens.length, 0);
 });
 test('entry unknown creation preserves exact P0 close-only risk admission across quit context', async () => {
   const f = fixture({ readDirectory: () => directory([row()]), rpc: async () => Promise.reject(new Error('unknown')) });

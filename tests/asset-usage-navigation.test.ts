@@ -9,6 +9,7 @@ import { deriveTimelineAssetUsage } from '../apps/web/src/timeline-asset-usage.t
 import { locateTimelineAssetUse, matchesTimelineAssetUse, revealTimelineAssetUse } from '../apps/web/src/timeline-asset-navigation.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import {PROJECT_ENTRY_TEST_SCOPE, projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const Function = lenientFunction;
 const id = (n: number) => `ce100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -78,9 +79,12 @@ const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url),
 const section = (start: string, end: string) => { const a = source.indexOf(start), b = source.indexOf(end, a); assert.ok(a >= 0 && b > a); return source.slice(a, b); };
 const readySource = section('  function projectSessionReady()', '  const workbenchReady =');
 const bridge = section('  function readAssetUsageNavigation()', '  function timelineFormatContext()');
-function appHarness() {
+async function appHarness() {
   const f = fixture(), calls: unknown[][] = [], gate = held(); let predicate: (() => boolean) | undefined;
-  const env = { msg, ...createI18nTestContext(), deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse, canPublishProjectOpen,
+  f.state.workspaceScope = PROJECT_ENTRY_TEST_SCOPE;
+  const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: f.state.projectId}]));
+  assert.ok(await identity.discover());
+  const env = { projectEntryIdentityRef: {current: identity}, msg, ...createI18nTestContext(), deriveTimelineAssetUsage, locateTimelineAssetUse, matchesTimelineAssetUse, canPublishProjectOpen,
     openedProject: { current: projectOpenAttempt(f.state.projectId, f.state.projectEpoch, f.state.workspaceScope!) as ReturnType<typeof projectOpenAttempt> | null },
     revealTimelineAssetUse: (...args: unknown[]) => calls.push(['scroll', ...args]),
     currentProject: { current: f.state.projectId }, dataRef: { current: { project: { id: f.state.projectId }, timeline: f.timeline, assets: f.assets } },
@@ -98,19 +102,19 @@ function appHarness() {
   return { f, env, api, calls, gate, predicate: () => predicate! };
 }
 test('actual App bridge opens the chosen clip in Properties and saved timeline without business calls', async () => {
-  const h = appHarness(), before = JSON.stringify(h.env.dataRef.current);
+  const h = await appHarness(), before = JSON.stringify(h.env.dataRef.current);
   const pending = h.api.locateAssetUse(h.f.use, () => true); assert.equal(h.predicate()(), true); h.gate.resolve!(true); assert.equal(await pending, true);
   assert.equal(h.env.viewRef.current.activeMode, 'editing'); assert.equal(h.env.viewRef.current.editing.selectedClipId, h.f.use.clipId); assert.equal(h.env.viewRef.current.editing.playhead, 90); assert.equal(h.env.viewRef.current.editing.timelineCollapsed, false);
   assert.ok(h.calls.some(call => call[0] === 'dock' && call[1] === 'properties')); assert.ok(h.calls.some(call => call[0] === 'panel' && call[1] === 'inspector' && call[2] === true));
   assert.equal(JSON.stringify(h.env.dataRef.current), before); assert.equal(h.calls.filter(call => call[0] === 'scroll').length, 1);
 });
 for (const key of ['projectEpoch', 'navigationEpoch', 'panelIntent', 'assetUsageAttempt']) test(`actual App bridge checks live ${key} after dirty confirmation`, async () => {
-  const h = appHarness(), pending = h.api.locateAssetUse(h.f.use, () => true); h.env[(key as 'projectEpoch' | 'navigationEpoch' | 'panelIntent' | 'assetUsageAttempt')].current++; assert.equal(h.predicate()(), false); h.gate.resolve!(true);
+  const h = await appHarness(), pending = h.api.locateAssetUse(h.f.use, () => true); h.env[(key as 'projectEpoch' | 'navigationEpoch' | 'panelIntent' | 'assetUsageAttempt')].current++; assert.equal(h.predicate()(), false); h.gate.resolve!(true);
   assert.equal(await pending, false); assert.deepEqual((h.calls as unknown), []);
 });
 test('actual App bridge refuses an unaccepted home session before or during discard confirmation', async () => {
   for (const timing of ['before', 'during']) {
-    const h = appHarness();
+    const h = await appHarness();
     if (timing === 'before') h.env.openedProject.current = null;
     const pending = h.api.locateAssetUse(h.f.use, () => true);
     if (timing === 'during') {

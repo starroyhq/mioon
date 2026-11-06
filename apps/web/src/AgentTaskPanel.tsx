@@ -39,7 +39,7 @@ import {rulesProposalOf, projectRulesProposalChange, rulesStepApplied} from './p
 import type {ProjectRulesSnapshot} from '../../../packages/contracts/src/mio-rules.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown; onReviewProjectRules?: () => void }
+export interface AgentTaskPanelProps { isAdmissionAllowed?: () => boolean; projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown; onReviewProjectRules?: () => void }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
@@ -56,8 +56,11 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
     {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules }: AgentTaskPanelProps) {
-  const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
+export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules }: AgentTaskPanelProps) {
+  const { t, locale } = useI18n(), workspaceVisible = useWorkspaceVisibility();
+  const admission=useRef(isAdmissionAllowed);admission.current=isAdmissionAllowed;
+  const canInteract=()=>{try{return admission.current?.()!==false;}catch{return false;}};
+  const visible=workspaceVisible&&canInteract();
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
@@ -70,8 +73,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   useLayoutEffect(() => {
     const client = createWebProjectRulesClient(), abort = new AbortController(); let mounted = true, serial = 0;
     setRulesStatus(null); setRulesReadError(false); setRulesDismissed(null);
-    const read = () => { if (!visible || document.visibilityState === 'hidden') return; const owner = ++serial;
-      void client.read(projectId, {signal: abort.signal}).then(next => { if (mounted && owner === serial) {setRulesStatus(next); setRulesReadError(false);} }, () => {if (mounted && owner === serial) {setRulesStatus(null); setRulesReadError(true);}});
+    const read = () => { if (!visible || !canInteract() || document.visibilityState === 'hidden') return; const owner = ++serial;
+      void client.read(projectId, {signal: abort.signal}).then(next => { if (mounted && owner === serial && canInteract()) {setRulesStatus(next); setRulesReadError(false);} }, () => {if (mounted && owner === serial && canInteract()) {setRulesStatus(null); setRulesReadError(true);}});
     };
     rulesRefresh.current = read; read();
     const release = subscribeProjectRulesChanges(projectId, read);
@@ -90,10 +93,10 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     let mounted = true;
     checksNavigation.current++;setChecksAttached(true);
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
-    const reader=createMioUsageController({client:createMioUsageClient(),onChange:next=>{if(mounted)setUsage(next);}});
+    const reader=createMioUsageController({client:createMioUsageClient(),isAdmissionAllowed:canInteract,onChange:next=>{if(mounted)setUsage(next);}});
     usageReader.current=reader;setUsage(EMPTY_MIO_USAGE_STATE);usageTriggers.current.clear();
-    const syncUsage=(next:AgentTaskSessionState)=>reader.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visibility.current&&!historyVisible.current&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
-    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; syncUsage(next); close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onUsageObservation:observation=>reader.observe(observation), onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
+    const syncUsage=(next:AgentTaskSessionState)=>reader.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visibility.current&&canInteract()&&!historyVisible.current&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
+    const current = createAgentTaskSession({ projectId, isAdmissionAllowed:canInteract, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; syncUsage(next); close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onUsageObservation:observation=>reader.observe(observation), onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
     const changed = () => {current.setVisible(visibility.current && document.visibilityState !== 'hidden');syncUsage(current.getState());};
     document.addEventListener('visibilitychange', changed); void current.load();
@@ -107,7 +110,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   },[visible,historyOpen,projectId,workspaceScope]);
   function closeUsage(){
     const reader=usageReader.current,epoch=reader?.epoch,trigger=usage.detailRunId?usageTriggers.current.get(usage.detailRunId):null;
-    reader?.close();queueMicrotask(()=>{if(usageReader.current===reader&&reader?.epoch===epoch&&visibility.current&&!historyVisible.current&&document.visibilityState!=='hidden'&&trigger?.isConnected)trigger.focus();});
+    reader?.close();queueMicrotask(()=>{if(usageReader.current===reader&&reader?.epoch===epoch&&visibility.current&&canInteract()&&!historyVisible.current&&document.visibilityState!=='hidden'&&trigger?.isConnected)trigger.focus();});
   }
   const run = state.snapshot?.run, steps = state.snapshot?.steps ?? [], changes = state.snapshot?.changes ?? [], project = state.project;
   const readOnly = project?.readOnly === true, busy = agentTaskSessionBusy(state), blocked = !visible || busy || Boolean(state.pending) || readOnly || !project;
@@ -205,7 +208,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const canAnswer = !blocked && answerMode && agentTaskAnswerTextValid(state.draft);
   const canSubmit = answerMode?canAnswer:noteMode?canNote:canSend;
   async function send() {
-    if (!canSubmit || composition.current || sendFlight.current || !session.current || session.current.getState().selectionKey!==state.selectionKey) return;
+    if (!canInteract() || !visibility.current || !canSubmit || composition.current || sendFlight.current || !session.current || session.current.getState().selectionKey!==state.selectionKey) return;
     if(answerMode&&waitingQuestion){sendFlight.current=true;try{await session.current.answer(waitingQuestion.id,[],state.draft,run?.id);}finally{sendFlight.current=false;}return;}
     if(noteMode){sendFlight.current=true;try{await session.current.note();}finally{sendFlight.current=false;}return;}
     if (!approved) { setReview(session.current.authorizationReview()); return; }
@@ -213,13 +216,13 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   }
   async function confirmSend() {
     const current = session.current, original = review;
-    if (!current || !original || blocked || sendFlight.current) return;
+    if (!canInteract() || !visibility.current || !current || !original || blocked || sendFlight.current) return;
     sendFlight.current = true;
     try { await current.authorizeAndSend(original); } finally { sendFlight.current = false; if (session.current === current) setReview(null); }
   }
   async function undoAll(snapshot:AgentTaskSnapshot,trigger:HTMLButtonElement) {
     const current=session.current,key=state.selectionKey;
-    if(!current||blocked||undoFlight.current||!['completed','failed','stopped'].includes(snapshot.run.status))return;
+    if(!canInteract()||!visibility.current||!current||blocked||undoFlight.current||!['completed','failed','stopped'].includes(snapshot.run.status))return;
     const owner=++undoRead.current;undoTrigger.current=trigger;undoFlight.current=true;setUndoLoading(true);
     try {
       const fresh=await current.refreshRound(snapshot.run.id);
@@ -233,7 +236,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const undoBlocked=willKeep.some(change=>change.status==='applied'&&change.reversible&&change.undoDisposition!=='retain');
   function confirmUndo(){
     const current=session.current,preview=undoPreview;
-    if(!current||!preview||blocked||!undoCurrent||!willUndo.length||current.getState().selectionKey!==preview.selectionKey)return;
+    if(!canInteract()||!visibility.current||!current||!preview||blocked||!undoCurrent||!willUndo.length||current.getState().selectionKey!==preview.selectionKey)return;
     const fresh=current.getState().rounds.find(item=>item.run.id===preview.snapshot.run.id);
     if(!fresh||fresh.run.revision!==preview.snapshot.run.revision||JSON.stringify(fresh.changes)!==JSON.stringify(preview.snapshot.changes))return;
     setUndoPreview(null);void current.action('undo_all',{undoChangeIds:willUndo.map(change=>change.id)},fresh.run.id);
@@ -323,7 +326,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
           const proposal = rulesProposalOf(step), pending = state.pending?.runId === run.id && (state.pending.action === 'approve' || state.pending.action === 'deny') ? state.pending : null;
           const rejected = step.status === 'denied' || step.status === 'rejected' && step.result && typeof step.result === 'object' && !Array.isArray(step.result) && step.result.error && typeof step.result.error === 'object' && !Array.isArray(step.result.error) && step.result.error.code === 'USER_REJECTED';
           const decision = rulesStepApplied(step) ? {kind: 'allowed' as const} : rejected ? {kind: 'rejected' as const} : step.status === 'unknown' || pending && state.phase === 'unknown' ? {kind: 'unknown' as const} : pending ? {kind: 'submitting' as const, decision: pending.action === 'approve' ? 'allow' as const : 'reject' as const} : step.status === 'awaiting_approval' && proposal ? {kind: 'pending' as const} : {kind: 'unavailable' as const};
-          return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal) void act('deny', {stepId: step.id});}} /></div>;
+          return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal && canInteract() && visibility.current) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal && canInteract() && visibility.current) void act('deny', {stepId: step.id});}} /></div>;
         })}
         {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
         {run.status === 'paused' && unknown.length === 0 && <section className="mio-card" data-testid="agent-task-paused">
@@ -345,7 +348,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
       <MioUsageRow runId={run.id} view={usage.rounds[run.id]} disabled={!visible||historyOpen||!usage.rounds[run.id]} triggerRef={node=>{if(node)usageTriggers.current.set(run.id,node);else usageTriggers.current.delete(run.id);}} onOpen={()=>{if(visibility.current&&!historyVisible.current)usageReader.current?.open(run.id);}} /></article>;
   }
   return <section className="agent-panel agent-task-panel mio-panel" data-testid="agent-task-panel" data-phase={state.phase} aria-label={t('agent.task.title')}>
-    <MioUsageDetails open={usage.detailRunId!==null} runId={usage.detailRunId} view={usage.detailRunId?usage.rounds[usage.detailRunId]:undefined} onClose={closeUsage} onRetry={()=>{if(usage.detailRunId)usageReader.current?.refresh(usage.detailRunId);}} />
+    <MioUsageDetails open={visible&&!historyOpen&&usage.detailRunId!==null} runId={usage.detailRunId} view={usage.detailRunId?usage.rounds[usage.detailRunId]:undefined} onClose={closeUsage} onRetry={()=>{if(usage.detailRunId)usageReader.current?.refresh(usage.detailRunId);}} />
     <header className="agent-task-heading mio-heading"><h3 title={state.conversation?.title}>{state.conversation?.title || t('agent.panel.newConversation')}</h3><div>
       <WorkbenchTooltip content={composing?t('agent.conversation.blocked.composing'):newBlocked?t(`agent.conversation.blocked.${newBlocked}`):t('agent.panel.newConversation')}><Button variant="icon" aria-label={t('agent.panel.newConversation')} data-testid="agent-task-new-conversation" disabled={!visible||composing||Boolean(newBlocked)} aria-describedby={newBlocked||composing?'mio-new-conversation-blocked':undefined} onClick={newConversation}><Icon name="plus" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.panel.history')}><Button variant="icon" aria-label={t('agent.panel.history')} ref={historyButton} data-testid="agent-task-history-open" aria-expanded={historyOpen} disabled={!visible || busy} onClick={() => { if (visibility.current) setHistoryOpen(value => !value); }}><Icon name="clock" /></Button></WorkbenchTooltip>
@@ -357,8 +360,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
       {(state.error || state.phase === 'detached') && <p role="alert" className="mio-error" data-testid="agent-task-error">{t(agentTaskErrorKey(state.error))}</p>}
       {state.pending ? <div className="mio-card" data-testid="agent-task-unknown"><p>{t('agent.task.unknown')}</p><Button disabled={!visible || busy} onClick={() => { void session.current?.reconcile(); }}>{t('agent.task.confirmRead')}</Button></div> : ['error', 'read_error', 'detached'].includes(state.phase) && <Button data-testid="agent-task-reload" disabled={!visible || busy} onClick={() => { void session.current?.load(); }}>{t('agent.task.reload')}</Button>}
       {project?.readOnly && <p className="mio-secondary" data-testid="agent-task-read-only">{t('agent.task.readOnly')}</p>}
-      {onReviewProjectRules && rulesStatus?.trust === 'untrusted' && rulesDismissed !== rulesStatus.hash && <><ProjectRulesNotice enable={{kind: 'idle'}} onReview={() => {if (visibility.current) onReviewProjectRules();}} onLater={() => setRulesDismissed(rulesStatus.hash)} /><p className="mio-rules-current-note">{t('projectRules.runtime.nextRound')}</p></>}
-      {onReviewProjectRules && (rulesReadError || rulesStatus?.trust === 'pending' || rulesStatus?.trust === 'unavailable') && <WorkbenchAlert tone="warning" data-testid="agent-task-rules-unavailable" actions={<><Button size="compact" disabled={!visible} onClick={() => onReviewProjectRules()}>{t('projectFile.rules.review')}</Button><Button size="compact" disabled={!visible} onClick={() => rulesRefresh.current()}>{t('projectRules.runtime.refresh')}</Button></>}>{t(rulesStatus?.trust === 'pending' ? 'projectRules.runtime.pending' : 'projectRules.runtime.unavailable')}</WorkbenchAlert>}
+      {onReviewProjectRules && rulesStatus?.trust === 'untrusted' && rulesDismissed !== rulesStatus.hash && <><ProjectRulesNotice enable={{kind: 'idle'}} onReview={() => {if (canInteract() && visibility.current) onReviewProjectRules();}} onLater={() => setRulesDismissed(rulesStatus.hash)} /><p className="mio-rules-current-note">{t('projectRules.runtime.nextRound')}</p></>}
+      {onReviewProjectRules && (rulesReadError || rulesStatus?.trust === 'pending' || rulesStatus?.trust === 'unavailable') && <WorkbenchAlert tone="warning" data-testid="agent-task-rules-unavailable" actions={<><Button size="compact" disabled={!visible} onClick={() => {if (canInteract() && visibility.current) onReviewProjectRules();}}>{t('projectFile.rules.review')}</Button><Button size="compact" disabled={!visible} onClick={() => rulesRefresh.current()}>{t('projectRules.runtime.refresh')}</Button></>}>{t(rulesStatus?.trust === 'pending' ? 'projectRules.runtime.pending' : 'projectRules.runtime.unavailable')}</WorkbenchAlert>}
       {!run && !state.pending && <div className="mio-empty" data-testid="agent-task-empty"><p>{t('agent.task.empty')}</p><p className="mio-secondary">{t('agent.panel.try')}</p><div className="mio-suggestions">{(['description', 'gaps', 'subtitles', 'export'] as const).map((suggestion, index) => <Button key={suggestion} variant="secondary" disabled={blocked} onClick={() => { session.current?.edit(t(`agent.panel.suggest.${suggestion}`),state.selectionKey); input.current?.focus(); }}><Icon name={['image', 'zoom', 'text', 'check'][index]} />{t(`agent.panel.suggest.${suggestion}`)}</Button>)}</div></div>}
       {(state.rounds.length?state.rounds:state.snapshot?[state.snapshot]:[]).map(renderRound)}
       {/* Project recovery owns its pending-receipt close fence across conversation selection. */}

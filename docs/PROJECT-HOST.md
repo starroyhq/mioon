@@ -61,12 +61,16 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 
 启动恢复将 prepared/captured 的未完成转换按已记录身份清理隐藏暂存目录并作废，原键报 `PROJECT_COPY_INTERRUPTED`；不删除身份已变的后来文件，不在同键重造新身份。ready 以后完整结果继续按 intent 续办。
 
+### S5-C：只将项目文件移到废纸篓
+
+应用 RPC `project.delete` 要求严格的 `confirmTrash`、确认路径/文件身份和项目 revision。只有受信桌面主进程可以执行 `shell.trashItem`；网页/headless 缺少能力时返回 `PROJECT_TRASH_UNAVAILABLE`，CLI/MCP 命令留 0.1.x 并在本机访问前明确拒绝。成功后仅撤登记并提交固定回执，素材和全部本机记录保留；未知结果保留 intent 和登记，不重做、不根据路径缺失推断成功。
+
+项目有窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝；关闭项目通过 S3-A `inspectProjectWork` 检查，S8 草稿不阻止。关闭前准入不靠 `interrupt` 清掉等待状态。具体契约、保留项和已销项的永久清理义务见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。本卡未接 UI，真实 macOS 废纸篓验收交 Q。
+
 ### 暂不可用的后续能力
 
 | 归属 | 当前操作/地址 | 精确结果 |
 |---|---|---|
-| S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
-| S5-C | 废纸篓 | 尚未实施成功入口；不能由复制能力推断已可用 |
 | S5-A / 0.1.x | CLI 和旧客户端 `project.duplicate` | 409 `PROJECT_COPY_UNAVAILABLE`，网络/存储访问前拒绝；新 CLI/MCP 命令后续接入 |
 | V4 | 打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
 | S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
@@ -93,7 +97,7 @@ S3-A只增加应用任务索引的4096/512条上限，不增加全应用运行�
 
 - 网页渠道只列配置 projectsDir 内已登记的项目；生产/开发桌面渠道列全部最近登记。范围由启动时的受信渠道决定，HTTP 不接受目录、模式或分页参数，也不扫描未知文件。手工放进目录的文件，须经明确的打开流程登记一次后才出现；0.1.0 没有新增网页文件扫描或任意路径打开接口。
 - 读取先刷新已打开宿主的登记摘要，再经 manager.list()，让画幅、时长和封面信息反映当前编辑；不取得新租约或为补摘要自动组装项目。保留热日志恢复及后台查找移动位置的规则。availability 是提示，实际打开结果仍是权威。
-- appLibraryScope 与原 last-project 的 workspaceScope 使用同一应用库身份算法；instanceId 仅表示这次服务实例，不能用来代替稳定缓存身份。读取前后检查身份，换库或失去应用库持有权时拒绝。旧 /api/last-project 和全部消费者在后续迁完前保留。
+- appLibraryScope 与原 last-project 的 workspaceScope 使用同一应用库身份算法；instanceId 仅表示这次服务实例，不能用来代替稳定缓存身份。读取前后检查身份，换库或失去应用库持有权时拒绝。旧 `/api/last-project` 已随 S6-C 2a 退役，renderer 身份与缓存阻断规则见下节。
 - 目录最多 8192 条（沿用 B1），本新资源的完整 JSON 传输单独限 384 MiB，超过返回 PROJECT_ENTRY_LIMIT（413），不截断成假完整列表。这是读取资源的上限，不改变应用库容量或保证容纳其全部理论极限数据。
 
 ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-native.ts：listRecent、create、openPath、acquire、release、onWindowRevoked。它由当前服务实例闭包持有，不注册到 HTTP、RPC、CLI 或环境变量，也不使用 retainProjectForTest。S6-A 只交付此端口；桌面主进程/utility 消息和真实窗口接线归 S6-B。
@@ -111,9 +115,17 @@ Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClie
 
 网页首页、原生启动器和编辑器内的项目选择共用 GET /api/project-entries；渠道范围仍由服务端决定。无摘要的登记保留名称和位置，未知时间不编造。最近打开为默认顺序；搜索、排序和网格/列表仅作用于已登记目录。封面读取失败显示占位，不为补图打开项目。没有显式项目 URL 时停在首页；显式目标不可用时不改开其他项目，原生编辑窗口仍由宿主指定项目。
 
+最近记录来自登记及成功打开事实；目录读取、搜索或卡片选择不再持久化一个“上次选择”。`project-entry-identity.ts` 的只读 owner 只在完整严格快照后验证 appLibraryScope 与 instanceId。磁盘偏好缓存仍按稳定 scope 隔离；换库或同库更换服务 instance 都 sticky block 当前 renderer，清除目录/verified scope，须由新 renderer 完整验证后建立新身份。不通过 A→null→A 自动恢复旧队列；旧请求、晚到成功/错误及原实例偏好 ACK 都不能因身份恢复重新取得写入资格。普通网络失败保持未知，可在相同身份下重试，不发布空目录。
+
 “生成任务在等项目”来自 GET /api/background-tasks 的完整分页，按当前目录核对身份和项目后统计；读取失败或换库时不展示旧计数，用户可明确重试。首页不自动打开、接收或丢弃结果。打开卡片前重新读取目录并核对库身份；原生窗口的未保存输入确认先于该读取，未知打开/创建结果仍由原窗口核对。
 
-本次先接首页和最近项目菜单；系统文件选择、复制/另存为、废纸篓和模板尚无已接通能力时隐藏入口。打开错误、素材和旧入口退役在后续接线完成，旧 /api/last-project 在全部消费者迁移前保留。
+S6-C 2a 的范围是 12-04 素材状态、12-06 外部位置的现有 HTTP 接线与内容读取门，受控的新建、打开错误和位置风险 UI、四语、目录身份，以及旧 last-project 退役。读取门按当前项目/素材状态阻止缺失、变化、未确认和未知内容读取；刷新状态不证明未知写入成功。原生 dirty 确认、entry receipt、unknown owner 和 P0 关闭准入继续保留；设置页身份不可确认时保留原表单和秘密输入，仅阻断交互。本批不宣称全部 Q 或 S6-C 流程完成。
+
+`GET/PUT /api/last-project` 与子路径在既有 Host/Origin、令牌/会话校验后固定为 404 `NOT_FOUND`，不解析为旧定位读写。application/project runtime 不再构造 lastProject/Http，生产消费者已改用只读目录身份。应用库里的旧 `last-project-v1.json` document 保留原字节，即使损坏也不修复、不删除、不迁移；本次不提升 schema/version。旧模块和契约仅作不可达遗留与单元测试依据。
+
+原生桥由 C 线按 S6-B → S6-B2 交付，D 线在 S6-C 2b 合入后接可信重新指向选择、权限帮助/Reveal、原项目事实和只读/网络来源复制票据等。可信选择须绑定项目、素材及修订，外部位置需明确同意，取消不导入/登记/变更授权，不能先 import 再借权限。`copyTo` 的“复制到…”统一与另存为、复制项目使用同一系统存储面板，说明行相同，默认名用项目名；不再使用单独的文件夹选择面板。原位置只读/网络限制不因有复制票据而解除，复制仍完整观察源且不覆盖。
+
+系统选择、重新指向、Reveal、复制/另存为等未接能力，以及 S6-D 模板、S5-C 废纸篓未就绪的入口，按 D8 隐藏。特别是 `replaceAfterSaveAs` 未接通时不显示另存为；已有后端服务不构成可用 UI 的证明。
 
 以下保留 10-31 的接口设计、切换前清点和第 6 节实施计划作为历史依据；其中“下一轮”“现在的 composeServer”指当时的旧入口，当前行为以上述 P4 状态和实际源码为准。S0a 内核接口的调用时机仍见第 5 节。
 
@@ -170,7 +182,7 @@ Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClie
 | `uiPreferences`（`ui-preferences-v1.json`，含 `recentOpened`） | B1 收进应用库；`hasProject` 改查登记 | B1、S0 |
 | 工作区配置 `createWorkspaceConfiguration`（`workspace-settings-v1.json`、`environment()`） | B1 收进应用库；自动备份的字段随 S7 去掉 | B1、S7 |
 | `workspacePreferences`（`workspace_preferences` 表，按 projectId） | 表进应用库，项目在不在改查登记 | B1、S0 |
-| `lastProject`（`last-project-v1.json`） | 改由最近项目登记提供 | B1、S6 |
+| `lastProject`（`last-project-v1.json`） | S6-C 2a 已退役生产读写，改用最近目录身份；旧 document 字节保留，不删除、不升版本 | B1、S6 |
 | 媒体进程 `onMediaProcess`、`terminateMediaProcesses` | 进程级 | 不变 |
 | `/health`、`/api/workspace-info`、`/api/media-tools/check` | `/health` 不再读项目库（用 `process.versions.sqlite`）；`/api/workspace-info` 改成应用信息，`pendingProjectCleanup` 随 S5 去掉 | S0 |
 | 存储预检 `validateWorkspaceStorage(root)` 和单实例锁 `server.lock` | 改成应用数据目录的检查（去掉 `workbench.sqlite`、`media/`、暂存目录这些条目）。单实例锁仍在应用数据目录，现在由 `db.ts` 的 `openStore` 取（`workspace-lock.ts`），切换后由 `startServer` 自己取 | S0 |
@@ -485,7 +497,7 @@ V2 的 hook 捕获自身已经结束的备份失败，落安全状态后正常�
 
 新路径保留原来 `/api/` 之后的部分，例如 `/api/tasks…` 改成 `/api/projects/<id>/tasks…`；`/api/tasks…` 也归 K2（第 7 节第 8 条）。
 
-**应用级**（留在原处）：`/health`、`/api/login`、`/api/rpc`（只收应用级操作，项目级操作发到这里报 `VALIDATION_ERROR`）、`/api/agent/settings`、`/api/agent/diagnostics`、`/api/agent/tasks/v2/policy`、`/policy/requests/<id>`、`/diagnostics/latest`（这三条清单只列了项目的部分）、`/api/images/settings`、`custom-settings`、`comfy-settings`、`comfy-check`、`comfy-availability`、`/api/video-providers/*`、`/api/ui-preferences`、`/opened`、`/api/media-tools/check`、`/api/last-project`（B1、S6 换成最近项目）、`/api/workspace-info`（改成应用信息），以及**清单漏列的** `/api/workspace-preferences/<id>`。新增的最近项目和封面接口归 S6、B1（3.4）。删除、复制、改名、关闭、另存为是应用级操作，接口形状由 S4、S5、S6 定，内部都经 `withExclusive`。
+**应用级**（留在原处）：`/health`、`/api/login`、`/api/rpc`（只收应用级操作，项目级操作发到这里报 `VALIDATION_ERROR`）、`/api/agent/settings`、`/api/agent/diagnostics`、`/api/agent/tasks/v2/policy`、`/policy/requests/<id>`、`/diagnostics/latest`（这三条清单只列了项目的部分）、`/api/images/settings`、`custom-settings`、`comfy-settings`、`comfy-check`、`comfy-availability`、`/api/video-providers/*`、`/api/ui-preferences`、`/opened`、`/api/media-tools/check`、`/api/workspace-info`（改成应用信息），以及**清单漏列的** `/api/workspace-preferences/<id>`。最近项目和封面现使用 `/api/project-entries`、`/api/project-covers/<id>`；旧 `/api/last-project` 已在 S6-C 2a 退役为 404，不再是可用应用服务。删除、复制、改名、关闭、另存为是应用级操作，接口形状由 S4、S5、S6 定，内部都经 `withExclusive`。
 
 **随删除去掉**：`/api/agent/chat/…`（P1a-2）、`/api/local-drafts/restored43…`（P1b）、`/api/workspace-backups/…`（S7）、`/api/project-packages/…`（V4、S5）、`package-preview`（V4）。
 

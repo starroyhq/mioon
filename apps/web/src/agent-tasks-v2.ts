@@ -169,9 +169,10 @@ export function agentTaskNewConversationBlock(state:AgentTaskSessionState):'unav
   return null;
 }
 export interface AgentTaskUsageObservation {readonly runId:string; readonly serial:number; readonly sequence?:number}
-export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {}, onUsageObservation = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void; onUsageObservation?: (value:AgentTaskUsageObservation)=>void }) {
+export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', isAdmissionAllowed = () => true, onChange = () => {}, onChangeApplied = () => {}, onUsageObservation = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; isAdmissionAllowed?: () => boolean; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void; onUsageObservation?: (value:AgentTaskUsageObservation)=>void }) {
   let usageSerial=0;
   const observeUsage=(runId:string,sequence?:number)=>onUsageObservation({runId,serial:++usageSerial,...(sequence===undefined?{}:{sequence})});
+  const admissionAllowed=()=>{try{return isAdmissionAllowed()===true;}catch{return false;}};
   let authorizationEpoch = 0,selectionOwner:number|null=null;
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
   const drafts=new Map<string,{text:string;uploads:AgentTaskUpload[]}>(),unknownRuns=new Set<string>(),backgroundRuns=new Set<string>();let selectionChosen=false;
@@ -195,7 +196,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     try{const view=await client.conversationPolicy(projectId,id);if(active&&epoch===policyEpoch&&state.policy.conversationId===id)publish({policy:{conversationId:id,phase:'ready',value:view.policy,modes:null}});}
     catch{if(active&&epoch===policyEpoch&&state.policy.conversationId===id)publish({policy:{conversationId:id,phase:'error',value:previous,modes:null}});}
   }
-  const policyLocked=():boolean=>!active||!visible||receiptsBlocked||!state.project||state.project.readOnly===true||state.policy.phase==='saving'||state.policy.phase==='loading';
+  const policyLocked=():boolean=>!active||!visible||!admissionAllowed()||receiptsBlocked||!state.project||state.project.readOnly===true||state.policy.phase==='saving'||state.policy.phase==='loading';
   /** Choose this conversation's modes. Choosing the global ones follows the global policy again. */
   async function choosePolicy(modes:AgentTaskPolicyModes):Promise<boolean>{
     if(policyLocked())return false;
@@ -268,7 +269,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   };
   const detach = () => { stream?.abort(); stream = null; if (retry) clearTimeout(retry); retry = null; };
   function reconnect(owner: number, runId: string) {
-    if (!active || !visible || generation !== owner || state.snapshot?.run.id !== runId || finished(state.snapshot)) return;
+    if (!active || !visible || !admissionAllowed() || generation !== owner || state.snapshot?.run.id !== runId || finished(state.snapshot)) return;
     stream?.abort(); stream = null;
     if (retry) return;
     const delay = Math.min(1500 * 2 ** Math.min(retryAttempt++, 4), 15000);
@@ -276,7 +277,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   }
   async function observe() {
     detach(); const run = state.snapshot?.run;
-    if (!active || !visible || !run || finished(state.snapshot!)) return;
+    if (!active || !visible || !admissionAllowed() || !run || finished(state.snapshot!)) return;
     const owner = generation, controller = new AbortController(); stream = controller;
     let reading = false, readAgain = false;
     const readUpdate = async () => {
@@ -302,7 +303,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   }
   async function reloadSelected() {
     const runId = state.snapshot?.run.id, owner = generation;
-    if (!runId || !active || !visible) return;
+    if (!runId || !active || !visible || !admissionAllowed()) return;
     try { const next = await client.read(projectId, runId); if (active && visible && generation === owner && state.snapshot?.run.id === runId) { retryAttempt=0; accept(next); publish({ phase: state.pending ? 'unknown' : 'ready', error: '' }); void observe(); } } catch (error) { if (active && visible && generation === owner) { publish({ phase: 'detached', error: errorCode(error) }); reconnect(owner, runId); } }
   }
   async function reconcile() {
@@ -350,10 +351,10 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   }
   async function refreshRound(runId:string):Promise<AgentTaskSnapshot|null> {
     const owner=generation,key=state.selectionKey,conversationId=state.conversationId;
-    if(!active||!visible||busy||state.pending||agentTaskSessionBusy(state)||!state.rounds.some(item=>item.run.id===runId))return null;
+    if(!active||!visible||!admissionAllowed()||busy||state.pending||agentTaskSessionBusy(state)||!state.rounds.some(item=>item.run.id===runId))return null;
     try {
       const next=await client.read(projectId,runId);
-      if(!active||!visible||owner!==generation||key!==state.selectionKey||busy||state.pending)return null;
+      if(!active||!visible||!admissionAllowed()||owner!==generation||key!==state.selectionKey||busy||state.pending)return null;
       safeAgentTaskSnapshot(next,projectId,runId);
       if(conversationIdOf(next.run)!==conversationId)throw failure('INVALID_RESPONSE');
       accept(next);return state.rounds.find(item=>item.run.id===runId)??null;
@@ -361,7 +362,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   }
   async function mutate(action: 'send' | AgentTaskControlAction, extras: AgentTaskControlExtras = {},targetRunId=state.snapshot?.run.id) {
     const target=state.rounds.find(item=>item.run.id===targetRunId)??(state.snapshot?.run.id===targetRunId?state.snapshot:null);
-    if (!active || !visible || receiptsBlocked || busy || agentTaskSessionBusy(state) || state.pending || !state.project || state.project.readOnly || action !== 'send' && !target) return false;
+    if (!active || !visible || !admissionAllowed() || receiptsBlocked || busy || agentTaskSessionBusy(state) || state.pending || !state.project || state.project.readOnly || action !== 'send' && !target) return false;
     if (action === 'send' && (!state.project.settings.execution || !agentTaskPromptValid(state.draft) || !state.project.authorization.scopes.includes('project_agent') || agentTaskNewConversationBlock(state)!==null)) return false;
     if(action==='note'&&(!target||target.run.id!==state.snapshot?.run.id||!['running','awaiting_approval','paused'].includes(target.run.status)||target.steps.some(step=>step.status==='unknown')||state.unknownOutcome||!agentTaskPromptValid(extras.text??state.draft)))return false;
     // Only the question the run waits on can be answered, with a choice or typed text.
@@ -376,7 +377,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   }
   function authorizationReview(): AgentTaskAuthorizationReview | null {
     const project = state.project;
-    if (!active || !visible || !project || !project.settings.execution || project.readOnly || receiptsBlocked || busy || state.pending || !agentTaskPromptValid(state.draft) || agentTaskNewConversationBlock(state)!==null) return null;
+    if (!active || !visible || !admissionAllowed() || !project || !project.settings.execution || project.readOnly || receiptsBlocked || busy || state.pending || !agentTaskPromptValid(state.draft) || agentTaskNewConversationBlock(state)!==null) return null;
     return { projectId, settingsRevision: project.settings.execution.revision, authorizationRevision: project.authorization.revision, destination: deriveAgentEndpoint(project.settings.execution.configuration), model: project.settings.execution.configuration.model, text: state.draft, uploads: state.uploads.map(upload => upload.id), locale: getLocale(),conversationId:state.conversationId,modes:state.conversationId===null&&state.policy.conversationId===null?state.policy.modes:null };
   }
   function sameReview(review: AgentTaskAuthorizationReview, includeAuthorization: boolean): boolean {
@@ -384,7 +385,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     return Boolean(current && current.projectId === review.projectId && current.conversationId===review.conversationId && current.settingsRevision === review.settingsRevision && (!includeAuthorization || current.authorizationRevision === review.authorizationRevision) && current.destination === review.destination && current.model === review.model && current.text === review.text && current.locale === review.locale && JSON.stringify(current.uploads) === JSON.stringify(review.uploads) && JSON.stringify(current.modes ?? null) === JSON.stringify(review.modes ?? null));
   }
   async function authorize(): Promise<boolean> {
-    if (!active || !visible || !state.project || state.project.readOnly || busy || agentTaskSessionBusy(state) || state.pending) return false;
+    if (!active || !visible || !admissionAllowed() || !state.project || state.project.readOnly || busy || agentTaskSessionBusy(state) || state.pending) return false;
     busy = true; publish({ phase: 'submitting', error: '' });
     try { await client.authorize(state.project, requestId()); busy = false; await load(); return state.phase === 'ready' && state.project?.authorization.scopes.includes('project_agent') === true; }
     catch (error) { if (active) publish({ phase: 'error', error: errorCode(error) }); return false; }
@@ -399,14 +400,14 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
       if (!sameReview(review, true) || !await authorize() || epoch !== authorizationEpoch || !sameReview(review, false)) return false;
       return mutate('send');
     },
-    async history(older=false){if(!active||!visible||state.history.phase==='loading'||older&&!state.history.nextCursor)return false;const token=++historyEpoch;publish({history:{...state.history,phase:'loading'}});try{const page=await client.history(projectId,older?state.history.nextCursor:null);if(!active||!visible||token!==historyEpoch)return false;if(page.conversations.some(item=>item.projectId!==projectId))throw failure('INVALID_RESPONSE');if(older&&page.nextCursor===state.history.nextCursor)throw failure('INVALID_RESPONSE');publish({history:{...page,conversations:older?[...state.history.conversations,...page.conversations.filter(item=>!state.history.conversations.some(existing=>existing.id===item.id))]:page.conversations,phase:'ready'}});return true;}catch{if(active&&token===historyEpoch)publish({history:{...state.history,phase:'error'}});return false;}},
-    async upload(file: {name:string;type:string;size:number;arrayBuffer():Promise<ArrayBuffer>},expectedSelection=state.selectionKey) { if (expectedSelection!==state.selectionKey || !active || !visible || busy || agentTaskSessionBusy(state) || state.pending || state.project?.readOnly || receiptsBlocked || file.size > (/\.cube$/iu.test(file.name)?7:30)*1024*1024 || file.size < 1) return false; const owner=generation,selectionKey=state.selectionKey,pending:AgentTaskPending={requestId:requestId(),runId:null,action:'upload',conversationId:state.conversationId}; try{persist(pending);}catch{publish({phase:'error',error:'LOCAL_RECEIPT_UNAVAILABLE'});return false;} busy=true;publish({phase:'submitting',error:''});let dispatched=false;try{const bytes=new Uint8Array(await file.arrayBuffer());if(!active||!visible||owner!==generation||state.selectionKey!==selectionKey)throw failure('REQUEST_BLOCKED');if(bytes.byteLength!==file.size)throw failure('INVALID_FILE');let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));dispatched=true;const upload=await client.upload(projectId,{requestId:pending.requestId,name:file.name,mimeType:uploadMimeType(file.type),dataBase64:btoa(binary)});if(!active||owner!==generation||state.selectionKey!==selectionKey)return false;publish({uploads:[...state.uploads,upload],phase:'ready',error:''});persist(null);return true;}catch(error){if(active&&owner===generation){if(!dispatched){try{persist(null);}catch{}publish({phase:'error',error:errorCode(error)});}else if(agentTaskDefinitiveFailure(error)){try{persist({...pending,definitiveRejected:true});busy=false;return await reconcile();}catch{publish({phase:'unknown',error:errorCode(error)});}}else publish({phase:'unknown',error:errorCode(error)});}return false;}finally{busy=false;} },
+    async history(older=false){if(!active||!visible||!admissionAllowed()||state.history.phase==='loading'||older&&!state.history.nextCursor)return false;const token=++historyEpoch;publish({history:{...state.history,phase:'loading'}});try{const page=await client.history(projectId,older?state.history.nextCursor:null);if(!active||!visible||!admissionAllowed()||token!==historyEpoch)return false;if(page.conversations.some(item=>item.projectId!==projectId))throw failure('INVALID_RESPONSE');if(older&&page.nextCursor===state.history.nextCursor)throw failure('INVALID_RESPONSE');publish({history:{...page,conversations:older?[...state.history.conversations,...page.conversations.filter(item=>!state.history.conversations.some(existing=>existing.id===item.id))]:page.conversations,phase:'ready'}});return true;}catch{if(active&&token===historyEpoch)publish({history:{...state.history,phase:'error'}});return false;}},
+    async upload(file: {name:string;type:string;size:number;arrayBuffer():Promise<ArrayBuffer>},expectedSelection=state.selectionKey) { if (expectedSelection!==state.selectionKey || !active || !visible || !admissionAllowed() || busy || agentTaskSessionBusy(state) || state.pending || state.project?.readOnly || receiptsBlocked || file.size > (/\.cube$/iu.test(file.name)?7:30)*1024*1024 || file.size < 1) return false; const owner=generation,selectionKey=state.selectionKey,pending:AgentTaskPending={requestId:requestId(),runId:null,action:'upload',conversationId:state.conversationId}; try{persist(pending);}catch{publish({phase:'error',error:'LOCAL_RECEIPT_UNAVAILABLE'});return false;} busy=true;publish({phase:'submitting',error:''});let dispatched=false;try{const bytes=new Uint8Array(await file.arrayBuffer());if(!active||!visible||!admissionAllowed()||owner!==generation||state.selectionKey!==selectionKey)throw failure('REQUEST_BLOCKED');if(bytes.byteLength!==file.size)throw failure('INVALID_FILE');let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));dispatched=true;const upload=await client.upload(projectId,{requestId:pending.requestId,name:file.name,mimeType:uploadMimeType(file.type),dataBase64:btoa(binary)});if(!active||owner!==generation||state.selectionKey!==selectionKey)return false;publish({uploads:[...state.uploads,upload],phase:'ready',error:''});persist(null);return true;}catch(error){if(active&&owner===generation){if(!dispatched){try{persist(null);}catch{}publish({phase:'error',error:errorCode(error)});}else if(agentTaskDefinitiveFailure(error)){try{persist({...pending,definitiveRejected:true});busy=false;return await reconcile();}catch{publish({phase:'unknown',error:errorCode(error)});}}else publish({phase:'unknown',error:errorCode(error)});}return false;}finally{busy=false;} },
     removeUpload(id:string,selectionKey=state.selectionKey){if(active&&visible&&selectionKey===state.selectionKey&&!state.pending&&!busy)publish({uploads:state.uploads.filter(upload=>upload.id!==id)});},
     authorize,
-    async select(runId: string) { if (busy || receiptsBlocked || state.pending || !active || !visible) return; authorizationEpoch++; const owner = ++generation; detach(); publish({ phase: 'loading' }); try { const next = await client.read(projectId, runId); if (active && owner === generation) { const id=conversationIdOf(next.run);publish({...switchDraft(id),conversationId:id,rounds:[],snapshot:null});accept(next); publish({ phase: 'ready' }); void observe(); } } catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); } },
-    async selectConversation(id:string){if(busy||receiptsBlocked||state.pending||!active||!visible||!uuid.test(id))return false;authorizationEpoch++;const owner=++generation;selectionOwner=owner;detach();publish({phase:'loading',error:''});try{const value=await readConversation(id,owner);if(!value)return false;showConversation(value);void observe();return true;}catch(error){if(active&&owner===generation)publish({phase:'read_error',error:errorCode(error)});return false;}finally{if(selectionOwner===owner)selectionOwner=null;}},
+    async select(runId: string) { if (busy || receiptsBlocked || state.pending || !active || !visible || !admissionAllowed()) return; authorizationEpoch++; const owner = ++generation; detach(); publish({ phase: 'loading' }); try { const next = await client.read(projectId, runId); if (active && owner === generation) { const id=conversationIdOf(next.run);publish({...switchDraft(id),conversationId:id,rounds:[],snapshot:null});accept(next); publish({ phase: 'ready' }); void observe(); } } catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); } },
+    async selectConversation(id:string){if(busy||receiptsBlocked||state.pending||!active||!visible||!admissionAllowed()||!uuid.test(id))return false;authorizationEpoch++;const owner=++generation;selectionOwner=owner;detach();publish({phase:'loading',error:''});try{const value=await readConversation(id,owner);if(!value)return false;showConversation(value);void observe();return true;}catch(error){if(active&&owner===generation)publish({phase:'read_error',error:errorCode(error)});return false;}finally{if(selectionOwner===owner)selectionOwner=null;}},
     cancelSelection(){if(selectionOwner===null)return;selectionOwner=null;generation++;detach();publish({phase:'ready',error:''});void observe();},
-    newConversation(){if(!active||!visible||busy||receiptsBlocked||agentTaskNewConversationBlock(state))return false;authorizationEpoch++;generation++;detach();selectionChosen=true;publish({...switchDraft('new'),conversationId:null,conversation:null,rounds:[],snapshot:null,phase:'ready',error:''});return true;},
+    newConversation(){if(!active||!visible||!admissionAllowed()||busy||receiptsBlocked||agentTaskNewConversationBlock(state))return false;authorizationEpoch++;generation++;detach();selectionChosen=true;publish({...switchDraft('new'),conversationId:null,conversation:null,rounds:[],snapshot:null,phase:'ready',error:''});return true;},
     setVisible(next: boolean) { if(visible===next)return;authorizationEpoch++;visible = next; if (!visible) detach(); else if (active && !busy) void load(); },
     dispose() { active = false; generation++;historyEpoch++;authorizationEpoch++; detach(); },
   };

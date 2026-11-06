@@ -19,11 +19,13 @@ function harness() {
     viewRef: { current: { activeMode: 'editing', editing: { selectedClipId: clip.id as string | null, quickAssetId: null } } },
     navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, clipLoudnessEpoch: { current: 1 },
     previewAssetRef: { current: null as string | null }, comparisonIdRef: { current: null as string | null }, clipDraftRef: { current: null }, subtitlesRef: { current: null }, timelineFormatRef: { current: null } };
-  const env = { ...refs, savedClipLoudnessFields, timelineAudioPreviewSourceIdentity,
+  let readable=true;
+  const projectMedia={canRead:(asset:unknown)=>Boolean(asset)&&readable};
+  const env = { ...refs, projectMedia, savedClipLoudnessFields, timelineAudioPreviewSourceIdentity,
     projectSessionReady: () => true, inspectorEpoch: 1, online: true, auth: true, loading: false, workbenchReady: true,
     rightDockTab: 'properties', propertiesPage: 'inspector', panelVisible: () => true, webSettingsOpen: false,
     inspectorDirty: false, formatDirty: false, timelineBusy: false, isBusy: () => false };
-  return { refs, env, read: () => Function(...Object.keys(env), `${segment}; return clipLoudnessContext();`)(...Object.values(env)) as TimelineClipLoudnessContext };
+  return { refs, env, setReadable:(value:boolean)=>{readable=value;}, read: () => Function(...Object.keys(env), `${segment}; return clipLoudnessContext();`)(...Object.values(env)) as TimelineClipLoudnessContext };
 }
 test('actual App getter binds saved selection/graph and masks comparison/source-modal/settings/hidden/recovery/pending contexts', () => {
   const h = harness(), c = h.read(); assert.equal(c.clipId, input().clipId); assert.equal(c.gain, .75); assert.equal(timelineClipLoudnessAvailable(c), true);
@@ -55,4 +57,20 @@ test('actual video hasAudio false/unknown remains opt-in; only backend NO_AUDIO 
     if (hasAudio === false) assert.match(controller.getState().error, /后端确认.*没有可测音轨/);
     else assert.doesNotMatch(controller.getState().error, /后端确认.*没有可测音轨/);
   }
+});
+
+test('the selected source read gate revokes retained prepare without removing clips or unrelated media', async () => {
+  const h=harness(),saved=h.refs.dataRef.current.timeline,assets=h.refs.dataRef.current.assets;
+  saved.clips.push({...saved.clips[0],id:id(8),assetId:id(9)});assets.push({...assets[0],id:id(9)});
+  const selected=assets[0].id;
+  h.env.projectMedia.canRead=(asset:unknown)=>Boolean(asset&&typeof asset==='object'&&'id' in asset&&asset.id===selected);
+  assert.equal(h.read().connected,true,'An unrelated unreadable clip does not block selected-clip observation');
+  const before=structuredClone({saved,assets});let reads=0;
+  const controller=createTimelineClipLoudnessController({getContext:h.read,read:async()=>{reads++;return report();}});
+  controller.attach(h.read());const retained=controller.getState();
+  h.env.projectMedia.canRead=()=>false;assert.equal(h.read().connected,false);
+  assert.equal(await controller.prepare(retained),null);assert.equal(reads,0);assert.equal(controller.getState().report,null);
+  assert.deepEqual({saved,assets},before);
+  h.env.projectMedia.canRead=asset=>Boolean(asset);controller.setContext(h.read());await controller.prepare(controller.getState());assert.equal(reads,1);
+  assets.splice(0,1);assert.equal(h.read().connected,false);assert.equal(await controller.prepare(controller.getState()),null);assert.equal(reads,1);
 });

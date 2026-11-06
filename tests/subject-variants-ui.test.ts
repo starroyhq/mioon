@@ -411,6 +411,7 @@ function harness(file: string) {
     const code = transformSync(source, {loader: name.endsWith('.tsx') ? 'tsx' : 'ts', format: 'cjs'}).code;
     Function('require', 'module', 'exports', code)((request: string) => {
       if (request === 'react') return {...react, default: react};
+      if (request === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'};
       if (request === './i18n/I18nProvider.tsx') return {useI18n: () => i18nTestModule('zh-Hans').useI18n()};
       if (request.endsWith('subject-variant-state.ts')) return variantState;
       if (request.endsWith('subject-state.ts')) return subjectState;

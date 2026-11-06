@@ -13,7 +13,7 @@
   <a href="https://github.com/starroyhq/mioon/releases/tag/v0.1.0">下载 v0.1.0</a> ·
   <a href="#mioon-能帮你做什么">功能介绍</a> ·
   <a href="#开始试用">开始试用</a> ·
-  <a href="docs/WORKSPACE-GUIDE.zh-CN.md">使用指南</a> ·
+  <a href="docs/USER-GUIDE.zh-CN.md">使用指南</a> ·
   <a href="https://github.com/starroyhq/mioon/issues">问题反馈</a>
 </p>
 
@@ -29,7 +29,7 @@ Mioon 是内置视频 Agent **Mio** 的开源创作工作台，面向个人创�
 
 创意和关键决定由你掌握：付费生成默认先征得你确认，你正在编辑的地方 Mio 不会改。不用 Mio 时，工作台本身就能导入、剪辑、加手动字幕、预览和导出已有素材，不需要 AI 账号或密钥。
 
-Mioon 免费开源（Apache-2.0），项目和素材默认保存在自己的电脑上。
+Mioon 免费开源（Apache-2.0），本地保存作品：项目内容在 `.mioon` 文件中，媒体保存在项目旁边或你选择的位置；版本历史、Mio 对话和后台任务属于这台电脑的本机记录，不在项目文件里。
 
 ## Mioon 能帮你做什么
 
@@ -42,7 +42,7 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 - **你说了算**：本地修改和付费操作可以分别设为直接执行或需要确认，付费生成默认需要确认；你正在编辑的地方 Mio 不会改；它计划修改的地方被你改过时，那一步不执行，Mio 按你保存的内容重新规划
 - **模型自选**：DeepSeek、通义千问、Kimi、Claude 等服务或本机 Ollama，支持 Chat Completions、Responses 和 [Anthropic Messages](docs/AGENT-ANTHROPIC.md) 三种协议，由你明确选择，不自动重试或回退到其他协议
 
-使用方法见 [Mio 使用说明](docs/MIO-GUIDE.zh-CN.md)，执行与恢复规则见 [Mio 执行与恢复](docs/AGENT-TASKS-V2.md)。模型服务按你在服务商的用量计费。
+连接按服务独立保存，Mio 从中选用一个模型。使用方法见 [Mio 使用说明](docs/MIO-GUIDE.zh-CN.md)，执行与恢复规则见 [Mio 执行与恢复](docs/AGENT-TASKS-V2.md)。模型服务按你在服务商的用量计费。
 
 [![Mioon 的 Mio 助手空闲面板：可按项目授权协助创作，尚未发起模型调用](docs/images/readme/mio.webp)](docs/images/readme/mio.webp)
 
@@ -79,7 +79,7 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 
 桌面版请从 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)选择适合电脑的安装包，按[安装与首次运行指南](docs/INSTALL.zh-CN.md)开始。本次提供 **macOS Apple Silicon 和 macOS Intel** 安装包，Linux 与 Windows 桌面包暂不发布。**以发布页实际公开的安装附件为准；若尚未公开，说明本轮发布仍在准备中**
 
-安装包不需要 Node.js 或 pnpm，但仍需自己安装 **FFmpeg 和 ffprobe**，并在首次运行时选择它们。Mioon 目前没有自动更新，更新时需重新下载。功能与验证范围见 [v0.1.0 说明](docs/releases/v0.1.0.zh-CN.md)
+安装包不需要 Node.js 或 pnpm。**FFmpeg 和 ffprobe 不随应用附带**：首次启动可选择下载 Mioon 提供的 7.1.5（GPL，源码随工具发布提供），也可选自己安装的工具，步骤见[首次配置](docs/USER-GUIDE.zh-CN.md#首次启动配置视频工具)。Mioon 目前没有自动更新，更新时需重新下载。功能与验证范围见 [v0.1.0 说明](docs/releases/v0.1.0.zh-CN.md)
 
 希望从源码运行时，继续按[源码试用指南](docs/CORE-TRIAL.zh-CN.md)操作；Mac 用户另见 [Mac 源码启动说明](docs/MAC-SOURCE-TRIAL.zh-CN.md)
 
@@ -90,18 +90,18 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 3. **开始剪辑**：把素材加入剪辑区，排好顺序，调整长短并更新预览
 4. **导出成片**：检查设置，等待完成，再打开导出的视频看看
 
-每一步的详细操作见[工作区使用指南](docs/WORKSPACE-GUIDE.zh-CN.md)，也可以使用仓库提供的[本地示例素材](examples/README.md)练习
+每一步的详细操作见[使用指南](docs/USER-GUIDE.zh-CN.md)，也可以使用仓库提供的[本地示例素材](examples/README.md)练习。首页示例入口、完整项目文件操作、版本/备份、项目规范、用量及本机记录清理等界面仍有未合入项，指南已逐处标“待合入后核对”
 
 ## 使用前了解这几件事
 
-- **素材默认保存在本机**：导入素材不会自动上传。使用外部 AI 功能时，相关提示词或素材会发送给你配置的服务，并可能产生费用
-- **记得备份项目**：当前没有自动云同步；本机[项目备份](docs/PROJECT-BACKUPS.md)按项目保存，仍需妥善保管项目文件与数据目录
+- **导入不自动上传**：桌面导入引用原文件，不会替你复制媒体。使用外部 AI 功能时，相关提示词或素材会发送给你配置的服务，并可能产生费用
+- **记得保管项目和素材**：当前没有自动云同步；分享或移动时需带上 `.mioon` 和引用的媒体。本机[项目备份](docs/PROJECT-BACKUPS.md)只保存项目内容，不含媒体、Mio 对话或版本历史；需要的本机记录也应另行保管
 - **先从短片开始**：当前适合轻量剪辑，复杂转场、变速和多人协作等功能尚未提供
 - **仍在桌面试用阶段**：先用不重要的素材完成一个短片。模型与生成服务的支持范围不等于所有供应商均已通过真实付费验收；版本范围见[发布说明](docs/releases/v0.1.0.zh-CN.md)。问题与验证限制持续记录在 [Issues](https://github.com/starroyhq/mioon/issues) 中，遇到问题欢迎反馈
 
 ## 更多说明
 
-- [安装与首次运行](docs/INSTALL.zh-CN.md) · [完整使用指南](docs/WORKSPACE-GUIDE.zh-CN.md) · [源码试用](docs/CORE-TRIAL.zh-CN.md)
+- [安装与首次运行](docs/INSTALL.zh-CN.md) · [完整使用指南](docs/USER-GUIDE.zh-CN.md) · [源码试用](docs/CORE-TRIAL.zh-CN.md)
 - [连接 AI 视频服务](docs/PROVIDERS.md) · [生成图片](docs/IMAGE-ACTIVATION.md) · [编辑图片](docs/IMAGE-EDITING.md)
 - [导出设置](docs/EXPORT-SETTINGS.md) · [项目备份](docs/PROJECT-BACKUPS.md)
 - [反馈问题与建议](https://github.com/starroyhq/mioon/issues)

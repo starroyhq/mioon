@@ -13,6 +13,8 @@ import type { SubjectState } from './subject-state.ts';
 import { useSubjectInteraction } from './use-subjects.ts';
 import type { UseSubjectsResult } from './use-subjects.ts';
 import './subjects.css';
+import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
+import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 
 export interface SubjectAssetView { id?: string; projectId?: string; name?: string; mimeType?: string; [key: string]: unknown }
 export interface SubjectVersionLike { id?: string; assetId?: string; projectId?: string | null; number?: number; width?: number; height?: number }
@@ -25,6 +27,8 @@ export function SubjectImage({ version, assets, label = '' }: { version?: Subjec
   const { t, renderMessage } = useI18n();
   const asset = assets.find(item => item.id === version?.assetId && item.projectId === version?.projectId);
   const [failed, setFailed] = useState<string | null>(null);
+  const gate = useProjectMediaReadGate();
+  if (asset && gate && !gate.canRead(asset)) return <span className="subject-image-missing pf-media-blocked" data-testid="subject-media-blocked"><MediaStatusBadge status={gate.statusFor(asset)} /><MediaStatusNote status={gate.statusFor(asset)} /></span>;
   if (!version || !asset || failed === version.assetId) return <span className="subject-image-missing" role="status">{version ? t('subjects.image.missing') : t('subjects.version.notLoaded')}</span>;
   return <img className="subject-image" src={assetUrl(asset)} alt={label || asset.name} loading="lazy" onError={() => setFailed(version.assetId ?? null)} />;
 }

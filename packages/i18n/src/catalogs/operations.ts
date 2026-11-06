@@ -142,10 +142,10 @@ export const operationMessages = {
     "ja": "プロジェクトのバージョンを照合し、安定したrequestIdで元の結果を再現して名前を変更します。タイムライン、ショット、メディアは変更しません。復元済みまたは候補ワークスペースでは使用できません"
   },
   "operation.project.delete": {
-    "zh-Hans": "明确确认后永久删除空闲项目、所属记录、项目草稿与独占托管文件；拒绝运行中、待对账任务或活动媒体传输，保留共享文件、外部源文件与已有备份。稳定requestId重放原回执并仅继续本地清理；pending表示清理未完成，恢复与候选工作区不可用",
-    "zh-Hant": "明確確認後永久刪除閒置專案、所屬記錄、專案草稿與獨占託管檔案；拒絕執行中、待核對任務或活動媒體傳輸，保留共用檔案、外部來源檔案與既有備份。穩定requestId重播原回執並僅繼續本機清理；pending表示清理未完成，復原與候選工作區無法使用",
-    "en": "Permanently delete an idle project, its records, project drafts and exclusively owned managed files after explicit confirmation. Refuses running or unreconciled tasks and active media transfers; preserves shared files, external sources and existing backups. A stable requestId replays the original receipt and resumes only local cleanup; pending means cleanup is incomplete. Unavailable in restored or candidate workspaces",
-    "ja": "明示的な確認後、アイドル状態のプロジェクト、その記録と下書き、専有する管理ファイルを完全に削除します。実行中または未照合のタスクや進行中のメディア転送がある場合は拒否し、共有ファイル、外部ソース、既存のバックアップは保持します。安定したrequestIdで元の受領結果を再現し、ローカルのクリーンアップだけを再開します。pendingはクリーンアップ未完了を示します。復元済みまたは候補ワークスペースでは使用できません"
+    "zh-Hans": "明确确认登记文件、身份和项目版本后，仅由受信桌面主进程将关闭的 .mioon 移到废纸篓，确定成功才撤登记；素材和全部本机记录保留。拒绝打开窗口、会写回项目的工作及 Mio 等待回答或审批，S8 草稿不阻止。稳定requestId重放确定回执；结果不明不重做、不撤登记。网页、headless、CLI 和 MCP 暂不可用",
+    "zh-Hant": "明確確認登記檔案、身分和專案版本後，僅由受信桌面主程序將關閉的 .mioon 移到垃圾桶，確定成功才撤銷登記；素材和全部本機記錄保留。拒絕開啟中的視窗、會寫回專案的工作及 Mio 等待回答或核准，S8 草稿不阻止。穩定requestId重播確定回執；結果不明不重做、不撤銷登記。網頁、headless、CLI 和 MCP 暫不可用",
+    "en": "After explicit confirmation of the registered file, identity and project revision, only the trusted desktop main process trashes the closed .mioon file. Registration is removed only after definite success; all media and local records remain. Refuses open windows, work that may write back, and Mio awaiting an answer or approval; S8 drafts do not block. A stable requestId replays the definite receipt; an uncertain outcome is never retried and keeps the registration. Unavailable in web, headless, CLI and MCP clients",
+    "ja": "登録ファイル、ファイルID、プロジェクトのリビジョンを明示的に確認した後、信頼されたデスクトップのメインプロセスだけが閉じた .mioon をゴミ箱に移動します。成功が確定した場合のみ登録を解除し、素材とローカル記録はすべて保持します。開いているウィンドウ、プロジェクトに書き戻す可能性がある処理、回答や承認を待つ Mio がある場合は拒否します。S8 の下書きは妨げません。固定requestIdで確定した受領結果を再現し、結果不明時は再実行も登録解除もしません。ウェブ、headless、CLI、MCP では未対応です"
   },
   "operation.project.summary.list": {
     "zh-Hans": "只读列出项目首页摘要，包括现有封面、已保存时间线规格、镜头数、时长、内容更新时间与本机最近打开时间；不初始化时间线、不生成缩略图、不读取媒体字节或调用供应商",

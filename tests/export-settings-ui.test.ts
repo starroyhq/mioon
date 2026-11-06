@@ -6,6 +6,20 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
+// Load the production context module. Standalone previews have no Provider;
+// null carries no claim that any media was verified by an owner.
+const standaloneMediaGate=(()=>{
+  const react={createContext:(value:unknown)=>({value}),useContext:(context:{value:unknown})=>context.value};
+  const module:{exports:Record<string,unknown>}={exports:{}};
+  const source=readFileSync(new URL('../apps/web/src/project-media-read-gate.tsx',import.meta.url),'utf8');
+  globalThis.Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(name:string)=>{
+    if(name==='react')return react;
+    if(name==='./project-file/MediaStatus.tsx')return {MediaStatusBadge:'MediaStatusBadge',MediaStatusNote:'MediaStatusNote'};
+    throw Error(`Unexpected standalone media gate dependency: ${name}`);
+  });
+  return module.exports;
+})();
+assert.equal((standaloneMediaGate.useProjectMediaReadGate as ()=>unknown)(),null);
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
 import * as settingsState from '../apps/web/src/export-settings-state.ts';
 import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
@@ -243,7 +257,7 @@ const textOf = (tree: unknown): string => Array.isArray(tree) ? tree.map(textOf)
 function component(file: string, extra: Loose = {}): (props: Loose)=>Element {
   const module: {exports: {default?: unknown}} = { exports: {} }, react: Loose = { createElement: element, useRef: (current: unknown) => ({ current }), useEffect() {}, useLayoutEffect() {}, useState: (value: unknown) => [value, () => {}] }; react.default = react;
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
-  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String, mediaUrl } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
+  Function('module', 'exports', 'require', 'fetch', transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18n.i18nTestModule() : name === '../../../packages/i18n/src/index.ts' ? i18n : name === 'react' ? extra.react || react : name === './creation-i18n.ts' ? creationI18n : name === './export-display.ts' ? exportDisplay : name === './export-settings-state.ts' ? settingsState : name === './export-delivery-state.ts' ? deliveryState : name === './export-range-state.ts' ? rangeState : name === './export-preflight-state.ts' ? preflightState : name === './project-media-read-gate.tsx' ? standaloneMediaGate : name === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : name === './api.ts' ? { statusText: String, mediaUrl } : extra[name] || { __esModule: true, default: 'Stub', Button: 'Button', WorkbenchButton: 'WorkbenchButton', WorkbenchAlert: 'WorkbenchAlert', Label: 'Label', WorkbenchSelect: 'Select', Badge: 'Badge' }, extra.fetch || globalThis.fetch);
   return module.exports.default as (props: Loose)=>Element;
 }
 

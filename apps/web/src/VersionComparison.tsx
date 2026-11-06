@@ -1,3 +1,5 @@
+import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
+import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';
 import { Button } from '@mioon/ui/components/button';
@@ -17,6 +19,8 @@ type Props = { context: ComparisonContext; getContext: () => ComparisonContext; 
 /** Explicit, transient A/B choices. No new generation, render or implicit selection. */
 export default function VersionComparison(props: Props) {
   const { t, formatDate, formatNumber } = useI18n();
+  const gate = useProjectMediaReadGate();
+  const admitted = (binding: ComparisonBinding) => !gate || gate.canRead({id: binding.assetId, projectId: binding.projectId});
   const [choices, setChoices] = useState<[Selection, Selection]>([null, null]);
   const [errors, setErrors] = useState<[string | null, string | null]>([null, null]);
   const [synchronized, setSynchronized] = useState(false), [differencesOnly, setDifferencesOnly] = useState(false);
@@ -37,7 +41,7 @@ export default function VersionComparison(props: Props) {
   });
   const available = comparisonAvailable(props.context);
   const bindings = choices.map(choice => choice?.binding || null);
-  const valid = choices.map(choice => Boolean(choice && !choice.retired && comparisonCurrent(choice.binding, props.context)));
+  const valid = choices.map(choice => Boolean(choice && !choice.retired && admitted(choice.binding) && comparisonCurrent(choice.binding, props.context)));
   const pairReady = valid.every(Boolean) && comparisonPairCurrent(bindings[0], bindings[1], props.context);
   const options = comparisonOptions(props.context);
   const choiceKey = (values: [Selection, Selection]) => JSON.stringify(values.map(value => value ? [value.binding.key, value.retired] : null));
@@ -59,7 +63,7 @@ export default function VersionComparison(props: Props) {
   }, []);
   function current(index: number, element?: HTMLVideoElement): ComparisonBinding | null {
     const state = live.current, choice = state.choices[index], context = state.props.getContext();
-    if (state.closed || !choice || choice.retired || !comparisonCurrent(choice.binding, context) ||
+    if (state.closed || !choice || choice.retired || !admitted(choice.binding) || !comparisonCurrent(choice.binding, context) ||
       !comparisonPairCurrent(state.choices[0]?.binding || null, state.choices[1]?.binding || null, context) ||
       state.choices.some(value => value?.retired) || document.visibilityState === 'hidden') return null;
     if (element && (players.current[index] !== element || !element.isConnected || element.getAttribute('src') !== choice.binding.url)) return null;
@@ -157,6 +161,8 @@ export default function VersionComparison(props: Props) {
 export function ComparisonVideo({ binding, label, controls = true, register, onPlay, onError, onLoadedMetadata, onTimeUpdate, onPause, onEnded }: { binding: ComparisonBinding; label: string; controls?: boolean;
   register: (element: HTMLVideoElement | null) => void; onPlay: (event: React.SyntheticEvent<HTMLVideoElement>) => void; onError: (event: React.SyntheticEvent<HTMLVideoElement>) => void;
   onLoadedMetadata?: () => void; onTimeUpdate?: () => void; onPause?: (event: React.SyntheticEvent<HTMLVideoElement>) => void; onEnded?: (event: React.SyntheticEvent<HTMLVideoElement>) => void }) {
+  const gate = useProjectMediaReadGate(), identity = {id: binding.assetId, projectId: binding.projectId};
+  const blocked = Boolean(gate && !gate.canRead(identity));
   const media = useRef<HTMLVideoElement | null>(null), callbacks = useRef({ register, onPlay, onError, onLoadedMetadata, onTimeUpdate, onPause, onEnded });
   useLayoutEffect(() => { callbacks.current = { register, onPlay, onError, onLoadedMetadata, onTimeUpdate, onPause, onEnded }; register(media.current); });
   useLayoutEffect(() => {
@@ -164,6 +170,7 @@ export function ComparisonVideo({ binding, label, controls = true, register, onP
     if (element && element.getAttribute('src') !== binding.url) element.setAttribute('src', binding.url);
     callbacks.current.register(element);
     return () => { callbacks.current.register(null); if (element) { element.pause(); element.removeAttribute('src'); element.load(); } };
-  }, [binding.key]);
+  }, [binding.key, blocked]);
+  if (blocked && gate) return <div className="pf-media-blocked" data-testid="comparison-media-blocked"><MediaStatusBadge status={gate.statusFor(identity)} /><MediaStatusNote status={gate.statusFor(identity)} /></div>;
   return <video ref={media} src={binding.url} aria-label={label} controls={controls} muted playsInline preload="metadata" onPlay={event => callbacks.current.onPlay(event)} onPlaying={event => callbacks.current.onPlay(event)} onError={event => callbacks.current.onError(event)} onLoadedMetadata={() => callbacks.current.onLoadedMetadata?.()} onTimeUpdate={() => callbacks.current.onTimeUpdate?.()} onPause={event => callbacks.current.onPause?.(event)} onEnded={event => callbacks.current.onEnded?.(event)} />;
 }

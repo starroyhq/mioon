@@ -7,6 +7,7 @@ import ProjectHome from './ProjectHomeDirectoryScreen.tsx';
 import type { ProjectEntryController } from './project-entry-state.ts';
 import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type {MenuHelpControl} from './desktop-menu-client.ts';
+import {readProjectEntryIdentity} from './project-entry-identity.ts';
 
 /** A scoped workspace catalog and new-project form. It remains mounted when
  * hidden so its inputs and unknown request always retain their exact owner. */
@@ -17,6 +18,7 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
 }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const state = controller.getState(), context = controller.getContext();
+  const identity = controller.identity;
   const disabled = context.quitting ? t('projects.quittingCreate')
     : state.createUnknown ? t('projects.previousCreateUnknown')
       : state.openUnknown ? t('projects.checkOpenResult')
@@ -26,7 +28,9 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
-    <ProjectHome parentGuardsDeparture catalogReady={state.catalogReady} onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} active={state.shown && !context.quitting} summaryScope={controller.locator?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+    <ProjectHome parentGuardsDeparture catalogReady={state.catalogReady && !identity?.getState().identityBlocked}
+      readDirectory={identity ? () => readProjectEntryIdentity(identity) : undefined}
+      onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
       page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => controller.open(id)}
       onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}

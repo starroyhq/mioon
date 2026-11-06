@@ -14,22 +14,24 @@ const validRevision = (value:number) => Number.isSafeInteger(value) && value > 0
 
 /** Per-visible-selection memory only. A failed attempt consumes its ticket;
  * only a new observation/explicit retry can request more work. */
-export function createMioUsageController({client,onChange=()=>{},concurrency=4}: {readonly client:MioUsageClient; readonly onChange?:(value:MioUsageState)=>void; readonly concurrency?:number}) {
+export function createMioUsageController({client,onChange=()=>{},concurrency=4,isAdmissionAllowed=()=>true}: {readonly client:MioUsageClient; readonly isAdmissionAllowed?:()=>boolean; readonly onChange?:(value:MioUsageState)=>void; readonly concurrency?:number}) {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 4) throw new TypeError('Invalid usage read concurrency');
+  // Native ownership can be revoked before React renders the blocked state.
+  const admitted=()=>{try{return isAdmissionAllowed()===true;}catch{return false;}};
   let owner:MioUsageOwner|null=null,key='',generation=0,active=0,scheduled=false,disposed=false,revision=0,detailRunId:string|null=null;
   const entries=new Map<string,Entry>();
-  const publish=() => {if(disposed)return;const rounds:Record<string,MioUsageView>={};for(const[id,item]of entries)rounds[id]=item.view;onChange({rounds,detailRunId,revision:++revision});};
+  const publish=() => {if(disposed||!admitted())return;const rounds:Record<string,MioUsageView>={};for(const[id,item]of entries)rounds[id]=item.view;onChange({rounds,detailRunId,revision:++revision});};
   const mark=(entry:Entry) => {entry.wanted++;if(entry.meta.terminal)entry.finalRequired=entry.wanted;entry.view={...entry.view,stale:entry.view.value!==null,final:false};};
-  const schedule=()=>{if(scheduled||disposed||!owner?.visible)return;scheduled=true;queueMicrotask(()=>{scheduled=false;pump();});};
+  const schedule=()=>{if(scheduled||disposed||!owner?.visible||!admitted())return;scheduled=true;queueMicrotask(()=>{scheduled=false;pump();});};
   function pump(){
-    if(disposed||!owner?.visible)return;
+    if(disposed||!owner?.visible||!admitted())return;
     for(const[id,item]of entries){
       if(active>=concurrency)break;
       if(item.flight||item.wanted<=item.attempted||!projectIdSchema.safeParse(id).success||!validRevision(item.meta.revision))continue;
       const controller=new AbortController(),epoch=generation,ticket=item.wanted,minimum=item.meta.revision,projectId=owner.projectId;
       item.attempted=ticket;item.flight=controller;active++;item.view={...item.view,phase:'loading',code:null,stale:item.view.value!==null,final:false};publish();
-      const current=()=>!disposed&&generation===epoch&&owner?.visible&&entries.get(id)===item&&item.flight===controller&&!controller.signal.aborted;
-      void Promise.resolve().then(()=>client.read(projectId,id,{signal:controller.signal})).then(value=>{
+      const current=()=>!disposed&&admitted()&&generation===epoch&&owner?.visible&&entries.get(id)===item&&item.flight===controller&&!controller.signal.aborted;
+      void Promise.resolve().then(()=>{if(current())return client.read(projectId,id,{signal:controller.signal});}).then(value=>{
         if(!current())return;
         const parsed=mioRunUsageSchema.safeParse(value);
         if(!parsed.success||parsed.data.runId!==id)throw new Error('BACKEND_PROTOCOL_ERROR');
@@ -64,13 +66,13 @@ export function createMioUsageController({client,onChange=()=>{},concurrency=4}:
       if(changed)publish();schedule();
     },
     observe(observation:MioUsageObservation){
-      const item=entries.get(observation.runId);if(disposed||!owner?.visible||!item||!Number.isSafeInteger(observation.serial)||observation.serial<1)return;
+      const item=entries.get(observation.runId);if(disposed||!owner?.visible||!admitted()||!item||!Number.isSafeInteger(observation.serial)||observation.serial<1)return;
       if(observation.sequence!==undefined){if(!Number.isSafeInteger(observation.sequence)||observation.sequence<=item.sequence)return;item.sequence=observation.sequence;}
       else {if(observation.serial<=item.serial)return;item.serial=observation.serial;}
       mark(item);publish();schedule();
     },
-    refresh(runId:string){const item=entries.get(runId);if(!disposed&&owner?.visible&&item){mark(item);publish();schedule();}},
-    open(runId:string){if(disposed||!owner?.visible||!entries.has(runId))return;detailRunId=runId;mark(entries.get(runId)!);publish();schedule();},
+    refresh(runId:string){const item=entries.get(runId);if(!disposed&&owner?.visible&&admitted()&&item){mark(item);publish();schedule();}},
+    open(runId:string){if(disposed||!owner?.visible||!admitted()||!entries.has(runId))return;detailRunId=runId;mark(entries.get(runId)!);publish();schedule();},
     close(){if(detailRunId!==null){detailRunId=null;publish();}},
     dispose(){if(disposed)return;disposed=true;generation++;for(const item of entries.values())item.flight?.abort();entries.clear();active=0;owner=null;},
   };

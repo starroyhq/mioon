@@ -11,6 +11,7 @@ import {readBuildMetadata, validateStagedMetadata} from './build-metadata.ts';
 import {verifySubtitleResources,packagedSubtitleDirectory,SUBTITLE_RESOURCE_FILES} from './subtitle-resources.ts';
 import {preserveMacRuntimeNotices,inspectMacRuntimeNotices,writeMacRuntimeNoticeProvenance} from './runtime-notices.ts';
 import type {RuntimeNoticeContext,RuntimeNoticeManifest} from './runtime-notices.ts';
+import {verifyProjectExampleResources} from '@mioon/business/project-example-resources';
 
 /** The electron-builder beforePack context fields this module consumes. */
 export interface BuilderPackContext {
@@ -49,6 +50,8 @@ export interface BuilderConfig {
     hardenedRuntime: true;
     gatekeeperAssess: false;
     identity: null;
+    signIgnore: string[];
+    extendInfo: Record<string,string>;
     artifactName: string;
   };
 }
@@ -66,9 +69,10 @@ export function builderConfig(channel: string): BuilderConfig {
     icon: path.join(directory, 'resources/icon.png'),
     files: ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*'],
     asar: true,
-    // External FFmpeg cannot read ASAR members. Only this pinned resource bundle
-    // is copied outside ASAR; existing archive scanner limits stay unchanged.
-    extraResources: [{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]}],
+    // SQLite templates and external FFmpeg resources must be ordinary files
+    // outside ASAR. Both resource trees are verified before and after packing.
+    extraResources: [{from:'build/subtitles',to:'subtitles',filter:[...SUBTITLE_RESOURCE_FILES]},
+      {from:'build/examples',to:'examples',filter:['**/*']}],
     npmRebuild: false,
     publish: null,
     // Reject stale versions and identities before any packaging work.
@@ -76,6 +80,7 @@ export function builderConfig(channel: string): BuilderConfig {
       const metadata: unknown = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
       validateStagedMetadata(metadata, { appVersion, identity });
       await verifySubtitleResources(path.join(context.packager.info.appDir,'subtitles'));
+      verifyProjectExampleResources(path.join(context.packager.info.appDir,'examples'));
     },
     // Preserve this target's notices before createMacApp removes runtime-root
     // copies. Keep them outside ASAR and verify both after the bundle rename.
@@ -89,10 +94,11 @@ export function builderConfig(channel: string): BuilderConfig {
       const appOutDir = typeof context.appOutDir === 'string' ? context.appOutDir : null;
       const manifest = await inspectMacRuntimeNotices(context, electronVersion, appOutDir === null ? undefined : runtimeNotices.get(appOutDir));
       await verifySubtitleResources(packagedSubtitleDirectory(context));
+      verifyProjectExampleResources(path.join(path.dirname(packagedSubtitleDirectory(context)), 'examples'));
       await writeMacRuntimeNoticeProvenance(context, electronVersion, appVersion, manifest);
       if (appOutDir !== null) runtimeNotices.delete(appOutDir);
     },
-    // Double-clicking a .mioon file stages an import; see src/project-file-open.ts.
+    // OS file intents open the original project path through the trusted host.
     fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
     electronFuses: {
       runAsNode: false,
@@ -120,6 +126,16 @@ export function builderConfig(channel: string): BuilderConfig {
       hardenedRuntime: true,
       gatekeeperAssess: false,
       identity: null,
+      // The signer treats ordinary binary data as signing candidates. Keep
+      // these manifest-verified files read-only; the outer app seals them as
+      // resources. No executable, framework or other resource is excluded.
+      signIgnore: [String.raw`[/\\]Contents[/\\]Resources[/\\]examples[/\\]timeline-basics[/\\](?:manifest\.json|README\.md|SOURCE\.md|LICENSE|timeline-basics\.mioon|media[/\\](?:overlay-star\.png|scene-[ab]\.mp4|sound-bed\.wav))$`],
+      extendInfo: {
+        NSDesktopFolderUsageDescription: 'Mioon opens and saves the projects and media you choose on your Desktop.',
+        NSDocumentsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Documents.',
+        NSDownloadsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Downloads.',
+        NSRemovableVolumesUsageDescription: 'Mioon opens and saves the projects and media you choose on removable drives.',
+      },
       artifactName: `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`
     }
   };

@@ -8,6 +8,8 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/backend-lease.ts';
+import {createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
+import {createDesktopHarnessProjectEntries} from './helpers/strict-desktop-harness-types.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, ''), { mode: 'strip' });
@@ -18,24 +20,27 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
   settingsClose = () => {}, imageClose = () => {} }: {close?: () => Promise<void>; start?: (options: Record<string, unknown>) => Promise<unknown>; diagnosticFailure?: boolean; settingsClose?: () => void; imageClose?: () => void} = {}) {
   const port = new EventEmitter() as EventEmitter & {postMessage(message: unknown): void}, events = new EventEmitter();
   const messages: Array<Record<string, unknown>> = [], exits: unknown[] = [], intervals: Array<() => void> = [];
+  const nativeConfig = {version: 1, backendId: '11111111-1111-4111-8111-111111111111',
+    publicKey: '302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};
   let now = 100000;
   port.postMessage = (message: Record<string, unknown>) => {
     if (diagnosticFailure && message.type === 'exit-diagnostic') throw new Error(privateData);
     messages.push(JSON.parse(JSON.stringify(message)));
   };
-  const sandbox = { path,
+  const sandbox = { path, createProjectEntryControlBroker,
     comfyModuleModeFromEnvironment,
     createBackendLease, BACKEND_LEASE_TIMING, performance: {now: () => now},
     process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
       pid: 23456, on: events.on.bind(events), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {},
-    startServer: (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); assert.equal(options.dataDir,privateData); assert.equal(options.cacheDir,privateData+'/cache'); assert.equal(options.projectsDir,privateData+'/projects'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
+    startServer: async (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); assert.equal(options.dataDir,privateData); assert.equal(options.cacheDir,privateData+'/cache'); assert.equal(options.projectsDir,privateData+'/projects'); const server = await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server && typeof server === 'object'); return {...server, projectEntries: createDesktopHarnessProjectEntries()}; },
     initializeSubtitleResources: () => {}, onMediaProcess: () => {}, initializeDesktopPrivateStorage: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
     createVideoSecretClient: () => ({ close() {}, refreshStorage: async () => {} }),
-    createNativeAudioPreviewAuthority: () => ({}),
+    createProjectTrashClient: () => ({close() {}}),
+    createNativeAudioPreviewAuthority: (config: unknown) => { assert.equal(config, nativeConfig); return {}; },
     Date: class extends Date { static now() { return now; } },
     setInterval: (callback: () => void) => { intervals.push(callback); return intervals.length; },
     clearInterval: () => {}, setImmediate
@@ -45,6 +50,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     messages, exits, events,
     diagnostics: () => messages.filter(message => message.type === 'exit-diagnostic'),
     start: () => port.emit('message', { data: { type: 'start', token: privateData,
+      backendId: nativeConfig.backendId, nativeAudioPreview: nativeConfig,
       dataDir: privateData, cacheDir: privateData+'/cache', projectsDir: privateData+'/projects', distDir: privateData, subtitleResourcesDir: privateData } }),
     stop: () => port.emit('message', { data: { type: 'stop', reason: privateData } }),
     ping: () => port.emit('message', { data: { type: 'ping' } }),
@@ -197,7 +203,7 @@ for (const [origin, trigger] of [
         createBackendLease, BACKEND_LEASE_TIMING, performance,
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
-        createVideoSecretClient: () => ({}), initializeDesktopPrivateStorage() {},
+        createVideoSecretClient: () => ({}), createProjectTrashClient: () => ({close() {}}), initializeDesktopPrivateStorage() {},
         onMediaProcess() {}, setInterval() { return 1; }, clearInterval() {}, setImmediate
       });
       ${trigger}

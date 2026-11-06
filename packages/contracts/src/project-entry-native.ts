@@ -5,8 +5,11 @@ import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from './project-name.ts';
 import {recentProjectSchema} from './project-registry.ts';
 import type {RecentProject} from './project-registry.ts';
 import type {ProjectEntriesResponse} from './project-entry.ts';
-import {projectAdoptCopyInputSchema, projectCopyInputSchema} from './project-copies.ts';
+import {projectAdoptCopyInputSchema, projectCopyInputSchema, projectCopySourceSchema} from './project-copies.ts';
 import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectTemplateInput} from './project-copies.ts';
+import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
+import type {z as Zod} from 'zod';
+import type {NativeAssetMediaPort} from './asset-media-native.ts';
 
 /** Trusted utility control payloads, not HTTP/renderer messages. The main
  * process generates opaque UUID window owners; these are not BrowserWindow's
@@ -21,10 +24,18 @@ export const projectEntryCreateInputSchema = z.object({
   projectFile: absolutePath.refine(file => file.endsWith(PROJECT_FILE_EXTENSION), 'Choose a .mioon file.').optional(),
 }).strict().refine(value => value.parentDir === undefined || value.projectFile === undefined, 'Choose one project location.');
 export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePath, windowId}).strict();
-export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId}).strict();
+export const projectEntryPrepareAcquireInputSchema = z.object({projectId: projectIdSchema}).strict();
+export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional()}).strict();
 export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
 export const projectEntryWindowRevokedSchema = z.object({windowId, projectId: projectIdSchema}).strict();
+/** A trusted read-only observation. File identities/stamps never reach the page. */
+export const projectEntrySourceObservationSchema = z.object({
+  source: projectCopySourceSchema,
+  name: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
+  original: recentProjectSchema.nullable(),
+}).strict();
+export type ProjectEntrySourceObservation = z.infer<typeof projectEntrySourceObservationSchema>;
 export const projectEntrySaveAsInputSchema = projectCopyInputSchema.extend({windowId});
 export const projectEntryAdoptCopyInputSchema = projectAdoptCopyInputSchema.extend({windowId});
 export type ProjectEntryCreateInput = z.infer<typeof projectEntryCreateInputSchema>;
@@ -38,15 +49,22 @@ export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInp
 
 /** No server types, SQL, caller-selected lease kinds or persisted lease IDs. */
 export interface ProjectEntryControlPort {
+  readonly nativeRelink?: NativeAssetMediaPort;
   listRecent(): ProjectEntriesResponse;
   create(input: ProjectEntryCreateInput): Promise<RecentProject>;
   openPath(input: ProjectEntryOpenPathInput): Promise<ProjectEntryWindow>;
   acquire(input: ProjectEntryAcquireInput): Promise<ProjectEntryWindow>;
+  /** Resolve current registration before the native volume admission; no lease. */
+  prepareAcquire?(input: {projectId:string}): Promise<RecentProject>;
   release(input: ProjectEntryReleaseInput): void;
   duplicate?(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   saveAs?(input: ProjectEntrySaveAsInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
   adoptCopy?(input: ProjectEntryAdoptCopyInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;
   copyTo?(input: ProjectCopyToInput): Promise<ProjectCopyResponse>;
   instantiateTemplate?(input: ProjectTemplateInput): Promise<ProjectCopyResponse>;
+  trash?(input: ProjectDeleteInput): Promise<ProjectDeleteResponse>;
   onWindowRevoked(listener: (event: ProjectEntryWindowRevoked) => void): () => void;
+  /** Read-only selected-copy observation; never a renderer-supplied stamp. */
+  inspectSelectedCopy?(input: {projectFile:string}): Promise<Zod.infer<typeof projectCopySourceSchema>>;
+  observeSource?(input: {projectFile:string}): Promise<ProjectEntrySourceObservation>;
 }
