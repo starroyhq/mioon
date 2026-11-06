@@ -35,7 +35,7 @@ export interface NewProjectFileDialogProps {
   readonly values: NewProjectFileValues;
   readonly onChange: (patch: Partial<NewProjectFileValues>) => void;
   /** The chosen folder as shown, e.g. `~/Movies/Mioon`. */
-  readonly location: { readonly display: string; readonly risks?: readonly ProjectLocationRisk[]; readonly status?: 'ready' | 'checking' | 'unavailable' | 'unselected' };
+  readonly location: { readonly display: string; readonly message?: string; readonly risks?: readonly ProjectLocationRisk[]; readonly status?: 'ready' | 'checking' | 'unavailable' | 'unselected' };
   /** Web creation currently always creates a folder. Do not offer a switch
    * until the selected creation capability can implement both layouts. */
   readonly folderMode?: 'choose' | 'always' | 'never';
@@ -96,7 +96,7 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
             {onChooseLocation && <WorkbenchButton data-testid="pf-create-choose" disabled={frozen} onClick={() => {if (editable()) current.current.onChooseLocation?.();}}><Icon name="folder" size={14} />{t('projectFile.create.choose')}</WorkbenchButton>}
           </div>
           {location.status === 'checking' && <p className="pf-help" role="status" data-testid="pf-create-location-checking">{t('projectFile.location.checking')}</p>}
-          {location.status === 'unavailable' && <p className="wb-field-error" role="alert" data-testid="pf-create-location-unavailable">{t('projectFile.location.unavailable')}</p>}
+          {location.status === 'unavailable' && <p className="wb-field-error" role="alert" data-testid="pf-create-location-unavailable">{location.message ?? t('projectFile.location.unavailable')}</p>}
           {location.risks && <ProjectLocationRiskNotice risks={location.risks} />}
           <label className="pf-check">
             <input type="checkbox" data-testid="pf-create-folder" checked={createFolder} disabled={frozen || folderMode !== 'choose'} onChange={event => {if (current.current.folderMode === undefined || current.current.folderMode === 'choose') change({ createFolder: event.target.checked });}} />

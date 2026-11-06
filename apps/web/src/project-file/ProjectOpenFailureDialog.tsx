@@ -18,6 +18,7 @@ export interface ProjectOpenFailureDialogProps {
   readonly failure: ProjectOpenIssue;
   /** The name in the registry; without one the file name without `.mioon` is shown. */
   readonly projectName: string | null;
+  readonly notice?: string;
   /** @deprecated Ignored. Staged results are not unfinished generation tasks. */
   readonly inboxCount?: number;
   /** Undefined remains unknown; a confirmed zero is needed to enable removal. */
@@ -137,7 +138,8 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   }
   return <Dialog open={props.open} onOpenChange={next => {const value = current.current; if (!next && !value.interactionBlocked && value.action.kind !== 'working' && value.action.kind !== 'unknown') value.onClose(); }}>
     <WorkbenchDialogContent inert={props.interactionBlocked || undefined} title={title} description={body} size="confirm" showCloseButton={false} className="pf-dialog pf-open-dialog" data-testid="pf-open-dialog" data-code={failure.code} footer={buttons}>
-      {action.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-open-error" icon={<WorkbenchIcon name="warning" size={16} />}>{t(`projectFile.open.failed.${action.action}`)}</WorkbenchAlert>}
+      {props.notice && <WorkbenchAlert tone="warning" data-testid="pf-open-notice">{props.notice}</WorkbenchAlert>}
+      {action.kind === 'error' && !props.notice && <WorkbenchAlert tone="danger" data-testid="pf-open-error" icon={<WorkbenchIcon name="warning" size={16} />}>{t(`projectFile.open.failed.${action.action}`)}</WorkbenchAlert>}
       {action.kind === 'unknown' && <WorkbenchAlert tone="warning" data-testid="pf-open-unknown">{t('projectFile.open.outcomeUnknown')}{run('recheck', t('projectFile.create.recheck'), props.onRecheck, true)}</WorkbenchAlert>}
     </WorkbenchDialogContent>
   </Dialog>;

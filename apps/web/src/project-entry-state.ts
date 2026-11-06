@@ -47,7 +47,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   let observedEntry = 0;
   let openFlight: object | null = null;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
-  let nativeActionMetadata = {busy: false, unknown: false, version: 0};
+  let nativeActionMetadata: {busy: boolean; unknown: boolean; version: number; allowOpen?: true} = {busy: false, unknown: false, version: 0};
   const nativeResultPermits = new WeakSet<() => boolean>();
   let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
     error: '', notice: '', creating: false, createUnknown: false, version: 0, shown: initialContext.role === 'launcher', mode: 'open',
@@ -56,6 +56,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
   const alive = (owner: number) => active && lifetime === owner;
   const ownerCurrent = () => active && !context.quitting && !context.leaseRevoked && !context.settingsModalOpen && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
   const available = () => ownerCurrent() && visible && state.shown && (context.role !== 'launcher' || context.editorCount === 0) && !permit && !state.creating && !state.createUnknown && !state.openUnknown;
+  const homeNavigationBlocked = () => nativeActionMetadata.busy || nativeActionMetadata.unknown && !nativeActionMetadata.allowOpen;
   const interact = () => { intent++; interactionSerial++; autoConsumed = true; };
   function reportCreate(next: LauncherCreateMetadata) {
     if (!Number.isSafeInteger(next.version) || next.version <= metadata.version) return;
@@ -113,7 +114,11 @@ export function createProjectEntryController({ client, bridge, context: initialC
       return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
     } catch (error) {
       if (desktopClient && alive(owner)) onNativeOpenError(error, projectId);
-      if (desktopClient && alive(owner) && error !== null && typeof error === 'object' && 'code' in error && ['PROJECT_ACCESS_DENIED', 'PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER'].includes(String(error.code))) {
+      const preHostRefusal = permit?.token === token && !permit.consumed && error !== null && typeof error === 'object' && 'code' in error && 'status' in error &&
+        (error.code === 'PROJECT_ENTRY_UNAVAILABLE' && error.status === 409 || error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503));
+      // Only a still-unconsumed renderer admission proves these main refusals
+      // preceded host work. The same code after consumption remains unknown.
+      if (desktopClient && alive(owner) && (preHostRefusal || error !== null && typeof error === 'object' && 'code' in error && ['PROJECT_ACCESS_DENIED', 'PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER'].includes(String(error.code)))) {
         if (permit?.token === token) {permit = null; emit({sealed: false, openUnknown: false, phase: 'error', error: msg('projects.windowOpenFailed')});}
         return false;
       }
@@ -124,7 +129,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
-    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || homeNavigationBlocked()) return false;
     if (!isProjectWindowId(projectId) || !ownerCurrent() || openFlight || permit || state.creating || state.createUnknown || state.openUnknown) return false;
     const flight = {}; openFlight = flight;
     try {
@@ -149,7 +154,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     catch { /* Missing evidence keeps the original owner and latch. */ }
   }
   async function show(mode: 'open' | 'new'): Promise<boolean> {
-    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown && !(mode === 'open' && nativeActionMetadata.allowOpen)) return false;
     if (!ownerCurrent() || permit || state.creating || state.createUnknown || state.openUnknown) {
       if (active) emit({ notice: msg('projects.checkCurrentRequest') });
       return false;
@@ -160,7 +165,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     return true;
   }
   async function dismiss(): Promise<boolean> {
-    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || homeNavigationBlocked()) return false;
     if (context.role !== 'editor') return false;
     interact();
     const ticket = await departure(msg('projects.keepCreateClose'));
@@ -194,6 +199,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     }
   }
   async function create(name: string, description: string, timelinePresetId?: string): Promise<boolean> {
+    if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown) return false;
     if (!available() || openFlight || !state.catalogReady) return false;
     // The view's submit latch may already be busy; this exact call alone owns
     // it. No second submission can enter after creating is set synchronously.
@@ -250,6 +256,18 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (!current()) return null;
     nativeResultPermits.add(current); return current;
   }
+  async function prepareHomeNativeRecheck(expectedHomeVersion: number): Promise<(() => boolean) | null> {
+    const ready = () => ownerCurrent() && visible && !permit && !state.creating && !state.createUnknown && !state.openUnknown && !metadata.busy &&
+      !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown && (context.role !== 'launcher' || context.editorCount === 0);
+    const retained = () => nativeActionMetadata.unknown && !nativeActionMetadata.busy && nativeActionMetadata.version === expectedHomeVersion;
+    if (!Number.isSafeInteger(expectedHomeVersion) || !ready() || !retained()) return null;
+    const ticket = {owner: lifetime, localVersion, metadataVersion: metadata.version, contextVersion, intent, external: JSON.stringify(readAdditionalSnapshot().identity)};
+    const same = () => ready() && alive(ticket.owner) && ticket.intent === intent && ticket.localVersion === localVersion && ticket.metadataVersion === metadata.version && ticket.contextVersion === contextVersion && JSON.stringify(readAdditionalSnapshot().identity) === ticket.external;
+    // Rechecking a retained outcome is new consent, even without a dirty form.
+    // The exception names exactly one home owner, never native or global unknown.
+    if (!await confirm(msg('nativeEntry.recheckConsent')) || !same() || !retained() || !await refresh() || !same() || !retained()) return null;
+    nativeResultPermits.add(same); return same;
+  }
   async function openNativeCreated(projectId: string, granted: () => boolean): Promise<boolean> {
     if (!isProjectWindowId(projectId) || !nativeResultPermits.has(granted) || !granted() || openFlight) return false;
     const flight = {}; openFlight = flight;
@@ -265,13 +283,14 @@ export function createProjectEntryController({ client, bridge, context: initialC
     boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
     setVisible(value: boolean) { visible = value; },
-    canMutate: () => available() && !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown && !nativeActionMetadata.busy && !nativeActionMetadata.unknown,
+    canMutate: () => available() && !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown && !homeNavigationBlocked(),
     prepareNativeDeparture: async (preserveDraft = false) => Boolean(await prepareNativeDeparture(preserveDraft)),
     prepareHomeNativeDeparture: async () => {const granted = await prepareNativeDeparture(false); if (granted) nativeResultPermits.add(granted); return granted;},
-    prepareNativeResultDeparture, openNativeCreated, openNativeResult: openNativeCreated,
-    reportNativeAction(next: {busy: boolean; unknown: boolean; version: number}) {if (Number.isSafeInteger(next.version) && next.version > nativeActionMetadata.version) {nativeActionMetadata = {...next};}},
+    prepareHomeNativeRecheck, prepareNativeResultDeparture, openNativeCreated, openNativeResult: openNativeCreated,
+    reportNativeAction(next: {busy: boolean; unknown: boolean; version: number; allowOpen?: true}) {if (Number.isSafeInteger(next.version) && next.version > nativeActionMetadata.version) {nativeActionMetadata = {...next};}},
     finishNativeOpen() {if (ownerCurrent() && context.role === 'editor') emit({shown: false});},
-    isNativeActionCurrent: () => ownerCurrent() && visible,
+    isNativeActionCurrent: ownerCurrent,
+    canStartNativeAction: () => ownerCurrent() && visible,
     consume(entryToken: string, projectId: string): ProjectEntryConsumption {
       const accepted = Boolean(ownerCurrent() && permit && !permit.consumed && permit.token === entryToken && permit.projectId === projectId &&
         permit.contextId === context.contextId && permit.backendId === context.backendId && permit.localVersion === localVersion && !state.createUnknown);

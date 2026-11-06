@@ -48,6 +48,7 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     },
     onOpened: controller.finishNativeOpen,
     isCurrent: controller.isNativeActionCurrent,
+    canStart: controller.canStartNativeAction,
     message: () => translate.current('projectFile.storage.destinationMessage'), onChange: () => rerender(value => value + 1)}) : null);
   desktopRef.current = desktop;
   useEffect(() => {
@@ -65,10 +66,10 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
       const visible = document.visibilityState !== 'hidden', returned = !wasVisible && visible;
       wasVisible = visible;
       controller.setVisible(visible);
-      if (!visible) desktop?.observeAvailability();
       // Do not supersede boot's first catalog and initial choice. A launcher
       // that finished boot while hidden still refreshes on its first reveal.
-      if (returned && context.role === 'launcher' && (!bootPending || controller.getState().catalogReady)) void controller.refresh();
+      if (returned && context.role === 'launcher' && (!bootPending || controller.getState().catalogReady)) void controller.refresh().then(() => desktop?.resumeKnownOpen(false));
+      else if (returned) void desktop?.resumeKnownOpen(context.role === 'editor');
       if (returned && desktop && !desktop.getState().capabilities) void desktop.initialize(context.role === 'editor');
     };
     const interaction = () => {if (effectActive) controller.interacted();};

@@ -20,6 +20,7 @@ export interface ProjectHomeNativeActionMetadata {
   readonly busy: boolean;
   readonly unknown: boolean;
   readonly version: number;
+  readonly allowOpen?: true;
 }
 export interface ProjectHomeNativeActionIdentity {readonly appLibraryScope: string; readonly instanceId: string; readonly epoch: number}
 type ExampleInput=Parameters<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>[0];
@@ -28,7 +29,8 @@ export interface ProjectHomeNativeActionState {
   readonly project: RecentProject | null;
   readonly exampleName: string | null;
   readonly exampleReceipt: ProjectCopyResponse | null;
-  readonly reason: 'busy' | 'denied' | 'unavailable' | 'facts' | null;
+  readonly dialogHidden: boolean;
+  readonly reason: 'busy' | 'denied' | 'unavailable' | 'facts' | 'selection' | null;
   readonly notice: {readonly kind: 'success' | 'changed'; readonly name: string} | null;
   readonly version: number;
 }
@@ -39,7 +41,7 @@ type Pending = {readonly authority: Authority} & (
 const sameIdentity=(a:ProjectHomeNativeActionIdentity|null,b:ProjectHomeNativeActionIdentity):boolean=>a!==null&&a.appLibraryScope===b.appLibraryScope&&a.instanceId===b.instanceId&&a.epoch===b.epoch;
 const busy=(kind:ProjectHomeNativeActionState['kind'])=>['checking','working-trash','choosing-example','working-example'].includes(kind);
 const uncertain=(kind:ProjectHomeNativeActionState['kind'])=>kind==='trash-unknown'||kind==='example-unknown';
-const initial=():ProjectHomeNativeActionState=>({kind:'idle',project:null,exampleName:null,exampleReceipt:null,reason:null,notice:null,version:0});
+const initial=():ProjectHomeNativeActionState=>({kind:'idle',project:null,exampleName:null,exampleReceipt:null,dialogHidden:false,reason:null,notice:null,version:0});
 function immutableProject(project:RecentProject):RecentProject {
   Object.freeze(project.fileIdentity);
   if(project.summary){if(project.summary.cover)Object.freeze(project.summary.cover);Object.freeze(project.summary);}
@@ -67,12 +69,14 @@ export function createProjectHomeNativeActionsController(options: {
   let active=false,lifetime=0,serial=0,state=initial(),authority:Authority|null=null,pending:Pending|null=null,retainedUnknown=false,rechecking=false;
   let knownExample:{readonly input:ExampleInput;readonly receipt:ProjectCopyResponse}|null=null;
   const requestId=options.newRequestId??(()=>globalThis.crypto.randomUUID());
+  const metadata=():ProjectHomeNativeActionMetadata=>({busy:busy(state.kind),unknown:uncertain(state.kind)||retainedUnknown,version:state.version,
+    ...(state.kind==='example-unknown'&&state.dialogHidden?{allowOpen:true as const}:{})});
   function emit(patch:Partial<ProjectHomeNativeActionState>):void {
     state=Object.freeze({...state,...patch,version:state.version+1});
-    options.onChange?.(state,Object.freeze({busy:busy(state.kind),unknown:uncertain(state.kind)||retainedUnknown,version:state.version}));
+    options.onChange?.(state,Object.freeze(metadata()));
   }
   const current=(value:Authority):boolean=>active&&value.lifetime===lifetime&&sameIdentity(options.owner(),value.identity)&&value.current();
-  const idle=():void=>{authority=null;emit({kind:'idle',project:null,exampleName:null,exampleReceipt:null,reason:null});};
+  const idle=():void=>{authority=null;emit({kind:'idle',project:null,exampleName:null,exampleReceipt:null,dialogHidden:false,reason:null});};
   const retireRead=(value:Authority,call:number):void=>{if(!pending&&active&&lifetime===value.lifetime&&call===serial)idle();};
   const refresh=async():Promise<void>=>{
     // Read failure has its own directory state. It cannot turn a verified
@@ -141,19 +145,28 @@ export function createProjectHomeNativeActionsController(options: {
       pending=null;retainedUnknown=false;
       if(operation.kind==='trash'&&(code==='PROJECT_TRASH_SOURCE_CHANGED'||code==='REVISION_CONFLICT')){
         authority=null;emit({kind:'idle',project:null,notice:{kind:'changed',name:operation.project.name}});await refresh();
-      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
+      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:operation.kind==='example'&&code==='PROJECT_ENTRY_UNAVAILABLE'?'selection':code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
       return false;
     }
   }
   const controller={
     getState:()=>state,
-    getMetadata:():ProjectHomeNativeActionMetadata=>({busy:busy(state.kind),unknown:uncertain(state.kind)||retainedUnknown,version:state.version}),
+    getMetadata:metadata,
     activate():void {if(!active){active=true;lifetime++;}},
     dispose():void {
       active=false;lifetime++;serial++;
       if(pending){unknown(pending);}else if(!uncertain(state.kind)){authority=null;emit({kind:'idle',project:null,reason:null});}
     },
-    close():boolean {if(busy(state.kind)||uncertain(state.kind)||state.kind==='opening-example')return false;serial++;pending=null;knownExample=null;idle();return true;},
+    close():boolean {
+      if(state.kind==='example-unknown'){emit({dialogHidden:true});return true;}
+      if(busy(state.kind)||uncertain(state.kind)||state.kind==='opening-example')return false;serial++;pending=null;knownExample=null;idle();return true;
+    },
+    async refreshExample():Promise<boolean> {
+      if(!active||state.kind!=='example-unknown'||!pending||!sameIdentity(options.owner(),pending.authority.identity))return false;
+      // A read of the catalog can reveal a registration, never prove whether
+      // the original template request completed or authorize another write.
+      await refresh();return true;
+    },
     dismissNotice():void {emit({notice:null});},
     rejectPreparation(example:boolean):void {if(active&&state.kind==='idle')emit({kind:example?'example-blocked':'trash-blocked',project:null,reason:'facts'});},
     async prepareTrash(projectId:string,permit:()=>boolean=()=>true):Promise<boolean> {
@@ -197,6 +210,9 @@ export function createProjectHomeNativeActionsController(options: {
     },
     async recheck(permit:()=>boolean=()=>true,nativePermit?:()=>boolean):Promise<boolean> {
       const original=pending;if(rechecking||!original||!uncertain(state.kind)||!active||!sameIdentity(options.owner(),original.authority.identity)||!permit())return false;
+      // Main retains an unknown template promise, so replay cannot discover
+      // its outcome. Only an already verified late receipt can be recovered.
+      if(original.kind==='example'&&knownExample?.input!==original.input)return false;
       // Only an explicit new consent may rebind a retained input after a
       // visibility lifetime ended. It keeps the original ID/token/body exact.
       const value:Authority=Object.freeze({identity:original.authority.identity,lifetime,current:permit,...(nativePermit?{nativePermit}:{})});
@@ -216,6 +232,8 @@ export function createProjectHomeNativeActionsController(options: {
       if(!original||!current(original.authority))return false;
       return controller.recheck(original.authority.current,original.authority.nativePermit);
     },
+    canRecheckRetained:():boolean=>pending!==null&&current(pending.authority),
+    canRecheckTrash:():boolean=>active&&!rechecking&&pending?.kind==='trash'&&state.kind==='trash-unknown'&&sameIdentity(options.owner(),pending.authority.identity),
     retryOpen:()=>openCreated(false),
   };
   return controller;

@@ -4,6 +4,7 @@ import {projectLocationRisks} from './native-project-desktop-state.ts';
 import {NewProjectFileDialog} from './project-file/NewProjectFileDialog.tsx';
 import {ProjectOpenFailureDialog} from './project-file/ProjectOpenFailureDialog.tsx';
 import {ProjectLocationRiskBanner} from './project-file/ProjectLocationRisk.tsx';
+import {useI18n} from './i18n/I18nProvider.tsx';
 
 function useDesktop(desktop: NativeProjectDesktopController | null) {
   const [, update] = useState(0);
@@ -15,6 +16,7 @@ export function NativeProjectLocationRisk({desktop}: {readonly desktop: NativePr
   return state && desktop ? <ProjectLocationRiskBanner risks={state.risks} onDismiss={desktop.dismissRisk} /> : null;
 }
 export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly desktop: NativeProjectDesktopController | null; readonly formIntent?: number}) {
+  const {t} = useI18n();
   const state = useDesktop(desktop);
   const handledFormIntent = useRef(0);
   useEffect(() => {
@@ -25,11 +27,11 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
   const failure = state.failure;
   return <>
     <NewProjectFileDialog interactionBlocked={state.blocked} open={state.createOpen} values={state.values} onChange={desktop.change} state={state.createState}
-      location={{display: state.selection?.displayPath ?? '', status: state.selection ? 'ready' : 'unselected', risks: state.selection ? projectLocationRisks(state.selection.facts) : []}}
+      location={{display: state.selection?.displayPath ?? '', status: state.selectionInvalid ? 'unavailable' : state.selection ? 'ready' : 'unselected', ...(state.selectionInvalid ? {message: t('nativeEntry.selectionExpired')} : {}), risks: state.selection ? projectLocationRisks(state.selection.facts) : []}}
       onChooseLocation={enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}
       onSubmit={() => {void desktop.create();}} onClose={desktop.closeCreate}
       onRecheck={() => {void desktop.recheck();}} onRetryOpen={() => {void desktop.retryOpen();}} />
-    {failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action}
+    {failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
       onClose={desktop.closeFailure}
       onOpenSystemSettings={enabled && capabilities?.help ? () => {void desktop.openPrivacySettings();} : undefined}
       onChooseLocation={failure.issue.code === 'PROJECT_ACCESS_DENIED' && 'context' in failure.issue && failure.issue.context === 'create' && enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}

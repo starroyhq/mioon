@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
-import {build} from 'esbuild';
+import {build, transformSync} from 'esbuild';
 import {createProjectHomeNativeActionsController} from '../apps/web/src/project-home-native-actions-state.ts';
 import type {ProjectHomeNativeActions, ProjectHomeNativeActionIdentity, ProjectHomeNativeActionMetadata, ProjectHomeNativeActionState} from '../apps/web/src/project-home-native-actions-state.ts';
 import {projectEntriesResponseSchema} from '../packages/contracts/src/project-entry.ts';
@@ -11,7 +11,8 @@ import {projectDeleteResponseSchema} from '../packages/contracts/src/project-lif
 import type {ProjectDeleteInput} from '../packages/contracts/src/project-lifecycle.ts';
 import type {ProjectDesktopSelection, ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
-import {BrowserRpcError} from '../apps/web/src/browser-rpc.ts';
+import {BrowserRpcError, browserRpc} from '../apps/web/src/browser-rpc.ts';
+import {rpc as legacyRpc} from '../apps/web/src/api.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {RECENT_PROJECTS} from './fixtures/project-file-ui/fixtures.ts';
 import {tagOf, escapeHtml} from './helpers/project-file-ui.ts';
@@ -20,6 +21,9 @@ import {createProjectEntryController} from '../apps/web/src/project-entry-state.
 import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
 import type {ProjectWindowBridge, ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
 import {projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import {i18nTestModule} from './helpers/i18n.ts';
+import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 
 const id=(n:number)=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const projectId=RECENT_PROJECTS[0]!.projectId;
@@ -131,8 +135,8 @@ test('template dispatch uses the main-validated name/token and keeps created rec
 
 test('unknown template confirmation preserves the exact original token and request without allocating another destination',async()=>{
  const f=fixture();f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await f.controller.startExample('Storage','Suggested');
- const original=f.examples[0]!;assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(f.controller.close(),false);assert.deepEqual(f.opened,[]);assert.equal(await f.controller.startExample('Storage','Suggested'),false);
- await f.controller.recheck();assert.equal(f.examples.length,2);assert.equal(f.examples[1],original);assert.equal(f.controller.getMetadata().unknown,true);assert.deepEqual(f.opened,[]);
+ const original=f.examples[0]!;assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(f.controller.close(),true);assert.equal(f.controller.getState().dialogHidden,true);assert.deepEqual(f.opened,[]);assert.equal(await f.controller.startExample('Storage','Suggested'),false);
+ assert.equal(await f.controller.recheck(),false);assert.equal(f.examples.length,1);assert.equal(f.examples[0],original);assert.equal(f.controller.getMetadata().unknown,true);assert.deepEqual(f.opened,[]);
 });
 
 test('a confirmed template ACK opens once with the literal native permit; failed open retains its receipt and only retries opening',async()=>{
@@ -166,51 +170,115 @@ test('a validated ACK arriving after disposal is retained privately and explicit
  assert.equal(await pending,false);assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(await f.controller.recheck(),true);assert.equal(f.examples.length,1);assert.equal(f.controller.getState().kind,'example-created');assert.equal(f.controller.getState().exampleReceipt!.project.projectId,id(60));
 });
 
-function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>boolean)|null>){
+function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>boolean)|null>,prepareRecheck?:(version:number)=>Promise<(()=>boolean)|null>,onOpen?:(id:string)=>Promise<boolean>){
  const source=readFileSync(new URL('../apps/web/src/ProjectHomeDirectoryScreen.tsx',import.meta.url),'utf8'),start=source.indexOf('  async function nativeAction('),end=source.indexOf('  async function open(',start);assert.ok(start>=0&&end>start);
- const busy:boolean[]=[],env={preparingNative:{current:false},opening:{current:null},active:()=>true,canAct:()=>f.controller.getState().kind==='idle',form:{current:{dirty:false,busy:false,version:1}},current:{current:{phase:'home',onPrepareNativeAction:prepare}},lifetime:{current:1},mounted:{current:true},setOpeningBusy:(value:boolean)=>busy.push(value),confirm:async()=>assert.fail('Native consent must not be repeated by the page'),t:(key:string)=>key,native:f.controller};
+ const busy:boolean[]=[],env={preparingNative:{current:false},opening:{current:null},active:()=>true,ready:()=>({snapshot:f.snapshot}),canAct:()=>f.controller.getState().kind==='idle',form:{current:{dirty:false,busy:false,version:1}},current:{current:{phase:'home',onPrepareNativeAction:prepare,onPrepareNativeRecheck:prepareRecheck,onOpen,onRetry:async()=>false,parentGuardsDeparture:Boolean(onOpen)}},lifetime:{current:1},mounted:{current:true},setOpeningBusy:(value:boolean)=>busy.push(value),confirm:async()=>assert.fail('Native consent must not be repeated by the page'),t:(key:string)=>key,native:f.controller};
+ const guardStart=source.indexOf('  const baseCanAct ='),guardEnd=source.indexOf('  async function reload(',guardStart);assert.ok(guardStart>=0&&guardEnd>guardStart);
+ env.canAct=lenientFunction('env',`with(env){${source.slice(guardStart,guardEnd)};return canAct;}`)(env) as ()=>boolean;
  const action=lenientFunction('env',`with(env){${source.slice(start,end)};return nativeAction;}`)(env) as (action:'trash'|'example'|'recheck',projectId?:string)=>Promise<void>;
- return {action,env,busy};
+ const openEnd=source.indexOf('  const state = directory.getState()',end);assert.ok(openEnd>end);
+ const open=lenientFunction('env',`with(env){${source.slice(end,openEnd)};return open;}`)(env) as (id:string)=>Promise<boolean>;
+ return {action,open,env,busy};
 }
 
 function parentScreenFixture(){
- let entry!:ReturnType<typeof createProjectEntryController>,confirmations=0,preparations=0;
+ let entry!:ReturnType<typeof createProjectEntryController>,confirmations=0,preparations=0,recheckPreparations=0,legacyWrites=0,consent:boolean|Promise<boolean>=true;
  const granted:(()=>boolean)[]=[],openedPermits:(()=>boolean)[]=[],hostOpens:string[]=[],parentReads:unknown[][]=[];
  const extra={dirty:false,busy:false,unknown:false,identity:[1]};
  const f=fixture(async(projectId,permit)=>{openedPermits.push(permit);return entry.openNativeResult(projectId,permit);},metadata=>entry.reportNativeAction(metadata));
  const context:ProjectWindowContext={version:2,role:'launcher',windowId:id(30),contextId:id(31),backendId:f.snapshot.instanceId,initialProjectId:null,autoOpen:false,editorProjectId:null,editorPhase:'none',editorCount:0,entryMode:null,entryVersion:0,entryReceipt:null,settingsSlot:null,settingsVersion:0,selectionProjectId:null,selectionVersion:0,locatorStatus:null,locatorIntent:null,quitting:false};
  const bridge:ProjectWindowBridge={context:async()=>context,openProject:async projectId=>{hostOpens.push(projectId);return{ok:true,reason:'accepted',targetWindowId:id(90),targetPhase:null};},publishLocatorStatus:async()=>true,requestLocatorAction:async()=>true,requestProjectEntry:async()=>true,showProjects:async()=>true,showSettings:async()=>true,closeSettings:async()=>true,editorStatus:async()=>true,subscribe:()=>()=>{}};
  const identity=projectEntryOwnerFixture(()=>f.snapshot,parentReads);
- entry=createProjectEntryController({context,bridge,identity,readAdditionalSnapshot:()=>extra,confirm:async()=>{confirmations++;return true;},newToken:()=>id(91),
-  client:createLauncherClient(async()=>assert.fail('Home native actions cannot dispatch the legacy create RPC'),{parseCreateInput:value=>value,readDirectory:async()=>f.snapshot})});
+ entry=createProjectEntryController({context,bridge,identity,readAdditionalSnapshot:()=>extra,confirm:async()=>{confirmations++;return consent;},newToken:()=>id(91),
+  client:createLauncherClient(async()=>{legacyWrites++;assert.fail('Home native actions cannot dispatch the legacy create RPC');},{parseCreateInput:value=>value,readDirectory:async()=>f.snapshot})});
  entry.activate();entry.reportCreate({dirty:true,busy:false,version:1});
- const screen=screenAction(f,async()=>{preparations++;const permit=await entry.prepareHomeNativeDeparture();if(permit)granted.push(permit);return permit;});
+ const screen=screenAction(f,async()=>{preparations++;const permit=await entry.prepareHomeNativeDeparture();if(permit)granted.push(permit);return permit;},async version=>{recheckPreparations++;return entry.prepareHomeNativeRecheck(version);},id=>entry.open(id));
  // Match the production ProjectEntry refresh callback: interaction observation
  // does not revoke the departure intent or discard the retained draft.
  f.setRefresh(async()=>{entry.interacted();await entry.refresh();});
- return{f,entry,screen,context,extra,parentReads,granted,openedPermits,hostOpens,get confirmations(){return confirmations;},get preparations(){return preparations;}};
+ return{f,entry,screen,context,extra,parentReads,granted,openedPermits,hostOpens,setConsent(value:boolean|Promise<boolean>){consent=value;},get confirmations(){return confirmations;},get preparations(){return preparations;},get recheckPreparations(){return recheckPreparations;},get legacyWrites(){return legacyWrites;}};
 }
 
-test('actual parent and Screen recheck a template unknown with the original opaque permit and exact input',async t=>{
+test('P3a actual parent and Screen require renewed consent before an exact trash recheck after visibility lifetime changes',async t=>{
  const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
- f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});
- await screen.action('example');const original=f.examples[0]!;
- assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(entry.readCloseSnapshot().unknown,true);assert.equal(f.controller.close(),false);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);
- const beforePrepare=p.parentReads.length;assert.equal(await entry.prepareHomeNativeDeparture(),null,'A new action remains forbidden by the real parent unknown gate');assert.equal(p.parentReads.length,beforePrepare);
+ f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await screen.action('trash',projectId);await f.controller.confirmTrash();const original=f.trashes[0]!;
+ f.controller.dispose();f.controller.activate();screen.env.lifetime.current++;
+ p.setConsent(false);const reads=f.reads.length,parentReads=p.parentReads.length;await screen.action('recheck');
+ assert.equal(p.confirmations,2,'The retained unknown needs a new explicit consent');assert.equal(f.reads.length,reads);assert.equal(p.parentReads.length,parentReads);assert.equal(f.trashes.length,1);assert.equal(f.controller.close(),false);assert.equal(entry.readCloseSnapshot().unknown,true);
+ p.setConsent(true);f.setTrash(async input=>projectDeleteResponseSchema.parse({requestId:input.requestId,projectId:input.projectId,projectFile:input.projectFile,trashed:true,records:'retained'}));const recheck=screen.action('recheck');await screen.action('recheck');await recheck;
+ assert.equal(p.confirmations,3);assert.equal(p.recheckPreparations,2);assert.ok(p.parentReads.length>parentReads);assert.equal(f.trashes.length,2);assert.equal(f.trashes[1],original);assert.equal(f.controller.getState().notice?.kind,'success');assert.equal(entry.readCloseSnapshot().unknown,false);assert.equal(entry.readCloseSnapshot().dirty,true);assert.deepEqual(p.hostOpens,[]);
+});
+
+test('P3a renewed consent cannot authorize a late trash recheck after another input, owner or native guard changes',async t=>{
+ for(const change of ['page-input','page-lifetime','home-version','native-busy','native-unknown','lease','library'] as const){
+  const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+  f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await screen.action('trash',projectId);await f.controller.confirmTrash();const original=f.trashes[0]!;
+  f.controller.dispose();f.controller.activate();screen.env.lifetime.current++;
+  const gate=held<boolean>();p.setConsent(gate.promise);const reads=f.reads.length,pending=screen.action('recheck');await new Promise(setImmediate);assert.equal(p.confirmations,2,change);
+  switch(change){
+   case'page-input':screen.env.form.current.version++;entry.reportCreate({dirty:true,busy:false,version:2});break;
+   case'page-lifetime':screen.env.lifetime.current++;break;
+   case'home-version':f.controller.dispose();f.controller.activate();break;
+   case'native-busy':p.extra.busy=true;break;
+   case'native-unknown':p.extra.unknown=true;break;
+   case'lease':entry.updateContext({...p.context,leaseRevoked:true});break;
+   case'library':f.snapshot.appLibraryScope='b'.repeat(64);break;
+  }
+  gate.resolve(true);await pending;assert.equal(f.reads.length,reads,change);assert.equal(f.trashes.length,1,change);assert.equal(f.trashes[0],original,change);assert.equal(f.controller.getMetadata().unknown,true,change);assert.equal(entry.readCloseSnapshot().unknown,true,change);assert.equal(f.controller.close(),false,change);assert.deepEqual(p.hostOpens,[],change);
+ }
+});
+
+function projectEntryHomeBindings(controller:ReturnType<typeof createProjectEntryController>):{nativeActions:ProjectHomeNativeActions}{
+ const source=readFileSync(new URL('../apps/web/src/ProjectEntry.tsx',import.meta.url),'utf8');
+ const module:{exports:{default?:(props:{controller:unknown;onSettings:()=>void})=>unknown}}={exports:{}};
+ const dependencies:Record<string,unknown>={react:createRequire(new URL('../apps/web/package.json',import.meta.url))('react'),
+  './i18n/I18nProvider.tsx':i18nTestModule(),'@mioon/ui/components/button':{Button:'button'},'@mioon/ui/components/dialog':{Dialog:'dialog',DialogContent:'dialog-content',DialogDescription:'dialog-description',DialogTitle:'dialog-title'},
+  './ProjectHomeDirectoryScreen.tsx':{__esModule:true,default:'project-home'},'./NativeProjectEntryDialogs.tsx':{NativeProjectEntryDialogs:'native-dialogs'},
+  './project-entry-identity.ts':{readProjectEntryIdentity},'./api.ts':{rpc:legacyRpc},'./browser-rpc.ts':{browserRpc}};
+ Function('require','module','exports',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)((name:string)=>{assert.ok(Object.hasOwn(dependencies,name),name);return dependencies[name];},module,module.exports);
+ const desktop={getState:()=>({capabilities:{ready:true,create:true},busy:false}),readCloseSnapshot:()=>({unknown:false})};
+ const tree=module.exports.default!({controller:{...controller,desktop},onSettings(){}});
+ const home=(value:unknown):Record<string,unknown>|null=>{if(!value||typeof value!=='object')return null;if(Array.isArray(value)){for(const child of value){const found=home(child);if(found)return found;}return null;}const node=value as {type?:unknown;props?:Record<string,unknown>};return node.type==='project-home'?node.props??null:home(node.props?.children);};
+ const bindings=home(tree);assert.ok(bindings);assert.ok(bindings.nativeActions);
+ return bindings as {nativeActions:ProjectHomeNativeActions};
+}
+
+test('P1 production ProjectEntry trash uses the real client to distinguish definitive 4xx from unknown transport outcomes',async t=>{
+ let reply:()=>Promise<Response>=async()=>assert.fail('A response must be supplied');
+ const requests:{url:string;method:string|undefined;body:unknown}[]=[];
+ t.mock.method(globalThis,'fetch',async(url:Parameters<typeof fetch>[0],init?:RequestInit)=>{requests.push({url:String(url),method:init?.method,body:JSON.parse(String(init?.body))});return reply();});
+ for(const [code,status,kind,reason] of [['PROJECT_HOST_BUSY',409,'trash-blocked','busy'],['PROJECT_ACCESS_DENIED',403,'trash-blocked','denied'],['REVISION_CONFLICT',409,'idle',null],['PROJECT_TRASH_UNCONFIRMED',409,'trash-unknown',null],['SERVER_ERROR',503,'trash-unknown',null],['NETWORK',0,'trash-unknown',null]] as const){
+  const p=parentScreenFixture(),{f,entry}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+  reply=status===0?async()=>{throw Error('Disconnected');}:async()=>new Response(JSON.stringify({ok:false,error:{code,message:'Synthetic rejection',details:{}}}),{status,headers:{'content-type':'application/json'}});
+  const bindings=projectEntryHomeBindings(entry);f.setPorts({trash:bindings.nativeActions.trash});
+  await f.controller.prepareTrash(projectId);assert.equal(await f.controller.confirmTrash(),false,code);
+  assert.equal(f.controller.getState().kind,kind,code);assert.equal(f.controller.getState().reason,reason,code);assert.equal(f.controller.getMetadata().unknown,kind==='trash-unknown',code);
+  assert.equal(entry.readCloseSnapshot().unknown,kind==='trash-unknown',code);assert.equal(f.controller.getState().notice?.kind,code==='REVISION_CONFLICT'?'changed':undefined,code);
+  assert.deepEqual(p.hostOpens,[],code);assert.equal(requests.at(-1)!.url,'/api/rpc');assert.equal(requests.at(-1)!.method,'POST');
+  assert.equal((requests.at(-1)!.body as {operation:string}).operation,'project.delete');
+ }
+ assert.equal(requests.length,6,'A rejection or network error must not cause an automatic replay');
+});
+
+
+test('actual parent and Screen open a verified template ACK with the original opaque permit and exact input',async t=>{
+ const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
  const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>();f.setInstantiate(()=>gate.promise);
- const pending=screen.action('recheck');await new Promise(setImmediate);await screen.action('recheck');
- assert.equal(f.examples.length,2);assert.equal(f.examples[1],original);assert.equal(entry.readCloseSnapshot().unknown,true);assert.equal(f.controller.close(),false);assert.deepEqual(p.hostOpens,[]);
+ const pending=screen.action('example');await new Promise(setImmediate);const original=f.examples[0]!;
+ assert.equal(f.controller.getState().kind,'working-example');assert.equal(entry.readCloseSnapshot().busy,true);assert.equal(f.controller.close(),false);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);
+ const beforePrepare=p.parentReads.length;assert.equal(await entry.prepareHomeNativeDeparture(),null,'A new action remains forbidden by the real parent busy gate');assert.equal(p.parentReads.length,beforePrepare);assert.deepEqual(p.hostOpens,[]);
  const receipt=projectCopyResponseSchema.parse({requestId:original.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:original.name,lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0});
  f.snapshot.registered.push({project:receipt.project,availability:{state:'available'},coverUrl:null});gate.resolve(receipt);await pending;
  assert.equal(f.controller.getState().kind,'idle');assert.equal(entry.readCloseSnapshot().unknown,false);assert.equal(entry.readCloseSnapshot().dirty,true);assert.deepEqual(p.hostOpens,[receipt.project.projectId]);
- assert.equal(p.openedPermits[0],p.granted[0],'The original parent WeakSet permit reaches automatic open without a wrapper');assert.equal(p.openedPermits.length,1);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);assert.equal(f.examples.length,2);
- assert.deepEqual(f.examples[1],{token:selection.token,templateId:'timeline-basics',templateVersion:1,name:'Panel name',requestId:original.requestId});
+ assert.equal(p.openedPermits[0],p.granted[0],'The original parent WeakSet permit reaches automatic open without a wrapper');assert.equal(p.openedPermits.length,1);assert.equal(p.confirmations,1);assert.equal(p.preparations,1);assert.equal(f.examples.length,1);
+ assert.deepEqual(f.examples[0],{token:selection.token,templateId:'timeline-basics',templateVersion:1,name:'Panel name',requestId:original.requestId});
 });
 
-test('actual parent and Screen retain unknown without reads or replay after another guard or the original authority expires',async t=>{
+test('without renewed consent actual parent and Screen retain trash unknown after another guard or the original authority expires',async t=>{
  for(const change of ['native-busy','native-unknown','native-input','parent-input','page-input','page-lifetime','visibility','parent-lifetime','lease','context','library','instance','epoch'] as const){
   const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
-  f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await screen.action('example');const original=f.examples[0]!;
+  screen.env.current.current.onPrepareNativeRecheck=undefined;
+  f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await screen.action('trash',projectId);await f.controller.confirmTrash();const original=f.trashes[0]!;
   switch(change){
    case'native-busy':p.extra.busy=true;break;
    case'native-unknown':p.extra.unknown=true;break;
@@ -227,8 +295,8 @@ test('actual parent and Screen retain unknown without reads or replay after anot
    case'epoch':f.setOwner({appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId,epoch:2});break;
   }
   const reads=f.reads.length,parentReads=p.parentReads.length;await screen.action('recheck');
-  assert.equal(f.reads.length,reads,change);assert.equal(p.parentReads.length,parentReads,change);assert.equal(f.examples.length,1,change);assert.equal(f.examples[0],original,change);assert.deepEqual(p.hostOpens,[],change);
-  assert.equal(f.controller.getState().kind,'example-unknown',change);assert.equal(f.controller.close(),false,change);assert.equal(entry.readCloseSnapshot().unknown,true,change);assert.equal(p.confirmations,1,change);assert.equal(p.preparations,1,change);
+  assert.equal(f.reads.length,reads,change);assert.equal(p.parentReads.length,parentReads,change);assert.equal(f.trashes.length,1,change);assert.equal(f.trashes[0],original,change);assert.deepEqual(p.hostOpens,[],change);
+  assert.equal(f.controller.getState().kind,'trash-unknown',change);assert.equal(f.controller.close(),false,change);assert.equal(entry.readCloseSnapshot().unknown,true,change);assert.equal(p.confirmations,1,change);assert.equal(p.preparations,1,change);
  }
 });
 
@@ -272,6 +340,33 @@ test('12-22 confirmation and unknown/result controls render in four languages wi
  }
 });
 
+test('P3b template unknown offers truthful refresh and an enabled close without promising a result recheck in four languages',async()=>{
+ const f=fixture();f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await f.controller.startExample('Storage','Suggested');
+ for(const locale of LOCALES){const html=view(f.controller.getState(),locale,{onRefresh:noop});
+  assert.equal(disabled(tagOf(html,'project-home-native-close')),false,locale);assert.equal(tagOf(html,'project-home-native-recheck'),null,locale);assert.ok(tagOf(html,'project-home-example-refresh'),locale);
+  assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.unknown'))),locale);assert.equal(tagOf(html,'project-home-example-open'),null,locale);assert.equal(tagOf(html,'project-home-trash-confirm'),null,locale);
+ }
+ assert.equal(f.examples.length,1);assert.equal(f.controller.getMetadata().unknown,true);
+});
+
+test('P3b closing and refreshing a template unknown retains its exact intent without replaying or opening',async t=>{
+ const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+ f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await screen.action('example');const original=f.examples[0]!;
+ assert.equal(f.controller.close(),true);assert.equal(f.controller.getState().dialogHidden,true);assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(entry.readCloseSnapshot().unknown,true);
+ assert.equal(await f.controller.refreshExample(),true);await screen.action('recheck');
+ assert.equal(f.examples.length,1);assert.equal(f.examples[0],original);assert.deepEqual(p.hostOpens,[]);assert.equal(f.controller.getState().notice,null);assert.equal(f.controller.getState().exampleReceipt,null);assert.equal(entry.readCloseSnapshot().unknown,true);
+ f.controller.dispose();f.controller.activate();assert.equal(f.controller.getState().dialogHidden,true);assert.equal(f.controller.getMetadata().unknown,true);assert.equal(await f.controller.startExample('Storage','Suggested'),false);assert.equal(f.examples.length,1);
+});
+
+test('P3b a closed template unknown permits an explicit ordinary open while keeping unknown close metadata and blocking new writes',async t=>{
+ const p=parentScreenFixture(),{f,entry,screen}=p;t.after(()=>{f.controller.dispose();entry.dispose();});
+ f.setInstantiate(async()=>{throw Object.assign(Error('Unknown'),{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{}});});await screen.action('example');const original=f.examples[0]!;
+ f.controller.close();assert.equal(f.controller.getMetadata().allowOpen,true);assert.equal(entry.readCloseSnapshot().unknown,true);
+ assert.equal(await f.controller.refreshExample(),true);assert.equal(await entry.show('new'),false);assert.equal(await entry.create('No extra project',''),false);await screen.action('trash',projectId);await screen.action('example');
+ assert.equal(p.legacyWrites,0);assert.deepEqual(f.trashes,[]);assert.equal(f.examples.length,1);assert.equal(f.examples[0],original);
+ assert.equal(await screen.open(projectId),true);assert.deepEqual(p.hostOpens,[projectId]);assert.equal(p.confirmations,2,'Explicit ordinary open keeps its own dirty consent');assert.equal(entry.readCloseSnapshot().dirty,true);assert.equal(entry.readCloseSnapshot().unknown,true);assert.equal(f.controller.getState().exampleReceipt,null);assert.equal(f.controller.getState().notice,null);assert.equal(f.examples.length,1);
+});
+
 test('12-22b differentiates only actual host-window facts and safe service reasons; absent permission help stays hidden',async()=>{
  const f=fixture();f.setTrash(async()=>{throw new BrowserRpcError('PROJECT_HOST_BUSY',true);});await f.controller.prepareTrash(projectId);await f.controller.confirmTrash();
  for(const locale of LOCALES){const generic=view(f.controller.getState(),locale);assert.ok(generic.includes(escapeHtml(translate(locale,'projectHomeNative.trash.busy'))));assert.ok(!generic.includes(escapeHtml(translate(locale,'projectHomeNative.trash.open'))));
@@ -288,4 +383,12 @@ test('example affordance is absent by default and only supplied real capability 
 test('a definitive template preflight error renders example guidance rather than trash instructions in four languages',async()=>{
  const f=fixture();f.setChoose(async()=>{throw new BrowserRpcError('PROJECT_FILE_EXISTS',true);});assert.equal(await f.controller.startExample('Storage','Suggested'),false);assert.equal(f.controller.getState().kind,'example-blocked');assert.deepEqual(f.examples,[]);
  for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.blockedTitle'))));assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.unavailable'))));assert.ok(!html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.unavailable'))));assert.equal(tagOf(html,'project-home-trash-confirm'),null);}
+});
+
+test('P2 the real template adapter keeps pre-write unavailable definitive and requests a new selection',async()=>{
+ let calls=0;const bridge=readProjectEntryDesktopClient({__mioonProjectEntries:{capabilities:async()=>assert.fail('Capabilities are already verified by the entry owner'),chooseLocation:async()=>selection,instantiateTemplate:async()=>{calls++;throw{code:'PROJECT_ENTRY_UNAVAILABLE',status:409,details:{}};}}});assert.ok(bridge);
+ const f=fixture();f.setPorts({example:{bridge,templates:[{id:'timeline-basics',version:1}]}});assert.equal(await f.controller.startExample('Storage','Suggested'),false);
+ assert.equal(calls,1);assert.equal(f.controller.getState().kind,'example-blocked');assert.equal(f.controller.getState().reason,'selection');assert.equal(f.controller.getMetadata().unknown,false);assert.deepEqual(f.opened,[]);
+ for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.selectAgain'))));assert.equal(tagOf(html,'project-home-native-recheck'),null);assert.equal(disabled(tagOf(html,'project-home-native-close')),false);}
+ assert.equal(f.controller.close(),true);assert.equal(calls,1);
 });

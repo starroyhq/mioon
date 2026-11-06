@@ -71,3 +71,13 @@ test('actual failure Portal keeps exact unknown action but blocks old recheck/se
   (old.props.onOpenChange as (open: boolean) => void)(false); assert.deepEqual(calls, []);
   render(props); (button(old, 'pf-open-recheck').props.onClick as () => void)(); assert.deepEqual(calls, ['recheck']);
 });
+test('invalid native save tickets give explicit reselect guidance while keeping the controlled input and a closable error', () => {
+  const guidance = 'The selected save location is no longer valid. Choose a save location again.';
+  const create: NewProjectFileDialogProps = {open: true, values: {name: 'Retained name', description: 'Retained description', presetId: 'portrait_1080', createFolder: false},
+    location: {display: '', status: 'unavailable', message: guidance}, state: {kind: 'error', code: 'unknown'}, onChange() {}, onSubmit() {assert.fail('Reselect before submitting');}, onClose() {}, onChooseLocation() {}};
+  const html = ui.html('create', create); assert.match(html, /Retained name/); assert.match(html, /Retained description/); assert.ok(html.includes(guidance));
+  const tag = (markup: string, id: string) => {const match = markup.match(new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`)); assert.ok(match); return match[0];};
+  assert.match(tag(html, 'pf-create-submit'), /\sdisabled(?:=|[ >])/); assert.doesNotMatch(tag(html, 'pf-create-choose'), /\sdisabled(?:=|[ >])/); assert.doesNotMatch(tag(html, 'pf-create-cancel'), /\sdisabled(?:=|[ >])/);
+  const failure: ProjectOpenFailureDialogProps = {open: true, failure: {code: 'OPEN_UNAVAILABLE', projectId: null, projectFile: null}, projectName: 'Original', platform: 'mac', action: {kind: 'error', action: 'copyTo'}, notice: guidance, onClose() {}};
+  const failed = ui.html('failure', failure); assert.ok(failed.includes(guidance)); assert.match(failed, /data-testid="pf-open-notice"/); assert.doesNotMatch(tag(failed, 'pf-open-close'), /\sdisabled(?:=|[ >])/);
+});

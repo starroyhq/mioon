@@ -10,7 +10,7 @@ import type {MenuHelpControl} from './desktop-menu-client.ts';
 import {readProjectEntryIdentity} from './project-entry-identity.ts';
 import type {NativeProjectDesktopController} from './native-project-desktop-state.ts';
 import {NativeProjectEntryDialogs} from './NativeProjectEntryDialogs.tsx';
-import {rpc as browserRpc} from './api.ts';
+import {browserRpc} from './browser-rpc.ts';
 
 /** A scoped workspace catalog and new-project form. It remains mounted when
  * hidden so its inputs and unknown request always retain their exact owner. */
@@ -40,10 +40,12 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
       onRequestCreate={desktop ? () => {void controller.show('new');} : undefined}
       onOpenFile={capability?.ready && capability.open ? () => {void desktop?.openFile();} : undefined}
       onHelpAccess={capability?.ready && capability.help ? () => {void desktop?.openPrivacySettings();} : undefined}
-      onCopy={capability?.ready && capability.duplicate ? id => {void desktop?.duplicate(id);} : undefined}
+      openedProjectIds={context.role === 'editor' && context.editorProjectId ? [context.editorProjectId] : []}
+      onCopy={context.role === 'launcher' && capability?.ready && capability.duplicate ? id => {void desktop?.duplicate(id);} : undefined}
       onReveal={capability?.ready && capability.reveal ? id => {void desktop?.reveal(id);} : undefined}
       onNativeActionStateChange={controller.reportNativeAction}
       onPrepareNativeAction={controller.prepareHomeNativeDeparture}
+      onPrepareNativeRecheck={controller.prepareHomeNativeRecheck}
       onOpenNativeResult={controller.openNativeResult}
       nativeActions={desktop && capability?.ready ? {trash: input => browserRpc('project.delete', input),
         ...(capability.templates?.length && desktop.bridge.instantiateTemplate ? {example: {bridge: desktop.bridge, templates: capability.templates}} : {})} : undefined}

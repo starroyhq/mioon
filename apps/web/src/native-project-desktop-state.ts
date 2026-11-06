@@ -15,36 +15,41 @@ export function projectLocationRisks(facts: ProjectLocationFacts): readonly Proj
     ...(['known-icloud', 'known-file-provider'].includes(facts.cloud) ? [{kind: 'cloud', ...(facts.cloud === 'known-icloud' ? {serviceName: 'iCloud'} : {})} as const] : []),
     ...(!facts.permissionBits ? [{kind: 'permissions', fileSystem: facts.fileSystem} as const] : [])];
 }
-interface Failure {readonly issue: ProjectOpenIssue; readonly name: string | null; readonly token?: string; readonly projectId?: string}
+interface Failure {readonly issue: ProjectOpenIssue; readonly name: string | null; readonly token?: string; readonly projectId?: string; readonly reselect?: 'duplicate' | 'open-file'}
 export interface NativeProjectDesktopState {
   readonly capabilities: ProjectDesktopCapabilities | null; readonly busy: boolean; readonly blocked: boolean;
-  readonly createOpen: boolean; readonly values: NewProjectFileValues; readonly selection: ProjectDesktopSelection | null; readonly createState: NewProjectFileState;
+  readonly createOpen: boolean; readonly values: NewProjectFileValues; readonly selection: ProjectDesktopSelection | null; readonly selectionInvalid: boolean; readonly createState: NewProjectFileState;
   readonly failure: Failure | null; readonly action: ProjectOpenFailureActionState;
   readonly risks: readonly OpenedProjectLocationRisk[];
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** The host owns selections and filesystem observations. This owner retains
  * only public DTOs and exact in-flight inputs, never arbitrary path authority. */
-export function createNativeProjectDesktopController({client, identity, beforeAction, openCreated, message, isCurrent = () => true, onOpened = () => {}, onChange = () => {}, newId = () => globalThis.crypto.randomUUID()} : {
+export function createNativeProjectDesktopController({client, identity, beforeAction, openCreated, message, isCurrent = () => true, canStart = () => true, onOpened = () => {}, onChange = () => {}, newId = () => globalThis.crypto.randomUUID()} : {
   client: ProjectEntriesDesktopBridge; identity: ProjectEntryIdentityOwner;
   beforeAction: (preserveDraft: boolean) => Promise<boolean | (() => boolean)>; openCreated: (id: string, permit?: () => boolean) => Promise<boolean>;
-  message: () => string; isCurrent?: () => boolean; onOpened?: () => void; onChange?: () => void; newId?: () => string;
+  message: () => string; isCurrent?: () => boolean; canStart?: () => boolean; onOpened?: () => void; onChange?: () => void; newId?: () => string;
 }) {
   let active = false, generation = 0, dismissedRisk = false, pendingTaken = false, draftVersion = 0;
   let initialization: {generation: number; promise: Promise<void>} | null = null;
   let retry: (() => Promise<boolean>) | null = null, knownCreated: string | null = null;
+  let pendingOpen: {generation: number; resume: () => Promise<void>} | null = null;
+  type Mutation = 'createAtSelection' | 'duplicate' | 'copyTo' | 'adoptCopy';
   interface WriteIntent {readonly action: ProjectOpenFailureAction; readonly resume: () => Promise<boolean>; acknowledged: boolean; retired: boolean}
   const dispatchedWrites = new Set<WriteIntent>(), retiredWrites = new Set<WriteIntent>();
   let retryIntent: WriteIntent | null = null;
   let state: NativeProjectDesktopState = {capabilities: null, busy: false, blocked: false, createOpen: false,
-    values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, createState: {kind: 'editing'}, failure: null, action: {kind: 'idle'}, risks: []};
+    values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, selectionInvalid: false, createState: {kind: 'editing'}, failure: null, action: {kind: 'idle'}, risks: []};
   const listeners = new Set<() => void>();
   const emit = (patch: Partial<NativeProjectDesktopState>) => {state = Object.freeze({...state, ...patch}); onChange(); for (const listener of listeners) listener();};
   const current = (serial = generation) => active && serial === generation && isCurrent() && !identity.getState().identityBlocked && !state.blocked;
-  const editable = () => current() && state.createOpen && !state.busy && !retry && !knownCreated;
-  const rejected = (error: unknown, action: ProjectOpenFailureAction) => object(error) && typeof error.code === 'string' &&
+  const startable = () => current() && canStart() && !pendingOpen;
+  const editable = () => startable() && state.createOpen && !state.busy && !retry && !knownCreated;
+  const unavailableSelection = (error: unknown, mutation?: Mutation) => object(error) && error.code === 'PROJECT_ENTRY_UNAVAILABLE' && error.status === 409 &&
+    (mutation === 'createAtSelection' || mutation === 'duplicate' || mutation === 'copyTo');
+  const rejected = (error: unknown, action: ProjectOpenFailureAction, mutation?: Mutation) => object(error) && typeof error.code === 'string' &&
     (['VALIDATION_ERROR', 'PROJECT_FILE_EXISTS', 'PROJECT_ACCESS_DENIED', 'PROJECT_LOCATION_REJECTED', 'PROJECT_COPY_SOURCE_CHANGED', 'PROJECT_INVALID', 'PROJECT_COPY_INVALID'].includes(error.code) ||
-      error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY' && error.status === 409);
+      error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503) || action === 'copyTo' && error.code === 'PROJECT_HOST_BUSY' && error.status === 409 || unavailableSelection(error, mutation));
   function retireWrites(): boolean {
     const pending = [...dispatchedWrites, ...(retryIntent ? [retryIntent] : [])].filter(intent => !intent.acknowledged && !intent.retired);
     for (const intent of pending) {intent.retired = true; retiredWrites.add(intent);}
@@ -61,7 +66,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   function retireOwner() {
     const blocked = state.blocked; retireWrites();
     if (!blocked) {
-      generation++; initialization = null;
+      generation++; initialization = null; pendingOpen = null;
       emit({blocked: true, busy: false, capabilities: null, risks: [],
         ...(!retiredWrites.size ? {action: {kind: 'idle'} as const, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})} : {})});
     }
@@ -90,18 +95,19 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       ? {code: 'PROJECT_FILE_COPY', projectFile: null, projectId: null, originalProjectFile: value.original?.displayPath ?? null, originalProjectId: null}
       : value.reason === 'network' ? {code: 'NETWORK_LOCATION', projectFile: value.displayPath, projectId: null}
         : {code: 'PROJECT_INVALID', projectFile: value.displayPath, projectId: null, reason: 'read-only'};
-    emit({failure: {issue, name: value.name, token: value.token}, action: {kind: 'idle'}}); return false;
+    emit({failure: {issue, name: value.name, token: value.token}, selectionInvalid: false, action: {kind: 'idle'}}); return false;
   }
-  async function run(action: ProjectOpenFailureAction, work: (dispatched: () => void) => Promise<boolean>, {write = false, preserveDraft = false, replay = false, projectId, after}: {write?: boolean | (() => boolean); preserveDraft?: boolean; replay?: boolean; projectId?: string; after?: (permit?: () => boolean) => Promise<void>} = {}): Promise<boolean> {
-    if (!current() || state.busy || retry && !replay) return false;
+  async function run(action: ProjectOpenFailureAction, work: (dispatched: () => void) => Promise<boolean>, {write = false, preserveDraft = false, replay = false, projectId, mutation, after}: {write?: boolean | (() => boolean); preserveDraft?: boolean; replay?: boolean; projectId?: string; mutation?: Mutation; after?: (permit?: () => boolean) => Promise<void>} = {}): Promise<boolean> {
+    if (!startable() || state.busy || retry && !replay) return false;
     const serial = generation, previousRetry = retry, previousIntent = retryIntent;
-    const resume = () => run(action, work, {write, preserveDraft: true, replay: true, projectId, after});
+    const resume = () => run(action, work, {write, preserveDraft: true, replay: true, projectId, mutation, after});
     let intent: WriteIntent | null = null;
     const dispatched = () => {if (!intent) {intent = {action, resume, acknowledged: false, retired: false}; dispatchedWrites.add(intent);}};
     let completed = false, grant: (() => boolean) | undefined; emit({busy: true, action: {kind: 'working', action}});
     try {
       const approved = await beforeAction(preserveDraft);
       if (!current(serial)) return false;
+      if (!canStart()) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
       if (!approved) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
       grant = typeof approved === 'function' ? approved : undefined;
       if (grant && !grant()) {emit({action: previousIntent ? {kind: 'unknown', action} : {kind: 'idle'}}); return false;}
@@ -114,7 +120,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     } catch (error) {
       if (!current(serial)) return false;
       const recorded = [...dispatchedWrites].find(value => value === intent);
-      if (recorded && !rejected(error, action)) {
+      if (recorded && !rejected(error, action, mutation)) {
         retry = resume; retryIntent = recorded;
         emit({action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
         if (!state.failure && action !== 'chooseLocation') fail(error, 'open', projectId);
@@ -122,7 +128,15 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
         retry = previousRetry; retryIntent = previousIntent; emit({action: {kind: 'unknown', action}});
       } else {
         if (recorded) recorded.acknowledged = true;
-        retry = null; retryIntent = null; emit({action: {kind: 'error', action}}); fail(error, state.createOpen ? 'create' : 'open', projectId);
+        retry = null; retryIntent = null;
+        const invalidSelection = unavailableSelection(error, mutation);
+        emit({action: {kind: 'error', action}, ...(invalidSelection ? {selectionInvalid: true, ...(mutation === 'createAtSelection' ? {selection: null} : {})} : {})});
+        if (invalidSelection && mutation === 'createAtSelection') emit({failure: null});
+        else if (invalidSelection && mutation === 'copyTo') emit({failure: {issue: {code: 'OPEN_UNAVAILABLE', projectId: null, projectFile: null}, name: state.failure?.name ?? null, reselect: 'open-file'}});
+        else {
+          fail(error, state.createOpen ? 'create' : 'open', projectId);
+          if (invalidSelection && mutation === 'duplicate' && state.failure) emit({failure: {...state.failure, reselect: 'duplicate'}});
+        }
       }
       return false;
     } finally {
@@ -131,7 +145,15 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       if (recorded) dispatchedWrites.delete(recorded);
       if (active && serial === generation) {
         if (retiredWrites.size) emit({busy: false});
-        else {emit({busy: false, ...(!current(serial) ? {action: {kind: 'idle'} as const} : {})}); if (completed && current(serial)) await after?.(grant);}
+        else {
+          emit({busy: false, ...(!current(serial) ? {action: {kind: 'idle'} as const} : {})});
+          if (completed && current(serial) && after) {
+            // Hiding suspends presentation, not the admitted write. Retain its
+            // exact receipt and consent; reveal may finish opening, never replay.
+            if (canStart()) await after(grant);
+            else pendingOpen = {generation: serial, resume: () => after(grant)};
+          }
+        }
       }
     }
   }
@@ -166,7 +188,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     const serial = generation;
     return run('chooseLocation', async () => {
       const selection = await client.chooseLocation({purpose: 'create', suggestedName: state.values.name.trim() || 'Mioon', message: message()});
-      if (!selection || !current(serial)) return false; emit({selection, failure: null}); return true;
+      if (!selection || !current(serial)) return false; emit({selection, selectionInvalid: false, failure: null}); return true;
     }, {preserveDraft: true});
   }
   async function create() {
@@ -180,7 +202,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       const created = await client.createAtSelection(input);
       if (!current(serial)) return false; knownCreated = created.project.projectId;
       emit({createState: {kind: 'created', projectName: created.project.name}}); return true;
-    }, {write: true, preserveDraft: true, after: async grant => {if (knownCreated) {const opened = await openCreated(knownCreated, grant); if (opened && current(serial)) emit({createOpen: false});}}});
+    }, {write: true, mutation: 'createAtSelection', preserveDraft: true, after: async grant => {if (knownCreated) {const opened = await openCreated(knownCreated, grant); if (opened && current(serial)) emit({createOpen: false});}}});
     if (!success && !retry && current()) emit({createState: {kind: 'error', code: 'unknown'}});
     return success;
   }
@@ -197,7 +219,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
         if (!name) return false;
         const selection = await client.chooseLocation({purpose: kind, suggestedName: name, message: message()});
         if (!selection || !current(serial)) return false;
-        exact = {token: selection.token, requestId: newId()};
+        exact = {token: selection.token, requestId: newId()}; emit({selectionInvalid: false});
       }
       dispatched = true;
       markDispatched();
@@ -205,31 +227,41 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       if (!current(serial)) return false;
       if (copied.requestId !== exact.requestId || kind === 'duplicate' && copied.sourceProjectId !== projectId) throw new Error('Invalid copy acknowledgement');
       copiedId = copied.project.projectId; emit({failure: null}); return true;
-    }, {write: () => dispatched, projectId, after: async grant => {if (copiedId && !await openCreated(copiedId, grant) && current(serial)) emit({failure: {issue: {code: 'OPEN_UNAVAILABLE', projectId: copiedId, projectFile: null}, name: null, projectId: copiedId}});}});
+    }, {write: () => dispatched, mutation: kind === 'duplicate' ? 'duplicate' : 'copyTo', projectId, after: async grant => {if (copiedId && !await openCreated(copiedId, grant) && current(serial)) emit({failure: {issue: {code: 'OPEN_UNAVAILABLE', projectId: copiedId, projectFile: null}, name: null, projectId: copiedId}});}});
     return success;
   }
   let release: (() => void) | null = null;
   const tokenAction = (kind: 'openOriginal' | 'adoptCopy') => {
     const token = state.failure?.token, serial = generation;
     if (!token || !state.capabilities?.ready || !state.capabilities[kind] || state.failure?.issue.code !== 'PROJECT_FILE_COPY' || kind === 'openOriginal' && !state.failure.issue.originalProjectFile) return Promise.resolve(false);
-    return run(kind, async dispatched => {if (kind === 'adoptCopy') dispatched(); return result(await client[kind]({token}), serial);}, {write: kind === 'adoptCopy'});
+    return run(kind, async dispatched => {if (kind === 'adoptCopy') dispatched(); return result(await client[kind]({token}), serial);}, {write: kind === 'adoptCopy', ...(kind === 'adoptCopy' ? {mutation: 'adoptCopy'} : {})});
   };
   return {
     activate() {if (!active) {active = true; generation++; release = identity.subscribe(() => {if (identity.getState().identityBlocked && !state.blocked) retireOwner();});}},
-    dispose() {const retired = retireWrites(); if (!retired) emit({busy: false, action: {kind: 'idle'}, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})}); active = false; generation++; initialization = null; release?.(); release = null;},
+    dispose() {const retired = retireWrites(); if (!retired) emit({busy: false, action: {kind: 'idle'}, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})}); active = false; generation++; initialization = null; pendingOpen = null; release?.(); release = null;},
     retireOwner,
     observeAvailability() {if (active && !isCurrent() && (dispatchedWrites.size || retryIntent)) retireOwner();},
     initialize, getState: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
-    showCreate() {if (!current() || state.busy || retry || !state.capabilities?.ready || !state.capabilities.create) return false;
-      if (knownCreated && !state.createOpen) {knownCreated = null; draftVersion++; emit({values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, createState: {kind: 'editing'}});}
+    showCreate() {if (!startable() || state.busy || retry || !state.capabilities?.ready || !state.capabilities.create) return false;
+      if (knownCreated && !state.createOpen) {knownCreated = null; draftVersion++; emit({values: {name: '', description: '', presetId: DEFAULT_TIMELINE_OUTPUT_PRESET, createFolder: true}, selection: null, selectionInvalid: false, createState: {kind: 'editing'}});}
       emit({createOpen: true}); return true;},
     change(patch: Partial<NewProjectFileValues>) {if (editable()) {draftVersion++; emit({values: {...state.values, ...patch}});}},
-    closeCreate() {if (current() && !state.busy && !retry) emit({createOpen: false});},
-    closeFailure() {if (current() && !state.busy && !retry) emit({failure: null, action: {kind: 'idle'}});},
+    closeCreate() {if (startable() && !state.busy && !retry) emit({createOpen: false});},
+    closeFailure() {if (startable() && !state.busy && !retry) emit({failure: null, action: {kind: 'idle'}, ...(!state.createOpen ? {selectionInvalid: false} : {})});},
     openFile, chooseLocation, create, duplicate: (id: string) => copy('duplicate', id), copyTo: () => copy('copy-to'),
-    retryFailure: async () => {const failure = state.failure; if (!failure?.projectId) return openFile(); if (!current() || state.busy || retry) return false;
+    retryFailure: async () => {const failure = state.failure; if (!startable() || state.busy || retry) return false;
+      if (failure?.reselect === 'open-file') return openFile();
+      if (failure?.reselect === 'duplicate') return copy('duplicate', failure.projectId);
+      if (!failure?.projectId) return openFile();
       const opened = await openCreated(failure.projectId); if (opened && current() && state.failure === failure) emit({failure: null}); return opened;},
-    retryOpen: async () => {if (!knownCreated || !current() || state.busy) return false; const opened = await openCreated(knownCreated); if (opened && current()) emit({createOpen: false}); return opened;},
+    retryOpen: async () => {if (!knownCreated || !startable() || state.busy) return false; const opened = await openCreated(knownCreated); if (opened && current()) emit({createOpen: false}); return opened;},
+    resumeKnownOpen: async (editor = false) => {
+      if (!current() || !canStart()) return;
+      // Hidden boot may read capabilities before presentation permits taking
+      // the one pending OS result. Reveal still owns that original metadata.
+      if (!editor && !pendingTaken && !pendingOpen && !state.busy && !retry) await initialize(false);
+      const pending = pendingOpen; if (!pending || !current(pending.generation) || !canStart()) return; pendingOpen = null; await pending.resume();
+    },
     getDraftVersion: () => draftVersion,
     recheck: async () => retry ? retry() : false,
     openPrivacySettings: () => state.capabilities?.ready && state.capabilities.help ? run('systemSettings', async () => {await client.openPrivacySettings(); return true;}, {preserveDraft: true}) : Promise.resolve(false),

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {lstatSync} from 'node:fs';
+import {lstat} from 'node:fs/promises';
 import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryWindowSchema,projectEntrySourceObservationSchema} from '../../../packages/contracts/src/project-entry-native.ts';
@@ -145,12 +145,19 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
       const selected=await options.chooseSaveFile(owner,{suggestedName:request.suggestedName,message:request.message});check(owner);
       if(selected===null)return null;
       if(!absolute(selected)||!selected.endsWith('.mioon'))throw unavailable('PROJECT_LOCATION_INVALID');
-      if(lstatSync(selected,{throwIfNoEntry:false}))throw unavailable('PROJECT_FILE_EXISTS');
       const parentDir=path.dirname(selected),name=path.basename(selected,'.mioon');
       if(projectNameProblem(name)!==null)throw unavailable('PROJECT_LOCATION_INVALID');
       // S5 creates a dedicated folder. Observe its real existing parent; the
       // final folder/file path is derived here, never from renderer display text.
       const file=path.join(parentDir,name,name+'.mioon'),facts=await location(owner,parentDir,'template',true);
+      // Probe/admit the volume before any target I/O. Both the save-panel
+      // name and S5's actual dedicated folder must be free, including symlinks.
+      for(const target of [selected,path.dirname(file)]){
+       let exists=false;
+       try{await lstat(target);exists=true;}
+       catch(error){if(error===null||typeof error!=='object'||!('code'in error)||error.code!=='ENOENT')throw error;}
+       check(owner);if(exists)throw unavailable('PROJECT_FILE_EXISTS');
+      }
       const bound={id:template.id,version:template.version,name,parentDir};
       return {token:put({kind:'storage',purpose:'template',file,facts,template:bound,owner,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs}),displayPath:file,facts,template:{...template,name}};
      }

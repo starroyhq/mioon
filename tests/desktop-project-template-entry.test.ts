@@ -1,7 +1,9 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import fsPromises from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
@@ -52,6 +54,7 @@ interface Options {
  readonly choose?:(name:string)=>Promise<string|null>;
  readonly corruptReply?:boolean;
   readonly corruptResources?:boolean;
+ readonly admit?:()=>Promise<boolean>;
 }
 async function fixture(t:TestContext,options:Options={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-template-entry-')),installed=path.join(root,'examples'),target=path.join(root,'target');mkdirSync(target);
@@ -77,7 +80,7 @@ async function fixture(t:TestContext,options:Options={}){
  const host=createProjectEntryDesktopHost({ownerForEvent:(event:string)=>event==='owner'?owner():event==='other'?owner(true):null,backend:client.api,isReady:()=>true,
   chooseDirectory:async()=>assert.fail('Templates use the save panel'),chooseOpenFile:async()=>assert.fail('No open file in template flow'),
   chooseSaveFile:async(_owner,input)=>{chooserCalls++;return options.choose?options.choose(input.suggestedName):path.join(target,input.suggestedName+'.mioon');},
-  probeLocation:async input=>{probes.push(input);return facts;},admitLocation:async()=>true,
+  probeLocation:async input=>{probes.push(input);return facts;},admitLocation:options.admit??(async()=>true),
   adoptPrepared:async()=>{adoptions++;return{ok:false,targetWindowId:null,reason:'not-opened'};},openRecent:async()=>assert.fail('An instance is not implicitly opened'),
  });
  const bridge=createProjectEntriesDesktopBridge((_channel,input)=>host.handle('owner',input));
@@ -147,12 +150,13 @@ test('a POSIX parent containing a literal backslash keeps its native path throug
 test('template tokens reject another owner, expired ticket, wrong purpose and retired context before service dispatch',async t=>{
  for(const kind of ['owner','backend','token','expiry','purpose','context'] as const)await t.test(kind,async t=>{
   const f=await fixture(t),selected=await f.choose(),body=f.input(selected);
-  if(kind==='owner')await assert.rejects(f.host.dispatch('other',{action:'instantiateTemplate',...body}));
-  else if(kind==='backend'){f.replaceBackend();await assert.rejects(f.bridge.instantiateTemplate!(body));}
-  else if(kind==='token')await assert.rejects(f.bridge.instantiateTemplate!({...body,token:randomUUID()}));
-  else if(kind==='expiry'){const now=Date.now();t.mock.method(Date,'now',()=>now+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs+1);await assert.rejects(f.bridge.instantiateTemplate!(body));t.mock.restoreAll();}
-  else if(kind==='purpose'){const wrong=await f.bridge.chooseLocation({purpose:'duplicate',suggestedName:'Wrong',message:''});assert.ok(wrong);await assert.rejects(f.bridge.instantiateTemplate!({...body,token:wrong.token}));}
-  else {f.replaceDocument();await assert.rejects(f.bridge.instantiateTemplate!(body));}
+  const rejected={code:'PROJECT_ENTRY_UNAVAILABLE',status:409};
+  if(kind==='owner')await assert.rejects(f.host.dispatch('other',{action:'instantiateTemplate',...body}),rejected);
+  else if(kind==='backend'){f.replaceBackend();await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);}
+  else if(kind==='token')await assert.rejects(f.bridge.instantiateTemplate!({...body,token:randomUUID()}),rejected);
+  else if(kind==='expiry'){const now=Date.now();t.mock.method(Date,'now',()=>now+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs+1);await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);t.mock.restoreAll();}
+  else if(kind==='purpose'){const wrong=await f.bridge.chooseLocation({purpose:'duplicate',suggestedName:'Wrong',message:''});assert.ok(wrong);await assert.rejects(f.bridge.instantiateTemplate!({...body,token:wrong.token}),rejected);}
+  else {f.replaceDocument();await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);}
   assert.deepEqual(f.inputs,[]);assert.deepEqual(readdirSync(f.target),[]);assert.deepEqual((await f.client.api.listRecent()).registered,[]);
  });
 });
@@ -162,6 +166,38 @@ test('existing selected files and target folders are not overwritten or register
  await assert.rejects(f.choose('Occupied'),{code:'PROJECT_FILE_EXISTS'});assert.equal(readFileSync(path.join(f.target,'Occupied.mioon'),'utf8'),'Existing selected file');assert.deepEqual(f.inputs,[]);
  const selected=await f.choose('Folder');mkdirSync(path.join(f.target,'Folder'));writeFileSync(path.join(f.target,'Folder','keep'),'Existing directory');const before=files(f.target);
  await assert.rejects(f.bridge.instantiateTemplate!(f.input(selected)),{code:'PROJECT_FILE_EXISTS'});assert.deepEqual(files(f.target),before);assert.deepEqual((await f.client.api.listRecent()).registered,[]);
+});
+
+test('template location admission precedes target occupancy checks',async t=>{
+ const f=await fixture(t,{admit:async()=>false});writeFileSync(path.join(f.target,'Occupied.mioon'),'Existing selected file');
+ await assert.rejects(f.choose('Occupied'),{code:'PROJECT_LOCATION_REJECTED'});
+ assert.deepEqual(f.probes,[{path:f.target,purpose:'template',isDirectory:true}]);
+ assert.equal(readFileSync(path.join(f.target,'Occupied.mioon'),'utf8'),'Existing selected file');assert.deepEqual(f.inputs,[]);
+});
+
+test('template chooser rejects every occupied dedicated target before issuing a ticket',async t=>{
+ for(const kind of ['directory','file','symlink'] as const)await t.test(kind,async t=>{
+  const f=await fixture(t),target=path.join(f.target,'Occupied');
+  if(kind==='directory'){mkdirSync(target);writeFileSync(path.join(target,'keep'),'Existing directory');}
+  else if(kind==='file')writeFileSync(target,'Existing file');
+  else symlinkSync(path.join(f.root,'absent'),target);
+  const before=files(f.target);
+  await assert.rejects(f.choose('Occupied'),{code:'PROJECT_FILE_EXISTS'});
+  assert.deepEqual(f.probes,[{path:f.target,purpose:'template',isDirectory:true}]);assert.deepEqual(files(f.target),before);
+  assert.equal(lstatSync(target).isSymbolicLink(),kind==='symlink');assert.deepEqual(f.inputs,[]);assert.deepEqual((await f.client.api.listRecent()).registered,[]);
+ });
+});
+
+test('template target observation yields and rechecks its owner before signing a ticket',async t=>{
+ const f=await fixture(t),selected=path.join(f.target,'Held.mioon'),entered=held<void>(),release=held<void>(),original=fsPromises.lstat;
+ const delayed=(async(...args:Parameters<typeof original>)=>{if(args[0]===selected){entered.resolve();await release.promise;}return original(...args);}) as typeof original;
+ t.mock.method(fsPromises,'lstat',delayed);syncBuiltinESMExports();
+ try{
+  const pending=f.choose('Held'),first=await Promise.race([entered.promise.then(()=>'waiting'),pending.then(()=>'issued',()=>'rejected')]);
+  assert.equal(first,'waiting','filesystem observation must yield instead of synchronously issuing a ticket');
+  f.replaceDocument();release.resolve();await assert.rejects(pending,{code:'PROJECT_ENTRY_UNAVAILABLE'});
+  assert.deepEqual(f.inputs,[]);assert.deepEqual(readdirSync(f.target),[]);
+ }finally{release.resolve();t.mock.restoreAll();syncBuiltinESMExports();}
 });
 
 test('an invalid utility receipt retains the original template request and exact replay never dispatches another instantiation',async t=>{

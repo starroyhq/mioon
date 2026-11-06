@@ -40,6 +40,9 @@ export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 
   /** Consent is acquired before the action reports its own busy latch; the
    * returned predicate rechecks that same retained native input owner. */
   readonly onPrepareNativeAction?: () => Promise<(() => boolean) | null>;
+  /** A renewed, explicit consent for this exact retained home unknown version.
+   * The parent keeps every other native/identity/lease guard in force. */
+  readonly onPrepareNativeRecheck?: (expectedHomeVersion: number) => Promise<(() => boolean) | null>;
   readonly onOpenNativeResult?: (projectId: string, permit: () => boolean) => Promise<boolean>;
   readonly openedProjectIds?: readonly string[];
   /** Alternate read ports are capabilities, not user-selectable URL/path modes. */
@@ -120,7 +123,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   }
   const baseCanAct = (): boolean => active() && !opening.current && !form.current.busy && !current.current.busy && current.current.phase !== 'opening' &&
     current.current.catalogReady !== false && current.current.canMutateEntry?.() !== false && ready() !== null;
-  const canAct = (): boolean => baseCanAct() && !preparingNative.current && native.getState().kind === 'idle';
+  const canAct = (): boolean => baseCanAct() && !preparingNative.current && (native.getState().kind === 'idle' || native.getMetadata().allowOpen === true);
   async function reload(notifyParent = false): Promise<void> {
     if (!active() || opening.current || form.current.busy || current.current.busy || current.current.phase === 'opening' || directory.getState().phase === 'loading') return;
     const owner = lifetime.current, serial = ++reads.current;
@@ -161,20 +164,24 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   }, [enabled, props.summaryScope, directory, background, native]);
   async function nativeAction(action: 'trash' | 'example' | 'recheck', projectId?: string): Promise<void> {
     const recheck = action === 'recheck';
+    if (recheck && !native.canRecheckTrash()) return;
+    if (!recheck && native.getState().kind !== 'idle') return;
     if (preparingNative.current || (recheck ? !active() || Boolean(opening.current) || form.current.busy || current.current.phase === 'opening' : !canAct())) return;
     const owner = lifetime.current, observedForm = form.current, formVersion = form.current.version;
     preparingNative.current = true; setOpeningBusy(true);
     try {
       // This is the original dispatched intent, not a new departure. Its live
       // authority still checks the page, parent input, owner and lease.
-      if (recheck) {await native.recheckRetained(); return;}
+      if (recheck && native.canRecheckRetained()) {await native.recheckRetained(); return;}
       const prepare = current.current.onPrepareNativeAction;
-      const parentPermit = prepare ? await prepare() : observedForm.dirty && !await confirm(t('projects.keepCreateOpen')) ? null : () => true;
+      const parentPermit = recheck ? await current.current.onPrepareNativeRecheck?.(native.getMetadata().version) ?? null
+        : prepare ? await prepare() : observedForm.dirty && !await confirm(t('projects.keepCreateOpen')) ? null : () => true;
       if (!parentPermit) return;
       const permit = (): boolean => active() && owner === lifetime.current && form.current.version === formVersion && !form.current.busy && current.current.phase !== 'opening' && parentPermit();
       if (!permit()) return;
       if (action === 'trash' && projectId) await native.prepareTrash(projectId, permit);
       else if (action === 'example') await native.startExample(t('projectHomeNative.example.storage'), t('projectHomeNative.example.name'), permit, prepare ? parentPermit : undefined);
+      else if (recheck) await native.recheck(permit);
     } catch {
       if (active() && owner === lifetime.current) native.rejectPreparation(action === 'example');
     } finally {
@@ -229,7 +236,8 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     ? {kind: 'ready', value: waitingProjects(snapshot!.registered, taskState.tasks)}
     : sameIdentity && taskState.kind === 'error' ? {kind: 'error', retryable: true} : {kind: 'loading'};
   const nativeState = native.getState();
-  const busy = props.busy || openingBusy || props.phase === 'opening' || nativeState.kind !== 'idle';
+  const closedExampleUnknown = nativeState.kind === 'example-unknown' && nativeState.dialogHidden;
+  const busy = props.busy || openingBusy || props.phase === 'opening' || nativeState.kind !== 'idle' && !closedExampleUnknown;
   const choose = (patch: Partial<typeof preferences.preferences>): void => {
     if (!canAct() || preferences.phase !== 'ready' || preferences.pending || preferences.dirty) return;
     preferences.edit(patch); void preferences.save();
@@ -237,28 +245,30 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   const presentation = props.presentation ?? 'page';
   const exampleAvailable = props.nativeActions?.example?.bridge.instantiateTemplate && props.nativeActions.example.templates.some(template => template.id === 'timeline-basics' && template.version === 1);
   return <div className={`project-home-screen project-home-${presentation}`} data-presentation={presentation} data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
+    notice={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.notice}
     busy={busy} query={query} onQuery={value => {if (canAct()) setQuery(value);}}
     onOpen={projectId => {void open(projectId);}}
     onRetry={() => {if (props.openingProjectId) void open(props.openingProjectId, true);}}
     onRefresh={() => {void reload(true);}} canMutateEntry={canAct}
     onCreateStateChange={reportCreate}
-    onStartExample={exampleAvailable ? snapshot ? () => {void nativeAction('example');} : undefined : props.onStartExample}
+    onStartExample={closedExampleUnknown ? undefined : exampleAvailable ? snapshot ? () => {void nativeAction('example');} : undefined : props.onStartExample}
     createIntentVersion={createIntent}
-    createDisabledReason={props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
+    createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
     catalog={<RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled}
       sort={preferences.preferences.homeSort} view={preferences.preferences.homeView} now={new Date()}
       onSortChange={sort => choose({homeSort: sort})} onViewChange={homeView => choose({homeView})}
       onOpen={projectId => {void open(projectId);}} onRetry={() => {void reload(true);}}
-      onOpenFile={props.onOpenFile ? () => {if (canAct()) current.current.onOpenFile?.();} : undefined}
-      onAccessHelp={props.onHelpAccess ? () => {if (canAct()) current.current.onHelpAccess?.();} : undefined}
-      onCopy={props.onCopy ? projectId => {if (canAct()) current.current.onCopy?.(projectId);} : undefined}
-      onReveal={props.onReveal ? projectId => {if (canAct()) current.current.onReveal?.(projectId);} : undefined}
-      onTrash={props.nativeActions?.trash ? projectId => {void nativeAction('trash', projectId);} : undefined}
+      onOpenFile={!closedExampleUnknown && props.onOpenFile ? () => {if (canAct()) current.current.onOpenFile?.();} : undefined}
+      onAccessHelp={!closedExampleUnknown && props.onHelpAccess ? () => {if (canAct()) current.current.onHelpAccess?.();} : undefined}
+      onCopy={!closedExampleUnknown && props.onCopy ? projectId => {if (canAct()) current.current.onCopy?.(projectId);} : undefined}
+      onReveal={!closedExampleUnknown && props.onReveal ? projectId => {if (canAct()) current.current.onReveal?.(projectId);} : undefined}
+      onTrash={!closedExampleUnknown && props.nativeActions?.trash ? projectId => {void nativeAction('trash', projectId);} : undefined}
       openedProjectIds={props.openedProjectIds}
       onRetryWaiting={() => {void reload(true);}}
       onCreate={() => {if (canAct()) setCreateIntent(value => value + 1);}} />} />
     <ProjectHomeNativeActionsView state={nativeState} openedProjectIds={props.openedProjectIds}
       onClose={() => {native.close();}} onConfirmTrash={() => {void native.confirmTrash();}} onRecheck={() => {void nativeAction('recheck');}}
+      onRefresh={() => {void native.refreshExample();}}
       onRetryOpen={() => {void native.retryOpen();}} onDismissNotice={() => native.dismissNotice()}
       onHelpAccess={props.onHelpAccess}
       onOpenProject={projectId => {if (native.close()) void open(projectId);}} />

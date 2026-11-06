@@ -62,9 +62,17 @@ S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的
 
 打开与新建使用受信项目入口；`opened` 表示宿主已经开窗或聚焦，不再开第二次。副本原件名称与路径只来自验证结果，打开原件只传票据；权限帮助只打开固定系统设置页，Reveal 只传登记项目或票据。只读/网络来源继续拒绝原地打开，`copyTo` 用受信只读来源和共享系统存储面板，不覆盖目标。位置风险仅来自真实卷事实，关闭提示仅影响本次窗口会话。
 
+窗口隐藏只阻止开始新动作，不改变已派发写入的 owner。隐藏时收到确定创建回执，恢复可见后沿原许可打开，不重新创建；未知结果恢复可见后仍可明确核对。租约、退出、backend/context 或目录身份失效继续撤销旧 owner。编辑器传当前打开项目 ID，卡片禁用该项目的废纸篓操作；编辑器不提供宿主必然拒绝的复制入口。
+
+`createAtSelection`、`duplicate`、`copyTo`、`instantiateTemplate` 的 main 层 409 `PROJECT_ENTRY_UNAVAILABLE` 是写入前拒绝，提示重新系统选择；`copyTo` 必须重新观察来源再选择目标。`adoptCopy` 的同码可能发生在写入后，仍保留未知。打开最近项目时，仅尚未消费 renderer admission 的 main busy/owner 拒绝可以解除 openUnknown；消费后的同码不能证明未开窗。
+
 模板实例化补桥新增可选 `templates` 能力（当前仅 `timeline-basics` v1）、`chooseLocation` 的 `template` 用途与 `instantiateTemplate`。main 把真实目标及模板信息绑定到 backend/window/context 的一次性票据；页面只提交 token、固定模板 ID/版本、名称和原 requestId，不能提供 parentDir/路径。私有 main→utility 严格校验命令与复制回执后调用既有 S5 实例化。没有验证过的资源时不声明该能力；取消零写，同票据同输入只回放原结果，目标存在拒绝。确定回执后通过原先确认所发的局部许可，再核目录并打开新 ID；开窗失败只重试打开，不再实例化。
 
+模板未知回执不能靠重放已拒绝的 promise 核对。界面如实提示项目可能已建好，允许刷新列表和关闭对话框；不自动实例化、不开假回执，也不把列表刷新当作完成证明。关闭后可以明确打开已有项目，未知关闭元数据仍保留，新写继续阻止。按 requestId 查 S5 回执留 0.1.x。模板目标占用检查在位置探测之后异步执行，签票前同时检查所选文件和实际项目目录。
+
 应用 RPC `project.delete` 已采用 S5-C 的移到废纸篓语义：严格确认登记路径、文件身份及项目 revision，仅受信桌面主进程调用 `shell.trashItem`，确定成功后撤登记并保存固定回执。素材及全部本机记录保留；打开窗口、会写回项目的工作或 Mio 等待回答/审批时拒绝，S8 草稿不阻止。没有受信能力的网页/headless 返回 `PROJECT_TRASH_UNAVAILABLE`；CLI/MCP 命令留 0.1.x，在输入/私有存储/后端访问前明确拒绝。同键重放确定回执，结果不明不重做、不撤登记。旧 `confirmPermanentDeletion` 严格报 `VALIDATION_ERROR`（400），没有永久清理或 `cleanup:'pending'`。详见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。
+
+首页废纸篓使用私有 browser RPC 客户端区分确定 4xx 拒绝与网络/协议未知；明确 unconfirmed 的 4xx 仍未知。页面 lifetime 变化后，只在目录身份相同且用户重新明确同意时使用原请求核对；其他 native unknown、busy、输入、上下文及租约守卫不豁免。
 
 界面按真实能力显示入口；未有端口时按 D8 隐藏，不从后端服务的存在推断原生能力：
 
