@@ -64,7 +64,7 @@ S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的
 
 窗口隐藏只阻止开始新动作，不改变已派发写入的 owner。隐藏时收到确定创建回执，恢复可见后沿原许可打开，不重新创建；未知结果恢复可见后仍可明确核对。租约、退出、backend/context 或目录身份失效继续撤销旧 owner。编辑器传当前打开项目 ID，卡片禁用该项目的废纸篓操作；编辑器不提供宿主必然拒绝的复制入口。
 
-`createAtSelection`、`duplicate`、`copyTo`、`instantiateTemplate` 的 main 层 409 `PROJECT_ENTRY_UNAVAILABLE` 是写入前拒绝，提示重新系统选择；`copyTo` 必须重新观察来源再选择目标。`adoptCopy` 的同码可能发生在写入后，仍保留未知。打开最近项目时，仅尚未消费 renderer admission 的 main busy/owner 拒绝可以解除 openUnknown；消费后的同码不能证明未开窗。
+首次派发时，`createAtSelection`、`duplicate`、`copyTo`、`instantiateTemplate` 的 main 层 409 `PROJECT_ENTRY_UNAVAILABLE` 是写入前拒绝，提示重新系统选择；`copyTo` 必须重新观察来源再选择目标。未知写入的重放可能在操作缓存之前收到 409 或 BUSY，这不能证明原写入未执行，必须恢复原 retry/intent，保留未知与关闭保护，不能放开新的创建或复制。`adoptCopy` 的同码可能发生在写入后，仍保留未知。打开最近项目时，仅尚未消费 renderer admission 的 main busy/owner 拒绝可以解除 openUnknown；消费后的同码不能证明未开窗。
 
 模板实例化补桥新增可选 `templates` 能力（当前仅 `timeline-basics` v1）、`chooseLocation` 的 `template` 用途与 `instantiateTemplate`。main 把真实目标及模板信息绑定到 backend/window/context 的一次性票据；页面只提交 token、固定模板 ID/版本、名称和原 requestId，不能提供 parentDir/路径。私有 main→utility 严格校验命令与复制回执后调用既有 S5 实例化。没有验证过的资源时不声明该能力；取消零写，同票据同输入只回放原结果，目标存在拒绝。确定回执后通过原先确认所发的局部许可，再核目录并打开新 ID；开窗失败只重试打开，不再实例化。
 
