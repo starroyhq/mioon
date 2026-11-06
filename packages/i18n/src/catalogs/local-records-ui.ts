@@ -97,10 +97,10 @@ export const localRecordsUiMessages = {
     "ja": "このコンピューターのバージョン履歴、自動バックアップ、Mio 記録、バックグラウンドタスク記録（{size}）を削除します。プロジェクトファイル自体は変わりません。後で見つかった場合、バージョン履歴なしで開きます。この操作は取り消せません。"
   },
   "localRecords.backupWarning": {
-    "zh-Hans": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。",
-    "zh-Hant": "其中有 {count} 份自動備份（{size}）。找不到專案檔案時，這些備份可能是它僅存的副本，刪除後就無法再從備份還原。",
+    "zh-Hans": {"one": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。", "other": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。"},
+    "zh-Hant": {"one": "其中有 {count} 份自動備份（{size}）。找不到專案檔案時，這些備份可能是它僅存的副本，刪除後就無法再從備份還原。", "other": "其中有 {count} 份自動備份（{size}）。找不到專案檔案時，這些備份可能是它僅存的副本，刪除後就無法再從備份還原。"},
     "en": {"one": "This includes {count} automatic backup ({size}). If the project file is missing, this backup may be its only remaining copy. Deleting it removes the ability to recover from that backup.", "other": "These include {count} automatic backups ({size}). If the project file is missing, these backups may be its only remaining copies. Deleting them removes the ability to recover from those backups."},
-    "ja": "この中に自動バックアップが {count} 件（{size}）あります。プロジェクトファイルが見つからない場合、残された唯一のコピーかもしれません。削除すると、これらのバックアップから復元できなくなります。"
+    "ja": {"one": "この中に自動バックアップが {count} 件（{size}）あります。プロジェクトファイルが見つからない場合、残された唯一のコピーかもしれません。削除すると、これらのバックアップから復元できなくなります。", "other": "この中に自動バックアップが {count} 件（{size}）あります。プロジェクトファイルが見つからない場合、残された唯一のコピーかもしれません。削除すると、これらのバックアップから復元できなくなります。"}
   },
   "localRecords.readError": {
     "zh-Hans": "无法读取本机记录，请刷新列表重试。",
