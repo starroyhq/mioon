@@ -1,6 +1,6 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -8,6 +8,9 @@ import {createServerProject} from './helpers/project-database.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {registerProjectTransactionObserver} from '../packages/business/src/project-file/store.ts';
 import {pruneProjectVersionsInside} from '../packages/business/src/project-versions/retention.ts';
+import {captureProjectDocumentInside,canonicalJson} from '../packages/business/src/project-versions/document.ts';
+import {buildRestorePlan,projectVersionDifferenceForDisplay} from '../packages/business/src/project-versions/preview.ts';
+import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(tmpdir(), 'version-restore-service-'));
@@ -116,4 +119,44 @@ test('an automatic target may be pruned after success while the original restore
   }
   assert.equal(f.store.db.prepare('SELECT 1 FROM main.project_versions WHERE id=?').get(automatic), undefined);
   const before = f.state(); assert.deepEqual(f.api.restore(input), restored); assert.deepEqual(f.state(), before);
+});
+
+test('localized preview codes do not alter confirmation digest or stored restoration receipts', t => {
+  const f=fixture(t),savedDocument=f.store.tx(()=>captureProjectDocumentInside(f.store)),saved=f.save(),assetId=randomUUID();
+  f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Retained asset'});
+  f.store.db.prepare('INSERT INTO project.asset_annotations(assetId,projectId,revision,tags,note) VALUES(?,?,1,?,?)').run(assetId,f.projectId,'["current"]','Current annotation');
+  const before=f.state();
+  const confirmed=f.store.tx(()=>{
+    const current=captureProjectDocumentInside(f.store),stamp=readProjectContentStamp(f.store.db);
+    const row=f.store.db.prepare('SELECT blobHash,mioChangeRowid FROM main.project_versions WHERE id=?').get(saved.version.id)!;
+    const plan=buildRestorePlan(f.store,savedDocument,current,Number(row.mioChangeRowid),saved.version.createdAt),raw=JSON.stringify(plan.changes);
+    const digest=createHash('sha256').update(canonicalJson({versionId:saved.version.id,blobHash:row.blobHash,current,contentToken:stamp.contentToken,changes:plan.changes})).digest('hex');
+    const displayed=plan.changes.map(projectVersionDifferenceForDisplay);
+    assert.ok(displayed.some(row=>row.reasonCode==='PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT'));
+    assert.equal(JSON.stringify(plan.changes),raw);
+    return {digest,displayed};
+  });
+  const preview=f.api.preview({projectId:f.projectId,versionId:saved.version.id});
+  assert.equal(preview.previewDigest,confirmed.digest);assert.deepEqual(preview.changes,confirmed.displayed);assert.deepEqual(f.state(),before);
+  const input=f.select(saved.version.id),restored=f.api.restore(input);
+  const response=String(f.store.db.prepare('SELECT response FROM main.project_version_requests WHERE requestId=?').get(input.requestId)!.response);
+  assert.equal(response,JSON.stringify(restored));
+  assert.equal(response.includes('reasonCode'),false);
+  assert.ok(restored.keptCurrent.some(row=>row.reason!==null));
+  f.rename('Later edit');f.busy(true);const after=f.state();
+  assert.deepEqual(f.api.restore(input),restored);assert.deepEqual(f.state(),after);
+  assert.equal(f.store.db.prepare('SELECT response FROM main.project_version_requests WHERE requestId=?').get(input.requestId)!.response,response);
+});
+
+test('a historical reason-only ACK replays verbatim without assigning a new reason code or writing state', t => {
+  const f=fixture(t),input={projectId:f.projectId,requestId:randomUUID(),versionId:randomUUID(),expectedContentSequence:0,expectedContentToken:'a'.repeat(32),previewDigest:'b'.repeat(64)};
+  const receipt={projectId:f.projectId,requestId:input.requestId,versionId:input.versionId,beforeVersionId:randomUUID(),contentSequence:1,contentToken:'c'.repeat(32),
+    totalChanges:1,appliedChanges:[],keptCurrent:[{table:'assets',key:JSON.stringify([randomUUID()]),action:'keep-current',source:'user-or-other',fields:[],
+      reason:'素材文件定位及其引用修订保持当前，其他可变内容按版本恢复。'}]};
+  const response=JSON.stringify(receipt),digest=createHash('sha256').update(canonicalJson({operation:'project.version.restore',...input})).digest('hex');
+  f.store.db.prepare("INSERT INTO main.project_version_requests(projectId,requestId,operation,inputDigest,response) VALUES(?,?,'project.version.restore',?,?)").run(f.projectId,input.requestId,digest,response);
+  f.busy(true);const before=f.state(),changes=f.store.db.prepare('SELECT total_changes() n').get()!.n,result=f.api.restore(input);
+  assert.deepEqual(result,receipt);assert.equal(JSON.stringify(result),response);assert.equal(Object.hasOwn(result.keptCurrent[0]!,'reasonCode'),false);
+  assert.equal(f.store.db.prepare('SELECT response FROM main.project_version_requests WHERE requestId=?').get(input.requestId)!.response,response);
+  assert.deepEqual(f.state(),before);assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,changes);
 });

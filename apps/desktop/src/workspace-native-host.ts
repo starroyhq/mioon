@@ -9,6 +9,7 @@ import {parseProjectApiPath,isProjectId} from '../../../packages/contracts/src/p
 import {projectBackupInspectionSchema,projectBackupSchemas,type ProjectBackupInspectInput} from '../../../packages/contracts/src/project-backups.ts';
 import {projectEntryResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {backupRestoreDefaultPath,verifyRestoredBackupFile} from './project-backup-native.ts';
+import {backupNativeFailure,backupNativeError,backupNativeFailureCode} from './project-backup-native-result.ts';
 import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
 import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
 import {computeFullSha256,isInsideRealDirectory,referencePathForRealFile} from '@mioon/business/media-reference/index';
@@ -30,7 +31,11 @@ export async function readNativeBackendMetadata({base,token,resource,input,signa
  try{for(;;){const next=await reader.read();if(next.done)break;check();bytes+=next.value.byteLength;if(bytes>256*1024)throw unavailable();content+=decoder.decode(next.value,{stream:true});}content+=decoder.decode();}
  catch{await reader.cancel().catch(()=>{});throw unavailable();}finally{reader.releaseLock();}
  check();let value:unknown;try{value=JSON.parse(content);}catch{throw unavailable();}
- if(!response.ok||!value||typeof value!=='object'||!('ok' in value)||value.ok!==true||!('data' in value))throw unavailable();return value.data;
+ if(!response.ok||!value||typeof value!=='object'||!('ok' in value)||value.ok!==true||!('data' in value)){
+  if(value&&typeof value==='object'&&'ok' in value&&value.ok===false&&'error' in value&&
+    (projectEntry||resource==='/api/rpc'&&input&&'operation' in input&&input.operation==='project.backup.inspect'))throw backupNativeError(backupNativeFailureCode(value.error));
+  throw unavailable();
+ }return value.data;
 }
 /** Native effects consume only a backend-verified export descriptor. Project
  * media is ordinary storage; L1 supplies header/sample/full-hash admission,
@@ -92,7 +97,7 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
  const pruneBackupIntents=()=>{for(const [key,value] of backupIntents)if(value.expires<Date.now())backupIntents.delete(key);};
  const destinations=new Map<string,{file:string;expires:number}>();
  const destination=(token:string):string=>{const entry=destinations.get(token);if(!entry||entry.expires<Date.now()){destinations.delete(token);throw unavailable();}return entry.file;};
- return {async dispatch(event:E,raw:unknown):Promise<unknown>{
+ async function dispatch(event:E,raw:unknown):Promise<unknown>{
   const request=workspaceNativeRequestSchema.parse(raw),owner=options.ownerForEvent(event);if(!owner||busy)throw unavailable();
   const check=()=>{if(!owner.isCurrent())throw unavailable();};check();
   if((request.action==='openExport'||request.action==='revealExport')&&owner.projectId&&owner.projectId!==request.identity.projectId)throw unavailable();
@@ -106,7 +111,7 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
     if(prior){if(!prior.isCurrent()||prior.key!==owner.key||prior.input.projectId!==selection.projectId||prior.input.backupId!==selection.backupId)throw unavailable();check();return prior.input;}
     const read=async()=>{const value=projectBackupInspectionSchema.parse(await options.readBackup!({projectId:selection.projectId,backupId:selection.backupId}));check();if(value.projectId!==selection.projectId||value.backupId!==selection.backupId)throw unavailable();return value;};
     const backup=await read();check();const selected=await owner.chooseBackupFile(backupRestoreDefaultPath(backup,options.backupFileName));check();if(selected===null)return null;
-    if(JSON.stringify(await read())!==JSON.stringify(backup))throw unavailable();
+    if(JSON.stringify(await read())!==JSON.stringify(backup))throw backupNativeError('PROJECT_BACKUP_CHANGED');
     const file=/\.mioon$/iu.test(selected)?selected.replace(/\.mioon$/iu,'.mioon'):`${selected}.mioon`;
     const input=projectBackupSchemas['project.backup.restore'].parse({...selection,projectFile:file});check();
     if(backupIntents.size>=256)backupIntents.delete(backupIntents.keys().next().value!);
@@ -121,7 +126,7 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
     const intentCurrent=()=>{check();if(!intent.isCurrent())throw unavailable();};
     const read=async()=>{const value=projectEntryResponseSchema.parse(await options.readProjectEntry!(result.project.projectId));intentCurrent();if(value.entry.project.projectId!==result.project.projectId)throw unavailable();return value;};
     const entry=await read(),current=verifyRestoredBackupFile(result,entry,intentCurrent);
-    if(JSON.stringify(await read())!==JSON.stringify(entry))throw unavailable();
+    if(JSON.stringify(await read())!==JSON.stringify(entry))throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     current();intentCurrent();options.revealPath(result.project.projectFile);return true;
    }
    if(request.action==='chooseProjectPackageDestination'){
@@ -148,5 +153,11 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
    if(request.action==='openExport')return (await options.openPath(output.fileLocation))==='';
    options.revealPath(output.fileLocation);return true;
   }finally{busy=false;}
+ }
+ return {dispatch,async invoke(event:E,raw:unknown):Promise<unknown>{
+  const request=workspaceNativeRequestSchema.parse(raw);
+  if(request.action!=='chooseBackupRestoreDestination'&&request.action!=='revealRestoredBackup')return dispatch(event,request);
+  try{return {ok:true,value:await dispatch(event,request)};}
+  catch(error){return backupNativeFailure(error);}
  }};
 }

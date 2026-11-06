@@ -3,6 +3,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AppError,isPrevisNodeRecord} from '@mioon/contracts';
 import {createMutationReplay} from './mutation-replay.ts';
 import {validateImageConsumption} from './image-consumption.ts';
+import {currentProjectRecord} from './project-record-mutations.ts';
 
 type MutationRecord=Record<string, unknown>&{id: string; projectId?: string};
 export interface ShotCreateInput {
@@ -152,13 +153,13 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    replay:(response,context)=>replayRecord('shots',response,context),
   }),
   'shot.update':(input: ShotUpdateInput)=>updateShot(input),
-  'shot.reorder':(input: ShotReorderInput)=>mutate('shot.reorder',input,{
+  'shot.reorder':(input: ShotReorderInput)=>currentProjectRecord(mutate('shot.reorder',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
    // Verify requested owners even on replay. Membership/order validation belongs
    // to the new edit only, so later additions do not invalidate an old response.
    validate:()=>{for(const id of input.shotIds)owned('shots',id,input.projectId);},
    apply:()=>{
-    const p=project(input.projectId);check(p,input.expectedRevision);
+    const p=project(input.projectId);check(currentProjectRecord(p),input.expectedRevision);
     const shots=list('shots',p.id);
     if(input.shotIds.length!==shots.length||new Set(input.shotIds).size!==shots.length||shots.some(s=>!input.shotIds.includes(typeof (s as MutationRecord).id==='string'?(s as MutationRecord).id as string:'')))
      throw new AppError('INVALID_ORDER','顺序必须包含全部镜头且不能重复');
@@ -166,7 +167,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
     touchProject(p.id);return get('projects',p.id);
    },
    replay:(response,context)=>replayRecord('projects',response,context),
-  }),
+  })),
   'node.create':(input: NodeCreateInput)=>mutate('node.create',input,{
    resolve:()=>({projectId:project(input.projectId).id}),
    validate:()=>nodeRelations(input as unknown as MutationRecord),

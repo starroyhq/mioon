@@ -22,8 +22,10 @@ export interface ProjectHistoryState {
 }
 const failure = (error: unknown): {code: string; retryable: boolean} => ({code: error instanceof ProjectHistoryError ? error.code : 'BACKEND_UNAVAILABLE',
   retryable: !(error instanceof ProjectHistoryError && error.definitive)});
-export function createProjectHistoryRuntime(projectId: string, client: ProjectHistoryClient = createProjectHistoryClient(), newId = () => crypto.randomUUID(), admission?: ProjectFeatureAdmission) {
-  let state: ProjectHistoryState = {tab: 'versions', versions: {kind: 'loading'}, versionCursor: null, selected: 'current', preview: {kind: 'loading'},
+export interface ProjectHistoryOptions {readonly backupsOnly?:boolean}
+export function createProjectHistoryRuntime(projectId: string, client: ProjectHistoryClient = createProjectHistoryClient(), newId = () => crypto.randomUUID(), admission?: ProjectFeatureAdmission, options: ProjectHistoryOptions = {}) {
+  const backupsOnly = options.backupsOnly === true;
+  let state: ProjectHistoryState = {tab: backupsOnly ? 'backups' : 'versions', versions: {kind: 'loading'}, versionCursor: null, selected: 'current', preview: {kind: 'loading'},
     backups: {kind: 'loading'}, status: {kind: 'loading'}, inspection: null, backupSelection: null, attempt: null, choosing: false, paging: false};
   const admissionKey = admission?.key;
   const allowed = () => featureAdmissionAllowed(admission, admissionKey);
@@ -34,7 +36,7 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
   const laterStatus = (owner: number) => {clearTimeout(poll); if (current(owner) && state.tab === 'backups'
     && state.status.kind === 'ready' && ['running', 'slow'].includes(state.status.value.state)) poll = setTimeout(() => {void loadBackups(false);}, 2_000);};
   async function loadVersions(more = false) {
-    if (!active || !allowed() || more && (state.paging || !state.versionCursor || state.versions.kind !== 'ready')) return;
+    if (backupsOnly || !active || !allowed() || more && (state.paging || !state.versionCursor || state.versions.kind !== 'ready')) return;
     const owner = epoch, serial = ++listSerial, previous = state.versions.kind === 'ready' ? state.versions.value : [], cursor = more ? state.versionCursor : null;
     publish(more ? {paging: true} : {versions: {kind: 'loading'}, versionCursor: null});
     try {if(!current(owner))return;const page = await client.list({projectId, limit: 100, ...(cursor ? {cursor} : {})});
@@ -45,7 +47,7 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
     } catch (error) {if (current(owner) && serial === listSerial) publish({versions: {kind: 'error', ...failure(error)}, paging: false});}
   }
   async function select(id: string, more = false) {
-    if (!active || !allowed() || locked() || more && (state.paging || state.preview.kind !== 'ready' || !state.preview.value.nextCursor)) return;
+    if (backupsOnly || !active || !allowed() || locked() || more && (state.paging || state.preview.kind !== 'ready' || !state.preview.value.nextCursor)) return;
     const owner = epoch, serial = ++selection, old = state.preview.kind === 'ready' ? state.preview.value : null;
     const cursor = more ? old?.nextCursor : null;
     publish(more ? {paging: true} : {selected: id, preview: {kind: 'loading'}});
@@ -76,7 +78,7 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
     catch (error) {if (current(owner) && serial === selection) publish({inspection: {kind: 'error', ...failure(error)}});}
   }
   async function execute(attempt: HistoryMutation) {
-    if (!allowed() || state.attempt?.phase === 'working' || state.choosing) return;
+    if (backupsOnly && attempt.kind !== 'backup' || !allowed() || state.attempt?.phase === 'working' || state.choosing) return;
     const writeAdmission = admission;
     const pending: HistoryAttempt = {...attempt, phase: 'working'}; publish({attempt: pending});
     try {
@@ -91,7 +93,7 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
     } catch (error) {if (state.attempt === pending) publish({attempt: {...attempt, phase: featureAdmissionAllowed(writeAdmission, admissionKey) && error instanceof ProjectHistoryError && error.definitive ? 'rejected' : 'unknown', code: failure(error).code}});}
   }
   return Object.freeze({projectId, canInteract: allowed, setAdmission(next?:ProjectFeatureAdmission) {if (next?.key === admissionKey) admission = next;}, snapshot: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
-    open(tab: ProjectHistoryState['tab'] = state.tab) {active = true; epoch++; publish({tab, paging: false});
+    open(tab: ProjectHistoryState['tab'] = state.tab) {if (backupsOnly) tab = 'backups'; active = true; epoch++; publish({tab, paging: false});
       if (tab === 'versions') {void loadVersions(); if (!locked() && state.selected !== 'current') void select(state.selected);} else void loadBackups();},
     close() {active = false; epoch++; selection++; clearTimeout(poll);
       const pending = state.attempt?.phase === 'working' || state.attempt?.phase === 'unknown' ? state.attempt : null;
@@ -99,11 +101,11 @@ export function createProjectHistoryRuntime(projectId: string, client: ProjectHi
       // unresolved write, never a cache of every project the user visited.
       publish({versions: {kind: 'loading'}, versionCursor: null, selected: 'current', preview: {kind: 'loading'}, backups: {kind: 'loading'},
         status: {kind: 'loading'}, inspection: null, backupSelection: null, attempt: pending, choosing: false, paging: false});},
-    tab(tab: ProjectHistoryState['tab']) {if (!allowed() || locked()) return; selection++; publish({tab, inspection: null, backupSelection: null, paging: false}); clearTimeout(poll);
+    tab(tab: ProjectHistoryState['tab']) {if (backupsOnly && tab !== 'backups' || !allowed() || locked()) return; selection++; publish({tab, inspection: null, backupSelection: null, paging: false}); clearTimeout(poll);
       if (tab === 'versions') {void loadVersions(); if (state.selected !== 'current') void select(state.selected);} else void loadBackups();},
     loadVersions, select, loadBackups, inspect,
-    save(name: string) {if (!active || !allowed() || locked()) return; return execute({kind: 'save', input: {projectId, requestId: newId(), ...(name.trim() ? {name: name.trim()} : {})}});},
-    restoreVersion() {if (!active || !allowed() || locked() || state.preview.kind !== 'ready' || !state.preview.value.restoreAvailable || state.selected === 'current') return;
+    save(name: string) {if (backupsOnly || !active || !allowed() || locked()) return; return execute({kind: 'save', input: {projectId, requestId: newId(), ...(name.trim() ? {name: name.trim()} : {})}});},
+    restoreVersion() {if (backupsOnly || !active || !allowed() || locked() || state.preview.kind !== 'ready' || !state.preview.value.restoreAvailable || state.selected === 'current') return;
       const value = state.preview.value; return execute({kind: 'version', input: {projectId, versionId: value.version.id, requestId: newId(), expectedContentSequence: value.contentSequence,
         expectedContentToken: value.contentToken, previewDigest: value.previewDigest}});},
     async chooseBackup(choose: (input: {projectId: string; backupId: string; requestId: string}) => Promise<ProjectBackupRestoreInput | null>) {
@@ -125,10 +127,11 @@ export type ProjectHistoryRuntime = ReturnType<typeof createProjectHistoryRuntim
 // Only uncertain/in-flight identities survive closing a view. They are scoped
 // to this loaded backend document; no browser persistence or cross-tab replay.
 const retained = new Map<string, ProjectHistoryRuntime>();
-export function projectHistoryRuntime(projectId: string, admission?:ProjectFeatureAdmission): ProjectHistoryRuntime {
-  const key = JSON.stringify([projectId,admission?.key ?? null]);
+export function projectHistoryRuntime(projectId: string, admission?:ProjectFeatureAdmission, options:ProjectHistoryOptions = {}): ProjectHistoryRuntime {
+  // A failed source's backup viewer must never inherit a pending project RPC.
+  const key = JSON.stringify([projectId,admission?.key ?? null,options.backupsOnly === true]);
   const pending = retained.get(key); if (pending) {pending.setAdmission(admission);return pending;}
-  const runtime = createProjectHistoryRuntime(projectId, undefined, undefined, admission);
+  const runtime = createProjectHistoryRuntime(projectId, undefined, undefined, admission, options);
   runtime.subscribe(() => {
     const phase = runtime.snapshot().attempt?.phase;
     if (phase === 'working' || phase === 'unknown') retained.set(key, runtime);
