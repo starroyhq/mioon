@@ -7,7 +7,10 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
+import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {AppError} from '../packages/contracts/src/app-error.ts';
@@ -27,12 +30,12 @@ interface Setup {
   /** `records/<project ID>/` with files of the given sizes, folders 0700 like the kernel's. */
   records(projectId: string, files?: Readonly<Record<string, number>>): string;
 }
-function setup(t: TestContext, open: ReadonlySet<string> = new Set(), backgroundBusy?: (projectId: string) => boolean): Setup {
+function setup(t: TestContext, open: ReadonlySet<string> = new Set(), backgroundBusy?: (projectId: string) => boolean, signal?: AbortSignal): Setup {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-b1-records-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   const dataDir = path.join(root, 'data');
   const library = openAppLibrary({dataDir, isProjectOpen: projectId => open.has(projectId),
-    ...(backgroundBusy === undefined ? {} : {isProjectBackgroundBusy: backgroundBusy})});
+    ...(backgroundBusy === undefined ? {} : {isProjectBackgroundBusy: backgroundBusy}), ...(signal ? {signal} : {})});
   t.after(() => library.close());
   const records = (projectId: string, files: Readonly<Record<string, number>> = {}): string => {
     const folder = path.join(dataDir, PROJECT_RECORDS_DIRECTORY, projectId);
@@ -77,6 +80,79 @@ const writeSuperJournal = (file: string, journals: readonly string[]): void => {
   writeFileSync(file, journals.map(journal => `${journal}\u0000`).join(''));
 };
 
+test('orphan list reports the physical automatic backup count and bytes without following links or opening databases', async t => {
+  const f=setup(t),id=randomUUID(),first=randomUUID(),second=randomUUID(),linked=randomUUID(),folder=f.records(id,{
+    'history.db':31,[`backups/${first}/project.mioon`]:17,[`backups/${second}/project.mioon`]:29,
+    [`backups/${first}/receipt.json`]:11,'backups/index.json':7,'imports/project.mioon':13,
+  });
+  // Unindexed copies still get deleted, so they must be disclosed too. These
+  // deliberately invalid bytes prove the list does not open any backup DB.
+  const outside=path.join(f.root,'outside-backup.mioon');writeFileSync(outside,Buffer.alloc(4096));
+  mkdirSync(path.join(folder,'backups',linked),{mode:0o700});symlinkSync(outside,path.join(folder,'backups',linked,'project.mioon'));
+  const linkedDirectory=randomUUID();symlinkSync(path.join(folder,'backups',first),path.join(folder,'backups',linkedDirectory));
+  const row=(await f.library.localRecords.list()).find(value=>value.projectId===id)!;
+  assert.deepEqual(row.automaticBackups,{count:2,sizeBytes:46});
+  assert.equal(row.sizeBytes,108);
+  assert.equal(readFileSync(outside).length,4096);
+  assert.equal(readFileSync(path.join(folder,'backups',first,'project.mioon')).length,17);
+  const empty=randomUUID();f.records(empty,{'history.db':5});
+  assert.deepEqual((await f.library.localRecords.list()).find(value=>value.projectId===empty)?.automaticBackups,{count:0,sizeBytes:0});
+});
+
+test('unreadable automatic backup metadata refuses a list instead of reporting a misleading zero count',async t=>{
+  const f=setup(t),id=randomUUID(),backupId=randomUUID(),folder=f.records(id,{[`backups/${backupId}/project.mioon`]:13});
+  const protectedFile=path.join(folder,'backups',backupId,'project.mioon'),original=fsPromises.lstat;
+  t.mock.method(fsPromises,'lstat',async(...args:Parameters<typeof original>)=>{
+    if(String(args[0])===protectedFile)throw Object.assign(new Error('private-path-must-not-leak'),{code:'EACCES'});
+    return Reflect.apply(original,fsPromises,args);
+  });syncBuiltinESMExports();
+  try{await assert.rejects(f.library.localRecords.list(),error=>{
+    assert.ok(error instanceof AppError);assert.equal(error.code,'LOCAL_RECORDS_SCAN_FAILED');assert.equal(error.status,503);
+    assert.deepEqual(error.details,{projectId:id});assert.doesNotMatch(error.message,/private-path|outside-backup/);return true;
+  });}finally{t.mock.restoreAll();syncBuiltinESMExports();}
+  assert.equal(readFileSync(protectedFile).length,13);
+});
+
+test('confirmed records are renamed before asynchronous removal, and concurrent listing never synchronously sweeps an active delete',async t=>{
+  const f=setup(t),id=randomUUID(),folder=f.records(id,{'history.db':19,'imports/keep':23});
+  const entered=Promise.withResolvers<'sync'|'async'>(),gate=Promise.withResolvers<void>();
+  const originalSync=fs.rmSync,originalAsync=fsPromises.rm;let syncCalls=0,done=false,tombstone='';
+  const owned=(file:fs.PathLike)=>String(file).startsWith(path.join(f.dataDir,PROJECT_RECORDS_DIRECTORY,`.deleting-${id}-`));
+  t.mock.method(fs,'rmSync',(...args:Parameters<typeof originalSync>)=>{
+    if(owned(args[0])){syncCalls++;entered.resolve('sync');}return Reflect.apply(originalSync,fs,args);
+  });
+  t.mock.method(fsPromises,'rm',async(...args:Parameters<typeof originalAsync>)=>{
+    if(owned(args[0])){tombstone=String(args[0]);entered.resolve('async');await gate.promise;}return Reflect.apply(originalAsync,fsPromises,args);
+  });syncBuiltinESMExports();
+  const deleting=f.library.localRecords.delete(id).finally(()=>{done=true;});
+  try{
+    assert.equal(await entered.promise,'async');assert.equal(existsSync(folder),false);assert.equal(done,false);
+    assert.equal(readFileSync(path.join(tombstone,'imports/keep')).length,23);
+    await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(done,false,'the event loop can progress while recursive removal is waiting');
+    assert.deepEqual(await f.library.localRecords.list(),[]);assert.equal(syncCalls,0);assert.equal(existsSync(tombstone),true);
+    gate.resolve();await deleting;assert.equal(done,true);assert.equal(existsSync(tombstone),false);
+  }finally{gate.resolve();await deleting.catch(()=>{});t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
+test('a tombstone recovery sweep uses asynchronous removal and retains failed cleanup under a live owner',async t=>{
+  const f=setup(t),tombstone=path.join(f.dataDir,PROJECT_RECORDS_DIRECTORY,`.deleting-${randomUUID()}-${randomUUID()}`);
+  mkdirSync(tombstone,{recursive:true,mode:0o700});writeFileSync(path.join(tombstone,'keep'),'confirmed but not cleaned');
+  const entered=Promise.withResolvers<'sync'|'async'>(),gate=Promise.withResolvers<void>(),originalSync=fs.rmSync,originalAsync=fsPromises.rm;
+  let calls=0,done=false;
+  t.mock.method(fs,'rmSync',(...args:Parameters<typeof originalSync>)=>{if(String(args[0])===tombstone)entered.resolve('sync');return Reflect.apply(originalSync,fs,args);});
+  t.mock.method(fsPromises,'rm',async(...args:Parameters<typeof originalAsync>)=>{
+    if(String(args[0])===tombstone){calls++;entered.resolve('async');await gate.promise;throw Object.assign(new Error('synthetic private cleanup denied'),{code:'EACCES'});}
+    return Reflect.apply(originalAsync,fsPromises,args);
+  });syncBuiltinESMExports();
+  const listing=f.library.localRecords.list().finally(()=>{done=true;});
+  try{
+    assert.equal(await entered.promise,'async');assert.equal(done,false);await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(done,false);
+    gate.resolve();assert.deepEqual(await listing,[]);assert.equal(readFileSync(path.join(tombstone,'keep'),'utf8'),'confirmed but not cleaned');
+    f.library.close();await assert.rejects(f.library.localRecords.list(),{code:'APP_LIBRARY_CLOSED'});assert.equal(calls,1);
+    assert.equal(readFileSync(path.join(tombstone,'keep'),'utf8'),'confirmed but not cleaned');
+  }finally{gate.resolve();await listing.catch(()=>{});t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
 test('records whose project file cannot be found are listed with their size, name and last location', async t => {
   const projectA = '00000000-0000-4000-8000-00000000000a', projectC = '00000000-0000-4000-8000-00000000000c';
   const projectOpen = '00000000-0000-4000-8000-00000000000e';
@@ -111,8 +187,8 @@ test('records whose project file cannot be found are listed with their size, nam
   symlinkSync(folderA, path.join(dataDir, PROJECT_RECORDS_DIRECTORY, randomUUID()));
 
   const expected: LocalRecordsItem[] = [
-    {projectId: projectA, sizeBytes: 1524, hasSuperJournal: false, name: null, projectFile: null},
-    {projectId: projectC, sizeBytes: 10, hasSuperJournal: false, name: 'Gone', projectFile: path.join(root, 'projects', 'Gone', 'Gone.mioon')},
+    {projectId: projectA, sizeBytes: 1524, hasSuperJournal: false, hasUnfinishedTasks: false, name: null, projectFile: null,automaticBackups:{count:0,sizeBytes:0}},
+    {projectId: projectC, sizeBytes: 10, hasSuperJournal: false, hasUnfinishedTasks: false, name: 'Gone', projectFile: path.join(root, 'projects', 'Gone', 'Gone.mioon'),automaticBackups:{count:0,sizeBytes:0}},
   ];
   assert.deepEqual(await library.localRecords.list(), expected);
 });
@@ -274,9 +350,67 @@ test('a records folder the kernel made is listed once its project file is gone, 
   const folder = path.join(dataDir, ...projectLocalDirSegments(projectId));
   const historySize = lstatSync(path.join(folder, 'history.db')).size;
   assert.ok(historySize > 0);
-  assert.deepEqual(await library.localRecords.list(), [{projectId, sizeBytes: historySize, hasSuperJournal: false, name: 'Film', projectFile}]);
+  assert.deepEqual(await library.localRecords.list(), [{projectId, sizeBytes: historySize, hasSuperJournal: false, hasUnfinishedTasks: false, name: 'Film', projectFile,automaticBackups:{count:0,sizeBytes:0}}]);
   await library.localRecords.delete(projectId);
   assert.equal(existsSync(folder), false);
   assert.deepEqual(readdirSync(path.join(dataDir, PROJECT_RECORDS_DIRECTORY)), []);
   assert.deepEqual(await library.localRecords.list(), []);
+});
+
+test('list exposes independent live and durable work protection beside a real hot super-journal', async t => {
+  const live = new Set<string>(), f = setup(t, new Set(), id => live.has(id));
+  const both = randomUUID(), onlyLive = randomUUID(), archived = randomUUID();
+  const folder = f.records(both, {'history.db': 100}); f.records(onlyLive); f.records(archived);
+  writeSuperJournal(path.join(folder, SUPER_JOURNAL), [path.join(folder, 'history.db-journal')]);
+  writeJournal(path.join(folder, 'history.db-journal'), {names: path.join(folder, SUPER_JOURNAL)});
+  const row = {projectId: both, projectFile: path.join(f.root, 'Gone.mioon'), kind: 'job' as const,
+    taskId: randomUUID(), indexedAt: '2026-11-04T00:00:00.000Z', phase: 'blocked' as const, reason: 'SOURCE_UNAVAILABLE'};
+  f.library.taskIndex.upsert(row); f.library.taskIndex.upsert({...row, projectId: archived, taskId: randomUUID(), phase: 'archived'});
+  live.add(onlyLive);
+  const bytes = readFileSync(path.join(folder, SUPER_JOURNAL)), indexed = f.library.taskIndex.listProject(both);
+  const listed = new Map((await f.library.localRecords.list()).map(item => [item.projectId, item]));
+  assert.deepEqual([listed.get(both)?.hasSuperJournal, listed.get(both)?.hasUnfinishedTasks], [true, true]);
+  assert.deepEqual([listed.get(onlyLive)?.hasSuperJournal, listed.get(onlyLive)?.hasUnfinishedTasks], [false, true]);
+  assert.deepEqual([listed.get(archived)?.hasSuperJournal, listed.get(archived)?.hasUnfinishedTasks], [false, false]);
+  assert.equal((await appError(() => f.library.localRecords.delete(both))).code, 'LOCAL_RECORDS_IN_USE');
+  assert.deepEqual(f.library.taskIndex.listProject(both), indexed);
+  assert.deepEqual(readFileSync(path.join(folder, SUPER_JOURNAL)), bytes);
+});
+
+test('a closed application owner cannot sweep tombstones or delete orphan records', async t => {
+  const f = setup(t), projectId = randomUUID(), folder = f.records(projectId, {'history.db': 27});
+  const tombstone = path.join(f.dataDir, PROJECT_RECORDS_DIRECTORY, `.deleting-${randomUUID()}-${randomUUID()}`);
+  mkdirSync(tombstone, {mode: 0o700}); writeFileSync(path.join(tombstone, 'keep'), 'previous deletion');
+  f.library.close();
+  await assert.rejects(f.library.localRecords.list(), {code: 'APP_LIBRARY_CLOSED'});
+  await assert.rejects(f.library.localRecords.delete(projectId), {code: 'APP_LIBRARY_CLOSED'});
+  assert.equal(existsSync(folder), true); assert.equal(readFileSync(path.join(folder, 'history.db')).length, 27);
+  assert.equal(readFileSync(path.join(tombstone, 'keep'), 'utf8'), 'previous deletion');
+});
+
+test('backend retirement before a sweep and after the async check prevents records removal', async t => {
+  const controller = new AbortController(), retired = Error('synthetic backend retired');
+  let abortAtWork = false;
+  const f = setup(t, new Set(), () => {if (abortAtWork) controller.abort(retired); return false;}, controller.signal);
+  const id = randomUUID(), folder = f.records(id, {'history.db': 13});
+  abortAtWork = true;
+  await assert.rejects(f.library.localRecords.delete(id), error => error === retired);
+  assert.equal(existsSync(folder), true); assert.deepEqual(readdirSync(path.dirname(folder)), [id]);
+  const tombstone = path.join(path.dirname(folder), `.deleting-${randomUUID()}-${randomUUID()}`);
+  mkdirSync(tombstone, {mode: 0o700}); writeFileSync(path.join(tombstone, 'keep'), 'not swept');
+  await assert.rejects(f.library.localRecords.list(), error => error === retired);
+  await assert.rejects(f.library.localRecords.delete(id), error => error === retired);
+  assert.equal(readFileSync(path.join(tombstone, 'keep'), 'utf8'), 'not swept');
+  assert.equal(readFileSync(path.join(folder, 'history.db')).length, 13);
+});
+
+test('the last synchronous open observer rejects an opening host without taking an exclusive project lease', async t => {
+  const opening = new Set<string>(), has = opening.has.bind(opening), projectId = randomUUID(); let checks = 0;
+  opening.has = id => {if (id === projectId && ++checks === 2) opening.add(id); return has(id);};
+  const f = setup(t, opening), folder = f.records(projectId, {'history.db': 19});
+  const failure = await appError(() => f.library.localRecords.delete(projectId));
+  assert.deepEqual([failure.code, failure.status], ['LOCAL_RECORDS_IN_USE', 409]);
+  assert.equal(checks, 2); assert.equal(readFileSync(path.join(folder, 'history.db')).length, 19);
+  assert.deepEqual(readdirSync(path.dirname(folder)), [projectId]);
+  assert.equal(f.library.registry.get(projectId), null, 'unregistered records are still a supported target, not a withExclusive lookup');
 });

@@ -24,7 +24,8 @@ function verificationFailure(error: unknown): Error {
   // target, and never forward the filesystem's message or path.
   if (code !== 'WORKSPACE_NATIVE_UNAVAILABLE') return backupNativeError(code);
   const actual = (error as {code?:unknown} | null)?.code;
-  return backupNativeError(typeof actual === 'string' && ['ENOENT','ENOTDIR','PROJECT_INVALID','PROJECT_FORMAT_NEWER','PROJECT_MISSING','PROJECT_LOCKED'].includes(actual)
+  if(actual==='PROJECT_LOCKED')return backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
+  return backupNativeError(typeof actual === 'string' && ['ENOENT','ENOTDIR','PROJECT_INVALID','PROJECT_FORMAT_NEWER','PROJECT_MISSING'].includes(actual)
     ? 'PROJECT_BACKUP_RESTORE_CHANGED' : 'WORKSPACE_NATIVE_UNAVAILABLE');
 }
 /** Read only the copied project format, never an ordinary host or local history.
@@ -34,20 +35,24 @@ export function verifyRestoredBackupFile(result: ProjectBackupRestoreResponse, e
   try {
     check();
     const project = entry.entry.project, wanted = result.project, file = wanted.projectFile, directory = path.dirname(file);
-    if (entry.entry.availability.state !== 'available' || project.projectId !== wanted.projectId || project.projectFile !== file ||
+    if (project.projectId !== wanted.projectId || project.projectFile !== file ||
         project.fileIdentity.dev !== wanted.fileIdentity.dev || project.fileIdentity.ino !== wanted.fileIdentity.ino ||
         !path.isAbsolute(file) || path.resolve(file) !== file || realpathSync(file) !== file || realpathSync(directory) !== directory) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
+    if(['open','busy','locked'].includes(entry.entry.availability.state))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
+    if(entry.entry.availability.state!=='available')throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     const before = lstatSync(file, {bigint: true}), parent = lstatSync(directory, {bigint: true});
     const held = (info: BigIntStats): boolean => isProjectFileHeld({dev: String(info.dev), ino: String(info.ino)}) || isAppLibraryHeld({dev: String(info.dev), ino: String(info.ino)});
-    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || held(before) || !parent.isDirectory() || parent.isSymbolicLink() ||
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || !parent.isDirectory() || parent.isSymbolicLink() ||
         String(before.dev) !== wanted.fileIdentity.dev || String(before.ino) !== wanted.fileIdentity.ino) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
+    if(held(before))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
     if (inspectCopiedProjectFile(file).projectId !== wanted.projectId) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     const current = (): void => {
       try {
         check();
         const actual = lstatSync(file, {bigint: true}), actualParent = lstatSync(directory, {bigint: true});
         if (realpathSync(file) !== file || realpathSync(directory) !== directory || !actual.isFile() || actual.isSymbolicLink() || actual.nlink !== 1n ||
-            !same(before, actual) || held(actual) || !actualParent.isDirectory() || actualParent.isSymbolicLink() || actualParent.dev !== parent.dev || actualParent.ino !== parent.ino || actualParent.birthtimeNs !== parent.birthtimeNs) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
+            !same(before, actual) || !actualParent.isDirectory() || actualParent.isSymbolicLink() || actualParent.dev !== parent.dev || actualParent.ino !== parent.ino || actualParent.birthtimeNs !== parent.birthtimeNs) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
+        if(held(actual))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
       } catch(error) {throw verificationFailure(error);}
     };
     current(); return current;

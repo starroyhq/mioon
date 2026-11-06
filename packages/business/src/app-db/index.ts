@@ -3,9 +3,11 @@
  * connection. The project host opens it once per backend (S0's AppLibraryPort)
  * and hands the ports on; nothing here opens a project file. */
 import type {DatabaseSync} from 'node:sqlite';
+import {validateManagedFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
-import {openAppDatabase} from './connection.ts';
-import {projectFileIdentity} from './identity.ts';
+import {isAppLibraryHeld, openAppDatabase} from './connection.ts';
+import {projectFileIdentity, sameProjectFileIdentity} from './identity.ts';
+import {appLibraryError} from './errors.ts';
 import {createLocalRecords} from './local-records.ts';
 import type {LocalRecordsStore} from './local-records.ts';
 import {createProjectRegistry} from './registry.ts';
@@ -39,6 +41,8 @@ export {hasSuperJournalInUse} from './local-records.ts';
 export type {LocalRecordsItem, LocalRecordsStore} from './local-records.ts';
 
 export interface AppLibraryOptions {
+  /** The backend lifetime, in addition to the intrinsic live-owner check. */
+  readonly signal?: AbortSignal;
   /** The app data directory: a private directory, created when missing. */
   readonly dataDir: string;
   /** Also searched for moved project files, after the old folder and its
@@ -88,9 +92,19 @@ export interface AppLibrary {
 
 /** Opens (or creates) the app library of `dataDir`. A second open of the same
  * library, in this process or another, is APP_LIBRARY_LOCKED until close(). */
-export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, isProjectOpen = () => false, isProjectBackgroundBusy = () => false}: AppLibraryOptions): AppLibrary {
+export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, isProjectOpen = () => false, isProjectBackgroundBusy = () => false, signal}: AppLibraryOptions): AppLibrary {
   const database = openAppDatabase(dataDir);
   try {
+    const ownedIdentity = projectFileIdentity(database.file);
+    if (!ownedIdentity) throw appLibraryError('APP_LIBRARY_CLOSED');
+    const assertMutationAllowed = (): void => {
+      signal?.throwIfAborted();
+      if (database.closed || !isAppLibraryHeld(ownedIdentity, database.db)) throw appLibraryError('APP_LIBRARY_CLOSED');
+      validatePrivateDirectory(database.dataDir);
+      validateManagedFile(database.file, {root: database.dataDir});
+      const current = projectFileIdentity(database.file);
+      if (!current || !sameProjectFileIdentity(current, ownedIdentity)) throw appLibraryError('APP_LIBRARY_CLOSED');
+    };
     const registry = createProjectRegistry(database, {
       identity: projectFileIdentity,
       findMoved: {roots: [...findMovedRoots], ...(findMovedLimit === undefined ? {} : {limit: findMovedLimit})},
@@ -111,7 +125,8 @@ export function openAppLibrary({dataDir, findMovedRoots = [], findMovedLimit, is
       taskIndex: Object.freeze(taskIndex),
       inbox: Object.freeze(createProjectInboxStore(database)),
       receipts: Object.freeze(createAppOperationReceiptStore(database)),
-      localRecords: Object.freeze(createLocalRecords({dataDir: database.dataDir, registry, identity: projectFileIdentity, isProjectOpen, isProjectBackgroundBusy: backgroundBusy})),
+      localRecords: Object.freeze(createLocalRecords({dataDir: database.dataDir, registry, identity: projectFileIdentity, isProjectOpen,
+        isProjectBackgroundBusy: backgroundBusy, assertMutationAllowed})),
       db: database.db,
       tx: database.tx,
       close: database.close,

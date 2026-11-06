@@ -1,3 +1,4 @@
+import {isLocalRecordOperation} from '../../../packages/contracts/src/local-record-operations.ts';
 import {createMioUserRules} from '@mioon/business/agent/mio-user-rules';
 import {handleUserRulesHttp} from './mio-rules-http.ts';
 import {MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
@@ -56,7 +57,7 @@ import {createApplicationAgentHttp} from './application-agent-http.ts';
 import {body, json, field} from './http-json.ts';
 import {callObservedRpc} from './rpc-observation.ts';
 import {createFileResponses} from './file-response.ts';
-import {readWorkspaceInfo} from './workspace-info.ts';
+import {readApplicationWorkspaceInfo,workspaceInfoView} from './workspace-info.ts';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage, Server, ServerResponse} from 'node:http';
 import type {DatabaseSync} from 'node:sqlite';
@@ -195,7 +196,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
   const listeningPort = (): number => { const result = selfPort(); if (result === undefined) throw new TypeError('The local HTTP listener is not bound to a TCP port.'); return result; };
   try {
-    library = openAppLibrary({dataDir: root, findMovedRoots: [directories.projectsDir], isProjectOpen: id => manager?.status(id) !== null && manager?.status(id) !== undefined,
+    library = openAppLibrary({dataDir: root, signal: shutdown.signal, findMovedRoots: [directories.projectsDir], isProjectOpen: id => manager?.status(id) !== null && manager?.status(id) !== undefined,
       isProjectBackgroundBusy: id => background?.inspectProjectWork(id).mayWriteBack ?? true});
     const appLibrary = library;
     application = await composeApplicationRuntime(library, options, shutdown.signal, selfPort);
@@ -306,8 +307,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
-      imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries});
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+      imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
     const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: {list: listAgentTaskTools},
@@ -359,6 +360,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
               // opening could otherwise create history or automatic backups.
               throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
             }
+            if (isLocalRecordOperation(field(rpcBody, 'operation'))) throw new AppError('VALIDATION_ERROR', '本机记录操作需要应用地址 /api/rpc', 400);
           }
           const lease = await projects.acquire(route.projectId, 'request');
           activeProjectId = route.projectId;
@@ -402,7 +404,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         }
         if (url.pathname === '/api/images/settings' || url.pathname === '/api/images/custom-settings') { await app.imageHttp(req, res, url); return; }
         if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url)) return;
-        if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readWorkspaceInfo({root, channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
+        if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readApplicationWorkspaceInfo({directories, view:workspaceInfoView(url.searchParams), channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
         if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
           const input = await body(req, 64);
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) throw new AppError('VALIDATION_ERROR', '工具检测不接受路径或命令参数。', 400);
@@ -440,7 +442,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname === '/api/rpc' && req.method === 'POST') {
           const input = await body(req) as Record<string, unknown>;
           if (!input || typeof input.operation !== 'string') throw new AppError('VALIDATION_ERROR', '缺少 operation', 400);
-          const data = await callObservedRpc(req, res, rpc, input.operation, input.input || {});
+          const data = await callObservedRpc(req, res, rpc, input.operation, isLocalRecordOperation(input.operation) ? input.input : input.input || {});
           if (!res.destroyed && !res.writableEnded) json(res, 200, {ok: true, data});
           return;
         }

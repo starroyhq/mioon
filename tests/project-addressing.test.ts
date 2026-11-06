@@ -11,6 +11,8 @@ import {parseProjectApiPath, projectApiPath, projectMediaPath, projectRpcPath} f
 import {jsonSchema, operationDefinition, splitProjectAddress} from '../packages/client/src/index.ts';
 import {assertProjectRpc, projectHandlerTarget} from '../apps/server/src/project-host/request.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {localRecordSchemas, localRecordEffects, localRecordsListResponseSchema, localRecordsDeleteResponseSchema, isLocalRecordResponse} from '../packages/contracts/src/local-record-operations.ts';
+import {schemas as modelSchemas} from '../packages/contracts/src/index.ts';
 
 const TOKEN = 'synthetic-project-addressing-token';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -80,6 +82,38 @@ test('rpcPathFor and the CLI/MCP project address', () => {
     assert.throws(() => rpcPathFor(operation, {}), TypeError, operation);
   }
   assert.throws(() => splitProjectAddress('job.get', {projectId: 'x', jobId}), {code: 'VALIDATION_ERROR'});
+});
+
+test('local records have strict application-only contracts and truthful file effects without public/model discovery', () => {
+  const projectId = randomUUID(), appLibraryScope = 'a'.repeat(64), instanceId = randomUUID();
+  const input = {projectId, expectedAppLibraryScope: appLibraryScope, expectedInstanceId: instanceId};
+  for (const operation of Object.keys(localRecordSchemas) as (keyof typeof localRecordSchemas)[]) {
+    assert.equal(isAppLevelOperation(operation), true); assert.equal(rpcPathFor(operation, input), '/api/rpc');
+    assert.equal(inputProjectId(operation, input), undefined);
+    assert.equal(Object.hasOwn(schemas, operation), false); assert.equal(Object.hasOwn(modelSchemas, operation), false);
+    assert.equal(localRecordEffects[operation].fileWrite, true); assert.equal(localRecordEffects[operation].databaseWrite, false);
+    assert.equal(localRecordEffects[operation].paidGeneration, false); assert.equal(localRecordEffects[operation].readOnly, false);
+  }
+  assert.equal(localRecordEffects['local.records.list'].idempotent, true);
+  assert.equal(localRecordEffects['local.records.delete'].idempotent, false);
+  for (const invalid of [null, false, [], {path: '/private/records'}, {projectId}]) assert.equal(localRecordSchemas['local.records.list'].safeParse(invalid).success, false);
+  for (const invalid of [{projectId}, {...input, path: '/private/records'}, {...input, expectedInstanceId: 'old'}, {...input, expectedAppLibraryScope: 'A'.repeat(64)}, {...input, projectId: projectId.toUpperCase()}]) {
+    assert.equal(localRecordSchemas['local.records.delete'].safeParse(invalid).success, false);
+  }
+  const record = {projectId, name: null, projectFile: null, sizeBytes: 0, hasSuperJournal: true, hasUnfinishedTasks: true,automaticBackups:{count:0,sizeBytes:0}};
+  const list = {version: 1, appLibraryScope, instanceId, records: [record]};
+  assert.equal(localRecordsListResponseSchema.safeParse(list).success, true);
+  assert.equal(localRecordsListResponseSchema.safeParse({...list, records: [record, record]}).success, false);
+  assert.equal(localRecordsListResponseSchema.safeParse({...list, records: [{...record, hasUnfinishedTasks: undefined}]}).success, false);
+  for(const automaticBackups of [undefined,null,{count:-1,sizeBytes:0},{count:1.5,sizeBytes:0},{count:1,sizeBytes:-1},
+    {count:1,sizeBytes:Number.MAX_SAFE_INTEGER+1},{count:Number.MAX_SAFE_INTEGER+1,sizeBytes:1},{count:1,sizeBytes:0,path:'/private/backup'}]) {
+    assert.equal(localRecordsListResponseSchema.safeParse({...list,records:[{...record,automaticBackups}]}).success,false);
+  }
+  const result = {projectId, deleted: true, appLibraryScope, instanceId};
+  assert.equal(localRecordsDeleteResponseSchema.safeParse(result).success, true);
+  assert.equal(isLocalRecordResponse('local.records.delete', input, result), true);
+  assert.equal(isLocalRecordResponse('local.records.delete', input, {...result, instanceId: randomUUID()}), false);
+  assert.equal(isLocalRecordResponse('local.records.delete', input, {...result, projectId: randomUUID()}), false);
 });
 
 test('project routes map to the paths they replace; app-level and unknown routes do not', () => {

@@ -33,6 +33,7 @@ export interface VersionHistoryDialogProps {
   readonly open: boolean; readonly interactionBlocked?:boolean;
   readonly projectName: string;
   readonly title?: string;
+  readonly subtitle?: string;
   readonly now: Date;
   /** Newest first. */
   readonly versions: ViewState<readonly ProjectVersionItem[]>;
@@ -154,7 +155,7 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
     </section>
   </div>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !props.interactionBlocked) props.onClose(); }}>
-    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={props.title ?? t('projectFile.versions.title')} description={t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={props.title ?? t('projectFile.versions.title')} description={props.subtitle ?? t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
       className="pf-dialog pf-versions-dialog" data-testid="pf-versions-dialog" footer={props.footerNote ?? <p className="pf-footer-note" data-testid="pf-versions-retention">{t('projectFile.versions.retention', props.retention)}</p>}>
       {props.onSaveVersion && <WorkbenchButton className="pf-versions-save" data-testid="pf-versions-save" onClick={props.onSaveVersion}><ProjectFileIcon name="bookmarkPlus" size={14} />{t('projectFile.menu.saveVersion')}</WorkbenchButton>}
       {props.toolbar}

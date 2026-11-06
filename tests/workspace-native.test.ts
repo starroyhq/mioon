@@ -252,6 +252,19 @@ test('same frame reused by a new document cannot reuse an old backup intent or s
  assert.equal(during.options.ownerForEvent().isCurrent(),true);assert.deepEqual(during.calls,[['entry',published.result.project.projectId]],'old and new owners are rechecked after the awaited metadata reply');
 });
 
+test('backup reveal reports busy for an open or locked result and never labels unchanged bytes as changed',async t=>{
+ for(const mode of ['held','open','busy','locked'] as const){
+  const f=backupFixture(t);await f.host.dispatch({},f.choose());const {result,entry}=f.publish(),before=fs.readFileSync(f.file);
+  const held=mode==='held'?openClosedProjectSnapshotConnection({projectFile:f.file}):null;
+  if(mode!=='held')f.options.readProjectEntry=async()=>({...entry,entry:{...entry.entry,availability:{state:mode}}});
+  try{
+   await assert.rejects(f.host.dispatch({}, {action:'revealRestoredBackup',result}),{code:'PROJECT_BACKUP_RESTORE_BUSY'});
+   assert.equal(f.calls.some(call=>call[0]==='reveal'),false);
+   assert.deepEqual(fs.readFileSync(f.file),before);
+  }finally{held?.close();}
+ }
+});
+
 test('backup reveal refuses held files, real content ID mismatch and changes during final registry acknowledgement without writing',async t=>{
  for(const mode of ['held','content-id','replacement','registry','retired','symlink'] as const){
   const f=backupFixture(t);await f.host.dispatch({},f.choose());const {result,entry}=f.publish();
@@ -270,7 +283,7 @@ test('backup reveal refuses held files, real content ID mismatch and changes dur
    }return entry;
   };
   // Reuse the same host intent; options retain trusted callback references.
-  try{await assert.rejects(f.host.dispatch({}, {action:'revealRestoredBackup',result}),mode==='retired'?code:{code:'PROJECT_BACKUP_RESTORE_CHANGED'});assert.equal(f.calls.some(call=>call[0]==='reveal'),false,mode);if(held)assert.equal(opens,0,'held project is refused before another descriptor is opened');}
+  try{await assert.rejects(f.host.dispatch({}, {action:'revealRestoredBackup',result}),mode==='retired'?code:{code:mode==='held'?'PROJECT_BACKUP_RESTORE_BUSY':'PROJECT_BACKUP_RESTORE_CHANGED'});assert.equal(f.calls.some(call=>call[0]==='reveal'),false,mode);if(held)assert.equal(opens,0,'held project is refused before another descriptor is opened');}
   finally{held?.close();t.mock.restoreAll();syncBuiltinESMExports();}
   assert.deepEqual(fs.readFileSync(f.file),before,mode);
  }

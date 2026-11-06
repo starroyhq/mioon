@@ -1,0 +1,4 @@
+import type {MioRunUsage} from '../../packages/contracts/src/mio-run-usage.ts';
+export const USAGE_PROJECT_ID='11111111-1111-4111-8111-111111111111';
+export const USAGE_RUN_ID='22222222-2222-4222-8222-222222222222';
+export const usageFixture=(patch:Partial<MioRunUsage>={}):MioRunUsage=>({version:1,runId:USAGE_RUN_ID,revision:1,dispatchedModelSteps:2,modelOutcomes:{completed:2,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:1000,outputTokens:100,cacheReadTokens:600,cacheWriteTokens:0},coverage:{fields:{inputTokens:{reportedSteps:2,missingSteps:0,complete:true,overflow:false},outputTokens:{reportedSteps:2,missingSteps:0,complete:true,overflow:false},cacheReadTokens:{reportedSteps:2,missingSteps:0,complete:true,overflow:false},cacheWriteTokens:{reportedSteps:2,missingSteps:0,complete:true,overflow:false}}},cacheReadRate:0.6,...patch});

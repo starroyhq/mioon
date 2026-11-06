@@ -340,7 +340,11 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     }
     listeners.clear();
   }, {once: true});
-  return {control, handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
+  return {control,
+    // Trusted composition metadata only; does not enumerate the catalog or
+    // lend a native window/project capability to application RPC callers.
+    readIdentity: () => ({appLibraryScope: scope(), instanceId}),
+    handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
     const single = url.pathname.startsWith('/api/project-entries/');
     if (url.pathname !== '/api/project-entries' && !single) return false;
     const projectId = single ? url.pathname.slice('/api/project-entries/'.length) : null;

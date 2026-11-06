@@ -1,0 +1,17 @@
+.mio-usage-line.wb-button { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:5px; max-width:100%; height:auto; margin-top:8px; padding:3px 0; color:var(--wb-muted); font-size:var(--wb-text-caption); font-weight:400; line-height:1.6; text-align:start; }
+.mio-usage-line.wb-button:hover { color:var(--wb-text); background:transparent; }
+.mio-usage-arrow { margin-inline-start:3px; }
+.mio-usage-unconfirmed { color:var(--wb-warning); font-size:var(--wb-text-caption); }
+.mio-usage-dialog.wb-dialog { width:min(520px,calc(100vw - 32px)); }
+.mio-usage-dialog .wb-dialog-content { display:flex; flex-direction:column; gap:16px; }
+.mio-usage-requests { margin:0; color:var(--wb-text); font-size:var(--wb-text-label); line-height:1.7; }
+.mio-usage-fields { display:flex; flex-direction:column; gap:12px; margin:0; }
+.mio-usage-fields > div { display:grid; grid-template-columns:92px minmax(0,1fr); column-gap:12px; }
+.mio-usage-fields dt { color:var(--wb-muted); font-size:var(--wb-text-label); }
+.mio-usage-fields dd { min-width:0; margin:0; overflow-wrap:anywhere; }
+.mio-usage-number { font-variant-numeric:tabular-nums; color:var(--wb-text); font-size:var(--wb-text-label); }
+.mio-usage-note { margin:4px 0 0; color:var(--wb-muted); font-size:var(--wb-text-caption); line-height:1.65; }
+.mio-usage-cache-within { margin-top:-8px; }
+.mio-usage-cache-within dd { grid-column:2; font-size:var(--wb-text-label); color:var(--wb-muted); line-height:1.65; }
+.mio-usage-footer { border-top:1px solid var(--wb-line); padding-top:12px; }
+@media(max-width:480px) { .mio-usage-fields > div { grid-template-columns:72px minmax(0,1fr); gap:8px; } }

@@ -168,7 +168,10 @@ export function agentTaskNewConversationBlock(state:AgentTaskSessionState):'unav
   if(state.backgroundPending||state.project.runs.some(run=>!terminal.has(run.status))||state.rounds.some(item=>!finished(item)))return 'running';
   return null;
 }
-export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', isAdmissionAllowed = () => true, onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; isAdmissionAllowed?: () => boolean; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void }) {
+export interface AgentTaskUsageObservation {readonly runId:string; readonly serial:number; readonly sequence?:number}
+export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', isAdmissionAllowed = () => true, onChange = () => {}, onChangeApplied = () => {}, onUsageObservation = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; isAdmissionAllowed?: () => boolean; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void; onUsageObservation?: (value:AgentTaskUsageObservation)=>void }) {
+  let usageSerial=0;
+  const observeUsage=(runId:string,sequence?:number)=>onUsageObservation({runId,serial:++usageSerial,...(sequence===undefined?{}:{sequence})});
   const admissionAllowed=()=>{try{return isAdmissionAllowed()===true;}catch{return false;}};
   let authorizationEpoch = 0,selectionOwner:number|null=null;
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
@@ -251,18 +254,20 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     const id=conversationIdOf(next.run),same=state.conversationId===id,previous=state.rounds.find(item=>item.run.id===next.run.id);
     if(previous&&previous.run.revision>next.run.revision)return;
     rememberPendingResults(next);
-    if (state.snapshot?.run.id !== next.run.id) after = 0;
     const changed = JSON.stringify(previous?.changes) !== JSON.stringify(next.changes);
     // Only a change new to a round already on screen was saved while it was watched. A first read of a round
     // (opening history, reloading, selecting a run) reports none, so old changes are never announced again.
     const landed = previous ? next.changes.filter(change => change.status === 'applied' && !previous.changes.some(item => item.id === change.id)).map(change => change.id) : [];
     const existing=same?state.rounds:[],rounds=existing.some(item=>item.run.id===next.run.id)?existing.map(item=>item.run.id===next.run.id?next:item):[...existing,next];
+    // Only a change of the selected/latest run owns the stream cursor. A
+    // canonical refresh of an older round leaves that subscription untouched.
+    if (state.snapshot?.run.id !== rounds.at(-1)!.run.id) after = 0;
     // A first-send receipt assigns the server identity to the unsent draft;
     // keep input typed while that exact request was in flight in its new bucket.
     if(state.selectionKey==='new'&&!state.conversationId){drafts.delete('new');}
     const first=rounds[0]!.run,last=rounds.at(-1)!.run;
     const conversation:AgentTaskConversation={id,projectId,title:(same?state.conversation?.title:undefined)??conversationTitle(first.text),createdAt:first.createdAt,updatedAt:rounds.reduce((value,item)=>item.run.updatedAt>value?item.run.updatedAt:value,last.updatedAt),lastRunId:last.id,lastRunStatus:last.status,changeCount:rounds.reduce((sum,item)=>sum+item.changes.length,0),runCount:rounds.length};
-    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id, ...(state.project?{project:{...state.project,runs:[next.run,...state.project.runs.filter(run=>run.id!==next.run.id)].slice(0,100)}}:{}) }); if (changed) onChangeApplied(next, landed);
+    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id, ...(state.project?{project:{...state.project,runs:state.project.runs.some(run=>run.id===next.run.id)?state.project.runs.map(run=>run.id===next.run.id?next.run:run):[next.run,...state.project.runs].slice(0,100)}}:{}) }); observeUsage(next.run.id); if (changed) onChangeApplied(next, landed);
   };
   const detach = () => { stream?.abort(); stream = null; if (retry) clearTimeout(retry); retry = null; };
   function reconnect(owner: number, runId: string) {
@@ -289,7 +294,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     try {
       await client.stream(projectId, run.id, after, controller.signal, event => {
         if (!active || generation !== owner || controller.signal.aborted || state.snapshot?.run.id !== run.id || event.sequence <= after) return;
-        after = event.sequence;
+        after = event.sequence; observeUsage(run.id,event.sequence);
         // Read the durable aggregate; event data is never treated as executable
         // commands and late deltas cannot overwrite a newer revision.
         if (event.type === 'snapshot') { const next = safeAgentTaskSnapshot(event.data, projectId, run.id); retryAttempt=0; accept(next); publish({phase:state.pending?'unknown':'ready'}); if (finished(next)) detach(); }
@@ -331,7 +336,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     if(!conversation||!rounds.length)throw failure('INVALID_RESPONSE');return{conversation,rounds};
   }
   function showConversation(value:{conversation:AgentTaskConversation;rounds:AgentTaskSnapshot[]}){
-    const {conversation}=value,rounds=value.rounds.map(item=>{const saved=state.conversationId===conversation.id?state.rounds.find(existing=>existing.run.id===item.run.id):undefined;return saved&&saved.run.revision>item.run.revision?saved:item;});for(const snapshot of rounds)rememberPendingResults(snapshot);selectionChosen=true;after=0;publish({...switchDraft(conversation.id),conversationId:conversation.id,conversation,rounds,snapshot:rounds.at(-1)!,phase:'ready',error:''});
+    const {conversation}=value,rounds=value.rounds.map(item=>{const saved=state.conversationId===conversation.id?state.rounds.find(existing=>existing.run.id===item.run.id):undefined;return saved&&saved.run.revision>item.run.revision?saved:item;});for(const snapshot of rounds)rememberPendingResults(snapshot);selectionChosen=true;after=0;publish({...switchDraft(conversation.id),conversationId:conversation.id,conversation,rounds,snapshot:rounds.at(-1)!,phase:'ready',error:''});for(const snapshot of rounds)observeUsage(snapshot.run.id);
   }
   async function load() {
     if(receiptsBlocked){try{const restored=receipts.read(projectId);receiptsBlocked=false;publish({pending:restored});}catch{publish({phase:'error',error:'LOCAL_RECEIPT_UNAVAILABLE'});return;}}
@@ -346,7 +351,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     // window behind the same close gate needed to restart its local service.
     catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); }
   }
-  async function refreshRound(runId:string):Promise<AgentTaskSnapshot|null> {
+  async function refreshRound(runId:string,{background=false}:{readonly background?:boolean}={}):Promise<AgentTaskSnapshot|null> {
     const owner=generation,key=state.selectionKey,conversationId=state.conversationId;
     if(!active||!visible||!admissionAllowed()||busy||state.pending||agentTaskSessionBusy(state)||!state.rounds.some(item=>item.run.id===runId))return null;
     try {
@@ -355,7 +360,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
       safeAgentTaskSnapshot(next,projectId,runId);
       if(conversationIdOf(next.run)!==conversationId)throw failure('INVALID_RESPONSE');
       accept(next);return state.rounds.find(item=>item.run.id===runId)??null;
-    }catch(error){if(active&&visible&&owner===generation&&key===state.selectionKey)publish({error:errorCode(error)});return null;}
+    }catch(error){if(!background&&active&&visible&&owner===generation&&key===state.selectionKey)publish({error:errorCode(error)});return null;}
   }
   async function mutate(action: 'send' | AgentTaskControlAction, extras: AgentTaskControlExtras = {},targetRunId=state.snapshot?.run.id) {
     const target=state.rounds.find(item=>item.run.id===targetRunId)??(state.snapshot?.run.id===targetRunId?state.snapshot:null);

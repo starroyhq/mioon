@@ -3,10 +3,23 @@ import { z } from 'zod';
 const tool = z.object({path:z.string().max(4096),version:z.string().max(1024).nullable(),available:z.boolean()}).strict();
 export const mediaToolDiagnosticsSchema=z.object({ffmpeg:tool,ffprobe:tool,capabilities:z.object({libx264:z.boolean(),aac:z.boolean(),drawtext:z.boolean(),subtitles:z.boolean()}).strict()}).strict();
 export type MediaToolDiagnostics=z.infer<typeof mediaToolDiagnosticsSchema>;
+export const workspaceStorageUsageSchema=z.object({bytes:z.number().int().nonnegative().safe(),files:z.number().int().nonnegative().safe(),complete:z.boolean()}).strict();
+export type WorkspaceStorageUsage=z.infer<typeof workspaceStorageUsageSchema>;
 export const workspaceInfoSchema=z.object({version:z.string().min(1).max(100),channel:z.enum(['web','development','production']),dataDirectory:z.string().min(1).max(4096),pendingProjectCleanup:z.number().int().nonnegative().safe(),
-  usage:z.object({bytes:z.number().int().nonnegative().safe(),files:z.number().int().nonnegative().safe(),complete:z.boolean()}).strict(),
+  usage:workspaceStorageUsageSchema,
   tools:z.object({ffmpeg:z.string().max(4096),ffprobe:z.string().max(4096)}).strict()}).strict();
 export type WorkspaceInfo=z.infer<typeof workspaceInfoSchema>;
+/** Independent inventories of their actual roots, which may overlap. The cache
+ * location is display information and does not grant a filesystem capability. */
+export const applicationWorkspaceInfoSchema=workspaceInfoSchema.extend({storage:z.object({records:workspaceStorageUsageSchema,cache:workspaceStorageUsageSchema,cacheDirectory:z.string().min(1).max(4096)}).strict()}).strict();
+export type ApplicationWorkspaceInfo=z.infer<typeof applicationWorkspaceInfoSchema>;
+/** Read only the fields a screen displays; omitted inventories were not run. */
+export const workspaceMetadataSchema=workspaceInfoSchema.omit({usage:true});
+export type WorkspaceMetadata=z.infer<typeof workspaceMetadataSchema>;
+export const applicationWorkspaceStorageInfoSchema=workspaceMetadataSchema.extend({storage:applicationWorkspaceInfoSchema.shape.storage}).strict();
+export type ApplicationWorkspaceStorageInfo=z.infer<typeof applicationWorkspaceStorageInfoSchema>;
+export const workspaceInfoViewSchema=z.enum(['full','metadata','storage']);
+export type WorkspaceInfoView=z.infer<typeof workspaceInfoViewSchema>;
 export const WORKSPACE_TOOLS_CHANNEL='mioon:workspace-tools';
 export const toolPathsSchema=z.object({ffmpeg:z.string().min(1).max(4096),ffprobe:z.string().min(1).max(4096)}).strict();
 export type ToolPaths=z.infer<typeof toolPathsSchema>;

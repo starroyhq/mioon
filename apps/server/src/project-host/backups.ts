@@ -351,5 +351,11 @@ export function createProjectBackups({directories, registry, identity, assertPro
     // admitted app-level recoveries before the library or app lock is closed.
     while (queues.size) await Promise.allSettled([...queues.values()]);
   };
-  return {hooks, list, inspect, restore, drain, status: async ({projectId}: {projectId: string}) => readStatus(projectId)};
+  // Trusted composition only. Deleting the entire records folder must pin the
+  // same source queue as backup readers and recovery intent/publication work.
+  const withProjectRecords = <T>(projectId: string, work: () => T | Promise<T>): Promise<T> => {
+    if (!isProjectId(projectId)) throw failure('VALIDATION_ERROR', '项目 ID 无效。', 400);
+    return enqueue(projectId, work);
+  };
+  return {hooks, list, inspect, restore, drain, withProjectRecords, status: async ({projectId}: {projectId: string}) => readStatus(projectId)};
 }

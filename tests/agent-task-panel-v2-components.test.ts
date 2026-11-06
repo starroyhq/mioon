@@ -15,22 +15,32 @@ import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuest
 import * as questions from '../apps/web/src/agent-task-questions.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
 import * as rulesClient from '../apps/web/src/project-rules-client.ts';
+import * as usageClient from '../apps/web/src/mio-usage-client.ts';
+import * as usageState from '../apps/web/src/mio-usage-state.ts';
+import {usageFixture} from './helpers/mio-usage-fixture.ts';
 import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
 import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
 import type {ProjectRulesSnapshot} from '../packages/contracts/src/mio-rules.ts';
 import {adapterSettings,ADAPTER_CONFIGURATION} from './helpers/agent-adapter-fixture.ts';
+type PanelOptions=TaskPanelOptions & {onUsageObservation?:(value:import('../apps/web/src/agent-tasks-v2.ts').AgentTaskUsageObservation)=>void};
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
 const trustedRules=(owner:string):ProjectRulesSnapshot=>projectRulesSnapshotSchema.parse({projectId:owner,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
-function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>}={}){
+function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules,usageRunId='run'}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>;usageRunId?:string}={}){
   let currentLocale=locale,currentProjectId=projectId,refreshResult: Promise<unknown>|null=null,currentVisible=true;
   let currentAdmission=true;
   const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0,hookWrites=0;const calls: unknown[][]=[];
   const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hookWrites++;hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
-  const snapshot: TaskPanelSnapshot={run:{id:'run',projectId,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
-  const state: TaskPanelState={phase:'ready',project:{readOnly,runs:[snapshot.run],authorization:{scopes:['project_agent']},settings:adapterSettings({...ADAPTER_CONFIGURATION,model:'current-model'},{revision:1})},snapshot,draft:'next task',uploads:[],pending:null,error:'',conversationId:'run',conversation:{id:'run',title:'synthetic task'},rounds:[snapshot],selectionKey:'run',draftDirty:true,draftVersion:0,unknownOutcome:false,history:{conversations:[{id:'run',title:'synthetic task'}],nextCursor:null,phase:'ready'}};
-  const module: Module={exports:{}};let options: TaskPanelOptions;
+  const snapshot: TaskPanelSnapshot={run:{id:usageRunId,projectId,revision:1,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
+  const state: TaskPanelState={phase:'ready',project:{...{instanceId:'synthetic-panel-instance'},readOnly,runs:[snapshot.run],authorization:{scopes:['project_agent']},settings:adapterSettings({...ADAPTER_CONFIGURATION,model:'current-model'},{revision:1})},snapshot,draft:'next task',uploads:[],pending:null,error:'',conversationId:'run',conversation:{id:'run',title:'synthetic task'},rounds:[snapshot],selectionKey:'run',draftDirty:true,draftVersion:0,unknownOutcome:false,history:{conversations:[{id:'run',title:'synthetic task'}],nextCursor:null,phase:'ready'}};
+  const module: Module={exports:{}};let options: PanelOptions;
+  const usageReads:Array<{runId:string;signal:AbortSignal}>=[];
+  const usageModule={...usageClient,createMioUsageClient:()=>usageClient.createMioUsageClient({fetcher:async(input,init)=>{
+    const match=/^\/api\/projects\/([a-f0-9-]+)\/agent\/tasks\/v2\/([a-f0-9-]+)\/usage$/u.exec(String(input));
+    assert.ok(match);assert.equal(match[1],projectId);assert.equal(init?.method,'GET');assert.equal(init?.body,undefined);assert.ok(init?.signal instanceof AbortSignal);
+    usageReads.push({runId:match[2]!,signal:init.signal});return Response.json({ok:true,data:usageFixture({runId:match[2]!})});
+  }})} satisfies typeof usageClient;
   const rulesReads:Array<{projectId:string;signal:AbortSignal}>=[],rulesResponses:ProjectRulesSnapshot[]=[];
   const rulesModule={...rulesClient,createWebProjectRulesClient:()=>{
     const client=rulesClient.createWebProjectRulesClient({fetcher:async(input,init)=>{
@@ -49,13 +59,14 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   Object.defineProperty(globalThis,'window',{configurable:true,writable:true,value:new EventTarget()});
   const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
+    if(id==='./mio-usage-client.ts')return usageModule;if(id==='./mio-usage-state.ts')return usageState;if(id==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
     if(id==='./project-rules-client.ts')return rulesModule;if(id==='./project-rules-proposal.ts')return rulesProposal;
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: TaskPanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string)=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
   let disposed=false;
-  return{render,calls,state,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
+  return{render,calls,state,usageReads,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
 test('a completed-conversation refresh keeps real panel inputs and write controls disabled until it settles',async()=>{
   const h=harness({status:'completed'});try{
@@ -447,6 +458,33 @@ test('real rules observations validate trusted snapshots, remain read-only and f
   }finally{late.unmount();}
 });
 
+
+test('usage observations update their own round and only a following log scrolls after asynchronous row growth',async()=>{
+  const runId='22222222-2222-4222-8222-222222222222',h=harness({status:'completed',usageRunId:runId});
+  try{
+    const log=h.find('agent-task-activity')!.props.ref as unknown as {current:{scrollTop:number;scrollHeight:number;clientHeight:number;querySelector:()=>null}|null};
+    log.current={scrollTop:0,scrollHeight:300,clientHeight:300,querySelector:()=>null};h.render();
+    await new Promise(resolve=>setImmediate(resolve));log.current.scrollHeight=900;h.render();
+    assert.equal(h.usageReads.length,1);assert.equal(h.usageReads[0]!.runId,runId);assert.equal(log.current.scrollTop,900);
+    const row=h.render().find(node=>node.type==='usage-row'&&node.props.runId===runId);assert.ok(row);assert.equal((row.props.view as import('../apps/web/src/mio-usage-state.ts').MioUsageView).value!.knownTotals.inputTokens,1000);
+    (h.find('agent-task-activity')!.props.onScroll as (event:{currentTarget:{scrollHeight:number;clientHeight:number;scrollTop:number}})=>void)({currentTarget:{scrollHeight:900,clientHeight:300,scrollTop:120}});log.current.scrollTop=120;
+    assert.ok(h.options.onUsageObservation);h.options.onUsageObservation({runId,serial:1});await new Promise(resolve=>setImmediate(resolve));log.current.scrollHeight=1300;h.render();
+    assert.equal(h.usageReads.length,2);assert.equal(log.current.scrollTop,120);assert.deepEqual(h.calls,[]);
+  }finally{h.unmount();}
+});
+
+test('usage details stay on the reviewed historical run when a later reply arrives and close without selecting a conversation',async()=>{
+  const runId='22222222-2222-4222-8222-222222222222',older='33333333-3333-4333-8333-333333333333',later='44444444-4444-4444-8444-444444444444',h=harness({status:'completed',usageRunId:runId});
+  try{
+    h.state.rounds.unshift({...h.state.snapshot!,run:{...h.state.snapshot!.run,id:older},steps:[],changes:[]});h.options.onChange(h.state);await new Promise(resolve=>setImmediate(resolve));
+    const row=h.render().find(node=>node.type==='usage-row'&&node.props.runId===older);assert.ok(row);(row.props.onOpen as ()=>void)();h.render();
+    assert.equal(h.render().find(node=>node.type==='usage-details')!.props.runId,older);
+    h.state.rounds.push({...h.state.snapshot!,run:{...h.state.snapshot!.run,id:later},steps:[],changes:[]});h.options.onChange(h.state);await new Promise(resolve=>setImmediate(resolve));h.render();
+    const details=h.render().find(node=>node.type==='usage-details')!;assert.equal(details.props.runId,older);(details.props.onClose as ()=>void)();h.render();
+    assert.equal(h.render().find(node=>node.type==='usage-details')!.props.open,false);assert.equal(h.state.selectionKey,'run');assert.deepEqual(h.calls,[]);
+  }finally{h.unmount();}
+});
+
 for (const outcome of ['success','failure'] as const) test(`a revoked admission fences rules focus reads and a late ${outcome} before rerender without clearing the Mio session`,async()=>{
   let finish!:(value:ProjectRulesSnapshot)=>void,reject!:(reason:Error)=>void;
   const h=harness({status:'completed',readRules:()=>new Promise((resolve,no)=>{finish=resolve;reject=no;})});
@@ -457,5 +495,26 @@ for (const outcome of ['success','failure'] as const) test(`a revoked admission 
     if(outcome==='success')finish({...trustedRules(projectId),trust:'untrusted'});else reject(new Error('synthetic late read failure'));
     await new Promise(setImmediate);assert.equal(h.hookWrites,writes,'a late success or error cannot publish into the revoked owner');assert.deepEqual(h.calls,[]);
     h.render();assert.equal(h.loads,loads);assert.equal(h.state.draft,draft);assert.equal(h.state.pending,pending);assert.equal(h.state.draftDirty,true);
+  }finally{h.unmount();}
+});
+
+
+test('the real retained usage reader observes live native admission before React renders the blocked panel',async()=>{
+  const runId='22222222-2222-4222-8222-222222222222',h=harness({status:'completed',usageRunId:runId});
+  try{
+    await new Promise(setImmediate);const row=h.render().find(node=>node.type==='usage-row'&&node.props.runId===runId);assert.ok(row);
+    (row.props.onOpen as ()=>void)();await new Promise(setImmediate);assert.equal(h.render().find(node=>node.type==='usage-details')!.props.open,true);
+    const reads=h.usageReads.length,loads=h.loads;h.setAdmissionAllowed(false);
+    h.options.onUsageObservation!({runId,serial:1});(row.props.onOpen as ()=>void)();await new Promise(setImmediate);
+    assert.equal(h.usageReads.length,reads,'retained callbacks cannot dispatch usage GETs under a revoked native lease');
+    assert.equal(h.render().find(node=>node.type==='usage-details')!.props.open,false);assert.equal(h.loads,loads);assert.equal(h.state.draft,'next task');assert.deepEqual(h.calls,[]);
+  }finally{h.unmount();}
+});
+
+
+test('periodic reads of earlier pending rounds explicitly use quiet background refresh',async t=>{
+  t.mock.timers.enable({apis:['setInterval']});const h=harness({status:'completed'});
+  try{const earlier={...structuredClone(h.state.snapshot!),backgroundPending:true,run:{...h.state.snapshot!.run,id:'earlier-pending'}};h.state.rounds.unshift(earlier);h.render();
+    t.mock.timers.tick(5000);await new Promise(setImmediate);assert.deepEqual(h.calls,[['refreshRound','earlier-pending',{background:true}]]);assert.equal(h.state.snapshot!.run.id,'run');
   }finally{h.unmount();}
 });

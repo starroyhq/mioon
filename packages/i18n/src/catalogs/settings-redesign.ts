@@ -15,7 +15,7 @@ export const settingsRedesignMessages = {
   'redesign.settings.extensions': { 'zh-Hans': '扩展', 'zh-Hant': '擴充功能', en: 'Extensions', ja: '拡張機能' },
   'redesign.settings.shortcuts': { 'zh-Hans': '快捷键', 'zh-Hant': '快速鍵', en: 'Shortcuts', ja: 'ショートカット' },
   'redesign.settings.about': { 'zh-Hans': '关于', 'zh-Hant': '關於', en: 'About', ja: '情報' },
-  'redesign.settings.workspaceHint': { 'zh-Hans': '本机数据与离线备份', 'zh-Hant': '本機資料與離線備份', en: 'Local data and offline backups', ja: 'ローカルデータとオフラインバックアップ' },
+  'redesign.settings.workspaceHint': { 'zh-Hans': '数据目录与本机记录', 'zh-Hant': '資料目錄與本機記錄', en: 'Data directory and local records', ja: 'データフォルダーとローカル記録' },
   'redesign.settings.videoHint': { 'zh-Hans': '本地编码工具与能力', 'zh-Hant': '本機編碼工具與能力', en: 'Local encoding tools and capabilities', ja: 'ローカルエンコードツールと機能' },
   'redesign.settings.modelsHint': { 'zh-Hans': '服务状态与服务端配置', 'zh-Hant': '服務狀態與伺服器設定', en: 'Service status and server configuration', ja: 'サービス状態とサーバー設定' },
   'redesign.settings.agentHint': { 'zh-Hans': 'Mio 是项目里的 AI 助手，可以直接查看、修改和生成内容', 'zh-Hant': 'Mio 是專案裡的 AI 助手，可以直接檢視、修改與生成內容', en: 'Mio is the AI assistant in your project. It can view, change and generate content directly', ja: 'Mio はプロジェクト内の AI アシスタントです。内容の閲覧、変更、生成を直接行えます' },

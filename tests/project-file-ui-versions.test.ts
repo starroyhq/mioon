@@ -36,7 +36,7 @@ async function historyContainer() {
     import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};import {setRuntime} from 'u2-ssr-runtime';
     export function render(runtime,props,locale){setRuntime(runtime);setLocale(locale);return renderToStaticMarkup(<ProjectHistoryDialog {...props}/>);}
     export function restore(props,locale){setLocale(locale);return renderToStaticMarkup(<RestoreVersionDialog {...props}/>);}
-    export function nativeFailure(error,locale){setLocale(locale);return renderToStaticMarkup(<NativeBackupFailure code={historyErrorCode(error)}/>);}`;
+    export function nativeFailure(error,locale,action='choose'){setLocale(locale);return renderToStaticMarkup(<NativeBackupFailure code={historyErrorCode(error)} action={action}/>);}`;
   const result=await build({stdin:{contents:entry,loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',
     loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'history-container-ssr',setup(build){
       build.onResolve({filter:/^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));
@@ -45,7 +45,7 @@ async function historyContainer() {
       build.onLoad({filter:/.*/,namespace:'history-ssr'},()=>({contents:'let runtime;export function setRuntime(next){runtime=next;}export function projectHistoryRuntime(){return runtime;}',loader:'js'}));
     }}]});
   const module={exports:{}};Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
-  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string;nativeFailure(error:unknown,locale:Locale):string};
+  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string;nativeFailure(error:unknown,locale:Locale,action?:'choose'|'reveal'):string};
 }
 const productionHistory=await historyContainer();
 const historyProjectId=RESTORE_PREVIEW.projectId,historyVersion=VERSIONS[0];
@@ -55,6 +55,43 @@ function historyClient(patch:Partial<ProjectHistoryClient>={}):ProjectHistoryCli
 }
 const historyProps:ProjectHistoryDialogProps={open:true,projectId:historyProjectId,projectName:'SSR history',onClose:()=>{},onRestored:()=>{},onOpenProject:()=>{}};
 async function settleHistory(){for(let turn=0;turn<25;turn++)await Promise.resolve();}
+
+test('annotation identity copy preserves the row and clears only its label and note in every locale',()=>{
+  const expected={'zh-Hans':'保留标注这一行，只把标签和备注恢复为空。','zh-Hant':'保留標註這一列，只把標籤和備註還原為空。',en:'Keep the annotation row and restore only its label and note to empty.',ja:'注釈の行は保持し、ラベルとメモだけを空に戻します。'};
+  for(const locale of LOCALES)assert.equal(translate(locale,'projectHistory.reason.annotationIdentity'),expected[locale]);
+});
+
+test('bad-source backup subtitle describes backups instead of version history',async()=>{
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({backups:async()=>({projectId:historyProjectId,backups:[]}),status:async()=>({projectId:historyProjectId,state:'idle',lastAttemptAt:null,lastCompletedAt:null,lastError:null})}),undefined,undefined,{backupsOnly:true});
+  runtime.open();await settleHistory();
+  try{for(const locale of LOCALES){
+    const markup=productionHistory.render(runtime,{...historyProps,backupsOnly:true},locale);
+    assert.equal(markup.includes(escapeHtml(translate(locale,'projectFile.versions.subtitle',{name:historyProps.projectName}))),false);
+    assert.ok(markup.includes(historyProps.projectName));
+  }}finally{runtime.close();}
+});
+
+test('completed restore reasons match only the original preview table/key and leave the persisted ACK shape untouched',async()=>{
+  const known={...RESTORE_PREVIEW.changes[2]!,action:'keep-current' as const,reasonCode:'PROJECT_VERSION_FOREIGN_KEY_REFERENCE_CURRENT'};
+  const {reasonCode:_code,...receiptKnown}=known,missing={...receiptKnown,key:'not-in-preview',reason:'Legacy reason without a code'};let raw='';
+  const client=historyClient({preview:async input=>({...RESTORE_PREVIEW,version:{...RESTORE_PREVIEW.version,id:input.versionId},previewDigest:input.versionId===historyVersion.summary.id?RESTORE_PREVIEW.previewDigest:'f'.repeat(64),totalChanges:2,keptCurrentCount:2,changes:[known],nextCursor:'unread-preview-page'}),restore:async input=>{
+    const result={projectId:input.projectId,requestId:input.requestId,versionId:input.versionId,beforeVersionId:randomUUID(),contentSequence:RESTORE_PREVIEW.contentSequence+1,contentToken:'c'.repeat(32),totalChanges:2,appliedChanges:[],keptCurrent:[receiptKnown,missing]};raw=JSON.stringify(result);return result;
+  }});
+  const runtime=createProjectHistoryRuntime(historyProjectId,client);runtime.open();await settleHistory();await runtime.select(historyVersion.summary.id);await runtime.restoreVersion();await settleHistory();
+  try{
+    for(const locale of LOCALES){
+      const markup=productionHistory.render(runtime,historyProps,locale),kept=markup.match(/data-testid="pf-restore-kept-result"[^>]*>([\s\S]*?)<\/ul>/u)?.[1]??'';
+      assert.ok(kept.includes(escapeHtml(translate(locale,'projectHistory.reason.foreignKey'))));
+      assert.ok(kept.includes(escapeHtml(translate(locale,'projectHistory.reason.unknown'))));
+      assert.ok(kept.includes('PROJECT_VERSION_REASON_UNAVAILABLE'),'a row absent from the loaded preview stays generic');
+    }
+    const attempt=runtime.snapshot().attempt;assert.equal(attempt?.kind,'version');assert.equal(JSON.stringify(attempt?.result),raw,'display metadata never modifies the restore ACK');
+    await runtime.select(randomUUID());
+    const changed=productionHistory.render(runtime,historyProps,'zh-Hans').match(/data-testid="pf-restore-kept-result"[^>]*>([\s\S]*?)<\/ul>/u)?.[1]??'';
+    assert.ok(changed.includes(escapeHtml(translate('zh-Hans','projectHistory.reason.unknown'))));
+    assert.equal(changed.includes(escapeHtml(translate('zh-Hans','projectHistory.reason.foreignKey'))),false,'another preview digest cannot relabel the original result');
+  }finally{runtime.close();}
+});
 
 test('every versions and packing scene renders in all four languages', () => {
   const scenes = ui.list.filter(scene => scene.group === 'versions-pack');
@@ -313,7 +350,7 @@ test('kept reasons and backup failures use four-language codes and never render 
 
 
 test('native backup selection and reveal failures distinguish access, changed backup, location and generic errors in four languages',()=>{
-  const cases=[['PROJECT_ACCESS_DENIED','permission'],['PROJECT_BACKUP_CHANGED','backupChanged'],['PROJECT_BACKUP_RESTORE_CHANGED','backupChanged'],['PROJECT_BACKUP_NOT_FOUND','missing'],['PROJECT_BACKUP_INDEX_INVALID','backupChanged'],['PROJECT_LOCATION_REJECTED','location'],['PROJECT_LOCATION_INVALID','location'],['WORKSPACE_NATIVE_UNAVAILABLE','nativeUnavailable']] as const;
+  const cases=[['PROJECT_ACCESS_DENIED','permission'],['PROJECT_BACKUP_CHANGED','backupChanged'],['PROJECT_BACKUP_RESTORE_CHANGED','backupChanged'],['PROJECT_BACKUP_RESTORE_BUSY','busy'],['PROJECT_BACKUP_NOT_FOUND','missing'],['PROJECT_BACKUP_INDEX_INVALID','backupChanged'],['PROJECT_LOCATION_REJECTED','location'],['PROJECT_LOCATION_INVALID','location'],['WORKSPACE_NATIVE_UNAVAILABLE','nativeUnavailable']] as const;
   for(const locale of LOCALES){
     for(const [code,key]of cases){
       const markup=productionHistory.nativeFailure(Object.assign(new Error('Sensitive server message /private/source'),{code}),locale);
@@ -322,6 +359,18 @@ test('native backup selection and reveal failures distinguish access, changed ba
     for(const error of [new Error('Sensitive chooser failure'),{code:'/private/invalid-code'}]){
       const markup=productionHistory.nativeFailure(error,locale);assert.ok(markup.includes('WORKSPACE_NATIVE_UNAVAILABLE'));assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.error.nativeUnavailable'))));assert.doesNotMatch(markup,/Sensitive chooser failure|invalid-code/u);
     }
+  }
+});
+
+test('Finder busy explains how to reveal the recovered project while restore and choose keep their own action guidance',()=>{
+  const expected={'zh-Hans':'恢复出的项目已打开或正被占用。请先关闭它或释放占用，再在 Finder 中显示。','zh-Hant':'還原後的專案已開啟或正被占用。請先關閉它或解除占用，再在 Finder 中顯示。',en:'The recovered project is open or in use. Close it or release the lock, then show it in Finder.',ja:'復元したプロジェクトが開いているか使用中です。閉じるかロックを解除してから、Finder に表示してください。'};
+  for(const locale of LOCALES){
+    const busy={code:'PROJECT_BACKUP_RESTORE_BUSY'},reveal=productionHistory.nativeFailure(busy,locale,'reveal');
+    assert.equal(reveal.includes(escapeHtml(translate(locale,'projectHistory.error.busy'))),false,'Finder failure must not tell the user to restore again');
+    assert.ok(reveal.includes(escapeHtml(expected[locale])));assert.ok(reveal.includes(busy.code));
+    const choose=productionHistory.nativeFailure(busy,locale,'choose');
+    assert.ok(choose.includes(escapeHtml(translate(locale,'projectHistory.error.busy'))));assert.equal(choose.includes(escapeHtml(expected[locale])),false);
+    assert.ok(productionHistory.nativeFailure({code:'PROJECT_ACCESS_DENIED'},locale,'reveal').includes(escapeHtml(translate(locale,'projectHistory.error.permission'))));
   }
 });
 
