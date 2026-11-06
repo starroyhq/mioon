@@ -10,7 +10,7 @@ import type {EncodedProjectDocument} from './codec.ts';
 import {readVersion,storeManualVersionInside,versionError,versionSummary} from './repository.ts';
 import {pinProjectVersion} from './retention.ts';
 import {encodeCursor,decodeCursor} from './pagination.ts';
-import {buildRestorePlan} from './preview.ts';
+import {buildRestorePlan,projectVersionDifferenceForDisplay} from './preview.ts';
 import {applyRestorePlanInside} from './restore.ts';
 import {saveBeforeBulkChangeInside} from './capture.ts';
 
@@ -93,7 +93,7 @@ export function createProjectVersions(store:ProjectStore,options:ProjectVersions
       }
       const page=changes.slice(offset,offset+limit),next=offset+page.length;
       return {projectId:input.projectId,version,contentSequence:current.evidence.contentSequence,contentToken,previewDigest,totalChanges:changes.length,
-        keptCurrentCount:changes.filter(change=>change.action==='keep-current').length,changes:page,
+        keptCurrentCount:changes.filter(change=>change.action==='keep-current').length,changes:page.map(projectVersionDifferenceForDisplay),
         nextCursor:next<changes.length?encodeCursor({operation:'preview',projectId:input.projectId,versionId:input.versionId,limit,digest:previewDigest,offset:next}):null,restoreAvailable:typeof options.assertMutationAllowed==='function'};
       }finally{release();}
     });

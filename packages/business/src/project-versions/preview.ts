@@ -1,5 +1,5 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
-import type {ProjectVersionDifference} from '../../../contracts/src/project-version-operations.ts';
+import type {ProjectVersionDifference, ProjectVersionDifferenceReasonCode} from '../../../contracts/src/project-version-operations.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
@@ -26,6 +26,18 @@ const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const token = (table: Table, key: string) => `${table}\0${key}`;
 export interface RestorePlan {readonly changes: ProjectVersionDifference[]; readonly document: ProjectDocument}
 const restorePlans = new WeakMap<RestorePlan, {store: ProjectStore; current: ProjectDocument; contentToken: string}>();
+// Display metadata must not alter the confirmed plan digest or the persisted
+// restoration ACK. Attach codes while planning, never infer them from an old
+// human-readable reason or rewrite a historical receipt.
+const differenceReasons = new WeakMap<ProjectVersionDifference, ProjectVersionDifferenceReasonCode>();
+function setReason(difference: ProjectVersionDifference, code: ProjectVersionDifferenceReasonCode, reason: string): void {
+  difference.reason = reason;
+  differenceReasons.set(difference, code);
+}
+export function projectVersionDifferenceForDisplay(difference: ProjectVersionDifference): ProjectVersionDifference {
+  const reasonCode = differenceReasons.get(difference);
+  return reasonCode === undefined ? difference : {...difference, reasonCode};
+}
 export interface RestorePlanningOptions {readonly executionDomain?: 'current' | 'empty'}
 /** The execution capability is local to a reviewed plan on its original store.
  * HTTP callers cannot construct one by posting a document or a diff. */
@@ -213,7 +225,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       const diff: ProjectVersionDifference = {table, key, fields: changed, action: after ? before ? 'change' : 'add' : 'remove',
         source: source(table, before ?? after!, store.projectId, touched), reason: null};
       if (keptLocation) {
-        diff.reason = '素材文件定位及其引用修订保持当前，其他可变内容按版本恢复。';
+        setReason(diff, 'PROJECT_VERSION_ASSET_LOCATION_CURRENT', '素材文件定位及其引用修订保持当前，其他可变内容按版本恢复。');
         if (!changed.length) diff.action = 'keep-current';
       }
       if (table === 'timelines' && after && source(table, after, store.projectId, touched) === 'mio') diff.source = 'mio';
@@ -223,30 +235,30 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
           fail('PROJECT_VERSION_IMMUTABLE_CONFLICT', '同一标识的不可变内容不同，不能生成恢复计划。', {table, key});
         }
         if (table === 'image_groups') {
-          diff.action = 'keep-current'; diff.reason = '图像组的版本链只能向前，当前 headVersionId 和过程选择保持当前。';
+          diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_IMAGE_GROUP_FORWARD_ONLY', '图像组的版本链只能向前，当前 headVersionId 和过程选择保持当前。');
         } else if (table === 'subjects' && before.headVersionId !== after.headVersionId
           && saved.tables.subject_versions.some(version => version.id === target.headVersionId && Object.hasOwn(data(version), 'variant'))) {
-          diff.action = 'keep-current'; diff.reason = '领域禁止把带变体过程标记的版本设为主体当前头；当前选择保持不变。';
+          diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_SUBJECT_VARIANT_HEAD', '领域禁止把带变体过程标记的版本设为主体当前头；当前选择保持不变。');
         } else finalRows.set(key, after);
       } else if (after) {
         if (table === 'image_groups' && after.activeTaskId !== null) {
           after = {...after, activeTaskId: null};
-          diff.reason = '补回图像组内容身份，不重建或重放本机活动任务。';
+          setReason(diff, 'PROJECT_VERSION_IMAGE_GROUP_TASK_NOT_REPLAYED', '补回图像组内容身份，不重建或重放本机活动任务。');
         }
         finalRows.set(key, after);
       }
       else if (retained.has(table)) {
-        diff.action = 'keep-current'; diff.reason = '快照后新增的受保护结果或只前进对象不能删除，保持当前。';
+        diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_PROTECTED_RESULT_CURRENT', '快照后新增的受保护结果或只前进对象不能删除，保持当前。');
       } else if (!empty && table === 'timelines' && store.db.prepare('SELECT 1 FROM main.timeline_history WHERE projectId=? LIMIT 1').get(store.projectId)) {
-        diff.action = 'keep-current'; diff.reason = '本机时间线编辑历史仍引用此聚合，保持当前身份和内容，不删除过程历史。';
+        diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT', '本机时间线编辑历史仍引用此聚合，保持当前身份和内容，不删除过程历史。');
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);
         diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
-        diff.reason = '标注行必须保留；仅恢复默认空标签和备注，不删除其身份或历史修订。';
+        setReason(diff, 'PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT', '标注行必须保留；仅恢复默认空标签和备注，不删除其身份或历史修订。');
       } else if (table === 'subject_bindings') {
         const reset = {...before!, subjectVersionId: null}; finalRows.set(key, reset);
         diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
-        diff.reason = '绑定墓碑必须保留；清空当前绑定版本，身份和已审版本证据保持当前。';
+        setReason(diff, 'PROJECT_VERSION_BINDING_TOMBSTONE_CURRENT', '绑定墓碑必须保留；清空当前绑定版本，身份和已审版本证据保持当前。');
       } else {
         finalRows.delete(key); removable.set(identity, {table, key, row: before!});
       }
@@ -269,12 +281,12 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
     return lookup.get(canonicalJson(values)) ?? [];
   };
   let closureQueue: {table: Table; row: SnapshotRow}[] | undefined;
-  const retain = (table: Table, key: string, reason: string): boolean => {
+  const retain = (table: Table, key: string, reasonCode: ProjectVersionDifferenceReasonCode, reason: string): boolean => {
     const id = token(table, key), candidate = removable.get(id);
     if (!candidate) return false;
     removable.delete(id); predicted.get(table)!.set(key, candidate.row);
     closureQueue?.push({table, row: candidate.row});
-    const diff = differences.get(id)!; diff.action = 'keep-current'; diff.reason = reason;
+    const diff = differences.get(id)!; diff.action = 'keep-current'; setReason(diff, reasonCode, reason);
     return true;
   };
   // Cross-file rows are process/cache evidence and will not be rewound. Their
@@ -285,7 +297,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
     if (values.some(value => value === null || value === undefined)) continue;
     const where = relation.child.columns.map(column => `${quote(column)} IS ?`).join(' AND ');
     if (store.db.prepare(`SELECT 1 FROM ${relation.child.schema}.${quote(relation.child.table)} WHERE ${where} LIMIT 1`).get(...values.map(snapshotCellValue))) {
-      retain(candidate.table, candidate.key, `本机 ${relation.child.schema}.${relation.child.table} 仍引用此对象，过程记录保持当前，不能删除该对象。`);
+      retain(candidate.table, candidate.key, 'PROJECT_VERSION_PROCESS_REFERENCE_CURRENT', `本机 ${relation.child.schema}.${relation.child.table} 仍引用此对象，过程记录保持当前，不能删除该对象。`);
     }
   }
   // A protected child may keep its owner, whose content may keep another
@@ -296,9 +308,9 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
     for (const fk of graph.get(childTable) ?? []) {
         const values = fk.from.map(column => child[column]);
         if (values.some(value => value === null || value === undefined)) continue;
-        for (const candidate of matches(fk.parent, fk.to, values)) retain(candidate.table, candidate.key, `恢复后保留的 ${childTable} 内容仍通过外键引用此对象，保持当前。`);
+        for (const candidate of matches(fk.parent, fk.to, values)) retain(candidate.table, candidate.key, 'PROJECT_VERSION_FOREIGN_KEY_REFERENCE_CURRENT', `恢复后保留的 ${childTable} 内容仍通过外键引用此对象，保持当前。`);
       }
-    for (const ref of logicalReferences(childTable, child)) for (const candidate of matches(ref.table, ['id'], [ref.id])) retain(candidate.table, candidate.key, `恢复后保留的 ${childTable} 内容仍引用此对象，保持当前。`);
+    for (const ref of logicalReferences(childTable, child)) for (const candidate of matches(ref.table, ['id'], [ref.id])) retain(candidate.table, candidate.key, 'PROJECT_VERSION_CONTENT_REFERENCE_CURRENT', `恢复后保留的 ${childTable} 内容仍引用此对象，保持当前。`);
   }
   // Both input files can be valid while their retained/additive combination
   // conflicts (for example two binding IDs with one shot/subject/role key).
@@ -331,5 +343,5 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
 }
 
 export function previewDifferences(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string): ProjectVersionDifference[] {
-  return buildRestorePlan(store, saved, current, mioChangeRowid, versionCreatedAt).changes;
+  return buildRestorePlan(store, saved, current, mioChangeRowid, versionCreatedAt).changes.map(projectVersionDifferenceForDisplay);
 }

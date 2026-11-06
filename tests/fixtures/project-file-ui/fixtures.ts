@@ -127,7 +127,7 @@ export const RESTORE_PREVIEW: ProjectVersionPreviewResponse = {
   changes: [
     {table: 'timelines', key: 'timeline-1', action: 'change', source: 'user-or-other', fields: ['clips', 'subtitles'], reason: null},
     {table: 'shots', key: 'shot-4', action: 'change', source: 'mio', fields: ['title'], reason: null},
-    {table: 'assets', key: 'asset-kept', action: 'keep-current', source: 'user-or-other', fields: [], reason: '保留的结果仍引用此素材'},
+    {table: 'assets', key: 'asset-kept', action: 'keep-current', source: 'user-or-other', fields: [], reason: '保留的结果仍引用此素材', reasonCode: 'PROJECT_VERSION_CONTENT_REFERENCE_CURRENT'},
   ],
   nextCursor: null, restoreAvailable: true,
 };

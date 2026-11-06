@@ -14,6 +14,7 @@ import {createProjectHistoryRuntime} from '../apps/web/src/project-history-runti
 import type {ProjectHistoryRuntime} from '../apps/web/src/project-history-runtime.ts';
 import type {ProjectHistoryDialogProps} from '../apps/web/src/project-file/ProjectHistoryDialog.tsx';
 import type {RestoreVersionDialogProps} from '../apps/web/src/project-file/RestoreVersionDialog.tsx';
+import {PROJECT_VERSION_DIFFERENCE_REASON_CODES} from '../packages/contracts/src/project-version-operations.ts';
 import {NOW,RESTORE_PREVIEW,VERSIONS} from './fixtures/project-file-ui/fixtures.ts';
 
 // U1 group 3: project menu (12-07), version history (12-08), restore (12-09) and packing (12-10, 12-11).
@@ -30,11 +31,12 @@ const shortcuts = (markup: string) => [...markup.matchAll(/data-slot="dropdown-m
 async function historyContainer() {
   const root=fileURLToPath(new URL('../',import.meta.url)),fixtures=join(root,'tests/fixtures/project-file-ui');
   const entry=`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
-    import {ProjectHistoryDialog} from ${JSON.stringify(join(root,'apps/web/src/project-file/ProjectHistoryDialog.tsx'))};
-    import {RestoreVersionDialog} from ${JSON.stringify(join(root,'apps/web/src/project-file/RestoreVersionDialog.tsx'))};
+    import {ProjectHistoryDialog,NativeBackupFailure} from ${JSON.stringify(join(root,'apps/web/src/project-file/ProjectHistoryDialog.tsx'))};
+    import {RestoreVersionDialog,historyErrorCode} from ${JSON.stringify(join(root,'apps/web/src/project-file/RestoreVersionDialog.tsx'))};
     import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};import {setRuntime} from 'u2-ssr-runtime';
     export function render(runtime,props,locale){setRuntime(runtime);setLocale(locale);return renderToStaticMarkup(<ProjectHistoryDialog {...props}/>);}
-    export function restore(props,locale){setLocale(locale);return renderToStaticMarkup(<RestoreVersionDialog {...props}/>);}`;
+    export function restore(props,locale){setLocale(locale);return renderToStaticMarkup(<RestoreVersionDialog {...props}/>);}
+    export function nativeFailure(error,locale){setLocale(locale);return renderToStaticMarkup(<NativeBackupFailure code={historyErrorCode(error)}/>);}`;
   const result=await build({stdin:{contents:entry,loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',
     loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'history-container-ssr',setup(build){
       build.onResolve({filter:/^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));
@@ -43,7 +45,7 @@ async function historyContainer() {
       build.onLoad({filter:/.*/,namespace:'history-ssr'},()=>({contents:'let runtime;export function setRuntime(next){runtime=next;}export function projectHistoryRuntime(){return runtime;}',loader:'js'}));
     }}]});
   const module={exports:{}};Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
-  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string};
+  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string;nativeFailure(error:unknown,locale:Locale):string};
 }
 const productionHistory=await historyContainer();
 const historyProjectId=RESTORE_PREVIEW.projectId,historyVersion=VERSIONS[0];
@@ -228,7 +230,7 @@ test('pending edits preserve real version reads and preview while save and both 
   }finally{runtime.close();}
 });
 
-test('pending edits do not disable an unknown original restore retry or consume its exact input',async()=>{
+test('pending edits block an unknown original restore retry and preserve its exact input until edits are resolved',async()=>{
   const sent:unknown[]=[];let unknown=true;
   const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({restore:async input=>{sent.push(structuredClone(input));if(unknown)throw new ProjectHistoryError('BACKEND_UNAVAILABLE');return{projectId:input.projectId,requestId:input.requestId,versionId:input.versionId,beforeVersionId:randomUUID(),contentSequence:RESTORE_PREVIEW.contentSequence+1,contentToken:'c'.repeat(32),totalChanges:0,appliedChanges:[],keptCurrent:[]};}}));
   runtime.open();await settleHistory();await runtime.select(historyVersion.summary.id);await runtime.restoreVersion();
@@ -236,11 +238,13 @@ test('pending edits do not disable an unknown original restore retry or consume 
     const original=structuredClone(runtime.snapshot().attempt);assert.equal(original?.phase,'unknown');assert.equal(original?.kind,'version');
     for(const locale of LOCALES){
       const markup=productionHistory.render(runtime,{...historyProps,pendingEdits:true},locale);
-      assert.ok(tagOf(markup,'pf-history-retry-original'));assert.equal(disabled(tagOf(markup,'pf-history-retry-original')),false);assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.retryOriginal'))));
+      assert.ok(tagOf(markup,'pf-history-retry-original'));assert.equal(disabled(tagOf(markup,'pf-history-retry-original')),true);assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.retryOriginal'))));
       const confirmation=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:RESTORE_PREVIEW},restore:{kind:'error',action:'restore'},pendingEdits:true,unknown:true,onRestore:()=>{},onRetry:()=>{},onClose:()=>{}},locale);
-      assert.equal(disabled(tagOf(confirmation,'pf-restore-confirm')),false);assert.ok(tagOf(confirmation,'pf-restore-unknown'));
+      assert.equal(disabled(tagOf(confirmation,'pf-restore-confirm')),true);assert.ok(tagOf(confirmation,'pf-restore-unknown'));assert.ok(confirmation.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))));
     }
     assert.deepEqual(runtime.snapshot().attempt,original,'rendering and pending edits preserve the request, pair and digest');assert.equal(sent.length,1);
+    const ready=productionHistory.render(runtime,{...historyProps,pendingEdits:false},'en');assert.equal(disabled(tagOf(ready,'pf-history-retry-original')),false);
+    const confirmation=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:RESTORE_PREVIEW},restore:{kind:'error',action:'restore'},pendingEdits:false,unknown:true,onRestore:()=>{},onRetry:()=>{},onClose:()=>{}},'en');assert.equal(disabled(tagOf(confirmation,'pf-restore-confirm')),false);
     unknown=false;await runtime.retry();assert.deepEqual(sent[1],original?.input);assert.deepEqual(sent[0],sent[1]);assert.equal(sent.length,2);assert.equal(runtime.snapshot().attempt?.phase,'complete');
   }finally{runtime.close();}
 });
@@ -256,4 +260,82 @@ test('backup completion puts the four-language preserved-originals success notic
     assert.ok(markup.indexOf(projectFile)<markup.indexOf('data-testid="pf-backup-originals-preserved"'));assert.ok(markup.includes(projectFile));
     assert.equal(markup.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))),false,'restoring a separate project is not blocked by current edits');
   }}finally{runtime.close();}
+});
+
+
+test('failed-source mode exposes only automatic backups and refuses every project-level runtime path',async()=>{
+  const projectCalls:string[]=[],applicationCalls:string[]=[],backupId=randomUUID(),backup={projectId:historyProjectId,backupId,contentSequence:1,contentToken:'a'.repeat(32),createdAt:NOW.toISOString(),reason:'open' as const,sizeBytes:4096};
+  const unexpected=(name:string)=>{projectCalls.push(name);assert.fail(`Failed-source backup viewer called project RPC ${name}`);};
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({list:async()=>unexpected('list'),preview:async()=>unexpected('preview'),save:async()=>unexpected('save'),restore:async()=>unexpected('restore'),
+    backups:async()=>{applicationCalls.push('backups');return{projectId:historyProjectId,backups:[backup]};},status:async()=>{applicationCalls.push('status');return{projectId:historyProjectId,state:'idle',lastAttemptAt:null,lastCompletedAt:null,lastError:null};},
+    inspect:async()=>{applicationCalls.push('inspect');return{...backup,projectName:'Bad source',sourceProjectDir:'/projects/damaged',tableCounts:{projects:1}};}}),undefined,undefined,{backupsOnly:true});
+  runtime.open('versions');await settleHistory();
+  try{
+    runtime.tab('versions');await runtime.loadVersions();await runtime.select(historyVersion.summary.id);await runtime.save('Must not open source');await runtime.restoreVersion();await runtime.retry();
+    assert.equal(runtime.snapshot().tab,'backups');assert.deepEqual(projectCalls,[]);assert.deepEqual(applicationCalls,['backups','status']);
+    await runtime.inspect(backupId);assert.deepEqual(applicationCalls,['backups','status','inspect']);
+    for(const locale of LOCALES){
+      const markup=productionHistory.render(runtime,{...historyProps,backupsOnly:true,initialTab:'versions',initialAction:'save'},locale);
+      assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.tabs.backups'))));assert.ok(tagOf(markup,'pf-backups'));
+      assert.equal(tagOf(markup,'pf-versions-save'),null);assert.equal(tagOf(markup,'pf-version-restore'),null);assert.equal(tagOf(markup,'pf-restore-dialog'),null);
+      assert.doesNotMatch(markup,/id="pf-save-name"/u);assert.doesNotMatch(markup,/role="tab"[^>]*value="versions"/u);
+      const heading=[...markup.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gu)].map(match=>match[1]).find(title=>title.includes(escapeHtml(translate(locale,'projectHistory.backup.open'))));
+      assert.ok(heading,`inspection title contains the reason in ${locale}`);assert.match(heading,/\d{2}:\d{2}/u,'inspection title includes the actual backup time');
+    }
+    assert.deepEqual(projectCalls,[]);assert.equal(runtime.snapshot().attempt,null);
+  }finally{runtime.close();}
+});
+
+test('kept reasons and backup failures use four-language codes and never render server text',async()=>{
+  const reasons={PROJECT_VERSION_ASSET_LOCATION_CURRENT:'assetLocation',PROJECT_VERSION_IMAGE_GROUP_FORWARD_ONLY:'imageGroup',PROJECT_VERSION_SUBJECT_VARIANT_HEAD:'subjectVariant',PROJECT_VERSION_IMAGE_GROUP_TASK_NOT_REPLAYED:'imageTask',PROJECT_VERSION_PROTECTED_RESULT_CURRENT:'protectedResult',PROJECT_VERSION_TIMELINE_HISTORY_CURRENT:'timelineHistory',PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT:'annotationIdentity',PROJECT_VERSION_BINDING_TOMBSTONE_CURRENT:'bindingTombstone',PROJECT_VERSION_PROCESS_REFERENCE_CURRENT:'processReference',PROJECT_VERSION_FOREIGN_KEY_REFERENCE_CURRENT:'foreignKey',PROJECT_VERSION_CONTENT_REFERENCE_CURRENT:'contentReference'} as const;
+  assert.deepEqual(Object.keys(reasons),[...PROJECT_VERSION_DIFFERENCE_REASON_CODES]);
+  const secret='服务端私密说明 /private/source 不应进入界面';
+  for(const locale of LOCALES){
+    for(const [reasonCode,key]of Object.entries(reasons)){
+      const preview={...RESTORE_PREVIEW,changes:[{...RESTORE_PREVIEW.changes[2]!,reason:secret,reasonCode}]};
+      const markup=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:preview},restore:{kind:'idle'},onRestore:()=>{},onRetry:()=>{},onClose:()=>{}},locale);
+      assert.ok(markup.includes(escapeHtml(translate(locale,`projectHistory.reason.${key}`))));assert.equal(markup.includes(secret),false);
+    }
+    for(const reasonCode of [undefined,'PROJECT_VERSION_FUTURE_REASON','PROJECT_VERSION_'+'A'.repeat(96)]){
+      const preview={...RESTORE_PREVIEW,changes:[{...RESTORE_PREVIEW.changes[2]!,reason:secret,reasonCode}]};
+      const markup=productionHistory.restore({open:true,version:historyVersion,now:NOW,preview:{kind:'ready',value:preview},restore:{kind:'idle'},onRestore:()=>{},onRetry:()=>{},onClose:()=>{}},locale);
+      assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.reason.unknown'))));assert.ok(markup.includes(reasonCode??'PROJECT_VERSION_REASON_UNAVAILABLE'));assert.equal(markup.includes(secret),false);
+    }
+    for(const [code,key]of [['PROJECT_ACCESS_DENIED','permission'],['ENOSPC','space'],['PROJECT_BACKUP_INTERRUPTED','interrupted'],['PROJECT_BACKUP_FUTURE','other']] as const){
+      const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({backups:async()=>({projectId:historyProjectId,backups:[]}),status:async()=>({projectId:historyProjectId,state:'failed',lastAttemptAt:NOW.toISOString(),lastCompletedAt:null,lastError:{code,message:secret}})}));
+      runtime.open('backups');await settleHistory();try{
+        const markup=productionHistory.render(runtime,{...historyProps,initialTab:'backups'},locale);
+        assert.ok(markup.includes(escapeHtml(translate(locale,`projectHistory.backup.failure.${key}`))));assert.ok(markup.includes(code));assert.equal(markup.includes(secret),false);
+      }finally{runtime.close();}
+    }
+  }
+});
+
+
+test('native backup selection and reveal failures distinguish access, changed backup, location and generic errors in four languages',()=>{
+  const cases=[['PROJECT_ACCESS_DENIED','permission'],['PROJECT_BACKUP_CHANGED','backupChanged'],['PROJECT_BACKUP_RESTORE_CHANGED','backupChanged'],['PROJECT_BACKUP_NOT_FOUND','missing'],['PROJECT_BACKUP_INDEX_INVALID','backupChanged'],['PROJECT_LOCATION_REJECTED','location'],['PROJECT_LOCATION_INVALID','location'],['WORKSPACE_NATIVE_UNAVAILABLE','nativeUnavailable']] as const;
+  for(const locale of LOCALES){
+    for(const [code,key]of cases){
+      const markup=productionHistory.nativeFailure(Object.assign(new Error('Sensitive server message /private/source'),{code}),locale);
+      assert.ok(tagOf(markup,'pf-backup-native-error'));assert.ok(markup.includes(escapeHtml(translate(locale,`projectHistory.error.${key}`))));assert.ok(markup.includes(code));assert.doesNotMatch(markup,/Sensitive server message|private\/source/u);
+    }
+    for(const error of [new Error('Sensitive chooser failure'),{code:'/private/invalid-code'}]){
+      const markup=productionHistory.nativeFailure(error,locale);assert.ok(markup.includes('WORKSPACE_NATIVE_UNAVAILABLE'));assert.ok(markup.includes(escapeHtml(translate(locale,'projectHistory.error.nativeUnavailable'))));assert.doesNotMatch(markup,/Sensitive chooser failure|invalid-code/u);
+    }
+  }
+});
+
+
+test('an unknown manual-save retry also waits for current edits without changing its exact request',async()=>{
+  const sent:unknown[]=[];let fail=true;
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient({save:async input=>{sent.push(structuredClone(input));if(fail)throw new ProjectHistoryError('BACKEND_UNAVAILABLE');return{projectId:input.projectId,requestId:input.requestId,version:historyVersion.summary};}}));
+  runtime.open();await settleHistory();await runtime.save('Retained exact name');
+  try{
+    const original=structuredClone(runtime.snapshot().attempt);assert.equal(original?.kind,'save');assert.equal(original?.phase,'unknown');
+    for(const locale of LOCALES){
+      const dirty=productionHistory.render(runtime,{...historyProps,pendingEdits:true},locale);assert.equal(disabled(tagOf(dirty,'pf-history-retry-original')),true);assert.ok(dirty.includes(escapeHtml(translate(locale,'projectHistory.pendingEdits'))));
+      const clean=productionHistory.render(runtime,{...historyProps,pendingEdits:false},locale);assert.equal(disabled(tagOf(clean,'pf-history-retry-original')),false);
+    }
+    assert.equal(sent.length,1);assert.deepEqual(runtime.snapshot().attempt,original);fail=false;await runtime.retry();assert.equal(sent.length,2);assert.deepEqual(sent[1],original?.input);assert.deepEqual(sent[0],sent[1]);assert.equal(runtime.snapshot().attempt?.phase,'complete');
+  }finally{runtime.close();}
 });

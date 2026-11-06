@@ -68,6 +68,36 @@ const changes=(f: DatabaseFixture)=>f.store.db.prepare('SELECT total_changes() A
 // The required-key source-range extension has its own replay/collision matrix.
 const LEGACY_OPERATIONS=['shot.create','shot.update','shot.reorder','node.create','node.update','version.select'] as const;
 const key=()=>randomUUID();
+test('shot.reorder omits retired notes from fresh and replayed results without rewriting the saved project or ACK',async t=>{
+ const f=await fixture(t),input=await inputFor(f,'shot.reorder');
+ const stored={...f.store.get('projects',f.project.id),notes:'Private retired project notes'};
+ f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(stored),f.project.id);
+ const result=await f.call('shot.reorder',input);
+ assert.equal(Object.hasOwn(result,'notes'),false);
+ const saved=f.store.get('projects',f.project.id);
+ assert.ok(saved&&'notes' in saved);
+ assert.equal(saved.notes,stored.notes);
+ const receipt=journal(f).find(row=>row.requestId===input.requestId)!;
+ assert.equal(JSON.parse(receipt.response).notes,stored.notes);
+ const {notes:_retired,...publicReceipt}=JSON.parse(receipt.response);
+ assert.deepEqual(result,publicReceipt);
+ const unchanged=capture(f),beforeConflict=changes(f);
+ await assert.rejects(f.call('shot.reorder',{...input,requestId:key()}),error=>{
+  assert.ok(error instanceof AppError);
+  assert.equal(error.code,'REVISION_CONFLICT');
+  assert.equal(Object.hasOwn((error.details as {current:object}).current,'notes'),false);
+  assert.deepEqual((error.details as {current:object}).current,publicReceipt);
+  return true;
+ });
+ assert.deepEqual(capture(f),unchanged);
+ assert.equal(changes(f),beforeConflict);
+ f.restart();
+ const before=capture(f),count=changes(f);
+ assert.deepEqual(await f.call('shot.reorder',input),result);
+ assert.deepEqual(journal(f).find(row=>row.requestId===input.requestId),receipt);
+ assert.deepEqual(capture(f),before);
+ assert.equal(changes(f),count);
+});
 const conflict=(error: unknown)=>(error as { code: string; status: number; details: object; }).code==='IDEMPOTENCY_CONFLICT'&&(error as { code: string; status: number; details: object; }).status===409&&!Object.hasOwn((error as { code: string; status: number; details: object; }).details,'mutationOutcome');
 function corrupt(f: MutationFixture,table: string,id: string,patch: unknown={},columns: Record<string, import("node:sqlite").SQLInputValue>={}) {
  if(table==='versions')f.store.db.exec('DROP TRIGGER IF EXISTS immutable_versions');
