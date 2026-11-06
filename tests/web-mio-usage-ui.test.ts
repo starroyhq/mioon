@@ -25,8 +25,22 @@ const details=(value:MioUsageView,locale:Locale='zh-Hans')=>ui.details({open:tru
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
 test('token units are localized rather than appended as a fixed English suffix',()=>{
-  const units={'zh-Hans':'词元','zh-Hant':'詞元',en:'tokens',ja:'トークン'} as const;
-  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){const html=details(ready(),locale);assert.ok(html.includes(`1,000 ${units[locale]}`),locale);if(locale!=='en')assert.doesNotMatch(html,/1,000 tokens/);}
+  const units={'zh-Hans':'tokens','zh-Hant':'tokens',en:'tokens',ja:'トークン'} as const;
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){const html=details(ready(),locale);assert.ok(html.includes(`1,000 ${units[locale]}`),locale);if(locale!=='en')assert.doesNotMatch(html,locale==='ja'?/1,000 tokens/:/词元|詞元/);}
+});
+test('Chinese usage uses approved tokens for lower bounds and zero while unreported values keep no unit',()=>{
+  const value=usageFixture({cacheReadRate:null,knownTotals:{inputTokens:1,outputTokens:0,cacheReadTokens:null,cacheWriteTokens:0}});
+  value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:false};
+  value.coverage.fields.outputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:false};
+  value.coverage.fields.cacheReadTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};
+  for(const locale of ['zh-Hans','zh-Hant'] as const){
+    const html=details(ready(value),locale);
+    assert.match(html,/≥1 tokens</);assert.match(html,/≥0 tokens</);assert.match(html,/>0 tokens</);
+    assert.match(html,/data-field="cacheReadTokens"[^]*?class="mio-usage-number">—</);
+    assert.doesNotMatch(html,/词元|詞元|— tokens|≥1 token</);
+  }
+  assert.match(details(ready(value),'en'),/≥1 token</);
+  assert.match(details(ready(value),'ja'),/≥1 トークン</);
 });
 test('English request and token counts use singular and plural forms',()=>{
   const single=usageFixture({dispatchedModelSteps:1,modelOutcomes:{completed:1,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:1,outputTokens:1,cacheReadTokens:1,cacheWriteTokens:0},cacheReadRate:1,
@@ -53,14 +67,14 @@ test('usage summary and real shared controls render exact complete measurements 
   assert.deepEqual(validateCatalogs(mioUsageUiMessages),[]);
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
     const summary=row(ready(),locale),html=details(ready(),locale);
-    assert.match(summary,/1k/);assert.match(summary,/100/);assert.match(summary,/60%/);assert.match(html,/1,000/);assert.match(html,/600/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,new RegExp('0 '+({'zh-Hans':'词元','zh-Hant':'詞元',en:'tokens',ja:'トークン'} as const)[locale]));
+    assert.match(summary,/1k/);assert.match(summary,/100/);assert.match(summary,/60%/);assert.match(html,/1,000/);assert.match(html,/600/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,new RegExp('0 '+({'zh-Hans':'tokens','zh-Hant':'tokens',en:'tokens',ja:'トークン'} as const)[locale]));
     for(const button of html.matchAll(/<button[^>]*>/gu))assert.match(button[0],/type="button"/);
     assert.doesNotMatch(html,/NaN|undefined|rawUsage|requestHash|apiKey/);
   }
 });
 
 test('explicit zero stays zero while no dispatched requests and unreported cache writes are distinct',()=>{
-  const zero=usageFixture({knownTotals:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0},cacheReadRate:null});assert.match(details(ready(zero)),/0 词元/);assert.doesNotMatch(details(ready(zero)),/服务商没有报告/);
+  const zero=usageFixture({knownTotals:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0},cacheReadRate:null});assert.match(details(ready(zero)),/0 tokens/);assert.doesNotMatch(details(ready(zero)),/服务商没有报告/);
   const empty=usageFixture({dispatchedModelSteps:0,modelOutcomes:{completed:0,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:null,outputTokens:null,cacheReadTokens:null,cacheWriteTokens:null},coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:0,missingSteps:0,complete:true,overflow:false}])) as MioRunUsage['coverage']['fields']},cacheReadRate:null});
   const html=details(ready(empty));assert.match(html,/尚无已发出的模型请求/);assert.doesNotMatch(html,/服务商没有报告|0 tokens|0 词元|data-field="cacheWriteTokens"/);
   const omitted=usageFixture();omitted.knownTotals.cacheWriteTokens=null;omitted.coverage.fields.cacheWriteTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};
@@ -69,7 +83,7 @@ test('explicit zero stays zero while no dispatched requests and unreported cache
 
 test('field-specific missing coverage uses lower bounds and never calls independent cache data part of known input',()=>{
   const value=usageFixture({cacheReadRate:null});value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:false};value.knownTotals.inputTokens=100;
-  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 词元/);assert.match(html,/有 1 次请求/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/独立报告的缓存读取量/);assert.doesNotMatch(html,/其中缓存命中|60%/);
+  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 tokens/);assert.match(html,/有 1 次请求/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/独立报告的缓存读取量/);assert.doesNotMatch(html,/其中缓存命中|60%/);
   value.coverage.fields.outputTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};value.knownTotals.outputTokens=null;assert.match(details(ready(value)),/服务商没有报告/);
 });
 

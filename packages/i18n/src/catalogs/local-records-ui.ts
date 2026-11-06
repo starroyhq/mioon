@@ -108,6 +108,12 @@ export const localRecordsUiMessages = {
     "en": "Local records could not be read. Refresh the list to retry.",
     "ja": "ローカル記録を読み取れません。一覧を更新してください。"
   },
+  "localRecords.scanFailed": {
+    "zh-Hans": "有些本机记录读不了，请稍后再试。",
+    "zh-Hant": "有些本機記錄無法讀取，請稍後再試。",
+    "en": "Some local records could not be read. Try again later.",
+    "ja": "一部のローカル記録を読み取れません。しばらくしてから再試行してください。"
+  },
   "localRecords.inUse": {
     "zh-Hans": "这个项目的文件又找到了、正在打开，或者还有生成任务没结束，不能删除。",
     "zh-Hant": "這個專案的檔案又找到了、正在開啟，或還有生成工作尚未結束，無法刪除。",

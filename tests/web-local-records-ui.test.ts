@@ -5,7 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {build} from 'esbuild';
-import type {LocalRecordsState} from '../apps/web/src/local-records-state.ts';
+import {createLocalRecordsController, type LocalRecordsState} from '../apps/web/src/local-records-state.ts';
+import {createLocalRecordsClient,LocalRecordsRequestError} from '../apps/web/src/local-records-client.ts';
 import {LOCALES,translate} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 
@@ -18,6 +19,32 @@ const item={projectId:randomUUID(),name:'访谈 <raw>',projectFile:'/private/ver
 const base:LocalRecordsState={active:true,loading:false,list:{version:1,appLibraryScope:'a'.repeat(64),instanceId:randomUUID(),records:[item]},readError:null,selected:null,deleting:false,notice:null};
 const render=(patch:Partial<LocalRecordsState>={},locale:Locale='zh-Hans')=>module.exports.render({...base,...patch},locale);
 const deleteTag=(html:string)=>html.match(/<button\b[^>]*data-variant="danger-ghost"[^>]*>/u)?.[0]??'';
+
+test('scan failures preserve the exact 503 code and show a safe localized retry message in all four languages',async()=>{
+  let calls=0;
+  const response=(status:number)=>Response.json({ok:false,error:{code:'LOCAL_RECORDS_SCAN_FAILED',message:'raw server error at /private/backup-secret',details:{projectId:item.projectId}}},{status});
+  const client=createLocalRecordsClient({fetcher:async()=>{calls++;return response(503);}});
+  const rejected=(outcomeUnknown:boolean)=>(value:unknown)=>value instanceof LocalRecordsRequestError&&value.code==='LOCAL_RECORDS_SCAN_FAILED'&&value.outcomeUnknown===outcomeUnknown;
+  await assert.rejects(client.list(),rejected(false));
+  await assert.rejects(client.delete({projectId:item.projectId,expectedAppLibraryScope:base.list!.appLibraryScope,expectedInstanceId:base.list!.instanceId}),rejected(true));
+  for(const status of [400,500]){
+    const invalid=createLocalRecordsClient({fetcher:async()=>response(status)});
+    await assert.rejects(invalid.list(),value=>value instanceof LocalRecordsRequestError&&value.code==='BACKEND_PROTOCOL_ERROR'&&!value.outcomeUnknown);
+  }
+  const controller=createLocalRecordsController(client);
+  let unsubscribe=()=>{};
+  try {
+    const settled=new Promise<void>(resolve=>{unsubscribe=controller.subscribe(()=>{const state=controller.getSnapshot();if(!state.loading&&state.readError)resolve();});});
+    controller.activate(true);await settled;
+    const state=controller.getSnapshot();assert.equal(state.readError,'LOCAL_RECORDS_SCAN_FAILED');assert.equal(state.list,null);assert.equal(state.selected,null);
+    const messages={'zh-Hans':'有些本机记录读不了，请稍后再试。','zh-Hant':'有些本機記錄無法讀取，請稍後再試。',en:'Some local records could not be read. Try again later.',ja:'一部のローカル記録を読み取れません。しばらくしてから再試行してください。'};
+    for(const locale of LOCALES){
+      const html=module.exports.render(state,locale);assert.ok(html.includes(messages[locale]),locale);assert.match(html,/LOCAL_RECORDS_SCAN_FAILED/u);
+      assert.doesNotMatch(html,/BACKEND_PROTOCOL_ERROR|raw server error|backup-secret|data-variant="danger-ghost"/u);
+    }
+    assert.equal(calls,3,'two explicit probes and one list read; no automatic retry');
+  } finally {unsubscribe();controller.dispose();}
+});
 
 test('deletion explicitly includes automatic backups and warns with the server backup count and bytes only when present',()=>{
   const words={'zh-Hans':'自动备份','zh-Hant':'自動備份',en:'automatic backups',ja:'自動バックアップ'};
