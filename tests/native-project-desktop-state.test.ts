@@ -85,6 +85,42 @@ test('unknown create retains exact inputs and close protection; refresh does not
   assert.equal(await f.controller.recheck(), true); assert.deepEqual(f.calls.filter(call => call.action === 'createAtSelection')[0], f.calls.filter(call => call.action === 'createAtSelection')[1]);
   assert.deepEqual(f.opened, [createdId]); assert.equal(f.controller.readCloseSnapshot().unknown, false);
 });
+test('replay admission refusals preserve the original unknown and block new native writes until an exact ACK', async t => {
+  for (const kind of ['createAtSelection', 'duplicate', 'copyTo'] as const) for (const [code, status] of [
+    ['PROJECT_ENTRY_UNAVAILABLE', 409], ['PROJECT_ENTRY_BUSY', 409], ['PROJECT_ENTRY_BUSY', 503], ['PROJECT_HOST_BUSY', 409],
+  ] as const) await t.test(`${kind}/${code}/${status}`, async t => {
+    let attempts = 0;
+    const f = await fixture(t, {openSelectedFile: () => ({status: 'copy-source', token, name: 'Source', displayPath: '/observed/source.mioon', reason: 'read-only', facts}),
+      [kind]: request => {
+        attempts++;
+        if (attempts === 1) throw Error('Original write may have committed before its ACK was lost');
+        if (attempts === 2) throw Object.assign(Error('Replay refused before the operation cache'), {code, status});
+        return kind === 'createAtSelection' ? {status: 'created', project: created}
+          : {requestId: request.requestId, sourceProjectId: projectId, project: created, contentSequence: 0, contentToken: 'a'.repeat(32), versions: 0};
+      }});
+    if (kind === 'createAtSelection') {f.controller.showCreate(); f.controller.change({name: 'Retain original', description: 'Keep this draft', createFolder: false}); await f.controller.chooseLocation();}
+    else if (kind === 'copyTo') await f.controller.openFile();
+    assert.equal(await (kind === 'createAtSelection' ? f.controller.create() : kind === 'duplicate' ? f.controller.duplicate(projectId) : f.controller.copyTo()), false);
+    const original = f.calls.find(call => call.action === kind); assert.ok(original);
+    const selection = f.controller.getState().selection, failure = f.controller.getState().failure;
+    assert.equal(f.controller.readCloseSnapshot().unknown, true);
+    assert.equal(await f.controller.recheck(), false);
+    assert.equal(f.controller.getState().action.kind, 'unknown'); assert.equal(f.controller.readCloseSnapshot().unknown, true);
+    assert.equal(f.controller.getState().selection, selection); assert.equal(f.controller.getState().selectionInvalid, false);
+    assert.equal(f.controller.getState().failure, failure); assert.deepEqual(f.opened, []);
+    if (kind === 'createAtSelection') {assert.equal(f.controller.getState().createState.kind, 'unknown'); assert.equal(f.controller.getState().values.description, 'Keep this draft');}
+    const calls = f.calls.length;
+    f.controller.closeCreate(); f.controller.closeFailure(); assert.equal(f.controller.showCreate(), false);
+    assert.equal(await f.controller.create(), false); assert.equal(await f.controller.duplicate(projectId), false); assert.equal(await f.controller.copyTo(), false);
+    assert.equal(f.calls.length, calls, 'A refusal to replay cannot authorize a new mutation or another system panel');
+    assert.equal(attempts, 2);
+    assert.equal(await f.controller.recheck(), true); assert.equal(attempts, 3);
+    const writes = f.calls.filter(call => call.action === kind); assert.equal(writes.length, 3);
+    for (const input of writes) assert.deepEqual(input, original, 'Reconciliation retains the original token, requestId and full input');
+    assert.equal(f.calls.filter(call => call.action === 'chooseLocation').length, 1);
+    assert.deepEqual(f.opened, [createdId]); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  });
+});
 test('dispatched native creates retain retired unknown before and after late ACK across scope, instance and disposal', async t => {
   for (const boundary of ['scope', 'instance', 'dispose'] as const) await t.test(boundary, async t => {
     const held = Promise.withResolvers<unknown>(); t.after(() => held.resolve({status: 'created', project: created}));

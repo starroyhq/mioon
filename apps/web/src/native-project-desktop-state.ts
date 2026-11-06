@@ -120,12 +120,15 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     } catch (error) {
       if (!current(serial)) return false;
       const recorded = [...dispatchedWrites].find(value => value === intent);
-      if (recorded && !rejected(error, action, mutation)) {
+      if (previousIntent) {
+        // A replay may be refused before main reaches its operation cache.
+        // That refusal cannot settle the earlier write's unknown outcome.
+        retry = previousRetry; retryIntent = previousIntent;
+        emit({action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
+      } else if (recorded && !rejected(error, action, mutation)) {
         retry = resume; retryIntent = recorded;
         emit({action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
         if (!state.failure && action !== 'chooseLocation') fail(error, 'open', projectId);
-      } else if (!recorded && previousIntent) {
-        retry = previousRetry; retryIntent = previousIntent; emit({action: {kind: 'unknown', action}});
       } else {
         if (recorded) recorded.acknowledged = true;
         retry = null; retryIntent = null;
