@@ -736,7 +736,7 @@ test('home navigation cannot discard over a newer scope or a refused draft confi
 
 test('failed project opening retains an application-only backup admission without treating the invalid source as ready', async () => {
   const h = harness({get: async () => {throw failure('PROJECT_INVALID');}});
-  h.env.nativeBackup=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>null,reveal:async()=>true}});
+  h.env.nativeBackup=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>({ok:true,value:null}),reveal:async()=>({ok:true,value:true})}});
   assert.equal(await h.selectProject(id(1)),false);assert.equal(h.projectSessionReady(),false);
   const failed = h.env.backupFailure as {projectId:string;admission:ProjectFeatureAdmission|null};
   assert.equal(failed.projectId,id(1));assert.ok(failed.admission);assert.equal(failed.admission.isCurrent(),true);
@@ -749,6 +749,11 @@ test('failed project opening retains an application-only backup admission withou
   const recovery=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.projectId===id(1)&&node.props?.admission===failed.admission);
   assert.ok(recovery,'the actual failed-opening branch passes the captured application admission to backup recovery');
   assert.equal(recovery.props?.interactionBlocked,false);
+  const before=h.calls.length;(recovery.props!.onRestore as ()=>void)();
+  const view=h.env.historyView as {projectId:string;backupsOnly:boolean;admission:ProjectFeatureAdmission};
+  assert.equal(view.projectId,id(1));assert.equal(view.backupsOnly,true);assert.equal(view.admission,failed.admission);
+  const history=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.backupsOnly===true);assert.ok(history);assert.equal(history.props?.admission,failed.admission);
+  assert.equal(h.calls.slice(before).some(call=>call[0]==='rpc'),false,'opening failed-source backups never retries project.get or other project RPC');
   const lease={current:true};h.env.nativeLeaseRevoked=lease;
   assert.equal(failed.admission.isCurrent(),false);assert.equal(h.captureProjectFeatureAdmission(id(1)),null);
 });

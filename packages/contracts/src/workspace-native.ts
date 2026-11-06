@@ -23,8 +23,24 @@ export interface ProjectPackagesNativeBridge {
  save(input:{token:string;exportId:string}):Promise<{fileName:string}>;
  reveal(input:{token:string}):Promise<boolean>;
 }
+/** Internal backup IPC/contextBridge replies carry codes as data: Electron
+ * does not preserve custom Error properties across either boundary. */
+export const PROJECT_BACKUP_NATIVE_ERROR_CODES = [
+ 'PROJECT_ACCESS_DENIED','PROJECT_BACKUP_CHANGED','PROJECT_BACKUP_RESTORE_CHANGED',
+ 'PROJECT_BACKUP_NOT_FOUND','PROJECT_BACKUP_INDEX_INVALID',
+ 'PROJECT_LOCATION_REJECTED','PROJECT_LOCATION_INVALID','WORKSPACE_NATIVE_UNAVAILABLE',
+] as const;
+export type ProjectBackupNativeErrorCode=typeof PROJECT_BACKUP_NATIVE_ERROR_CODES[number];
+export type ProjectBackupNativeResult<T>={ok:true;value:T}|{ok:false;code:ProjectBackupNativeErrorCode};
+const backupNativeFailureSchema=z.object({ok:z.literal(false),code:z.enum(PROJECT_BACKUP_NATIVE_ERROR_CODES)}).strict();
+export const projectBackupNativeChooseResponseSchema=z.discriminatedUnion('ok',[
+ z.object({ok:z.literal(true),value:projectBackupSchemas['project.backup.restore'].nullable()}).strict(),backupNativeFailureSchema,
+]);
+export const projectBackupNativeRevealResponseSchema=z.discriminatedUnion('ok',[
+ z.object({ok:z.literal(true),value:z.boolean()}).strict(),backupNativeFailureSchema,
+]);
 export interface ProjectBackupsNativeBridge {
- chooseDestination(input:z.infer<typeof backupRestoreSelectionSchema>):Promise<z.infer<typeof projectBackupSchemas['project.backup.restore']>|null>;
- reveal(result:z.infer<typeof projectBackupRestoreResponseSchema>):Promise<boolean>;
+ chooseDestination(input:z.infer<typeof backupRestoreSelectionSchema>):Promise<ProjectBackupNativeResult<z.infer<typeof projectBackupSchemas['project.backup.restore']>|null>>;
+ reveal(result:z.infer<typeof projectBackupRestoreResponseSchema>):Promise<ProjectBackupNativeResult<boolean>>;
 }
 

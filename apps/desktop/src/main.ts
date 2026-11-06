@@ -257,20 +257,30 @@ async function showOwnedDialog(window: BrowserWindow, context: DesktopWindowCont
 
 /** A backup picker belongs to the initiating frame even if focus changes while
  * its inspection or the OS sheet is pending. It never performs the restore. */
-async function chooseOwnedBackupFile(window: BrowserWindow, context: DesktopWindowContext, defaultPath: string, check: () => void): Promise<string | null> {
+async function chooseOwnedBackupFile(window: BrowserWindow, context: DesktopWindowContext, defaultPath: string, check: () => void, admitLocation: (facts: ProjectLocationFacts) => Promise<boolean>): Promise<string | null> {
   check();const host = windowHost, owner = host?.contextFor(window);
-  if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) throw new Error('Native backup action is unavailable.');
+  if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) throw Object.assign(new Error('Native backup action is unavailable.'), {code:'WORKSPACE_NATIVE_UNAVAILABLE'});
   const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
+  let selected: string | null = null;
   try {
     check();
     const result = await dialog.showSaveDialog(window, {title: nt('native.saveProjectFile'), defaultPath,
       filters: [{name: nt('native.projectFileFilter'), extensions: ['mioon']}], properties: ['showOverwriteConfirmation', 'createDirectory']});
-    check();return result.canceled || !result.filePath ? null : result.filePath;
+    check();selected = result.canceled || !result.filePath ? null : result.filePath;
   } finally {
     nativeDialogs.delete(token);
     if (ownsWindow(window, context)) finishNativePresentation(window, host, owner.contextId);
     trayHost?.refresh(); refreshApplicationMenu();
   }
+  if (selected === null) return null;
+  // Finish the OS sheet before presenting the shared location warning. Probe
+  // the exact normalized target that the backup intent will later retain.
+  const file = /\.mioon$/iu.test(selected) ? selected.replace(/\.mioon$/iu, '.mioon') : `${selected}.mioon`;
+  check();
+  const facts = await probeDesktopProjectLocation({path: file, purpose: 'duplicate', isDirectory: false});
+  check();
+  if (!await admitLocation(facts)) {check();throw Object.assign(new Error('Project location was rejected.'), {code: 'PROJECT_LOCATION_REJECTED'});}
+  check();return file;
 }
 
 async function presentForReload(window: BrowserWindow, context: DesktopWindowContext | null | undefined, reload: () => Promise<unknown>): Promise<unknown> {
@@ -582,7 +592,11 @@ async function start(): Promise<DesktopStartReport> {
         if(!window||!owner||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
         const isCurrent=()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}};
         return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,key:owner.frame,isCurrent,
-          chooseBackupFile:defaultPath=>chooseOwnedBackupFile(window,context,defaultPath,()=>{if(!isCurrent())throw new Error('Native backup action is unavailable.');})};
+          chooseBackupFile:defaultPath=>chooseOwnedBackupFile(window,context,defaultPath,()=>{if(!isCurrent())throw Object.assign(new Error('Native backup action is unavailable.'), {code:'WORKSPACE_NATIVE_UNAVAILABLE'});},async facts=>{
+            if(!isCurrent())throw Object.assign(new Error('Native backup action is unavailable.'), {code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+            const selected=nativeOwner(window);if(!selected)throw Object.assign(new Error('Native backup action is unavailable.'), {code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+            return admit(selected,facts);
+          })};
       },
       readWorkspaceRoot:async projectId=>workspaceInfoSchema.parse(await nativeRead(projectApiPath(projectId,'workspace-info'))).dataDirectory,
       readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
@@ -1050,7 +1064,7 @@ ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
 ipcMain.handle(ASSET_IMPORT_CHANNEL,(event,request)=>{if(!assetImportHost)throw new Error('Asset import is unavailable.');return assetImportHost.dispatch(event,request);});
 ipcMain.handle(WORKSPACE_NATIVE_CHANNEL,(event,request)=>{
   if(!workspaceNativeHost)throw new Error('Native workspace action is unavailable.');
-  return workspaceNativeHost.dispatch(event,request);
+  return workspaceNativeHost.invoke(event,request);
 });
 ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
   if (!languageHost) throw new Error('App language preferences are not available.');

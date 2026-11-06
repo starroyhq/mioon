@@ -590,7 +590,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [rulesOpen, setRulesOpen] = useState(false);
   const [rulesAdmission, setRulesAdmission] = useState<ProjectFeatureAdmission | null>(null);
   const [backupFailure, setBackupFailure] = useState<{projectId: string; name: string; admission: ProjectFeatureAdmission | null} | null>(null);
-  const [historyView, setHistoryView] = useState<{projectId: string; name: string; projectFile?: string; initialAction?: 'save'; tab: 'versions' | 'backups'; admission: ProjectFeatureAdmission} | null>(null);
+  const [historyView, setHistoryView] = useState<{projectId: string; name: string; projectFile?: string; initialAction?: 'save'; backupsOnly?: boolean; tab: 'versions' | 'backups'; admission: ProjectFeatureAdmission} | null>(null);
   const [projectRegistration, setProjectRegistration] = useState<{projectId: string; projectFile: string} | null>(null);
   const [nativeBackup] = useState(() => readProjectBackupNativeActions());
   const agentDraft = useRef(false);
@@ -3031,14 +3031,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     document.title = title;
     return () => { if (document.title === title) document.title = previous; };
   }, [nativeWindow?.context.contextId, data.project?.id, data.project?.name]);
-  const historyLayer = historyView && <ProjectHistoryDialog open projectId={historyView.projectId} projectName={historyView.name} projectFile={historyView.projectFile} pendingEdits={historyView.projectId === data.project?.id && (saveIsDirty || Boolean(clipDraftRef.current?.hasPendingComposition()))} initialTab={historyView.tab} initialAction={historyView.initialAction}
+  const historyLayer = historyView && <ProjectHistoryDialog open projectId={historyView.projectId} projectName={historyView.name} projectFile={historyView.projectFile} pendingEdits={historyView.projectId === data.project?.id && (saveIsDirty || Boolean(clipDraftRef.current?.hasPendingComposition()))} initialTab={historyView.tab} initialAction={historyView.initialAction} backupsOnly={historyView.backupsOnly}
       admission={historyView.admission} interactionBlocked={!historyView.admission.isCurrent()} nativeBackup={nativeBackup}
       onClose={() => {if (historyView.admission.isCurrent()) setHistoryView(null);}} onRestored={id => {if (historyView.admission.isCurrent() && currentProject.current === id) void refresh(id);}}
       onOpenProject={id => {if (!historyView.admission.isCurrent()) return; setHistoryView(null); if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id);}} />;
   const backupRecovery = nativeBackup && backupFailure?.admission && projectOpening.phase === 'error' && projectOpening.projectId === backupFailure.projectId
     ? <ProjectBackupRecovery key={backupFailure.projectId} projectId={backupFailure.projectId} admission={backupFailure.admission} interactionBlocked={!backupFailure.admission.isCurrent()} onRestore={() => {
       if (!backupFailure.admission?.isCurrent()) return;
-      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', admission: backupFailure.admission});
+      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', backupsOnly: true, admission: backupFailure.admission});
     }} /> : null;
   if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login onLogin={boot} />;
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;

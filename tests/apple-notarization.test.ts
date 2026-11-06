@@ -40,10 +40,11 @@ function safeDiagnostics(value: unknown): void {
 test('stapling retries only explicit transient ticket-service failures, with a three-attempt bound and safe diagnostics', async () => {
   const f = executor([result(68, network), result(68, network), result()]), w = waitRecorder(), diagnostics: AppleStaplerDiagnostic[] = [];
   const passed = await runAppleStapler('staple', dmg, {execute: f.execute, wait: w.wait, onDiagnostic: value => diagnostics.push(value)});
-  assert.deepEqual(w.waits, [5000, 15000]); assert.equal(f.calls.length, 3);
+  assert.deepEqual(w.waits, [30000, 90000]); assert.equal(f.calls.length, 3);
   assert.deepEqual(diagnostics.map(value => [value.attempt, value.category, value.willRetry]), [[1, 'transient_network', true], [2, 'transient_network', true], [3, 'success', false]]);
   assert.deepEqual(passed, diagnostics); safeDiagnostics(diagnostics);
   for (const call of f.calls) {assert.equal(call.file, 'xcrun'); assert.deepEqual(call.args, ['stapler', 'staple', '-v', dmg]); assert.equal(call.timeout, 60000);}
+  assert.equal(f.calls.reduce((sum, call) => sum + call.timeout, 0) + w.waits.reduce((sum, wait) => sum + wait, 0), 300000);
 });
 
 test('exhausted transient failures keep the release gate failed and do not execute a fourth attempt', async () => {
@@ -52,13 +53,17 @@ test('exhausted transient failures keep the release gate failed and do not execu
     assert.ok(error instanceof AppleStaplerFailure && error instanceof CheckFailure); assert.equal(error.code, 'DMG_STAPLE_INVALID');
     assert.equal(error.diagnostics.length, 3); assert.equal(error.diagnostics[2]!.willRetry, false); safeDiagnostics(error); return true;
   });
-  assert.equal(f.calls.length, 3); assert.deepEqual(w.waits, [5000, 15000]);
+  assert.equal(f.calls.length, 3); assert.deepEqual(w.waits, [30000, 90000]);
+  assert.ok(f.calls.every(call => call.timeout === 60000));
 });
 
 test('invalid tickets, unclassified exit 68, timeouts, signals and output limits are never hidden by retry', async () => {
   const cases: Array<{value: AppleStaplerCommandResult; category: AppleStaplerDiagnostic['category']}> = [
     {value: result(65, `Could not validate ticket: invalid ${PRIVATE}`), category: 'invalid_ticket'},
     {value: result(68, `unexpected CloudKit failure ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `Error Domain=NSURLErrorDomain Code=-1005 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-1200 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(1, network), category: 'command_failed'},
     {value: {...result(68, network), timedOut: true}, category: 'timeout'},
     {value: {...result(68, network), signal: 'SIGTERM'}, category: 'signal'},
     {value: {...result(68, network), outputLimitExceeded: true}, category: 'output_limit'},
@@ -78,6 +83,7 @@ test('validate recovery repeats validation only and preserves exact safe exit de
   const diagnostics = await runAppleStapler('validate', dmg, {execute: f.execute, wait: w.wait});
   assert.ok(f.calls.every(call => call.args[1] === 'validate')); assert.equal(diagnostics[0]!.exitCode, 68);
   assert.equal(diagnostics[0]!.signal, null); assert.equal(diagnostics[0]!.timedOut, false); assert.equal(diagnostics[1]!.ok, true);
+  assert.deepEqual(w.waits, [30000]);
 });
 
 test('unexpected executor failures and unsafe arguments cannot expose raw messages or invoke another command', async () => {
@@ -101,6 +107,7 @@ test('successful notarization submits once, confirms the library staple and sepa
   });
   await notarizeApp(context(), f.dependencies);
   assert.equal(notarizeCalls, 1); assert.equal(f.calls.length, 1); assert.equal(f.calls[0]!.args[1], 'validate');
+  assert.deepEqual(f.waits, []);
   assert.deepEqual(f.reports.map(value => [value.ok, value.acceptedKnown, value.notarizeCalls, value.phase]), [[true, true, 1, 'complete']]);
   assert.deepEqual(f.reports[0]!.diagnostics.map(value => [value.operation, value.attempt]), [['staple', 1], ['validate', 1]]); safeDiagnostics(f.reports);
 });
@@ -109,7 +116,7 @@ test('only a trusted post-Accepted network staple failure is recovered without a
   let notarizeCalls = 0;
   const f = appDependencies([result(), result()], async () => {notarizeCalls++; throw new Error(`Failed to staple your application with code: 68\n\n${network}`);});
   await notarizeApp(context(), f.dependencies);
-  assert.equal(notarizeCalls, 1); assert.deepEqual(f.calls.map(call => call.args[1]), ['staple', 'validate']); assert.deepEqual(f.waits, [5000]);
+  assert.equal(notarizeCalls, 1); assert.deepEqual(f.calls.map(call => call.args[1]), ['staple', 'validate']); assert.deepEqual(f.waits, [30000]);
   assert.deepEqual(f.reports[0]!.diagnostics.map(value => [value.operation, value.attempt]), [['staple', 1], ['staple', 2], ['validate', 1]]);
   assert.equal(f.reports[0]!.acceptedKnown, true); assert.equal(f.reports[0]!.ok, true); safeDiagnostics(f.reports);
 });
@@ -119,6 +126,7 @@ test('the library first failure counts toward the maximum three staple attempts'
   const f = appDependencies([result(68, network), result(68, network)], async () => {notarizeCalls++; throw new Error(`Failed to staple your application with code: 68\n\n${network}`);});
   await assert.rejects(notarizeApp(context(), f.dependencies), {code: 'APP_STAPLE_INVALID'});
   assert.equal(notarizeCalls, 1); assert.equal(f.calls.length, 2); assert.ok(f.calls.every(call => call.args[1] === 'staple'));
+  assert.deepEqual(f.waits, [30000, 90000]);
   assert.deepEqual(f.reports[0]!.diagnostics.map(value => value.attempt), [1, 2, 3]); assert.equal(f.reports[0]!.acceptedKnown, true);
   assert.equal(f.reports[0]!.ok, false); assert.equal(f.reports[0]!.error, 'APP_STAPLE_INVALID'); safeDiagnostics(f.reports);
 });
@@ -136,9 +144,11 @@ test('a permanent post-Accepted staple rejection and a failed final validation b
   const permanent = appDependencies([], async () => {throw new Error(`Failed to staple your application with code: 65\n\nCould not validate ticket ${PRIVATE}`);});
   await assert.rejects(notarizeApp(context(), permanent.dependencies), {code: 'APP_STAPLE_INVALID'});
   assert.equal(permanent.calls.length, 0); assert.equal(permanent.reports[0]!.acceptedKnown, true); assert.equal(permanent.reports[0]!.ok, false);
+  assert.deepEqual(permanent.waits, []);
   const invalid = appDependencies([result(65, `Could not validate ticket ${PRIVATE}`)], async () => {});
   await assert.rejects(notarizeApp(context(), invalid.dependencies), {code: 'APP_STAPLE_INVALID'});
   assert.equal(invalid.calls.length, 1); assert.equal(invalid.reports[0]!.phase, 'validate'); assert.equal(invalid.reports[0]!.ok, false); safeDiagnostics(invalid.reports);
+  assert.deepEqual(invalid.waits, []);
 });
 
 test('release context, credentials and report location are validated before invoking notarization', async () => {
