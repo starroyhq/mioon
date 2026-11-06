@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs,{mkdtemp,mkdir,writeFile,symlink,rm,readFile,readdir} from 'node:fs/promises';
+import fs,{mkdtemp,mkdir,writeFile,symlink,rm,readFile,readdir,realpath} from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EventEmitter} from 'node:events';
 import {inspectMediaTools} from '../packages/business/src/media-tool-diagnostics.ts';
 import {readWorkspaceInfo,readApplicationWorkspaceInfo} from '../apps/server/src/workspace-info.ts';
-import {applicationWorkspaceInfoSchema,workspaceInfoSchema} from '../packages/contracts/src/workspace-info.ts';
+import {applicationWorkspaceInfoSchema,applicationWorkspaceStorageInfoSchema,workspaceMetadataSchema,workspaceInfoSchema} from '../packages/contracts/src/workspace-info.ts';
 import {readWorkspaceInfo as readBrowserWorkspaceInfo} from '../apps/web/src/workspace-info-client.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {startServer} from '../apps/server/src/index.ts';
@@ -22,7 +22,7 @@ test('tool diagnostics report actual missing filters and bounded fixed invocatio
  let attempts=0;await assert.rejects(inspectMediaTools({ffmpeg:'ffmpeg',ffprobe:'ffprobe'},{execute:async()=>{attempts++;throw Object.assign(Error('unconfirmed'),{terminationUnconfirmed:true});}}),/unconfirmed/u);assert.equal(attempts,1);
 });
 test('workspace usage skips external links and reports an incomplete estimate',async t=>{
- const directory=await mkdtemp(path.join(tmpdir(),'mioon-workspace-info-'));t.after(()=>rm(directory,{recursive:true,force:true}));const root=path.join(directory,'workspace');await mkdir(root);await writeFile(path.join(root,'local'),'abc');await writeFile(path.join(directory,'external'),'private');await symlink(path.join(directory,'external'),path.join(root,'link'));
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-workspace-info-')));t.after(()=>rm(directory,{recursive:true,force:true}));const root=path.join(directory,'workspace');await mkdir(root);await writeFile(path.join(root,'local'),'abc');await writeFile(path.join(directory,'external'),'private');await symlink(path.join(directory,'external'),path.join(root,'link'));
  const result=await readWorkspaceInfo({root,channel:'development',version:'test',tools:{ffmpeg:'ffmpeg',ffprobe:'ffprobe'},signal:new AbortController().signal});assert.deepEqual(result.usage,{bytes:3,files:1,complete:false});assert.equal(result.dataDirectory,root);
 });
 test('native tools reject untrusted, malformed and stale callers before a config write',async()=>{
@@ -57,8 +57,24 @@ test('Mioon media tools install through fixed actions and save only usable paths
 });
 
 const inventoryOptions={channel:'web' as const,version:'test',tools:{ffmpeg:'ffmpeg',ffprobe:'ffprobe'}};
+test('configured workspace roots resolve ancestor aliases before inventorying and still skip discovered links',async t=>{
+ const base=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-root-alias-')));t.after(()=>rm(base,{recursive:true,force:true}));
+ const physical=path.join(base,'physical'),alias=path.join(base,'alias');await mkdir(path.join(physical,'data'),{recursive:true});await writeFile(path.join(physical,'data','known'),'known');await writeFile(path.join(base,'outside'),'private');await symlink(path.join(base,'outside'),path.join(physical,'data','link'));await symlink(physical,alias);
+ const result=await readWorkspaceInfo({...inventoryOptions,root:path.join(alias,'data'),signal:new AbortController().signal});
+ assert.deepEqual(result.usage,{bytes:5,files:1,complete:false});assert.equal(result.dataDirectory,path.join(alias,'data'));assert.equal(await readFile(path.join(base,'outside'),'utf8'),'private');
+});
+
+test('HTTP metadata view performs no inventory and storage view visits each displayed root only once',async t=>{
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-info-views-')));t.after(()=>rm(root,{recursive:true,force:true}));const records=path.join(root,'records'),cacheDir=path.join(root,'cache');await mkdir(records,{mode:0o700});await mkdir(cacheDir,{mode:0o700});await writeFile(path.join(records,'history.db'),'abc');await writeFile(path.join(cacheDir,'preview'),'xyz');
+ const server=await startServer({dataDir:root,cacheDir,port:0,token:'synthetic-info-views-token'});t.after(()=>server.close());
+ const opened:string[]=[],original=fs.opendir,mocked=t.mock.method(fs,'opendir',async(...args:Parameters<typeof fs.opendir>)=>{opened.push(String(args[0]));return original(...args);});syncBuiltinESMExports();t.after(()=>{mocked.mock.restore();syncBuiltinESMExports();});
+ const request=async(view:string)=>{const response=await fetch(server.url+'/api/workspace-info?view='+view,{headers:{authorization:'Bearer synthetic-info-views-token'}});return {status:response.status,value:await response.json()};};
+ const metadata=await request('metadata');assert.equal(metadata.status,200);assert.equal(metadata.value.data.dataDirectory,root);assert.equal(metadata.value.data.channel,'web');assert.deepEqual(opened,[]);assert.equal('usage' in metadata.value.data,false);assert.equal('storage' in metadata.value.data,false);
+ const storage=await request('storage');assert.equal(storage.status,200);assert.deepEqual(storage.value.data.storage.records,{bytes:3,files:1,complete:true});assert.deepEqual(storage.value.data.storage.cache,{bytes:3,files:1,complete:true});assert.equal('usage' in storage.value.data,false);assert.deepEqual(opened.sort(),[records,cacheDir].sort());
+ assert.equal((await request('unrecognized')).status,400);
+});
 async function inventoryFixture(t:test.TestContext){
- const root=await mkdtemp(path.join(tmpdir(),'mioon-application-storage-info-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-application-storage-info-')));t.after(()=>rm(root,{recursive:true,force:true}));
  const dataDir=path.join(root,'data'),cacheDir=path.join(root,'external-cache');await mkdir(dataDir,{mode:0o700});
  return {root,dataDir,cacheDir,read:(signal=new AbortController().signal)=>readApplicationWorkspaceInfo({...inventoryOptions,directories:{dataDir,cacheDir},signal})};
 }
@@ -104,12 +120,12 @@ test('nested and aliased cache roots are independently measured instead of added
  for(const [cacheDir,expected] of [[nested,5],[records,8],[f.dataDir,8]] as const){const result=await readApplicationWorkspaceInfo({...inventoryOptions,directories:{dataDir:f.dataDir,cacheDir},signal:new AbortController().signal});assert.equal(result.usage.bytes,8);assert.equal(result.storage.records.bytes,8);assert.equal(result.storage.cache.bytes,expected);assert.equal(result.storage.cacheDirectory,cacheDir);assert.equal(result.storage.cache.complete,true);}
 });
 
-test('inventories skip file, directory and ancestor symlinks without traversing external targets',async t=>{
+test('inventories resolve configured root aliases but never follow links discovered below selected roots',async t=>{
  const f=await inventoryFixture(t),outside=path.join(f.root,'outside'),records=path.join(f.dataDir,'records');await mkdir(outside);await mkdir(records);await mkdir(f.cacheDir);await writeFile(path.join(outside,'private'),'external private bytes');await writeFile(path.join(f.cacheDir,'own'),'ok');
  await symlink(path.join(outside,'private'),path.join(f.cacheDir,'file-link'));await symlink(outside,path.join(records,'directory-link'));
  let result=await f.read();assert.deepEqual(result.storage.cache,{bytes:2,files:1,complete:false});assert.deepEqual(result.storage.records,{bytes:0,files:0,complete:false});
  const alias=path.join(f.root,'cache-link');await symlink(outside,alias);
- for(const cacheDir of [alias,path.join(alias,'nested')]){result=await readApplicationWorkspaceInfo({...inventoryOptions,directories:{dataDir:f.dataDir,cacheDir},signal:new AbortController().signal});assert.deepEqual(result.storage.cache,{bytes:0,files:0,complete:false});}
+ for(const [cacheDir,bytes,files] of [[alias,22,1],[path.join(alias,'nested'),0,0]] as const){result=await readApplicationWorkspaceInfo({...inventoryOptions,directories:{dataDir:f.dataDir,cacheDir},signal:new AbortController().signal});assert.deepEqual(result.storage.cache,{bytes,files,complete:true});}
  assert.equal((await readFile(path.join(outside,'private'))).toString(),'external private bytes');
 });
 
@@ -151,6 +167,15 @@ test('web workspace information uses the strict application DTO and forwards onl
  assert.deepEqual(await readBrowserWorkspaceInfo(controller.signal),valid);assert.equal(calls[0][0],'/api/workspace-info');assert.equal(calls[0][1]?.credentials,'same-origin');assert.equal(calls[0][1]?.signal,controller.signal);assert.equal(calls[0][1]?.body,undefined);
  for(const invalid of [{...valid,storage:undefined},{...valid,extra:'unexpected'},{...valid,storage:{...valid.storage,path:'/arbitrary'}},{...valid,storage:{...valid.storage,cache:{...valid.storage.cache,bytes:-1}}},{...valid,storage:{...valid.storage,records:{...valid.storage.records,files:Number.MAX_SAFE_INTEGER+1}}},{...valid,storage:{...valid.storage,cacheDirectory:''}}]){payload=invalid;await assert.rejects(readBrowserWorkspaceInfo());}
  fetch.mock.restore();const reason=Error('cancel client');t.mock.method(globalThis,'fetch',async(_url:RequestInfo|URL,options?:RequestInit)=>{assert.equal(options?.signal,controller.signal);throw reason;});await assert.rejects(readBrowserWorkspaceInfo(controller.signal),error=>error===reason);
+});
+
+test('browser metadata and storage views request only fixed projections and reject fabricated omitted totals',async t=>{
+ const f=await inventoryFixture(t),full=await f.read(),{usage:_usage,storage,...metadata}=full,projected={...metadata,storage};
+ const calls:{url:string;options?:RequestInit}[]=[],abort=new AbortController();let payload:unknown=metadata;
+ t.mock.method(globalThis,'fetch',async(url:RequestInfo|URL,options?:RequestInit)=>{calls.push({url:String(url),options});return Response.json({ok:true,data:payload});});
+ assert.deepEqual(await readBrowserWorkspaceInfo(abort.signal,'metadata'),metadata);assert.equal(calls[0].url,'/api/workspace-info?view=metadata');assert.equal(calls[0].options?.signal,abort.signal);assert.equal(calls[0].options?.credentials,'same-origin');assert.equal(calls[0].options?.body,undefined);assert.deepEqual(workspaceMetadataSchema.parse(metadata),metadata);
+ payload=projected;assert.deepEqual(await readBrowserWorkspaceInfo(abort.signal,'storage'),projected);assert.equal(calls[1].url,'/api/workspace-info?view=storage');assert.deepEqual(applicationWorkspaceStorageInfoSchema.parse(projected),projected);
+ payload=full;await assert.rejects(readBrowserWorkspaceInfo(undefined,'metadata'));await assert.rejects(readBrowserWorkspaceInfo(undefined,'storage'));
 });
 
 test('real application info uses actual external cache while project native info retains the strict base DTO',async t=>{

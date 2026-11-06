@@ -7,7 +7,7 @@ import type {LocalRecordsClient} from '../apps/web/src/local-records-client.ts';
 import type {LocalRecordsDeleteInput,LocalRecordsListResponse} from '../packages/contracts/src/local-record-operations.ts';
 const flush=()=>new Promise(setImmediate);
 function fixture(){
-  let value:LocalRecordsListResponse={version:1,appLibraryScope:'a'.repeat(64),instanceId:randomUUID(),records:[{projectId:randomUUID(),name:'one',projectFile:null,sizeBytes:0,hasSuperJournal:false,hasUnfinishedTasks:false}]};
+  let value:LocalRecordsListResponse={version:1,appLibraryScope:'a'.repeat(64),instanceId:randomUUID(),records:[{projectId:randomUUID(),name:'one',projectFile:null,sizeBytes:0,automaticBackups:{count:0,sizeBytes:0},hasSuperJournal:false,hasUnfinishedTasks:false}]};
   const calls:string[]=[],deletes:LocalRecordsDeleteInput[]=[];let fail:Error|null=null;
   const client:LocalRecordsClient={list:async()=>{calls.push('list');return value;},delete:async(input)=>{calls.push('delete');deletes.push(input);if(fail)throw fail;return {projectId:input.projectId,deleted:true,appLibraryScope:input.expectedAppLibraryScope,instanceId:input.expectedInstanceId};}};
   const controller=createLocalRecordsController(client);

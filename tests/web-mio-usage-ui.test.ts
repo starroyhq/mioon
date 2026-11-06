@@ -24,27 +24,52 @@ const row=(value:MioUsageView,locale:Locale='zh-Hans')=>ui.row({runId,view:value
 const details=(value:MioUsageView,locale:Locale='zh-Hans')=>ui.details({open:true,runId,view:value,onClose(){},onRetry(){}},locale);
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
+test('token units are localized rather than appended as a fixed English suffix',()=>{
+  const units={'zh-Hans':'词元','zh-Hant':'詞元',en:'tokens',ja:'トークン'} as const;
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){const html=details(ready(),locale);assert.ok(html.includes(`1,000 ${units[locale]}`),locale);if(locale!=='en')assert.doesNotMatch(html,/1,000 tokens/);}
+});
+test('English request and token counts use singular and plural forms',()=>{
+  const single=usageFixture({dispatchedModelSteps:1,modelOutcomes:{completed:1,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:1,outputTokens:1,cacheReadTokens:1,cacheWriteTokens:0},cacheReadRate:1,
+    coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:1,missingSteps:0,complete:true,overflow:false}])) as MioRunUsage['coverage']['fields']}});
+  const html=details(ready(single),'en');assert.match(html,/1 model request:/);assert.doesNotMatch(html,/1 model requests/);assert.match(html,/1 token</);assert.match(html,/Including 1 cache-read token \(100%\)/);assert.doesNotMatch(html,/1 cache-read tokens/);assert.match(details(ready(),'en'),/2 model requests:/);
+});
+test('the usage footer explicitly disclaims displayed costs in all four languages',()=>{
+  const statements={'zh-Hans':'这里不显示费用','zh-Hant':'這裡不顯示費用',en:'Costs are not shown here',ja:'ここでは料金を表示しません'} as const;
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)assert.ok(details(ready(),locale).includes(statements[locale]),locale);
+});
+test('inflight-only requests are described as changing without claiming provider omission',()=>{
+  const value=usageFixture({dispatchedModelSteps:1,modelOutcomes:{completed:0,failed:0,unknown:0,inflight:1},knownTotals:{inputTokens:null,outputTokens:null,cacheReadTokens:null,cacheWriteTokens:null},cacheReadRate:null,
+    coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:0,missingSteps:1,complete:false,overflow:false}])) as MioRunUsage['coverage']['fields']}});
+  const html=details(ready(value));assert.match(html,/进行中 1/);assert.match(html,/还有请求在进行/);assert.doesNotMatch(html,/服务商没有报告|没有报告这项用量/);
+});
+test('partial coverage counts only finished missing requests in the provider omission explanation',()=>{
+  const value=usageFixture({dispatchedModelSteps:3,modelOutcomes:{completed:2,failed:0,unknown:0,inflight:1},cacheReadRate:null,
+    coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:2,missingSteps:1,complete:false,overflow:false}])) as MioRunUsage['coverage']['fields']}});
+  value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:2,complete:false,overflow:false};
+  const html=details(ready(value));assert.match(html,/有 1 次请求服务商没有报告/);assert.doesNotMatch(html,/有 2 次请求服务商没有报告/);assert.match(html,/还有请求在进行/);assert.match(html,/≥1,000/);assert.equal([...html.matchAll(/请求服务商没有报告这项用量/g)].length,1);
+});
+
 test('usage summary and real shared controls render exact complete measurements in four languages',()=>{
   assert.deepEqual(validateCatalogs(mioUsageUiMessages),[]);
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
     const summary=row(ready(),locale),html=details(ready(),locale);
-    assert.match(summary,/1k/);assert.match(summary,/100/);assert.match(summary,/60%/);assert.match(html,/1,000/);assert.match(html,/600/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,/0 tokens/);
+    assert.match(summary,/1k/);assert.match(summary,/100/);assert.match(summary,/60%/);assert.match(html,/1,000/);assert.match(html,/600/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,new RegExp('0 '+({'zh-Hans':'词元','zh-Hant':'詞元',en:'tokens',ja:'トークン'} as const)[locale]));
     for(const button of html.matchAll(/<button[^>]*>/gu))assert.match(button[0],/type="button"/);
     assert.doesNotMatch(html,/NaN|undefined|rawUsage|requestHash|apiKey/);
   }
 });
 
 test('explicit zero stays zero while no dispatched requests and unreported cache writes are distinct',()=>{
-  const zero=usageFixture({knownTotals:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0},cacheReadRate:null});assert.match(details(ready(zero)),/0 tokens/);assert.doesNotMatch(details(ready(zero)),/服务商没有报告/);
+  const zero=usageFixture({knownTotals:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0},cacheReadRate:null});assert.match(details(ready(zero)),/0 词元/);assert.doesNotMatch(details(ready(zero)),/服务商没有报告/);
   const empty=usageFixture({dispatchedModelSteps:0,modelOutcomes:{completed:0,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:null,outputTokens:null,cacheReadTokens:null,cacheWriteTokens:null},coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:0,missingSteps:0,complete:true,overflow:false}])) as MioRunUsage['coverage']['fields']},cacheReadRate:null});
-  const html=details(ready(empty));assert.match(html,/尚无已发出的模型请求/);assert.doesNotMatch(html,/服务商没有报告|0 tokens|data-field="cacheWriteTokens"/);
+  const html=details(ready(empty));assert.match(html,/尚无已发出的模型请求/);assert.doesNotMatch(html,/服务商没有报告|0 tokens|0 词元|data-field="cacheWriteTokens"/);
   const omitted=usageFixture();omitted.knownTotals.cacheWriteTokens=null;omitted.coverage.fields.cacheWriteTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};
   assert.match(row(ready(omitted)),/60%/);assert.doesNotMatch(details(ready(omitted)),/data-field="cacheWriteTokens"/);
 });
 
 test('field-specific missing coverage uses lower bounds and never calls independent cache data part of known input',()=>{
   const value=usageFixture({cacheReadRate:null});value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:false};value.knownTotals.inputTokens=100;
-  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 tokens/);assert.match(html,/有 1 次请求/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/独立报告的缓存读取量/);assert.doesNotMatch(html,/其中缓存命中|60%/);
+  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 词元/);assert.match(html,/有 1 次请求/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/独立报告的缓存读取量/);assert.doesNotMatch(html,/其中缓存命中|60%/);
   value.coverage.fields.outputTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};value.knownTotals.outputTokens=null;assert.match(details(ready(value)),/服务商没有报告/);
 });
 

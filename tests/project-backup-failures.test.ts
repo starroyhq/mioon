@@ -16,6 +16,9 @@ import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts';
 import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
 import {copyProjectBackup,inspectCopiedProjectFile} from '../packages/business/src/project-file/index.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {createLocalRecordRpc} from '../apps/server/src/local-record-rpc.ts';
 
 const ioError = (message: string) => Object.assign(new Error(message), {code: 'EIO'});
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -51,6 +54,35 @@ async function fixture(t: TestContext, registry: ProjectRegistryPort = createMem
   const ownedDirectories = () => fs.readdirSync(backupRoot).filter(name => /^[0-9a-f-]{36}$/u.test(name)).sort();
   return {root, directories, registry, options, backups, manager, projectId, project, backupRoot, change, unchanged, seed, copyFile, ownedDirectories};
 }
+
+test('local-record deletion shares the source backup queue until a blocked recovery is published and registered',async t=>{
+  const entered=Promise.withResolvers<void>(),gate=Promise.withResolvers<void>();
+  const f=await fixture(t,undefined,{copy:async options=>{entered.resolve();await gate.promise;return copyProjectBackup(options);}});
+  await f.unchanged();const backup=(await f.backups.list({projectId:f.projectId})).backups[0]!;
+  fs.rmSync(f.project.projectFile);
+  const library=openAppLibrary({dataDir:f.directories.dataDir});t.after(()=>library.close());
+  const applicationIdentity={appLibraryScope:'a'.repeat(64),instanceId:randomUUID()};
+  const rpc=createLocalRecordRpc({store:library.localRecords,readIdentity:()=>applicationIdentity,
+    assertMutationAllowed:createProjectServiceApplication(library).assertMutationAllowed,withProjectRecords:f.backups.withProjectRecords});
+  const input={projectId:f.projectId,backupId:backup.backupId,requestId:randomUUID(),projectFile:path.join(f.directories.projectsDir,'Queued restore.mioon')};
+  const restoring=f.backups.restore(input);await entered.promise;
+  const intentFile=path.join(f.backupRoot,'restore-requests',`${input.requestId}.json`),intent=fs.readFileSync(intentFile);
+  let removed=false;const removing=rpc.call('local.records.delete',{projectId:f.projectId,expectedAppLibraryScope:applicationIdentity.appLibraryScope,
+    expectedInstanceId:applicationIdentity.instanceId}).then(value=>{removed=true;return value;});
+  try{
+    await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(removed,false);
+    assert.deepEqual(fs.readFileSync(intentFile),intent,'the admitted recovery intent is pinned by the shared queue');
+    assert.equal(fs.existsSync(f.copyFile(backup.backupId)),true);assert.equal(fs.existsSync(input.projectFile),false);
+    const other=randomUUID(),otherFolder=path.join(f.directories.dataDir,'records',other);fs.mkdirSync(otherFolder,{recursive:true,mode:0o700});
+    fs.writeFileSync(path.join(otherFolder,'history.db'),'independent orphan');
+    await rpc.call('local.records.delete',{projectId:other,expectedAppLibraryScope:applicationIdentity.appLibraryScope,expectedInstanceId:applicationIdentity.instanceId});
+    assert.equal(fs.existsSync(otherFolder),false,'another project does not wait behind the source recovery');assert.equal(removed,false);
+    gate.resolve();const restored=await restoring;await removing;
+    assert.equal(removed,true);assert.equal(fs.existsSync(f.backupRoot),false,'confirmed deletion still removes all source records and backups');
+    assert.equal(fs.existsSync(input.projectFile),true);assert.deepEqual(f.registry.get(restored.project.projectId),restored.project);
+    assert.equal(inspectCopiedProjectFile(input.projectFile).projectId,restored.project.projectId);assert.equal(f.manager.status(f.projectId),null);
+  }finally{gate.resolve();await Promise.allSettled([restoring,removing]);}
+});
 
 test('failed index rename preserves the committed three backups byte-for-byte and does not block close', async t => {
   const f = await fixture(t), before = await f.seed();

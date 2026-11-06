@@ -7,10 +7,10 @@ export const localRecordsUiMessages = {
     "ja": "ローカル記録"
   },
   "localRecords.help": {
-    "zh-Hans": "每个项目在这台电脑上的版本历史、Mio 记录和后台任务记录，按项目分开存放。项目文件找不到的，可以在这里删除这些记录。",
-    "zh-Hant": "每個專案在這台電腦上的版本歷史、Mio 記錄和背景工作記錄，按專案分開儲存。找不到專案檔案時，可以在這裡刪除這些記錄。",
-    "en": "Version history, Mio records and background task records are stored separately for each project on this computer. Records whose project file cannot be found can be deleted here.",
-    "ja": "このコンピューターのバージョン履歴、Mio 記録、バックグラウンドタスク記録はプロジェクトごとに保存されます。プロジェクトファイルが見つからない記録をここで削除できます。"
+    "zh-Hans": "每个项目在这台电脑上的版本历史、自动备份、Mio 记录和后台任务记录，按项目分开存放。项目文件找不到的，可以在这里删除这些记录。",
+    "zh-Hant": "每個專案在這台電腦上的版本歷史、自動備份、Mio 記錄和背景工作記錄，按專案分開儲存。找不到專案檔案時，可以在這裡刪除這些記錄。",
+    "en": "Version history, automatic backups, Mio records and background task records are stored separately for each project on this computer. Records whose project file cannot be found can be deleted here.",
+    "ja": "このコンピューターのバージョン履歴、自動バックアップ、Mio 記録、バックグラウンドタスク記録はプロジェクトごとに保存されます。プロジェクトファイルが見つからない記録をここで削除できます。"
   },
   "localRecords.loading": {
     "zh-Hans": "正在统计…",
@@ -91,10 +91,16 @@ export const localRecordsUiMessages = {
     "ja": "「{name}」のローカル記録を削除しますか？"
   },
   "localRecords.confirmHelp": {
-    "zh-Hans": "会删掉这个项目在这台电脑上的版本历史、Mio 记录和后台任务记录，共 {size}。项目文件本身不受影响；以后再找到项目文件，它会作为没有版本历史的项目打开。这一步不能撤销。",
-    "zh-Hant": "會刪掉這個專案在這台電腦上的版本歷史、Mio 記錄和背景工作記錄，共 {size}。專案檔案本身不受影響；以後再找到專案檔案，它會作為沒有版本歷史的專案開啟。這一步無法復原。",
-    "en": "This deletes {size} of version history, Mio records and background task records for this project on this computer. The project file is unaffected. If found later, it opens without version history. This cannot be undone.",
-    "ja": "このコンピューターのバージョン履歴、Mio 記録、バックグラウンドタスク記録（{size}）を削除します。プロジェクトファイル自体は変わりません。後で見つかった場合、バージョン履歴なしで開きます。この操作は取り消せません。"
+    "zh-Hans": "会删掉这个项目在这台电脑上的版本历史、自动备份、Mio 记录和后台任务记录，共 {size}。项目文件本身不受影响；以后再找到项目文件，它会作为没有版本历史的项目打开。这一步不能撤销。",
+    "zh-Hant": "會刪掉這個專案在這台電腦上的版本歷史、自動備份、Mio 記錄和背景工作記錄，共 {size}。專案檔案本身不受影響；以後再找到專案檔案，它會作為沒有版本歷史的專案開啟。這一步無法復原。",
+    "en": "This deletes {size} of version history, automatic backups, Mio records and background task records for this project on this computer. The project file is unaffected. If found later, it opens without version history. This cannot be undone.",
+    "ja": "このコンピューターのバージョン履歴、自動バックアップ、Mio 記録、バックグラウンドタスク記録（{size}）を削除します。プロジェクトファイル自体は変わりません。後で見つかった場合、バージョン履歴なしで開きます。この操作は取り消せません。"
+  },
+  "localRecords.backupWarning": {
+    "zh-Hans": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。",
+    "zh-Hant": "其中有 {count} 份自動備份（{size}）。找不到專案檔案時，這些備份可能是它僅存的副本，刪除後就無法再從備份還原。",
+    "en": {"one": "This includes {count} automatic backup ({size}). If the project file is missing, this backup may be its only remaining copy. Deleting it removes the ability to recover from that backup.", "other": "These include {count} automatic backups ({size}). If the project file is missing, these backups may be its only remaining copies. Deleting them removes the ability to recover from those backups."},
+    "ja": "この中に自動バックアップが {count} 件（{size}）あります。プロジェクトファイルが見つからない場合、残された唯一のコピーかもしれません。削除すると、これらのバックアップから復元できなくなります。"
   },
   "localRecords.readError": {
     "zh-Hans": "无法读取本机记录，请刷新列表重试。",

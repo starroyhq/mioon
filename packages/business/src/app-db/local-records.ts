@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
-import {lstatSync, readdirSync, renameSync, rmSync} from 'node:fs';
+import {AppError} from '../../../contracts/src/app-error.ts';
+import {lstatSync, readdirSync, renameSync} from 'node:fs';
 import type {Dirent} from 'node:fs';
-import {lstat, readdir} from 'node:fs/promises';
+import {lstat, readdir, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {isProjectId, PROJECT_RECORDS_DIRECTORY} from '../../../contracts/src/project-file.ts';
@@ -21,6 +22,9 @@ export interface LocalRecordsItem extends LocalRecordsEntry {
   readonly name: string | null;
   readonly projectFile: string | null;
   readonly hasUnfinishedTasks: boolean;
+  /** Physical automatic copies, including unindexed ones, that deletion will
+   * remove. File metadata only; this does not claim a backup is restorable. */
+  readonly automaticBackups: {readonly count: number; readonly sizeBytes: number};
 }
 
 /** The local records list (PROJECT-FILE.md, "本机记录的文件夹"). It never opens
@@ -77,33 +81,50 @@ export function hasSuperJournalInUse(localDir: string): boolean {
 
 /** Bytes of the regular files in a folder and its subfolders, from lstat;
  * symbolic links are not followed or counted. */
-async function folderSize(folder: string, depth = 0): Promise<number> {
+async function folderMetadata(folder: string, projectId: string, depth = 0, relative: readonly string[] = []): Promise<{sizeBytes: number; automaticBackups: {count: number; sizeBytes: number}}> {
+  const result = {sizeBytes: 0, automaticBackups: {count: 0, sizeBytes: 0}};
+  const scanFailed = (): never => {throw new AppError('LOCAL_RECORDS_SCAN_FAILED', '本机记录的自动备份暂时无法统计，请重新读取后确认。', 503, {projectId});};
   let entries: Dirent[];
   try {
     entries = await readdir(folder, {withFileTypes: true});
-  } catch {
-    return 0;
+  } catch (error) {
+    if (relative[0] === 'backups' && (error as {code?: unknown}).code !== 'ENOENT') scanFailed();
+    return result;
   }
-  let total = 0;
   for (const entry of entries) {
-    const full = path.join(folder, entry.name);
+    const full = path.join(folder, entry.name), parts = [...relative, entry.name];
     if (entry.isDirectory()) {
-      if (depth < MAX_SIZE_DEPTH) total += await folderSize(full, depth + 1);
+      if (depth < MAX_SIZE_DEPTH) {
+        const child = await folderMetadata(full, projectId, depth + 1, parts);
+        result.sizeBytes += child.sizeBytes;
+        result.automaticBackups.count += child.automaticBackups.count;
+        result.automaticBackups.sizeBytes += child.automaticBackups.sizeBytes;
+      }
     } else if (!entry.isSymbolicLink()) {
       try {
         const info = await lstat(full);
-        if (info.isFile()) total += info.size;
-      } catch {
+        if (info.isFile()) {
+          result.sizeBytes += info.size;
+          if (parts.length === 3 && parts[0] === 'backups' && isProjectId(parts[1]) && parts[2] === 'project.mioon') {
+            if (!Number.isSafeInteger(info.size) || info.size < 0) scanFailed();
+            result.automaticBackups.count++;
+            result.automaticBackups.sizeBytes += info.size;
+            if (!Number.isSafeInteger(result.automaticBackups.sizeBytes)) scanFailed();
+          }
+        }
+      } catch (error) {
+        if (parts[0] === 'backups' && (error as {code?: unknown}).code !== 'ENOENT') scanFailed();
         // Gone meanwhile.
       }
     }
   }
-  return total;
+  return result;
 }
 
 export function createLocalRecords({dataDir, registry, identity, isProjectOpen, isProjectBackgroundBusy, assertMutationAllowed}: LocalRecordsOptions): LocalRecordsStore {
   if (typeof assertMutationAllowed !== 'function') throw new TypeError('Local records require a live application owner guard');
   const recordsDir = path.join(dataDir, PROJECT_RECORDS_DIRECTORY);
+  const removing = new Set<string>();
   /** The registered file is still at its place (lstat only). */
   const atRegisteredPlace = (entry: RecentProject): boolean =>
     fileAtRegisteredPlace(entry, identity, found => registry.list().some(other =>
@@ -116,7 +137,7 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
     if (atRegisteredPlace(entry)) return true;
     return await registry.findMoved(entry) !== null;
   };
-  const sweepTombstones = (): void => {
+  const sweepTombstones = async (): Promise<void> => {
     assertMutationAllowed();
     let names: string[];
     try {
@@ -125,11 +146,12 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
       return;
     }
     for (const name of names) {
-      if (TOMBSTONE.test(name)) {
+      if (TOMBSTONE.test(name) && !removing.has(path.join(recordsDir, name))) {
         // Keep this outside the best-effort rm catch: a retired application
         // owner must stop the whole operation, never continue its sweep.
         assertMutationAllowed();
-        try { rmSync(path.join(recordsDir, name), {recursive: true, force: true}); } catch {}
+        try { await rm(path.join(recordsDir, name), {recursive: true, force: true}); } catch {}
+        assertMutationAllowed();
       }
     }
   };
@@ -141,7 +163,7 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
 
   return {
     async list(): Promise<LocalRecordsItem[]> {
-      sweepTombstones();
+      await sweepTombstones();
       let entries: Dirent[];
       try {
         entries = await readdir(recordsDir, {withFileTypes: true});
@@ -154,17 +176,18 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
         if (await projectFound(projectId)) continue;
         assertMutationAllowed();
         const folder = path.join(recordsDir, projectId);
-        const entry = localRecordsEntrySchema.parse({projectId, sizeBytes: await folderSize(folder), hasSuperJournal: hasSuperJournalInUse(folder)});
+        const metadata = await folderMetadata(folder, projectId);
+        const entry = localRecordsEntrySchema.parse({projectId, sizeBytes: metadata.sizeBytes, hasSuperJournal: hasSuperJournalInUse(folder)});
         const registered = registry.get(projectId);
         items.push({...entry, name: registered?.name ?? null, projectFile: registered?.projectFile ?? null,
-          hasUnfinishedTasks: isProjectBackgroundBusy(projectId)});
+          hasUnfinishedTasks: isProjectBackgroundBusy(projectId), automaticBackups: metadata.automaticBackups});
       }
       assertMutationAllowed();
       return items;
     },
     async delete(projectId: string): Promise<void> {
       if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
-      sweepTombstones();
+      await sweepTombstones();
       if (folderOf(projectId) === null) throw appLibraryError('LOCAL_RECORDS_NOT_FOUND', {projectId});
       if (await projectFound(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
       if (isProjectBackgroundBusy(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
@@ -181,7 +204,12 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
       assertMutationAllowed();
       renameSync(folder, tombstone);
       assertMutationAllowed();
-      rmSync(tombstone, {recursive: true, force: true});
+      // Keep the namespace transition synchronous, but not potentially GBs of
+      // recursive I/O. A concurrent list must not take over this active removal
+      // with a concurrent crash-recovery sweep.
+      removing.add(tombstone);
+      try {await rm(tombstone, {recursive: true, force: true});}
+      finally {removing.delete(tombstone);}
     },
   };
 }

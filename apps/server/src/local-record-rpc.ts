@@ -9,6 +9,7 @@ export interface LocalRecordRpcPorts {
   readonly store: LocalRecordsStore;
   readonly readIdentity: () => LocalRecordsIdentity;
   readonly assertMutationAllowed: () => void;
+  readonly withProjectRecords: <T>(projectId: string, work: () => T | Promise<T>) => Promise<T>;
 }
 const sameIdentity = (a: LocalRecordsIdentity, b: LocalRecordsIdentity): boolean =>
   a.appLibraryScope === b.appLibraryScope && a.instanceId === b.instanceId;
@@ -16,8 +17,8 @@ const identityChanged = (): AppError => new AppError('LOCAL_RECORDS_IDENTITY_CHA
 
 /** Does not acquire any project or open its history. Both operations inherit
  * B1's recovery sweep, so even listing requires a real mutation owner. */
-export function createLocalRecordRpc({store, readIdentity, assertMutationAllowed}: LocalRecordRpcPorts) {
-  if (typeof readIdentity !== 'function' || typeof assertMutationAllowed !== 'function') throw new TypeError('Local records require an application identity and owner');
+export function createLocalRecordRpc({store, readIdentity, assertMutationAllowed, withProjectRecords}: LocalRecordRpcPorts) {
+  if (typeof readIdentity !== 'function' || typeof assertMutationAllowed !== 'function' || typeof withProjectRecords !== 'function') throw new TypeError('Local records require an application identity, owner and project queue');
   const identity = (): LocalRecordsIdentity => {
     assertMutationAllowed();
     return localRecordsIdentitySchema.parse(readIdentity());
@@ -43,18 +44,23 @@ export function createLocalRecordRpc({store, readIdentity, assertMutationAllowed
     if (before.appLibraryScope !== input.expectedAppLibraryScope || before.instanceId !== input.expectedInstanceId) throw identityChanged();
     // Expected identity is checked before entering B1, including its initial
     // tombstone sweep. No default/current identity may repair an old intent.
-    let removed = false;
-    try {
-      await store.delete(input.projectId);
-      removed = true;
+    return await withProjectRecords(input.projectId, async () => {
+      // Waiting behind a backup does not lend its eventual owner to the old
+      // confirmation. Recheck before B1 can even sweep a tombstone.
       if (!sameIdentity(before, identity())) throw identityChanged();
-      return localRecordsDeleteResponseSchema.parse({...before, projectId: input.projectId, deleted: true});
-    } catch (error) {
-      if (!removed && error instanceof AppError && ['LOCAL_RECORDS_NOT_FOUND', 'LOCAL_RECORDS_IN_USE', 'LOCAL_RECORDS_SUPER_JOURNAL'].includes(error.code)) throw error;
-      // There is no deletion receipt or safe automatic replay. A filesystem
-      // failure or a lost owner after rename cannot be reported as not-applied.
-      throw new AppError('LOCAL_RECORDS_DELETE_UNCERTAIN', '删除结果尚未确认，请刷新本机记录后核对。', 503,
-        {...before, projectId: input.projectId, mutationOutcome: 'unknown'});
-    }
+      let removed = false;
+      try {
+        await store.delete(input.projectId);
+        removed = true;
+        if (!sameIdentity(before, identity())) throw identityChanged();
+        return localRecordsDeleteResponseSchema.parse({...before, projectId: input.projectId, deleted: true});
+      } catch (error) {
+        if (!removed && error instanceof AppError && ['LOCAL_RECORDS_NOT_FOUND', 'LOCAL_RECORDS_IN_USE', 'LOCAL_RECORDS_SUPER_JOURNAL'].includes(error.code)) throw error;
+        // There is no deletion receipt or safe automatic replay. A filesystem
+        // failure or a lost owner after rename cannot be reported as not-applied.
+        throw new AppError('LOCAL_RECORDS_DELETE_UNCERTAIN', '删除结果尚未确认，请刷新本机记录后核对。', 503,
+          {...before, projectId: input.projectId, mutationOutcome: 'unknown'});
+      }
+    });
   }};
 }

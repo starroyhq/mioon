@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createLocalRecordsClient,LocalRecordsRequestError} from '../apps/web/src/local-records-client.ts';
 
 const identity = {appLibraryScope:'a'.repeat(64),instanceId:randomUUID()};
-const item = {projectId:randomUUID(),name:'访谈',projectFile:'/private/missing.mioon',sizeBytes:0,hasSuperJournal:false,hasUnfinishedTasks:false};
+const item = {projectId:randomUUID(),name:'访谈',projectFile:'/private/missing.mioon',sizeBytes:0,automaticBackups:{count:0,sizeBytes:0},hasSuperJournal:false,hasUnfinishedTasks:false};
 const input = {projectId:item.projectId,expectedAppLibraryScope:identity.appLibraryScope,expectedInstanceId:identity.instanceId};
 const data = {version:1,...identity,records:[item]};
 const reply = (data:unknown) => Response.json({ok:true,data});

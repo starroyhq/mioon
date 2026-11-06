@@ -23,9 +23,10 @@ export interface ProjectHistoryDialogProps {
 function ReadFailure({code, retry}: {code: string; retry: () => void}) {
   const {t} = useI18n(); return <WorkbenchAlert tone="danger" actions={<WorkbenchButton onClick={retry}>{t('projectFile.common.retry')}</WorkbenchButton>}>{t('projectHistory.error.read')} <code>{code}</code></WorkbenchAlert>;
 }
-export function NativeBackupFailure({code}: {code: string | null}) {
+export function NativeBackupFailure({code,action='choose'}: {code: string | null; action?:'choose'|'reveal'}) {
   const {t} = useI18n();
-  return code ? <WorkbenchAlert tone="danger" data-testid="pf-backup-native-error">{t(historyErrorKey(code))} <code>{code}</code></WorkbenchAlert> : null;
+  const key=action==='reveal'&&historyErrorKey(code??undefined)==='projectHistory.error.busy'?'projectHistory.backup.revealBusy':historyErrorKey(code??undefined);
+  return code ? <WorkbenchAlert tone="danger" data-testid="pf-backup-native-error">{t(key)} <code>{code}</code></WorkbenchAlert> : null;
 }
 function BackupStatus({value, retry, now}: {value: HistoryView<ProjectBackupStatus>; retry: () => void; now: Date}) {
   const {t} = useI18n(), display = useProjectFileDisplay();
@@ -58,6 +59,12 @@ function MutationNotice({state, runtime, pendingEdits, backupsOnly, retry}: {sta
   if (!attempt || backupsOnly && attempt.kind !== 'backup' || attempt.phase === 'complete' && attempt.kind === 'backup') return null;
   const editBlocked = pendingEdits && attempt.kind !== 'backup';
   const working = attempt.phase === 'working', unknown = attempt.phase === 'unknown';
+  // Codes are display-only metadata. An exact ACK remains untouched, and a
+  // later/different preview cannot lend reasons to the original restore.
+  const confirmedPreview=attempt.kind==='version'&&state.preview.kind==='ready'&&state.preview.value.version.id===attempt.input.versionId
+    &&state.preview.value.previewDigest===attempt.input.previewDigest&&state.preview.value.contentSequence===attempt.input.expectedContentSequence
+    &&state.preview.value.contentToken===attempt.input.expectedContentToken?state.preview.value:null;
+  const reasons=new Map(confirmedPreview?.changes.map(change=>[JSON.stringify([change.table,change.key]),change.reasonCode])??[]);
   return <WorkbenchAlert tone={unknown ? 'warning' : attempt.phase === 'rejected' ? 'danger' : 'neutral'} data-testid="pf-history-attempt"
     actions={unknown ? <WorkbenchButton data-testid="pf-history-retry-original" disabled={editBlocked || !runtime.canInteract()} onClick={() => {if (!editBlocked) retry();}}>{t('projectHistory.retryOriginal')}</WorkbenchButton> : !working ? <WorkbenchButton onClick={runtime.dismissAttempt}>{t('common.close')}</WorkbenchButton> : undefined}>
     {editBlocked && unknown && <p>{t('projectHistory.pendingEdits')}</p>}
@@ -65,7 +72,10 @@ function MutationNotice({state, runtime, pendingEdits, backupsOnly, retry}: {sta
       : <>{t(historyErrorKey(attempt.code))} <code>{attempt.code}</code></>}
     {attempt.phase === 'complete' && attempt.kind === 'version' && attempt.result && attempt.result.keptCurrent.length > 0 && <>
       <p>{t('projectHistory.plan', {count: attempt.result.totalChanges, kept: attempt.result.keptCurrent.length})}</p>
-      <VersionDifferenceList changes={attempt.result.keptCurrent} testId="pf-restore-kept-result"/>
+      <VersionDifferenceList changes={attempt.result.keptCurrent.map(change=>{
+        const reasonCode=change.reasonCode??reasons.get(JSON.stringify([change.table,change.key]));
+        return reasonCode?{...change,reasonCode}:change;
+      })} testId="pf-restore-kept-result"/>
     </>}
   </WorkbenchAlert>;
 }
@@ -121,7 +131,7 @@ function HistorySession(props: ProjectHistoryDialogProps) {
   </div>;
   const completed = attempt?.kind === 'backup' && attempt.phase === 'complete' ? attempt.result : null;
   return <>
-    <VersionHistoryDialog title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
+    <VersionHistoryDialog title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} subtitle={props.backupsOnly?t('projectHistory.backup.subtitle',{name:props.projectName}):undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
       selected={state.selected} onSelect={id => {if(!current.current.backupsOnly && allowed())void runtime.select(id);}} comparison={{kind: 'ready', value: []}} detail={detail}
       retention={{recent: 20, days: 7}} onSaveVersion={!props.backupsOnly && tab === 'versions' && !locked && !props.pendingEdits ? () => {if(allowed())setSaveOpen(true);} : undefined}
       onRestore={() => {if (!current.current.backupsOnly && allowed() && !current.current.pendingEdits) setConfirmVersion(true);}} onRetry={() => {void runtime.loadVersions();}} onRetryComparison={() => {void runtime.select(state.selected);}} onClose={close}
@@ -159,7 +169,7 @@ function HistorySession(props: ProjectHistoryDialogProps) {
       <WorkbenchButton onClick={() => {runtime.dismissAttempt(); runtime.closeInspection();}}>{t('common.close')}</WorkbenchButton>
       {completed && props.nativeBackup && <WorkbenchButton onClick={() => {if(!allowed())return;setNativeError(null); void props.nativeBackup!.reveal(completed).catch(error => {if (live.current && allowed()) setNativeError(historyErrorCode(error));});}}>{t('projectHistory.backup.reveal')}</WorkbenchButton>}
       {completed && <WorkbenchButton variant="primary" onClick={() => {if(allowed())current.current.onOpenProject(completed.project.projectId);}}>{t('projectHistory.backup.openResult')}</WorkbenchButton>}</>}>
-      {completed && <><p className="pf-mono">{completed.project.projectFile}</p><WorkbenchAlert tone="success" data-testid="pf-backup-originals-preserved">{t('projectHistory.backup.originalsPreserved')}</WorkbenchAlert></>}<NativeBackupFailure code={nativeError}/>
+      {completed && <><p className="pf-mono">{completed.project.projectFile}</p><WorkbenchAlert tone="success" data-testid="pf-backup-originals-preserved">{t('projectHistory.backup.originalsPreserved')}</WorkbenchAlert></>}<NativeBackupFailure code={nativeError} action="reveal"/>
     </WorkbenchDialogContent></Dialog>
   </>;
 }

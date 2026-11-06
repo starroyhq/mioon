@@ -8,6 +8,7 @@ import { transformSync } from 'esbuild';
 import { i18nTestModule } from './helpers/i18n.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as menuProtocol from '../apps/desktop/src/menu-command-protocol.ts';
+import * as fileFormat from '../apps/web/src/project-file/format.ts';
 
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
@@ -28,6 +29,7 @@ function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages
     if (name === 'react') return react;
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule('zh-Hans');
     if (name === './settings-navigation-state.ts') return navigation;
+    if (name === './project-file/format.ts') return fileFormat;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
     if (name === './LocalRecordsPanel.tsx') return {__esModule:true,default:'LocalRecordsPanel'};
     if (name === './GenerationLiveGateNotice.tsx') return {notifyGenerationLiveGateChanged() {}};
@@ -83,7 +85,7 @@ test('live switch waits for the persisted revision and stale hidden callbacks ca
 
 test('video tool cards expose actual versions and missing capabilities after one bounded local check, without requiring a manual first check', async () => {
   const calls: unknown[] = [], diagnostics = { ffmpeg: { path: '/local/ffmpeg', available: true, version: 'ffmpeg version synthetic' }, ffprobe: { path: '/local/ffprobe', available: true, version: 'ffprobe version synthetic' }, capabilities: { libx264: true, aac: true, drawtext: false, subtitles: false } };
-  const h = harness('SettingsVideoTools.tsx', 'default', { './SettingsMediaToolsDownload.tsx': { default: () => { calls.push('download card'); return null; } }, './workspace-info-client.ts': { workspaceToolsBridge: () => undefined, readWorkspaceInfo: async () => ({ tools: { ffmpeg: '/local/ffmpeg', ffprobe: '/local/ffprobe' } }), checkConfiguredMediaTools: async () => { calls.push('check'); return diagnostics; } } });
+  const h = harness('SettingsVideoTools.tsx', 'default', { './SettingsMediaToolsDownload.tsx': { default: () => { calls.push('download card'); return null; } }, './workspace-info-client.ts': { workspaceToolsBridge: () => undefined, readWorkspaceInfo: async (_signal:AbortSignal|undefined,view:string) => {assert.equal(view,'metadata');return { tools: { ffmpeg: '/local/ffmpeg', ffprobe: '/local/ffprobe' } };}, checkConfiguredMediaTools: async () => { calls.push('check'); return diagnostics; } } });
   h.render(); await flush(); h.render(); await flush(); h.render();
   assert.match(text(h.find('workspace-tool-ffmpeg')), /ffmpeg version synthetic/u);
   assert.match(text(h.find('workspace-tool-ffprobe')), /ffprobe version synthetic/u);
@@ -135,17 +137,24 @@ test('Mioon media tools card downloads through the native bridge, reports progre
 test('workspace settings preserve directory, usage and cleanup information without retired backup controls', async t => {
   const calls: string[] = [];
   const h = harness('SettingsWorkspace.tsx','default',{
-    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>{calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},storage:{records:{bytes:3000000,files:3,complete:true},cache:{bytes:2000000,files:2,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:2};}},
+    './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async(_signal:AbortSignal|undefined,view:string)=>{assert.equal(view,'storage');calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},storage:{records:{bytes:3000000,files:3,complete:true},cache:{bytes:2000000,files:2,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:2};}},
     './workspace-settings-client.ts': {readWorkspaceSettings:async()=>{calls.push('settings');return workspaceSettings(false);}},
   });
   t.after(()=>h.unmount());h.render();await flush();h.render();
   assert.deepEqual(calls,['info','settings']);
   assert.equal(nodes(h.tree).find(node=>node.type==='input')!.props.value,'/private/current-data');
-  assert.match(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/2/);
+  assert.doesNotMatch(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/2/);
   assert.match(text(h.tree),/本机记录 3.*缓存 2/);assert.match(text(h.tree),/\/private\/external-cache/);assert.match(text(h.tree),/可能重叠/);
   const localPanel=nodes(h.tree).find(node=>node.type==='LocalRecordsPanel');assert.ok(localPanel);assert.equal(localPanel.props.active,true);assert.equal(localPanel.props.refreshRevision,0);
   assert.equal(h.find('workspace-backup-create'),undefined);assert.equal(h.find('workspace-auto-backup'),undefined);
   assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
+});
+test('workspace storage warns only about displayed incomplete roots and scales small byte counts',async t=>{
+ const h=harness('SettingsWorkspace.tsx','default',{
+  './workspace-info-client.ts':{workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/data',usage:{bytes:0,complete:true},storage:{records:{bytes:320,files:1,complete:true},cache:{bytes:8000,files:1,complete:false},cacheDirectory:'/private/cache'},pendingProjectCleanup:0})},
+  './workspace-settings-client.ts':{readWorkspaceSettings:async()=>workspaceSettings(false)},
+ });t.after(()=>h.unmount());h.render();await flush();h.render();
+ assert.match(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/320 B/);assert.match(text(h.tree),/8 KB/);assert.doesNotMatch(text(h.tree),/0 MB/);
 });
 test('hidden workspace settings abort pending reads and a late failure cannot publish into a new visible owner', async t => {
   let reject!: (reason:unknown)=>void;const signals: AbortSignal[]=[];let reads=0;

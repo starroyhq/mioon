@@ -123,7 +123,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const read=async()=>{if(!live||reading||session.current!==current||document.visibilityState==='hidden')return;
       const rounds=current.getState().rounds.slice(0,-1).filter(item=>!(['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true));
       if(!rounds.length)return;reading=true;const chosen=Array.from({length:Math.min(4,rounds.length)},(_,offset)=>rounds[(cursor+offset)%rounds.length]!.run.id);cursor=(cursor+chosen.length)%rounds.length;
-      try{await Promise.all(chosen.map(id=>current.refreshRound(id)));}finally{reading=false;}
+      try{await Promise.all(chosen.map(id=>current.refreshRound(id,{background:true})));}finally{reading=false;}
     };
     const timer=setInterval(()=>void read(),5000);return()=>{live=false;clearInterval(timer);};
   },[projectId,workspaceScope,project?.instanceId,visible,historyOpen,earlierActive]);

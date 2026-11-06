@@ -34,6 +34,8 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 
 - `GET /api/project-covers/<ID>` 是应用级只读缓存接口，只读该项目缓存中的 `cover.jpg`、`cover.json`；缺失或不匹配返回 404，从不 acquire 项目。`projectSummaryCoverSchema` 的 URL 已改为此地址，并要求 ID 与摘要项目一致。
 - `GET /api/workspace-info` 使用 `applicationWorkspaceInfoSchema`：原应用字段保留，另含 `storage.records`、`storage.cache` 的 `{bytes,files,complete}` 和真实 `cacheDirectory`。records 统计全部项目本机记录，不是孤立记录清单的子集；cache 使用实际 `directories.cacheDir`，可在数据目录外。两根独立统计，可能重叠，不相加冒充总空间。只读、有界元数据枚举不打开任何数据库或跟随链接；不可读、变化、深度/数量/精度上限令该项 `complete:false`。原 `usage` 仍是数据目录估计。
+- 同地址可选 `view=metadata` 或 `view=storage`（未知/重复 view 返回400）。metadata 返回严格元数据，不做目录统计；storage 只返回元数据和 records/cache 分项，不生成未显示的总占用。首页、工具页和关于页只读 metadata，工作区页只读 storage；不带 view 时保留原完整 DTO。配置的统计根先 realpath，再检查目录身份；遍历中发现的符号链接仍不跟随。
+- 本机记录删除通过 `createProjectBackups.withProjectRecords` 进入备份现有的同一项目队列；应用 RPC 必须注入真实端口，排队后再验原身份，不能用独立队列冒充。
 - `GET /api/projects/<ID>/workspace-info` 取得正常项目请求租约后返回真实 `projectDir`，继续使用原 `workspaceInfoSchema`，不增加应用 storage 字段。桌面导出按已验证 owner 的项目 ID 请求后者，不从 `fileLocation` 猜素材根。
 - 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库当前为 4：仅精确已知 v3 做 S3-A 的3→4升级；保留旧索引JSON及其它文档、登记和策略回执，不组合旧1/2升级到4。
 - 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。

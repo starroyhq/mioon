@@ -30,9 +30,12 @@ export function MioUsageDetails({open,runId,view,onClose,onRetry}:MioUsageDetail
   const explanation=(field:Field)=>{
     if(!usage)return null;
     const coverage=usage.coverage.fields[field];
-    return usage.dispatchedModelSteps===0?null:coverage.overflow?t('mioUsage.overflow'):coverage.reportedSteps===0?t('mioUsage.notReported'):coverage.missingSteps>0?t('mioUsage.missing',{count:coverage.missingSteps}):null;
+    // Canonical aggregates have no terminal usage for an in-flight request.
+    // Keep it pending, rather than calling it a provider reporting omission.
+    const missing=Math.max(0,coverage.missingSteps-usage.modelOutcomes.inflight);
+    return usage.dispatchedModelSteps===0?null:coverage.overflow?t('mioUsage.overflow'):missing===0?null:coverage.reportedSteps===0?t('mioUsage.notReported'):t('mioUsage.missing',{count:missing});
   };
-  const field=(name:Field,label:'mioUsage.input'|'mioUsage.output'|'mioUsage.cacheRead'|'mioUsage.cacheWrite')=>usage&&<div data-field={name}><dt>{t(label)}</dt><dd><span className="mio-usage-number">{tokenValue(usage,name,value=>formatNumber(value))}{usage.knownTotals[name]!==null?' tokens':''}</span>{explanation(name)&&<p className="mio-usage-note">{explanation(name)}</p>}</dd></div>;
+  const field=(name:Field,label:'mioUsage.input'|'mioUsage.output'|'mioUsage.cacheRead'|'mioUsage.cacheWrite')=>usage&&<div data-field={name}><dt>{t(label)}</dt><dd><span className="mio-usage-number">{usage.knownTotals[name]===null?'—':t('mioUsage.tokenValue',{count:usage.knownTotals[name],prefix:usage.coverage.fields[name].missingSteps>0?'≥':''})}</span>{explanation(name)&&<p className="mio-usage-note">{explanation(name)}</p>}</dd></div>;
   return <Dialog open={open} onOpenChange={next=>{if(!next)onClose();}}><WorkbenchDialogContent title={t('mioUsage.title')} className="mio-usage-dialog" data-testid="mio-usage-details" data-run-id={runId??undefined} finalFocus={false}
     footer={<><WorkbenchButton type="button" variant="ghost" disabled={view?.phase==='loading'} onClick={onRetry}>{t('mioUsage.retry')}</WorkbenchButton><WorkbenchButton type="button" onClick={onClose}>{t('mioUsage.close')}</WorkbenchButton></>}>
     {view?.phase==='loading'&&!usage&&<p role="status">{t('mioUsage.loading')}</p>}
@@ -42,7 +45,7 @@ export function MioUsageDetails({open,runId,view,onClose,onRetry}:MioUsageDetail
       {usage.modelOutcomes.unknown>0&&<> · {t('mioUsage.unknown',{count:usage.modelOutcomes.unknown})}</>}{usage.modelOutcomes.inflight>0&&<> · {t('mioUsage.inflight',{count:usage.modelOutcomes.inflight})}</>}</p>
       {usage.dispatchedModelSteps===0&&<p className="mio-usage-note">{t('mioUsage.noRequests')}</p>}
       <dl className="mio-usage-fields">{field('inputTokens','mioUsage.input')}
-        {usage.cacheReadRate!==null?<div className="mio-usage-cache-within"><dt className="sr-only">{t('mioUsage.cacheRead')}</dt><dd>{t('mioUsage.cachedWithin',{value:formatNumber(usage.knownTotals.cacheReadTokens!),rate:formatNumber(usage.cacheReadRate,{style:'percent',maximumFractionDigits:0})})}</dd></div>:<>{field('cacheReadTokens','mioUsage.cacheRead')}{usage.coverage.fields.cacheReadTokens.reportedSteps>0&&<div><dt/><dd><p className="mio-usage-note">{t('mioUsage.cacheIndependent')}</p></dd></div>}</>}
+        {usage.cacheReadRate!==null?<div className="mio-usage-cache-within"><dt className="sr-only">{t('mioUsage.cacheRead')}</dt><dd>{t('mioUsage.cachedWithin',{count:usage.knownTotals.cacheReadTokens!,rate:formatNumber(usage.cacheReadRate,{style:'percent',maximumFractionDigits:0})})}</dd></div>:<>{field('cacheReadTokens','mioUsage.cacheRead')}{usage.coverage.fields.cacheReadTokens.reportedSteps>0&&<div><dt/><dd><p className="mio-usage-note">{t('mioUsage.cacheIndependent')}</p></dd></div>}</>}
         {field('outputTokens','mioUsage.output')}{usage.coverage.fields.cacheWriteTokens.reportedSteps>0&&field('cacheWriteTokens','mioUsage.cacheWrite')}</dl>
       {usage.modelOutcomes.inflight>0&&<p className="mio-usage-note">{t('mioUsage.changing')}</p>}</>}
     <p className="mio-usage-note mio-usage-footer">{t('mioUsage.footer')}</p>

@@ -470,6 +470,35 @@ test('undo preflight refresh is read-only, preserves the draft and refuses a lat
   }finally{f.session.dispose();}
 });
 
+test('background refresh of an earlier round preserves the latest SSE cursor across reconnect',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const olderId='55555555-5555-4555-8555-555555555555',conversationId='66666666-6666-4666-8666-666666666666';
+  const older={...snapshot('completed'),backgroundPending:true,run:{...snapshot('completed').run,id:olderId,conversationId}},latest={...snapshot('running'),run:{...snapshot('running').run,conversationId}};
+  const starts:number[]=[],callbacks:((event:AgentTaskEvent)=>void)[]=[],first=deferred<void>();let olderReads=0;
+  const f=fixture({list:async()=>({...project(),runs:[latest.run,older.run]}),conversation:async()=>({conversation:{...conversation(latest.run),runCount:2},runs:[older.run,latest.run],nextCursor:null}),
+    read:async(_,id)=>id===olderId?{...older,run:{...older.run,revision:++olderReads}}:latest,
+    stream:async(_,__,after,signal,onEvent)=>{starts.push(after);callbacks.push(onEvent);if(starts.length===1)return first.promise;return new Promise(resolve=>signal.addEventListener('abort',()=>resolve(),{once:true}));}});
+  t.after(()=>f.session.dispose());await f.session.load();f.session.edit('retained composer');
+  callbacks[0]!({runId,sequence:9,type:'snapshot',createdAt:time,data:latest as unknown as AgentTaskEvent['data']});
+  assert.equal((await f.session.refreshRound(olderId,{background:true}))?.run.revision,2);
+  assert.equal(f.session.getState().snapshot?.run.id,runId);
+  first.reject(new Error('synthetic stream disconnect'));await flush();t.mock.timers.tick(1500);await flush();
+  assert.deepEqual(starts,[0,9],'reading an earlier round must not rewind the latest stream');
+  assert.equal(f.session.getState().project?.runs[0]?.id,runId,'a passive read must not promote the earlier run');
+  assert.equal(f.session.getState().draft,'retained composer');assert.deepEqual(f.actions,[]);assert.deepEqual(f.sent,[]);assert.equal(f.receipts.size,0);
+});
+
+test('failed background round refresh is quiet and retryable while explicit refresh still reports the failure',async t=>{
+  const value=snapshot('completed');let offline=false,reads=0;
+  const f=fixture({list:async()=>({...project(),runs:[value.run]}),read:async()=>{reads++;if(offline)throw Object.assign(new Error('synthetic offline'),{code:'SYNTHETIC_OFFLINE'});return value;}});
+  t.after(()=>f.session.dispose());await f.session.load();f.session.edit('retained composer');offline=true;
+  const before=f.session.getState();assert.equal(await f.session.refreshRound(runId,{background:true}),null);
+  assert.equal(f.session.getState().error,before.error,'a periodic read must not create a session error');
+  assert.equal(f.session.getState().phase,before.phase);assert.equal(f.session.getState().snapshot,before.snapshot);
+  assert.equal(await f.session.refreshRound(runId),null);assert.equal(f.session.getState().error,'SYNTHETIC_OFFLINE','explicit undo preflight keeps its error');
+  offline=false;assert.ok(await f.session.refreshRound(runId,{background:true}));assert.equal(reads,4);assert.equal(f.session.getState().draft,'retained composer');assert.deepEqual(f.actions,[]);assert.deepEqual(f.sent,[]);
+});
+
 
 test('undo submits exactly the reviewed changes and a lost response only queries that control receipt',async()=>{
   const initial=snapshot('completed',4),changeIds=[crypto.randomUUID(),crypto.randomUUID()],actions:Parameters<AgentTaskClient['action']>[1][]=[],lookups:AgentTaskPending[]=[];

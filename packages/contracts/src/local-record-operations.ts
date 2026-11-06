@@ -15,6 +15,10 @@ export type LocalRecordsIdentity = z.infer<typeof localRecordsIdentitySchema>;
 export const localRecordItemSchema = localRecordsEntrySchema.extend({
   name: recentProjectSchema.shape.name.nullable(), projectFile: recentProjectSchema.shape.projectFile.nullable(),
   hasUnfinishedTasks: z.boolean(),
+  automaticBackups: z.object({
+    count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    sizeBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  }).strict(),
 }).strict();
 export type LocalRecordItem = z.infer<typeof localRecordItemSchema>;
 export type LocalRecord = LocalRecordItem;

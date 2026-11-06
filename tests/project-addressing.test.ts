@@ -100,11 +100,15 @@ test('local records have strict application-only contracts and truthful file eff
   for (const invalid of [{projectId}, {...input, path: '/private/records'}, {...input, expectedInstanceId: 'old'}, {...input, expectedAppLibraryScope: 'A'.repeat(64)}, {...input, projectId: projectId.toUpperCase()}]) {
     assert.equal(localRecordSchemas['local.records.delete'].safeParse(invalid).success, false);
   }
-  const record = {projectId, name: null, projectFile: null, sizeBytes: 0, hasSuperJournal: true, hasUnfinishedTasks: true};
+  const record = {projectId, name: null, projectFile: null, sizeBytes: 0, hasSuperJournal: true, hasUnfinishedTasks: true,automaticBackups:{count:0,sizeBytes:0}};
   const list = {version: 1, appLibraryScope, instanceId, records: [record]};
   assert.equal(localRecordsListResponseSchema.safeParse(list).success, true);
   assert.equal(localRecordsListResponseSchema.safeParse({...list, records: [record, record]}).success, false);
   assert.equal(localRecordsListResponseSchema.safeParse({...list, records: [{...record, hasUnfinishedTasks: undefined}]}).success, false);
+  for(const automaticBackups of [undefined,null,{count:-1,sizeBytes:0},{count:1.5,sizeBytes:0},{count:1,sizeBytes:-1},
+    {count:1,sizeBytes:Number.MAX_SAFE_INTEGER+1},{count:Number.MAX_SAFE_INTEGER+1,sizeBytes:1},{count:1,sizeBytes:0,path:'/private/backup'}]) {
+    assert.equal(localRecordsListResponseSchema.safeParse({...list,records:[{...record,automaticBackups}]}).success,false);
+  }
   const result = {projectId, deleted: true, appLibraryScope, instanceId};
   assert.equal(localRecordsDeleteResponseSchema.safeParse(result).success, true);
   assert.equal(isLocalRecordResponse('local.records.delete', input, result), true);

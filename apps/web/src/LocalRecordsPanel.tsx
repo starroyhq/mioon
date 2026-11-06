@@ -5,6 +5,7 @@ import {useI18n} from './i18n/I18nProvider.tsx';
 import {createLocalRecordsClient} from './local-records-client.ts';
 import {createLocalRecordsController} from './local-records-state.ts';
 import type {LocalRecordsState} from './local-records-state.ts';
+import {byteSize} from './project-file/format.ts';
 import './local-records.css';
 
 export default function LocalRecordsPanel({active, refreshRevision = 0}: {readonly active:boolean; readonly refreshRevision?:number}) {
@@ -18,7 +19,7 @@ export default function LocalRecordsPanel({active, refreshRevision = 0}: {readon
 
 export function LocalRecordsView({active,state,controller}:{readonly active:boolean;readonly state:LocalRecordsState;readonly controller:Pick<ReturnType<typeof createLocalRecordsController>,'refresh'|'select'|'cancel'|'confirm'>}) {
   const {t,formatNumber} = useI18n();
-  const size = (bytes:number):string => formatNumber(bytes/1_000_000,{style:'unit',unit:'megabyte',unitDisplay:'short',maximumFractionDigits:1});
+  const size = (bytes:number):string => {const value=byteSize(bytes);return t(`projectFile.common.bytes.${value.unit}`,{value:formatNumber(value.value,{maximumFractionDigits:1})});};
   const sum = state.list?.records.reduce((total,item) => total+BigInt(item.sizeBytes),0n) ?? 0n;
   const total = sum <= BigInt(Number.MAX_SAFE_INTEGER) ? size(Number(sum)) : '—';
   const noticeKey = state.notice?.outcomeUnknown ? 'localRecords.unknown' : state.notice?.code === 'DELETED' ? 'localRecords.deleted'
@@ -45,7 +46,9 @@ export function LocalRecordsView({active,state,controller}:{readonly active:bool
     <Dialog open={active&&state.selected!==null} onOpenChange={open=>{if(!open)controller.cancel();}}>
       {state.selected&&<WorkbenchDialogContent size="confirm" showCloseButton={!state.deleting} title={t('localRecords.confirmTitle',{name:state.selected.name??t('localRecords.unknownName')})}
         description={t('localRecords.confirmHelp',{size:size(state.selected.sizeBytes)})}
-        footer={<><WorkbenchButton type="button" disabled={state.deleting} onClick={()=>controller.cancel()}>{t('localRecords.cancel')}</WorkbenchButton><WorkbenchButton type="button" variant="danger" loading={state.deleting} onClick={()=>void controller.confirm()}>{t('localRecords.delete')}</WorkbenchButton></>}/>}
+        footer={<><WorkbenchButton type="button" disabled={state.deleting} onClick={()=>controller.cancel()}>{t('localRecords.cancel')}</WorkbenchButton><WorkbenchButton type="button" variant="danger" loading={state.deleting} onClick={()=>void controller.confirm()}>{t('localRecords.delete')}</WorkbenchButton></>}>
+          {state.selected.automaticBackups.count>0&&<WorkbenchAlert tone="warning" data-testid="local-records-backup-warning" data-text-selectable>{t('localRecords.backupWarning',{count:state.selected.automaticBackups.count,size:size(state.selected.automaticBackups.sizeBytes)})}</WorkbenchAlert>}
+        </WorkbenchDialogContent>}
     </Dialog>
   </section>;
 }

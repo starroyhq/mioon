@@ -13,6 +13,13 @@ export type WorkspaceInfo=z.infer<typeof workspaceInfoSchema>;
  * location is display information and does not grant a filesystem capability. */
 export const applicationWorkspaceInfoSchema=workspaceInfoSchema.extend({storage:z.object({records:workspaceStorageUsageSchema,cache:workspaceStorageUsageSchema,cacheDirectory:z.string().min(1).max(4096)}).strict()}).strict();
 export type ApplicationWorkspaceInfo=z.infer<typeof applicationWorkspaceInfoSchema>;
+/** Read only the fields a screen displays; omitted inventories were not run. */
+export const workspaceMetadataSchema=workspaceInfoSchema.omit({usage:true});
+export type WorkspaceMetadata=z.infer<typeof workspaceMetadataSchema>;
+export const applicationWorkspaceStorageInfoSchema=workspaceMetadataSchema.extend({storage:applicationWorkspaceInfoSchema.shape.storage}).strict();
+export type ApplicationWorkspaceStorageInfo=z.infer<typeof applicationWorkspaceStorageInfoSchema>;
+export const workspaceInfoViewSchema=z.enum(['full','metadata','storage']);
+export type WorkspaceInfoView=z.infer<typeof workspaceInfoViewSchema>;
 export const WORKSPACE_TOOLS_CHANNEL='mioon:workspace-tools';
 export const toolPathsSchema=z.object({ffmpeg:z.string().min(1).max(4096),ffprobe:z.string().min(1).max(4096)}).strict();
 export type ToolPaths=z.infer<typeof toolPathsSchema>;

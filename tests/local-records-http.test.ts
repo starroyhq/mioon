@@ -15,8 +15,16 @@ import {projectRpcPath, PROJECT_RECORDS_DIRECTORY} from '../packages/contracts/s
 import {localRecordsDeleteResponseSchema, localRecordsListResponseSchema} from '../packages/contracts/src/local-record-operations.ts';
 import type {LocalRecordsIdentity, LocalRecordsListResponse} from '../packages/contracts/src/local-record-operations.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
+import {createProjectBackups} from '../apps/server/src/project-host/backups.ts';
+import {serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
+import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 
 const TOKEN = 'synthetic-local-records-http-token';
+function withRecordsQueue(library: ReturnType<typeof openAppLibrary>) {
+  const directories=serverAppDirectories(library.dataDir);
+  return createProjectBackups({directories,registry:library.registry,identity:library.projectFileIdentity,
+    assertProjectFile:createApplicationFileGuard(directories)}).withProjectRecords;
+}
 type Server = Awaited<ReturnType<typeof startServer>>;
 interface Reply {status: number; body: {ok: boolean; data?: unknown; error?: {code: string; details: unknown}}}
 function fixture(t: TestContext) {
@@ -75,7 +83,9 @@ function hotSuperJournal(folder: string): void {
 
 test('application list/delete use real orphan records without opening their invalid history or any project', async t => {
   const f = fixture(t), dataDir = path.join(f.root, 'app'), orphan = randomUUID(), registered = randomUUID();
-  records(dataDir, orphan); records(dataDir, registered, 'registered old history');
+  const orphanFolder=records(dataDir, orphan),backupFolder=path.join(orphanFolder,'backups',randomUUID());
+  mkdirSync(backupFolder,{recursive:true,mode:0o700});writeFileSync(path.join(backupFolder,'project.mioon'),'backup bytes, no reader',{mode:0o600});
+  records(dataDir, registered, 'registered old history');
   const library = openAppLibrary({dataDir}), missingFile = path.join(f.root, 'missing', 'Named.mioon');
   library.registry.upsert({projectId: registered, projectFile: missingFile, fileIdentity: {dev: '1', ino: '9999999999999'},
     name: 'Named project', lastOpenedAt: null, summary: null}); library.close();
@@ -85,7 +95,8 @@ test('application list/delete use real orphan records without opening their inva
   assert.equal(snapshot.appLibraryScope, catalog.data.appLibraryScope); assert.equal(snapshot.instanceId, catalog.data.instanceId);
   assert.deepEqual(snapshot.records.map(row => row.projectId), [orphan, registered].sort());
   assert.deepEqual(snapshot.records.find(row => row.projectId === orphan), {projectId: orphan,
-    sizeBytes: Buffer.byteLength('not a SQLite history database'), hasSuperJournal: false, hasUnfinishedTasks: false, name: null, projectFile: null});
+    sizeBytes: Buffer.byteLength('not a SQLite history database')+Buffer.byteLength('backup bytes, no reader'), hasSuperJournal: false, hasUnfinishedTasks: false, name: null, projectFile: null,
+    automaticBackups:{count:1,sizeBytes:Buffer.byteLength('backup bytes, no reader')}});
   assert.equal(snapshot.records.find(row => row.projectId === registered)?.name, 'Named project');
   assert.equal(snapshot.records.find(row => row.projectId === registered)?.projectFile, missingFile);
   assert.deepEqual(tree(path.join(dataDir, PROJECT_RECORDS_DIRECTORY)), before);
@@ -180,6 +191,7 @@ test('an uncertain deletion result cannot be fabricated as not-found, not-applie
   const library = openAppLibrary({dataDir}); t.after(() => library.close());
   const identity = {appLibraryScope: 'a'.repeat(64), instanceId: randomUUID()}; let calls = 0;
   const service = createLocalRecordRpc({readIdentity: () => identity, assertMutationAllowed: createProjectServiceApplication(library).assertMutationAllowed,
+    withProjectRecords:withRecordsQueue(library),
     store: {list: library.localRecords.list, delete: async projectId => {calls++; await library.localRecords.delete(projectId); throw Error('synthetic delivery lost after real deletion');}}});
   await assert.rejects(service.call('local.records.delete', deletion(identity, id)), error => {
     assert.ok(error instanceof AppError); assert.equal(error.code, 'LOCAL_RECORDS_DELETE_UNCERTAIN'); assert.equal(error.status, 503);
@@ -198,7 +210,7 @@ test('owner retirement after rename refuses rm and reports unknown while the con
   const store = createLocalRecords({dataDir, registry: library.registry, identity: library.projectFileIdentity,
     isProjectOpen: () => false, isProjectBackgroundBusy: () => false,
     assertMutationAllowed: () => {if (++guards === 3) library.close(); owner();}});
-  const service = createLocalRecordRpc({store, readIdentity: () => identity, assertMutationAllowed: owner});
+  const service = createLocalRecordRpc({store, readIdentity: () => identity, assertMutationAllowed: owner, withProjectRecords:withRecordsQueue(library)});
   await assert.rejects(service.call('local.records.delete', deletion(identity, id)), error => {
     assert.ok(error instanceof AppError); assert.equal(error.code, 'LOCAL_RECORDS_DELETE_UNCERTAIN');
     assert.deepEqual(error.details, {...identity, projectId: id, mutationOutcome: 'unknown'}); return true;
@@ -211,4 +223,20 @@ test('owner retirement after rename refuses rm and reports unknown while the con
   const reopened = openAppLibrary({dataDir}); t.after(() => reopened.close());
   assert.deepEqual(await reopened.localRecords.list(), []); assert.deepEqual(readdirSync(path.dirname(folder)), []);
   assert.equal(guards, 3, 'new-owner recovery continues only the tombstone, never replays the old delete');
+});
+
+test('a delete waiting on the backup queue rechecks the original application identity before any store sweep',async t=>{
+  const f=fixture(t),dataDir=path.join(f.root,'app'),id=randomUUID(),folder=records(dataDir,id,'original records');
+  const library=openAppLibrary({dataDir});t.after(()=>library.close());const withProjectRecords=withRecordsQueue(library);
+  let identity={appLibraryScope:'a'.repeat(64),instanceId:randomUUID()};const original={...identity};
+  const service=createLocalRecordRpc({store:library.localRecords,readIdentity:()=>identity,
+    assertMutationAllowed:createProjectServiceApplication(library).assertMutationAllowed,withProjectRecords});
+  const entered=Promise.withResolvers<void>(),gate=Promise.withResolvers<void>();
+  const pinned=withProjectRecords(id,async()=>{entered.resolve();await gate.promise;});await entered.promise;
+  const pending=service.call('local.records.delete',deletion(original,id));
+  const oldTombstone=tombstone(dataDir),before=tree(dataDir),changes=library.db.prepare('SELECT total_changes() AS n').get()!.n;
+  identity={...identity,instanceId:randomUUID()};gate.resolve();await pinned;
+  await assert.rejects(pending,error=>{assert.ok(error instanceof AppError);assert.equal(error.code,'LOCAL_RECORDS_IDENTITY_CHANGED');assert.equal(error.status,409);return true;});
+  assert.deepEqual(tree(dataDir),before);assert.equal(existsSync(folder),true);assert.equal(existsSync(oldTombstone),true);
+  assert.equal(library.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
 });

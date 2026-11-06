@@ -14,10 +14,33 @@ const root=fileURLToPath(new URL('../',import.meta.url)),fixtures=join(root,'tes
 // warnings, buttons and localized copy come from the production view.
 const result=await build({stdin:{contents:`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {LocalRecordsView} from './src/LocalRecordsPanel.tsx';import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};export function render(state,locale){setLocale(locale);return renderToStaticMarkup(<LocalRecordsView active={state.active} state={state} controller={{refresh:async()=>{},select(){},cancel(){},confirm:async()=>{}}}/>);}`,loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'existing-ssr-overlays',setup(build){build.onResolve({filter:/^@mioon\/ui\/components\/dialog$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));build.onResolve({filter:/\/i18n\/I18nProvider\.tsx$/},()=>({path:join(fixtures,'ssr-i18n.tsx')}));}}]});
 const module={exports:{} as {render(state:LocalRecordsState,locale:Locale):string}};Function('require','module','exports',result.outputFiles[0]!.text)(createRequire(import.meta.url),module,module.exports);
-const item={projectId:randomUUID(),name:'访谈 <raw>',projectFile:'/private/very-long-location/source.mioon',sizeBytes:320000000,hasSuperJournal:false,hasUnfinishedTasks:false};
+const item={projectId:randomUUID(),name:'访谈 <raw>',projectFile:'/private/very-long-location/source.mioon',sizeBytes:320000000,automaticBackups:{count:0,sizeBytes:0},hasSuperJournal:false,hasUnfinishedTasks:false};
 const base:LocalRecordsState={active:true,loading:false,list:{version:1,appLibraryScope:'a'.repeat(64),instanceId:randomUUID(),records:[item]},readError:null,selected:null,deleting:false,notice:null};
 const render=(patch:Partial<LocalRecordsState>={},locale:Locale='zh-Hans')=>module.exports.render({...base,...patch},locale);
 const deleteTag=(html:string)=>html.match(/<button\b[^>]*data-variant="danger-ghost"[^>]*>/u)?.[0]??'';
+
+test('deletion explicitly includes automatic backups and warns with the server backup count and bytes only when present',()=>{
+  const words={'zh-Hans':'自动备份','zh-Hant':'自動備份',en:'automatic backups',ja:'自動バックアップ'};
+  for(const locale of LOCALES){
+    const selected={...item,automaticBackups:{count:3,sizeBytes:210000000}};
+    const markup=render({selected,list:{...base.list!,records:[selected]}},locale);
+    assert.ok(markup.includes(words[locale]),`the deletion scope discloses backups in ${locale}`);
+    const warning=markup.match(/<div\b[^>]*data-testid="local-records-backup-warning"[\s\S]*?<\/div>/u)?.[0]??'';
+    assert.match(warning,/data-tone="warning"/u,`backup warning exists in ${locale}`);
+    assert.match(warning,/3/u);assert.match(warning,/210/u,'use the server backup bytes rather than the total record bytes');
+    assert.doesNotMatch(warning,/320/u);
+    assert.doesNotMatch(render({selected:{...selected,automaticBackups:{count:0,sizeBytes:0}}},locale),/data-testid="local-records-backup-warning"/u);
+  }
+  const single=render({selected:{...item,automaticBackups:{count:1,sizeBytes:210000000}}},'en');
+  assert.match(single,/1 automatic backup \(/u);assert.doesNotMatch(single,/1 automatic backups/u);
+});
+
+test('small local records stay nonzero in the row, total and deletion confirmation',()=>{
+  const selected={...item,sizeBytes:8192,automaticBackups:{count:0,sizeBytes:0}};
+  const markup=render({selected,list:{...base.list!,records:[selected]}});
+  assert.ok((markup.match(/8\.2 KB/gu)??[]).length>=3,'row, summary and confirmation use a readable kilobyte size');
+  assert.doesNotMatch(markup,/>0 MB</u);
+});
 
 test('local records render real metadata, escaped names, confirmation copy and both independent blockers in all locales',()=>{
   for(const locale of LOCALES){

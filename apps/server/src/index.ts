@@ -57,7 +57,7 @@ import {createApplicationAgentHttp} from './application-agent-http.ts';
 import {body, json, field} from './http-json.ts';
 import {callObservedRpc} from './rpc-observation.ts';
 import {createFileResponses} from './file-response.ts';
-import {readApplicationWorkspaceInfo} from './workspace-info.ts';
+import {readApplicationWorkspaceInfo,workspaceInfoView} from './workspace-info.ts';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage, Server, ServerResponse} from 'node:http';
 import type {DatabaseSync} from 'node:sqlite';
@@ -305,7 +305,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
@@ -402,7 +402,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         }
         if (url.pathname === '/api/images/settings' || url.pathname === '/api/images/custom-settings') { await app.imageHttp(req, res, url); return; }
         if (await app.comfyHttp(req, res, url) || await app.videoHttp(req, res, url)) return;
-        if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readApplicationWorkspaceInfo({directories, channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
+        if (url.pathname === '/api/workspace-info' && req.method === 'GET') return json(res, 200, {ok: true, data: await readApplicationWorkspaceInfo({directories, view:workspaceInfoView(url.searchParams), channel, version: packageMetadata.version, tools: {ffmpeg: mediaExecutable('ffmpeg'), ffprobe: mediaExecutable('ffprobe')}, signal: shutdown.signal})});
         if (url.pathname === '/api/media-tools/check' && req.method === 'POST') {
           const input = await body(req, 64);
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) throw new AppError('VALIDATION_ERROR', '工具检测不接受路径或命令参数。', 400);
