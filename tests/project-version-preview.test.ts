@@ -8,8 +8,8 @@ import {openStore} from '../packages/business/src/project-file/index.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {captureProjectDocumentInside, canonicalJson, PROJECT_SNAPSHOT_TABLES, rowKey, validateProjectDocument} from '../packages/business/src/project-versions/document.ts';
 import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow} from '../packages/business/src/project-versions/document.ts';
-import {previewDifferences} from '../packages/business/src/project-versions/preview.ts';
-import {projectVersionDifferenceSchema} from '../packages/contracts/src/project-version-operations.ts';
+import {buildRestorePlan, previewDifferences, projectVersionDifferenceForDisplay} from '../packages/business/src/project-versions/preview.ts';
+import {PROJECT_VERSION_DIFFERENCE_REASON_CODES, projectVersionDifferenceSchema} from '../packages/contracts/src/project-version-operations.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 
 const now = '2026-11-03T00:00:00.000Z';
@@ -70,11 +70,16 @@ test('all seventeen content tables produce complete stable DTOs without body/BLO
   assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()?.n, before);
   const change = (table: ProjectSnapshotTable, id: string) => differences.find(row => row.table === table && row.key === rowKey(table, current.tables[table].find(item => item.id === id || item.assetId === id)!))!;
   for (const [table, id] of [['subject_versions',ids.subjectVersion],['image_versions',ids.imageVersion],['scene_results',ids.scene],['project_lut_resources',ids.lut],['image_groups',ids.group]] as const) assert.equal(change(table,id).action, 'keep-current');
+  for (const [table, id] of [['subject_versions',ids.subjectVersion],['image_versions',ids.imageVersion],['scene_results',ids.scene],['project_lut_resources',ids.lut],['image_groups',ids.group]] as const) assert.equal(change(table,id).reasonCode, 'PROJECT_VERSION_PROTECTED_RESULT_CURRENT');
   assert.equal(change('subject_bindings',ids.binding).action, 'change'); assert.deepEqual(change('subject_bindings',ids.binding).fields, ['subjectVersionId']);
   assert.equal(change('asset_annotations',ids.asset).action, 'change'); assert.deepEqual(change('asset_annotations',ids.asset).fields, ['tags','note']);
   assert.equal(change('shots',ids.shot).action, 'keep-current', 'retained binding protects its shot owner');
   assert.equal(change('versions',ids.version).action, 'keep-current', 'the retained shot top-level versionIds protect its generated result');
   assert.equal(change('assets',ids.asset).action, 'keep-current');
+  assert.equal(change('subject_bindings',ids.binding).reasonCode, 'PROJECT_VERSION_BINDING_TOMBSTONE_CURRENT');
+  assert.equal(change('asset_annotations',ids.asset).reasonCode, 'PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT');
+  assert.equal(change('shots',ids.shot).reasonCode, 'PROJECT_VERSION_FOREIGN_KEY_REFERENCE_CURRENT');
+  assert.equal(change('versions',ids.version).reasonCode, 'PROJECT_VERSION_CONTENT_REFERENCE_CURRENT');
   assert.equal(change('nodes',ids.node).action, 'remove'); assert.equal(change('edges',ids.edge).action, 'remove');
   assert.deepEqual(f.preview(saved,current), differences);
 });
@@ -145,7 +150,9 @@ test('a real cross-file process reference protects its owner and the owners reac
   const changes=f.preview(saved,current);
   assert.equal(changes.find(change=>change.table==='nodes')?.action,'keep-current');
   assert.match(changes.find(change=>change.table==='nodes')!.reason!,/previs_requests/);
+  assert.equal(changes.find(change=>change.table==='nodes')?.reasonCode,'PROJECT_VERSION_PROCESS_REFERENCE_CURRENT');
   assert.equal(changes.find(change=>change.table==='assets')?.action,'keep-current','previs keyframe exported asset is a real domain reference');
+  assert.equal(changes.find(change=>change.table==='assets')?.reasonCode,'PROJECT_VERSION_CONTENT_REFERENCE_CURRENT');
   assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()?.n,before);
 });
 
@@ -216,8 +223,10 @@ test('forward-only image heads and prohibited variant subject heads are explicit
   const changes=f.preview(saved,current);
   assert.equal(changes.find(change=>change.table==='image_groups')?.action,'keep-current');
   assert.match(changes.find(change=>change.table==='image_groups')!.reason!,/只能向前/);
+  assert.equal(changes.find(change=>change.table==='image_groups')?.reasonCode,'PROJECT_VERSION_IMAGE_GROUP_FORWARD_ONLY');
   assert.equal(changes.find(change=>change.table==='subjects')?.action,'keep-current');
   assert.match(changes.find(change=>change.table==='subjects')!.reason!,/变体过程/);
+  assert.equal(changes.find(change=>change.table==='subjects')?.reasonCode,'PROJECT_VERSION_SUBJECT_VARIANT_HEAD');
   assert.equal(changes.find(change=>change.table==='image_versions')?.action,'keep-current');
 });
 
@@ -253,4 +262,31 @@ test('Mio process-only changes and retained default tombstones do not invent con
   for(const table of ['asset_annotations','subject_bindings']as const){
     const change=changes.find(row=>row.table===table)!;assert.equal(change.action,'keep-current');assert.deepEqual(change.fields,[]);assert.ok(change.reason);
   }
+});
+
+test('display reason metadata leaves the raw plan unchanged and historical human reasons are never reclassified', t => {
+  const f=fixture(t),saved=f.capture(),{document:current}=fullDocument(saved);
+  const plan=f.store.tx(()=>buildRestorePlan(f.store,saved,current,0,now)),raw=JSON.stringify(plan.changes);
+  const displayed=plan.changes.map(projectVersionDifferenceForDisplay);
+  assert.ok(displayed.some(row=>row.reasonCode==='PROJECT_VERSION_PROTECTED_RESULT_CURRENT'));
+  assert.ok(displayed.every(row=>row.reason===null?row.reasonCode===undefined:PROJECT_VERSION_DIFFERENCE_REASON_CODES.includes(row.reasonCode as typeof PROJECT_VERSION_DIFFERENCE_REASON_CODES[number])));
+  assert.equal(JSON.stringify(displayed.map(({reasonCode:_reasonCode,...row})=>row)),raw);
+  assert.equal(JSON.stringify(plan.changes),raw);
+  assert.ok(plan.changes.every(row=>!Object.hasOwn(row,'reasonCode')));
+  const legacy={...displayed.find(row=>row.reasonCode==='PROJECT_VERSION_PROTECTED_RESULT_CURRENT')!};delete legacy.reasonCode;
+  assert.equal(projectVersionDifferenceForDisplay(legacy),legacy);
+  assert.equal(Object.hasOwn(projectVersionDifferenceForDisplay(legacy),'reasonCode'),false);
+  assert.equal(projectVersionDifferenceSchema.safeParse(legacy).success,true);
+  assert.equal(projectVersionDifferenceSchema.safeParse({...legacy,reasonCode:'PROJECT_VERSION_FUTURE_REASON'}).success,true);
+  for(const reasonCode of ['',null,123,'PRIVATE chinese 原因','PROJECT_VERSION_'+ 'A'.repeat(97),'PROJECT_VERSION_REASON\n'])
+    assert.equal(projectVersionDifferenceSchema.safeParse({...legacy,reasonCode}).success,false);
+});
+
+test('readded image groups omit old active tasks and expose only their stable display reason', t => {
+  const f=fixture(t),current=f.capture(),{document}=fullDocument(current);
+  const saved=revise(document,tables=>{tables.image_groups[0]={...tables.image_groups[0],activeTaskId:randomUUID()};});
+  const changes=f.preview(saved,current),group=changes.find(row=>row.table==='image_groups')!;
+  assert.equal(group.action,'add');assert.equal(group.reasonCode,'PROJECT_VERSION_IMAGE_GROUP_TASK_NOT_REPLAYED');
+  assert.match(group.reason!,/不重建或重放本机活动任务/);
+  assert.equal(f.store.db.prepare('SELECT count(*) n FROM main.image_tasks').get()?.n,0);
 });

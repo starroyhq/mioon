@@ -10,7 +10,7 @@ import path from 'node:path';
 import {createServerProject} from './helpers/project-database.ts';
 import {captureProjectDocumentInside,canonicalJson,PROJECT_SNAPSHOT_TABLES,rowKey,tableColumns,snapshotCellValue,validateProjectDocument} from '../packages/business/src/project-versions/document.ts';
 import type {ProjectDocument,ProjectSnapshotTable,SnapshotRow} from '../packages/business/src/project-versions/document.ts';
-import {buildRestorePlan} from '../packages/business/src/project-versions/preview.ts';
+import {buildRestorePlan,projectVersionDifferenceForDisplay} from '../packages/business/src/project-versions/preview.ts';
 import {applyRestorePlanInside} from '../packages/business/src/project-versions/restore.ts';
 import {withProjectRestoreScopeInside} from '../packages/business/src/project-file/restore-scope.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
@@ -178,6 +178,7 @@ test('existing legal media references stay current as a coherent identity while 
  const plan=f.restore(saved),asset=f.record('assets',id)!;
  assert.equal(asset.name,'Saved name');assert.deepEqual(asset.reference,reference);assert.equal(asset.referenceRevision,3);assert.equal(assetMediaRecordSchema.safeParse(asset).success,true);
  assert.match(plan.changes.find(c=>c.table==='assets')!.reason!,/定位.*保持当前/);assert.equal(JSON.stringify(plan.changes).includes('fixed.png'),false);
+ assert.equal(projectVersionDifferenceForDisplay(plan.changes.find(c=>c.table==='assets')!).reasonCode,'PROJECT_VERSION_ASSET_LOCATION_CURRENT');
 });
 
 function realMediaFixture(t:TestContext){
@@ -306,6 +307,7 @@ test('an aggregate absent from the snapshot stays current when retained editing 
  f.store.db.prepare('INSERT INTO main.timeline_history(id,projectId,position,operation,createdAt,beforeSnapshot,afterSnapshot) VALUES(?,?,1,?,?,?,?)').run(randomUUID(),f.projectId,'timeline.track.add',at,'{}','{}');
  const before=f.state(),plan=f.restore(saved),change=plan.changes.find(c=>c.table==='timelines')!;
  assert.equal(change.action,'keep-current');assert.match(change.reason!,/编辑历史.*保持当前/);assert.equal(f.state(),before);
+ assert.equal(projectVersionDifferenceForDisplay(change).reasonCode,'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT');
  assert.equal(f.record('timelines',String(timeline.id))!.revision,timeline.revision);assert.equal(f.store.db.prepare('SELECT count(*) n FROM main.timeline_history').get()?.n,1);
 });
 

@@ -38,6 +38,18 @@ export const projectVersionListResponseSchema = z.object({
 export const projectVersionSaveResponseSchema = z.object({
   projectId: projectIdSchema, requestId: id, version: projectVersionSummarySchema,
 }).strict();
+export const PROJECT_VERSION_DIFFERENCE_REASON_CODES = Object.freeze([
+  'PROJECT_VERSION_ASSET_LOCATION_CURRENT', 'PROJECT_VERSION_IMAGE_GROUP_FORWARD_ONLY',
+  'PROJECT_VERSION_SUBJECT_VARIANT_HEAD', 'PROJECT_VERSION_IMAGE_GROUP_TASK_NOT_REPLAYED',
+  'PROJECT_VERSION_PROTECTED_RESULT_CURRENT', 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT',
+  'PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT', 'PROJECT_VERSION_BINDING_TOMBSTONE_CURRENT',
+  'PROJECT_VERSION_PROCESS_REFERENCE_CURRENT', 'PROJECT_VERSION_FOREIGN_KEY_REFERENCE_CURRENT',
+  'PROJECT_VERSION_CONTENT_REFERENCE_CURRENT',
+] as const);
+export type ProjectVersionDifferenceReasonCode = typeof PROJECT_VERSION_DIFFERENCE_REASON_CODES[number];
+/** Optional for historical receipts. Bounded future codes remain readable so
+ * clients can show a generic localized reason and the unrecognized code. */
+export const projectVersionDifferenceReasonCodeSchema = z.string().regex(/^PROJECT_VERSION_[A-Z][A-Z0-9_]{0,95}$/u);
 /** A bounded row identity and changed-field list, never raw SQL, private
  * process history or embedded resource/media bytes. `source` follows Mio's
  * recorded targets; the other label deliberately includes unknown origins. */
@@ -46,6 +58,7 @@ export const projectVersionDifferenceSchema = z.object({
   action: z.enum(['add', 'remove', 'change', 'keep-current']),
   source: z.enum(['mio', 'user-or-other']), fields: z.array(z.string().min(1).max(200)).max(128),
   reason: z.string().min(1).max(1000).nullable(),
+  reasonCode: projectVersionDifferenceReasonCodeSchema.optional(),
 }).strict().refine(value => value.action !== 'keep-current' || value.reason !== null, 'A retained current row requires a reason.');
 export type ProjectVersionDifference = z.infer<typeof projectVersionDifferenceSchema>;
 export const projectVersionPreviewResponseSchema = z.object({

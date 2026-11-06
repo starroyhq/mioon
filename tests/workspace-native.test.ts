@@ -24,6 +24,8 @@ import {openClosedProjectSnapshotConnection} from '../packages/business/src/proj
 import type {ProjectBackupInspection,ProjectBackupRestoreResponse} from '../packages/contracts/src/project-backups.ts';
 import type {ProjectEntryResponse} from '../packages/contracts/src/project-entry.ts';
 import {readProjectBackupNativeActions} from '../apps/web/src/project-backup-native.ts';
+import {BACKUP_NATIVE_ERROR_CODES} from '../apps/desktop/src/project-backup-native-result.ts';
+import type {ProjectLocationFacts} from '../packages/contracts/src/project-entry-desktop.ts';
 const code=(error:unknown)=>(error as {code?:string})?.code==='WORKSPACE_NATIVE_UNAVAILABLE';
 function fixture(t:TestContext) {
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-native-workspace-')),root=path.join(base,'workspace'),media=path.join(root,'导出'),chosen=path.join(base,'chosen');
@@ -217,7 +219,7 @@ test('backup picker cancellation and replies after source or window retirement n
  const originalOwner=picker.options.ownerForEvent;picker.options.ownerForEvent=()=>({...originalOwner(),chooseBackupFile:()=>{opened.resolve();return chosen.promise;}});
  const pendingPicker=createWorkspaceNativeHost(picker.options).dispatch({},picker.choose());await opened.promise;picker.changeFrame();chosen.resolve(picker.file);await assert.rejects(pendingPicker,code);
  const changed=backupFixture(t);let reads=0;changed.options.readBackup=async()=>({...changed.backup,contentSequence:++reads===1?4:5});
- await assert.rejects(createWorkspaceNativeHost(changed.options).dispatch({},changed.choose()),code);assert.equal(fs.existsSync(changed.file),false);
+ await assert.rejects(createWorkspaceNativeHost(changed.options).dispatch({},changed.choose()),{code:'PROJECT_BACKUP_CHANGED'});assert.equal(fs.existsSync(changed.file),false);
 });
 
 test('Finder reveals only the chosen registered restored project after two metadata and full read-only content checks',async t=>{
@@ -268,7 +270,7 @@ test('backup reveal refuses held files, real content ID mismatch and changes dur
    }return entry;
   };
   // Reuse the same host intent; options retain trusted callback references.
-  try{await assert.rejects(f.host.dispatch({}, {action:'revealRestoredBackup',result}),code);assert.equal(f.calls.some(call=>call[0]==='reveal'),false,mode);if(held)assert.equal(opens,0,'held project is refused before another descriptor is opened');}
+  try{await assert.rejects(f.host.dispatch({}, {action:'revealRestoredBackup',result}),mode==='retired'?code:{code:'PROJECT_BACKUP_RESTORE_CHANGED'});assert.equal(f.calls.some(call=>call[0]==='reveal'),false,mode);if(held)assert.equal(opens,0,'held project is refused before another descriptor is opened');}
   finally{held?.close();t.mock.restoreAll();syncBuiltinESMExports();}
   assert.deepEqual(fs.readFileSync(f.file),before,mode);
  }
@@ -276,15 +278,15 @@ test('backup reveal refuses held files, real content ID mismatch and changes dur
 
 test('preload and web detect only the narrow backup capability and reject unbound or nonboolean native responses',async()=>{
  const selection={projectId:randomUUID(),backupId:randomUUID(),requestId:randomUUID()},input={...selection,projectFile:path.join(fs.realpathSync(tmpdir()),'chosen.mioon')},calls:unknown[]=[];
- const bridge=createWorkspaceNativeBridges(async(_channel,request)=>{calls.push(request);return (request as {action:string}).action==='chooseBackupRestoreDestination'?input:true;});
+ const bridge=createWorkspaceNativeBridges(async(_channel,request)=>{calls.push(request);return {ok:true,value:(request as {action:string}).action==='chooseBackupRestoreDestination'?input:true};});
  assert.equal(readProjectBackupNativeActions({}),null);assert.equal(readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:()=>{},revealPath:()=>{}}}),null);
  const native=readProjectBackupNativeActions({__mioonProjectBackups:bridge.projectBackups});assert.ok(native);assert.deepEqual(await native.chooseDestination(selection),input);
  const result:ProjectBackupRestoreResponse={requestId:selection.requestId,sourceProjectId:selection.projectId,backupId:selection.backupId,project:{projectId:randomUUID(),projectFile:input.projectFile,fileIdentity:{dev:'1',ino:'2'},name:'Restored',lastOpenedAt:null,summary:null}};
  await native.reveal(result);assert.deepEqual(calls,[{action:'chooseBackupRestoreDestination',selection},{action:'revealRestoredBackup',result}]);
- const malformed=createWorkspaceNativeBridges(async()=>({...input,requestId:randomUUID()}));await assert.rejects(malformed.projectBackups.chooseDestination(selection));
- const bad=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>({...input,backupId:randomUUID()}),reveal:async()=>false}});assert.ok(bad);
+ const malformed=createWorkspaceNativeBridges(async()=>({ok:true,value:{...input,requestId:randomUUID()}}));assert.deepEqual(await malformed.projectBackups.chooseDestination(selection),{ok:false,code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+ const bad=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>({ok:true,value:{...input,backupId:randomUUID()}}),reveal:async()=>({ok:true,value:false})}});assert.ok(bad);
  await assert.rejects(bad.chooseDestination(selection),code);await assert.rejects(bad.reveal(result),code);
- const cancelled=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>null,reveal:async()=>true}});assert.ok(cancelled);assert.equal(await cancelled.chooseDestination(selection),null);
+ const cancelled=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>({ok:true,value:null}),reveal:async()=>({ok:true,value:true})}});assert.ok(cancelled);assert.equal(await cancelled.chooseDestination(selection),null);
 });
 
 test('backup OS save sheet keeps its captured parent and native-dialog lease through cancel or retired frame',async()=>{
@@ -292,12 +294,129 @@ test('backup OS save sheet keeps its captured parent and native-dialog lease thr
  for(const retire of [false,true]){
   const window={},context={},tokens=new Set<unknown>(),gate=Promise.withResolvers<{canceled:boolean;filePath?:string}>(),shown=Promise.withResolvers<void>(),calls:unknown[][]=[];let current=true;
   const host={contextFor:()=>({contextId:'owner'}),prepareNativeDialog:(value:unknown)=>{calls.push(['prepare',value]);return true;}};
-  const scope={windowHost:host,nativeDialogs:tokens,trayHost:null,refreshApplicationMenu:()=>{},ownsWindow:()=>current,finishNativePresentation:(...args:unknown[])=>calls.push(['finish',...args]),nt:(key:string)=>key,
+  const scope={windowHost:host,nativeDialogs:tokens,trayHost:null,refreshApplicationMenu:()=>{},ownsWindow:()=>current,finishNativePresentation:(...args:unknown[])=>calls.push(['finish',...args]),nt:(key:string)=>key,probeDesktopProjectLocation:()=>assert.fail('Cancelled or retired picker must not probe a target'),
    dialog:{showSaveDialog:(parent:unknown,options:unknown)=>{calls.push(['show',parent,options]);shown.resolve();return gate.promise;}}};
-  const choose=lenientFunction(...Object.keys(scope),'let trayIntent=0;'+functionSource+';return chooseOwnedBackupFile;')(...Object.values(scope)) as (window:unknown,context:unknown,file:string,check:()=>void)=>Promise<string|null>;
-  const pending=choose(window,context,'/chosen.mioon',()=>{if(!current)throw Error('retired');});await shown.promise;
+  const choose=lenientFunction(...Object.keys(scope),'let trayIntent=0;'+functionSource+';return chooseOwnedBackupFile;')(...Object.values(scope)) as (window:unknown,context:unknown,file:string,check:()=>void,admit:(facts:ProjectLocationFacts)=>Promise<boolean>)=>Promise<string|null>;
+  const pending=choose(window,context,'/chosen.mioon',()=>{if(!current)throw Error('retired');},async()=>assert.fail('Cancelled or retired picker must not admit a target'));await shown.promise;
   assert.equal(tokens.size,1);assert.equal(calls[1][1],window,'sheet parent is the retained initiating window');if(retire)current=false;
   gate.resolve({canceled:!retire,filePath:'/chosen.mioon'});if(retire)await assert.rejects(pending,/retired/u);else assert.equal(await pending,null);
   assert.equal(tokens.size,0);assert.equal(calls.some(call=>call[0]==='finish'),!retire,'cleanup cannot resume a retired frame');
  }
+});
+
+/** Execute both the production picker and its actual ownerForEvent wiring,
+ * sharing the same admit function used by the native create/copy entrances. */
+function backupLocationPicker(file:string,options:{facts?:ProjectLocationFacts;probe?:(input:unknown)=>Promise<ProjectLocationFacts>;warning?:()=>Promise<void>}={}) {
+ const source=fs.readFileSync(new URL('../apps/desktop/src/main.ts',import.meta.url),'utf8');
+ const pickerStart=source.indexOf('async function chooseOwnedBackupFile('),pickerEnd=source.indexOf('\nasync function presentForReload(',pickerStart);
+ const admitStart=source.indexOf('    const admit=async('),admitEnd=source.indexOf('\n    const locationHelp=',admitStart);
+ const ownerStart=source.indexOf('      ownerForEvent:event=>{',source.indexOf('workspaceNativeHost=createWorkspaceNativeHost'));
+ const ownerEnd=source.indexOf('\n      readWorkspaceRoot:',ownerStart);
+ assert.ok(pickerStart>0&&pickerEnd>pickerStart&&admitStart>0&&admitEnd>admitStart&&ownerStart>0&&ownerEnd>ownerStart);
+ const frame={url:'http://127.0.0.1:4321/'},window={webContents:{mainFrame:frame}},context={},tokens=new Set<unknown>(),calls:unknown[][]=[];
+ let current=true;
+ const check=()=>{if(!current)throw Object.assign(Error('retired'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});};
+ const owner={role:'launcher',contextId:'owner',frame,url:frame.url,isCurrent:()=>current};
+ const scope={context,restarting:false,windowHost:{contextFor:()=>owner,prepareNativeDialog:()=>true,ownerForContents:()=>owner,windowForContents:()=>window},
+  nativeDialogs:tokens,trayHost:null,refreshApplicationMenu:()=>{},ownsWindow:()=>current,
+  finishNativePresentation:()=>{calls.push(['finish']);},nt:(key:string)=>key,nativeBackendCurrent:check,
+  nativeOwner:()=>current?{window,isCurrent:()=>current}:null,
+  probeDesktopProjectLocation:async(input:unknown)=>{calls.push(['probe',input]);assert.equal(tokens.size,0,'save sheet lease is released before location admission');return options.probe?options.probe(input):options.facts??{fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};},
+  showOwnedDialog:async(parent:unknown,ownerContext:unknown,warning:unknown)=>{calls.push(['warning',warning]);assert.equal(parent,window);assert.equal(ownerContext,context);await options.warning?.();return 0;},
+  dialog:{showSaveDialog:async(parent:unknown)=>{calls.push(['save']);assert.equal(parent,window);return {canceled:false,filePath:file};}}};
+ const ownerForEvent=lenientFunction(...Object.keys(scope),'let trayIntent=0;'+source.slice(pickerStart,pickerEnd)+source.slice(admitStart,admitEnd)+';return ({'+source.slice(ownerStart,ownerEnd)+'}).ownerForEvent;')(...Object.values(scope)) as (event:{sender:unknown;senderFrame:unknown})=>{chooseBackupFile(defaultPath:string):Promise<string|null>}|null;
+ const captured=ownerForEvent({sender:window.webContents,senderFrame:frame});assert.ok(captured);
+ return {calls,tokens,choose:()=>captured.chooseBackupFile('/default.mioon'),retire:()=>{current=false;}};
+}
+
+test('backup destination uses duplicate location admission and its real shared rejection/warning rules without writes',async t=>{
+ const f=backupFixture(t),before=fs.readdirSync(f.chosen),base:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
+ for(const [facts,rejected,warning] of [
+  [base,false,null], [{...base,isLocal:false},true,'native.projectLocationRejected'], [{...base,volumeReadOnly:true},true,'native.projectLocationRejected'],
+  [{...base,cloud:'known-icloud'},false,'native.projectLocationWarning'], [{...base,cloud:'known-file-provider'},false,'native.projectLocationWarning'],
+  [{...base,fileSystem:'exFAT'},false,'native.projectLocationWarning'], [{...base,permissionBits:false},false,'native.projectLocationWarning'],
+  [{...base,cloud:'unknown'},false,null],
+ ] as const){
+  const picker=backupLocationPicker(f.file.replace(/\.mioon$/u,''),{facts});
+  if(rejected)await assert.rejects(picker.choose(),{code:'PROJECT_LOCATION_REJECTED'});else assert.equal(await picker.choose(),f.file);
+  assert.deepEqual(picker.calls.slice(0,3),[['save'],['finish'],['probe',{path:f.file,purpose:'duplicate',isDirectory:false}]]);
+  assert.equal(picker.calls.filter(call=>call[0]==='warning').length,warning?1:0);
+  if(warning)assert.equal((picker.calls[3][1] as {message:string}).message,warning);
+  assert.equal(picker.tokens.size,0);assert.deepEqual(fs.readdirSync(f.chosen),before);assert.equal(fs.existsSync(f.file),false);
+ }
+});
+
+test('late or failed backup location probes and warnings cannot retain a destination or restore',async t=>{
+ const f=backupFixture(t),facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
+ const probe=Promise.withResolvers<ProjectLocationFacts>(),started=Promise.withResolvers<void>();
+ const stale=backupLocationPicker(f.file,{probe:()=>{started.resolve();return probe.promise;}}),waiting=stale.choose();
+ await started.promise;stale.retire();probe.resolve(facts);await assert.rejects(waiting,{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+ assert.equal(stale.calls.some(call=>call[0]==='warning'),false);assert.equal(stale.tokens.size,0);
+ const gate=Promise.withResolvers<void>(),shown=Promise.withResolvers<void>();
+ const warned=backupLocationPicker(f.file,{facts:{...facts,cloud:'known-icloud'},warning:()=>{shown.resolve();return gate.promise;}}),pending=warned.choose();
+ await shown.promise;warned.retire();gate.resolve();await assert.rejects(pending,{code:'WORKSPACE_NATIVE_UNAVAILABLE'});assert.equal(warned.tokens.size,0);
+ for(const failure of ['PROJECT_ACCESS_DENIED','PROJECT_LOCATION_INVALID']){
+  const picker=backupLocationPicker(f.file,{probe:async()=>{throw Object.assign(Error('private path must stay native'),{code:failure});}});
+  await assert.rejects(picker.choose(),{code:failure});assert.equal(picker.calls.some(call=>call[0]==='warning'),false);assert.equal(picker.tokens.size,0);
+ }
+ assert.equal(fs.existsSync(f.file),false);assert.deepEqual(fs.readdirSync(f.chosen),[]);
+});
+
+test('backup IPC preserves only bounded error codes through JSON transport, never backend messages or paths',async t=>{
+ const f=backupFixture(t),initialNames=fs.readdirSync(f.chosen);
+ for(const inputCode of [...BACKUP_NATIVE_ERROR_CODES,'EACCES','EPERM','EROFS','PROJECT_FILE_ACCESS_DENIED','PRIVATE_UNKNOWN']){
+  const expected=['EACCES','EPERM','EROFS','PROJECT_FILE_ACCESS_DENIED'].includes(inputCode)?'PROJECT_ACCESS_DENIED':inputCode==='PRIVATE_UNKNOWN'?'WORKSPACE_NATIVE_UNAVAILABLE':inputCode;
+  f.options.readBackup=async()=>{throw Object.assign(Error('/private/backend/path secret message'),{code:inputCode,details:{path:'/private/backend/path'}});};
+  const host=createWorkspaceNativeHost(f.options),invoke=async(_channel:unknown,request:unknown)=>JSON.parse(JSON.stringify(await host.invoke({},request)));
+  const result=await host.invoke({},f.choose());assert.deepEqual(result,{ok:false,code:expected});assert.equal(JSON.stringify(result).includes('private'),false);
+  const bridge=createWorkspaceNativeBridges(invoke),web=readProjectBackupNativeActions({__mioonProjectBackups:{
+   chooseDestination:async(input:Parameters<typeof bridge.projectBackups.chooseDestination>[0])=>JSON.parse(JSON.stringify(await bridge.projectBackups.chooseDestination(input))),
+   reveal:async(input:Parameters<typeof bridge.projectBackups.reveal>[0])=>JSON.parse(JSON.stringify(await bridge.projectBackups.reveal(input))),
+  }});assert.ok(web);
+  await assert.rejects(web.chooseDestination(f.selection),(error:unknown)=>{
+   assert.equal((error as {code?:unknown}).code,expected);assert.equal(String(error).includes('private'),false);return true;
+  });
+  assert.deepEqual(fs.readdirSync(f.chosen),initialNames);assert.equal(f.calls.some(call=>call[0]==='choose'||call[0]==='reveal'),false);
+ }
+ for(const value of [true,null,{ok:false,code:'UNKNOWN_SECRET'},{ok:false,code:'PROJECT_ACCESS_DENIED',message:'private'},{ok:true,value:null,other:'private'},f.selection]){
+  const bridge=createWorkspaceNativeBridges(async()=>value);
+  assert.deepEqual(await bridge.projectBackups.chooseDestination(f.selection),{ok:false,code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+  const web=readProjectBackupNativeActions({__mioonProjectBackups:bridge.projectBackups});assert.ok(web);
+  await assert.rejects(web.chooseDestination(f.selection),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
+ }
+});
+
+test('backup IPC success and change errors retain chooser/registry proofs and the other native action formats',async t=>{
+ const f=backupFixture(t),bridge=createWorkspaceNativeBridges(async(_channel,request)=>JSON.parse(JSON.stringify(await f.host.invoke({},request))));
+ assert.deepEqual(await bridge.projectBackups.chooseDestination(f.selection),{ok:true,value:{...f.selection,projectFile:f.file}});
+ const {result}=f.publish();assert.deepEqual(await bridge.projectBackups.reveal(result),{ok:true,value:true});assert.equal(f.calls.filter(call=>call[0]==='reveal').length,1);
+ assert.equal(await f.host.invoke({}, {action:'restart'}),true,'non-backup IPC keeps its existing raw result');
+ const changed=backupFixture(t);let reads=0;changed.options.readBackup=async()=>({...changed.backup,contentSequence:++reads===1?4:5});
+ assert.deepEqual(await createWorkspaceNativeHost(changed.options).invoke({},changed.choose()),{ok:false,code:'PROJECT_BACKUP_CHANGED'});
+ assert.equal(fs.existsSync(changed.file),false);
+ const moved=backupFixture(t);await moved.host.dispatch({},moved.choose());const published=moved.publish();let entries=0;
+ moved.options.readProjectEntry=async()=>({...published.entry,entry:{...published.entry.entry,project:{...published.entry.entry.project,name:++entries===1?'first':'changed'}}});
+ assert.deepEqual(await moved.host.invoke({}, {action:'revealRestoredBackup',result:published.result}),{ok:false,code:'PROJECT_BACKUP_RESTORE_CHANGED'});
+ assert.equal(moved.calls.some(call=>call[0]==='reveal'),false);
+});
+
+test('restored-file reveal distinguishes changed files, denied access and unknown I/O without shell effects or writes',async t=>{
+ for(const [failure,expected] of [['EACCES','PROJECT_ACCESS_DENIED'],['EIO','WORKSPACE_NATIVE_UNAVAILABLE'],['ENOENT','PROJECT_BACKUP_RESTORE_CHANGED']] as const){
+  const f=backupFixture(t);await f.host.dispatch({},f.choose());const {result}=f.publish(),before=fs.readFileSync(f.file);
+  const original=fs.lstatSync;t.mock.method(fs,'lstatSync',(...args:Parameters<typeof original>)=>{if(String(args[0])===f.file)throw Object.assign(Error('/private/file must not leave main'),{code:failure});return original(...args);});syncBuiltinESMExports();
+  try{assert.deepEqual(await f.host.invoke({}, {action:'revealRestoredBackup',result}),{ok:false,code:expected});assert.equal(f.calls.some(call=>call[0]==='reveal'),false);}
+  finally{t.mock.restoreAll();syncBuiltinESMExports();}
+  assert.deepEqual(fs.readFileSync(f.file),before);
+ }
+});
+
+test('backup-only authenticated metadata failures retain a safe code and ignore untrusted error details',async t=>{
+ const projectId=randomUUID(),server=http.createServer((_req,res)=>{res.writeHead(403,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:{code:'PROJECT_ACCESS_DENIED',message:'/private/project secret',details:{path:'/private/project'}}}));});
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
+ const address=server.address();assert.ok(address&&typeof address==='object');const base=`http://127.0.0.1:${address.port}`;
+ const read=(resource:string,input?:object)=>readNativeBackendMetadata({base,token:'t'.repeat(64),resource,input,signal:new AbortController().signal,check:()=>{}});
+ for(const [resource,input] of [['/api/rpc',{operation:'project.backup.inspect',input:{projectId,backupId:randomUUID()}}],[`/api/project-entries/${projectId}`,undefined]] as const){
+  await assert.rejects(read(resource,input),(error:unknown)=>{assert.equal((error as {code?:unknown}).code,'PROJECT_ACCESS_DENIED');assert.equal(String(error).includes('private'),false);return true;});
+ }
+ await assert.rejects(read('/api/rpc',{operation:'project.other',input:{}}),code,'unrelated native metadata keeps its previous error protocol');
 });

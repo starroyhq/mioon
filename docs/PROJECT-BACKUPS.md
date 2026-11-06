@@ -96,6 +96,8 @@ MCP 名称为 `project_backup_list`、`project_backup_inspect`、`project_backup
 
 常见错误包括 `PROJECT_BACKUP_NOT_FOUND`、`PROJECT_BACKUP_INDEX_INVALID`、`PROJECT_BACKUP_INVALID`、`PROJECT_BACKUP_CHANGED`、`PROJECT_BACKUP_COPY_FAILED`、`PROJECT_BACKUP_RESTORE_CHANGED`、`PROJECT_BACKUP_RESTORE_BUSY`、`REQUEST_ID_REUSED` 和 `PROJECT_FILE_EXISTS`。客户端不会在断连后自动重发恢复；错误保留 requestId 和“可能已完成”的信息，调用方用原输入明确对账。
 
+坏源恢复界面只列该项目的自动备份，不提供版本标签或存为版本入口，不为查看备份 acquire 坏源。只读查看标题包含备份时间与原因。界面按错误码显示四语文案，不直接展示服务端错误消息。桌面恢复目标按“复制项目”的位置规则准入：网络卷、只读卷拒绝；云盘、同步盘及 exFAT 等警告需明确确认，每次等待后重验原窗口和后端身份。
+
 ## 失败、慢备份和已知边界
 
 备份 hook 捕获自身已经结束的复制、校验、发布和清理失败，写安全错误码和通用说明后正常返回，不使打开或关闭失败。状态写失败还有本地结构化警告兜底，不记录原始异常、路径堆栈或秘密。重启发现旧 running/slow 状态时返回 `PROJECT_BACKUP_INTERRUPTED`，不假称上次仍在运行。
