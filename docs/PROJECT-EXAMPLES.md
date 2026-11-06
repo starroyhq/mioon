@@ -21,6 +21,7 @@ node scripts/create-project-file-example.ts --output=/absolute/new/timeline-basi
 - 网页构建插件先严格校验源资源，再生成 `dist/project-examples/timeline-basics/`。
 - 桌面 staging 复用这份网页产物，复制至 `build/examples/`，不再把示例重复装入 ASAR 的 web 目录。
 - electron-builder 通过 `extraResources` 把它放到 `resources/examples/`；beforePack、afterPack 再次校验。元数据、项目与素材逐项检查，未知文件、符号链接、硬链接、坏 hash 和超出 5 MiB 的示例均拒绝。
+- macOS 保持示例文件只读；签名配置仅跳过固定示例九个数据文件的单文件 `codesign`，它们仍由外层应用签名的资源封印保护。应用本体、helper、framework 和原生模块照常签名，公证及最终签名检查不变。调整示例文件清单时须同步更新这份精确白名单及签名选择回归，不能放宽到整个资源目录或文件扩展名。
 - 网页服务端从所选 `distDir/project-examples` 加载；桌面主进程向 utility 后端传受信的 `resources/examples` 路径。运行时不读取仓库的 examples 源目录，也不会在安装目录生成或修复示例。
 
 宿主配置 `projectTemplatesDir` 是服务端/主进程能力，不是 HTTP 输入；已有的进程内 `projectTemplates` 数组可用于显式目录覆盖。安装资源缺失或损坏时只停用示例 catalog，普通项目仍可使用；模板请求按现有 `PROJECT_TEMPLATE_NOT_FOUND` 拒绝，不回退到仓库资源。
