@@ -259,8 +259,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (entry && summary) appLibrary.registry.upsert({...entry, name: summary.name, summary: summary.summary});
       }
     };
+    const projectTemplates = options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples'));
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      projectTemplates: options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples')),
+      projectTemplates,
       ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
@@ -294,6 +295,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink,
+      templates:projectTemplates.flatMap(entry=>entry.manifest.templateId==='timeline-basics'&&entry.manifest.version===1?[{id:'timeline-basics' as const,version:1 as const}]:[]),
       copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},
       channel, signal: shutdown.signal, createProject, refreshSummaries, readScope: () => {
         const directory = validatePrivateDirectory(root), db = validateManagedFile(appLibrary.databaseFile, {root});

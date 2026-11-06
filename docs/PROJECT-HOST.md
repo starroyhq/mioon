@@ -59,7 +59,7 @@ manager 独占先排除窗口和待写工作，再关闭源；随后由关闭源
 
 应用 RPC 的 `project.adopt-copy` / `project.copy-to` 绑定选中源的项目 ID、绝对路径、dev/ino 和内容 pair；执行时重验，源始终关闭。adopt 不 acquire 原项目，也不读原 history，用 builder 暂存、持副本 SQLite 写锁、核身份后替换，不做原位重键。copyTo 只读捕获源和本机已有 history，不论 seen 是否匹配都携带版本；坏或被占用就整笔拒绝。`project.template.instantiate` 仅选可信 catalog 的模板 ID/版本，在新文件夹建实例并复制校验过的白名单素材；文件夹冲突不合并。新操作都不进公共、CLI/MCP 或 Mio discovery。
 
-受信 `projectEntries.adoptCopy({...input, windowId})` 先保留空窗口 owner，再执行替换并打开新项目，返回 `{copy, window}`；窗口冲突/容量不足时还没改变副本。`copyTo` / `instantiateTemplate` 返回复制结果，S6 再调用现有打开能力。没有接选择器、菜单、模板或窗口 UI。catalog 由 `ServerOptions.projectTemplates` 在受信初始化时注入，普通请求不提供模板路径/manifest。
+受信 `projectEntries.adoptCopy({...input, windowId})` 先保留空窗口 owner，再执行替换并打开新项目，返回 `{copy, window}`；窗口冲突/容量不足时还没改变副本。`copyTo` / `instantiateTemplate` 返回复制结果，S6 再调用现有打开能力。S6-C 2b 通过受信票据接选择器和桌面 UI，确定回执后才进入原有窗口准入链。catalog 由 `ServerOptions.projectTemplates` 在受信初始化时注入，普通请求不提供模板路径/manifest。
 
 启动恢复将 prepared/captured 的未完成转换按已记录身份清理隐藏暂存目录并作废，原键报 `PROJECT_COPY_INTERRUPTED`；不删除身份已变的后来文件，不在同键重造新身份。ready 以后完整结果继续按 intent 续办。
 
@@ -125,9 +125,13 @@ S6-C 2a 的范围是 12-04 素材状态、12-06 外部位置的现有 HTTP 接�
 
 `GET/PUT /api/last-project` 与子路径在既有 Host/Origin、令牌/会话校验后固定为 404 `NOT_FOUND`，不解析为旧定位读写。application/project runtime 不再构造 lastProject/Http，生产消费者已改用只读目录身份。应用库里的旧 `last-project-v1.json` document 保留原字节，即使损坏也不修复、不删除、不迁移；本次不提升 schema/version。旧模块和契约仅作不可达遗留与单元测试依据。
 
-原生桥由 C 线按 S6-B → S6-B2 交付，D 线在 S6-C 2b 合入后接可信重新指向选择、权限帮助/Reveal、原项目事实和只读/网络来源复制票据等。可信选择须绑定项目、素材及修订，外部位置需明确同意，取消不导入/登记/变更授权，不能先 import 再借权限。`copyTo` 的“复制到…”统一与另存为、复制项目使用同一系统存储面板，说明行相同，默认名用项目名；不再使用单独的文件夹选择面板。原位置只读/网络限制不因有复制票据而解除，复制仍完整观察源且不覆盖。
+S6-C 2b 消费 S6-B/B2 的真实项目和素材桥。系统选择、COPY 原件事实、只读/网络复制来源、固定权限帮助与 Reveal、当前位置风险、示例及废纸篓均按公开能力接线。选择和结果绑定原文档/项目/修订；目录身份与 lease 仍共同控制旧请求。未知结果保留原请求并参与原生关闭准入，用户明确重试才使用原 token/requestId，不从列表或路径缺失推断写入成功。
 
-系统选择、重新指向、Reveal、复制/另存为等未接能力，以及 S6-D 模板、S5-C 废纸篓未就绪的入口，按 D8 隐藏。特别是 `replaceAfterSaveAs` 未接通时不显示另存为；已有后端服务不构成可用 UI 的证明。
+可见性只控制新动作，最小化不退休已派发写入或未知结果；恢复可见后可沿原已确认回执完成打开，未知操作也能继续明确核对。真正的 owner 失效仍退休。首页废纸篓在换页面 lifetime 后用新的明确同意核对原请求，不能借此放开其他未知写入。
+
+模板桥仅扩固定 `timeline-basics` v1：经已有安装 catalog 验证后声明能力，main 的 `template` 存储票据持有真实目标，并经严格私有控制命令调用已有 `instantiateTemplate`。不改 S5/S6-D 服务或其他桥权限。成功创建、复制及模板的打开使用 renderer 私有的一次许可：保留原 dirty 同意，再读目录验证新 ID 后只开一次；过期、换 owner 或新输入均使许可失效。另存为保持 `saveAs=false` 并隐藏。系统权限与物理卷的实际验收仍归 Q。
+
+模板未知结果不提供不可实现的重放核对；可以刷新登记列表、关闭对话框并明确打开已有项目，但不清未知关闭记录、不自动实例化或放开新写。按 requestId 查询实例化回执和独立的写入前票据错误码由 C 线留待 0.1.x。
 
 以下保留 10-31 的接口设计、切换前清点和第 6 节实施计划作为历史依据；其中“下一轮”“现在的 composeServer”指当时的旧入口，当前行为以上述 P4 状态和实际源码为准。S0a 内核接口的调用时机仍见第 5 节。
 

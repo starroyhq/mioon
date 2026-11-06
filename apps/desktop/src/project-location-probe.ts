@@ -71,7 +71,7 @@ async function systemMounts(platform:NodeJS.Platform):Promise<readonly DesktopPr
  * permission/write trial, recursive search, download or user-data mutation.
  * The caller rejects nonlocal/readonly facts and owns any warning UI. */
 export async function probeDesktopProjectLocation(input:DesktopProjectLocationInput,{platform=process.platform,homeDir=homedir(),readMounts,readVolume=readDesktopProjectVolume,realpath:resolve=realpath,lstat:stat=lstat}:DesktopProjectLocationDependencies={}):Promise<ProjectLocationFacts> {
- if(!input||typeof input.path!=='string'||!path.posix.isAbsolute(input.path)||input.path.length>4096||input.path.includes('\0')||typeof input.isDirectory!=='boolean'||!['open','create','save-as','duplicate','copy-to'].includes(input.purpose)||!['darwin','linux'].includes(platform))return invalid();
+ if(!input||typeof input.path!=='string'||!path.posix.isAbsolute(input.path)||input.path.length>4096||input.path.includes('\0')||typeof input.isDirectory!=='boolean'||!['open','create','save-as','duplicate','copy-to','template'].includes(input.purpose)||!['darwin','linux'].includes(platform))return invalid();
  const selected=path.posix.resolve(input.path);let real:string,existing:string;
  try{
   let info:EntryStat|undefined;

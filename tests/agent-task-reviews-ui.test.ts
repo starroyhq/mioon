@@ -235,6 +235,9 @@ test('the project menu uses real rules and the retired notes UI has no current e
  const app=read('App.tsx');assert.match(app,/project-menu-rules/u);assert.doesNotMatch(app,/ProjectNotesDialog|project-menu-notes|projectNotes\./u);
  for(const file of ['ProjectNotesDialog.tsx','project-notes.ts','project-notes.css'])assert.equal(existsSync(new URL('../apps/web/src/'+file,import.meta.url)),false);
  const rules=read('project-file/ProjectRules.tsx');assert.match(rules,/projectFile\.rules/u);assert.doesNotMatch(rules,/projectNotes\./u);
+ const start=app.indexOf('<DropdownMenuContent align="start" className="workbench-project-menu">'),menu=app.slice(start,app.indexOf('</DropdownMenuContent>',start));
+ assert.doesNotMatch(menu,/project-menu-duplicate/u,'An opened source cannot be duplicated from the editor');
+ const order=['project-menu-save-version','project-menu-history','project-menu-rules'].map(key=>menu.indexOf(key));assert.ok(order.every(index=>index>0));assert.deepEqual([...order].sort((a,b)=>a-b),order);
 });
 
 test('App wires review marks apart from the "Mio 修改" marks and clears them on project and mode switches', () => {

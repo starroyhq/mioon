@@ -10,6 +10,11 @@ import { createLauncherClient } from '../apps/web/src/launcher-state.ts';
 import { createProjectEntryController } from '../apps/web/src/project-entry-state.ts';
 import { projectEntriesResponseSchema } from '../packages/contracts/src/project-entry.ts';
 import * as identityModule from '../apps/web/src/project-entry-identity.ts';
+import * as desktopClientModule from '../apps/web/src/project-entry-desktop-client.ts';
+import * as desktopStateModule from '../apps/web/src/native-project-desktop-state.ts';
+import {i18nTestModule} from './helpers/i18n.ts';
+import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
+import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 
 const uuid = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
@@ -25,11 +30,11 @@ const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 
 /** Run the real renderer hook and controller; only React scheduling, the DOM,
  * read-only directory transport and native bridge are synthetic. */
-function fixture({ initialContext = context(), visible = true, list, open, explicitProjectId = null, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;explicitProjectId?:string|null;create?:(input:unknown)=>unknown} = {}) {
+function fixture({ initialContext = context(), visible = true, list, open, explicitProjectId = null, desktop, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;explicitProjectId?:string|null;desktop?:ProjectEntriesDesktopBridge;create?:(input:unknown)=>unknown} = {}) {
   const effects:(()=>void|(()=>void))[] = [], cleanups:(()=>void)[] = [], calls: (string | Error | undefined)[] = [], opens:{projectId:string;remember:boolean;entryToken:string}[] = [], listeners = new Set<(value:ReturnType<typeof context>)=>void>();
   let current = initialContext, catalog = [project(10), project(11)], controller:Controller;
   const document = new EventTarget() as EventTarget&{visibilityState:string}; document.visibilityState = visible ? 'visible' : 'hidden';
-  const window:{location:{search:string};__mioonProjectEntryAdmission?:{consume:Controller['consume']}} = { location: { search: explicitProjectId === null ? '' : `?project=${explicitProjectId}` } };
+  const window:{location:{search:string};__mioonProjectEntryAdmission?:{consume:Controller['consume']};__mioonProjectEntries?:ProjectEntriesDesktopBridge} = { location: { search: explicitProjectId === null ? '' : `?project=${explicitProjectId}` }, ...(desktop ? {__mioonProjectEntries: desktop} : {}) };
   const bridge = {
     context: async () => current,
     subscribe(listener:(value:ReturnType<typeof context>)=>void) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -42,11 +47,14 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
   };
   const module = {exports:{}} as {exports:typeof import('../apps/web/src/native-project-entry.ts')};
   Function('require', 'module', 'exports', 'window', 'document', code)((name: string) => {
-    if (name === 'react') return { useEffect: (callback:()=>void|(()=>void)) => effects.push(callback), useState: (initial: () => unknown) => [typeof initial === 'function' ? initial() : initial, () => {}] };
+    if (name === 'react') return {useRef: (value: unknown) => ({current: value}), useEffect: (callback:()=>void|(()=>void)) => effects.push(callback), useState: (initial: () => unknown) => [typeof initial === 'function' ? initial() : initial, () => {}] };
     if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
     if (name === './launcher-state.ts') return { createLauncherClient };
     if (name === './project-entry-state.ts') return { createProjectEntryController };
     if (name === './project-entry-identity.ts') return identityModule;
+    if (name === './project-entry-desktop-client.ts') return desktopClientModule;
+    if (name === './native-project-desktop-state.ts') return desktopStateModule;
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
     assert.fail(`Unexpected hook dependency ${name}`);
   }, module, module.exports, window, document);
   controller = module.exports.useNativeProjectEntry(({ context: initialContext, bridge,
@@ -59,12 +67,113 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
     } } as unknown as Parameters<typeof module.exports.useNativeProjectEntry>[0]));
   effects.forEach(effect => { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); });
   return { controller, calls, opens, window,
+    replayEffects() {cleanups.splice(0).forEach(cleanup => cleanup()); effects.forEach(effect => {const cleanup = effect(); if (cleanup) cleanups.push(cleanup);});},
     catalog(value: { id: string; name: string; description: string; revision: number; createdAt: string; updatedAt: string; }[]) { catalog = value; },
-    receive(patch: { editorCount?: number; quitting?: boolean; }) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
+    receive(patch: { editorCount?: number; quitting?: boolean; leaseRevoked?: boolean; editorPhase?: string }) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
     visibility(value: boolean) { document.visibilityState = value ? 'visible' : 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
     dispose() { cleanups.forEach(cleanup => cleanup()); },
   };
 }
+
+test('StrictMode effect replay fences the disposed boot continuation before native capability initialization', async () => {
+  const requests: unknown[] = [];
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+    requests.push(input); assert.ok(input !== null && typeof input === 'object' && 'action' in input);
+    if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (input.action === 'takePendingOpen') return {ok: true, data: null};
+    assert.fail('Initialization must only read native capabilities and pending metadata');
+  });
+  const f = fixture({desktop}); f.replayEffects();
+  await tick(); await tick();
+  assert.equal(f.controller.identity?.getState().phase, 'ready'); assert.equal(f.controller.identity?.getState().identityBlocked, false);
+  assert.equal(f.controller.getState().catalogReady, true);
+  assert.equal(f.controller.desktop?.getState().capabilities?.ready, true);
+  assert.equal(f.controller.desktop?.getState().busy, false); assert.equal(f.controller.desktop?.getState().failure, null);
+  assert.deepEqual(requests, [{action: 'capabilities'}, {action: 'takePendingOpen'}]); assert.deepEqual(f.opens, []);
+  f.dispose();
+});
+test('actual native hook keeps a dispatched create unknown in its combined close snapshot after lease revocation', async () => {
+  const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [];
+  const created = directory([project(12)]).registered[0].project;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+    assert.ok(input !== null && typeof input === 'object' && 'action' in input); const request = input as Record<string, unknown>; requests.push(request);
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
+    if (request.action === 'createAtSelection') return {ok: true, data: await held.promise};
+    assert.fail('A retired create must never open another window');
+  });
+  const f = fixture({desktop, initialContext: context({role: 'editor', initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1})});
+  try {
+    await tick(); await tick(); assert.equal(f.controller.desktop?.showCreate(), true); f.controller.desktop?.change({name: 'Original input'}); await f.controller.desktop?.chooseLocation();
+    const pending = f.controller.desktop!.create(); await tick(); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+    f.receive({leaseRevoked: true, editorPhase: 'failed'});
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().dirty, true);
+    held.resolve({status: 'created', project: created}); assert.equal(await pending, false);
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().busy, false);
+    assert.equal(f.controller.desktop?.getState().values.name, 'Original input'); assert.deepEqual(f.opens, []);
+    f.receive({leaseRevoked: false}); assert.equal(await f.controller.desktop?.recheck(), false); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+  } finally {held.resolve({status: 'created', project: created}); f.dispose();}
+});
+test('an admitted native create survives hiding, defers its acknowledged open and resumes once on reveal', async () => {
+  const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [], created = directory([project(12)]).registered[0].project;
+  let f: ReturnType<typeof fixture>;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+    const request = raw as Record<string, unknown>; requests.push(request);
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (request.action === 'takePendingOpen') return {ok: true, data: null};
+    if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
+    if (request.action === 'createAtSelection') return {ok: true, data: await held.promise};
+    if (request.action === 'openRecent') {assert.equal(f.controller.consume(String(request.entryToken), String(request.projectId)).accepted, true); return {ok: true, data: {status: 'opened', projectId: request.projectId, windowId: uuid(90)}};}
+    assert.fail(String(request.action));
+  });
+  f = fixture({desktop});
+  try {
+    await tick(); await tick(); f.controller.desktop!.showCreate(); f.controller.desktop!.change({name: 'Admitted native draft'}); await f.controller.desktop!.chooseLocation();
+    const pending = f.controller.desktop!.create(); await tick(); f.visibility(false);
+    assert.equal(f.controller.desktop!.getState().blocked, false); assert.equal(await f.controller.desktop!.openFile(), false);
+    f.catalog([project(10), project(11), project(12)]); held.resolve({status: 'created', project: created}); assert.equal(await pending, true);
+    assert.equal(f.controller.desktop!.getState().createState.kind, 'created'); assert.equal(f.controller.readCloseSnapshot().unknown, false); assert.equal(requests.filter(row => row.action === 'openRecent').length, 0);
+    f.visibility(true); await tick(); await tick(); assert.equal(requests.filter(row => row.action === 'openRecent').length, 1); assert.equal(f.controller.desktop!.getState().createOpen, false);
+    f.visibility(false); f.visibility(true); await tick(); assert.equal(requests.filter(row => row.action === 'createAtSelection').length, 1); assert.equal(requests.filter(row => row.action === 'openRecent').length, 1);
+    assert.equal(f.controller.desktop!.getState().values.name, 'Admitted native draft'); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  } finally {held.resolve({status: 'created', project: created}); f.dispose();}
+});
+test('native unknown remains the same owner through hiding and explicit reconciliation reuses exactly its original input', async () => {
+  const requests: Record<string, unknown>[] = [], created = directory([project(12)]).registered[0].project; let attempts = 0, f: ReturnType<typeof fixture>;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+    const request = raw as Record<string, unknown>; requests.push(request);
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (request.action === 'takePendingOpen') return {ok: true, data: null};
+    if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
+    if (request.action === 'createAtSelection') {if (++attempts === 1) throw Error('Lost ACK'); return {ok: true, data: {status: 'created', project: created}};}
+    if (request.action === 'openRecent') {assert.equal(f.controller.consume(String(request.entryToken), String(request.projectId)).accepted, true); return {ok: true, data: {status: 'opened', projectId: request.projectId, windowId: uuid(90)}};}
+    assert.fail(String(request.action));
+  });
+  f = fixture({desktop});
+  try {
+    await tick(); await tick(); f.controller.desktop!.showCreate(); f.controller.desktop!.change({name: 'Same native input'}); await f.controller.desktop!.chooseLocation(); await f.controller.desktop!.create();
+    assert.equal(f.controller.readCloseSnapshot().unknown, true); f.visibility(false); assert.equal(await f.controller.desktop!.recheck(), false); f.visibility(true); await tick();
+    assert.equal(f.controller.desktop!.getState().blocked, false); assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(attempts, 1);
+    f.catalog([project(10), project(11), project(12)]); assert.equal(await f.controller.desktop!.recheck(), true); assert.equal(attempts, 2);
+    assert.deepEqual(requests.filter(row => row.action === 'createAtSelection')[0], requests.filter(row => row.action === 'createAtSelection')[1]);
+    assert.equal(requests.filter(row => row.action === 'chooseLocation').length, 1); assert.equal(requests.filter(row => row.action === 'openRecent').length, 1); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  } finally {f.dispose();}
+});
+test('an initially hidden native launcher takes its pending OS result once after reveal', async () => {
+  const requests: unknown[] = [], desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+    requests.push(raw); const request = raw as {action: string};
+    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (request.action === 'takePendingOpen') return {ok: true, data: {status: 'copy', token: uuid(700), name: 'Pending copy'}};
+    assert.fail('Presentation metadata must not mutate or open a project');
+  });
+  const f = fixture({desktop, visible: false});
+  try {
+    await tick(); await tick(); assert.equal(f.controller.desktop?.getState().capabilities?.ready, true); assert.equal(f.controller.desktop?.getState().failure, null);
+    assert.equal(requests.filter(raw => (raw as {action: string}).action === 'takePendingOpen').length, 0);
+    f.visibility(true); await tick(); await tick(); assert.equal(f.controller.desktop?.getState().failure?.issue.code, 'PROJECT_FILE_COPY');
+    f.visibility(false); f.visibility(true); await tick(); assert.equal(requests.filter(raw => (raw as {action: string}).action === 'takePendingOpen').length, 1); assert.deepEqual(f.opens, []);
+  } finally {f.dispose();}
+});
 
 test('returning native launcher refreshes A/B to A/B/C after the last editor closes without a manual click', async () => {
   const f = fixture(); await tick();

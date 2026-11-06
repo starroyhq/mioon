@@ -1,0 +1,8 @@
+.project-home-native-notice {
+  position: fixed;
+  z-index: 140;
+  right: 24px;
+  bottom: 24px;
+  width: min(440px, calc(100vw - 48px));
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--wb-shadow-color) 45%, transparent);
+}

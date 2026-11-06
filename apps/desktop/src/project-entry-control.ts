@@ -95,6 +95,7 @@ export function createProjectEntryControlClient({backendId,send,isCurrent=()=>tr
   saveAs:(input:Parameters<NonNullable<ProjectEntryControlPort['saveAs']>>[0])=>request({operation:'saveAs',input}),
   duplicate:(input:Parameters<NonNullable<ProjectEntryControlPort['duplicate']>>[0])=>request({operation:'duplicate',input}),
   copyTo:(input:Parameters<NonNullable<ProjectEntryControlPort['copyTo']>>[0])=>request({operation:'copyTo',input}),
+  instantiateTemplate:(input:Extract<ProjectEntryControlCommand,{operation:'instantiateTemplate'}>['input'])=>request({operation:'instantiateTemplate',input}),
   onWindowRevoked(listener:(event:ProjectEntryWindowRevoked)=>void){listeners.add(listener);return()=>{listeners.delete(listener);};},
  };
  return {api,request,handle,close(){if(closed)return;for(const [id,slot]of pending){cancel(id);clearTimeout(slot.timer);slot.remove();slot.reject(failure(mutates(slot.command)?'PROJECT_ENTRY_OUTCOME_UNKNOWN':'PROJECT_ENTRY_UNAVAILABLE',{requestId:id,operation:slot.command.operation}));}pending.clear();listeners.clear();closed=true;}};
@@ -132,7 +133,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'mediaRelinkPreview':if(!control.nativeRelink)throw failure();return control.nativeRelink.preview(command.input,{signal});
   case 'mediaRelinkApply':if(!control.nativeRelink)throw failure();return control.nativeRelink.apply(command.input,{signal});
   case 'mediaRelinkDiscard':if(!control.nativeRelink)throw failure();await control.nativeRelink.discard(command.input,{signal});return true;
-  case 'capabilities':return {ready:true,create:typeof control.create==='function',open:['openPath','prepareAcquire','acquire','release'].every(key=>typeof control[key as keyof ProjectEntryControlPort]==='function'),saveAs:typeof control.saveAs==='function',duplicate:typeof control.duplicate==='function',copyTo:typeof control.copyTo==='function',adoptCopy:typeof control.adoptCopy==='function'&&typeof control.inspectSelectedCopy==='function',openOriginal:typeof control.observeSource==='function',copySource:typeof control.observeSource==='function'&&typeof control.copyTo==='function'};
+  case 'capabilities':return {ready:true,create:typeof control.create==='function',open:['openPath','prepareAcquire','acquire','release'].every(key=>typeof control[key as keyof ProjectEntryControlPort]==='function'),saveAs:typeof control.saveAs==='function',duplicate:typeof control.duplicate==='function',copyTo:typeof control.copyTo==='function',adoptCopy:typeof control.adoptCopy==='function'&&typeof control.inspectSelectedCopy==='function',openOriginal:typeof control.observeSource==='function',copySource:typeof control.observeSource==='function'&&typeof control.copyTo==='function',...(typeof control.instantiateTemplate==='function'&&control.templates?.length?{templates:control.templates}:{})};
   case 'prepareAcquire':if(!control.prepareAcquire)throw failure();return control.prepareAcquire(command.input);
   case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input.windowId);return true;
   case 'inspectCopy':if(!control.inspectSelectedCopy)throw failure();return control.inspectSelectedCopy(command.input);
@@ -141,6 +142,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'saveAs':if(!control.saveAs)throw failure();return control.saveAs(command.input);
   case 'duplicate':if(!control.duplicate)throw failure();return control.duplicate(command.input);
   case 'copyTo':if(!control.copyTo)throw failure();return control.copyTo(command.input);
+  case 'instantiateTemplate':if(!control.instantiateTemplate||!control.templates?.some(template=>template.id===command.input.templateId&&template.version===command.input.templateVersion))throw failure();return control.instantiateTemplate(command.input);
  }}
  return {handle(raw:unknown):boolean{
   if(!record(raw)||!['project-entry-control-request','project-entry-control-cancel','project-entry-control-release'].includes(String(raw.type)))return false;
