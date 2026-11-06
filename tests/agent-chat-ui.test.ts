@@ -49,6 +49,10 @@ test('real shared Input preserves accessible native checkbox markup, checked sta
 });
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+const recoverySource = readFileSync(new URL('../apps/web/src/ProjectBackupRecovery.tsx', import.meta.url), 'utf8');
+const recoveryStart = recoverySource.indexOf('const record ='), recoveryEnd = recoverySource.indexOf('/** A failed project');
+assert.ok(recoveryStart >= 0 && recoveryEnd > recoveryStart);
+const canOfferBackupRecovery = Function(`${stripSourceTypes(recoverySource.slice(recoveryStart, recoveryEnd).replace('export function', 'function'), {loader: 'ts'})}\nreturn canOfferBackupRecovery;`)() as (error: unknown) => boolean;
 const actualFunction = (begin: string, end: string) => { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return appSource.slice(start, stop).trim(); };
 const guardSource = actualFunction('  async function guardNavigation(', '  async function guardProjectNavigation(');
 const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
@@ -58,13 +62,16 @@ const projectSource = actualFunction('  async function selectProject(', '  async
 const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNextId = '77000000-0000-4000-8000-000000000002', navigationLaterId = '77000000-0000-4000-8000-000000000003';
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true }: {draft?:boolean;imageDraft?:boolean;dirty?:boolean;confirmation?:boolean|Promise<unknown>} = {}) {
   const editorSession = {current: 'normal'}, calls: [string,...unknown[]][] = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: {  } };
+  let backupFailure: {projectId: string; name: string} | null = {projectId: navigationProjectId, name: 'Previous failed project'};
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
   const identity=projectEntryOwnerFixture(()=>projectEntryFixture([{id:navigationProjectId},{id:navigationNextId},{id:navigationLaterId}]));
   const guardEnv = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: (value: unknown) => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async (message: unknown) => { calls.push(['confirm', message]); return confirmation; }, isCurrent: (captured: { projectId: string; epoch: number; workspace: Record<string, unknown>|null|undefined; }) => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && 'normal' === 'normal',
     setShotDirty: (value: unknown) => calls.push(['shotDirty', value]), setClipDirty: (value: unknown) => calls.push(['clipDirty', value]), setSourceDirty: (value: unknown) => calls.push(['sourceDirty', value]), setSubjectDirty: (value: unknown) => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: (scope: unknown) => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${stripSourceTypes(guardSource,{loader:'tsx'})}\n${stripSourceTypes(projectGuardSource,{loader:'tsx'})}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
-  const env = ({ message, msg: message, ...createI18nTestContext(), application: null, nativeWindow: null, nativeProjectEntry: null, workspaceRef, editorSession, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind,
+  const env = ({ message, msg: message, ...createI18nTestContext(), application: null, nativeWindow: null, nativeProjectEntry: null, workspaceRef, editorSession, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind, canOfferBackupRecovery,
+    projects: [{id: navigationProjectId, name: 'Current project'}, {id: navigationNextId, name: 'Next project'}, {id: navigationLaterId, name: 'Later project'}],
+    get backupFailure() {return backupFailure;}, setBackupFailure: (value: {projectId: string; name: string} | null) => {backupFailure = value; calls.push(['setBackupFailure', value]);},
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args: unknown[]) => calls.push(['notify', ...args]), readableError: (error: { message: unknown; }) => error.message,
     openedProject: { current: projectOpenAttempt(navigationProjectId, 0, editorSession.current) }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, projectEntryIdentityRef:{current:identity},readProjectEntryIdentity, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async (id: unknown) => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async (id: unknown) => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
@@ -79,11 +86,13 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
 test('actual App project guard Cancel retains unsent chat and current project without clearing any panel', async () => {
   const f = projectNavigation({ confirmation: false }); assert.equal(await f.selectProject(navigationNextId), false);
   assert.equal(f.currentProject.current, navigationProjectId); assert.equal(f.env.agentDraft.current, true);
+  assert.deepEqual(f.env.backupFailure, {projectId: navigationProjectId, name: 'Previous failed project'});
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0], 'confirm'); assert.match((createI18nTestContext().renderMessage((f.calls[0][1] as unknown as Parameters<ReturnType<typeof createI18nTestContext>['renderMessage']>[0])) as string), /未发送的草稿/); assert.match((createI18nTestContext().renderMessage((f.calls[0][1] as unknown as Parameters<ReturnType<typeof createI18nTestContext>['renderMessage']>[0])) as string), /已发送的回复可能继续/);
 });
 
 test('actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt', async () => {
   const f = projectNavigation(); assert.equal(await f.selectProject(navigationNextId), true); assert.equal(f.currentProject.current, navigationNextId); assert.equal(f.env.projectSessionReady(), true);
+  assert.equal(f.env.backupFailure, null);
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSourceDirty'), [['setSourceDirty', false]]);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);

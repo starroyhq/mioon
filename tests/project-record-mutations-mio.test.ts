@@ -1,7 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,readFileSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openStore} from '../packages/business/src/project-file/index.ts';
@@ -12,6 +12,9 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
+import {createHash} from 'node:crypto';
 
 type Operation = 'project.rename' | 'project.notes.set';
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -93,32 +96,43 @@ for (const operation of ['project.rename'] as const) {
 }
 
 
-test('retired Mio notes stay forbidden while the manual API retains exact ACK and revision semantics', async t => {
+test('retired notes reject public writes and preserve historical project and ACK bytes without Mio side effects', async t => {
  const f=await fixture(t),projectId=f.store.projectId,current=f.store.get('projects',projectId);assert.ok(object(current));
  assert.equal(f.tools.list().some(tool=>tool.operation==='project.notes.set'),false);
  const input={projectId,requestId:randomUUID(),expectedRevision:Number(current.revision),notes:'手工项目说明\nPreserve exact text.'};
  assert.throws(()=>f.tools.prepare({projectId,operation:'project.notes.set',input:{expectedRevision:input.expectedRevision,notes:input.notes}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
+ const saved:Record<string,unknown>={...current,notes:input.notes};f.store.put('projects',saved);
+ const response=JSON.stringify(saved,null,2)+'\n',digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
+ f.store.db.prepare('INSERT INTO project_mutation_requests VALUES(?,?,?,?)').run(input.requestId,projectId,digest,response);
  const before=f.journal.snapshot(f.run.id),usage=readMioStorage(f.store.db),revision=f.journal.targetRevision(projectId,'project',projectId);
- const saved=await f.services.call('project.notes.set',input);assert.ok(object(saved));
- assert.equal(saved.notes,input.notes);assert.equal(saved.revision,input.expectedRevision+1);
- assert.equal(f.journal.targetRevision(projectId,'project',projectId),revision+1);
+ const bytes=f.store.db.prepare('SELECT data FROM projects WHERE id=?').get(projectId)!.data,changes=f.store.db.prepare('SELECT total_changes() n').get()!.n;
+ assert.ok(object(saved));assert.equal(saved.notes,input.notes);assert.equal(saved.revision,input.expectedRevision);
+ assert.equal(f.journal.targetRevision(projectId,'project',projectId),revision);
  const receipt=f.store.db.prepare('SELECT projectId,digest,response FROM main.project_mutation_requests WHERE requestId=?').get(input.requestId);
  assert.equal(receipt?.projectId,projectId);assert.match(String(receipt?.digest),/^[a-f0-9]{64}$/u);assert.deepEqual(JSON.parse(String(receipt?.response)),saved);
- assert.deepEqual(await f.services.call('project.notes.set',input),saved);
- await assert.rejects(f.services.call('project.notes.set',{...input,expectedRevision:Number(saved.revision)}),{code:'IDEMPOTENCY_CONFLICT'});
- await assert.rejects(f.services.call('project.notes.set',{...input,requestId:randomUUID()}),{code:'REVISION_CONFLICT'});
+ await assert.rejects(f.services.call('project.notes.set',input),{code:'UNKNOWN_OPERATION',status:404});
+ await assert.rejects(f.services.call('project.notes.set',{...input,expectedRevision:Number(saved.revision)}),{code:'UNKNOWN_OPERATION',status:404});
+ await assert.rejects(f.services.call('project.notes.set',{...input,requestId:randomUUID()}),{code:'UNKNOWN_OPERATION',status:404});
+ assert.equal(f.store.db.prepare('SELECT data FROM projects WHERE id=?').get(projectId)!.data,bytes);
+ assert.equal(f.store.db.prepare('SELECT response FROM project_mutation_requests WHERE requestId=?').get(input.requestId)!.response,response);
+ assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,changes);assert.equal(existsSync(join(f.store.projectDir,'AGENTS.md')),false);
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(readMioStorage(f.store.db),usage);
 });
 
-test('a manual notes receipt failure rolls metadata, target revision and project sequence back without Mio records',async t=>{
+test('a real rules intent failure rolls back before file publication and leaves project/Mio evidence unchanged',async t=>{
  const f=await fixture(t),projectId=f.store.projectId,current=f.store.get('projects',projectId);assert.ok(object(current));
  const before=f.journal.snapshot(f.run.id),usage=readMioStorage(f.store.db),revision=f.journal.targetRevision(projectId,'project',projectId);
  const sequence=f.store.db.prepare('SELECT contentSequence FROM project.project_file').get()!.contentSequence,requestId=randomUUID();
- f.store.db.exec("CREATE TEMP TRIGGER test_notes_receipt_full BEFORE INSERT ON main.project_mutation_requests BEGIN SELECT RAISE(ABORT,'Synthetic notes receipt failure');END;");
- await assert.rejects(f.services.call('project.notes.set',{projectId,requestId,expectedRevision:Number(current.revision),notes:'must roll back'}),/Synthetic notes receipt failure/u);
+ const application=testProjectAppLibrary(f.store);assert.ok(application);
+ const rules=createMioProjectRules({store:f.store,application});t.after(()=>rules.close());
+ f.store.db.exec("CREATE TEMP TRIGGER test_rules_intent_full BEFORE INSERT ON main.mio_rule_writes BEGIN SELECT RAISE(ABORT,'Synthetic rules intent failure');END;");
+ assert.throws(()=>rules.save({requestId,expectedHash:null,text:'must roll back'}),/Synthetic rules intent failure/u);
  assert.deepEqual(f.store.get('projects',projectId),current);
  assert.equal(f.journal.targetRevision(projectId,'project',projectId),revision);
  assert.equal(f.store.db.prepare('SELECT contentSequence FROM project.project_file').get()!.contentSequence,sequence);
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests WHERE requestId=?').get(requestId)!.n,0);
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(readMioStorage(f.store.db),usage);assert.equal(f.store.db.isTransaction,false);
+ assert.equal(existsSync(join(f.store.projectDir,'AGENTS.md')),false);assert.equal(application.rulesTrust.get(projectId),null);
+ f.store.db.exec('DROP TRIGGER temp.test_rules_intent_full');
+ const saved=rules.save({requestId,expectedHash:null,text:'real AGENTS rules'});assert.equal(saved.trust,'trusted');assert.equal(readFileSync(join(f.store.projectDir,'AGENTS.md'),'utf8'),'real AGENTS rules');
 });

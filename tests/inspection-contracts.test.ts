@@ -10,7 +10,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {ToolAnnotationsSchema} from '@modelcontextprotocol/sdk/types.js';
 import {schemas, inspectionArgumentSchemas, inspectionSchemas, operationEffects,IMAGE_FIXED_OPTIONS,IMAGE_MODELS,COMFY_IMAGE_OPTIONS,
   operationEffect, assertOperationEffectCoverage, effectAnnotations, parse} from '@mioon/contracts';
-import {schemas as clientSchemas, operationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
+import {schemas as clientSchemas, operationDefinition, modelOperationDefinition, discoverSchema, discoveryEffects, jsonSchema} from '@mioon/client';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const inspections = ['project.inspect','asset.inspect','shot.inspect','timeline.inspect'] as const;
@@ -77,8 +77,15 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
     for (const field of ['readOnly', 'idempotent', 'destructive', 'openWorld', 'databaseWrite', 'fileWrite', 'externalIO', 'localProcess', 'paidGeneration'])
       assert.equal(typeof effect[(field as keyof typeof effect)], 'boolean', `${operation}: ${field}`);
     assert.equal(effect.readOnly, readOnly.has(operation), operation);
-    assert.deepEqual(operationDefinition(operation).effects, effect);
-    assert.deepEqual((discoverSchema({operation}) as ReturnType<typeof operationDefinition>).effects, effect);
+    if (operation === 'project.notes.set') {
+      assert.deepEqual(modelOperationDefinition(operation).effects, effect);
+      assert.equal(Object.hasOwn(clientSchemas, operation), false);
+      assert.throws(() => operationDefinition(operation), {code: 'UNKNOWN_OPERATION'});
+      assert.throws(() => discoverSchema({operation}), {code: 'VALIDATION_ERROR'});
+    } else {
+      assert.deepEqual(operationDefinition(operation).effects, effect);
+      assert.deepEqual((discoverSchema({operation}) as ReturnType<typeof operationDefinition>).effects, effect);
+    }
     const annotations = effectAnnotations(effect);
     assert.deepEqual(ToolAnnotationsSchema.parse(annotations), annotations);
     assert.equal(annotations.readOnlyHint, effect.readOnly);

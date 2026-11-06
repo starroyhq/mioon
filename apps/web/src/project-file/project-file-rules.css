@@ -1,4 +1,4 @@
-/* Project rules (12-12), the notice in the Mio panel (12-13) and Mio's change card (12-14). Laid out like project-notes.css. */
+/* Project rules (12-12), the current-file notice (12-13) and host proposal (12-14). */
 .pf-rules-dialog.wb-dialog[data-slot="dialog-content"] { width: min(720px, calc(100vw - 32px)); }
 .pf-rules-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-2); }
 .pf-rules-dialog textarea.pf-rules-text {
@@ -46,3 +46,7 @@
 .pf-rules-card-actions .wb-button { gap: 6px; }
 .pf-rules-card-actions .wb-button svg { width: 14px; height: 14px; }
 .pf-rules-card-result { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
+.pf-rules-complete { display: grid; gap: var(--wb-space-2); min-width: 0; font-size: var(--wb-text-label); }
+.pf-rules-complete summary { cursor: pointer; color: var(--wb-soft); }
+.pf-rules-complete pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--wb-space-2); margin-top: var(--wb-space-2); border-radius: var(--wb-radius-control); background: var(--wb-input); font: inherit; }
+.mio-rules-current-note { margin: var(--wb-space-2) 0; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }

@@ -179,7 +179,7 @@ test('HTTP CLI and official MCP agree on local version save/list/preview/restore
   const app = await raw('project.version.list', {projectId: id}, null);
   assert.equal(app.response.status, 400); assert.equal(app.body.error.code, 'VALIDATION_ERROR');
 
-  await rpc('project.notes.set', {projectId: id, requestId: randomUUID(), expectedRevision: created.revision, notes: 'Changed after snapshot'}, id);
+  await rpc('project.rename', {projectId: id, requestId: randomUUID(), expectedRevision: created.revision, name: 'Changed after snapshot'}, null);
   const before = inspect(id, db => ({state: readProjectState(db), marks: changeMarks(db)}));
   const selection = {projectId: id, versionId: saved.version.id};
   const diff = await rpc<ProjectVersionPreviewResponse>('project.version.preview', selection, id);

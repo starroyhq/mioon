@@ -37,7 +37,8 @@ interface ReportWire {applyAllowed: boolean; candidate: {applyAllowed: boolean; 
 interface MediaEvent {type?: string; kind?: string; pid?: number; [key: string]: unknown}
 interface DiscoveryWire {toolName: string; command: string; requiresRequestId: boolean; inputSchema: {required: string[]; properties: Record<string, Record<string, unknown> & {const?: unknown; minimum?: number; maximum?: number; pattern?: string; type?: string; minLength?: number; maxLength?: number}>; additionalProperties: boolean}; effects: {notes: string; [key: string]: unknown}}
 interface OfficialClient {client: Client; close(): Promise<void>; call(name: string, input: Record<string, unknown>, options?: Record<string, unknown>): Promise<WireEnvelope>}
-interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256:string;reference:MediaReference;referenceRevision:number}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
+type LifetimeListener = (...args: unknown[]) => void;
+interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}; lifetimeGuards: Map<string,LifetimeListener>}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256:string;reference:MediaReference;referenceRevision:number}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
 const sha=(bytes: Uint8Array): string=>createHash('sha256').update(bytes).digest('hex');
 const pause=(ms: number): Promise<void>=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 const environment=(url?: string): Record<string, string | undefined>=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
@@ -106,11 +107,21 @@ async function fixture(t: import('node:test').TestContext,{saved=true}: {saved?:
   const requests: Fixture['requests']=[],observe=(request: http.IncomingMessage,response: http.ServerResponse)=>{
     if(!scopedRequests.has(request))return;
     const baseline={request:request.listenerCount('aborted'),response:response.listenerCount('close')};
-    requests.push({request,response,baseline});
-    // acquire() is asynchronous: the ordinary project lease and deletion gate
-    // attach after the server's request event. Body end runs after those guards
-    // and before the decoded RPC starts business work; measure that real baseline.
-    request.once('end',()=>{baseline.request=request.listenerCount('aborted');baseline.response=response.listenerCount('close');});
+    const lifetimeGuards=new Map<string,LifetimeListener>();
+    requests.push({request,response,baseline,lifetimeGuards});
+    // Body pre-reading precedes acquisition. Capture the two real lifecycle
+    // guards when they attach, before callObservedRpc can add an observer.
+    const captureGuard=(event:string|symbol,listener:LifetimeListener)=>{
+      if(event!=='close'||!['release','done'].includes(listener.name)||!response.listeners('finish').includes(listener))return;
+      lifetimeGuards.set(listener.name,listener);
+      if(lifetimeGuards.size===2){
+        baseline.request=request.listenerCount('aborted');
+        baseline.response=response.listenerCount('close')+1; // newListener fires before insertion.
+        response.removeListener('newListener',captureGuard);
+      }
+    };
+    response.on('newListener',captureGuard);
+    cleanups.push(()=>{response.removeListener('newListener',captureGuard);});
   };
   // Capture the normal authenticated-response lifetime guard before observing
   // media work, so only new per-operation cancellation listeners are compared.
@@ -286,6 +297,11 @@ for(const channel of ['HTTP','CLI','MCP'])test(`disconnecting actual ${channel} 
   const off=onMediaProcess(((event: MediaEvent)=>{
     events.push(event);if(interrupted||event.type!=='started'||event.kind!=='ffmpeg')return;
     interrupted=true;const request=f.requests.at(-1);assert.ok(request);
+    assert.deepEqual([...request.lifetimeGuards.keys()],['release','done']);
+    for(const guard of request.lifetimeGuards.values()){
+      assert.ok(request.response.listeners('finish').includes(guard));
+      assert.ok(request.response.listeners('close').includes(guard));
+    }
     // Unlike prepare, mutation transport lifetime never installs a business
     // AbortSignal or per-observation request/response cancellation listeners.
     const enter=entry;assert.ok(enter);enter({baseline:request.baseline,actual:{request:request.request.listenerCount('aborted'),response:request.response.listenerCount('close')}});

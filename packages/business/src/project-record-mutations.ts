@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
-import {projectNotesSetInputSchema, projectRenameInputSchema} from '../../contracts/src/project-lifecycle.ts';
+import {projectRenameInputSchema} from '../../contracts/src/project-lifecycle.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 
@@ -19,16 +19,24 @@ function decoded(value: unknown): ProjectRecord {
   return record;
 }
 
-/** Kernel-only project record edits. The app host owns rename admission and
- * registry updates; notes use the same project revision and exact ACK ledger. */
-export function mutateProjectRecord(store: ProjectStore, operation: 'project.rename' | 'project.notes.set', value: unknown, {now = () => new Date().toISOString()}: {readonly now?: () => string} = {}): ProjectRecord {
+/** Public reads omit retired notes without rewriting saved JSON or old ACKs. */
+export function currentProjectRecord(record: unknown): ProjectRecord {
+  if (!object(record)) throw new TypeError('A current project projection requires a saved record');
+  const {notes: _retired, ...current} = record;
+  return current;
+}
+
+/** Kernel-only rename. The app host owns admission and registry updates; old
+ * notes JSON and immutable shared receipts remain stored exactly as before. */
+export function mutateProjectRecord(store: ProjectStore, operation: 'project.rename', value: unknown, {now = () => new Date().toISOString()}: {readonly now?: () => string} = {}): ProjectRecord {
   if (!isProjectStore(store)) throw new TypeError('Project record mutations require a live kernel store');
+  if (operation !== 'project.rename') throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
   if (!object(value) || isProxy(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail('VALIDATION_ERROR', 400);
   for (const key of Reflect.ownKeys(value)) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (typeof key !== 'string' || !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) fail('VALIDATION_ERROR', 400);
   }
-  const parsed = operation === 'project.rename' ? projectRenameInputSchema.safeParse(value) : projectNotesSetInputSchema.safeParse(value);
+  const parsed = projectRenameInputSchema.safeParse(value);
   if (!parsed.success) fail('VALIDATION_ERROR', 400);
   const input = parsed.data;
   if (input.projectId !== store.projectId) fail('NOT_FOUND', 404);
@@ -37,17 +45,14 @@ export function mutateProjectRecord(store: ProjectStore, operation: 'project.ren
     const previous = store.db.prepare('SELECT projectId,digest,response FROM main.project_mutation_requests WHERE requestId=?').get(input.requestId);
     if (previous) {
       if (previous.projectId !== input.projectId || previous.digest !== digest) fail('IDEMPOTENCY_CONFLICT');
-      return decoded(previous.response);
+      return currentProjectRecord(decoded(previous.response));
     }
     const current = store.get('projects', input.projectId);
     if (!object(current) || current.id !== input.projectId) fail('NOT_FOUND', 404);
     if (current.revision !== input.expectedRevision || input.expectedRevision === Number.MAX_SAFE_INTEGER) fail('REVISION_CONFLICT');
-    const {notes: _previous, ...withoutNotes} = current;
-    const updated: ProjectRecord = 'name' in input
-      ? {...current, name: input.name, revision: input.expectedRevision + 1, updatedAt: now()}
-      : {...withoutNotes, ...(input.notes.trim() ? {notes: input.notes} : {}), revision: input.expectedRevision + 1, updatedAt: now()};
+    const updated: ProjectRecord = {...current, name: input.name, revision: input.expectedRevision + 1, updatedAt: now()};
     store.put('projects', updated);
     store.db.prepare('INSERT INTO main.project_mutation_requests(requestId,projectId,digest,response) VALUES(?,?,?,?)').run(input.requestId, input.projectId, digest, JSON.stringify(updated));
-    return updated;
+    return currentProjectRecord(updated);
   });
 }

@@ -2,7 +2,7 @@ import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
-import {mutateProjectRecord} from './project-record-mutations.ts';
+import {currentProjectRecord,mutateProjectRecord} from './project-record-mutations.ts';
 import {testProjectServiceApplication} from './project-service-application.ts';
 import {registerProjectMediaStore, registeredProjectAssetReferences} from './project-media-storage.ts';
 import {createAssetMediaServices} from './asset-media-services.ts';
@@ -504,8 +504,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'agent.authorization.grant':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.grant(input);},
   'agent.authorization.revoke':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.revoke(input);},
   'project.create':(input: ServiceRow)=>tx(()=>{if(kernelProjectId&&get('projects',kernelProjectId))throw new AppError('PROJECT_FILE_SINGLE_PROJECT','一个项目文件只能保存一个项目',409);const project=put('projects',{id:kernelProjectId??randomUUID(),name:input.name,description:input.description||'',revision:1,createdAt:now(),updatedAt:now()});if(input.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,stringValue(input.timelinePresetId) as never);return project;}),
-  'project.list':()=>list('projects').sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
-  'project.get':(input: ServiceRow)=>tx(()=>{const project=required('projects',stringValue(input.projectId) as string);return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
+  'project.list':()=>list('projects').map(currentProjectRecord).sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
+  'project.get':(input: ServiceRow)=>tx(()=>{const project=currentProjectRecord(required('projects',stringValue(input.projectId) as string));return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
   'asset.import':createManagedAssetImportHandler(inputStore,{required,now,signal:ownerSignal,outsidePaths:application.outsidePaths,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
   'edge.create':(input: ServiceRow)=>tx(()=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});}),
@@ -585,7 +585,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // Internal services and Mio retain record-only rename with the exact project
   // receipt. Physical folder/file rename and application HTTP admission belong
   // to the host's exclusive lifecycle; the registry refreshes this saved name.
-  for(const operation of ['project.rename','project.notes.set'] as const)handlers[operation]=(input:never)=>mutateProjectRecord(store,operation,input);
+  handlers['project.rename']=(input:never)=>mutateProjectRecord(store,'project.rename',input);
  }
  const domainHandlers: ServiceHandlers={...handlers};
  const removeJobStopper=setAgentTaskJobStopper(db,'job',(runId,stepId)=>{
@@ -596,6 +596,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  });
 
  async function call(op: string,input: unknown,context: ServiceHandlerContext={}): Promise<unknown> {
+  if(op==='project.notes.set')throw new AppError('UNKNOWN_OPERATION','未知操作',404);
   if(op==='lut.look.inspect')assertLookPackInspectInput(input);
   const {signal:callSignal}=context;
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;
