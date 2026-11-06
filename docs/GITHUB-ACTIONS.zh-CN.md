@@ -49,7 +49,7 @@ macOS 发布 runner 使用 [Homebrew `ffmpeg-full`](https://formulae.brew.sh/for
 
 正式工作流通过 CI 专用参数启用签名，不改变本地 `package:mac` 的现有默认值。配置按项目锁定的 electron-builder v26 使用，不能套用 v27 的字段结构
 
-正式工作流在签名完成后调用专用 `afterSign` hook，复用已锁定的 `@electron/notarize` 提交应用，公证调用仅一次。该库的装订错误出现在 `Accepted` 之后；只有其明确的装订错误前缀、退出68以及 Apple CloudKit 的已识别 URL 网络错误同时存在时，才对同一应用继续装订，计入原失败次数后最多三次。最终 DMG 的装订和应用/DMG 的票据验证同样最多三次，只对明确网络瞬态退避；没有票据、票据无效、签名/认证失败、未知错误、命令超时或信号终止都直接阻断。不会重新提交公证或重跑整个 builder 碰运气，也不通过修改签名身份、凭据、Hardened Runtime 或 Gatekeeper 绕过问题
+正式工作流在签名完成后调用专用 `afterSign` hook，复用已锁定的 `@electron/notarize` 提交应用，公证调用仅一次。该库的装订错误出现在 `Accepted` 之后；只有其明确的装订错误前缀、退出68以及 Apple CloudKit 的已识别 URL 网络错误同时存在时，才对同一应用继续装订，计入原失败次数后最多三次。最终 DMG 的装订和应用/DMG 的票据验证同样最多三次，只对明确网络瞬态退避，第二、三次调用前分别等待 30 秒和 90 秒。恢复器执行的命令每次仍限 60 秒；直接调用恢复器时，三次命令加两段等待的配置预算最多 300 秒（不含 runner 调度）。库已执行的首次应用装订仍计入三次上限，其公证及首次装订耗时不计入恢复器的命令预算。没有票据、票据无效、签名/认证失败、未知错误、命令超时或信号终止都直接阻断。不会重新提交公证或重跑整个 builder 碰运气，也不通过修改签名身份、凭据、Hardened Runtime 或 Gatekeeper 绕过问题
 
 `app-notarization.json` 记录是否已知公证接受、调用次数及装订/验证阶段；`dmg-stapling.json` 和最终 `inspection.json` 记录安全的退出码、信号、超时、错误类别及重试次数，不写入原始工具错误文本、命令参数或 Apple 凭据。票据验证会访问 Apple 票据服务，刚完成装订不代表下一次联网验证必然成功；最终仍必须验证通过才能冒烟、暂存及上传安装包。检查也核对包内的项目 `LICENSE`、`NOTICE`、`THIRD_PARTY_NOTICES.md` 与冻结源码逐字节一致（打包名以 `stage-project-notices.ts` 为准）
 
