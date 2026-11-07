@@ -1,5 +1,6 @@
+import {TIMELINE_HISTORY_OPERATIONS} from './timeline-history-operations.ts';
 import {timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
-import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot} from './timeline-recovery.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.ts';
@@ -53,7 +54,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
  const cursor=db.prepare('SELECT projectId,position FROM timeline_history_cursors WHERE projectId=?').get(input.projectId);
  if(cursor&&(!timeline||cursor.projectId!==input.projectId||!integer(cursor.position)||(cursor.position as number)>history.length)||history.length&&!cursor)invalidTimeline();
  for(const [index,entry] of history.entries()){
-  if(!timeline||!uuid(entry.id)||entry.projectId!==input.projectId||entry.position!==index+1||(entry.operation!=='agent.task.undo'&&!(TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(entry.operation as string))||['timeline.render','timeline.format.set','timeline.undo','timeline.redo'].includes(entry.operation as string)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
+  if(!timeline||!uuid(entry.id)||entry.projectId!==input.projectId||entry.position!==index+1||!(TIMELINE_HISTORY_OPERATIONS as readonly unknown[]).includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
   for(const field of ['beforeSnapshot','afterSnapshot']){
    const saved=parse((entry as Record<string, unknown>)[field]);
    if(!isTimelineRecord(restoreTimelineEditableSnapshot(timeline!,saved),{projectId:input.projectId}))invalidTimeline();

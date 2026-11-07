@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
 import type {TimelineSubtitleCueRecord,TimelineSubtitlesRecord} from './timeline-inputs.ts';
+import type {TimelineHistoryOperation} from './timeline-history-operations.ts';
 
 type SubtitleTimeline={subtitles?: TimelineSubtitlesRecord};
 type SubtitleMutationInput={
@@ -8,7 +9,7 @@ type SubtitleMutationInput={
  text: string;startFrame: number;durationFrames: number;cueId: string;
  patch: {text?: string;startFrame?: number;durationFrames?: number};
 };
-type SubtitleMutate=(operation: string,input: SubtitleMutationInput,apply: (timeline: SubtitleTimeline)=>void)=>unknown;
+type SubtitleMutate=(operation: TimelineHistoryOperation,input: SubtitleMutationInput,apply: (timeline: SubtitleTimeline)=>void)=>unknown;
 
 // These callbacks run only inside the existing timeline transaction. All
 // ownership, CAS, aggregate validation, history and receipts remain shared.

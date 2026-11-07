@@ -41,6 +41,7 @@ import type {ReplacementInput} from './timeline-replacement.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {canonicalJson} from './project-versions/document.ts';
+import type {TimelineHistoryOperation} from './timeline-history-operations.ts';
 
 interface TimelineRectInput {x: number;y: number;width: number;height: number}
 interface TimelineClipPatch {
@@ -79,7 +80,7 @@ export interface AgentTimelineCompensation {kind:string;id:string;before:Record<
 
 const defaultRect=(timeline: {width: number;height: number}): TimelineRectInput=>({x:0,y:0,width:timeline.width,height:timeline.height});
 const editableTimelineSnapshot=(timeline: TimelineRecord)=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})});
-function recordTimelineEditInside(db: DatabaseSync, operation: string, timeline: TimelineRecord, before: unknown, after: unknown = editableTimelineSnapshot(timeline)): void {
+function recordTimelineEditInside(db: DatabaseSync, operation: TimelineHistoryOperation, timeline: TimelineRecord, before: unknown, after: unknown = editableTimelineSnapshot(timeline)): void {
  if(!db.isTransaction)throw new TypeError('Timeline history requires its content transaction');
  const position=Number(db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(timeline.projectId)?.position??0)+1;
  db.prepare('DELETE FROM timeline_history WHERE projectId=? AND position>=?').run(timeline.projectId,position);
@@ -243,7 +244,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   return {projectId,timelineId:timeline?.id??null,revision:timeline?.revision??null,cursor:position,length,canUndo:position>0,canRedo:position<length,
    undoEntry:row.undoEntry?JSON.parse(row.undoEntry as string):null,redoEntry:row.redoEntry?JSON.parse(row.redoEntry as string):null};
  }
- function recordEdit(operation: string,timeline: TimelineRecord,before: unknown): void{
+ function recordEdit(operation: TimelineHistoryOperation,timeline: TimelineRecord,before: unknown): void{
   recordTimelineEditInside(db,operation,timeline,before);
  }
  function travel(operation: string,input: TimelineMutationInput,direction: number): unknown{
@@ -268,7 +269,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  }
  // respond wraps the saved timeline for operations whose acknowledgement also
  // carries per-item outcomes; by default the response is the timeline itself.
- function mutate(operation: string,input: TimelineMutationInput,apply: (timeline: TimelineRecord,boundary: TimelineRecoveryBoundary)=>void,specialBoundary?: TimelineRecoveryBoundary,respond?: (timeline: TimelineRecord)=>unknown): unknown{
+ function mutate(operation: TimelineHistoryOperation,input: TimelineMutationInput,apply: (timeline: TimelineRecord,boundary: TimelineRecoveryBoundary)=>void,specialBoundary?: TimelineRecoveryBoundary,respond?: (timeline: TimelineRecord)=>unknown): unknown{
   return transaction(operation,input,({boundary,requestHash,write})=>{
    const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
    // Check explicit input before legacy ensure() can write an absent timeline.
