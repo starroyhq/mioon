@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-Hans"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Timeline media gate regression</title>
+<style>
+body { margin: 0; font: 14px sans-serif; background: #171717; color: #eee; }
+.fixture-controls { display: flex; gap: 12px; padding: 16px; }
+.fixture-controls button { background: #ddd; color: #111; padding: 6px 12px; }
+.fixture-timeline { height: 500px; }
+.fixture-timeline .timeline-panel { height: 100%; display: flex; flex-direction: column; }
+.fixture-timeline .timeline-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.fixture-timeline .timeline-scroll-frame { flex: 1; min-height: 0; }
+.fixture-timeline .timeline-scroll { height: 100%; overflow: auto; }
+#report { white-space: pre-wrap; padding: 16px; }
+</style></head><body>
+<h1>Real React Timeline / controlled media permission</h1>
+<p>This isolated fixture uses synthetic media and waveform HTTP data. It does not cover the production service, decoder, native IPC, or a user's project.</p>
+<div id="root"></div><pre id="report" data-testid="fixture-report">{}</pre>
+<script type="module" src="/main.tsx"></script>
+</body></html>

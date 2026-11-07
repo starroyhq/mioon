@@ -196,7 +196,14 @@ export default function Timeline({ onRegisterMenuRemoval, onMenuStateChange, loc
   }, []);
   const fps = timeline?.fps || 30;
   const pxFrame = pixelsPerSecond / fps;
-  const waveforms = useTimelineWaveformsTyped({ timeline, assets: gate ? assets.filter(asset => gate.canRead(asset)) : assets, viewport, pixelsPerFrame: pxFrame, active: bodyActive });
+  const readableAssets = gate ? assets.filter(asset => gate.canRead(asset)) : assets;
+  const waveformAssets = useRef(readableAssets);
+  // Recheck admission each render; parent renders may replace the gate binding.
+  // Keep the effect input stable while the admitted assets themselves are unchanged.
+  if (readableAssets.length !== waveformAssets.current.length || readableAssets.some((asset, index) => asset !== waveformAssets.current[index])) {
+    waveformAssets.current = readableAssets;
+  }
+  const waveforms = useTimelineWaveformsTyped({ timeline, assets: waveformAssets.current, viewport, pixelsPerFrame: pxFrame, active: bodyActive });
   // The waveform hook state is typed by its own owner; only clip id/window keys are needed here.
   const waveformWindows = new Map<string, import('./waveform-state.ts').WaveformWindow>((waveforms.windows as ReadonlyArray<import('./waveform-state.ts').WaveformWindow>).slice(0, WAVEFORM_LIMITS.entries).map(item => [item.clipId, item]));
   const duration = timeline?.durationFrames || 0;

@@ -1,5 +1,6 @@
 import type {WaveformWindow,WaveformSnapshot,WaveformView,WaveformStatus,WaveformClip} from '../apps/web/src/waveform-state.ts';
 import type {TimelineWaveformState} from '../apps/web/src/use-timeline-waveforms.ts';
+import type {ProjectMediaBinding} from '../apps/web/src/use-project-media.ts';
 import type {Gate} from './helpers/strict-timeline-ui-types.ts';
 interface WaveformInput {projectId:string;assetId:string;sourceStartFrame:number;sourceEndFrame:number;points?:number;retry?:boolean}
 type WaveformCall = Gate<unknown> & {operation:string;input:WaveformInput};
@@ -88,6 +89,42 @@ test('decoder-tail cropping preserves fixed source coordinates and never stretch
 
 test('initial view and recreated session stay off without any status read or decode', async () => {
   for (let i = 0; i < 2; i++) { const h = scheduler(); h.view(); await flush(); assert.equal(h.controller.snapshot().enabled, false); assert.equal(h.calls.length, 0); assert.equal(h.timers.size, 0); h.controller.disconnect(); }
+});
+
+test('equivalent waveform views do not notify again, including fresh empty and window arrays', async () => {
+  const h = scheduler(); h.view([]);
+  let count = h.notices.length;
+  for (let i = 0; i < 4; i++) h.view([]);
+  assert.equal(h.notices.length, count, 'An unchanged empty timeline must not drive a render loop');
+  h.view(); count = h.notices.length;
+  for (let i = 0; i < 4; i++) h.view([{...range()}]);
+  assert.equal(h.notices.length, count, 'View equality follows content rather than array or item references');
+  await flush(); assert.equal(h.calls.length, 0); h.controller.disconnect();
+});
+
+test('window equality preserves every source, geometry and support field and copies the prior view', () => {
+  const h = scheduler(), original = range(); h.view([original]);
+  const patches: Partial<WaveformWindow>[] = [{key:'another-key'}, {assetId:idFor(2)}, {sourceStartFrame:1}, {sourceEndFrame:299}, {points:599}, {clipId:'another-clip'}, {left:2}, {width:602}, {unsupported:true}];
+  for (const patch of patches) {
+    const before = h.notices.length;
+    h.view([{...original, ...patch}]);
+    assert.ok(h.notices.length > before, `Changed window field must publish: ${Object.keys(patch)}`);
+    h.view([{...original}]);
+  }
+  const before = h.notices.length; original.left += 1;
+  h.view([original]);
+  assert.ok(h.notices.length > before, 'A caller mutation must not mutate the remembered comparison view');
+  h.controller.disconnect();
+});
+
+test('equivalent polling views preserve the existing timer and still publish their eventual result', async () => {
+  const h = scheduler(); h.view(); h.controller.setEnabled(true); await flush(); await h.answer('running');
+  const timers = [...h.timers.keys()], count = h.notices.length;
+  h.view([{...range()}]);
+  assert.equal(h.notices.length, count); assert.deepEqual([...h.timers.keys()], timers);
+  await h.advance(800); assert.equal(h.calls.length, 2);
+  await h.answer('ready'); assert.equal(h.controller.snapshot().entries.get(range().key)!.status, 'ready');
+  assert.ok(h.notices.length > count); h.controller.disconnect();
 });
 
 test('opt-in performs read-only discovery, one request, bounded polling, then keeps source peaks', async () => {
@@ -218,13 +255,26 @@ test('unmount ignores late results and retained toggle/retry handlers cannot sen
 const nodes = (tree: TestTree): TestNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const content = (tree: TestTree): string => Array.isArray(tree) ? tree.map(content).join('') : tree && typeof tree === 'object' ? content(tree.props?.children) : tree == null || typeof tree === 'boolean' ? '' : String(tree);
 const equalDeps = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefined) => Array.isArray(a) && a.length === b?.length && a.every((value, i) => Object.is(value, b[i]));
-function componentHarness({ hook = false, waveformState }: {hook?:boolean;waveformState?: unknown} = {}) {
+function componentHarness({ hook = false, realTimelineWaveforms = false, waveformState, mediaGate = () => null, initialProps = {} }: {
+  hook?:boolean;realTimelineWaveforms?:boolean;waveformState?:unknown;
+  mediaGate?:()=>Pick<ProjectMediaBinding,'canRead'|'statusFor'>|null;initialProps?:Record<string,unknown>;
+} = {}) {
   const slots: HookCell[] = [], modules = new Map<string,LoadedModule>(), docListeners = new Map<string,()=>void>(), scrollListeners = new Map<string,()=>void>(), requests: WaveformCall[] = [], selections: string[] = [];
-  let cursor = 0, effects: number[] = [], needsRender = false, output: TestTree | HookState;
+  const waveformInputAssets: unknown[] = [];
+  let cursor = 0, effects: number[] = [], needsRender = false, output: TestTree | HookState, lastRenderAttempts = 0;
+  let actualWaveforms: HookState | undefined;
   const document = { visibilityState: 'visible', addEventListener: (name: string, callback: ()=>void) => docListeners.set(name, callback), removeEventListener: (name: string) => docListeners.delete(name) };
-  const element = { scrollLeft: 0, scrollTop: 0, clientWidth: 460, clientHeight: 140, getBoundingClientRect: () => ({ top: 100 }), querySelectorAll: () => [{ dataset: { waveformTrack: 'audio' }, getBoundingClientRect: () => ({ top: 126, bottom: 181 }) }, { dataset: { waveformTrack: 'offscreen' }, getBoundingClientRect: () => ({ top: 300, bottom: 355 }) }], addEventListener: (name: string, cb: ()=>void) => scrollListeners.set(name, cb), removeEventListener: (name: string) => scrollListeners.delete(name) };
+  const element = { scrollLeft: 0, scrollTop: 0, clientWidth: 460, clientHeight: 140, offsetHeight: 140, getBoundingClientRect: () => ({ top: 100 }), querySelectorAll: () => [{ dataset: { waveformTrack: 'audio' }, getBoundingClientRect: () => ({ top: 126, bottom: 181 }) }, { dataset: { waveformTrack: 'offscreen' }, getBoundingClientRect: () => ({ top: 300, bottom: 355 }) }], addEventListener: (name: string, cb: ()=>void) => scrollListeners.set(name, cb), removeEventListener: (name: string) => scrollListeners.delete(name) };
   const react = {
-    createElement: (type: unknown, props: TestElementProps, ...children: TestTree[]) => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } }),
+    createElement: (type: unknown, props: TestElementProps, ...children: TestTree[]) => {
+      if (typeof type === 'function') return type({ ...props, children });
+      const ref = props?.ref;
+      if (ref && typeof ref === 'object' && 'current' in ref) {
+        if (props['data-testid'] === 'timeline-scroll') ref.current = element;
+        else if (props.className === 'timeline-scroll-frame') ref.current = {clientHeight:140,parentElement:{clientHeight:200}};
+      }
+      return { type, props: { ...props, children } };
+    },
     useState(initial: unknown) { const index = cursor++; slots[index] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[index].value, (next: unknown) => { const value = typeof next === 'function' ? next(slots[index].value) : next; if (!Object.is(value, slots[index].value)) { slots[index].value = value; needsRender = true; } }]; },
     useRef(initial: unknown) { const index = cursor++; return slots[index] ||= { current: initial }; },
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { const index = cursor++, prior = slots[index]; if (prior && equalDeps(deps, prior.deps)) return; slots[index] = { deps, callback, cleanup: prior?.cleanup }; effects.push(index); },
@@ -235,8 +285,9 @@ function componentHarness({ hook = false, waveformState }: {hook?:boolean;wavefo
   function load(file: string): LoadedModule {
     if (modules.has(file)) return modules.get(file)!;
     const module = { exports: {} as LoadedModule };
-    Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)((id: string) => {
-      if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (id === 'react') return react;
+    const source = file === 'Timeline.tsx' && process.env.MIOON_WAVEFORM_TIMELINE_SOURCE ? process.env.MIOON_WAVEFORM_TIMELINE_SOURCE : new URL(`../apps/web/src/${file}`, import.meta.url);
+    Function('require', 'module', 'exports', 'document', 'ResizeObserver', 'window', transformSync(readFileSync(source, 'utf8'), { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code)((id: string) => {
+      if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: mediaGate, ProjectMediaImage: 'img'}; if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if (id === 'react') return react;
       if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (id === './timeline-view-geometry.ts') return geometry;
@@ -247,7 +298,7 @@ function componentHarness({ hook = false, waveformState }: {hook?:boolean;wavefo
       if (id === './workbench-modal-state.ts') return {hasOpenWorkbenchModal};
       if (id === './waveform-state.ts') return waveform;
       if (id === './api.ts') return { rpc: (operation: string, input: unknown) => { const pending = deferred(); requests.push({ operation, input: input as WaveformInput, ...pending }); return pending.promise; }, assetUrl: () => '' };
-      if (id === './use-timeline-waveforms.ts') return hook ? load('use-timeline-waveforms.ts') : { useTimelineWaveforms: () => waveformState };
+      if (id === './use-timeline-waveforms.ts') return hook || realTimelineWaveforms ? {useTimelineWaveforms: (props:Record<string,unknown>) => {waveformInputAssets.push(props.assets);return actualWaveforms = load('use-timeline-waveforms.ts').useTimelineWaveforms(props);}} : { useTimelineWaveforms: () => waveformState };
       if (id === './TimelineWaveform.tsx') return load('TimelineWaveform.tsx');
       if (id === './timeline-keyboard.ts') return { rulerFrameForKey: () => null };
       if (id === './timeline-snapping.ts') return { timelineDropPreview: () => null };
@@ -256,11 +307,13 @@ function componentHarness({ hook = false, waveformState }: {hook?:boolean;wavefo
     }, module, module.exports, document, ResizeObserver, { addEventListener() {}, removeEventListener() {} });
     modules.set(file, module.exports); return module.exports;
   }
-  let props = hook ? { timeline: timeline(), assets: [asset()], viewport: { current: element }, pixelsPerFrame: 2, active: true } : { timeline: timeline(), assets: [asset()], playhead: 0, visible: true, collapsed: false, onSelectClip: (id: string) => selections.push(id) };
+  let props:Record<string,unknown> = {...(hook ? { timeline: timeline(), assets: [asset()], viewport: { current: element }, pixelsPerFrame: 2, active: true } : { timeline: timeline(), assets: [asset()], playhead: 0, visible: true, collapsed: false, onSelectClip: (id: string) => selections.push(id) }),...initialProps};
   const component = hook ? load('use-timeline-waveforms.ts').useTimelineWaveforms : load('Timeline.tsx').default;
-  const h = { requests, selections, element,
-    render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { cursor = 0; effects = []; needsRender = false; output = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback!(); } assert.ok(++attempts < 20, 'Hook effects stabilize'); } while (needsRender); return output; },
+  const h = { requests, selections, element, waveformInputAssets,
+    render(next = {}) { props = { ...props, ...next }; let attempts = 0; do { cursor = 0; effects = []; needsRender = false; output = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback!(); } assert.ok(++attempts < 20, 'Hook effects stabilize'); } while (needsRender); lastRenderAttempts=attempts; return output; },
     get value() { return output as HookState; },
+    get waveform() { assert.ok(actualWaveforms, 'The actual Timeline waveform hook must have run'); return actualWaveforms; },
+    get renderAttempts() { return lastRenderAttempts; },
     find: (id: string) => nodes(output as TestTree).find(node => node.props?.['data-testid'] === id),
     all: () => nodes(output as TestTree),
     hideDocument() { document.visibilityState = 'hidden'; docListeners.get('visibilitychange')?.(); h.render(); },
@@ -289,6 +342,33 @@ test('actual hook scroll updates source bounds; collapse, mode hide and project 
     h.render({ active: true, timeline: timeline([clip()], { projectId: otherProject }), assets: [asset({ projectId: otherProject })] });
     assert.equal(h.value.enabled, false); await flush(); assert.equal(h.requests.length, 1); h.unmount();
   }
+});
+
+test('actual empty Timeline with a fresh media gate on every render stabilizes its real waveform hook', () => {
+  const gates: Pick<ProjectMediaBinding,'canRead'|'statusFor'>[] = [];
+  const h = componentHarness({realTimelineWaveforms:true,initialProps:{timeline:timeline([]),assets:[]},mediaGate:()=>{
+    const gate:Pick<ProjectMediaBinding,'canRead'|'statusFor'>={canRead:()=>true,statusFor:()=>({kind:'checking'})};gates.push(gate);return gate;
+  }});
+  assert.ok(h.renderAttempts < 20); assert.deepEqual(h.waveform.windows, []); assert.equal(h.requests.length, 0);
+  const input = h.waveformInputAssets.at(-1);
+  for(let i=0;i<5;i++){h.render();assert.equal(h.renderAttempts,1,'Unchanged parent gate closures must not cause another state update');assert.equal(h.waveformInputAssets.at(-1),input,'The caller must independently retain an equivalent filtered assets reference');}
+  assert.ok(gates.length > 1); assert.notEqual(gates[0],gates[1]); h.unmount();
+});
+
+test('actual Timeline media revocation clears real waveform windows and blocks a pending response from requesting decode', async () => {
+  let readable = true;
+  const h=componentHarness({realTimelineWaveforms:true,mediaGate:()=>({canRead:()=>readable,statusFor:()=>({kind:'checking'})})});
+  assert.deepEqual(h.waveform.windows.map(window=>window.clipId),['clip-one']);
+  const readableInput=h.waveformInputAssets.at(-1);
+  h.waveform.setEnabled(true);h.render();await flush();assert.equal(h.requests.length,1);assert.equal(h.requests[0].operation,'asset.waveform.get');
+  h.render();assert.equal(h.renderAttempts,1,'New gate objects with unchanged readability must stabilize');assert.equal(h.waveformInputAssets.at(-1),readableInput);
+  readable=false;h.render();assert.equal(h.waveform.windows.length,0);assert.equal(h.find('timeline-waveform-clip-one'),undefined);
+  const unreadableInput=h.waveformInputAssets.at(-1);assert.notEqual(unreadableInput,readableInput);assert.deepEqual(unreadableInput,[]);
+  const count=h.requests.length;h.requests[0].resolve(response(h.requests[0].input,'missing'));await flush();h.render();
+  assert.equal(h.requests.length,count);assert.equal(h.requests.filter(request=>request.operation==='asset.waveform.request').length,0);
+  assert.equal(h.waveform.windows.length,0);
+  readable=true;h.render();assert.deepEqual(h.waveform.windows.map(window=>window.clipId),['clip-one']);assert.notEqual(h.waveformInputAssets.at(-1),unreadableInput);assert.deepEqual(h.waveformInputAssets.at(-1),readableInput);
+  await flush();assert.equal(h.requests.length,count+1);assert.equal(h.requests.at(-1)!.operation,'asset.waveform.get');h.unmount();
 });
 
 test('actual Timeline renders decorative bounded SVG inside existing clip button without changing its click/drag behavior', () => {
