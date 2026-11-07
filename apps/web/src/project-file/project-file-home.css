@@ -39,7 +39,7 @@
 .pf-card-meta { display: flex; min-width: 0; overflow: hidden; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; white-space: nowrap; }
 .pf-card-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pf-card-meta > span:last-child { flex: none; }
-.pf-card-meta > span:first-child:not(:last-child) { flex: 0 1 auto; }
+.pf-card-meta > span:first-child:not(:last-child):not(.pf-card-status) { flex: 0 1 auto; }
 .pf-card-meta > .pf-card-status { flex: none; }
 .pf-card-meta > .pf-card-status + span:last-child { flex: 0 1 auto; }
 .pf-card-meta > span + span::before { content: "·"; margin: 0 6px; }
