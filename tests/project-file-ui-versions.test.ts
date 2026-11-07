@@ -33,10 +33,37 @@ async function historyContainer() {
   const entry=`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
     import {ProjectHistoryDialog,NativeBackupFailure} from ${JSON.stringify(join(root,'apps/web/src/project-file/ProjectHistoryDialog.tsx'))};
     import {RestoreVersionDialog,historyErrorCode} from ${JSON.stringify(join(root,'apps/web/src/project-file/RestoreVersionDialog.tsx'))};
+    import {VersionHistoryDialog} from ${JSON.stringify(join(root,'apps/web/src/project-file/VersionHistoryDialog.tsx'))};
+    import {WorkbenchButton,WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
+    import {Dialog} from '@mioon/ui/components/dialog';
     import {setLocale} from ${JSON.stringify(join(fixtures,'ssr-i18n.tsx'))};import {setRuntime} from 'u2-ssr-runtime';
     export function render(runtime,props,locale){setRuntime(runtime);setLocale(locale);return renderToStaticMarkup(<ProjectHistoryDialog {...props}/>);}
     export function restore(props,locale){setLocale(locale);return renderToStaticMarkup(<RestoreVersionDialog {...props}/>);}
-    export function nativeFailure(error,locale,action='choose'){setLocale(locale);return renderToStaticMarkup(<NativeBackupFailure code={historyErrorCode(error)} action={action}/>);}`;
+    export function nativeFailure(error,locale,action='choose'){setLocale(locale);return renderToStaticMarkup(<NativeBackupFailure code={historyErrorCode(error)} action={action}/>);}
+    // This observes production React ownership and ref bindings before portals
+    // render. It intentionally makes no accessibility-tree or DOM-focus claim.
+    export function layout(runtime,props,locale){
+      setRuntime(runtime);setLocale(locale);let result;
+      const nodes=value=>{const found=[];const visit=node=>{if(Array.isArray(node)){node.forEach(visit);return;}if(!React.isValidElement(node))return;found.push(node);visit(node.props.children);};visit(value);return found;};
+      function Probe(){
+        const root=ProjectHistoryDialog(props),session=root.type(root.props),history=nodes(session).find(node=>node.type===VersionHistoryDialog);
+        const save=history&&nodes(history.props.children).find(node=>node.type===Dialog&&nodes(node.props.children).some(child=>child.props.id==='pf-save-name'));
+        const rendered=history&&VersionHistoryDialog(history.props),content=nodes(rendered).find(node=>node.type===WorkbenchDialogContent&&node.props['data-testid']==='pf-versions-dialog');
+        const nested=content&&nodes(content.props.children),button=nested?.find(node=>node.type===WorkbenchButton&&node.props['data-testid']==='pf-versions-save');
+        const saveContent=save&&nodes(save.props.children).find(node=>node.type===WorkbenchDialogContent),focus=saveContent?.props.finalFocus;
+        const trigger={kind:'save-trigger'},fallback={kind:'history-content'},buttonRef=history?.props.saveButtonRef,contentRef=history?.props.contentRef;
+        let focusesTrigger=false,focusesContent=false,focusSuppressed=false;
+        if(typeof focus==='function'&&buttonRef&&contentRef){const originalButton=buttonRef.current,originalContent=contentRef.current;
+          try{buttonRef.current=trigger;contentRef.current=fallback;focusesTrigger=focus()===trigger;focusSuppressed=focus()===false;buttonRef.current=null;focusesContent=focus()===fallback;}
+          finally{buttonRef.current=originalButton;contentRef.current=originalContent;}}
+        const siblings=Array.isArray(session.props.children)?session.props.children:[session.props.children];
+        result={historyFound:!!history,saveFound:!!save,contentFound:!!content,saveInsideHistoryContent:!!save&&!!nested?.includes(save),
+          saveIsHistorySibling:siblings.some(node=>React.isValidElement(node)&&node.type===Dialog&&nodes(node.props.children).some(child=>child.props.id==='pf-save-name')),
+          contentRefBound:!!contentRef&&content?.props.ref===contentRef,saveButtonRefBound:!!buttonRef&&button?.props.ref===buttonRef,
+          focusesTrigger,focusesContent,focusSuppressed};return null;
+      }
+      renderToStaticMarkup(<Probe/>);return result;
+    }`;
   const result=await build({stdin:{contents:entry,loader:'tsx',resolveDir:join(root,'apps/web')},bundle:true,platform:'node',format:'cjs',write:false,jsx:'automatic',
     loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},nodePaths:[join(root,'apps/web/node_modules')],plugins:[{name:'history-container-ssr',setup(build){
       build.onResolve({filter:/^@mioon\/ui\/components\/(?:dialog|dropdown-menu)$/},()=>({path:join(fixtures,'ssr-overlays.tsx')}));
@@ -45,7 +72,8 @@ async function historyContainer() {
       build.onLoad({filter:/.*/,namespace:'history-ssr'},()=>({contents:'let runtime;export function setRuntime(next){runtime=next;}export function projectHistoryRuntime(){return runtime;}',loader:'js'}));
     }}]});
   const module={exports:{}};Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
-  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string;nativeFailure(error:unknown,locale:Locale,action?:'choose'|'reveal'):string};
+  return module.exports as {render(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):string;restore(props:RestoreVersionDialogProps,locale:Locale):string;nativeFailure(error:unknown,locale:Locale,action?:'choose'|'reveal'):string;
+    layout(runtime:ProjectHistoryRuntime,props:ProjectHistoryDialogProps,locale:Locale):{historyFound:boolean;saveFound:boolean;contentFound:boolean;saveInsideHistoryContent:boolean;saveIsHistorySibling:boolean;contentRefBound:boolean;saveButtonRefBound:boolean;focusesTrigger:boolean;focusesContent:boolean;focusSuppressed:boolean}};
 }
 const productionHistory=await historyContainer();
 const historyProjectId=RESTORE_PREVIEW.projectId,historyVersion=VERSIONS[0];
@@ -55,6 +83,20 @@ function historyClient(patch:Partial<ProjectHistoryClient>={}):ProjectHistoryCli
 }
 const historyProps:ProjectHistoryDialogProps={open:true,projectId:historyProjectId,projectName:'SSR history',onClose:()=>{},onRestored:()=>{},onOpenProject:()=>{}};
 async function settleHistory(){for(let turn=0;turn<25;turn++)await Promise.resolve();}
+
+test('the production save overlay is a history-content React child with correctly bound trigger and fallback refs',async()=>{
+  const runtime=createProjectHistoryRuntime(historyProjectId,historyClient());runtime.open();await settleHistory();
+  try{
+    const layout=productionHistory.layout(runtime,{...historyProps,initialAction:'save'},'en');
+    assert.equal(layout.historyFound,true);assert.equal(layout.saveFound,true);assert.equal(layout.contentFound,true);
+    assert.equal(layout.saveInsideHistoryContent,true,'the nested save portal must inherit the history modal context');
+    assert.equal(layout.saveIsHistorySibling,false,'a sibling portal can be hidden as outside the active history modal');
+    assert.equal(layout.contentRefBound,true);assert.equal(layout.saveButtonRefBound,true);
+    assert.equal(layout.focusesTrigger,true);assert.equal(layout.focusesContent,true);
+    const blocked=productionHistory.layout(runtime,{...historyProps,interactionBlocked:true},'en');
+    assert.equal(blocked.focusSuppressed,true,'a retired/blocked owner must not redirect focus');
+  }finally{runtime.close();}
+});
 
 test('annotation identity copy preserves the row and clears only its label and note in every locale',()=>{
   const expected={'zh-Hans':'保留标注这一行，只把标签和备注恢复为空。','zh-Hant':'保留標註這一列，只把標籤和備註還原為空。',en:'Keep the annotation row and restore only its label and note to empty.',ja:'注釈の行は保持し、ラベルとメモだけを空に戻します。'};

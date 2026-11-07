@@ -45,6 +45,9 @@ export interface VersionHistoryDialogProps {
   /** How many automatic versions are kept (V1). */
   readonly retention: { readonly recent: number; readonly days: number };
   readonly onSaveVersion?: () => void;
+  readonly saveButtonRef?: React.Ref<HTMLButtonElement>;
+  readonly contentRef?: React.Ref<HTMLDivElement>;
+  readonly children?: ReactNode;
   readonly onCompare?: () => void;
   readonly onRestore: () => void;
   readonly onRetry: () => void;
@@ -155,13 +158,14 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
     </section>
   </div>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !props.interactionBlocked) props.onClose(); }}>
-    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={props.title ?? t('projectFile.versions.title')} description={props.subtitle ?? t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
+    <WorkbenchDialogContent ref={props.contentRef} inert={props.interactionBlocked||undefined} title={props.title ?? t('projectFile.versions.title')} description={props.subtitle ?? t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
       className="pf-dialog pf-versions-dialog" data-testid="pf-versions-dialog" footer={props.footerNote ?? <p className="pf-footer-note" data-testid="pf-versions-retention">{t('projectFile.versions.retention', props.retention)}</p>}>
-      {props.onSaveVersion && <WorkbenchButton className="pf-versions-save" data-testid="pf-versions-save" onClick={props.onSaveVersion}><ProjectFileIcon name="bookmarkPlus" size={14} />{t('projectFile.menu.saveVersion')}</WorkbenchButton>}
+      {props.onSaveVersion && <WorkbenchButton ref={props.saveButtonRef} className="pf-versions-save" data-testid="pf-versions-save" onClick={props.onSaveVersion}><ProjectFileIcon name="bookmarkPlus" size={14} />{t('projectFile.menu.saveVersion')}</WorkbenchButton>}
       {props.toolbar}
       {props.notice}
       {props.content ?? body}
       {props.onMoreVersions && <WorkbenchButton data-testid="pf-versions-more" disabled={props.paging} onClick={props.onMoreVersions}>{t('projectHistory.more')}</WorkbenchButton>}
+      {props.children}
     </WorkbenchDialogContent>
   </Dialog>;
 }
