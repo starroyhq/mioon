@@ -88,6 +88,7 @@ function HistorySession(props: ProjectHistoryDialogProps) {
   runtime.setAdmission(props.admission);
   const state = useSyncExternalStore(runtime.subscribe, runtime.snapshot, runtime.snapshot), now = new Date();
   const [saveOpen, setSaveOpen] = useState(false), [name, setName] = useState(''), [confirmVersion, setConfirmVersion] = useState(false), [confirmBackup, setConfirmBackup] = useState(false), [nativeError, setNativeError] = useState<string | null>(null);
+  const saveButton = useRef<HTMLButtonElement | null>(null), historyContent = useRef<HTMLDivElement | null>(null);
   const observed = useRef(new Set<string>()), live = useRef(true), current = useRef(props); current.current = props;
   const allowed = () => !current.current.interactionBlocked && runtime.canInteract();
   const close = () => {if(allowed())current.current.onClose();};
@@ -131,7 +132,7 @@ function HistorySession(props: ProjectHistoryDialogProps) {
   </div>;
   const completed = attempt?.kind === 'backup' && attempt.phase === 'complete' ? attempt.result : null;
   return <>
-    <VersionHistoryDialog title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} subtitle={props.backupsOnly?t('projectHistory.backup.subtitle',{name:props.projectName}):undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
+    <VersionHistoryDialog contentRef={historyContent} saveButtonRef={saveButton} title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} subtitle={props.backupsOnly?t('projectHistory.backup.subtitle',{name:props.projectName}):undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
       selected={state.selected} onSelect={id => {if(!current.current.backupsOnly && allowed())void runtime.select(id);}} comparison={{kind: 'ready', value: []}} detail={detail}
       retention={{recent: 20, days: 7}} onSaveVersion={!props.backupsOnly && tab === 'versions' && !locked && !props.pendingEdits ? () => {if(allowed())setSaveOpen(true);} : undefined}
       onRestore={() => {if (!current.current.backupsOnly && allowed() && !current.current.pendingEdits) setConfirmVersion(true);}} onRetry={() => {void runtime.loadVersions();}} onRetryComparison={() => {void runtime.select(state.selected);}} onClose={close}
@@ -139,18 +140,21 @@ function HistorySession(props: ProjectHistoryDialogProps) {
       onMoreVersions={tab === 'versions' && state.versionCursor ? () => {void runtime.loadVersions(true);} : undefined}
       toolbar={<WorkbenchTabs value={tab} label={t('projectFile.versions.title')} options={props.backupsOnly ? [{value: 'backups', label: t('projectHistory.tabs.backups'), disabled: locked}] : [{value: 'versions', label: t('projectHistory.tabs.versions'), disabled: locked}, {value: 'backups', label: t('projectHistory.tabs.backups'), disabled: locked}]}
         onValueChange={value => {if (allowed() && (!current.current.backupsOnly || value === 'backups') && (value === 'versions' || value === 'backups')) runtime.tab(value);}}/>}
-      notice={<>{props.pendingEdits && tab === 'versions' && <WorkbenchAlert tone="warning" data-testid="pf-history-pending-edits">{t('projectHistory.pendingEdits')}</WorkbenchAlert>}<MutationNotice state={state} runtime={runtime} pendingEdits={props.pendingEdits} backupsOnly={props.backupsOnly} retry={retryOriginal}/></>} content={tab === 'backups' ? backupContent : undefined} footerNote={tab === 'backups' ? <span/> : undefined}/>
+      notice={<>{props.pendingEdits && tab === 'versions' && <WorkbenchAlert tone="warning" data-testid="pf-history-pending-edits">{t('projectHistory.pendingEdits')}</WorkbenchAlert>}<MutationNotice state={state} runtime={runtime} pendingEdits={props.pendingEdits} backupsOnly={props.backupsOnly} retry={retryOriginal}/></>} content={tab === 'backups' ? backupContent : undefined} footerNote={tab === 'backups' ? <span/> : undefined}>
+      {/* Keep the save portal within the history portal so the modal manager
+          recognizes the active child instead of hiding it as outside content. */}
+      <Dialog open={props.open && !props.backupsOnly && saveOpen} onOpenChange={open => {if (allowed() && !working) setSaveOpen(open);}}><WorkbenchDialogContent finalFocus={() => allowed() && (saveButton.current ?? historyContent.current)} inert={!allowed()||undefined} title={t('projectHistory.save.title')} size="confirm" footer={<>
+        <WorkbenchButton disabled={working} onClick={() => {if(allowed())setSaveOpen(false);}}>{t('common.cancel')}</WorkbenchButton><WorkbenchButton variant="primary" disabled={locked || props.pendingEdits} onClick={() => {if (allowed() && !current.current.backupsOnly && !current.current.pendingEdits) void runtime.save(name);}}>{t('projectHistory.save.title')}</WorkbenchButton></>}>
+        <Label htmlFor="pf-save-name">{t('projectHistory.save.name')}</Label><Input id="pf-save-name" maxLength={150} disabled={locked} value={name} onChange={event => {if(allowed())setName(event.target.value);}}/>
+        {props.pendingEdits && <WorkbenchAlert tone="warning">{t('projectHistory.pendingEdits')}</WorkbenchAlert>}
+        <MutationNotice state={state} runtime={runtime} pendingEdits={props.pendingEdits} backupsOnly={props.backupsOnly} retry={retryOriginal}/>
+      </WorkbenchDialogContent></Dialog>
+    </VersionHistoryDialog>
     {!props.backupsOnly && chosen && <RestoreVersionDialog interactionBlocked={!allowed()} open={props.open && confirmVersion} version={chosen} now={now} preview={preview}
       restore={working && attempt?.kind === 'version' ? {kind: 'working', action: 'restore'} : attempt?.kind === 'version' && ['unknown', 'rejected'].includes(attempt.phase) ? {kind: 'error', action: 'restore'} : {kind: 'idle'}}
       unknown={unknown && attempt?.kind === 'version'} pendingEdits={props.pendingEdits} errorCode={attempt?.kind === 'version' ? attempt.code : undefined} paging={state.paging}
       onMore={() => {void runtime.select(state.selected, true);}} onRestore={() => {if (!allowed() || current.current.backupsOnly || current.current.pendingEdits) return; if (unknown) retryOriginal(); else void runtime.restoreVersion();}}
       onRetry={() => {runtime.dismissAttempt(); void runtime.select(state.selected);}} onClose={() => {if(allowed())setConfirmVersion(false);}}/>}
-    <Dialog open={props.open && !props.backupsOnly && saveOpen} onOpenChange={open => {if (allowed() && !working) setSaveOpen(open);}}><WorkbenchDialogContent inert={!allowed()||undefined} title={t('projectHistory.save.title')} size="confirm" footer={<>
-      <WorkbenchButton disabled={working} onClick={() => {if(allowed())setSaveOpen(false);}}>{t('common.cancel')}</WorkbenchButton><WorkbenchButton variant="primary" disabled={locked || props.pendingEdits} onClick={() => {if (allowed() && !current.current.backupsOnly && !current.current.pendingEdits) void runtime.save(name);}}>{t('projectHistory.save.title')}</WorkbenchButton></>}>
-      <Label htmlFor="pf-save-name">{t('projectHistory.save.name')}</Label><Input id="pf-save-name" maxLength={150} disabled={locked} value={name} onChange={event => {if(allowed())setName(event.target.value);}}/>
-      {props.pendingEdits && <WorkbenchAlert tone="warning">{t('projectHistory.pendingEdits')}</WorkbenchAlert>}
-      <MutationNotice state={state} runtime={runtime} pendingEdits={props.pendingEdits} backupsOnly={props.backupsOnly} retry={retryOriginal}/>
-    </WorkbenchDialogContent></Dialog>
     <Dialog open={props.open && state.inspection !== null && !confirmBackup && !completed} onOpenChange={open => {if (!open) runtime.closeInspection();}}>
       <WorkbenchDialogContent inert={!allowed()||undefined} title={state.inspection?.kind === 'ready' ? t('projectHistory.backup.inspectionTitle', {time: display.when(state.inspection.value.createdAt, now, true), reason: t(`projectHistory.backup.${state.inspection.value.reason}`)}) : t('projectHistory.backup.title')} size="confirm" footer={<><WorkbenchButton onClick={runtime.closeInspection}>{t('common.close')}</WorkbenchButton>
         {props.nativeBackup && <WorkbenchButton variant="primary" disabled={locked || state.inspection?.kind !== 'ready'} onClick={() => {if(allowed())setConfirmBackup(true);}}>{t('projectHistory.backup.restore')}</WorkbenchButton>}</>}>
