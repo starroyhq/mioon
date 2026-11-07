@@ -33,7 +33,7 @@ test('12-01 recent projects show unfinished tasks waiting for the missing projec
   assert.equal(count(page, /data-availability="/gu), 6);
   const missing = page.slice(page.indexOf('data-availability="missing"'));
   assert.match(missing, /data-testid="pf-card-locate-[^"]+"[^>]*>定位…</u);
-  assert.match(missing, new RegExp(`class="pf-card-meta" data-tone="danger"><span>${text('projectFile.home.missing')}</span><span>${text('projectFile.home.lastSeen', { place: '/Volumes/外接硬盘' })}</span>`, 'u'));
+  assert.match(missing, new RegExp(`class="pf-card-meta" data-tone="danger"><span class="pf-card-status">${text('projectFile.home.missing')}</span><span>${text('projectFile.home.lastSeen', { place: '/Volumes/外接硬盘' })}</span>`, 'u'));
   assert.equal(count(page, /data-testid="pf-card-locate-/gu), 1);
   assert.equal(count(page, /class="pf-card-tag"/gu), 1);
   assert.match(page, /data-testid="pf-waiting"/u);
@@ -316,8 +316,9 @@ const controlledBundle = await build({stdin: {contents: `
   import {NewProjectFileDialog} from './src/project-file/NewProjectFileDialog.tsx';
   import {ProjectOpenFailureDialog} from './src/project-file/ProjectOpenFailureDialog.tsx';
   import {ProjectLocationRiskNotice,ProjectLocationRiskBanner} from './src/project-file/ProjectLocationRisk.tsx';
+  import {RecentProjectsView} from './src/project-file/RecentProjects.tsx';
   import {setLocale} from ${JSON.stringify(fixtureRoot + 'tests/fixtures/project-file-ui/ssr-i18n.tsx')};
-  const components={create:NewProjectFileDialog,failure:ProjectOpenFailureDialog,risks:ProjectLocationRiskNotice,banner:ProjectLocationRiskBanner};
+  const components={create:NewProjectFileDialog,failure:ProjectOpenFailureDialog,risks:ProjectLocationRiskNotice,banner:ProjectLocationRiskBanner,recent:RecentProjectsView};
   export function render(kind,props,locale){setLocale(locale);return renderToStaticMarkup(React.createElement(components[kind],props));}
 `, loader: 'tsx', resolveDir: fixtureRoot + 'apps/web'}, bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: {'.css': 'empty'}, define: {'process.env.NODE_ENV': '"production"'}, nodePaths: [fixtureRoot + 'apps/web/node_modules'],
   plugins: [{name: 'controlled-open-flow', setup(builder) {
@@ -326,10 +327,36 @@ const controlledBundle = await build({stdin: {contents: `
   }}]});
 const controlledModule: {exports: unknown} = {exports: {}};
 Function('require', 'module', 'exports', controlledBundle.outputFiles[0]!.text)(createRequire(import.meta.url), controlledModule, controlledModule.exports);
-const controlled = controlledModule.exports as {render(kind: 'create' | 'failure' | 'risks' | 'banner', props: Record<string, unknown>, locale: typeof LOCALES[number]): string};
+const controlled = controlledModule.exports as {render(kind: 'create' | 'failure' | 'risks' | 'banner' | 'recent', props: Record<string, unknown>, locale: typeof LOCALES[number]): string};
 const noAction = (): void => {};
 const newProjectProps = {open: true, values: {name: '新项目', description: '', presetId: 'portrait_1080', createFolder: true}, location: {display: '/Users/example/Movies/Mioon'}, state: {kind: 'editing'}, onChange: noAction, onSubmit: noAction, onClose: noAction};
 const openProps = {open: true, projectName: '访谈剪辑样片', failure: OPEN_FAILURES.missing, action: {kind: 'idle'}, platform: 'mac', onClose: noAction};
+
+test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
+  const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
+  const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'}, {state: 'invalid', reason: 'corrupt'}];
+  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid'] as const;
+  const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, 4).map((project, index) => ({project: {...project, name: `Status ${4 - index}`,
+    projectFile: `${directory}/project-${index}.mioon`, lastOpenedAt: `2026-10-${20 + index}T00:00:00.000Z`,
+    summary: project.summary ? {...project.summary, updatedAt: `2026-10-${20 + index}T00:00:00.000Z`} : null}, availability: states[index]!, coverUrl: null}));
+  const original = structuredClone(projects);
+  for (const locale of LOCALES) for (const view of ['grid', 'list'] as const) for (const sort of ['recent', 'updated', 'name'] as const) {
+    const page = controlled.render('recent', {state: {kind: 'ready', value: projects}, sort, view, now: new Date('2026-10-24T00:00:00.000Z'),
+      onSortChange: noAction, onViewChange: noAction, onRetry: noAction, onOpen: noAction}, locale);
+    const cards = [...page.matchAll(/<article\b[^>]*data-testid="pf-card-([^"]+)"[^>]*>([\s\S]*?)<\/article>/gu)];
+    assert.deepEqual(cards.map(card => card[1]), projects.toReversed().map(entry => entry.project.projectId), `${locale}/${view}/${sort}: availability must not reorder cards`);
+    for (const [index, entry] of projects.entries()) {
+      const card = cards.find(value => value[1] === entry.project.projectId)![2]!;
+      const meta = /class="pf-card-meta"[^>]*>([\s\S]*?)<\/div>/u.exec(card)![1]!;
+      const status = /<span class="pf-card-status"[^>]*>([^<]*)<\/span>/u.exec(meta);
+      assert.ok(status, `${locale}/${view}/${sort}/${entry.availability.state}: status has its non-shrinking role`);
+      assert.equal(status[1], escapeHtml(translate(locale, statusKeys[index]!)));
+      assert.ok(meta.includes(directory), 'the original path remains available to render with ellipsis');
+      assert.equal(meta.startsWith(status[0]), index !== 1, 'missing/invalid lead with their status; locked keeps its existing folder-then-status order');
+    }
+  }
+  assert.deepEqual(projects, original);
+});
 
 test('12-02b shows only supplied location facts, blocks network/unknown locations and keeps positive warnings nonblocking', () => {
   for (const locale of LOCALES) {
