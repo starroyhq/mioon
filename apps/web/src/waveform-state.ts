@@ -152,6 +152,9 @@ export function waveformPath(peaks: readonly (number | null)[] | null | undefine
 
 const retriable = (entry: WaveformEntry | undefined): boolean => ['error', 'interrupted', 'missing'].includes(entry?.status ?? '') && entry?.phase === 'idle';
 const protocolError = (): Error => Object.assign(new Error('波形状态返回无效，请重试。'), { code: 'WAVEFORM_PROTOCOL' });
+const sameWindow = (left: WaveformWindow, right: WaveformWindow): boolean => left.key === right.key && left.clipId === right.clipId && left.assetId === right.assetId
+  && left.sourceStartFrame === right.sourceStartFrame && left.sourceEndFrame === right.sourceEndFrame && left.points === right.points
+  && left.left === right.left && left.width === right.width && Boolean(left.unsupported) === Boolean(right.unsupported);
 
 interface WaveformReply {
   readonly status: WaveformStatus;
@@ -176,6 +179,7 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
   let listener = onChange;
   const entries = new Map<string, WaveformEntry>(), attempted = new Set<string>();
   let wanted = new Map<string, WaveformWindow>();
+  let viewWindows: readonly WaveformWindow[] = [];
   const live = (): boolean => connected && enabled && visible && Boolean(projectId);
   const snapshot = (): WaveformSnapshot => ({ projectId, enabled, active: live(), entries: new Map(entries), pending: queue.length, inFlight: Boolean(active), autoLimitReached: attempted.size >= WAVEFORM_LIMITS.attempts, retryable: [...wanted.keys()].some(key => retriable(entries.get(key))) });
   const emit = (): void => { if (connected) listener(snapshot()); };
@@ -257,11 +261,18 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
     connect(callback: (value: WaveformSnapshot) => void = onChange): void { connected = true; listener = callback; emit(); },
     disconnect(): void { connected = false; enabled = false; visible = false; fence(); },
     setView({ projectId: nextProject, active: nextVisible, windows = [] }: WaveformView): void {
+      const bounded = windows.slice(0, WAVEFORM_LIMITS.entries);
+      // Measurements may recreate arrays on every render. Repeating the same
+      // view must not notify React or disturb a pending poll/transport owner.
+      if (projectId === nextProject && visible === Boolean(nextVisible) && viewWindows.length === bounded.length
+        && viewWindows.every((item, index) => sameWindow(item, bounded[index]))) return;
+      // Keep comparison data separate from the caller and mutable cache entries.
+      viewWindows = bounded.map(item => ({...item}));
       if (projectId !== nextProject) { fence(); projectId = nextProject; enabled = false; entries.clear(); attempted.clear(); wanted.clear(); }
       if (visible !== Boolean(nextVisible)) { fence(); visible = Boolean(nextVisible); }
       // Render/cache at most 32 visible windows; the toolbar discloses the cap.
       // Additional clips keep their ordinary clip appearance.
-      wanted = new Map(windows.slice(0, WAVEFORM_LIMITS.entries).map(item => [item.key, item] as const));
+      wanted = new Map(viewWindows.map(item => [item.key, item] as const));
       if (enabled) for (const item of wanted.values()) put(item);
       pump(); emit();
     },
