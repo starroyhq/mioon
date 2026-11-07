@@ -37,24 +37,46 @@ function safeDiagnostics(value: unknown): void {
   assert.equal(serialized.includes('stdout'), false); assert.equal(serialized.includes('stderr'), false);
 }
 
-test('stapling retries only explicit transient ticket-service failures, with a three-attempt bound and safe diagnostics', async () => {
-  const f = executor([result(68, network), result(68, network), result()]), w = waitRecorder(), diagnostics: AppleStaplerDiagnostic[] = [];
+test('stapling retries only explicit transient ticket-service failures, with a five-attempt bound and safe diagnostics', async () => {
+  const f = executor([result(68, network), result(68, network), result(68, network), result(68, network), result()]), w = waitRecorder(), diagnostics: AppleStaplerDiagnostic[] = [];
   const passed = await runAppleStapler('staple', dmg, {execute: f.execute, wait: w.wait, onDiagnostic: value => diagnostics.push(value)});
-  assert.deepEqual(w.waits, [30000, 90000]); assert.equal(f.calls.length, 3);
-  assert.deepEqual(diagnostics.map(value => [value.attempt, value.category, value.willRetry]), [[1, 'transient_network', true], [2, 'transient_network', true], [3, 'success', false]]);
+  assert.deepEqual(w.waits, [30000, 60000, 120000, 240000]); assert.equal(f.calls.length, 5);
+  assert.deepEqual(diagnostics.map(value => [value.attempt, value.category, value.willRetry]), [[1, 'transient_network', true], [2, 'transient_network', true], [3, 'transient_network', true], [4, 'transient_network', true], [5, 'success', false]]);
+  assert.deepEqual(diagnostics.map(value => value.nsUrlErrorCode), [-1005, -1005, -1005, -1005, undefined]);
+  assert.equal(Object.hasOwn(diagnostics[4]!, 'nsUrlErrorCode'), false);
   assert.deepEqual(passed, diagnostics); safeDiagnostics(diagnostics);
   for (const call of f.calls) {assert.equal(call.file, 'xcrun'); assert.deepEqual(call.args, ['stapler', 'staple', '-v', dmg]); assert.equal(call.timeout, 60000);}
-  assert.equal(f.calls.reduce((sum, call) => sum + call.timeout, 0) + w.waits.reduce((sum, wait) => sum + wait, 0), 300000);
+  assert.equal(f.calls.reduce((sum, call) => sum + call.timeout, 0) + w.waits.reduce((sum, wait) => sum + wait, 0), 750000);
 });
 
-test('exhausted transient failures keep the release gate failed and do not execute a fourth attempt', async () => {
-  const f = executor([result(68, network), result(68, network), result(68, network)]), w = waitRecorder();
+test('exhausted transient failures keep the release gate failed and do not execute a sixth attempt', async () => {
+  const f = executor([result(68, network), result(68, network), result(68, network), result(68, network), result(68, network)]), w = waitRecorder();
   await assert.rejects(runAppleStapler('validate', dmg, {execute: f.execute, wait: w.wait, failureCode: 'DMG_STAPLE_INVALID'}), error => {
     assert.ok(error instanceof AppleStaplerFailure && error instanceof CheckFailure); assert.equal(error.code, 'DMG_STAPLE_INVALID');
-    assert.equal(error.diagnostics.length, 3); assert.equal(error.diagnostics[2]!.willRetry, false); safeDiagnostics(error); return true;
+    assert.equal(error.diagnostics.length, 5); assert.equal(error.diagnostics[4]!.willRetry, false);
+    assert.ok(error.diagnostics.every(value => value.nsUrlErrorCode === -1005)); safeDiagnostics(error); return true;
   });
-  assert.equal(f.calls.length, 3); assert.deepEqual(w.waits, [30000, 90000]);
+  assert.equal(f.calls.length, 5); assert.deepEqual(w.waits, [30000, 60000, 120000, 240000]);
   assert.ok(f.calls.every(call => call.timeout === 60000));
+});
+
+test('only the five classified NSURL codes are recorded from stdout or stderr without raw ticket or path text', async () => {
+  const codes = [-1001, -1003, -1004, -1005, -1009] as const;
+  for (const code of codes) {
+    for (const stream of ['stdout', 'stderr'] as const) {
+      const raw = `CloudKit Error Domain=NSURLErrorDomain Code=${code} ${PRIVATE} /synthetic/private.p8 ticket-body=secret`;
+      const failed = {...result(68), [stream]: raw}, f = executor([failed, result()]), w = waitRecorder();
+      const diagnostics = await runAppleStapler('staple', dmg, {execute: f.execute, wait: w.wait});
+      assert.equal(diagnostics[0]!.nsUrlErrorCode, code); assert.equal(diagnostics[0]!.category, 'transient_network');
+      assert.equal(Object.hasOwn(diagnostics[1]!, 'nsUrlErrorCode'), false);
+      assert.deepEqual(w.waits, [30000]); safeDiagnostics(diagnostics);
+      assert.equal(JSON.stringify(diagnostics).includes('/synthetic/private.p8'), false);
+      assert.equal(JSON.stringify(diagnostics).includes('ticket-body'), false);
+    }
+  }
+  const f = executor([{...result(), stdout: network}]), w = waitRecorder();
+  const successful = await runAppleStapler('validate', dmg, {execute: f.execute, wait: w.wait});
+  assert.equal(Object.hasOwn(successful[0]!, 'nsUrlErrorCode'), false); assert.deepEqual(w.waits, []);
 });
 
 test('invalid tickets, unclassified exit 68, timeouts, signals and output limits are never hidden by retry', async () => {
@@ -63,6 +85,10 @@ test('invalid tickets, unclassified exit 68, timeouts, signals and output limits
     {value: result(68, `unexpected CloudKit failure ${PRIVATE}`), category: 'command_failed'},
     {value: result(68, `Error Domain=NSURLErrorDomain Code=-1005 ${PRIVATE}`), category: 'command_failed'},
     {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-1200 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-1002 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-1006 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-10050 ${PRIVATE}`), category: 'command_failed'},
+    {value: result(68, `CloudKit Error Domain=NSURLErrorDomain Code=-1005suffix ${PRIVATE}`), category: 'command_failed'},
     {value: result(1, network), category: 'command_failed'},
     {value: {...result(68, network), timedOut: true}, category: 'timeout'},
     {value: {...result(68, network), signal: 'SIGTERM'}, category: 'signal'},
@@ -72,7 +98,8 @@ test('invalid tickets, unclassified exit 68, timeouts, signals and output limits
   for (const scenario of cases) {
     const f = executor([scenario.value]), w = waitRecorder();
     await assert.rejects(runAppleStapler('validate', app, {execute: f.execute, wait: w.wait, failureCode: 'APP_STAPLE_INVALID'}), error => {
-      assert.ok(error instanceof AppleStaplerFailure); assert.equal(error.code, 'APP_STAPLE_INVALID'); assert.equal(error.diagnostics[0]!.category, scenario.category); safeDiagnostics(error); return true;
+      assert.ok(error instanceof AppleStaplerFailure); assert.equal(error.code, 'APP_STAPLE_INVALID'); assert.equal(error.diagnostics[0]!.category, scenario.category);
+      assert.equal(Object.hasOwn(error.diagnostics[0]!, 'nsUrlErrorCode'), false); safeDiagnostics(error); return true;
     });
     assert.equal(f.calls.length, 1); assert.deepEqual(w.waits, []);
   }
@@ -121,14 +148,25 @@ test('only a trusted post-Accepted network staple failure is recovered without a
   assert.equal(f.reports[0]!.acceptedKnown, true); assert.equal(f.reports[0]!.ok, true); safeDiagnostics(f.reports);
 });
 
-test('the library first failure counts toward the maximum three staple attempts', async () => {
+test('the library first failure counts toward the maximum five staple attempts', async () => {
   let notarizeCalls = 0;
-  const f = appDependencies([result(68, network), result(68, network)], async () => {notarizeCalls++; throw new Error(`Failed to staple your application with code: 68\n\n${network}`);});
+  const f = appDependencies([result(68, network), result(68, network), result(68, network), result(68, network)], async () => {notarizeCalls++; throw new Error(`Failed to staple your application with code: 68\n\n${network}`);});
   await assert.rejects(notarizeApp(context(), f.dependencies), {code: 'APP_STAPLE_INVALID'});
-  assert.equal(notarizeCalls, 1); assert.equal(f.calls.length, 2); assert.ok(f.calls.every(call => call.args[1] === 'staple'));
-  assert.deepEqual(f.waits, [30000, 90000]);
-  assert.deepEqual(f.reports[0]!.diagnostics.map(value => value.attempt), [1, 2, 3]); assert.equal(f.reports[0]!.acceptedKnown, true);
+  assert.equal(notarizeCalls, 1); assert.equal(f.calls.length, 4); assert.ok(f.calls.every(call => call.args[1] === 'staple'));
+  assert.deepEqual(f.waits, [30000, 60000, 120000, 240000]);
+  assert.deepEqual(f.reports[0]!.diagnostics.map(value => value.attempt), [1, 2, 3, 4, 5]); assert.equal(f.reports[0]!.acceptedKnown, true);
+  assert.ok(f.reports[0]!.diagnostics.every(value => value.nsUrlErrorCode === -1005));
   assert.equal(f.reports[0]!.ok, false); assert.equal(f.reports[0]!.error, 'APP_STAPLE_INVALID'); safeDiagnostics(f.reports);
+});
+
+test('post-Accepted recovery can use its fifth staple and still validates without another notarization submission', async () => {
+  let notarizeCalls = 0;
+  const f = appDependencies([result(68, network), result(68, network), result(68, network), result(), result()], async () => {notarizeCalls++; throw new Error(`Failed to staple your application with code: 68\n\n${network}`);});
+  await notarizeApp(context(), f.dependencies);
+  assert.equal(notarizeCalls, 1); assert.deepEqual(f.calls.map(call => call.args[1]), ['staple', 'staple', 'staple', 'staple', 'validate']);
+  assert.deepEqual(f.waits, [30000, 60000, 120000, 240000]);
+  assert.deepEqual(f.reports[0]!.diagnostics.map(value => [value.operation, value.attempt]), [['staple', 1], ['staple', 2], ['staple', 3], ['staple', 4], ['staple', 5], ['validate', 1]]);
+  assert.equal(f.reports[0]!.ok, true); assert.equal(f.reports[0]!.phase, 'complete'); safeDiagnostics(f.reports);
 });
 
 test('notarization rejection or malformed responses do not enter stapling recovery even if raw text contains a staple-looking phrase', async () => {

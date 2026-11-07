@@ -16,6 +16,7 @@ export interface AppleStaplerDiagnostic {
   timedOut: boolean;
   category: 'success' | 'transient_network' | 'invalid_ticket' | 'timeout' | 'signal' | 'output_limit' | 'command_failed';
   willRetry: boolean;
+  nsUrlErrorCode?: -1001 | -1003 | -1004 | -1005 | -1009;
 }
 export interface AppleStaplerCommandResult {
   exitCode: number | null;
@@ -36,11 +37,11 @@ export interface AppleStaplerOptions {
   attemptsUsed?: 1;
 }
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const ATTEMPTS = 3, COMMAND_TIMEOUT = 60000, OUTPUT_LIMIT = 256 * 1024;
-// The previous 20 seconds of backoff were exhausted by a ticket-service network
-// failure. Keep three attempts, with at most 300 seconds of commands and waits
-// (excluding runner scheduling); notarization submission is never repeated.
-const BACKOFF = [30000, 90000] as const;
+const ATTEMPTS = 5, COMMAND_TIMEOUT = 60000, OUTPUT_LIMIT = 256 * 1024;
+// A direct helper call budgets five 60-second commands and 450 seconds of waits.
+// attemptsUsed counts the library's first staple toward the attempt limit;
+// that external call's duration is outside this helper's command budget.
+const BACKOFF = [30000, 60000, 120000, 240000] as const;
 export class AppleStaplerFailure extends CheckFailure {
   readonly diagnostics: readonly AppleStaplerDiagnostic[];
   constructor(code: AppleStaplerFailureCode, diagnostics: readonly AppleStaplerDiagnostic[]) {
@@ -67,6 +68,9 @@ function diagnostic(operation: AppleStaplerOperation, kind: 'app' | 'dmg', attem
   const exitCode = Number.isSafeInteger(result.exitCode) && result.exitCode !== null && result.exitCode >= 0 && result.exitCode <= 255 ? result.exitCode : null;
   const signal = typeof result.signal === 'string' && /^SIG[A-Z0-9]{1,12}$/.test(result.signal) ? result.signal : null;
   const text = `${result.stdout}\n${result.stderr}`;
+  const networkError = /NSURLErrorDomain\s+Code=-(1001|1003|1004|1005|1009)\b/.exec(text)?.[1];
+  const nsUrlErrorCode = networkError === '1001' ? -1001 : networkError === '1003' ? -1003 : networkError === '1004' ? -1004
+    : networkError === '1005' ? -1005 : networkError === '1009' ? -1009 : undefined;
   const ok = exitCode === 0 && !signal && !result.timedOut && !result.outputLimitExceeded;
   let category: AppleStaplerDiagnostic['category'];
   if (ok) category = 'success';
@@ -77,9 +81,11 @@ function diagnostic(operation: AppleStaplerOperation, kind: 'app' | 'dmg', attem
   else if (/ticket[^\r\n]*(?:invalid|not valid|not found|missing)|could not validate ticket/i.test(text)) category = 'invalid_ticket';
   // Code 68 alone also covers permanent failures. Only explicit URL-loading
   // errors from Apple's ticket service qualify for this bounded recovery.
-  else if (exitCode === 68 && /(?:api\.apple-cloudkit\.com|CloudKit)/i.test(text) && /NSURLErrorDomain\s+Code=-(?:1001|1003|1004|1005|1009)\b/.test(text)) category = 'transient_network';
+  else if (exitCode === 68 && /(?:api\.apple-cloudkit\.com|CloudKit)/i.test(text) && nsUrlErrorCode !== undefined) category = 'transient_network';
   else category = 'command_failed';
-  return {operation, artifactKind: kind, attempt, ok, exitCode, signal, timedOut: Boolean(result.timedOut), category, willRetry: category === 'transient_network' && attempt < ATTEMPTS};
+  return {operation, artifactKind: kind, attempt, ok, exitCode, signal, timedOut: Boolean(result.timedOut), category,
+    willRetry: category === 'transient_network' && attempt < ATTEMPTS,
+    ...(category === 'transient_network' && nsUrlErrorCode !== undefined ? {nsUrlErrorCode} : {})};
 }
 /** Only xcrun stapler is repeated; notarization submission and signing are not. */
 export async function runAppleStapler(operation: AppleStaplerOperation, artifact: string, options: AppleStaplerOptions = {}): Promise<readonly AppleStaplerDiagnostic[]> {
