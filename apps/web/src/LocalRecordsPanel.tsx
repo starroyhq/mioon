@@ -30,7 +30,7 @@ export function LocalRecordsView({active,state,controller}:{readonly active:bool
     <p data-text-selectable>{t('localRecords.help')}</p>
     {state.notice&&<WorkbenchAlert data-testid="local-records-notice" tone={state.notice.code==='DELETED'?'success':'warning'} data-text-selectable>{t(noticeKey)}</WorkbenchAlert>}
     {state.loading&&<p role="status">{t('localRecords.loading')}</p>}
-    {state.readError&&<WorkbenchAlert tone="warning" data-text-selectable>{t('localRecords.readError')} <code>{state.readError}</code></WorkbenchAlert>}
+    {state.readError&&<WorkbenchAlert tone="warning" data-text-selectable>{t(state.readError==='LOCAL_RECORDS_SCAN_FAILED'?'localRecords.scanFailed':'localRecords.readError')} <code>{state.readError}</code></WorkbenchAlert>}
     {!state.loading&&!state.readError&&state.list&&(state.list.records.length===0?<p role="status">{t('localRecords.empty')}</p>:<>
       <p className="local-records-summary" data-text-selectable>{t('localRecords.summary',{count:state.list.records.length,size:total})}</p>
       <ul className="local-records-list">{state.list.records.map(item=><li key={item.projectId} data-project-id={item.projectId}>
