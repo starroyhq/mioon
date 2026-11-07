@@ -8,6 +8,7 @@ import type {ProjectStore} from '../project-file/store.ts';
 import {readProjectContentStamp} from '../project-file/content-stamp.ts';
 import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, rowKey, snapshotCellValue, tableColumns, validateProjectDocument} from './document.ts';
 import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow} from './document.ts';
+import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from '../timeline-receipt-project.ts';
 
 type Table = ProjectSnapshotTable;
 const metadata = new Set(['revision', 'updatedAt']);
@@ -24,6 +25,15 @@ const targetKinds: Record<Table, string> = {projects: 'project', assets: 'asset'
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 const token = (table: Table, key: string) => `${table}\0${key}`;
+function timelineOwnerReferenced(store: ProjectStore): boolean {
+  // Local process records are outside the portable snapshot. A version without
+  // a timeline cannot delete the owner required to validate retained receipts.
+  return Boolean(store.db.prepare(`SELECT 1 FROM main.timeline_history WHERE projectId=?
+    UNION ALL SELECT 1 FROM main.timeline_history_cursors WHERE projectId=?
+    UNION ALL SELECT 1 FROM main.timeline_format_requests WHERE projectId=?
+    UNION ALL SELECT 1 FROM main.timeline_requests WHERE (${TIMELINE_RECEIPT_PROJECT_EXPRESSION})=? LIMIT 1`)
+    .get(store.projectId,store.projectId,store.projectId,store.projectId));
+}
 export interface RestorePlan {readonly changes: ProjectVersionDifference[]; readonly document: ProjectDocument}
 const restorePlans = new WeakMap<RestorePlan, {store: ProjectStore; current: ProjectDocument; contentToken: string}>();
 // Display metadata must not alter the confirmed plan digest or the persisted
@@ -249,8 +259,8 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       }
       else if (retained.has(table)) {
         diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_PROTECTED_RESULT_CURRENT', '快照后新增的受保护结果或只前进对象不能删除，保持当前。');
-      } else if (!empty && table === 'timelines' && store.db.prepare('SELECT 1 FROM main.timeline_history WHERE projectId=? LIMIT 1').get(store.projectId)) {
-        diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT', '本机时间线编辑历史仍引用此聚合，保持当前身份和内容，不删除过程历史。');
+      } else if (!empty && table === 'timelines' && timelineOwnerReferenced(store)) {
+        diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT', '本机时间线编辑历史或请求回执仍引用此聚合，保持当前身份和内容，不删除过程记录。');
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);
         diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';

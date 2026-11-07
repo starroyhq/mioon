@@ -2,6 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION, TIMELINE_LOUDNESS_APPLY_REJECTION_CODES} from '@mioon/contracts/timeline-loudness-apply';
 import type {TimelineLoudnessApplyInput, TimelineLoudnessApplyResponse, TimelineLoudnessApplyTimeline} from '@mioon/contracts/timeline-loudness-apply';
 import type {TimelineLoudnessApplyTransactions} from './timeline-loudness-apply.ts';
+import type {TimelineHistoryOperation} from './timeline-history-operations.ts';
 
 type Mutable<T>={-readonly[K in keyof T]:T[K]};
 type Timeline=Mutable<Omit<TimelineLoudnessApplyTimeline,'clips'>> & {clips:Mutable<TimelineLoudnessApplyTimeline['clips'][number]>[]};
@@ -17,7 +18,7 @@ interface Dependencies {
   putTimeline(timeline:Timeline):void;
   admitTimelineImageResponse(timeline:Timeline):void;
   admitTimelineVolumeEnvelopeWrite(timeline:Timeline,options:{before:unknown;after:unknown;response:unknown}):void;
-  recordEdit(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,timeline:Timeline,before:unknown):void;
+  recordEdit(operation:TimelineHistoryOperation,timeline:Timeline,before:unknown):void;
   saveResponse(operation:typeof TIMELINE_LOUDNESS_APPLY_OPERATION,input:TimelineLoudnessApplyInput,requestHash:string,
     response:TimelineLoudnessApplyResponse,boundary:Boundary):TimelineLoudnessApplyResponse;
   now():string;
