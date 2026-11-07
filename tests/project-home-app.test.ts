@@ -514,6 +514,27 @@ function boundaryRenderer() {
   return presentation;
 }
 
+function homeStatus(h: HomeHarness): unknown {
+  const nodes = (value: unknown): {props?: Record<string, unknown>}[] => {
+    if (Array.isArray(value)) return value.flatMap(nodes);
+    if (!value || typeof value !== 'object') return [];
+    const node = value as {props?: Record<string, unknown>};
+    return [node, ...nodes(node.props?.children)];
+  };
+  const home = nodes(boundaryRenderer()(h).sourceTree()).find(node => node.props?.onCreate === h.createProject);
+  assert.ok(home, 'The actual App home branch must be rendered');
+  return home.props?.status;
+}
+
+test('actual empty home omits the status container when there is no recovery or video directory notice', async () => {
+  const h = harness({directory: () => projectEntryFixture([]), rpc: async () => []});
+  await h.boot();
+  assert.deepEqual(h.env.projects, []);
+  assert.equal(homeStatus(h), null);
+  // The initial directory read can still show a legitimate loading/list notice.
+  assert.doesNotMatch(boundaryRenderer()(h).html, /<div class="project-home-notice">\s*<\/div>/u);
+});
+
 test('actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success', async () => {
   const render = boundaryRenderer(), h = harness();
   assert.match(app, /import ProjectHome from '\.\/ProjectHomeDirectoryScreen\.tsx'/);
@@ -637,11 +658,13 @@ test('actual home keeps optional video directory failure visible across toast ch
   for (const locale of i18nCore.LOCALES) {
     Object.assign(h.env, createI18nTestContext(locale)); h.env.toast = null;
     const shown = render(h).html;
+    assert.notEqual(homeStatus(h), null);
     assert.match(shown, /data-testid="video-directory-unavailable"/);
     assert.ok(shown.includes(i18nCore.translate(locale, 'video.providers.directoryUnavailableHint')));
   }
   unavailable = false; await h.boot();
   assert.equal(h.env.videoDirectoryUnavailable, false); assert.doesNotMatch(render(h).html, /data-testid="video-directory-unavailable"/);
+  assert.equal(homeStatus(h), null);
 });
 
 test('actual App shares authenticated settled project readiness between workbench display and geometry observation', async () => {
@@ -747,6 +770,7 @@ test('failed project opening retains an application-only backup admission withou
     const node=value as {props?:Record<string,unknown>};return [node,...nodes(node.props?.children),...nodes(node.props?.status),...nodes(node.props?.recovery)];
   };
   const recovery=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.projectId===id(1)&&node.props?.admission===failed.admission);
+  assert.notEqual(homeStatus(h),null);
   assert.ok(recovery,'the actual failed-opening branch passes the captured application admission to backup recovery');
   assert.equal(recovery.props?.interactionBlocked,false);
   const before=h.calls.length;(recovery.props!.onRestore as ()=>void)();
