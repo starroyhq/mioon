@@ -5,19 +5,28 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import type {NewProjectFileDialogProps} from '../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import type {ProjectOpenFailureDialogProps} from '../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
+import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
+import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
+import {createNativeProjectDesktopController} from '../apps/web/src/native-project-desktop-state.ts';
+import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
+import {createI18nTestContext} from './helpers/i18n.ts';
+import type {Locale} from '../packages/i18n/src/index.ts';
 interface Element {type: unknown; props: Record<string, unknown> & {children?: unknown}}
 interface Components {
   NewProjectFileDialog(props: NewProjectFileDialogProps): Element;
   ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): Element;
   React: {__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: {H: unknown}};
-  html(which: 'create' | 'failure', props: unknown): string;
+  setLocale(locale: Locale): void;
+  html(which: 'create' | 'failure' | 'native', props: unknown): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 const bundle = await build({stdin: {contents: `import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server';
  import {NewProjectFileDialog} from './src/project-file/NewProjectFileDialog.tsx';
  import {ProjectOpenFailureDialog} from './src/project-file/ProjectOpenFailureDialog.tsx';
+ import {NativeProjectEntryDialogs} from './src/NativeProjectEntryDialogs.tsx';
+ export {setLocale} from '../../tests/fixtures/project-file-ui/ssr-i18n.tsx';
  export {React,NewProjectFileDialog,ProjectOpenFailureDialog};
- export const html=(which,props)=>renderToStaticMarkup(React.createElement(which==='create'?NewProjectFileDialog:ProjectOpenFailureDialog,props));`, resolveDir: root + 'apps/web', loader: 'tsx'},
+ export const html=(which,props)=>renderToStaticMarkup(React.createElement(which==='create'?NewProjectFileDialog:which==='native'?NativeProjectEntryDialogs:ProjectOpenFailureDialog,props));`, resolveDir: root + 'apps/web', loader: 'tsx'},
   bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: {'.css': 'empty'}, nodePaths: [root + 'apps/web/node_modules'],
   define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name: 'ssr-overlays', setup(builder) {
     builder.onResolve({filter: /^@mioon\/ui\/components\/dialog$/}, () => ({path: root + 'tests/fixtures/project-file-ui/ssr-overlays.tsx'}));
@@ -80,4 +89,43 @@ test('invalid native save tickets give explicit reselect guidance while keeping 
   assert.match(tag(html, 'pf-create-submit'), /\sdisabled(?:=|[ >])/); assert.doesNotMatch(tag(html, 'pf-create-choose'), /\sdisabled(?:=|[ >])/); assert.doesNotMatch(tag(html, 'pf-create-cancel'), /\sdisabled(?:=|[ >])/);
   const failure: ProjectOpenFailureDialogProps = {open: true, failure: {code: 'OPEN_UNAVAILABLE', projectId: null, projectFile: null}, projectName: 'Original', platform: 'mac', action: {kind: 'error', action: 'copyTo'}, notice: guidance, onClose() {}};
   const failed = ui.html('failure', failure); assert.ok(failed.includes(guidance)); assert.match(failed, /data-testid="pf-open-notice"/); assert.doesNotMatch(tag(failed, 'pf-open-close'), /\sdisabled(?:=|[ >])/);
+});
+test('expired COPY and read-only actions keep the actual native dialog closable with four-language guidance', async t => {
+  const id = (n: number) => `72000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const facts = {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'} as const;
+  for (const kind of ['copy', 'read-only'] as const) for (const dismissal of ['button', 'primitive'] as const) await t.test(`${kind}/${dismissal}`, async t => {
+    const rows = projectEntryFixture([]), identity = projectEntryOwnerFixture(() => rows, []);
+    const requests: string[] = [];
+    const preload = createProjectEntriesDesktopBridge(async (_channel, value) => {
+      const request = value as {action: string}; requests.push(request.action);
+      const defaults: Record<string, unknown> = {
+        capabilities: {ready: true, create: false, open: true, saveAs: false, duplicate: false, copyTo: true, adoptCopy: true, openOriginal: true},
+        takePendingOpen: null,
+        openSelectedFile: kind === 'copy' ? {status: 'copy', token: id(1), name: 'Retained COPY', original: {name: 'Original', displayPath: '/original.mioon'}}
+          : {status: 'copy-source', token: id(1), name: 'Retained read-only', displayPath: '/source.mioon', reason: 'read-only', facts},
+        chooseLocation: {token: id(2), displayPath: '/selected/copy.mioon', facts},
+      };
+      if (request.action === 'adoptCopy' || request.action === 'copyTo') return {ok: false, error: {code: 'PROJECT_ENTRY_TICKET_EXPIRED', status: 409, details: {}}};
+      return {ok: true, data: defaults[request.action]};
+    });
+    const client = readProjectEntryDesktopClient({__mioonProjectEntries: preload}); assert.ok(client);
+    const controller = createNativeProjectDesktopController({client, identity, beforeAction: async () => true, openCreated: async () => {assert.fail('Expired ticket cannot open a created project');}, message: () => 'Select location'});
+    controller.activate(); t.after(() => {controller.dispose(); identity.dispose(); ui.setLocale('zh-Hans');}); await controller.initialize(false);
+    await controller.openFile(); await (kind === 'copy' ? controller.adoptCopy() : controller.copyTo());
+    const state = controller.getState(); assert.ok(state.failure); assert.equal(state.failure.entryExpired, true); assert.equal(state.action.kind, 'error');
+    for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+      ui.setLocale(locale); const html = ui.html('native', {desktop: controller});
+      const expected = createI18nTestContext(locale).t('nativeEntry.requestExpired'); assert.ok(html.includes(expected), `${locale}: native wiring must show expired-request guidance`);
+      assert.match(html, /data-testid="pf-open-notice"/); assert.doesNotMatch(html, /data-testid="pf-open-unknown"/);
+      assert.doesNotMatch(html, /data-testid="pf-open-(?:adoptCopy|openOriginal|copyTo)"/);
+      const close = html.match(/<button[^>]*data-testid="pf-open-close"[^>]*>/); assert.ok(close); assert.doesNotMatch(close[0], /\sdisabled(?:=|[ >])/);
+    }
+    const props: ProjectOpenFailureDialogProps = {open: true, failure: state.failure.issue, projectName: state.failure.name, platform: 'mac', action: state.action,
+      notice: 'Expired; reopen the file', onClose: controller.closeFailure};
+    const rendered = harness(ui.ProjectOpenFailureDialog)(props);
+    if (dismissal === 'button') (button(rendered, 'pf-open-close').props.onClick as () => void)();
+    else (rendered.props.onOpenChange as (open: boolean) => void)(false);
+    assert.equal(controller.getState().failure, null); assert.equal(controller.readCloseSnapshot().unknown, false);
+    assert.equal(requests.filter(action => action === (kind === 'copy' ? 'adoptCopy' : 'copyTo')).length, 1);
+  });
 });

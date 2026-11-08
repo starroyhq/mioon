@@ -426,6 +426,14 @@ test('12-03e-i render complete translated issues while unprovided system and cop
     }
     const adoption = controlled.render('failure', {...openProps, failure: copy, onOpenOriginal: noAction, onAdoptCopy: noAction}, locale);
     assert.ok(adoption.includes('/Users/example/原项目.mioon')); assert.ok(tagOf(adoption, 'pf-open-adoptCopy')); assert.ok(tagOf(adoption, 'pf-open-openOriginal'));
+    for (const failure of [copy, OPEN_FAILURES.readOnly, {...location, code: 'NETWORK_LOCATION'}]) {
+      const expired = controlled.render('failure', {...openProps, failure, action: {kind: 'error', action: 'adoptCopy'}, notice: translate(locale, 'nativeEntry.requestExpired')}, locale);
+      assert.ok(tagOf(expired, 'pf-open-notice'));
+      assert.ok(expired.includes(escapeHtml(translate(locale, 'nativeEntry.requestExpired'))));
+      assert.doesNotMatch(expired, /nativeEntry\.requestExpired/u);
+      assert.equal(disabled(tagOf(expired, 'pf-open-close')), false);
+      assert.equal(tagOf(expired, 'pf-open-unknown'), null);
+    }
     for (const reason of ['missing', 'access-denied', 'disk-disconnected']) {
       const moved = controlled.render('failure', {...openProps, failure: {...location, code: 'PROJECT_FILE_MOVED', reason, writeRejected: true}, onCloseProject: noAction, onLocate: noAction}, locale);
       assert.ok(tagOf(moved, 'pf-open-closeProject')); assert.ok(tagOf(moved, 'pf-open-locate'));

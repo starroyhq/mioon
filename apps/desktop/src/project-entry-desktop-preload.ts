@@ -1,14 +1,44 @@
-import {PROJECT_ENTRY_DESKTOP_CHANNEL,projectEntryDesktopRequestSchema,projectDesktopCapabilitiesSchema,projectDesktopSelectionSchema,projectDesktopOpenResultSchema,projectDesktopCreatedSchema,projectDesktopLocationSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import type {ProjectEntriesDesktopBridge} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_CHANNEL,PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,PROJECT_ENTRY_DESKTOP_LIMITS,projectPendingOpenNoticeSchema,projectEntryDesktopRequestSchema,projectDesktopCapabilitiesSchema,projectDesktopSelectionSchema,projectDesktopOpenResultSchema,projectDesktopCreatedSchema,projectDesktopLocationSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import type {ProjectEntriesDesktopBridge,ProjectPendingOpenNotice} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control.ts';
-export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT_ENTRY_DESKTOP_CHANNEL,input:unknown)=>Promise<unknown>):ProjectEntriesDesktopBridge{
+interface PendingOpenTransport{
+ on(channel:typeof PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,listener:(event:unknown,value:unknown)=>void):void;
+ removeListener(channel:typeof PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,listener:(event:unknown,value:unknown)=>void):void;
+ context():Promise<{backendId:string;windowId:string;contextId:string}>;
+}
+export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT_ENTRY_DESKTOP_CHANNEL,input:unknown)=>Promise<unknown>,pending?:PendingOpenTransport):ProjectEntriesDesktopBridge{
  const request=async(input:unknown):Promise<unknown>=>{
   const value=await invoke(PROJECT_ENTRY_DESKTOP_CHANNEL,projectEntryDesktopRequestSchema.parse(input));
   if(value===null||typeof value!=='object'||!('ok'in value)||typeof value.ok!=='boolean')throw new Error('Invalid project entry response');
   if(!value.ok){if(Object.keys(value).sort().join(',')!=='error,ok'||!('error'in value))throw new Error('Invalid project entry response');const error=projectEntryControlErrorSchema.parse(value.error);throw Object.assign(new Error(error.code),error);}
   if(Object.keys(value).sort().join(',')!=='data,ok'||!('data'in value))throw new Error('Invalid project entry response');return value.data;
+ };
+ const subscribePendingOpen:NonNullable<ProjectEntriesDesktopBridge['subscribePendingOpen']>=listener=>{
+  if(!pending||typeof listener!=='function')throw new Error('Invalid pending project subscription');
+  let active=true,binding=false,identity:ProjectPendingOpenNotice|null=null,queued:ProjectPendingOpenNotice[]=[];
+  const deliver=(notice:ProjectPendingOpenNotice)=>{
+   if(!active||!identity||notice.backendId!==identity.backendId||notice.windowId!==identity.windowId||notice.contextId!==identity.contextId)return;
+   // Callbacks stay outside the context handshake promise; renderer failures
+   // must not be mistaken for a rejected identity or silently swallowed.
+   queueMicrotask(()=>{if(active)listener();});
+  };
+  const bind=()=>{
+   if(!active||identity||binding)return;binding=true;
+   void Promise.resolve().then(()=>pending.context()).then(value=>{
+    binding=false;if(!active)return;
+    const parsed=projectPendingOpenNoticeSchema.safeParse(value&&{backendId:value.backendId,windowId:value.windowId,contextId:value.contextId});
+    if(!parsed.success){queued=[];return;}identity=parsed.data;
+    const notices=queued;queued=[];for(const notice of notices)deliver(notice);
+   },()=>{binding=false;queued=[];});
+  };
+  const receive=(_event:unknown,value:unknown)=>{
+   if(!active)return;const notice=projectPendingOpenNoticeSchema.safeParse(value);if(!notice.success)return;
+   if(identity)deliver(notice.data);else{if(queued.length>=PROJECT_ENTRY_DESKTOP_LIMITS.tickets)queued.shift();queued.push(notice.data);bind();}
+  };
+  pending.on(PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,receive);bind();
+  return()=>{if(active){active=false;queued=[];pending.removeListener(PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,receive);}};
  };
  return Object.freeze({
   capabilities:async()=>projectDesktopCapabilitiesSchema.parse(await request({action:'capabilities'})),
@@ -21,6 +51,7 @@ export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT
   },
   openSelectedFile:async()=>projectDesktopOpenResultSchema.parse(await request({action:'openSelectedFile'})),
   takePendingOpen:async()=>{const value=await request({action:'takePendingOpen'});return value===null?null:projectDesktopOpenResultSchema.parse(value);},
+  ...(pending?{subscribePendingOpen}:{}),
   openPrivacySettings:async()=>{if(await request({action:'openPrivacySettings'})!==null)throw new Error('Invalid project entry response');},
   reveal:async(input:Parameters<ProjectEntriesDesktopBridge['reveal']>[0])=>{if(await request({action:'reveal',...input})!==null)throw new Error('Invalid project entry response');},
   openOriginal:async(input:Parameters<ProjectEntriesDesktopBridge['openOriginal']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'openOriginal',...input})),

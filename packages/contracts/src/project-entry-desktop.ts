@@ -5,8 +5,11 @@ import {recentProjectSchema} from './project-registry.ts';
 import {projectEntriesResponseSchema} from './project-entry.ts';
 
 export const PROJECT_ENTRY_DESKTOP_CHANNEL = 'mioon:project-entries:v1';
+export const PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT = 'mioon:project-entries:pending-open:v1';
 export const PROJECT_ENTRY_DESKTOP_LIMITS = Object.freeze({requestBytes:16*1024,tickets:64,ticketMs:10*60*1000,pending:32});
 const uuid=z.string().uuid(),name=z.string().min(1).max(PROJECT_NAME_MAX_LENGTH).refine(value=>projectNameProblem(value)===null);
+export const projectPendingOpenNoticeSchema=z.object({backendId:uuid,windowId:uuid,contextId:uuid}).strict();
+export type ProjectPendingOpenNotice=z.infer<typeof projectPendingOpenNoticeSchema>;
 const line=z.string().max(500).refine(value=>!/[\u0000-\u001f\u007f-\u009f]/u.test(value));
 export const projectLocationFactsSchema=z.object({fileSystem:z.string().min(1).max(100),isLocal:z.boolean(),volumeReadOnly:z.boolean(),permissionBits:z.boolean(),cloud:z.enum(['known-icloud','known-file-provider','not-reported','unknown'])}).strict();
 export type ProjectLocationFacts=z.infer<typeof projectLocationFactsSchema>;
@@ -23,8 +26,8 @@ export type ProjectDesktopCapabilities=z.infer<typeof projectDesktopCapabilities
 export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
  z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict(),
  z.object({status:z.literal('cancelled')}).strict(),
- z.object({status:z.literal('copy'),token:uuid,name:line,original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict(),
- z.object({status:z.literal('copy-source'),token:uuid,name:line,displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
+ z.object({status:z.literal('copy'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict(),
+ z.object({status:z.literal('copy-source'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
 ]);
 export type ProjectDesktopOpenResult=z.infer<typeof projectDesktopOpenResultSchema>;
 export const projectDesktopLocationSchema=z.object({displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema}).strict();
@@ -56,6 +59,7 @@ export interface ProjectEntriesDesktopBridge {
  instantiateTemplate?(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'instantiateTemplate'}>,'action'>):Promise<import('./project-copies.ts').ProjectCopyResponse>;
  openSelectedFile():Promise<ProjectDesktopOpenResult>;
  takePendingOpen():Promise<ProjectDesktopOpenResult|null>;
+ subscribePendingOpen?(listener:()=>void):()=>void;
  openPrivacySettings():Promise<void>;
  reveal(input:{projectId:string}|{token:string}):Promise<void>;
  openOriginal(input:{token:string}):Promise<ProjectDesktopOpenResult>;

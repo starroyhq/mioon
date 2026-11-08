@@ -145,7 +145,7 @@ export function createProjectHomeNativeActionsController(options: {
       pending=null;retainedUnknown=false;
       if(operation.kind==='trash'&&(code==='PROJECT_TRASH_SOURCE_CHANGED'||code==='REVISION_CONFLICT')){
         authority=null;emit({kind:'idle',project:null,notice:{kind:'changed',name:operation.project.name}});await refresh();
-      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:operation.kind==='example'&&code==='PROJECT_ENTRY_UNAVAILABLE'?'selection':code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
+      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:operation.kind==='example'&&(code==='PROJECT_ENTRY_UNAVAILABLE'||code==='PROJECT_ENTRY_TICKET_EXPIRED')?'selection':code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
       return false;
     }
   }

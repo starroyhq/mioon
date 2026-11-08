@@ -385,10 +385,12 @@ test('a definitive template preflight error renders example guidance rather than
  for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.blockedTitle'))));assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.unavailable'))));assert.ok(!html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.unavailable'))));assert.equal(tagOf(html,'project-home-trash-confirm'),null);}
 });
 
-test('P2 the real template adapter keeps pre-write unavailable definitive and requests a new selection',async()=>{
- let calls=0;const bridge=readProjectEntryDesktopClient({__mioonProjectEntries:{capabilities:async()=>assert.fail('Capabilities are already verified by the entry owner'),chooseLocation:async()=>selection,instantiateTemplate:async()=>{calls++;throw{code:'PROJECT_ENTRY_UNAVAILABLE',status:409,details:{}};}}});assert.ok(bridge);
+test('P2 the real template adapter keeps pre-write unavailable and expired definitive and requests a new selection',async t=>{
+ for(const code of ['PROJECT_ENTRY_UNAVAILABLE','PROJECT_ENTRY_TICKET_EXPIRED'])await t.test(code,async()=>{
+ let calls=0;const bridge=readProjectEntryDesktopClient({__mioonProjectEntries:{capabilities:async()=>assert.fail('Capabilities are already verified by the entry owner'),chooseLocation:async()=>selection,instantiateTemplate:async()=>{calls++;throw{code,status:409,details:{}};}}});assert.ok(bridge);
  const f=fixture();f.setPorts({example:{bridge,templates:[{id:'timeline-basics',version:1}]}});assert.equal(await f.controller.startExample('Storage','Suggested'),false);
  assert.equal(calls,1);assert.equal(f.controller.getState().kind,'example-blocked');assert.equal(f.controller.getState().reason,'selection');assert.equal(f.controller.getMetadata().unknown,false);assert.deepEqual(f.opened,[]);
  for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.selectAgain'))));assert.equal(tagOf(html,'project-home-native-recheck'),null);assert.equal(disabled(tagOf(html,'project-home-native-close')),false);}
  assert.equal(f.controller.close(),true);assert.equal(calls,1);
+ });
 });

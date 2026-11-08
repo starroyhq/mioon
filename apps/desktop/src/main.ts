@@ -68,8 +68,8 @@ import {menuCommandGestureScript} from './menu-command-gesture.ts';
 import { createDesktopWindowAppearance, desktopWindowBackground } from './window-appearance.ts';
 import { createDesktopAppearanceCache } from './desktop-appearance-cache.ts';
 import { createProjectEntryDesktopHost } from './project-entry-desktop-host.ts';
-import type {ProjectEntryDesktopOwner} from './project-entry-desktop-host.ts';
-import { PROJECT_ENTRY_DESKTOP_CHANNEL } from '../../../packages/contracts/src/project-entry-desktop.ts';
+import type {ProjectEntryDesktopOwner,ProjectEntryLocationAdmission} from './project-entry-desktop-host.ts';
+import { PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT } from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import { probeDesktopProjectLocation } from './project-location-probe.ts';
 import {createProjectLocationHelp} from './project-location-help.ts';
@@ -641,6 +641,7 @@ async function start(): Promise<DesktopStartReport> {
       chooseOpenFile:owner=>ownedPanel(owner,async()=>{const result=await dialog.showOpenDialog(owner.window,{properties:['openFile'],filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}]});return result.canceled?null:result.filePaths[0]??null;}),
       chooseSaveFile:(owner,input)=>ownedPanel(owner,async()=>{const result=await dialog.showSaveDialog(owner.window,{message:input.message,defaultPath:path.join(app.getPath('documents'),input.suggestedName+'.mioon'),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled?null:result.filePath??null;}),
       probeLocation:input=>probeDesktopProjectLocation(input),admitLocation:admit,
+      notifyPendingOpen:(owner,notice)=>{if(owner.isCurrent())owner.window.webContents.send(PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,notice);},
       ...(process.platform==='darwin'?{openPrivacySettings:async()=>locationHelp.openPrivacySettings()}:{}),
       revealVerifiedPath:(_owner,file)=>locationHelp.revealVerifiedPath(file),
       adoptPrepared:prepared=>ownedWindowHost.adoptPrepared(prepared),
@@ -666,6 +667,7 @@ async function start(): Promise<DesktopStartReport> {
       nativeBackendCurrent();
       if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
       const facts=await probeDesktopProjectLocation({path:file,purpose:'open',isDirectory:false});
+      let admission:ProjectEntryLocationAdmission<BrowserWindow>|undefined;
       nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
       if(!facts.isLocal||facts.volumeReadOnly){
         await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
@@ -680,6 +682,7 @@ async function start(): Promise<DesktopStartReport> {
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;
         if(!owner||!await admit(owner,facts))return;nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        admission={owner,file,facts};
       }
       try{const result=await ownedWindowHost.openPath(file);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');if(!result.ok)throw new Error('Project open unavailable');}
       catch(error){
@@ -689,7 +692,7 @@ async function start(): Promise<DesktopStartReport> {
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;
         if(!owner)throw new Error('Copy confirmation owner unavailable');
-        const result=await entries.openPath(owner,file);entries.rememberPendingOpen(owner,result);
+        const result=await entries.openPath(owner,file,admission);entries.rememberPendingOpen(owner,result);
       }
     };
     const hadFiles=projectFiles.pending.length>0;

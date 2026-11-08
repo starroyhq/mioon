@@ -1,6 +1,12 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const nativeEntryMessages = {
+  'nativeEntry.requestExpired': {
+    'zh-Hans': '这次请求已过期，请重新打开项目文件。',
+    'zh-Hant': '這次請求已過期，請重新開啟專案檔案。',
+    en: 'This request has expired. Please open the project file again.',
+    ja: 'このリクエストは期限切れです。プロジェクトファイルを開き直してください。',
+  },
   'nativeEntry.selectionExpired': {
     'zh-Hans': '所选保存位置已失效。请重新选择保存位置后再试；项目内容和表单输入已保留。',
     'zh-Hant': '所選儲存位置已失效。請重新選擇儲存位置後再試；專案內容及表單輸入已保留。',

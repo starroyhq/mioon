@@ -151,10 +151,11 @@ test('template tokens reject another owner, expired ticket, wrong purpose and re
  for(const kind of ['owner','backend','token','expiry','purpose','context'] as const)await t.test(kind,async t=>{
   const f=await fixture(t),selected=await f.choose(),body=f.input(selected);
   const rejected={code:'PROJECT_ENTRY_UNAVAILABLE',status:409};
+  const expired={code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409};
   if(kind==='owner')await assert.rejects(f.host.dispatch('other',{action:'instantiateTemplate',...body}),rejected);
   else if(kind==='backend'){f.replaceBackend();await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);}
-  else if(kind==='token')await assert.rejects(f.bridge.instantiateTemplate!({...body,token:randomUUID()}),rejected);
-  else if(kind==='expiry'){const now=Date.now();t.mock.method(Date,'now',()=>now+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs+1);await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);t.mock.restoreAll();}
+  else if(kind==='token')await assert.rejects(f.bridge.instantiateTemplate!({...body,token:randomUUID()}),expired);
+  else if(kind==='expiry'){const now=Date.now();t.mock.method(Date,'now',()=>now+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs+1);await assert.rejects(f.bridge.instantiateTemplate!(body),expired);t.mock.restoreAll();}
   else if(kind==='purpose'){const wrong=await f.bridge.chooseLocation({purpose:'duplicate',suggestedName:'Wrong',message:''});assert.ok(wrong);await assert.rejects(f.bridge.instantiateTemplate!({...body,token:wrong.token}),rejected);}
   else {f.replaceDocument();await assert.rejects(f.bridge.instantiateTemplate!(body),rejected);}
   assert.deepEqual(f.inputs,[]);assert.deepEqual(readdirSync(f.target),[]);assert.deepEqual((await f.client.api.listRecent()).registered,[]);
