@@ -1,6 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
+import {EventEmitter} from 'node:events';
 import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
@@ -19,6 +20,14 @@ import {PROJECT_ENTRY_DESKTOP_LIMITS, projectEntryDesktopRequestSchema} from '..
 import type {ProjectDesktopSelection, ProjectLocationFacts} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
 import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contracts/src/project-copies.ts';
+import {createProjectWindowHost} from '../apps/desktop/src/project-window-host.ts';
+import type {ProjectWindowCreation, ProjectWindowWebContents} from '../apps/desktop/src/project-window-host.ts';
+import {createProjectWindowBridge} from '../apps/desktop/src/project-window-preload.ts';
+import {createProjectEntryController} from '../apps/web/src/project-entry-state.ts';
+import type {ProjectEntryConsumption} from '../apps/web/src/project-entry-state.ts';
+import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
+import {evaluateSource, extractBetween} from './helpers/eval-source.ts';
 
 const resourceRoot=fileURLToPath(new URL('../examples/project-file-v1/',import.meta.url));
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
@@ -89,6 +98,124 @@ async function fixture(t:TestContext,options:Options={}){
  const input=(selection:ProjectDesktopSelection)=>{assert.ok(selection.template);return{token:selection.token,templateId:selection.template.id,templateVersion:selection.template.version,name:selection.template.name,requestId:randomUUID()};};
  return {root,target,installed,server,host,bridge,client,inputs,probes,choose,input,get chooserCalls(){return chooserCalls;},get adoptions(){return adoptions;},replaceDocument(){contextId=randomUUID();},replaceBackend(){ownerBackendId=randomUUID();},closeOwner(){active=false;}};
 }
+
+/** Native window surfaces only; document ownership, dialog leases and sealed
+ * project admission continue to run in the production window host. */
+class TemplatePanelWindow extends EventEmitter {
+ readonly webContents:EventEmitter&{mainFrame:{url:string};getURL():string;send(channel:string,value:unknown):void}=Object.assign(new EventEmitter(),{
+  mainFrame:{url:'about:blank'},getURL:():string=>this.webContents.mainFrame.url,
+  send:(channel:string,value:unknown):void=>{this.webContents.emit(channel,{},value);},
+ });
+ private destroyed=false;
+ readonly creation:ProjectWindowCreation<TemplatePanelWindow>;
+ constructor(creation:ProjectWindowCreation<TemplatePanelWindow>){super();this.creation=creation;}
+ isDestroyed(){return this.destroyed;}
+ isMinimized(){return false;}
+ restore(){}
+ show(){}
+ showInactive(){}
+ hide(){}
+ focus(){}
+ close(){if(!this.destroyed){this.destroyed=true;this.emit('closed');}}
+ async loadURL(url:string){
+  this.webContents.emit('did-start-navigation',{isMainFrame:true,isSameDocument:false,url});
+  this.webContents.mainFrame={url};this.webContents.emit('did-navigate',{},url);this.emit('ready-to-show');
+ }
+}
+
+async function mainTemplatePanelFixture(t:TestContext,role:'launcher'|'editor'){
+ const f=await fixture(t),backendId=randomUUID(),windows:TemplatePanelWindow[]=[],consumed:string[]=[],order:string[]=[];
+ const documents=path.join(f.root,'Library','Mobile Documents','com~apple~CloudDocs','Documents');mkdirSync(documents,{recursive:true});
+ let entry:ReturnType<typeof createProjectEntryController>|null=null;
+ let source:TemplatePanelWindow;
+ const windowHost:ReturnType<typeof createProjectWindowHost<TemplatePanelWindow>>=createProjectWindowHost<TemplatePanelWindow>({backendId,launcherUrl:'http://127.0.0.1:4321/',editorUrl:id=>`http://127.0.0.1:4321/?project=${id}`,
+  isCurrent:()=>true,canInteract:()=>true,projectEntries:f.client.api,
+  createWindow:creation=>{const window=new TemplatePanelWindow(creation);windows.push(window);return window;},
+  consumeProjectEntry:(owner,token,projectId):ProjectEntryConsumption=>{
+   assert.equal(owner.window,source);assert.ok(entry);const receipt=entry.consume(token,projectId);
+   assert.equal(receipt.accepted,true,'Only the actual sealed renderer permit admits a new editor');consumed.push(token);return receipt;
+  },
+  admitProject:async(_owner,id)=>(await f.client.api.prepareAcquire({projectId:id})).projectFile,
+ });
+ const launcher=windowHost.ensureLauncher();assert.ok(launcher);await windowHost.loadFor(launcher);
+ source=launcher;
+ if(role==='editor'){
+  const original=await f.server.projectEntries.create({name:'Original',projectFile:path.join(f.root,'Original.mioon')});
+  assert.equal((await windowHost.adoptPrepared(await f.client.api.acquire({projectId:original.projectId,windowId:randomUUID(),expectedProjectFile:original.projectFile}))).ok,true);
+  source=windows.at(-1)!;await windowHost.loadFor(source);
+  assert.equal(windowHost.dispatch({sender:source.webContents,senderFrame:source.webContents.mainFrame},{action:'editor-status',contextId:windowHost.contextFor(source)!.contextId,projectId:original.projectId,phase:'ready'}),true);
+ }
+ const main=readFileSync(new URL('../apps/desktop/src/main.ts',import.meta.url),'utf8'),dialogs=new Set<{window:TemplatePanelWindow}>(),panelCalls:{parent:TemplatePanelWindow;defaultPath:string;message:string}[]=[];
+ const startup={signal:new AbortController().signal},ready={},session={},context={startup,ready,session};
+ const scope={windowHost,ownedWindowHost:windowHost,context,windowContext:context,startupOperation:startup,ready,activeSession:session,
+  quitting:false,restarting:false,trayHost:null,windowAdmissions:new WeakMap(),nativeDialogs:dialogs,
+  ownedBackend:{projectEntries:f.client.api},createProjectEntryDesktopHost,
+  nativeBackendCurrent:()=>{assert.equal(startup.signal.aborted,false);},refreshApplicationMenu:()=>{},
+  app:{getPath:(kind:string)=>{assert.equal(kind,'documents');order.push('documents');return documents;}},
+  path,nt:(key:string)=>key,
+  dialog:{showSaveDialog:async(parent:TemplatePanelWindow,input:{defaultPath:string;message:string;properties:string[]})=>{
+   assert.equal(parent,source);assert.equal(dialogs.size,1);assert.equal(windowHost.canHideToTray(),false,'The actual window-host native-dialog lease is held');
+   assert.deepEqual(input.properties,['showOverwriteConfirmation','createDirectory']);panelCalls.push({parent,defaultPath:input.defaultPath,message:input.message});order.push('save');
+   return {canceled:false,filePath:input.defaultPath};
+  },showMessageBox:async(parent:TemplatePanelWindow)=>{assert.equal(parent,source);assert.equal(dialogs.size,1);assert.equal(windowHost.canHideToTray(),false);order.push('cloud-warning');return {response:0};}},
+  probeDesktopProjectLocation:async(input:{path:string;purpose:string;isDirectory:boolean})=>{
+   assert.equal(dialogs.size,0,'The save sheet lease is released before observing the selected parent');
+   assert.equal(windowHost.canHideToTray(),true);assert.deepEqual(input,{path:documents,purpose:'template',isDirectory:true});order.push('probe');return {...facts,cloud:'known-icloud'};
+  },
+  locationHelp:{openPrivacySettings:()=>assert.fail('No privacy navigation'),revealVerifiedPath:()=>assert.fail('No Finder reveal')},
+ };
+ const code=extractBetween(main,'function finishNativePresentation(','async function chooseOwnedBackupFile(')
+  +extractBetween(main,'function ownsWindowContext(','async function openWindow(')
+  +extractBetween(main,'    const nativeOwner=','    const locationHelp=')
+  +extractBetween(main,'    const entries=projectEntryHost=','    ownedRelinkHost=assetRelinkHost=');
+ const native=evaluateSource<ReturnType<typeof createProjectEntryDesktopHost<{sender:ProjectWindowWebContents;senderFrame:ProjectWindowWebContents['mainFrame']},TemplatePanelWindow>>>(
+  'let trayIntent=0,projectEntryHost;'+code+';return entries;',Object.keys(scope),Object.values(scope),{loader:'ts'});
+ const event=()=>({sender:source.webContents,senderFrame:source.webContents.mainFrame});
+ const desktop=readProjectEntryDesktopClient({__mioonProjectEntries:createProjectEntriesDesktopBridge((_channel,input)=>native.handle(event(),input))});assert.ok(desktop);
+ const bridge=createProjectWindowBridge({invoke:async(_channel,input)=>windowHost.dispatch(event(),input),
+  on:(channel,listener)=>{source.webContents.on(channel,listener);},removeListener:(channel,listener)=>{source.webContents.removeListener(channel,listener);}});
+ const identity=createProjectEntryIdentityOwner({read:()=>desktop.listRecent()});identity.activate();
+ entry=createProjectEntryController({context:await bridge.context(),bridge,identity,manageIdentityLifecycle:false,desktopClient:desktop,
+  client:createLauncherClient(async()=>assert.fail('No legacy create or open RPC'),{parseCreateInput:value=>value,readDirectory:()=>readProjectEntryIdentity(identity)}),confirm:async()=>true});
+ entry.activate();const release=bridge.subscribe(value=>entry?.updateContext(value));await entry.boot();if(role==='editor'){assert.equal(await entry.show('open'),true);await entry.refresh();}
+ const dispose=async()=>{release();entry?.dispose();identity.dispose();native.close();windowHost.dispose();await new Promise(setImmediate);};
+ return {...f,documents,source,windowHost,native,desktop,entry,windows,consumed,dialogs,panelCalls,order,event,dispose};
+}
+
+test('real main save-panel wiring creates and sealed-opens the shipped example from launcher and editor with iCloud Documents',async t=>{
+ for(const role of ['launcher','editor'] as const)await t.test(role,async t=>{
+  const f=await mainTemplatePanelFixture(t,role);
+  try{
+   const before=files(f.installed),name='時間軸入門',message='Creates a new project folder with its own media.';
+   assert.equal(Object.keys(before).length,9,'The real installed catalog contains all nine shipped resources');
+   await assert.rejects(f.native.dispatch({sender:f.source.webContents,senderFrame:{url:f.source.webContents.mainFrame.url}},
+    {action:'chooseLocation',purpose:'template',suggestedName:name,message}),{code:'PROJECT_ENTRY_UNAVAILABLE'});
+   assert.equal(f.panelCalls.length,0,'A same-URL foreign frame cannot request the native panel');
+   const grant=await f.entry.prepareHomeNativeDeparture();assert.ok(grant);
+   const selection=await f.desktop.chooseLocation({purpose:'template',suggestedName:name,message});assert.ok(selection);
+   assert.equal(f.panelCalls.length,1);assert.equal(f.panelCalls[0]!.parent,f.source);assert.equal(f.panelCalls[0]!.defaultPath,path.join(f.documents,name+'.mioon'));assert.equal(f.panelCalls[0]!.message,message);
+   assert.deepEqual(f.order,['documents','save','probe','cloud-warning']);assert.equal(f.dialogs.size,0);assert.equal(f.windowHost.canHideToTray(),true);
+   assert.equal(selection.displayPath,path.join(f.documents,name,name+'.mioon'));
+   const response=await f.desktop.instantiateTemplate!(f.input(selection));
+   assert.equal(response.project.projectFile,selection.displayPath);assert.equal(response.project.name,name);
+   assert.equal(await f.entry.openNativeResult(response.project.projectId,grant),true);
+   assert.equal(f.consumed.length,1,'Opening consumes the real entry controller seal exactly once');
+   const opened=f.windows.find(window=>window.creation.projectId===response.project.projectId);assert.ok(opened);await f.windowHost.loadFor(opened);
+   assert.equal(f.windowHost.contextFor(opened)!.editorProjectId,response.project.projectId);
+   assert.equal(f.entry.getState().sealed,false);assert.equal(f.entry.getState().openUnknown,false);
+   const instance=files(path.dirname(selection.displayPath));
+   for(const [relative,hash] of Object.entries(before).filter(([relative])=>relative.startsWith('timeline-basics/media/'))){
+    assert.equal(instance[relative.slice('timeline-basics/'.length)],hash,'Every published media byte matches the shipped example');
+   }
+   const registered=(await f.client.api.listRecent()).registered;
+   assert.equal(registered.filter(value=>value.project.projectId===response.project.projectId).length,1);
+   assert.deepEqual(files(f.installed),before,'Instantiation cannot modify packaged example bytes');
+   await assert.rejects(f.desktop.chooseLocation({purpose:'template',suggestedName:name,message}),{code:'PROJECT_FILE_EXISTS'});
+   assert.equal(f.panelCalls.length,2);assert.equal(f.inputs.length,1);assert.deepEqual(files(path.dirname(selection.displayPath)),instance);
+   assert.equal((await f.client.api.listRecent()).registered.length,registered.length,'Selecting the same destination never registers or overwrites another instance');
+  }finally{await f.dispose();}
+ });
+});
 
 test('only verified installed fixed examples are advertised; missing resources do not open a panel or create anything',async t=>{
  for(const installed of [true,false])await t.test(String(installed),async t=>{

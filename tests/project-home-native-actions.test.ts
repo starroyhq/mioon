@@ -172,9 +172,10 @@ test('a validated ACK arriving after disposal is retained privately and explicit
 
 function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>boolean)|null>,prepareRecheck?:(version:number)=>Promise<(()=>boolean)|null>,onOpen?:(id:string)=>Promise<boolean>){
  const source=readFileSync(new URL('../apps/web/src/ProjectHomeDirectoryScreen.tsx',import.meta.url),'utf8'),start=source.indexOf('  async function nativeAction('),end=source.indexOf('  async function open(',start);assert.ok(start>=0&&end>start);
- const busy:boolean[]=[],env={preparingNative:{current:false},opening:{current:null},active:()=>true,ready:()=>({snapshot:f.snapshot}),canAct:()=>f.controller.getState().kind==='idle',form:{current:{dirty:false,busy:false,version:1}},current:{current:{phase:'home',onPrepareNativeAction:prepare,onPrepareNativeRecheck:prepareRecheck,onOpen,onRetry:async()=>false,parentGuardsDeparture:Boolean(onOpen)}},lifetime:{current:1},mounted:{current:true},setOpeningBusy:(value:boolean)=>busy.push(value),confirm:async()=>assert.fail('Native consent must not be repeated by the page'),t:(key:string)=>key,native:f.controller};
- const guardStart=source.indexOf('  const baseCanAct ='),guardEnd=source.indexOf('  async function reload(',guardStart);assert.ok(guardStart>=0&&guardEnd>guardStart);
- env.canAct=lenientFunction('env',`with(env){${source.slice(guardStart,guardEnd)};return canAct;}`)(env) as ()=>boolean;
+ const busy:boolean[]=[],env={preparingNative:{current:false},opening:{current:null},active:()=>true,ready:()=>({snapshot:f.snapshot}),canAct:()=>f.controller.getState().kind==='idle',catalogReady:()=>true,rejectNativeStart:(_example:boolean)=>{},form:{current:{dirty:false,busy:false,version:1}},current:{current:{phase:'home',catalogReady:true as boolean|(()=>boolean),onPrepareNativeAction:prepare,onPrepareNativeRecheck:prepareRecheck,onOpen,onRetry:async()=>false,parentGuardsDeparture:Boolean(onOpen)}},lifetime:{current:1},mounted:{current:true},setOpeningBusy:(value:boolean)=>busy.push(value),confirm:async()=>assert.fail('Native consent must not be repeated by the page'),t:(key:string)=>key,native:f.controller};
+ const guardStart=source.indexOf('  const catalogReady ='),guardEnd=source.indexOf('  async function reload(',guardStart);assert.ok(guardStart>=0&&guardEnd>guardStart);
+ const guards=lenientFunction('env',`with(env){${source.slice(guardStart,guardEnd)};return {canAct,catalogReady,rejectNativeStart};}`)(env) as {canAct:()=>boolean;catalogReady:()=>boolean;rejectNativeStart:(example:boolean)=>void};
+ env.canAct=guards.canAct;env.catalogReady=guards.catalogReady;env.rejectNativeStart=guards.rejectNativeStart;
  const action=lenientFunction('env',`with(env){${source.slice(start,end)};return nativeAction;}`)(env) as (action:'trash'|'example'|'recheck',projectId?:string)=>Promise<void>;
  const openEnd=source.indexOf('  const state = directory.getState()',end);assert.ok(openEnd>end);
  const open=lenientFunction('env',`with(env){${source.slice(end,openEnd)};return open;}`)(env) as (id:string)=>Promise<boolean>;
@@ -309,7 +310,7 @@ test('actual Screen obtains native dirty consent before metadata GET or its own 
 test('actual Screen rejects late native consent after new local input or a replaced page lifetime',async()=>{
  for(const change of ['input','lifetime'] as const){const f=fixture(),gate=held<(()=>boolean)|null>(),screen=screenAction(f,()=>gate.promise),pending=screen.action('trash',projectId);
   if(change==='input')screen.env.form.current.version++;else screen.env.lifetime.current++;
-  gate.resolve(()=>true);await pending;assert.deepEqual(f.reads,[],change);assert.deepEqual(f.trashes,[]);assert.equal(f.controller.getState().kind,'idle');
+  gate.resolve(()=>true);await pending;assert.deepEqual(f.reads,[],change);assert.deepEqual(f.trashes,[]);assert.equal(f.controller.getState().kind,change==='input'?'trash-blocked':'idle');
  }
 });
 
@@ -382,7 +383,51 @@ test('example affordance is absent by default and only supplied real capability 
 
 test('a definitive template preflight error renders example guidance rather than trash instructions in four languages',async()=>{
  const f=fixture();f.setChoose(async()=>{throw new BrowserRpcError('PROJECT_FILE_EXISTS',true);});assert.equal(await f.controller.startExample('Storage','Suggested'),false);assert.equal(f.controller.getState().kind,'example-blocked');assert.deepEqual(f.examples,[]);
- for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.blockedTitle'))));assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.unavailable'))));assert.ok(!html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.unavailable'))));assert.equal(tagOf(html,'project-home-trash-confirm'),null);}
+ assert.equal(f.controller.getState().reason,'exists');
+ for(const locale of LOCALES){const html=view(f.controller.getState(),locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.blockedTitle'))));assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.exists'))));assert.ok(!html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.unavailable'))));assert.equal(tagOf(html,'project-home-trash-confirm'),null);}
+});
+
+test('Screen reads a live catalog predicate and preserves its false guard without dispatching',async()=>{
+ let ready=false,panels=0;
+ const f=fixture(),screen=screenAction(f,async()=>{ready=false;await new Promise(setImmediate);ready=true;return()=>true;});
+ screen.env.current.current.catalogReady=()=>ready;
+ f.setChoose(async()=>{panels++;return null;});
+ await screen.action('example');assert.equal(panels,0);assert.deepEqual(f.reads,[]);assert.equal(f.controller.getState().reason,'facts');
+ f.controller.close();ready=true;await screen.action('example');assert.equal(panels,1);assert.equal(f.controller.getState().notice?.kind,'example-cancelled');
+ assert.deepEqual(f.examples,[]);
+});
+
+test('example preparation and revoked pre-write permits leave visible reasons without writes',async()=>{
+ for(const [prepare,reason] of [[async()=>null,'confirmation'],[async()=>()=>false,'changed']] as const){
+  const f=fixture(),screen=screenAction(f,prepare);await screen.action('example');
+  assert.equal(f.controller.getState().kind,'example-blocked');assert.equal(f.controller.getState().reason,reason);assert.deepEqual(f.reads,[]);assert.deepEqual(f.examples,[]);
+ }
+ for(const stage of ['directory','selection'] as const){
+  let allowed=true,panels=0;const gate=held<unknown>(),f=fixture(),screen=screenAction(f,async()=>()=>allowed);
+  if(stage==='directory')f.setRead(()=>gate.promise);
+  f.setChoose(async()=>{panels++;if(stage==='selection')await gate.promise;return selection;});
+  const pending=screen.action('example');await new Promise(setImmediate);allowed=false;gate.resolve(f.snapshot);await pending;
+  assert.equal(f.controller.getState().kind,'example-blocked',stage);assert.equal(f.controller.getState().reason,'changed',stage);assert.equal(panels,stage==='selection'?1:0);assert.deepEqual(f.examples,[]);assert.deepEqual(f.opened,[]);
+ }
+});
+
+test('trash preparation failures stay visible and never dispatch a destructive request',async()=>{
+ for(const [prepare,reason] of [[async()=>null,'confirmation'],[async()=>()=>false,'changed']] as const){
+  const f=fixture(),screen=screenAction(f,prepare);await screen.action('trash',projectId);
+  assert.equal(f.controller.getState().kind,'trash-blocked');assert.equal(f.controller.getState().reason,reason);assert.deepEqual(f.reads,[]);assert.deepEqual(f.trashes,[]);
+  for(const locale of LOCALES)assert.ok(view(f.controller.getState(),locale).includes(escapeHtml(translate(locale,reason==='confirmation'?'projectHomeNative.trash.confirmation':'projectHomeNative.trash.preparationChanged'))));
+ }
+ const f=fixture();f.setAllowed(false);assert.equal(await f.controller.prepareTrash(projectId),false);assert.equal(f.controller.getState().kind,'trash-blocked');assert.equal(f.controller.getState().reason,'facts');assert.deepEqual(f.reads,[]);assert.deepEqual(f.trashes,[]);
+});
+
+test('example rejections and cancellation render their safe specific feedback in every locale',async()=>{
+ const keys={facts:'projectHomeNative.example.facts',changed:'projectHomeNative.example.changed',confirmation:'projectHomeNative.example.confirmation',exists:'projectHomeNative.example.exists',busy:'projectHomeNative.example.busy',denied:'projectHomeNative.example.denied'} as const;
+ for(const [reason,key] of Object.entries(keys)){
+  const f=fixture();f.controller.rejectPreparation(true,reason as keyof typeof keys);
+  for(const locale of LOCALES){const html=view(f.controller.getState(),locale,{onHelpAccess:noop});assert.ok(html.includes(escapeHtml(translate(locale,key))));assert.equal(Boolean(tagOf(html,'project-home-example-help')),reason==='denied');}
+ }
+ const f=fixture();f.setChoose(async()=>null);await f.controller.startExample('Storage','Suggested');
+ for(const locale of LOCALES)assert.ok(view(f.controller.getState(),locale).includes(escapeHtml(translate(locale,'projectHomeNative.example.cancelled'))));
 });
 
 test('P2 the real template adapter keeps pre-write unavailable and expired definitive and requests a new selection',async t=>{

@@ -30,8 +30,8 @@ export interface ProjectHomeNativeActionState {
   readonly exampleName: string | null;
   readonly exampleReceipt: ProjectCopyResponse | null;
   readonly dialogHidden: boolean;
-  readonly reason: 'busy' | 'denied' | 'unavailable' | 'facts' | 'selection' | null;
-  readonly notice: {readonly kind: 'success' | 'changed'; readonly name: string} | null;
+  readonly reason: 'busy' | 'denied' | 'unavailable' | 'facts' | 'selection' | 'changed' | 'confirmation' | 'exists' | null;
+  readonly notice: {readonly kind: 'success' | 'changed' | 'example-cancelled'; readonly name: string} | null;
   readonly version: number;
 }
 interface Authority {readonly identity: ProjectHomeNativeActionIdentity; readonly lifetime: number; readonly current: () => boolean; readonly nativePermit?: () => boolean}
@@ -76,8 +76,12 @@ export function createProjectHomeNativeActionsController(options: {
     options.onChange?.(state,Object.freeze(metadata()));
   }
   const current=(value:Authority):boolean=>active&&value.lifetime===lifetime&&sameIdentity(options.owner(),value.identity)&&value.current();
-  const idle=():void=>{authority=null;emit({kind:'idle',project:null,exampleName:null,exampleReceipt:null,dialogHidden:false,reason:null});};
-  const retireRead=(value:Authority,call:number):void=>{if(!pending&&active&&lifetime===value.lifetime&&call===serial)idle();};
+  const idle=(notice=state.notice):void=>{authority=null;emit({kind:'idle',project:null,exampleName:null,exampleReceipt:null,dialogHidden:false,reason:null,notice});};
+  const retireRead=(value:Authority,call:number,example=false):void=>{
+    if(!pending&&active&&lifetime===value.lifetime&&call===serial){
+      authority=null;emit({kind:example?'example-blocked':'trash-blocked',reason:'changed'});
+    }
+  };
   const refresh=async():Promise<void>=>{
     // Read failure has its own directory state. It cannot turn a verified
     // destructive receipt into an unknown outcome or replay that operation.
@@ -96,6 +100,10 @@ export function createProjectHomeNativeActionsController(options: {
     if(error instanceof BrowserRpcError)return error.definitive&&!/UNKNOWN|UNCONFIRMED/u.test(error.code)?error.code:null;
     const parsed=projectEntryControlErrorSchema.safeParse(error);
     return parsed.success&&parsed.data.status<500&&!/UNKNOWN|UNCONFIRMED/u.test(parsed.data.code)?parsed.data.code:null;
+  }
+  function exampleFailureReason(code:string|null):NonNullable<ProjectHomeNativeActionState['reason']> {
+    return code==='PROJECT_FILE_EXISTS'?'exists':code==='PROJECT_ACCESS_DENIED'?'denied':
+      code==='PROJECT_ENTRY_BUSY'||code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ENTRY_UNAVAILABLE'||code==='PROJECT_ENTRY_TICKET_EXPIRED'?'selection':'unavailable';
   }
   const unknown=(operation:Pending):void=>{retainedUnknown=true;emit({kind:operation.kind==='trash'?'trash-unknown':'example-unknown',project:operation.project,reason:null});};
   async function openCreated(automatic=false):Promise<boolean> {
@@ -119,7 +127,7 @@ export function createProjectHomeNativeActionsController(options: {
     if(!current(value))return false;
     pending=operation;
     emit({kind:operation.kind==='trash'?'working-trash':'working-example',project:operation.project,reason:null,notice:null});
-    if(!current(value)){if(wasUnknown)unknown(operation);else{pending=null;idle();}return false;}
+    if(!current(value)){if(wasUnknown)unknown(operation);else{pending=null;authority=null;emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',reason:'changed'});}return false;}
     try {
       if(operation.kind==='trash'){
         const port=options.ports()?.trash;if(!port)throw Error('Trash capability unavailable');
@@ -145,7 +153,7 @@ export function createProjectHomeNativeActionsController(options: {
       pending=null;retainedUnknown=false;
       if(operation.kind==='trash'&&(code==='PROJECT_TRASH_SOURCE_CHANGED'||code==='REVISION_CONFLICT')){
         authority=null;emit({kind:'idle',project:null,notice:{kind:'changed',name:operation.project.name}});await refresh();
-      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:operation.kind==='example'&&(code==='PROJECT_ENTRY_UNAVAILABLE'||code==='PROJECT_ENTRY_TICKET_EXPIRED')?'selection':code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
+      }else emit({kind:operation.kind==='example'?'example-blocked':'trash-blocked',project:operation.project,reason:operation.kind==='example'?exampleFailureReason(code):code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ACCESS_DENIED'?'denied':'unavailable'});
       return false;
     }
   }
@@ -168,10 +176,10 @@ export function createProjectHomeNativeActionsController(options: {
       await refresh();return true;
     },
     dismissNotice():void {emit({notice:null});},
-    rejectPreparation(example:boolean):void {if(active&&state.kind==='idle')emit({kind:example?'example-blocked':'trash-blocked',project:null,reason:'facts'});},
+    rejectPreparation(example:boolean,reason:NonNullable<ProjectHomeNativeActionState['reason']>='facts'):void {if(active&&state.kind==='idle')emit({kind:example?'example-blocked':'trash-blocked',project:null,reason});},
     async prepareTrash(projectId:string,permit:()=>boolean=()=>true):Promise<boolean> {
-      if(!options.ports()?.trash)return false;
-      const value=capture(permit);if(!value)return false;
+      if(!options.ports()?.trash){controller.rejectPreparation(false,'unavailable');return false;}
+      const value=capture(permit);if(!value){controller.rejectPreparation(false,'facts');return false;}
       authority=value;const call=++serial;emit({kind:'checking',notice:null});
       try {const snapshot=await directory(value);if(!current(value)||call!==serial){retireRead(value,call);return false;}
         const entry=snapshot.registered.find(entry=>entry.project.projectId===projectId);
@@ -180,7 +188,8 @@ export function createProjectHomeNativeActionsController(options: {
       }catch {if(current(value)&&call===serial)emit({kind:'trash-blocked',project:null,reason:'facts'});else retireRead(value,call);return false;}
     },
     async confirmTrash():Promise<boolean> {
-      const value=authority,target=state.project;if(!value||!target||state.kind!=='confirm-trash'||!current(value))return false;
+      const value=authority,target=state.project;if(!value||!target||state.kind!=='confirm-trash')return false;
+      if(!current(value)){retireRead(value,serial);return false;}
       const call=++serial;emit({kind:'checking'});
       try {const snapshot=await directory(value);if(!current(value)||call!==serial){retireRead(value,call);return false;}
         const actual=snapshot.registered.find(entry=>entry.project.projectId===target.projectId)?.project;
@@ -193,20 +202,20 @@ export function createProjectHomeNativeActionsController(options: {
       }catch {if(current(value)&&call===serial)emit({kind:'trash-blocked',reason:'facts'});else retireRead(value,call);return false;}
     },
     async startExample(message:string,suggestedName:string,permit:()=>boolean=()=>true,nativePermit?:()=>boolean):Promise<boolean> {
-      const port=options.ports()?.example;if(!port?.bridge.instantiateTemplate||!port.templates.some(template=>template.id==='timeline-basics'&&template.version===1))return false;
-      const value=capture(permit,nativePermit);if(!value)return false;authority=value;knownExample=null;const call=++serial;emit({kind:'choosing-example',exampleName:suggestedName,exampleReceipt:null,notice:null});
-      try {await directory(value);if(!current(value)||call!==serial){retireRead(value,call);return false;}
+      const port=options.ports()?.example;if(!port?.bridge.instantiateTemplate||!port.templates.some(template=>template.id==='timeline-basics'&&template.version===1)){controller.rejectPreparation(true,'unavailable');return false;}
+      const value=capture(permit,nativePermit);if(!value){controller.rejectPreparation(true,'facts');return false;}authority=value;knownExample=null;const call=++serial;emit({kind:'choosing-example',exampleName:suggestedName,exampleReceipt:null,notice:null});
+      try {await directory(value);if(!current(value)||call!==serial){retireRead(value,call,true);return false;}
         const raw=await port.bridge.chooseLocation({purpose:'template',suggestedName,message});
-        if(!current(value)||call!==serial){retireRead(value,call);return false;}
-        if(raw===null){idle();return false;}
+        if(!current(value)||call!==serial){retireRead(value,call,true);return false;}
+        if(raw===null){idle({kind:'example-cancelled',name:suggestedName});return false;}
         const selection=projectDesktopSelectionSchema.parse(raw),template=selection.template;
         if(!template||!port.templates.some(item=>item.id===template.id&&item.version===template.version))throw Error('Invalid template selection');
-        await directory(value);if(!current(value)||call!==serial){retireRead(value,call);return false;}
+        await directory(value);if(!current(value)||call!==serial){retireRead(value,call,true);return false;}
         const input=Object.freeze({token:selection.token,templateId:template.id,templateVersion:template.version,name:template.name,requestId:requestId()});
         emit({exampleName:template.name});
         const operation:Pending={kind:'example',authority:value,input,displayPath:selection.displayPath,project:null};
         return await execute(operation);
-      }catch {if(current(value)&&call===serial)emit({kind:'example-blocked',project:null,reason:'unavailable'});else retireRead(value,call);return false;}
+      }catch(error) {if(current(value)&&call===serial)emit({kind:'example-blocked',project:null,reason:exampleFailureReason(failure(error))});else retireRead(value,call,true);return false;}
     },
     async recheck(permit:()=>boolean=()=>true,nativePermit?:()=>boolean):Promise<boolean> {
       const original=pending;if(rechecking||!original||!uncertain(state.kind)||!active||!sameIdentity(options.owner(),original.authority.identity)||!permit())return false;

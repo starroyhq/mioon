@@ -26,7 +26,9 @@ export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 
   readonly presentation?: 'page' | 'embedded';
   /** Native entry owns both departure consent and the fresh directory check. */
   readonly parentGuardsDeparture?: boolean;
-  readonly catalogReady?: boolean;
+  /** Native departure refreshes can finish before React commits their props.
+   * Read the owning controller live when it supplies this capability. */
+  readonly catalogReady?: boolean | (() => boolean);
   readonly onOpen: (projectId: string) => void | Promise<boolean>;
   readonly onRetry: () => void | Promise<boolean>;
   readonly onRefresh: () => void | Promise<unknown>;
@@ -89,7 +91,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     ports: () => current.current.nativeActions,
     owner: () => {
       const state = ready();
-      return active() && current.current.catalogReady !== false && state?.snapshot ? {appLibraryScope: state.snapshot.appLibraryScope, instanceId: state.snapshot.instanceId, epoch: state.epoch} : null;
+      return active() && catalogReady() && state?.snapshot ? {appLibraryScope: state.snapshot.appLibraryScope, instanceId: state.snapshot.instanceId, epoch: state.epoch} : null;
     },
     canStart: () => baseCanAct(),
     readDirectory: async () => {
@@ -121,9 +123,17 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     const state = directory.getState(), expected = verifiedScope(current.current.summaryScope);
     return state.phase === 'ready' && state.snapshot && (expected === null || expected === state.snapshot.appLibraryScope) ? state : null;
   }
+  const catalogReady = (): boolean => {
+    const value = current.current.catalogReady;
+    return typeof value === 'function' ? value() === true : value !== false;
+  };
   const baseCanAct = (): boolean => active() && !opening.current && !form.current.busy && !current.current.busy && current.current.phase !== 'opening' &&
-    current.current.catalogReady !== false && current.current.canMutateEntry?.() !== false && ready() !== null;
+    catalogReady() && current.current.canMutateEntry?.() !== false && ready() !== null;
   const canAct = (): boolean => baseCanAct() && !preparingNative.current && (native.getState().kind === 'idle' || native.getMetadata().allowOpen === true);
+  const rejectNativeStart = (example: boolean): void => {
+    if (preparingNative.current) return;
+    native.rejectPreparation(example, opening.current || form.current.busy || current.current.busy || current.current.phase === 'opening' ? 'busy' : 'facts');
+  };
   async function reload(notifyParent = false): Promise<void> {
     if (!active() || opening.current || form.current.busy || current.current.busy || current.current.phase === 'opening' || directory.getState().phase === 'loading') return;
     const owner = lifetime.current, serial = ++reads.current;
@@ -166,8 +176,15 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     const recheck = action === 'recheck';
     if (recheck && !native.canRecheckTrash()) return;
     if (!recheck && native.getState().kind !== 'idle') return;
-    if (preparingNative.current || (recheck ? !active() || Boolean(opening.current) || form.current.busy || current.current.phase === 'opening' : !canAct())) return;
+    if (preparingNative.current) return; // The retained preparation already shows its progress.
+    if (recheck ? !active() || Boolean(opening.current) || form.current.busy || current.current.phase === 'opening' : !canAct()) {
+      if (!recheck) rejectNativeStart(action === 'example');
+      return;
+    }
     const owner = lifetime.current, observedForm = form.current, formVersion = form.current.version;
+    const rejectPreparation = (reason: 'confirmation' | 'changed' | 'facts'): void => {
+      if (!recheck && active() && owner === lifetime.current) native.rejectPreparation(action === 'example', reason);
+    };
     preparingNative.current = true; setOpeningBusy(true);
     try {
       // This is the original dispatched intent, not a new departure. Its live
@@ -176,9 +193,9 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       const prepare = current.current.onPrepareNativeAction;
       const parentPermit = recheck ? await current.current.onPrepareNativeRecheck?.(native.getMetadata().version) ?? null
         : prepare ? await prepare() : observedForm.dirty && !await confirm(t('projects.keepCreateOpen')) ? null : () => true;
-      if (!parentPermit) return;
+      if (!parentPermit) {rejectPreparation(catalogReady() ? 'confirmation' : 'facts'); return;}
       const permit = (): boolean => active() && owner === lifetime.current && form.current.version === formVersion && !form.current.busy && current.current.phase !== 'opening' && parentPermit();
-      if (!permit()) return;
+      if (!permit()) {rejectPreparation('changed'); return;}
       if (action === 'trash' && projectId) await native.prepareTrash(projectId, permit);
       else if (action === 'example') await native.startExample(t('projectHomeNative.example.storage'), t('projectHomeNative.example.name'), permit, prepare ? parentPermit : undefined);
       else if (recheck) await native.recheck(permit);
@@ -218,7 +235,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       if (opening.current === flight) {opening.current = null; if (mounted.current && owner === lifetime.current) setOpeningBusy(false);}
     }
   }
-  const state = directory.getState(), verified = ready(), snapshot = props.catalogReady === false ? null : verified?.snapshot ?? null;
+  const state = directory.getState(), verified = ready(), catalogAvailable = catalogReady(), snapshot = !catalogAvailable ? null : verified?.snapshot ?? null;
   const expected = verifiedScope(props.summaryScope);
   const blocked = state.phase === 'blocked' || state.phase === 'ready' && state.snapshot && expected !== null && expected !== state.snapshot.appLibraryScope;
   useEffect(() => {
@@ -228,7 +245,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     setCreateIntent(value => value + 1);
   }, [enabled, props.createIntentVersion, snapshot, openingBusy, props.busy, props.phase]);
   const view = snapshot ? {kind: 'ready' as const, value: snapshot.registered}
-    : blocked || state.phase === 'error' || props.catalogReady === false && props.listError ? {kind: 'error' as const, retryable: !blocked} : {kind: 'loading' as const};
+    : blocked || state.phase === 'error' || !catalogAvailable && props.listError ? {kind: 'error' as const, retryable: !blocked} : {kind: 'loading' as const};
   const taskState = background.getState();
   const sameIdentity = snapshot && taskState.identity && taskState.identity.appLibraryScope === snapshot.appLibraryScope &&
     taskState.identity.instanceId === snapshot.instanceId && taskState.identity.epoch === verified?.epoch;
@@ -245,13 +262,14 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   const presentation = props.presentation ?? 'page';
   const exampleAvailable = props.nativeActions?.example?.bridge.instantiateTemplate && props.nativeActions.example.templates.some(template => template.id === 'timeline-basics' && template.version === 1);
   return <div className={`project-home-screen project-home-${presentation}`} data-presentation={presentation} data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
-    notice={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.notice}
+    notice={preparingNative.current && nativeState.kind === 'idle' ? t('projectHomeNative.preparing') : closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.notice}
     busy={busy} query={query} onQuery={value => {if (canAct()) setQuery(value);}}
     onOpen={projectId => {void open(projectId);}}
     onRetry={() => {if (props.openingProjectId) void open(props.openingProjectId, true);}}
     onRefresh={() => {void reload(true);}} canMutateEntry={canAct}
     onCreateStateChange={reportCreate}
     onStartExample={closedExampleUnknown ? undefined : exampleAvailable ? snapshot ? () => {void nativeAction('example');} : undefined : props.onStartExample}
+    onStartExampleBlocked={() => rejectNativeStart(true)}
     createIntentVersion={createIntent}
     createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
     catalog={<RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled}
