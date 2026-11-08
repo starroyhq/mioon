@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import ts from 'typescript';
+import * as i18nRuntime from '../packages/i18n/src/index.ts';
+import * as languagePreference from '../packages/i18n/src/preference.ts';
+import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
 import { LOCALES, validateCatalogs, translate, message, renderMessage } from '../packages/i18n/src/index.ts';
 import type { DisplayMessage, Locale, MessageKey } from '../packages/i18n/src/index.ts';
@@ -115,4 +119,130 @@ test('known workspace/storage diagnostics retain actionable meaning without expo
   const pending = message('shell.error.workspacePinned');
   assert.equal(readableError({ displayMessage: pending }), pending, 'Existing exact sidecars retain precedence');
   assert.equal(readableError({ code: 'NEW_UNKNOWN', message: 'Secret backend details' }).key, 'shell.error.incomplete');
+});
+
+interface TitleDocumentFixture {
+  title: string;
+  documentElement: { lang: string };
+  querySelector: (selector: string) => { setAttribute: (name: string, value: string) => void };
+}
+interface TitleModule {
+  claimProjectDocumentTitle?: (document: TitleDocumentFixture, projectName: string) => () => void;
+}
+let documentTitleAuthority: TitleModule | undefined;
+function titleSourceModule<T>(source: string, values: Record<string, unknown>, resolve: (id: string) => unknown = id => { throw new Error(`Unexpected title source import: ${id}`); }): T {
+  const module: { exports: unknown } = { exports: {} };
+  Function('module', 'exports', 'require', ...Object.keys(values), stripSourceTypes(source, { loader: 'tsx' }))(module, module.exports, resolve, ...Object.values(values));
+  return module.exports as T;
+}
+function createDocumentTitleHarness(systemLanguages: string[]) {
+  const writes: string[] = [];
+  let title = 'Mioon', description = '';
+  const document: TitleDocumentFixture = {
+    get title() { return title; }, set title(value) { title = value; writes.push(value); },
+    documentElement: { lang: '' },
+    querySelector: selector => { assert.equal(selector, 'meta[name="description"]'); return { setAttribute: (name, value) => { assert.equal(name, 'content'); description = value; } }; },
+  };
+  const authorityFile = new URL('../apps/web/src/document-title.ts', import.meta.url);
+  // The old implementation has no authority module; execute its real effects so
+  // the regression fails on the observed title, rather than a missing import.
+  const authority = documentTitleAuthority ??= existsSync(authorityFile) ? titleSourceModule<TitleModule>(readFileSync(authorityFile, 'utf8'), {}) : {};
+  const store = createLanguageStore({ systemLanguages });
+  let layoutEffects: (() => void)[] = [];
+  // Only the React/DOM host is controlled. Locale state, the whole Provider and
+  // App's selected title effect execute the actual production statements.
+  const react = {
+    createContext: () => ({ Provider: 'provider' }), createElement: () => null,
+    useState: (initialize: () => unknown) => [initialize(), () => {}],
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
+    useMemo: (compute: () => unknown) => compute(), useContext: () => { throw new Error('Unexpected context read'); },
+    useEffect: () => {}, useLayoutEffect: (effect: () => void) => { layoutEffects.push(effect); },
+  };
+  const provider = titleSourceModule<{ I18nProvider: (props: { children: null; store: typeof store }) => unknown }>(
+    readFileSync(new URL('../apps/web/src/i18n/I18nProvider.tsx', import.meta.url), 'utf8'), { document }, id => {
+      if (id === 'react') return react;
+      if (id === '../../../../packages/i18n/src/index.ts') return i18nRuntime;
+      if (id === '../../../../packages/i18n/src/preference.ts') return languagePreference;
+      if (id === './language-store.ts') return { createLanguageStore };
+      if (id === '../document-title.ts') return authority;
+      throw new Error(`Unexpected provider import: ${id}`);
+    });
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const ast = ts.createSourceFile('App.tsx', app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const effects: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(ast) === 'useEffect' && node.arguments[0] && ts.isArrowFunction(node.arguments[0])) {
+      const source = node.arguments[0].getText(ast);
+      if (source.includes('data.project.name') && (source.includes('document.title') || source.includes('claimProjectDocumentTitle'))) effects.push(source);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast); assert.equal(effects.length, 1, 'Select the actual App title effect unambiguously');
+  const renderProvider = () => { layoutEffects = []; provider.I18nProvider({ children: null, store }); for (const effect of layoutEffects) effect(); };
+  const mountProject = (project: { id: string; name: string } | null, options: { native?: boolean; currentProjectId?: string } = {}) => {
+    const { effect } = titleSourceModule<{ effect: () => (() => void) | undefined }>(`export const effect = ${effects[0]};`, {
+      document, data: { project }, currentProject: { current: options.currentProjectId ?? project?.id ?? null },
+      nativeWindow: options.native === false ? null : { context: { contextId: 'project-window' } },
+      claimProjectDocumentTitle: authority.claimProjectDocumentTitle,
+    });
+    return effect();
+  };
+  renderProvider();
+  return { document, writes, store, renderProvider, mountProject, description: () => description };
+}
+
+test('project document title survives real language-store changes without transient generic writes and releases to the current locale', async () => {
+  const host = createDocumentTitleHarness(['zh-TW']);
+  const project = { id: 'project-a', name: 'Q1 基本流程' }, expected = `${project.name} · Mioon`;
+  assert.equal(host.document.title, translate('zh-Hant', 'app.title'));
+  assert.equal(host.mountProject(project, { native: false }), undefined, 'Web title policy stays unchanged');
+  assert.equal(host.mountProject(project, { currentProjectId: 'other-project' }), undefined, 'Only the owned project claims the native title');
+  assert.equal(host.mountProject(null), undefined);
+  assert.equal(host.document.title, translate('zh-Hant', 'app.title'));
+  const release = host.mountProject(project); assert.equal(typeof release, 'function');
+  assert.equal(host.document.title, expected);
+  const verifyProject = (locale: Locale) => {
+    host.renderProvider();
+    assert.equal(host.document.title, expected, `Project identity survives ${locale}`);
+    assert.deepEqual(host.writes, [], 'A locale update never writes a generic title, even transiently');
+    assert.equal(host.document.documentElement.lang, locale);
+    assert.equal(host.description(), translate(locale, 'app.description'));
+  };
+  host.writes.length = 0;
+  await host.store.setPreference('en'); verifyProject('en');
+  await host.store.setPreference('system'); verifyProject('zh-Hant');
+  await host.store.updateSystemLanguages(['ja-JP']); verifyProject('ja');
+  release?.();
+  assert.equal(host.document.title, translate('ja', 'app.title'), 'Returning home uses the latest fallback, not the locale captured on project mount');
+  assert.deepEqual(host.writes, [translate('ja', 'app.title')]);
+  assert.equal(host.mountProject(null), undefined);
+  await host.store.setPreference('zh-Hans'); host.renderProvider();
+  assert.equal(host.document.title, translate('zh-Hans', 'app.title'));
+  assert.equal(host.document.documentElement.lang, 'zh-Hans');
+  host.store.dispose();
+});
+
+test('stale App title cleanup cannot release a newer same-name owner or affect another document', async () => {
+  const first = createDocumentTitleHarness(['en-US']);
+  const oldRelease = first.mountProject({ id: 'project-old', name: '同名项目' });
+  const currentRelease = first.mountProject({ id: 'project-new', name: '同名项目' });
+  const expected = '同名项目 · Mioon';
+  first.writes.length = 0;
+  oldRelease?.(); oldRelease?.();
+  assert.equal(first.document.title, expected, 'Owner identity, not matching title text, controls cleanup');
+  assert.deepEqual(first.writes, []);
+  await first.store.setPreference('ja'); first.renderProvider();
+  assert.equal(first.document.title, expected);
+  assert.deepEqual(first.writes, []);
+  const second = createDocumentTitleHarness(['zh-TW']);
+  const secondRelease = second.mountProject({ id: 'project-other', name: '別の窓' });
+  second.writes.length = 0;
+  currentRelease?.(); currentRelease?.();
+  assert.equal(first.document.title, translate('ja', 'app.title'));
+  assert.deepEqual(first.writes, [translate('ja', 'app.title')], 'Release is idempotent and does not revive the old project title');
+  assert.equal(second.document.title, '別の窓 · Mioon'); assert.deepEqual(second.writes, []);
+  secondRelease?.();
+  assert.equal(second.document.title, translate('zh-Hant', 'app.title'));
+  assert.equal(first.document.title, translate('ja', 'app.title'));
+  first.store.dispose(); second.store.dispose();
 });

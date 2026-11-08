@@ -5,6 +5,7 @@ import type { DisplayMessage, LanguagePreference, Locale, MessageArguments, Mess
 import { LANGUAGE_STORAGE_KEY } from '../../../../packages/i18n/src/preference.ts';
 import type { LanguageBridge, LanguagePersistence } from '../../../../packages/i18n/src/preference.ts';
 import { createLanguageStore } from './language-store.ts';
+import { setApplicationDocumentTitle } from '../document-title.ts';
 interface I18nContextValue {
   locale: Locale; preference: LanguagePreference; persistence: LanguagePersistence; saving: boolean;
   t: <K extends MessageKey>(key: K, ...args: MessageArguments<K>) => string;
@@ -41,7 +42,7 @@ export function I18nProvider({ children, store: supplied }: { children: ReactNod
     return () => { release(); window.removeEventListener('storage', changed); window.removeEventListener('languagechange', systemChanged); };
   }, [store]);
   useLayoutEffect(() => {
-    document.documentElement.lang = state.locale; document.title = translate(state.locale, 'app.title');
+    document.documentElement.lang = state.locale; setApplicationDocumentTitle(document, translate(state.locale, 'app.title'));
     document.querySelector('meta[name="description"]')?.setAttribute('content', translate(state.locale, 'app.description'));
   }, [state.locale]);
   const value = useMemo<I18nContextValue>(() => ({ locale: state.locale, preference: state.preference, persistence: state.persistence, saving: state.saving,
