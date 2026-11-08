@@ -9,12 +9,14 @@ import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
-import {PROJECT_ENTRY_DESKTOP_CHANNEL} from '../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_CHANNEL,PROJECT_ENTRY_DESKTOP_LIMITS} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryDesktopOwner} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import type {ProjectLocationFacts} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
+const pendingChannel='mioon:project-entries:pending-open:v1';
+const settle=async()=>{for(let index=0;index<8;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-desktop-')),dataDir=path.join(root,'app'),selected=path.join(root,'selected');mkdirSync(selected);
  const created=createServerProject(dataDir,{name:'Original'}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
@@ -25,18 +27,21 @@ async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort
  const nativeWindow={},windowId=randomUUID();let contextId=randomUUID(),active=true,ready=true,editor=false,settingsOpened=0;
  const owner=():ProjectEntryDesktopOwner=>{const captured=contextId;return{window:nativeWindow,windowId,backendId,contextId:captured,...(editor?{projectId}:{}),isCurrent:()=>active&&contextId===captured};};
  let directory:string|null=selected,openFile:string|null=file;
- const messages:string[]=[],adopted:string[]=[],probed:string[]=[],revealed:string[]=[],locationFacts=new Map<string,ProjectLocationFacts>();
+ const messages:string[]=[],adopted:string[]=[],probed:string[]=[],revealed:string[]=[],admitted:ProjectLocationFacts[]=[],locationFacts=new Map<string,ProjectLocationFacts>();
+ const notices:unknown[]=[],listeners=new Set<(event:unknown,value:unknown)=>void>();
  const host=createProjectEntryDesktopHost({ownerForEvent:(event:string)=>event==='owner'?owner():null,backend:client.api,isReady:()=>ready,
   chooseDirectory:async(_owner,input)=>{messages.push(input.message);return directory;},chooseOpenFile:async()=>openFile,
   chooseSaveFile:async(_owner,input)=>{messages.push(input.message);return path.join(selected,input.suggestedName+'.mioon');},
-  probeLocation:async input=>{probed.push(input.path);return locationFacts.get(input.path)??facts;},admitLocation:async()=>true,
+  probeLocation:async input=>{probed.push(input.path);return locationFacts.get(input.path)??facts;},admitLocation:async(_owner,value)=>{admitted.push(value);return true;},
   adoptPrepared:async prepared=>{adopted.push(prepared.windowId);return {ok:true,targetWindowId:prepared.windowId,reason:'accepted'};},
   openRecent:async()=>({ok:false,targetWindowId:null,reason:'unavailable'}),
   openPrivacySettings:async()=>{settingsOpened++;},revealVerifiedPath:async(_owner,file)=>{revealed.push(file);},
+  notifyPendingOpen:(_owner,notice)=>{notices.push(notice);for(const listener of listeners)listener({notForRenderer:true},notice);},
  });
- const bridge=createProjectEntriesDesktopBridge((channel,input)=>{assert.equal(channel,PROJECT_ENTRY_DESKTOP_CHANNEL);return host.handle('owner',input);});
+ const invoke=(channel:typeof PROJECT_ENTRY_DESKTOP_CHANNEL,input:unknown)=>{assert.equal(channel,PROJECT_ENTRY_DESKTOP_CHANNEL);return host.handle('owner',input);};
+ const bridge=createProjectEntriesDesktopBridge(invoke,{on:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.add(listener);},removeListener:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.delete(listener);},context:async()=>owner()});
  t.after(async()=>{host.close();client.close();broker.close();await server.close();rmSync(root,{recursive:true,force:true});});
- return {root,selected,file,projectId,host,bridge,client,messages,adopted,probed,owner,revealed,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
+ return {root,selected,file,projectId,host,bridge,client,messages,adopted,probed,owner,revealed,admitted,notices,listeners,invoke,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
   replaceDocument(){contextId=randomUUID();},disable(){ready=false;},cancel(){directory=null;openFile=null;},setOpen(file:string){openFile=file;},closeOwner(){active=false;}};
 }
 
@@ -56,6 +61,52 @@ test('native picker tickets bind the exact owner; creation is once and returns c
  assert.equal((await f.client.api.listRecent()).registered.length,before+1);
 });
 
+test('pending native opens notify an already initialized preload and are taken exactly once',async t=>{
+ const f=await fixture(t),copy=path.join(f.root,'Late Finder Copy.mioon');copyFileSync(f.file,copy);
+ assert.equal(await f.bridge.takePendingOpen(),null,'the launcher has already performed its initial empty take');
+ assert.equal(typeof f.bridge.subscribePendingOpen,'function');
+ const received:unknown[]=[];const unsubscribe=f.bridge.subscribePendingOpen!(()=>{received.push(f.bridge.takePendingOpen());});
+ await settle();const result=await f.host.openPath(f.owner(),copy);assert.equal(result.status,'copy');f.host.rememberPendingOpen(f.owner(),result);
+ await settle();assert.equal(f.notices.length,1);assert.equal(received.length,1);assert.deepEqual(await received[0],result);
+ assert.equal(await f.bridge.takePendingOpen(),null);unsubscribe();unsubscribe();assert.equal(f.listeners.size,0);
+});
+
+test('pending native opens expire with their original ticket and never transfer to a replacement document',async t=>{
+ const f=await fixture(t),copy=path.join(f.root,'Expired Finder Copy.mioon');copyFileSync(f.file,copy);
+ const result=await f.host.openPath(f.owner(),copy);if(result.status!=='copy')assert.fail();assert.ok(result.expiresAt);
+ f.host.rememberPendingOpen(f.owner(),{...result,expiresAt:result.expiresAt+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
+ t.mock.method(Date,'now',()=>result.expiresAt!);
+ assert.equal(await f.bridge.takePendingOpen(),null,'old prompts must not be delivered with expired authority');
+ const notifications=f.notices.length;f.host.rememberPendingOpen(f.owner(),result);assert.equal(f.notices.length,notifications,'remembering an expired result cannot re-notify or extend the original ticket');
+ t.mock.restoreAll();const previous=f.owner(),current=await f.host.openPath(previous,copy);f.host.rememberPendingOpen(previous,current);f.replaceDocument();
+ assert.equal(await f.bridge.takePendingOpen(),null);assert.throws(()=>f.host.rememberPendingOpen(previous,current),{code:'PROJECT_ENTRY_UNAVAILABLE'});
+});
+
+test('missing or expired picker tickets are explicit pre-dispatch failures with no project writes',async t=>{
+ const f=await fixture(t),before=readFileSync(f.file),registered=(await f.client.api.listRecent()).registered;
+ await assert.rejects(f.bridge.adoptCopy({token:randomUUID()}),{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409});
+ let clock=Date.now();t.mock.method(Date,'now',()=>clock);
+ const chosen=await f.bridge.chooseLocation({purpose:'create',suggestedName:'Expired',message:''});assert.ok(chosen);
+ clock+=PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs;
+ await assert.rejects(f.bridge.createAtSelection({token:chosen.token,name:'Expired',createFolder:true}),{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409});
+ t.mock.restoreAll();assert.deepEqual(readFileSync(f.file),before);assert.deepEqual((await f.client.api.listRecent()).registered,registered);
+});
+
+test('preload filters pending notices by the immutable document identity and releases its precise listener',async t=>{
+ const f=await fixture(t),identity=f.owner(),binding=Promise.withResolvers<typeof identity>();
+ const listeners=new Set<(event:unknown,value:unknown)=>void>();let notifications=0;
+ const bridge=createProjectEntriesDesktopBridge(f.invoke,{on:(_channel,listener)=>listeners.add(listener),removeListener:(_channel,listener)=>{listeners.delete(listener);},context:()=>binding.promise});
+ assert.equal(typeof bridge.subscribePendingOpen,'function');const unsubscribe=bridge.subscribePendingOpen!(()=>{notifications++;});
+ const send=(value:unknown)=>{for(const listener of listeners)listener({privateElectronEvent:true},value);};
+ const notice={backendId:identity.backendId,windowId:identity.windowId,contextId:identity.contextId};
+ send({...notice,contextId:randomUUID()});send({...notice,extra:true});send(notice);assert.equal(notifications,0);
+ binding.resolve(identity);await settle();assert.equal(notifications,1,'a matching notice received while binding is not lost');
+ send({...notice,backendId:randomUUID()});send({...notice,windowId:randomUUID()});await settle();assert.equal(notifications,1);
+ unsubscribe();unsubscribe();assert.equal(listeners.size,0);send(notice);await settle();assert.equal(notifications,1);
+ const late=Promise.withResolvers<typeof identity>();const removed=createProjectEntriesDesktopBridge(f.invoke,{on:(_channel,listener)=>listeners.add(listener),removeListener:(_channel,listener)=>{listeners.delete(listener);},context:()=>late.promise});
+ const release=removed.subscribePendingOpen!(()=>{notifications++;});send(notice);release();late.resolve(identity);await settle();assert.equal(notifications,1);assert.equal(listeners.size,0);
+});
+
 test('cancelled dialogs and missing capability cause no creation, and renderer paths/stamps are never accepted',async t=>{
  const f=await fixture(t),before=(await f.client.api.listRecent()).registered;
  f.cancel();assert.equal(await f.bridge.chooseLocation({purpose:'create',suggestedName:'Cancelled',message:''}),null);
@@ -72,11 +123,35 @@ test('COPY observation stays in main and confirmation adopts only its unchanged 
  assert.equal('sourceFile'in pending||'sourceIdentity'in pending||'sourceStamp'in pending,false,'only display facts, never a source capability, reach the page');
  if(pending.status!=='copy')assert.fail();
  assert.equal(pending.name,'Original');assert.deepEqual(pending.original,{name:'Original',displayPath:f.file});
+ assert.equal(f.admitted.length,1);
  const owner=f.owner();f.host.rememberPendingOpen(owner,pending);assert.deepEqual(await f.bridge.takePendingOpen(),pending);assert.equal(await f.bridge.takePendingOpen(),null);
  const opened=await f.bridge.adoptCopy({token:pending.token});assert.equal(opened.status,'opened');
  if(opened.status==='opened')assert.notEqual(opened.projectId,f.projectId);
  assert.deepEqual(readFileSync(f.file),original);assert.equal(f.adopted.length,1);
+ assert.equal(f.admitted.length,1,'opening and confirming the same copy reuses one unchanged location admission');
  assert.deepEqual(await f.bridge.adoptCopy({token:pending.token}),opened,'same confirmed token observes its original result');
+ const now=Date.now();t.mock.method(Date,'now',()=>now+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs+1);
+ assert.deepEqual(await f.bridge.adoptCopy({token:pending.token}),opened,'a cached exact replay is checked before the consumed or expired ticket');t.mock.restoreAll();
+});
+
+test('copy confirmation rejects changed location facts without another warning or backend mutation',async t=>{
+ let mutations=0;const f=await fixture(t,control=>{const adopt=control.adoptCopy;assert.ok(adopt);return {...control,adoptCopy:async input=>{mutations++;return adopt.call(control,input);}};}),copy=path.join(f.root,'Changed Location Copy.mioon');copyFileSync(f.file,copy);
+ const exfat:ProjectLocationFacts={...facts,fileSystem:'exfat',permissionBits:false};f.setFacts(copy,exfat);f.setOpen(copy);
+ const registered=(await f.client.api.listRecent()).registered,before=readFileSync(copy),result=await f.bridge.openSelectedFile();if(result.status!=='copy')assert.fail();assert.equal(f.admitted.length,1);
+ f.setFacts(copy,{...exfat,cloud:'known-icloud'});
+ await assert.rejects(f.bridge.adoptCopy({token:result.token}),{code:'PROJECT_COPY_SOURCE_CHANGED',status:409});
+ assert.equal(mutations,0);assert.equal(f.admitted.length,1);assert.deepEqual(readFileSync(copy),before);assert.deepEqual((await f.client.api.listRecent()).registered,registered);
+});
+
+test('trusted OS admission is reusable only for its same path, document, and fully re-observed location facts',async t=>{
+ let opens=0;const f=await fixture(t,control=>({...control,openPath:async input=>{opens++;return control.openPath(input);}})),copy=path.join(f.root,'Scoped Admission Copy.mioon');copyFileSync(f.file,copy);
+ const owner=f.owner(),admission={owner,file:copy,facts};
+ await assert.rejects(f.host.openPath(owner,copy,{...admission,file:f.file}),{code:'PROJECT_COPY_SOURCE_CHANGED'});
+ await assert.rejects(f.host.openPath(owner,copy,{...admission,facts:{...facts,permissionBits:false}}),{code:'PROJECT_COPY_SOURCE_CHANGED'});
+ await assert.rejects(f.host.openPath(owner,copy,{...admission,owner:{...owner,contextId:randomUUID()}}),{code:'PROJECT_COPY_SOURCE_CHANGED'});
+ assert.equal(opens,0);assert.equal(f.admitted.length,0);
+ const result=await f.host.openPath(owner,copy,admission);assert.equal(result.status,'copy');assert.equal(opens,1);assert.equal(f.admitted.length,0);
+ await assert.rejects(f.host.dispatch('owner',{action:'openSelectedFile',admission:{file:copy,facts}}));
 });
 
 test('COPY opens only its verified registered original and the display path cannot be used as a capability',async t=>{

@@ -15,8 +15,10 @@ const capabilities = {ready: true, create: true, open: true, saveAs: true, dupli
 const registered = projectEntryFixture([{id: projectId}, {id: createdId}]);
 const created = registered.registered[1].project;
 type Handler = (input: Record<string, unknown>) => unknown | Promise<unknown>;
-async function fixture(t: TestContext, handlers: Record<string, Handler> = {}) {
+async function fixture(t: TestContext, handlers: Record<string, Handler> = {}, {now}: {now?: () => number} = {}) {
   const calls: Record<string, unknown>[] = [], directoryCalls: unknown[][] = [], opened: string[] = [], dispatched: string[] = [];
+  const pendingListeners = new Set<(event: unknown, value: unknown) => void>();
+  const owner = {backendId: id(90), windowId: id(91), contextId: id(92)};
   let directory = registered;
   let heldRead: Promise<unknown> | null = null;
   const identity = projectEntryOwnerFixture(() => heldRead ?? directory, directoryCalls); t.after(() => identity.dispose());
@@ -27,15 +29,19 @@ async function fixture(t: TestContext, handlers: Record<string, Handler> = {}) {
       chooseLocation: {token, displayPath: '/synthetic/selected', facts}, createAtSelection: {status: 'created', project: created},
       openSelectedFile: {status: 'cancelled'}, openRecent: {status: 'opened', projectId, windowId: id(9)}, openPrivacySettings: null, reveal: null};
     return {ok: true, data: handlers[String(request.action)] ? await handlers[String(request.action)](request) : defaults[String(request.action)]};
-  });
+  }, {on(_channel: string, listener: (event: unknown, value: unknown) => void) {pendingListeners.add(listener);},
+    removeListener(_channel: string, listener: (event: unknown, value: unknown) => void) {pendingListeners.delete(listener);}, context: async () => owner});
   const client = readProjectEntryDesktopClient({__mioonProjectEntries: preload}); assert.ok(client);
   let consent = true, visible = true;
   const controller = createNativeProjectDesktopController({client, identity,
     beforeAction: async () => {if (!consent) return false; await readProjectEntryIdentity(identity); return true;},
-    openCreated: async value => {opened.push(value); return true;}, isCurrent: () => true, canStart: () => visible, onOpened: () => dispatched.push('host-opened'), message: () => 'Shared save panel message', newId: () => id(10)});
+    openCreated: async value => {opened.push(value); return true;}, isCurrent: () => true, canStart: () => visible, onOpened: () => dispatched.push('host-opened'), message: () => 'Shared save panel message', newId: () => id(10), now});
   controller.activate(); t.after(() => controller.dispose()); await controller.initialize(false);
-  return {controller, client, identity, calls, directoryCalls, opened, dispatched, consent(value: boolean) {consent = value;}, visible(value: boolean) {visible = value;}, directory(value: typeof directory) {directory = value;}, holdDirectory(value: Promise<unknown> | null) {heldRead = value;}};
+  return {controller, client, identity, calls, directoryCalls, opened, dispatched,
+    notifyPending() {for (const listener of pendingListeners) listener({}, owner);}, pendingListeners: () => pendingListeners.size,
+    consent(value: boolean) {consent = value;}, visible(value: boolean) {visible = value;}, directory(value: typeof directory) {directory = value;}, holdDirectory(value: Promise<unknown> | null) {heldRead = value;}};
 }
+const flushPending = async () => {await new Promise(setImmediate); await new Promise(setImmediate);};
 test('strict native adapter accepts nullable RecentProject without inventing canonical revision and forces saveAs off', async t => {
   const f = await fixture(t); assert.equal(f.controller.getState().capabilities?.saveAs, false);
   f.controller.showCreate(); f.controller.change({name: 'Native project', createFolder: false}); await f.controller.chooseLocation();
@@ -87,7 +93,7 @@ test('unknown create retains exact inputs and close protection; refresh does not
 });
 test('replay admission refusals preserve the original unknown and block new native writes until an exact ACK', async t => {
   for (const kind of ['createAtSelection', 'duplicate', 'copyTo'] as const) for (const [code, status] of [
-    ['PROJECT_ENTRY_UNAVAILABLE', 409], ['PROJECT_ENTRY_BUSY', 409], ['PROJECT_ENTRY_BUSY', 503], ['PROJECT_HOST_BUSY', 409],
+    ['PROJECT_ENTRY_UNAVAILABLE', 409], ['PROJECT_ENTRY_BUSY', 409], ['PROJECT_ENTRY_BUSY', 503], ['PROJECT_HOST_BUSY', 409], ['PROJECT_ENTRY_TICKET_EXPIRED', 409],
   ] as const) await t.test(`${kind}/${code}/${status}`, async t => {
     let attempts = 0;
     const f = await fixture(t, {openSelectedFile: () => ({status: 'copy-source', token, name: 'Source', displayPath: '/observed/source.mioon', reason: 'read-only', facts}),
@@ -266,6 +272,132 @@ test('cold pending COPY is consumed once and closing it does not adopt or copy',
   await f.controller.initialize(false); await f.controller.initialize(false); assert.equal(f.calls.filter(call => call.action === 'takePendingOpen').length, 1);
   assert.equal(f.controller.getState().failure?.issue.code, 'PROJECT_FILE_COPY'); f.controller.closeFailure();
   assert.equal(f.calls.some(call => ['adoptCopy', 'copyTo', 'openOriginal'].includes(String(call.action))), false);
+});
+test('an initialized launcher takes a later OS result through the real preload notification once', async t => {
+  let pending: unknown = null;
+  const f = await fixture(t, {takePendingOpen: () => {const result = pending; pending = null; return result;}});
+  assert.equal(f.controller.getState().failure, null);
+  assert.equal(f.pendingListeners(), 1);
+  pending = {status: 'copy', token, name: 'Late OS copy'};
+  f.notifyPending(); f.notifyPending(); await flushPending();
+  assert.equal(f.controller.getState().failure?.name, 'Late OS copy');
+  const shown = f.controller.getState().failure;
+  f.notifyPending(); await flushPending();
+  assert.equal(f.controller.getState().failure, shown, 'Duplicate hints cannot redisplay an already-consumed result');
+  assert.equal(f.calls.filter(call => call.action === 'takePendingOpen').length, 3);
+  f.controller.closeFailure(); await flushPending();
+  assert.equal(f.controller.getState().failure, null);
+  assert.equal(f.calls.some(call => ['adoptCopy', 'copyTo', 'openOriginal'].includes(String(call.action))), false);
+});
+test('a result notification arriving during a null take is retained for a second serial take', async t => {
+  const held = Promise.withResolvers<unknown>(); let takes = 0;
+  const f = await fixture(t, {takePendingOpen: () => ++takes === 1 ? null : takes === 2 ? held.promise : {status: 'copy', token, name: 'Delayed by risk confirmation'}});
+  f.notifyPending(); await flushPending(); assert.equal(takes, 2);
+  f.notifyPending(); held.resolve(null); await flushPending();
+  assert.equal(takes, 3); assert.equal(f.controller.getState().failure?.name, 'Delayed by risk confirmation');
+});
+test('hidden launchers defer pending results until reveal and disposed owners ignore late responses', async t => {
+  let pending: unknown = null;
+  const f = await fixture(t, {takePendingOpen: () => {const result = pending; pending = null; return result;}});
+  f.visible(false); pending = {status: 'copy', token, name: 'Hidden copy'}; f.notifyPending(); await flushPending();
+  assert.equal(f.calls.filter(call => call.action === 'takePendingOpen').length, 1); assert.equal(f.controller.getState().failure, null);
+  f.visible(true); await f.controller.resumeKnownOpen(false); assert.equal(f.controller.getState().failure?.name, 'Hidden copy');
+  f.controller.closeFailure();
+  const held = Promise.withResolvers<unknown>(); let takes = 0;
+  const old = await fixture(t, {takePendingOpen: () => ++takes === 2 ? held.promise : null});
+  old.notifyPending(); await flushPending(); assert.equal(takes, 2);
+  old.controller.dispose(); assert.equal(old.pendingListeners(), 0);
+  old.controller.activate(); await old.controller.initialize(false); assert.equal(old.pendingListeners(), 1);
+  held.resolve({status: 'copy', token, name: 'Old document copy'}); await flushPending();
+  assert.equal(old.controller.getState().failure, null); assert.equal(old.controller.readCloseSnapshot().unknown, false);
+});
+test('pending notifications wait for active work, an open create draft and retained unknown outcomes', async t => {
+  let pending: unknown = null;
+  const held = Promise.withResolvers<unknown>();
+  const f = await fixture(t, {takePendingOpen: () => {const result = pending; pending = null; return result;}, createAtSelection: () => held.promise});
+  f.controller.showCreate(); f.controller.change({name: 'Draft keeps priority'});
+  pending = {status: 'copy', token, name: 'After create'}; f.notifyPending(); await flushPending();
+  assert.equal(f.calls.filter(call => call.action === 'takePendingOpen').length, 1); assert.equal(f.controller.getState().values.name, 'Draft keeps priority');
+  await f.controller.chooseLocation(); const creating = f.controller.create(); await flushPending();
+  assert.equal(f.controller.getState().busy, true); assert.equal(f.controller.getState().failure, null);
+  held.resolve({status: 'created', project: created}); await creating; await flushPending();
+  assert.equal(f.controller.getState().failure?.name, 'After create'); assert.deepEqual(f.opened, [createdId]);
+
+  let attempts = 0, next: unknown = null;
+  const unknown = await fixture(t, {takePendingOpen: () => {const value = next; next = null; return value;},
+    openSelectedFile: () => ({status: 'copy', token, name: 'Original unknown'}), adoptCopy: () => {if (++attempts === 1) throw Error('Lost original ACK'); return {status: 'opened', projectId, windowId: id(9)};}});
+  await unknown.controller.openFile(); await unknown.controller.adoptCopy(); const retained = unknown.controller.getState().failure;
+  next = {status: 'copy', token: id(4), name: 'Next OS request'}; unknown.notifyPending(); await flushPending();
+  assert.equal(unknown.controller.getState().failure, retained); assert.equal(unknown.controller.readCloseSnapshot().unknown, true);
+  assert.equal(unknown.calls.filter(call => call.action === 'takePendingOpen').length, 1);
+  await unknown.controller.recheck(); await flushPending();
+  assert.equal(unknown.controller.getState().failure?.name, 'Next OS request'); assert.equal(unknown.controller.readCloseSnapshot().unknown, false);
+});
+test('a pending read that finishes after hiding waits for reveal and keeps its original expiry', async t => {
+  for (const expireBeforeReveal of [false, true]) await t.test(String(expireBeforeReveal), async t => {
+    let clock = 1000, takes = 0; const held = Promise.withResolvers<unknown>();
+    const f = await fixture(t, {takePendingOpen: () => ++takes === 2 ? held.promise : null}, {now: () => clock});
+    f.notifyPending(); await flushPending(); assert.equal(takes, 2);
+    f.visible(false); held.resolve({status: 'copy', token, name: 'Taken before hiding', expiresAt: 2000}); await flushPending();
+    assert.equal(f.controller.getState().failure, null); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+    clock = expireBeforeReveal ? 2000 : 1999; f.visible(true); await f.controller.resumeKnownOpen(false);
+    assert.equal(f.controller.getState().failure?.name ?? null, expireBeforeReveal ? null : 'Taken before hiding');
+    assert.equal(takes, 2, 'An already-consumed result is not fetched or replayed on reveal');
+  });
+});
+test('already-expired selected or delayed OS results are never newly displayed', async t => {
+  const value = {status: 'copy', token, name: 'Expired before display', expiresAt: 1000};
+  const f = await fixture(t, {takePendingOpen: () => value, openSelectedFile: () => value}, {now: () => 1000});
+  assert.equal(f.controller.getState().failure, null);
+  await f.controller.openFile(); assert.equal(f.controller.getState().failure, null);
+  assert.equal(f.controller.readCloseSnapshot().unknown, false);
+});
+test('declining pending-result departure retains the hint without repeatedly asking for consent', async t => {
+  let pending: unknown = null;
+  const f = await fixture(t, {takePendingOpen: () => {const value = pending; pending = null; return value;}});
+  f.consent(false); pending = {status: 'copy', token, name: 'Awaiting consent'}; f.notifyPending(); await flushPending();
+  assert.equal(f.calls.filter(call => call.action === 'takePendingOpen').length, 1); assert.equal(f.controller.getState().busy, false);
+  const reads = f.directoryCalls.length; await flushPending(); assert.equal(f.directoryCalls.length, reads);
+  f.consent(true); await f.controller.resumeKnownOpen(false); assert.equal(f.controller.getState().failure?.name, 'Awaiting consent');
+});
+test('explicit expired entry tickets are closable first-dispatch errors and retain destination reselect semantics', async t => {
+  for (const kind of ['createAtSelection', 'duplicate', 'copyTo', 'adoptCopy', 'openOriginal'] as const) await t.test(kind, async t => {
+    const f = await fixture(t, {openSelectedFile: () => kind === 'copyTo'
+      ? {status: 'copy-source', token, name: 'Read-only source', displayPath: '/source.mioon', reason: 'read-only', facts}
+      : {status: 'copy', token, name: 'Copy source', original: {name: 'Original', displayPath: '/original.mioon'}},
+      [kind]: () => {throw Object.assign(Error('Expired before backend dispatch'), {code: 'PROJECT_ENTRY_TICKET_EXPIRED', status: 409, details: {}});}});
+    if (kind === 'createAtSelection') {f.controller.showCreate(); f.controller.change({name: 'Retained draft', description: 'Description'}); await f.controller.chooseLocation();}
+    else if (kind !== 'duplicate') await f.controller.openFile();
+    await (kind === 'createAtSelection' ? f.controller.create() : kind === 'duplicate' ? f.controller.duplicate(projectId) : kind === 'copyTo' ? f.controller.copyTo() : kind === 'adoptCopy' ? f.controller.adoptCopy() : f.controller.openOriginal());
+    assert.equal(f.controller.getState().action.kind, 'error'); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+    if (kind === 'createAtSelection') {
+      assert.equal(f.controller.getState().selection, null); assert.equal(f.controller.getState().selectionInvalid, true);
+      assert.equal(f.controller.getState().values.name, 'Retained draft'); assert.equal(f.controller.getState().values.description, 'Description');
+      f.controller.closeCreate(); assert.equal(f.controller.getState().createOpen, false);
+    } else if (kind === 'duplicate') {
+      assert.equal(f.controller.getState().selectionInvalid, true); assert.equal(f.controller.getState().failure?.reselect, 'duplicate');
+      f.controller.closeFailure(); assert.equal(f.controller.getState().failure, null);
+    } else {
+      assert.equal(f.controller.getState().failure?.issue.code, kind === 'copyTo' ? 'PROJECT_INVALID' : 'PROJECT_FILE_COPY');
+      assert.equal(f.controller.getState().failure?.entryExpired, true); assert.equal(f.controller.getState().failure?.token, undefined);
+      f.controller.closeFailure(); assert.equal(f.controller.getState().failure, null);
+    }
+    assert.equal(await f.controller.recheck(), false); assert.equal(f.calls.filter(call => call.action === kind).length, 1);
+  });
+});
+test('an expired adopt-copy replay cannot settle or close the preceding unknown write', async t => {
+  let attempts = 0;
+  const f = await fixture(t, {openSelectedFile: () => ({status: 'copy', token, name: 'Retained original copy'}), adoptCopy: () => {
+    if (++attempts === 1) throw Error('Original write ACK lost');
+    if (attempts === 2) throw Object.assign(Error('Replay ticket evicted before cache lookup'), {code: 'PROJECT_ENTRY_TICKET_EXPIRED', status: 409, details: {}});
+    return {status: 'opened', projectId, windowId: id(9)};
+  }});
+  await f.controller.openFile(); await f.controller.adoptCopy(); const failure = f.controller.getState().failure;
+  await f.controller.recheck(); assert.equal(f.controller.getState().failure, failure);
+  assert.equal(f.controller.getState().action.kind, 'unknown'); assert.equal(f.controller.readCloseSnapshot().unknown, true);
+  f.controller.closeFailure(); assert.equal(f.controller.getState().failure, failure); assert.equal(await f.controller.adoptCopy(), false);
+  assert.equal(attempts, 2); await f.controller.recheck(); assert.equal(attempts, 3); assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  const inputs = f.calls.filter(call => call.action === 'adoptCopy'); for (const input of inputs) assert.deepEqual(input, inputs[0]);
 });
 test('hiding the presentation preserves an admitted selected-file result and prevents new native actions', async t => {
   const held = Promise.withResolvers<unknown>(), f = await fixture(t, {openSelectedFile: () => held.promise});

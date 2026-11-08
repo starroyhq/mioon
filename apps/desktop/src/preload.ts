@@ -2,7 +2,17 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
 import {createProjectEntriesDesktopBridge} from './project-entry-desktop-preload.ts';
-contextBridge.exposeInMainWorld('__mioonProjectEntries',createProjectEntriesDesktopBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
+import { createProjectWindowBridge } from './project-window-preload.ts';
+const projectWindowBridge=createProjectWindowBridge({
+  invoke:(channel,request)=>ipcRenderer.invoke(channel,request),
+  on:(channel,listener)=>{ipcRenderer.on(channel,listener);},
+  removeListener:(channel,listener)=>{ipcRenderer.removeListener(channel,listener);},
+});
+contextBridge.exposeInMainWorld('__mioonProjectEntries',createProjectEntriesDesktopBridge((channel,request)=>ipcRenderer.invoke(channel,request),{
+  on:(channel,listener)=>{ipcRenderer.on(channel,listener);},
+  removeListener:(channel,listener)=>{ipcRenderer.removeListener(channel,listener);},
+  context:()=>projectWindowBridge.context(),
+}));
 import {createNativeAssetMediaBridge} from './asset-relink-preload.ts';
 contextBridge.exposeInMainWorld('__mioonAssetMediaNative',createNativeAssetMediaBridge((channel,request)=>ipcRenderer.invoke(channel,request)));
 import {createWorkspaceNativeBridges} from './workspace-native-preload.ts';
@@ -17,14 +27,9 @@ import { createDesktopLutRecoveryBridge } from './lut-recovery-preload.ts';
 contextBridge.exposeInMainWorld('__mioonLutRecovery', createDesktopLutRecoveryBridge({
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),
 }));
-import { createProjectWindowBridge } from './project-window-preload.ts';
 // Sandboxed, context-isolated, fixed window-only bridge. Business access stays
 // on the existing authenticated same-origin HTTP services.
-contextBridge.exposeInMainWorld('__mioonProjectWindow', createProjectWindowBridge({
-  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
-  on: (channel, listener) => { ipcRenderer.on(channel, listener); },
-  removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
-}));
+contextBridge.exposeInMainWorld('__mioonProjectWindow',projectWindowBridge);
 
 import {createMenuCommandBridge} from './menu-command-preload.ts';
 contextBridge.exposeInMainWorld('__mioonMenuCommands', createMenuCommandBridge({
