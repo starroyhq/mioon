@@ -56,6 +56,8 @@ export interface ProjectHomeProps {
   onRequestCreate?: () => void;
   /** Supplied only when a trusted template destination/instantiate port exists. */
   onStartExample?: () => void | Promise<boolean>;
+  /** Feedback only: a blocked click must not dispatch the example operation. */
+  onStartExampleBlocked?: () => void;
   query?: string;
   onQuery?: (value: string) => void;
   toolbar?: ReactNode;
@@ -105,7 +107,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onStartExample, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, catalog, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, catalog, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -120,8 +122,8 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   const [formError, setFormError] = useState<string | DisplayMessage>('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample });
-  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample };
+  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample, onStartExampleBlocked });
+  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample, onStartExampleBlocked };
   const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange });
   const publishCreate = (patch: Partial<{ name: string; description: string; preset: string; busy: boolean }> = {}) => {
     Object.assign(createMetadata.current, patch);
@@ -158,7 +160,10 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
     if (current.current.onRequestCreate) {current.current.onRequestCreate(); return;}
     publishCreate(); setCreateOpen(value => toggle ? !value : true);
   }
-  const startExample = (): void => {if (canAct() && current.current.active) void current.current.onStartExample?.();};
+  const startExample = (): void => {
+    if (canAct() && current.current.active) void current.current.onStartExample?.();
+    else current.current.onStartExampleBlocked?.();
+  };
   useEffect(() => { if (createIntentVersion > 0) requestCreate(); }, [createIntentVersion]);
 
   async function create(event: FormEvent<HTMLFormElement>) {

@@ -22,10 +22,15 @@ function nodes(value:unknown):Element[]{
 const id='77000000-0000-4000-8000-000000000001',other='77000000-0000-4000-8000-000000000002';
 function home(role:'editor'|'launcher'){
  const copies:string[]=[],rechecks:number[]=[],permit=()=>true,desktop={getState:()=>({capabilities:{ready:true,duplicate:true},busy:false,blocked:false}),readCloseSnapshot:()=>({unknown:false}),duplicate:(projectId:string)=>{copies.push(projectId);},bridge:{}};
- const controller={getState:()=>({shown:true,catalogReady:true,phase:'home',projects:[],mode:'open',creating:false,sealed:false,createUnknown:false,openUnknown:false,formIntent:0}),getContext:()=>({role,editorProjectId:role==='editor'?id:null,quitting:false}),identity:null,desktop,prepareHomeNativeRecheck:async(version:number)=>{rechecks.push(version);return permit;}};
+ let catalogReady=true;
+ const controller={getState:()=>({shown:true,catalogReady,phase:'home',projects:[],mode:'open',creating:false,sealed:false,createUnknown:false,openUnknown:false,formIntent:0}),getContext:()=>({role,editorProjectId:role==='editor'?id:null,quitting:false}),identity:null,desktop,prepareHomeNativeRecheck:async(version:number)=>{rechecks.push(version);return permit;}};
  const entry=nodes(ui.render({controller,editor:role==='editor',onSettings(){}})).find(node=>node.type===ui.Home);assert.ok(entry);
- return {props:entry.props,copies,rechecks,permit};
+ return {props:entry.props,copies,rechecks,permit,setCatalogReady(value:boolean){catalogReady=value;}};
 }
+
+test('native entry exposes current catalog readiness without waiting for another React render',()=>{
+ for(const role of ['launcher','editor'] as const){const f=home(role),ready=f.props.catalogReady as ()=>boolean;assert.equal(typeof ready,'function');assert.equal(ready(),true);f.setCatalogReady(false);assert.equal(ready(),false);f.setCatalogReady(true);assert.equal(ready(),true);}
+});
 
 test('production entry passes the current editor ID to cards',()=>{
  const editor=home('editor');assert.deepEqual(editor.props.openedProjectIds,[id]);
