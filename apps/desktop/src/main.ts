@@ -607,7 +607,7 @@ async function start(): Promise<DesktopStartReport> {
         const projectName=name||projectFileUiMessages['projectHistory.backup.fallbackProjectName'][locale];
         return projectFileUiMessages['projectHistory.backup.defaultName'][locale].replace(/\{name\}|\{date\}/gu,key=>key==='{name}'?projectName:date);
       },
-      openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
+      openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart:confirmServiceRestart,
       chooseSaveFile:async suggestedName=>{const result=await dialog.showSaveDialog({title:nt('native.saveProjectFile'),defaultPath:path.join(app.getPath('documents'),suggestedName),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled||!result.filePath?null:result.filePath;},
       fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},
     });
@@ -831,6 +831,18 @@ async function restart(): Promise<boolean> {
   return restartCoordinator.request();
 }
 
+async function confirmServiceRestart(): Promise<boolean> {
+  return confirmOwnedWindowRestart({
+    getOwner: () => windowContext || startupOperation, canRequest: () => readApplicationMenuState().canRestart,
+    confirm: async () => {
+      const options: MessageBoxOptions = {type: 'question', message: nt('native.restartQuestion'), detail: nt('native.restartDetail'),
+        buttons: [nt('native.restart'), nt('native.cancel')], defaultId: 1, cancelId: 1};
+      const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
+      return ownsWindow(parent, windowContext) ? await showOwnedDialog(parent, windowContext, options) === 0 : (await dialog.showMessageBox(options)).response === 0;
+    }, restart,
+  });
+}
+
 async function backendFailed(failedBackend: BackendSupervisor | null = backend, incident: BackendIncident | undefined = windowContext?.incident): Promise<void> {
   if (restarting || quitting || backend !== failedBackend || !incident?.claimPrompt()) return;
   const failedContext = windowContext;
@@ -950,15 +962,7 @@ function performApplicationMenuAction(action: ApplicationMenuAction): unknown {
     }
     return;
   }
-  if (action === 'restart') return confirmOwnedWindowRestart({
-    getOwner: () => windowContext || startupOperation, canRequest: () => readApplicationMenuState().canRestart,
-    confirm: async () => {
-      const options: MessageBoxOptions = {type: 'question', message: nt('native.restartQuestion'), detail: nt('native.restartDetail'),
-        buttons: [nt('native.restart'), nt('native.cancel')], defaultId: 1, cancelId: 1};
-      const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
-      return ownsWindow(parent, windowContext) ? await showOwnedDialog(parent, windowContext, options) === 0 : (await dialog.showMessageBox(options)).response === 0;
-    }, restart,
-  }).catch(fatal);
+  if (action === 'restart') return confirmServiceRestart().catch(fatal);
 }
 function applicationMenuOptions(): ApplicationMenuOptions {
   return {platform: process.platform, productName: identity.productName, state: readApplicationMenuState,
