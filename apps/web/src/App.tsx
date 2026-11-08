@@ -60,6 +60,7 @@ import { hasOpenWorkbenchModal } from './workbench-modal-state.ts';
 import {createDesktopMenuController, readDesktopMenuBridge, workbenchMenuView, nativeMenuTextFocus, nativeMenuSpaceShortcut, nativeMenuSpaceTarget} from './desktop-menu-client.ts';
 import type {MenuCommandId, MenuCommandView, MenuPlaybackControl, MenuRemovalControl} from './desktop-menu-client.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
+import { claimProjectDocumentTitle } from './document-title.ts';
 import './timeline-audio-preview.css';
 import {useTimelineAudioPreview,timelineAudioPreviewSourceIdentity,timelineAudioPreviewPosition,seekTimelineAudioPreview} from './use-timeline-audio-preview.ts';
 import { createEditorWindowInputs } from './editor-window-inputs.ts';
@@ -3027,9 +3028,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }, []);
   useEffect(() => {
     if (!nativeWindow || !data.project?.id || data.project.id !== currentProject.current) return;
-    const previous = document.title, title = `${data.project.name} · Mioon`;
-    document.title = title;
-    return () => { if (document.title === title) document.title = previous; };
+    return claimProjectDocumentTitle(document, data.project.name);
   }, [nativeWindow?.context.contextId, data.project?.id, data.project?.name]);
   const historyLayer = historyView && <ProjectHistoryDialog open projectId={historyView.projectId} projectName={historyView.name} projectFile={historyView.projectFile} pendingEdits={historyView.projectId === data.project?.id && (saveIsDirty || Boolean(clipDraftRef.current?.hasPendingComposition()))} initialTab={historyView.tab} initialAction={historyView.initialAction} backupsOnly={historyView.backupsOnly}
       admission={historyView.admission} interactionBlocked={!historyView.admission.isCurrent()} nativeBackup={nativeBackup}
