@@ -182,7 +182,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       return;
     }
     const owner = lifetime.current, observedForm = form.current, formVersion = form.current.version;
-    const rejectPreparation = (reason: 'confirmation' | 'changed'): void => {
+    const rejectPreparation = (reason: 'confirmation' | 'changed' | 'facts'): void => {
       if (!recheck && active() && owner === lifetime.current) native.rejectPreparation(action === 'example', reason);
     };
     preparingNative.current = true; setOpeningBusy(true);
@@ -193,7 +193,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       const prepare = current.current.onPrepareNativeAction;
       const parentPermit = recheck ? await current.current.onPrepareNativeRecheck?.(native.getMetadata().version) ?? null
         : prepare ? await prepare() : observedForm.dirty && !await confirm(t('projects.keepCreateOpen')) ? null : () => true;
-      if (!parentPermit) {rejectPreparation('confirmation'); return;}
+      if (!parentPermit) {rejectPreparation(catalogReady() ? 'confirmation' : 'facts'); return;}
       const permit = (): boolean => active() && owner === lifetime.current && form.current.version === formVersion && !form.current.busy && current.current.phase !== 'opening' && parentPermit();
       if (!permit()) {rejectPreparation('changed'); return;}
       if (action === 'trash' && projectId) await native.prepareTrash(projectId, permit);
