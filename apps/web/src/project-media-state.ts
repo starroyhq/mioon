@@ -52,7 +52,7 @@ export function createProjectMediaController({client = createProjectMediaClient(
   client?: ProjectMediaClient; readOwner: () => ProjectMediaOwner | null; readAssets: () => readonly ProjectMediaAsset[]; choosePreview?: ChooseMediaPreview; nativeRelink?: ProjectMediaNativeClient;
   onChange?: (state: ProjectMediaState) => void; onApplied?: (owner: ProjectMediaOwner) => unknown | Promise<unknown>; autoOpenOutside?: boolean; newRequestId?: () => string; now?: () => number;
 }) {
-  let active = false, generation = 0, statusSerial = 0, locationSerial = 0, rulesSerial = 0, selectionSerial = 0;
+  let active = false, observationPaused = false, generation = 0, statusSerial = 0, locationSerial = 0, rulesSerial = 0, selectionSerial = 0;
   const chooserAvailable = Boolean(nativeRelink || choosePreview);
   let state = initial(null, chooserAvailable), assetKey = '', dismissedOutside = false;
   const requests = new Map<AbortController, string>();
@@ -133,6 +133,7 @@ export function createProjectMediaController({client = createProjectMediaClient(
   }
   function renderRelink(): void {if (state.relinkOpen) publish({relink: state.status.kind === 'ready' && state.locations.kind === 'ready' ? {kind: 'ready', value: rows()} : state.status.kind === 'error' || state.locations.kind === 'error' ? {kind: 'error', retryable: true} : {kind: 'loading'}});}
   async function refreshStatus(): Promise<boolean> {
+    if (observationPaused) return false;
     const owner = state.owner, lifetime = generation, serial = ++statusSerial;
     if (!ownerCurrent(owner, lifetime)) return false;
     abortChannel('status');
@@ -159,6 +160,7 @@ export function createProjectMediaController({client = createProjectMediaClient(
     } catch (error) {if (ownerCurrent(owner, lifetime) && serial === statusSerial) {publish({status: {kind: 'error', retryable: true}, lastError: errorCode(error)}); renderRelink();} return false;}
   }
   async function refreshLocations(): Promise<boolean> {
+    if (observationPaused) return false;
     const owner = state.owner, lifetime = generation, serial = ++locationSerial;
     if (!ownerCurrent(owner, lifetime)) return false;
     abortChannel('locations');
@@ -187,6 +189,7 @@ export function createProjectMediaController({client = createProjectMediaClient(
     } catch (error) {if (ownerCurrent(owner, lifetime) && serial === locationSerial) {publish({locations: {kind: 'error', retryable: true}, lastError: errorCode(error)}); renderRelink();} return false;}
   }
   async function refreshRules(): Promise<void> {
+    if (observationPaused) return;
     const owner = state.owner, lifetime = generation, serial = ++rulesSerial;
     if (!ownerCurrent(owner, lifetime)) return;
     abortChannel('rules');
@@ -387,6 +390,17 @@ export function createProjectMediaController({client = createProjectMediaClient(
   return {
     getState: (): ProjectMediaState => state,
     activate() {active = true;},
+    pauseObservation(paused: boolean) {
+      if (observationPaused === paused) return;
+      observationPaused = paused;
+      if (paused) {
+        // A native sheet can return focus while close consent is pending.
+        // Retire read-only replies before the close snapshot is captured;
+        // writes, selections and owner changes still invalidate that snapshot.
+        statusSerial++; locationSerial++; rulesSerial++;
+        for (const channel of ['status', 'locations', 'rules']) abortChannel(channel);
+      } else if (active) void refresh();
+    },
     dispose() {active = false; generation++; statusSerial++; locationSerial++; selectionSerial++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = {...initial(null, chooserAvailable), nativeOutcomeUnknown: retiredNativeUnknown(), canChoose: chooserAvailable && !retiredNativeUnknown(), canChangeSelection: !retiredNativeUnknown()};},
     update(owner: ProjectMediaOwner | null) {
       let key: string;

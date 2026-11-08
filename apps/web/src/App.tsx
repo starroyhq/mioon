@@ -1228,7 +1228,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   useEffect(() => installNativeCloseAdmission(window as unknown as Parameters<typeof installNativeCloseAdmission>[0], {
     registry: nativeCloseRegistry.current, settings: settingsNavigation.current,
-    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), onObservationPause: (value: boolean) => nativeSettingsScope?.pauseObservation(value) } : {}),
+    ...(nativeWindow ? { readAdditionalSnapshot: () => combineNativeEntryClose(combineNativeEntryClose(readEditorWindowInputs(false) as NativeEntryCloseSnapshot, nativeProjectEntry?.readCloseSnapshot() as NativeEntryCloseSnapshot), readMediaClose()), onObservationPause: (value: boolean) => { projectMediaRef.current.controller.pauseObservation(value); nativeSettingsScope?.pauseObservation(value); } } : {}),
     readScope: () => JSON.stringify([importSession.current.active, currentProject.current, projectEpoch.current, navigationEpoch.current, editorSession.current]),
     readDocumentURL: () => window.location.href,
     readLegacySnapshot: () => readNativeLegacyClose({ inspectorDirty: dirtyRef.current,

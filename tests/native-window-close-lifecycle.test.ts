@@ -56,6 +56,7 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
     hasUnpersisted: () => { calls.push('clip-sync'); return true; }, flushForClose: () => write('clip-put'), capture: () => 1, isCurrent: () => true };
   const mediaState = {applyAction: {kind: 'idle'}, nativeOutcomeUnknown: false};
   const env = { combineNativeEntryClose, nativeProjectEntry: null, readMediaClose: createProjectMediaCloseReader(() => mediaState),
+    projectMediaRef: {current: {controller: {pauseObservation() {}}}},
     nativeWindow: native ? { role: 'editor', projectId: 'a' } : null,
     nativeSettingsScope: { pauseObservation(paused: unknown) { pauses.push(paused); } },
     window, document, globalThis: global, useEffect: (callback: () => ()=>void) => cleanups.push(callback()), installNativeCloseAdmission,
