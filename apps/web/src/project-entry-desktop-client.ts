@@ -33,6 +33,12 @@ export function readProjectEntryDesktopClient(source: unknown): ProjectEntriesDe
     createAtSelection: input => call('createAtSelection', input, projectDesktopCreatedSchema),
     openSelectedFile: () => call('openSelectedFile', {}, projectDesktopOpenResultSchema),
     takePendingOpen: () => call('takePendingOpen', {}, nullable(projectDesktopOpenResultSchema)),
+    ...(typeof raw.subscribePendingOpen === 'function' ? {subscribePendingOpen(listener: () => void) {
+      let active = true;
+      const release: unknown = Reflect.apply(raw.subscribePendingOpen as (...args: unknown[]) => unknown, raw, [() => {if (active) listener();}]);
+      if (typeof release !== 'function') {active = false; throw new Error('Invalid native pending-open subscription');}
+      return () => {if (active) {active = false; release();}};
+    }} : {}),
     openPrivacySettings: () => call('openPrivacySettings', {}, empty),
     reveal: input => call('reveal', input, empty),
     openOriginal: input => call('openOriginal', input, projectDesktopOpenResultSchema),

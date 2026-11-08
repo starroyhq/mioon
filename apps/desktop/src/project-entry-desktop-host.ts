@@ -1,8 +1,8 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {lstat} from 'node:fs/promises';
-import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema,projectDesktopOpenResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult,ProjectPendingOpenNotice} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryWindowSchema,projectEntrySourceObservationSchema} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
 import {projectCopySourceSchema,projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
@@ -14,6 +14,7 @@ import {safeProjectEntryControlError} from './project-entry-control.ts';
 import {projectNameProblem} from '../../../packages/contracts/src/project-name.ts';
 
 export interface ProjectEntryDesktopOwner<W=unknown>{window:W;windowId:string;backendId:string;contextId:string;projectId?:string;isCurrent():boolean}
+export interface ProjectEntryLocationAdmission<W=unknown>{owner:ProjectEntryDesktopOwner<W>;file:string;facts:ProjectLocationFacts}
 interface OpenResult{ok:boolean;targetWindowId:string|null;reason:string}
 interface Options<E,W>{
  ownerForEvent(event:E):ProjectEntryDesktopOwner<W>|null;
@@ -30,23 +31,28 @@ interface Options<E,W>{
  replaceAfterSaveAs?(owner:ProjectEntryDesktopOwner<W>,result:{copy:ProjectCopyResponse;window:ProjectEntryWindow}):Promise<void>;
  openPrivacySettings?(owner:ProjectEntryDesktopOwner<W>):Promise<void>;
  revealVerifiedPath?(owner:ProjectEntryDesktopOwner<W>,file:string):void|Promise<void>;
+ notifyPendingOpen?(owner:ProjectEntryDesktopOwner<W>,notice:ProjectPendingOpenNotice):void;
 }
 type CopySource=ReturnType<typeof projectCopySourceSchema.parse>;
-type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts;template?:{id:'timeline-basics';version:1;name:string;parentDir:string}}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null});
+type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts;template?:{id:'timeline-basics';version:1;name:string;parentDir:string}}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null;admittedFacts?:ProjectLocationFacts});
 const unavailable=(code='PROJECT_ENTRY_UNAVAILABLE')=>Object.assign(new Error(code),{code,status:409});
 const same=<W>(a:ProjectEntryDesktopOwner<W>,b:ProjectEntryDesktopOwner<W>)=>a.window===b.window&&a.windowId===b.windowId&&a.backendId===b.backendId&&a.contextId===b.contextId;
+const sameFacts=(a:ProjectLocationFacts,b:ProjectLocationFacts)=>a.fileSystem===b.fileSystem&&a.isLocal===b.isLocal&&a.volumeReadOnly===b.volumeReadOnly&&a.permissionBits===b.permissionBits&&a.cloud===b.cloud;
 const absolute=(file:string):boolean=>path.isAbsolute(file)&&path.resolve(file)===file;
 
 /** System selections and observed copy stamps stay with their exact main-frame
  * owner. The renderer can confirm opaque tokens, never author trusted paths. */
 export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
- const tickets=new Map<string,Ticket<W>>(),operations=new Map<string,{fingerprint:string;promise:Promise<unknown>}>(),busy=new Set<string>(),pendingOpen=new Map<string,ProjectDesktopOpenResult>();let closed=false;
+ const tickets=new Map<string,Ticket<W>>(),operations=new Map<string,{fingerprint:string;promise:Promise<unknown>}>(),busy=new Set<string>(),pendingOpen=new Map<string,{owner:ProjectEntryDesktopOwner<W>;result:ProjectDesktopOpenResult;expires:number}>();let closed=false;
  const ownerKeyOf=(owner:ProjectEntryDesktopOwner<W>)=>owner.backendId+':'+owner.windowId+':'+owner.contextId;
  const check=(owner:ProjectEntryDesktopOwner<W>)=>{if(closed||!options.isReady()||!owner.isCurrent())throw unavailable();};
  const mutationResult=(owner:ProjectEntryDesktopOwner<W>)=>{try{check(owner);}catch{throw unavailable('PROJECT_ENTRY_OUTCOME_UNKNOWN');}};
- const sweep=()=>{for(const [id,ticket]of tickets)if(ticket.expires<Date.now()||!ticket.owner.isCurrent())tickets.delete(id);};
+ const sweep=()=>{const now=Date.now();for(const [id,ticket]of tickets)if(ticket.expires<=now||!ticket.owner.isCurrent())tickets.delete(id);for(const [key,pending]of pendingOpen)if(pending.expires<=now||!pending.owner.isCurrent())pendingOpen.delete(key);};
  function put(ticket:Ticket<W>):string{sweep();if(tickets.size>=PROJECT_ENTRY_DESKTOP_LIMITS.tickets)throw unavailable('PROJECT_ENTRY_LIMIT');const id=randomUUID();tickets.set(id,ticket);return id;}
- function ticketFor(token:string,owner:ProjectEntryDesktopOwner<W>):Ticket<W>{sweep();const ticket=tickets.get(token);if(!ticket||!same(ticket.owner,owner))throw unavailable();return ticket;}
+ function ticketFor(token:string,owner:ProjectEntryDesktopOwner<W>):Ticket<W>{
+  const previous=tickets.get(token);if(previous&&!same(previous.owner,owner))throw unavailable();
+  sweep();const ticket=tickets.get(token);if(!ticket)throw unavailable('PROJECT_ENTRY_TICKET_EXPIRED');return ticket;
+ }
  async function probe(owner:ProjectEntryDesktopOwner<W>,file:string,purpose:ProjectStoragePurpose|'open',isDirectory:boolean):Promise<ProjectLocationFacts>{
   check(owner);if(!absolute(file))throw unavailable('PROJECT_LOCATION_INVALID');
   const facts=projectLocationFactsSchema.parse(await options.probeLocation({path:file,purpose,isDirectory}));check(owner);
@@ -65,17 +71,20 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   if(!result.ok||!result.targetWindowId)throw unavailable();
   return {status:'opened',projectId:parsed.project.projectId,windowId:result.targetWindowId};
  }
- async function selectedOpen(owner:ProjectEntryDesktopOwner<W>,file:string):Promise<ProjectDesktopOpenResult>{
+ async function selectedOpen(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>):Promise<ProjectDesktopOpenResult>{
   const facts=await probe(owner,file,'open',false);check(owner);
+  // Only the trusted OS-open caller may reuse its confirmation. Re-observe
+  // every fact and retain the exact document/path before skipping a warning.
+  if(admission&&(!same(admission.owner,owner)||!admission.owner.isCurrent()||admission.file!==file||!sameFacts(admission.facts,facts)))throw unavailable('PROJECT_COPY_SOURCE_CHANGED');
   async function copySource(reason:'read-only'|'network'):Promise<ProjectDesktopOpenResult>{
    // No writable open, lease, registration or permission grant precedes this
    // read-only observation. The ticket still requires the ordinary S5 copyTo.
    const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
-   const token=put({kind:'source',source:observed.source,original:observed.original,owner,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
-   return {status:'copy-source',token,name:observed.name,displayPath:file,reason,facts};
+   const expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs,token=put({kind:'source',source:observed.source,original:observed.original,owner,expires});
+   return {status:'copy-source',token,name:observed.name,expiresAt:expires,displayPath:file,reason,facts};
   }
   if(!facts.isLocal||facts.volumeReadOnly)return await copySource(facts.isLocal?'read-only':'network');
-  if(!await options.admitLocation(owner,facts))throw unavailable('PROJECT_LOCATION_REJECTED');check(owner);
+  if(!admission&&!await options.admitLocation(owner,facts))throw unavailable('PROJECT_LOCATION_REJECTED');check(owner);
   try{return await opened(owner,await options.backend.openPath({projectFile:file,windowId:randomUUID()}));}
   catch(error){
    check(owner);
@@ -84,8 +93,8 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
    if(error.code==='PROJECT_INVALID'&&details.reason==='read-only'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_INVALID'&&details.invalidReason==='read-only')return await copySource('read-only');
    if(error.code!=='PROJECT_FILE_COPY')throw error;
    const observed=projectEntrySourceObservationSchema.parse(await options.backend.observeSource({projectFile:file}));check(owner);
-   const token=put({kind:'copy',source:observed.source,original:observed.original,owner,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
-   return {status:'copy',token,name:observed.name,...(observed.original?{original:{name:observed.original.name,displayPath:observed.original.projectFile}}:{})};
+   const expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs,token=put({kind:'copy',source:observed.source,original:observed.original,admittedFacts:facts,owner,expires});
+   return {status:'copy',token,name:observed.name,expiresAt:expires,...(observed.original?{original:{name:observed.original.name,displayPath:observed.original.projectFile}}:{})};
   }
  }
  async function mutate(token:string,owner:ProjectEntryDesktopOwner<W>,request:ProjectEntryDesktopRequest,run:(ticket:Ticket<W>)=>Promise<unknown>):Promise<unknown>{
@@ -97,8 +106,17 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   return promise;
  }
  const api = {
-  rememberPendingOpen(owner:ProjectEntryDesktopOwner<W>,result:ProjectDesktopOpenResult){check(owner);if(pendingOpen.size>=PROJECT_ENTRY_DESKTOP_LIMITS.tickets)pendingOpen.delete(pendingOpen.keys().next().value!);pendingOpen.set(ownerKeyOf(owner),result);},
-  async openPath(owner:ProjectEntryDesktopOwner<W>,file:string){check(owner);return selectedOpen(owner,file);},
+  rememberPendingOpen(owner:ProjectEntryDesktopOwner<W>,raw:ProjectDesktopOpenResult){
+   check(owner);sweep();const result=projectDesktopOpenResultSchema.parse(raw);let expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs;
+   if(result.status==='copy'||result.status==='copy-source'){
+    const ticket=tickets.get(result.token);if(!ticket||!same(ticket.owner,owner)||ticket.expires<=Date.now())return;
+    expires=ticket.expires;result.expiresAt=expires;
+   }
+   if(pendingOpen.size>=PROJECT_ENTRY_DESKTOP_LIMITS.tickets)pendingOpen.delete(pendingOpen.keys().next().value!);
+   pendingOpen.set(ownerKeyOf(owner),{owner,result,expires});
+   options.notifyPendingOpen?.(owner,{backendId:owner.backendId,windowId:owner.windowId,contextId:owner.contextId});
+  },
+  async openPath(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>){check(owner);return selectedOpen(owner,file,admission);},
   async dispatch(event:E,raw:unknown):Promise<unknown>{
    if(Buffer.byteLength(JSON.stringify(raw))>PROJECT_ENTRY_DESKTOP_LIMITS.requestBytes)throw unavailable('PROJECT_ENTRY_LIMIT');
    const request=projectEntryDesktopRequestSchema.parse(raw),owner=options.ownerForEvent(event);
@@ -110,7 +128,13 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
     catch{return {ready:false,create:false,open:false,saveAs:false,duplicate:false,copyTo:false,adoptCopy:false};}
    }
    check(owner);
-   if(request.action==='takePendingOpen'){const key=ownerKeyOf(owner),result=pendingOpen.get(key)??null;pendingOpen.delete(key);return result;}
+   if(request.action==='takePendingOpen'){
+    sweep();const key=ownerKeyOf(owner),pending=pendingOpen.get(key);pendingOpen.delete(key);
+    if(!pending||!same(pending.owner,owner)||pending.expires<=Date.now())return null;
+    const result=pending.result;
+    if(result.status==='copy'||result.status==='copy-source'){const ticket=tickets.get(result.token);if(!ticket||!same(ticket.owner,owner)||ticket.expires<=Date.now())return null;}
+    return result;
+   }
    const ownerKey=owner.backendId+':'+owner.windowId;
    if(busy.has(ownerKey)||busy.size>=PROJECT_ENTRY_DESKTOP_LIMITS.pending)throw unavailable('PROJECT_ENTRY_BUSY');
    busy.add(ownerKey);
@@ -191,7 +215,9 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      if(!result.ok||!result.targetWindowId)throw unavailable();return {status:'opened',projectId:request.projectId,windowId:result.targetWindowId};
     }
     if(request.action==='adoptCopy')return await mutate(request.token,owner,request,async ticket=>{
-     if(ticket.kind!=='copy')throw unavailable();await location(owner,ticket.source.sourceFile,'open',false);check(owner);
+     if(ticket.kind!=='copy')throw unavailable();
+     const facts=await probe(owner,ticket.source.sourceFile,'open',false);check(owner);
+     if(!ticket.admittedFacts||!sameFacts(ticket.admittedFacts,facts))throw unavailable('PROJECT_COPY_SOURCE_CHANGED');
      const result=await options.backend.adoptCopy({...ticket.source,requestId:randomUUID(),windowId:randomUUID()});
      return await opened(owner,result.window);
     });

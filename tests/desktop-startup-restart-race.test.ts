@@ -50,6 +50,8 @@ import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createDesktopWindowAppearance, desktopWindowBackground } from '../apps/desktop/src/window-appearance.ts';
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
+import {createNativeCloseAdmission, createNativeCloseRegistry} from '../apps/web/src/native-close-state.ts';
+import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -69,7 +71,8 @@ const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(
 
 // Run the actual whenReady chain, menu callback and lifecycle/supervisor code.
 // Only OS boundaries are fake: no Electron, utility, native vault or media runs.
-async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
+async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & {realRendererClose?: boolean} = {}) {
+  const rendererControls = new Map<DesktopHarnessWindow, {admission: ReturnType<typeof createNativeCloseAdmission>; setDirty(value: boolean): void}>();
   const records: Omit<DesktopHarnessRecords<Window>, 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {starts: {report?: unknown; error?: {code?: string}}[]} = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
   const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
@@ -134,15 +137,22 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       const windowIndex = records.windows.length;
       // This synthetic renderer speaks the real v1 protocol. The preference
       // flush and token-bound commit return booleans; inspection returns data.
+      let dirty = false;
+      const admission = options.realRendererClose ? createNativeCloseAdmission({
+        registry: createNativeCloseRegistry(), settings: createSettingsNavigationRegistry(),
+        readScope: () => `window-${windowIndex}`, readDocumentURL: () => this.webContents.getURL(),
+        readLegacySnapshot: () => ({dirty, identity: [dirty]}),
+      }) : null;
+      if (admission) rendererControls.set(this, {admission, setDirty: value => {dirty = value;}});
       const renderer = vm.createContext({
-        __mioonNativeCloseAdmission: {
+        __mioonNativeCloseAdmission: admission ?? {
           inspect: () => ({ version: 1, token: closeToken = `window-${windowIndex}-${++closeSerial}`, disposition: 'clean' }),
           commit: (token: string | null, admission: {discardDirty: boolean; allowDrainFailure: boolean; expiresAt: number}) => typeof token === 'string' && token === closeToken &&
             admission?.discardDirty === false && typeof admission.allowDrainFailure === 'boolean' &&
             Number.isSafeInteger(admission.expiresAt) && admission.expiresAt > Date.now() && admission.expiresAt <= Date.now() + 1500,
           cancel: (token: string|null) => { if (token !== closeToken) return false; closeToken = null; return true; }
         },
-        __mioonFlushWorkspacePreferences: async () => true
+        __mioonFlushWorkspacePreferences: async () => await options.flush?.(windowIndex) ?? true
       });
       this.webContents = Object.assign(new EventEmitter(), {
         mainFrame: { url: 'about:blank' }, send() {},
@@ -159,7 +169,16 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     isMinimized() { return false; }
     restore() {}
     destroy() { if (!this.destroyed) { this.destroyed = true; this.emit('closed'); } }
-    close() { let prevented = false; this.emit('close', { preventDefault() { prevented = true; } }); if (!prevented) this.destroy(); }
+    close() {
+      let prevented = false;
+      const event = {preventDefault() {prevented = true;}, returnValue: ''};
+      this.emit('close', event);
+      if (!prevented) {
+        const admission = rendererControls.get(this)?.admission;
+        if (admission) {admission.prepareBeforeUnload(event); admission.beforeUnload(event);}
+        if (!prevented) this.destroy();
+      }
+    }
     show() { this.visible = true; this.emit('show'); } showInactive() { this.show(); } hide() { this.visible = false; this.emit('hide'); } focus() {}
     async loadURL(url: string) {
       this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
@@ -235,7 +254,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     } },
     installNativeCloseAdmission, stopBackendForQuit,
     Menu: { buildFromTemplate: desktopMenuHarness, setApplicationMenu: (value: DesktopHarnessMenuList) => { menu = value; } },
-    dialog: { showMessageBox: async (parentOrValue: Window | DesktopHarnessDialog, modalValue?: DesktopHarnessDialog) => { const value = (modalValue ?? parentOrValue) as DesktopHarnessDialog; records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },
+    dialog: { showMessageBox: async (parentOrValue: Window | DesktopHarnessDialog, modalValue?: DesktopHarnessDialog) => { const value = (modalValue ?? parentOrValue) as DesktopHarnessDialog; records.dialogs.push(value); return { response: await options.dialog?.(value, modalValue ? parentOrValue as Window : null) ?? 0 }; }, showMessageBoxSync: () => 0 },
     storageFailureDialog: (error: Error) => ({ title: 'Storage failure', detail: error.message }),
     observeStart: (result: {report?: unknown; error?: {code?: string}}) => records.starts.push(result)
   });
@@ -252,7 +271,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     assert.deepEqual((lutStoreCalls as unknown), [], 'Restart lifecycle must not read or mutate LUT recovery metadata');
   });
   await until(() => menu);
-  return { records, app, initial: () => initial,
+  return { records, app, rendererControls, initial: () => initial,
     get: (expression: string) => vm.runInContext(expression, context),
     restart: () => menu.getMenuItemById('app-restart')!.click!(),
     fatals: () => records.dialogs.filter(item => item.title === '无法启动 Mioon'),
@@ -451,3 +470,97 @@ for (const stage of ['drain', 'remove', 'clear']) {
     assert.equal(r.windows.length, 0); assert.equal(r.connections.length, 0);
   });
 }
+
+async function openRestartSettings(runtime: Awaited<ReturnType<typeof harness>>, editor = true) {
+  await runtime.initial();
+  const host = runtime.get('windowHost');
+  let parent = runtime.records.windows[0];
+  if (editor) {
+    const opened = await host.openPath('/synthetic/projects/restart.mioon');
+    assert.equal(opened.ok, true);
+    parent = runtime.records.windows.at(-1)!;
+    await host.loadFor(parent);
+    const context = host.contextFor(parent);
+    assert.equal(runtime.records.bridge!({sender: parent.webContents, senderFrame: parent.webContents.mainFrame},
+      {action: 'editor-status', contextId: context.contextId, projectId: context.editorProjectId, phase: 'ready'}), true);
+  }
+  assert.equal(host.showSettings('video-tools', parent), true);
+  const settings = runtime.records.windows.at(-1)!;
+  await host.loadFor(settings);
+  const restart = () => runtime.records.ipcHandlers!.get(WORKSPACE_NATIVE_CHANNEL)!({sender: settings.webContents, senderFrame: settings.webContents.mainFrame}, {action: 'restart'});
+  return {parent, settings, restart};
+}
+
+for (const editor of [true, false]) test(`settings native restart confirms before closing ${editor ? 'editor' : 'launcher'} and replaces its backend`, async t => {
+  const confirmations: DesktopHarnessDialog[] = [];
+  const runtime = await harness(t, {realRendererClose: true, dialog: value => {confirmations.push(value); return 0;}});
+  const {parent, settings, restart} = await openRestartSettings(runtime, editor);
+  const oldChild = runtime.records.children[0];
+  const oldWindows = runtime.records.windows.slice();
+  const pending = restart();
+  assert.equal(confirmations[0]?.message, nativeText('native.restartQuestion'));
+  assert.equal(oldWindows.every(window => !window.destroyed), true, 'Restart question precedes any native close');
+  await pending;
+  await runtime.success(1);
+  assert.equal(parent.destroyed, true);
+  assert.equal(settings.destroyed, true);
+  assert.equal(runtime.records.children.length, 2);
+  assert.notEqual(runtime.records.children[1].pid, oldChild.pid);
+  assert.equal(runtime.records.dialogs.some(value => value.message === nativeText('native.leaveChanged')), false);
+});
+
+test('cancelling the settings restart question retains every window and the current backend', async t => {
+  const runtime = await harness(t, {realRendererClose: true, dialog: () => 1});
+  const {parent, settings, restart} = await openRestartSettings(runtime);
+  const child = runtime.records.children[0], windows = runtime.records.windows.slice();
+  assert.equal(await restart(), false);
+  assert.equal(runtime.records.dialogs.length, 1);
+  assert.equal(runtime.records.dialogs[0].message, nativeText('native.restartQuestion'));
+  assert.equal(parent.destroyed, false);
+  assert.equal(settings.destroyed, false);
+  assert.equal(windows.every(window => !window.destroyed), true);
+  assert.equal(runtime.records.children.length, 1);
+  assert.equal(child.messages.some(message => message.type === 'stop'), false);
+  assert.equal(runtime.get('restartCoordinator.state'), 'idle');
+});
+
+test('settings restart keeps the real renderer dirty-discard confirmation before restarting', async t => {
+  const runtime = await harness(t, {realRendererClose: true});
+  const {parent, restart} = await openRestartSettings(runtime);
+  runtime.rendererControls.get(parent)!.setDirty(true);
+  await restart(); await runtime.success(1);
+  assert.deepEqual(runtime.records.dialogs.map(value => value.message), [nativeText('native.restartQuestion'), nativeText('native.discardQuitMessage')]);
+  assert.equal(parent.destroyed, true);
+  assert.equal(runtime.records.children.length, 2);
+});
+
+test('a real renderer input during discard confirmation still cancels settings restart as changed', async t => {
+  let interact = () => {};
+  const runtime = await harness(t, {realRendererClose: true, dialog: value => {
+    if (value.message === nativeText('native.discardQuitMessage')) interact();
+    return 0;
+  }});
+  const {parent, restart} = await openRestartSettings(runtime);
+  const renderer = runtime.rendererControls.get(parent)!;
+  renderer.setDirty(true); interact = () => renderer.admission.interacted();
+  // The shared helper reports that its question was accepted; the later
+  // native admission remains responsible for this independent close veto.
+  await restart();
+  assert.deepEqual(runtime.records.dialogs.map(value => value.message), [nativeText('native.restartQuestion'), nativeText('native.discardQuitMessage'), nativeText('native.leaveChanged')]);
+  assert.equal(parent.destroyed, false);
+  assert.equal(runtime.records.children.length, 1);
+  assert.equal(runtime.records.children[0].messages.some(message => message.type === 'stop'), false);
+  assert.equal(runtime.get('restartCoordinator.state'), 'idle');
+});
+
+test('declining dirty discard keeps the editor and backend after accepting the restart question', async t => {
+  const runtime = await harness(t, {realRendererClose: true, dialog: value => value.message === nativeText('native.discardQuitMessage') ? 1 : 0});
+  const {parent, restart} = await openRestartSettings(runtime);
+  runtime.rendererControls.get(parent)!.setDirty(true);
+  await restart();
+  assert.deepEqual(runtime.records.dialogs.map(value => value.message), [nativeText('native.restartQuestion'), nativeText('native.discardQuitMessage')]);
+  assert.equal(parent.destroyed, false);
+  assert.equal(runtime.records.children.length, 1);
+  assert.equal(runtime.records.children[0].messages.some(message => message.type === 'stop'), false);
+  assert.equal(runtime.get('restartCoordinator.state'), 'idle');
+});

@@ -31,7 +31,7 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
       onChooseLocation={enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}
       onSubmit={() => {void desktop.create();}} onClose={desktop.closeCreate}
       onRecheck={() => {void desktop.recheck();}} onRetryOpen={() => {void desktop.retryOpen();}} />
-    {failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
+    {failure && <ProjectOpenFailureDialog interactionBlocked={state.blocked} open failure={failure.issue} projectName={failure.name} platform="mac" action={state.action} notice={failure.entryExpired ? t('nativeEntry.requestExpired') : state.selectionInvalid ? t(failure.reselect === 'open-file' ? 'nativeEntry.copySelectionExpired' : 'nativeEntry.selectionExpired') : undefined}
       onClose={desktop.closeFailure}
       onOpenSystemSettings={enabled && capabilities?.help ? () => {void desktop.openPrivacySettings();} : undefined}
       onChooseLocation={failure.issue.code === 'PROJECT_ACCESS_DENIED' && 'context' in failure.issue && failure.issue.context === 'create' && enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}

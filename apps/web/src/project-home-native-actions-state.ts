@@ -103,7 +103,7 @@ export function createProjectHomeNativeActionsController(options: {
   }
   function exampleFailureReason(code:string|null):NonNullable<ProjectHomeNativeActionState['reason']> {
     return code==='PROJECT_FILE_EXISTS'?'exists':code==='PROJECT_ACCESS_DENIED'?'denied':
-      code==='PROJECT_ENTRY_BUSY'||code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ENTRY_UNAVAILABLE'?'selection':'unavailable';
+      code==='PROJECT_ENTRY_BUSY'||code==='PROJECT_HOST_BUSY'?'busy':code==='PROJECT_ENTRY_UNAVAILABLE'||code==='PROJECT_ENTRY_TICKET_EXPIRED'?'selection':'unavailable';
   }
   const unknown=(operation:Pending):void=>{retainedUnknown=true;emit({kind:operation.kind==='trash'?'trash-unknown':'example-unknown',project:operation.project,reason:null});};
   async function openCreated(automatic=false):Promise<boolean> {

@@ -62,6 +62,7 @@ const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', vers
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const deferred = () => Promise.withResolvers() as Gate;
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const pendingOpenChannel='mioon:project-entries:pending-open:v1';
 const failure = (code: string) => Object.assign(new Error(`Synthetic ${code}`), { code });
 async function until(predicate: () => unknown) {
   for (let i = 0; i < 1000; i++) { if (predicate()) return; await tick(); }
@@ -126,13 +127,13 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     r.children.push(child); return child;
   }
   const frameBridges = new WeakMap<DesktopHarnessFrame, MenuCommandGestureBridge>();
-  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; fullScreen: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; menuPackets: {channel: string; value: MenuCommandIntent}[]; gestureCalls: {frame: DesktopHarnessFrame; script: string; userGesture: boolean | undefined}[]; gestureInputs: MenuCommandIntent[]; nativeUndos: number; nativeRedos: number; newFrame(url: string): DesktopHarnessFrame; bindMenuGesture(): Promise<void>; popupPolicy(): {action: string};}
+  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; fullScreen: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; menuPackets: {channel: string; value: MenuCommandIntent}[]; pendingOpenPackets:unknown[]; gestureCalls: {frame: DesktopHarnessFrame; script: string; userGesture: boolean | undefined}[]; gestureInputs: MenuCommandIntent[]; nativeUndos: number; nativeRedos: number; newFrame(url: string): DesktopHarnessFrame; bindMenuGesture(): Promise<void>; popupPolicy(): {action: string};}
   class Window extends EventEmitter {
     static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
       super();options.windowCreated?.(config); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0; this.visible = false; this.hides = 0;
-      this.fullScreen = false; this.menuPackets = []; this.nativeUndos = 0; this.nativeRedos = 0;
+      this.fullScreen = false; this.menuPackets = []; this.pendingOpenPackets=[]; this.nativeUndos = 0; this.nativeRedos = 0;
       this.gestureCalls = []; this.gestureInputs = [];
       this.index = r.windows.length;
       this.disposition = options.disposition?.(this.index) ?? 'clean';
@@ -179,7 +180,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       this.webContents = Object.assign(new EventEmitter(), {
         mainFrame: this.newFrame('about:blank'),
         getURL: () => this.webContents.mainFrame.url,
-        send: (channel: string, value: MenuCommandIntent) => { if (channel === MENU_COMMAND_EVENT) this.menuPackets.push({channel, value}); },
+        send: (channel: string, value: MenuCommandIntent) => { if (channel === MENU_COMMAND_EVENT) this.menuPackets.push({channel, value});if(channel===pendingOpenChannel)this.pendingOpenPackets.push(value); },
         undo: () => { this.nativeUndos++; }, redo: () => { this.nativeRedos++; },
         loadURL: (url: string) => this.loadURL(url),
         executeJavaScript: async (script: string) => vm.runInContext(script, renderer),
@@ -224,7 +225,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
@@ -420,6 +421,57 @@ for(const reason of ['network','read-only-volume','read-only-file'] as const){
   assert.equal(result.ok,true);assert.equal(result.data.status,'copy-source');assert.equal(result.data.reason,reason==='network'?'network':'read-only');assert.equal(result.data.displayPath,file);assert.ok(isProjectId(result.data.token));
  });
 }
+
+test('real main notifies an already initialized launcher about a later read-only OS open exactly once',async t=>{
+ const file='/synthetic/Movies/Hot Readonly.mioon',projectId=randomUUID();let observed=0;
+ const f=await harness(t,{
+  projectLocation:async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:true,permissionBits:true,cloud:'not-reported'}),
+  projectControl:(_index,port)=>({...port,observeSource:async input=>{observed++;return {name:'Hot Readonly',original:null,source:{sourceProjectId:projectId,sourceFile:input.projectFile,sourceIdentity:{dev:'1',ino:'2'},sourceStamp:{contentSequence:0,contentToken:'a'.repeat(32)}}};}}),
+ });
+ await f.initial();const launcher=f.r.windows[0],handler=f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!;
+ const take=()=>handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as Promise<{ok:boolean;data:{status:string;reason:string}|null}>;
+ assert.equal((await take()).data,null);
+ f.app.emit('open-file',{preventDefault(){}},file);await until(()=>observed===1);await until(()=>launcher.pendingOpenPackets.length===1);
+ const notice=launcher.pendingOpenPackets[0] as {backendId:string;windowId:string;contextId:string},owner=f.get('windowHost').contextFor(launcher);
+ assert.equal(notice.backendId,owner.backendId);assert.equal(notice.windowId,owner.windowId);assert.equal(notice.contextId,owner.contextId);
+ const first=await take();assert.equal(first.ok,true);assert.equal(first.data?.status,'copy-source');assert.equal(first.data?.reason,'read-only');assert.equal((await take()).data,null);
+ assert.equal(f.r.windows.length,1);assert.equal(f.r.dialogs.length,0);assert.equal(launcher.pendingOpenPackets.length,1);
+});
+
+for(const cold of [false,true])test(`real main confirms an exFAT copy location once during a ${cold?'cold':'hot'} OS open`,async t=>{
+ const file='/synthetic/Movies/exFAT Copy.mioon',projectId=randomUUID();let observations=0,opens=0;
+ const f=await harness(t,{
+  ...(cold?{beforeReady:(app:DesktopHarnessApp)=>app.emit('open-file',{preventDefault(){}},file)}:{}),
+  projectLocation:async()=>({fileSystem:'exfat',isLocal:true,volumeReadOnly:false,permissionBits:false,cloud:'not-reported'}),
+  projectControl:(_index,port)=>({...port,openPath:async()=>{opens++;throw Object.assign(Error('Project copy requires confirmation'),{code:'PROJECT_FILE_COPY',status:409});},
+   observeSource:async input=>{observations++;return {name:'exFAT Copy',original:null,source:{sourceProjectId:projectId,sourceFile:input.projectFile,sourceIdentity:{dev:'1',ino:'2'},sourceStamp:{contentSequence:0,contentToken:'a'.repeat(32)}}};}}),
+ });
+ await f.initial();if(!cold){f.app.emit('open-file',{preventDefault(){}},file);await until(()=>observations===1);await tick();}
+ assert.equal(observations,1);assert.equal(opens,2);assert.equal(f.r.dialogs.length,1,'the main warning must be reused by the fallback, rather than shown a second time');
+ const launcher=f.r.windows[0],handler=f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!;
+ const result=await handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as {ok:boolean;data:{status:string}};
+ assert.equal(result.ok,true);assert.equal(result.data.status,'copy');assert.equal(launcher.pendingOpenPackets.length,1);assert.equal(f.r.windows.length,1);
+});
+
+test('real main delivers a cold copy result after a delayed risk warning even when the launcher already took null',async t=>{
+ const file='/synthetic/Movies/Delayed Copy.mioon',projectId=randomUUID(),warning=Promise.withResolvers<{response:number}>(),loaded=Promise.withResolvers<void>();let sheets=0;
+ const f=await harness(t,{
+  beforeReady:app=>app.emit('open-file',{preventDefault(){}},file),
+  load:()=>loaded.promise,
+  projectLocation:async()=>({fileSystem:'exfat',isLocal:true,volumeReadOnly:false,permissionBits:false,cloud:'not-reported'}),
+  projectControl:(_index,port)=>({...port,openPath:async()=>{throw Object.assign(Error('Project copy requires confirmation'),{code:'PROJECT_FILE_COPY',status:409});},
+   observeSource:async input=>({name:'Delayed Copy',original:null,source:{sourceProjectId:projectId,sourceFile:input.projectFile,sourceIdentity:{dev:'1',ino:'2'},sourceStamp:{contentSequence:0,contentToken:'a'.repeat(32)}}})}),
+  dialog:()=>{sheets++;return warning.promise;},release:()=>{loaded.resolve();warning.resolve({response:0});},
+ });
+ await until(()=>f.r.windows.length===1&&f.r.windows[0].urls.length===1);const launcher=f.r.windows[0],handler=f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!;
+ const empty=await handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as {ok:boolean;data:unknown};assert.equal(empty.ok,true);assert.equal(empty.data,null);
+ loaded.resolve();await until(()=>sheets===1);
+ warning.resolve({response:0});await f.initial();
+ assert.equal(sheets,1);assert.equal(launcher.pendingOpenPackets.length,1);
+ const result=await handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as {ok:boolean;data:{status:string}|null};
+ assert.equal(result.ok,true);assert.equal(result.data?.status,'copy');
+ const again=await handler({sender:launcher.webContents,senderFrame:launcher.webContents.mainFrame},{action:'takePendingOpen'}) as {ok:boolean;data:unknown};assert.equal(again.data,null);
+});
 
 test('real main retains relink document tickets across a temporary Settings admission fence',async t=>{
  const projectId='22222222-2222-4222-8222-222222222222',assetId=randomUUID(),owners:string[]=[];let picks=0;
