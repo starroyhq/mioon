@@ -47,7 +47,7 @@ import {generationImageServiceSchemas} from '../../contracts/src/generation-imag
 import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
 import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
-import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.ts';
+import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob,readGenerationLinkedJobForDisclosure} from './generation-inputs.ts';
 import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,GenerationSource,GenerationSubjectGraph} from './generation-inputs.ts';
 import {createTimelineServices} from './timeline.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
@@ -455,9 +455,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','任务的项目归属已改变',409);
    validateSubjectGenerationOwnership(db,value as unknown as GenerationJob);
   }else if(table==='versions'){
-   const job=value.jobId?readGenerationLinkedJob(db,value.jobId as string):null;
-   if(hasSubjectGeneration(value.snapshot)||hasSubjectGeneration(job?.snapshot)){
-    if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','版本的项目归属已改变',409);
+   if(projectId!==undefined&&value.projectId!==projectId)throw new AppError('INVALID_GENERATION_OWNERSHIP','版本的项目归属已改变',409);
+   const subjectVersion=hasSubjectGeneration(value.snapshot);
+   const job=value.jobId?(subjectVersion?readGenerationLinkedJob(db,value.jobId as string):readGenerationLinkedJobForDisclosure(db,value.jobId as string,value.projectId as string,value)):null;
+   if(subjectVersion||hasSubjectGeneration(job?.snapshot)){
     if(!job||canonical(value.snapshot)!==canonical(job.snapshot))throw new AppError('INVALID_REFERENCE_MANIFEST','版本与任务的主体参考快照不一致',409);
     const graph=validateSubjectGenerationOwnership(db,job as unknown as GenerationJob);
     graph.version(value.id as string,value.shotId as string,value.assetId as string);

@@ -1,6 +1,6 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
@@ -25,7 +25,7 @@ import {projectCopyResponseSchema, type ProjectCopyInput, type ProjectCopyRespon
 import type {ProjectVersionSaveResponse, ProjectVersionPreviewResponse} from '../packages/contracts/src/project-version-operations.ts';
 import type {ClipDraftEnvelope} from '../packages/contracts/src/local-drafts.ts';
 import type {LocalDeliveryEnvelope} from '../packages/contracts/src/local-delivery.ts';
-import type {LocalShotTextEnvelope} from '../packages/contracts/src/local-shot-text.ts';
+import type {LocalShotTextEnvelope,LocalShotTextExecution} from '../packages/contracts/src/local-shot-text.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
 
@@ -116,6 +116,88 @@ function denied(result: {status: number; body: Wire<unknown>}, status: number, c
 }
 
 type CopyFixture = Awaited<ReturnType<typeof fixture>>;
+
+test('a real duplicate retains completed mock shot versions without importing their original execution jobs', async t => {
+  const f = await fixture(t), projectId = f.source.projectId, sourceWindow = randomUUID();
+  await f.native.acquire({projectId, windowId: sourceWindow});
+  type Shot = {id: string; revision: number; title:string;prompt:string;selectedVersionId: string | null};
+  type Version = {id: string; projectId: string; shotId: string; jobId: string; assetId: string; number: number; sha256: string; snapshot: unknown};
+  type Asset = {id: string; projectId: string; sha256: string};
+  type Aggregate = {assets: Asset[]; shots: Shot[]; jobs: Array<{id: string}>; versions: Version[]};
+  const versionContent = (row: Version) => ({id: row.id, shotId: row.shotId, jobId: row.jobId, assetId: row.assetId, number: row.number, sha256: row.sha256, snapshot: row.snapshot});
+  const value = <T>(result: {status: number; body: Wire<T>}): T => {assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.ok, true); assert.ok(result.body.data); return result.body.data;};
+  let shot = value(await f.rpc<Shot>('shot.create', {projectId, title: 'Actual mock result', prompt: 'Q07 isolated generation', duration: 2,
+    aspectRatio: '9:16', requestId: randomUUID()}, projectId));
+  const jobs: string[] = [];
+  for (let index = 0; index < 3; index++) {
+    let job = value(await f.rpc<{id: string; status: string}>('generation.submit', {shotId: shot.id, expectedRevision: shot.revision,
+      providerId: 'mock', requestId: randomUUID(), parameters: {scenario: 'success', delayMs: 0}}, projectId));
+    const deadline = performance.now() + 30_000;
+    while (job.status !== 'succeeded') {
+      assert.ok(!['failed', 'cancelled', 'submission_unknown'].includes(job.status), JSON.stringify(job));
+      assert.ok(performance.now() < deadline, 'the real mock worker completes before copying'); await pause(10);
+      job = value(await f.rpc<typeof job>('job.get', {jobId: job.id}, projectId));
+    }
+    jobs.push(job.id);
+    const aggregate = value(await f.rpc<Aggregate>('project.get', {projectId}, projectId)); shot = aggregate.shots.find(row => row.id === shot.id)!;
+  }
+  const original = value(await f.rpc<Aggregate>('project.get', {projectId}, projectId));
+  assert.equal(original.versions.length, 3); assert.equal(original.assets.length, 3);
+  assert.deepEqual(original.versions.map(row => row.jobId).sort(), [...jobs].sort());
+  value(await f.rpc<ProjectVersionSaveResponse>('project.version.save', {projectId, requestId: randomUUID(), name: 'Three generated versions'}, projectId));
+  const media = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => {
+    const asset = JSON.parse(String(row.data)) as {sha256: string; reference: {path: string}};
+    return {file: path.resolve(path.dirname(f.source.projectFile), asset.reference.path), sha256: asset.sha256};
+  }));
+  f.native.release({windowId: sourceWindow}); await eventually(() => !isProjectFileHeld(f.source.fileIdentity));
+  const before = f.sourceFiles();
+  for (const asset of media) assert.equal(createHash('sha256').update(readFileSync(asset.file)).digest('hex'), asset.sha256);
+  const copy = value(await f.rpc<ProjectCopyResponse>('project.duplicate', f.input('Generated copy'))), copyId = copy.project.projectId;
+  let textReceipt:string|undefined,textRequestId:string|undefined,textResponse:unknown;
+  const textJson=async<T>(tail:string,method='GET',body?:unknown)=>{
+    const response=await fetch(`${f.server.url}/api/projects/${copyId}/local-shot-text${tail}`,{method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+    return value({status:response.status,body:await response.json() as Wire<T>});
+  };
+  const readCopy = async () => {
+    const windowId = randomUUID(); await f.native.acquire({projectId: copyId, windowId});
+    try {
+      const aggregate = value(await f.rpc<Aggregate>('project.get', {projectId: copyId}, copyId));
+      assert.equal(aggregate.assets.length, 3); assert.equal(aggregate.versions.length, 3); assert.deepEqual(aggregate.jobs, []);
+      assert.ok(aggregate.versions.every(row => row.projectId === copyId));
+      assert.deepEqual(aggregate.versions.map(versionContent), original.versions.map(versionContent));
+      assert.equal(aggregate.shots.find(row => row.id === shot.id)!.selectedVersionId, shot.selectedVersionId);
+      const versions = value(await f.rpc<Version[]>('version.list', {shotId: shot.id}, copyId)); assert.ok(versions.every(row => row.projectId === copyId));
+      assert.deepEqual(versions.map(versionContent), [...original.versions].sort((a, b) => a.number - b.number).map(versionContent));
+      const initialText=await textJson<LocalShotTextEnvelope>(`?projectId=${copyId}&shotId=${shot.id}`);assert.equal(initialText.supported,true);
+      if(!initialText.supported)throw Error('Expected a current copied-project text owner');
+      if(textReceipt===undefined){
+        const currentShot=aggregate.shots.find(row=>row.id===shot.id)!,draftId=randomUUID(),raw={title:'Edited copied result',prompt:currentShot.prompt};
+        const saved=await textJson<LocalShotTextEnvelope>('/draft','PUT',{...authority(initialText),projectId:copyId,shotId:shot.id,expectedDraftRevision:initialText.draftRevision,draftId,baseRevision:currentShot.revision,baseText:{title:currentShot.title,prompt:currentShot.prompt},raw});
+        assert.equal(saved.supported,true);if(!saved.supported)throw Error('Expected a copied-project draft');textRequestId=randomUUID();
+        const prepared=await textJson<LocalShotTextEnvelope>('/prepare','POST',{...authority(saved),projectId:copyId,shotId:shot.id,expectedIntentRevision:saved.intentRevision,expectedIntentId:null,intentId:randomUUID(),baseRevision:currentShot.revision,baseText:{title:currentShot.title,prompt:currentShot.prompt},draft:{draftId,revision:saved.draftRevision,raw},input:{requestId:textRequestId,shotId:shot.id,expectedRevision:currentShot.revision,patch:{title:raw.title}}});
+        assert.equal(prepared.supported,true);if(!prepared.supported)throw Error('Expected a copied-project text intent');
+        const executed=await textJson<LocalShotTextExecution>('/execute','POST',{...authority(prepared),projectId:copyId,shotId:shot.id,intentId:prepared.intent!.intentId,expectedIntentRevision:prepared.intentRevision});
+        assert.ok(executed.envelope.supported);assert.equal(executed.envelope.intent!.outcome.status,'applied');assert.ok(executed.response);textResponse=executed.response;
+        const applied=executed.response;assert.ok(typeof applied==='object'&&'revision' in applied&&typeof applied.revision==='number'&&Number.isSafeInteger(applied.revision));
+        textReceipt=JSON.stringify(f.inspect(copyId,db=>db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(textRequestId!)));
+        const otherVersion=original.versions.find(row=>row.id!==shot.selectedVersionId)!;
+        const selected=value(await f.rpc<Shot>('version.select',{shotId:shot.id,versionId:otherVersion.id,expectedRevision:applied.revision,requestId:randomUUID()},copyId));assert.equal(selected.selectedVersionId,otherVersion.id);
+        const restored=value(await f.rpc<Shot>('version.select',{shotId:shot.id,versionId:shot.selectedVersionId,expectedRevision:selected.revision,requestId:randomUUID()},copyId));assert.equal(restored.selectedVersionId,shot.selectedVersionId);
+      }else{
+        const recovered=await textJson<LocalShotTextExecution>('/recover','POST',{...authority(initialText),projectId:copyId,shotId:shot.id,intentId:initialText.intent!.intentId,expectedIntentRevision:initialText.intentRevision});
+        assert.deepEqual(recovered.response,textResponse);
+        assert.equal(JSON.stringify(f.inspect(copyId,db=>db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(textRequestId!))),textReceipt);
+      }
+      denied(await f.rpc('job.retry', {jobId: jobs[0], requestId: randomUUID()}, copyId), 404, 'NOT_FOUND');
+      assert.deepEqual(value(await f.rpc('job.list', {projectId: copyId}, copyId)), []);
+      assert.equal(f.inspect(copyId, db => db.prepare('SELECT count(*) n FROM main.jobs').get()!.n), 0);
+    } finally {f.native.release({windowId}); await eventually(() => !isProjectFileHeld(copy.project.fileIdentity));}
+  };
+  await readCopy(); await readCopy();
+  assert.deepEqual(f.sourceFiles(), before, 'copying and reopening do not change the source project or its local history');
+  for (const asset of media) assert.equal(createHash('sha256').update(readFileSync(asset.file)).digest('hex'), asset.sha256);
+  value(await f.rpc('project.get', {projectId}, projectId));
+});
 const draftRows = (db: DatabaseSync) => Object.fromEntries(DRAFT_TABLES.map(table => [table, db.prepare(`SELECT rowid,* FROM main.${table} ORDER BY rowid`).all()]));
 const authority = (value: {workspaceScope: string; instanceId: string}) => ({workspaceScope: value.workspaceScope, instanceId: value.instanceId});
 

@@ -30,8 +30,10 @@ const sourceRoot = fileURLToPath(new URL('../examples/project-file-v1/', import.
 const sha = (value: Uint8Array): string => createHash('sha256').update(value).digest('hex');
 const maxBytes = 5 * 1024 * 1024;
 interface Wire<T> {ok: boolean; data?: T; error?: {code: string}}
-interface Asset {id: string; projectId: string; reference: MediaReference; sha256: string; sizeBytes: number}
+interface Asset {id: string; projectId: string; reference: MediaReference; sha256: string; sizeBytes: number; name: string; mimeType: string; width?: number | null; height?: number | null}
+interface ReadableAsset extends Omit<Asset, 'width' | 'height'> {url: string; width?: number; height?: number}
 interface Timeline {id: string; projectId: string; durationFrames: number; tracks: Array<{id: string; kind: string}>; clips: Array<{id: string; trackId: string; assetId: string}>}
+interface ReadableProject {project: {id: string}; assets: ReadableAsset[]; timeline: Timeline}
 type FileEvidence = {path: string; dev: string; ino: string; bytes: number; mtime: string; ctime: string; sha256: string};
 function tree(directory: string, prefix = ''): FileEvidence[] {
   return readdirSync(directory).sort().flatMap(name => {
@@ -167,11 +169,47 @@ test('the default web build resources create two new identities with intact time
 
 test('both instances reopen and serve all media offline after installed examples are removed and the backend restarts', async t => {
   const f = await fixture(t), copies = [await f.instantiate(f.input('Offline A')), await f.instantiate(f.input('Offline B'))];
+  const audioRows = new Map(copies.map(copy => [copy.project.projectId, f.withTarget(copy, store => {
+    const rows = store.db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data));
+    const audio = rows.filter(row => (JSON.parse(row) as Asset).mimeType.startsWith('audio/'));
+    assert.equal(audio.length, 1);
+    assert.equal((JSON.parse(audio[0]!) as Asset).width, null);
+    assert.equal((JSON.parse(audio[0]!) as Asset).height, null);
+    return audio;
+  })]));
+  const readable = async (copy: ProjectCopyResponse) => {
+    const projectId = copy.project.projectId;
+    const aggregate = await f.rpc<ReadableProject>('project.get', {projectId}, projectId);
+    const listed = await f.rpc<ReadableAsset[]>('asset.list', {projectId}, projectId);
+    assert.deepEqual({projectGet: aggregate.status, assetList: listed.status}, {projectGet: 200, assetList: 200}, JSON.stringify({aggregate: aggregate.body, listed: listed.body}));
+    assert.equal(aggregate.body.ok, true); assert.equal(listed.body.ok, true);
+    assert.equal(aggregate.body.data?.project.id, projectId);
+    const assets = listed.body.data!;
+    assert.equal(assets.length, 4);
+    assert.deepEqual([...aggregate.body.data!.assets].sort((a, b) => a.id.localeCompare(b.id)), [...assets].sort((a, b) => a.id.localeCompare(b.id)));
+    assert.deepEqual(assets.map(asset => asset.id).sort(), f.content.assets.map(asset => asset.id).sort());
+    for (const asset of assets) {
+      const original = f.content.assets.find(value => value.id === asset.id)!;
+      assert.equal(asset.projectId, projectId); assert.equal(asset.name, original.name); assert.equal(asset.mimeType, original.mimeType);
+      assert.equal(asset.sha256, original.sha256); assert.equal(asset.sizeBytes, original.sizeBytes);
+      assert.equal(asset.url, projectMediaPath(projectId, asset.id));
+      if (asset.mimeType.startsWith('audio/')) {
+        assert.equal(Object.hasOwn(asset, 'width'), false); assert.equal(Object.hasOwn(asset, 'height'), false);
+      }
+    }
+    const timeline = aggregate.body.data!.timeline;
+    assert.equal(timeline.projectId, projectId); assert.equal(timeline.tracks.length, 3); assert.equal(timeline.clips.length, 5); assert.equal(timeline.durationFrames, 300);
+    assert.deepEqual(timeline.clips.map(clip => clip.assetId).sort(), f.content.timelines[0]!.clips.map(clip => clip.assetId).sort());
+    const persistedAudio = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data)).filter(row => (JSON.parse(row) as Asset).mimeType.startsWith('audio/')));
+    assert.deepEqual(persistedAudio, audioRows.get(projectId), 'reading the old audio row must not rewrite the project or require a rebuilt instance');
+  };
+  for (const copy of copies) await readable(copy);
   renameSync(f.installed, f.installed + '-unavailable'); assert.equal(existsSync(f.installed), false);
   await f.restart();
   for (const copy of copies) {
     const windowId = randomUUID(), opened = await f.native().acquire({projectId: copy.project.projectId, windowId});
     assert.equal(opened.project.projectId, copy.project.projectId);
+    await readable(copy);
     const assets = f.inspect(copy.project.projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Asset));
     assert.equal(assets.length, f.entry.manifest.assets.length);
     for (const asset of assets) {

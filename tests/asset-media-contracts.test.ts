@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   ASSET_MEDIA_PAGE_LIMIT, ASSET_UPLOAD_MAX_BASE64_LENGTH, ASSET_UPLOAD_MAX_BYTES, PROJECT_ASSETS_FOLDER,
   assetImportSchema, assetMediaDtoSchema, assetMediaRecordSchema, assetMediaSchemas, assetMediaStateSchema,
-  trustedAssetMediaLocationSchemas,
+  trustedAssetMediaLocationSchemas, toAssetMediaDto,
 } from '../packages/contracts/src/asset-media.ts';
 import {MEDIA_STATUS_REASONS, mediaStatusViewSchema} from '../packages/contracts/src/media-reference.ts';
 import {
@@ -72,6 +72,45 @@ test('persisted records have one location source and consistent size/full hash, 
     {...full, reference: {...reference, fullSha256: sampledHash}}, {...record, reference: {...reference, sizeBytes: 1}},
   ]) assert.equal(assetMediaRecordSchema.safeParse(malformed).success, false);
   assert.equal(PROJECT_ASSETS_FOLDER, '素材');
+});
+
+test('public projection reads legacy null dimensions without changing stored metadata or exposing an old URL', () => {
+  const legacy = {...metadata, width: null, height: null, duration: null, reference, referenceRevision: 1, sha256: null,
+    url: projectMediaPath(otherProject, assetId)};
+  const before = structuredClone(legacy);
+  const projected = toAssetMediaDto(legacy);
+  assert.deepEqual(projected, {...dto, duration: null});
+  assert.equal(Object.hasOwn(projected, 'width'), false); assert.equal(Object.hasOwn(projected, 'height'), false);
+  assert.equal(Object.hasOwn(projected, 'provenance'), false);
+  assert.equal(projected.url, projectMediaPath(projectId, assetId));
+  assert.deepEqual(projected.fingerprint, fingerprint); assert.equal(projected.sha256, null);
+  for (const key of ['reference', 'path', 'relativePath', 'volume', 'displayPath']) assert.equal(Object.hasOwn(projected, key), false);
+  assert.equal(JSON.stringify(projected).includes(reference.path), false);
+  assert.deepEqual(legacy, before); assert.equal(legacy.reference, reference);
+  for (const dimensions of [{width: null, height: 0}, {width: 100000, height: null}, {width: 0, height: 100000}]) {
+    const value = toAssetMediaDto({...legacy, ...dimensions});
+    for (const key of ['width', 'height'] as const) {
+      if (dimensions[key] === null) assert.equal(Object.hasOwn(value, key), false);
+      else assert.equal(value[key], dimensions[key]);
+    }
+  }
+});
+
+test('null-dimension compatibility does not broaden schemas or coerce invalid metadata', () => {
+  const record = {...metadata, reference, referenceRevision: 1, sha256: null};
+  for (const dimension of ['width', 'height'] as const) {
+    assert.equal(assetMediaDtoSchema.safeParse({...dto, [dimension]: null}).success, false);
+    assert.equal(assetMediaRecordSchema.safeParse({...record, [dimension]: null}).success, false);
+    for (const invalid of ['720', -1, 0.5, NaN, Infinity, 100001]) {
+      const malformed = {...record, [dimension]: invalid};
+      const before = structuredClone(malformed);
+      assert.throws(() => toAssetMediaDto(malformed), {name: 'ZodError'});
+      assert.deepEqual(malformed, before);
+    }
+  }
+  for (const invalid of [{hasAudio: null}, {provenance: null}, {createdAt: null}, {referenceRevision: 0}]) {
+    assert.throws(() => toAssetMediaDto({...record, ...invalid}), {name: 'ZodError'});
+  }
 });
 
 test('shared status types preserve both unconfirmed UI states rather than making an outside reference usable', () => {

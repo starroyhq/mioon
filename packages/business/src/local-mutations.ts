@@ -4,6 +4,8 @@ import {AppError,isPrevisNodeRecord} from '@mioon/contracts';
 import {createMutationReplay} from './mutation-replay.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {currentProjectRecord} from './project-record-mutations.ts';
+import {hasSubjectGeneration} from './generation-inputs.ts';
+import {createOwnedMediaGraphReader} from './inspection.ts';
 
 type MutationRecord=Record<string, unknown>&{id: string; projectId?: string};
 export interface ShotCreateInput {
@@ -88,7 +90,16 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   }
   if(value.shotId!==shot.id)throw new AppError('INVALID_VERSION','版本不属于此镜头');
   owned('assets',value.assetId,shot.projectId);
-  const job=owned('jobs',value.jobId,shot.projectId);
+  let job:MutationRecord;
+  try{job=owned('jobs',value.jobId,shot.projectId);}
+  catch(error){
+   if(!(error instanceof AppError)||error.code!=='NOT_FOUND'||hasSubjectGeneration(value.snapshot))throw error;
+   // S5's portable version proof distinguishes an ordinary copy from a
+   // damaged local execution owner. It never supplies a retryable job.
+   try{createOwnedMediaGraphReader(db,shot.projectId as string).version(value.id,shot.id,value.assetId);}
+   catch{throw error;}
+   return value;
+  }
   if(job.shotId!==shot.id||(job.versionId!=null&&job.versionId!==value.id))invalid();
   return value;
  }
