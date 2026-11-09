@@ -125,7 +125,7 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-trash-broker.ts', 'apps/desktop/src/project-entry-control.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
-  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts',
+  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts', 'packages/contracts/src/agent-openai-model-family.ts',
   'packages/business/src/agent/settings-envelope.ts', 'packages/contracts/src/agent-connection-settings.ts',
   'packages/contracts/src/agent-connection-private.ts', 'packages/contracts/src/agent-provider-catalog.ts',
   'packages/business/src/agent/model-profiles.ts', 'packages/business/src/agent/anthropic-protocol.ts',
