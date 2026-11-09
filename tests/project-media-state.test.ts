@@ -5,7 +5,10 @@ import {createProjectMediaController, sameMediaOwner} from '../apps/web/src/proj
 import type {ProjectMediaAsset, ProjectMediaOwner, ChooseMediaPreview} from '../apps/web/src/project-media-state.ts';
 import {createProjectMediaClient, ProjectMediaError} from '../apps/web/src/project-media-client.ts';
 import type {ProjectMediaClient} from '../apps/web/src/project-media-client.ts';
+import type {ProjectMediaNativeClient} from '../apps/web/src/project-media-native-client.ts';
 import type {AssetMediaState, AssetMediaDto} from '../packages/contracts/src/asset-media.ts';
+import {nativeRelinkPreviewSchema} from '../packages/contracts/src/asset-media-native.ts';
+import type {NativeRelinkApplyResult} from '../packages/contracts/src/asset-media-native.ts';
 import {projectMediaPath, projectRpcPath, projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {extractBetween, stripSourceTypes} from './helpers/eval-source.ts';
 import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
@@ -21,7 +24,7 @@ const dto = (value: number, revision = 1): AssetMediaDto => ({...asset(value, re
 const rules = {projectId, file: 'AGENTS.md' as const, exists: true, text: 'Only a synthetic rule.', hash, trust: 'untrusted' as const, maxBytes: 8192 as const, readError: null, pendingWrites: false};
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(yes => {resolve = yes;}); return {resolve, promise};}
 const turn = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture(patch: Partial<ProjectMediaClient> = {}, chooser?: ChooseMediaPreview) {
+function fixture(patch: Partial<ProjectMediaClient> = {}, chooser?: ChooseMediaPreview, nativeRelink?: ProjectMediaNativeClient) {
   let current: ProjectMediaOwner | null = owner(), values: readonly ProjectMediaAsset[] = [asset()];
   let failObservation = false;
   const calls: {kind: string; input: unknown}[] = [], changes: unknown[] = [], applied: ProjectMediaOwner[] = [];
@@ -33,9 +36,9 @@ function fixture(patch: Partial<ProjectMediaClient> = {}, chooser?: ChooseMediaP
     acceptChanged: async input => {calls.push({kind: 'changed', input}); return {asset: dto(10), replacesAssetId: id(1)};},
     confirm: async input => {calls.push({kind: 'confirm', input}); return {confirmedDirectories: ['/outside'], revokedDirectories: []};}, ...patch};
   let sequence = 0;
-  const controller = createProjectMediaController({client, readOwner: () => current, readAssets: () => values, onChange: value => changes.push(value), onApplied: value => {applied.push(value); if (failObservation) throw Error('synthetic observation failure');}, newRequestId: () => `synthetic-request-${++sequence}`, ...(chooser ? {choosePreview: chooser} : {})});
+  const controller = createProjectMediaController({client, readOwner: () => current, readAssets: () => values, onChange: value => changes.push(value), onApplied: value => {applied.push(value); if (failObservation) throw Error('synthetic observation failure');}, newRequestId: () => `synthetic-request-${++sequence}`, ...(chooser ? {choosePreview: chooser} : {}), ...(nativeRelink ? {nativeRelink} : {})});
   controller.activate(); controller.update(current);
-  return {controller, calls, changes, applied, failObservation: () => {failObservation = true;}, setOwner: (value: ProjectMediaOwner | null) => {current = value;}, setAssets: (next: readonly ProjectMediaAsset[]) => {values = next;}, get owner() {return current;}};
+  return {controller, calls, changes, applied, failObservation: () => {failObservation = true;}, setOwner: (value: ProjectMediaOwner | null) => {current = value;}, setAssets: (next: readonly ProjectMediaAsset[]) => {values = next;}, get owner() {return current;}, get assets() {return values;}};
 }
 const preview = {previewToken: id(800), chosen: {assetId: id(1), matches: true}, found: [], mismatched: [], unverified: []};
 const choose: ChooseMediaPreview = async () => ({preview, displayPaths: [{assetId: id(1), displayPath: '/chosen/1.png'}]});
@@ -324,4 +327,129 @@ test('invalid UTF8 and over-budget status bodies are canceled before a DTO can b
     let canceled = false; const client = createProjectMediaClient({fetcher: async () => new Response(new ReadableStream({start(controller) {controller.enqueue(body);}, cancel() {canceled = true;}}), {headers: {'content-type': 'application/json'}})});
     await assert.rejects(client.status({projectId}), {code: 'BACKEND_PROTOCOL_ERROR'}); assert.equal(canceled, true);
   }
+});
+
+const nativeThreePreview = () => nativeRelinkPreviewSchema.parse({
+  projectId, assetId: id(1), expectedReferenceRevision: 1, previewToken: id(800), displayPath: '/moved/1.png', outside: true,
+  rows: [1, 2, 3].map(value => ({assetId: id(value), name: `${value}.png`, from: `/old/${value}.png`, to: `/moved/${value}.png`,
+    outcome: value === 1 ? 'picked' : 'auto', referenceRevision: 1})), foundBy: {name: '1.png', count: 2},
+});
+const sampledDto = (value: number, revision = 2): AssetMediaDto => ({...dto(value, revision), sha256: null,
+  fingerprint: {...dto(value, revision).fingerprint, fullSha256: null}, hashState: 'sampled'});
+const nativeThreeReceipt = (sampled = false): NativeRelinkApplyResult => ({status: 'applied',
+  assets: [1, 2, 3].map(value => sampled ? sampledDto(value) : dto(value, 2)), confirmedDirectories: ['/moved']});
+function nativeThreeFixture(apply: ProjectMediaNativeClient['apply']) {
+  const inputs: unknown[] = [], discarded: unknown[] = [];
+  const f = fixture({}, undefined, {choose: async () => nativeThreePreview(),
+    apply: async (input, options) => {inputs.push(input); return apply(input, options);}, discard: async input => {discarded.push(input);}});
+  f.setAssets([asset(1), asset(2), asset(3)]); f.controller.update(f.owner);
+  return {...f, inputs, discarded, get assets() {return f.assets;}};
+}
+
+test('a native applied receipt survives an App catalog refresh before its acknowledgement without rewinding newer revisions', async () => {
+  for (const observedRevision of [2, 4]) {
+    const held = deferred<NativeRelinkApplyResult>(), f = nativeThreeFixture(async () => held.promise);
+    try {
+      await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+      const applying = f.controller.apply(); await turn(); assert.equal(f.inputs.length, 1);
+      const observed = [asset(1, observedRevision), asset(2, observedRevision), asset(3, observedRevision)];
+      f.setAssets(observed); f.controller.update(f.owner);
+      held.resolve(nativeThreeReceipt());
+      assert.equal(await applying, true, 'The exact revision-2 receipt proves this operation even if App already observed it or a later revision');
+      assert.equal(f.controller.getState().nativeOutcomeUnknown, false);
+      assert.equal(f.controller.getState().relinkOpen, false, 'All three preview rows were verified, so the dialog closes');
+      assert.equal(f.controller.getState().applyAction.kind, 'idle');
+      assert.equal(f.applied.length, 1); assert.deepEqual(f.assets, observed, 'Receipt DTOs must not replace the newer catalog');
+      assert.equal(f.inputs.length, 1); assert.deepEqual(f.discarded, []);
+    } finally {f.controller.dispose();}
+  }
+});
+
+test('native outside relink accepts a schema-consistent sampled receipt for all three selected and automatic rows', async () => {
+  const f = nativeThreeFixture(async () => nativeThreeReceipt(true));
+  try {
+    await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+    assert.equal(f.controller.getState().canApply, true);
+    assert.equal(await f.controller.apply(), true);
+    assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().relinkOpen, false);
+    assert.equal(f.applied.length, 1); assert.deepEqual(f.controller.getState().nativeConfirmedDirectories, ['/moved']);
+    assert.deepEqual(f.inputs, [{projectId, previewToken: id(800), requestId: 'synthetic-request-1'}]);
+    assert.equal(f.controller.getState().canApply, false); assert.deepEqual(f.discarded, []);
+  } finally {f.controller.dispose();}
+});
+
+test('native acknowledgement still rejects missing, duplicate, foreign, wrong-revision and internally inconsistent hash evidence', async () => {
+  const invalidReceipts = [
+    {name: 'missing-row', assets: [sampledDto(1), sampledDto(2)]},
+    {name: 'duplicate-row', assets: [sampledDto(1), sampledDto(2), sampledDto(2)]},
+    {name: 'foreign-project', assets: [sampledDto(1), sampledDto(2), {...sampledDto(3), projectId: id(999), url: projectMediaPath(id(999), id(3))}]},
+    {name: 'wrong-revision', assets: [sampledDto(1), sampledDto(2), sampledDto(3, 3)]},
+    {name: 'unknown-asset', assets: [sampledDto(1), sampledDto(2), sampledDto(4)]},
+    {name: 'inconsistent-full-hash', assets: [sampledDto(1), sampledDto(2), {...sampledDto(3), sha256: hash}]},
+    {name: 'inconsistent-hash-state', assets: [sampledDto(1), sampledDto(2), {...dto(3, 2), hashState: 'sampled' as const}]},
+  ];
+  for (const receipt of invalidReceipts) {
+    const f = nativeThreeFixture(async () => ({status: 'applied', assets: receipt.assets, confirmedDirectories: ['/moved']}));
+    try {
+      await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+      assert.equal(await f.controller.apply(), false, receipt.name);
+      assert.equal(f.controller.getState().nativeOutcomeUnknown, true, receipt.name);
+      assert.equal(f.controller.getState().relinkOpen, true); assert.equal(f.applied.length, 0);
+      assert.equal(f.controller.getState().canChoose, false); assert.equal(f.controller.getState().canApply, true);
+      assert.equal(await f.controller.apply(), false, 'A retry cannot turn the same incomplete evidence into success');
+      assert.deepEqual(f.inputs[0], f.inputs[1]); assert.equal(f.inputs.length, 2); assert.deepEqual(f.discarded, []);
+    } finally {f.controller.dispose();}
+  }
+});
+
+test('an unknown native operation settles from its committed sampled receipt using only the original key', async () => {
+  let committed = false, mutations = 0;
+  const f = nativeThreeFixture(async () => {
+    if (!committed) {committed = true; mutations++; throw new ProjectMediaError('TIMEOUT', {outcomeUnknown: true});}
+    return nativeThreeReceipt(true);
+  });
+  try {
+    await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+    assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+    const observed = [asset(1, 4), asset(2, 4), asset(3, 4)]; f.setAssets(observed); f.controller.update(f.owner);
+    assert.equal(await f.controller.apply(), true);
+    assert.equal(mutations, 1); assert.deepEqual(f.inputs[0], f.inputs[1]); assert.equal(f.inputs.length, 2);
+    assert.deepEqual(f.assets, observed); assert.equal(f.applied.length, 1);
+    assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().relinkOpen, false);
+    assert.equal(await f.controller.apply(), false); assert.equal(f.inputs.length, 2, 'A settled intent cannot be resubmitted as a new mutation');
+  } finally {f.controller.dispose();}
+});
+
+test('an unknown uncommitted native operation preserves the original key and respects a definitive backend rejection', async () => {
+  let attempts = 0;
+  const f = nativeThreeFixture(async () => {
+    if (++attempts === 1) throw new ProjectMediaError('TIMEOUT', {outcomeUnknown: true});
+    return {status: 'failed', error: {code: 'REVISION_CONFLICT', status: 409}, confirmedDirectories: []};
+  });
+  try {
+    await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+    assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+    assert.equal(await f.controller.apply(), false); assert.deepEqual(f.inputs[0], f.inputs[1]);
+    assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().lastError, 'REVISION_CONFLICT');
+    assert.equal(f.controller.getState().canApply, false); assert.equal(f.applied.length, 0);
+    assert.equal(f.controller.getState().relinkOpen, true); assert.deepEqual(f.controller.getState().nativeConfirmedDirectories, []);
+    assert.equal(await f.controller.apply(), false); assert.equal(attempts, 2); assert.deepEqual(f.discarded, []);
+  } finally {f.controller.dispose();}
+});
+
+test('an unknown uncommitted native operation can commit once on an explicit retry with its original key', async () => {
+  let attempts = 0, mutations = 0;
+  const f = nativeThreeFixture(async () => {
+    if (++attempts === 1) throw new ProjectMediaError('TIMEOUT', {outcomeUnknown: true});
+    mutations++; return nativeThreeReceipt(true);
+  });
+  try {
+    await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
+    assert.equal(await f.controller.apply(), false); assert.equal(mutations, 0); assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+    await turn(); assert.equal(attempts, 1, 'Unknown work never dispatches an automatic retry');
+    assert.equal(await f.controller.apply(), true); assert.equal(mutations, 1);
+    assert.deepEqual(f.inputs[0], f.inputs[1]); assert.equal(f.inputs.length, 2);
+    assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().relinkOpen, false);
+    assert.equal(f.applied.length, 1); assert.equal(await f.controller.apply(), false); assert.equal(mutations, 1);
+  } finally {f.controller.dispose();}
 });

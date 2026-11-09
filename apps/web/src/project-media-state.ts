@@ -44,7 +44,7 @@ interface ApplyStep {readonly kind: 'relink' | 'changed'; readonly input: {proje
 interface ApplyIntent {readonly steps: readonly ApplyStep[]; index: number; added: number}
 interface PermissionIntent {readonly steps: readonly {directory: string; locationToken: string; requestId: string}[]; readonly assetKey: string; index: number}
 interface NativePreview {readonly value: NativeRelinkPreview; readonly basis: string; readonly revisions: ReadonlyMap<string, number>; readonly kinds: ReadonlyMap<string, MediaRelinkRow['mediaKind']>; readonly expires: number}
-interface NativeIntent {readonly preview: NativePreview; readonly input: {projectId: string; previewToken: string; requestId: string}; unknown: boolean; dispatched: boolean}
+interface NativeIntent {readonly preview: NativePreview; readonly input: {projectId: string; previewToken: string; requestId: string}; dispatched: boolean}
 
 /** A view owner for S1 capabilities. File selection is an optional trusted
  * port; this controller never manufactures paths, imports or permission. */
@@ -266,9 +266,9 @@ export function createProjectMediaController({client = createProjectMediaClient(
       if (value.expires <= now() || value.basis !== basisKey(assets(owner)) || !revisionsCurrent(owner, value.revisions)) {
         retireNativePreview(); publish({applyAction: {kind: 'error', action: 'apply'}, lastError: 'REVISION_CONFLICT'}); renderRelink(); return false;
       }
-      nativeIntent = {preview: value, input: Object.freeze({projectId: owner.projectId, previewToken: value.value.previewToken, requestId: newRequestId()}), unknown: false, dispatched: false};
+      nativeIntent = {preview: value, input: Object.freeze({projectId: owner.projectId, previewToken: value.value.previewToken, requestId: newRequestId()}), dispatched: false};
     }
-    const exact = nativeIntent, retry = exact.unknown; let dispatched = false, observedGrant = false;
+    const exact = nativeIntent; let dispatched = false, observedGrant = false;
     publish({applyAction: {kind: 'working', action: 'apply'}});
     try {
       if (!ownerCurrent(owner, lifetime) || nativeIntent !== exact) return false;
@@ -280,18 +280,21 @@ export function createProjectMediaController({client = createProjectMediaClient(
       if (result.status === 'failed') throw new ProjectMediaError(result.error.code, {status: result.error.status,
         outcomeUnknown: result.error.status >= 500 || ['ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN', 'PROJECT_ENTRY_OUTCOME_UNKNOWN'].includes(result.error.code)});
       const revisions = exact.preview.revisions;
-      // An unknown intent may explicitly replay its original key after a fresh
-      // catalog observed its committed revision. Its receipt never overwrites
-      // that catalog: onApplied obtains current project records again.
-      if (!retry && !revisionsCurrent(owner, revisions) || result.assets.length !== revisions.size || new Set(result.assets.map(asset => asset.id)).size !== revisions.size ||
-        result.assets.some(asset => asset.projectId !== owner.projectId || asset.referenceRevision !== (revisions.get(asset.id) ?? -1) + 1 || asset.hashState !== 'full' || asset.sha256 === null)) throw new ProjectMediaError('BACKEND_PROTOCOL_ERROR', {outcomeUnknown: true});
+      // The catalog may already observe this commit (or later edits). Bind the
+      // receipt to the original intent, not the timing of a background read.
+      // The DTO schema checks sampled/full hash consistency; relink does not
+      // upgrade a sampled source to a full hash. Never copy receipts into App's
+      // catalog: onApplied obtains current project records again, also on replay.
+      if (result.assets.length !== revisions.size || new Set(result.assets.map(asset => asset.id)).size !== revisions.size ||
+        result.assets.some(asset => asset.projectId !== owner.projectId || asset.referenceRevision !== (revisions.get(asset.id) ?? -1) + 1)) throw new ProjectMediaError('BACKEND_PROTOCOL_ERROR', {outcomeUnknown: true});
       nativeIntent = null; nativePreview = null;
-      publish({nativeOutcomeUnknown: false, applyAction: {kind: 'idle'}}); await observeApplied(owner, lifetime); return true;
+      publish({nativeOutcomeUnknown: false, applyAction: {kind: 'idle'}, lastError: null,
+        relinkOpen: revisions.size === exact.preview.value.rows.length ? false : state.relinkOpen});
+      await observeApplied(owner, lifetime); return true;
     } catch (error) {
       if (ownerCurrent(owner, lifetime) && nativeIntent === exact) {
         const unknown = dispatched && (!(error instanceof ProjectMediaError) || error.outcomeUnknown);
-        if (unknown) exact.unknown = true;
-        else {nativeIntent = null; nativePreview = null;}
+        if (!unknown) {nativeIntent = null; nativePreview = null;}
         publish({nativeOutcomeUnknown: unknown, applyAction: {kind: 'error', action: 'apply'}, lastError: errorCode(error)}); renderRelink();
         // A failed relink can truthfully report an already confirmed directory.
         // Observe it without repeating a grant or any successful mutation.
