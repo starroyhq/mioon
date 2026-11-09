@@ -119,6 +119,74 @@ test('directory controller publishes validated whole snapshots, and only a valid
   controller.dispose();
 });
 
+test('verified directory identity survives refresh and read errors without exposing stale display rows', async () => {
+  const requests: Array<ReturnType<typeof deferred<unknown>>> = [];
+  const controller = createProjectEntryDirectoryController({read: () => {
+    const reply = deferred<unknown>(); requests.push(reply); return reply.promise;
+  }});
+  assert.equal(controller.getVerifiedIdentity(), null);
+  controller.activate(); assert.equal(controller.getVerifiedIdentity(), null);
+  const first = controller.refresh(); assert.equal(controller.getVerifiedIdentity(), null);
+  requests[0].resolve(snapshot()); assert.equal(await first, true);
+  const verified = {appLibraryScope: scope, instanceId: id(1), epoch: 1};
+  assert.deepEqual(controller.getVerifiedIdentity(), verified);
+  assert.equal(Object.isFrozen(controller.getVerifiedIdentity()), true);
+
+  const refreshing = controller.refresh();
+  assert.equal(controller.getState().phase, 'loading'); assert.equal(controller.getState().snapshot, null);
+  assert.deepEqual(controller.getVerifiedIdentity(), verified);
+  requests[1].reject(new ProjectEntryDirectoryError('TIMEOUT'));
+  assert.equal(await refreshing, false); assert.equal(controller.getState().phase, 'error');
+  assert.equal(controller.getState().snapshot, null); assert.deepEqual(controller.getVerifiedIdentity(), verified);
+
+  const invalid = controller.refresh(); requests[2].resolve({...snapshot(id(2)), instanceId: 'invalid'});
+  assert.equal(await invalid, false); assert.deepEqual(controller.getVerifiedIdentity(), verified);
+  const replacement = controller.refresh(); requests[3].resolve(snapshot(id(2)));
+  assert.equal(await replacement, true);
+  assert.deepEqual(controller.getVerifiedIdentity(), {appLibraryScope: scope, instanceId: id(2), epoch: 2});
+  const same = controller.refresh(); requests[4].resolve(snapshot(id(2))); assert.equal(await same, true);
+  assert.equal(controller.getVerifiedIdentity()?.epoch, 2); controller.dispose();
+});
+
+test('verified directory identity immediately rejects changed or invalid expectations and keeps sticky scope blocking', async () => {
+  let expected: string | null | undefined = scope, failExpectation = false, calls = 0;
+  const controller = createProjectEntryDirectoryController({read: async () => {calls++; return snapshot();}, expectedScope: () => {
+    if (failExpectation) throw Error('Unavailable scope');
+    return expected;
+  }});
+  controller.activate(); assert.equal(await controller.refresh(), true);
+  const verified = controller.getVerifiedIdentity(); assert.ok(verified);
+  for (const value of [null, undefined, scope]) {expected = value; assert.deepEqual(controller.getVerifiedIdentity(), verified);}
+  expected = 'invalid'; assert.equal(controller.getVerifiedIdentity(), null);
+  assert.equal(controller.getState().phase, 'ready', 'The identity getter must not mutate the directory.');
+  expected = scope; failExpectation = true; assert.equal(controller.getVerifiedIdentity(), null);
+  failExpectation = false; assert.deepEqual(controller.getVerifiedIdentity(), verified);
+  expected = otherScope; assert.equal(controller.getVerifiedIdentity(), null);
+  assert.equal(calls, 1); assert.equal(await controller.refresh(), false);
+  assert.equal(controller.getState().phase, 'blocked'); assert.equal(controller.getVerifiedIdentity(), null);
+  expected = scope; controller.dispose(); controller.activate();
+  assert.equal(controller.getVerifiedIdentity(), null); assert.equal(await controller.refresh(), false);
+  assert.equal(calls, 1); controller.dispose();
+});
+
+test('disposed directory identity stays unavailable and late reads cannot replace its verified pin', async () => {
+  const requests: Array<{signal: AbortSignal; reply: ReturnType<typeof deferred<unknown>>}> = [];
+  const controller = createProjectEntryDirectoryController({read: ({signal}) => {
+    const reply = deferred<unknown>(); requests.push({signal, reply}); return reply.promise;
+  }});
+  controller.activate(); const first = controller.refresh(); requests[0].reply.resolve(snapshot()); assert.equal(await first, true);
+  const retired = controller.refresh(); controller.dispose();
+  assert.equal(requests[1].signal.aborted, true); assert.equal(controller.getVerifiedIdentity(), null);
+  requests[1].reply.resolve(snapshot(id(2))); assert.equal(await retired, false);
+  assert.equal(controller.getVerifiedIdentity(), null); assert.equal(controller.getState().phase, 'idle');
+  assert.equal(controller.getState().snapshot, null); assert.equal(controller.getState().epoch, 1);
+  controller.activate();
+  assert.deepEqual(controller.getVerifiedIdentity(), {appLibraryScope: scope, instanceId: id(1), epoch: 1});
+  const fresh = controller.refresh(); requests[2].reply.resolve(snapshot(id(3))); assert.equal(await fresh, true);
+  assert.deepEqual(controller.getVerifiedIdentity(), {appLibraryScope: scope, instanceId: id(3), epoch: 2});
+  controller.dispose(); assert.equal(controller.getVerifiedIdentity(), null);
+});
+
 test('a verified library change is sticky and clears prior rows across refresh and reactivation', async () => {
   let expected = scope, value = snapshot(), calls = 0;
   const controller = createProjectEntryDirectoryController({read: async () => {calls++; return value;}, expectedScope: () => expected});

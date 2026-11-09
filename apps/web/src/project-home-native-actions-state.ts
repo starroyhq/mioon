@@ -108,7 +108,7 @@ export function createProjectHomeNativeActionsController(options: {
   const unknown=(operation:Pending):void=>{retainedUnknown=true;emit({kind:operation.kind==='trash'?'trash-unknown':'example-unknown',project:operation.project,reason:null});};
   async function openCreated(automatic=false):Promise<boolean> {
     const value=authority,project=state.project;
-    if(!value||!project||state.kind!=='example-created'||!active||value.lifetime!==lifetime||!sameIdentity(options.owner(),value.identity))return false;
+    if(!value||!project||state.kind!=='example-created'||state.reason==='changed'||!active||value.lifetime!==lifetime||!sameIdentity(options.owner(),value.identity))return false;
     if(!automatic&&!options.canStart())return false;
     if(automatic&&(!value.nativePermit||!options.onOpenNativeResult||!current(value)))return false;
     const call=++serial;
@@ -117,10 +117,18 @@ export function createProjectHomeNativeActionsController(options: {
       // must not report itself as a competing native mutation to that owner.
       emit({kind:'opening-example'});
       const accepted=automatic?await options.onOpenNativeResult!(project.projectId,value.nativePermit!):await options.onOpenCreated(project.projectId);
-      if(!active||value.lifetime!==lifetime||!sameIdentity(options.owner(),value.identity)||call!==serial)return accepted===true;
-      if(accepted===true)idle();else emit({kind:'example-created'});
+      if(!active||value.lifetime!==lifetime||call!==serial)return accepted===true;
+      if(accepted===true)idle();
+      else if(sameIdentity(options.owner(),value.identity))emit({kind:'example-created',reason:current(value)?null:'changed'});
+      else{authority=null;emit({kind:'example-created',project:null,exampleReceipt:null,reason:'changed'});}
       return accepted===true;
-    }catch {if(active&&value.lifetime===lifetime&&call===serial)emit({kind:'example-created'});return false;}
+    }catch {
+      if(active&&value.lifetime===lifetime&&call===serial){
+        if(sameIdentity(options.owner(),value.identity))emit({kind:'example-created',reason:current(value)?null:'changed'});
+        else{authority=null;emit({kind:'example-created',project:null,exampleReceipt:null,reason:'changed'});}
+      }
+      return false;
+    }
   }
   async function execute(operation:Pending):Promise<boolean> {
     const value=operation.authority,call=++serial,wasUnknown=uncertain(state.kind);
@@ -139,11 +147,20 @@ export function createProjectHomeNativeActionsController(options: {
       const port=options.ports()?.example?.bridge.instantiateTemplate;if(!port)throw Error('Template capability unavailable');
       const result=projectCopyResponseSchema.parse(await port(operation.input));
       if(result.requestId!==operation.input.requestId||result.project.projectFile!==operation.displayPath||result.project.name!==operation.input.name)throw Error('Template receipt mismatch');
+      // Only the retained dispatch may settle this action. Once its ACK has
+      // been verified, loss of opening authority cannot make creation unknown.
+      if(pending!==operation)return false;
       immutableProject(result.project);const receipt=Object.freeze(result);knownExample={input:operation.input,receipt};
-      // A changed input/lease revokes opening authority, not the verified ACK.
-      // Cross-lifetime/library results stay private until explicit recheck.
-      if(!active||value.lifetime!==lifetime||!sameIdentity(options.owner(),value.identity)||call!==serial)return false;
-      pending=null;retainedUnknown=false;emit({kind:'example-created',project:receipt.project,exampleReceipt:receipt});await refresh();
+      const sameOwner=active&&value.lifetime===lifetime&&sameIdentity(options.owner(),value.identity)&&call===serial;
+      pending=null;retainedUnknown=false;
+      if(!sameOwner)authority=null;
+      emit({kind:'example-created',project:sameOwner?receipt.project:null,exampleReceipt:sameOwner?receipt:null,dialogHidden:false,reason:sameOwner&&value.current()?null:'changed'});
+      if(!sameOwner)return true;
+      await refresh();
+      if(active&&value.lifetime===lifetime&&call===serial&&state.kind==='example-created'&&!current(value)){
+        if(sameIdentity(options.owner(),value.identity))emit({reason:'changed'});
+        else{authority=null;emit({project:null,exampleReceipt:null,reason:'changed'});}
+      }
       if(current(value)&&value.nativePermit&&options.onOpenNativeResult)await openCreated(true);
       return true;
     }catch(error){

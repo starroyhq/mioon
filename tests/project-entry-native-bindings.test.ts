@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
+import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 
 interface Element {type: unknown; props: Record<string, unknown> & {children?: unknown}}
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -20,16 +21,33 @@ function nodes(value:unknown):Element[]{
  const node=value as Element;return[node,...nodes(node.props.children)];
 }
 const id='77000000-0000-4000-8000-000000000001',other='77000000-0000-4000-8000-000000000002';
-function home(role:'editor'|'launcher'){
+function home(role:'editor'|'launcher',identity:ReturnType<typeof createProjectEntryIdentityOwner>|null=null){
  const copies:string[]=[],rechecks:number[]=[],permit=()=>true,desktop={getState:()=>({capabilities:{ready:true,duplicate:true},busy:false,blocked:false}),readCloseSnapshot:()=>({unknown:false}),duplicate:(projectId:string)=>{copies.push(projectId);},bridge:{}};
  let catalogReady=true;
- const controller={getState:()=>({shown:true,catalogReady,phase:'home',projects:[],mode:'open',creating:false,sealed:false,createUnknown:false,openUnknown:false,formIntent:0}),getContext:()=>({role,editorProjectId:role==='editor'?id:null,quitting:false}),identity:null,desktop,prepareHomeNativeRecheck:async(version:number)=>{rechecks.push(version);return permit;}};
+ const controller={getState:()=>({shown:true,catalogReady,phase:'home',projects:[],mode:'open',creating:false,sealed:false,createUnknown:false,openUnknown:false,formIntent:0}),getContext:()=>({role,editorProjectId:role==='editor'?id:null,quitting:false}),identity,desktop,prepareHomeNativeRecheck:async(version:number)=>{rechecks.push(version);return permit;}};
  const entry=nodes(ui.render({controller,editor:role==='editor',onSettings(){}})).find(node=>node.type===ui.Home);assert.ok(entry);
  return {props:entry.props,copies,rechecks,permit,setCatalogReady(value:boolean){catalogReady=value;}};
 }
 
 test('native entry exposes current catalog readiness without waiting for another React render',()=>{
  for(const role of ['launcher','editor'] as const){const f=home(role),ready=f.props.catalogReady as ()=>boolean;assert.equal(typeof ready,'function');assert.equal(ready(),true);f.setCatalogReady(false);assert.equal(ready(),false);f.setCatalogReady(true);assert.equal(ready(),true);}
+});
+
+test('native entry retains its verified parent identity through real catalog reads and immediately refuses a blocked owner',async()=>{
+ for(const change of ['library','instance'] as const){
+  const requests:Array<ReturnType<typeof Promise.withResolvers<unknown>>>=[],scope='a'.repeat(64);
+  const identity=createProjectEntryIdentityOwner({read:()=>{const reply=Promise.withResolvers<unknown>();requests.push(reply);return reply.promise;}});identity.activate();
+  const f=home('launcher',identity),owner=f.props.entryIdentity as ()=>{appLibraryScope:string;instanceId:string}|null,ready=f.props.catalogReady as ()=>boolean;
+  assert.equal(typeof owner,'function');assert.equal(owner(),null);
+  const initial=identity.refresh();requests[0]!.resolve({version:1,appLibraryScope:scope,instanceId:id,registered:[]});assert.ok(await initial);
+  const verified={appLibraryScope:scope,instanceId:id};assert.deepEqual(owner(),verified);
+  const refreshing=identity.refresh();f.setCatalogReady(false);
+  assert.equal(identity.getState().phase,'loading');assert.equal(identity.getState().snapshot,null);assert.equal(ready(),false);assert.deepEqual(owner(),verified);
+  requests[1]!.resolve({version:1,appLibraryScope:change==='library'?'b'.repeat(64):scope,instanceId:change==='instance'?other:id,registered:[]});
+  assert.equal(await refreshing,null);assert.equal(identity.getState().identityBlocked,true);assert.equal(owner(),null);
+  f.setCatalogReady(true);assert.equal(ready(),false,'A ready flag cannot override the actual identity block.');
+  identity.dispose();
+ }
 });
 
 test('production entry passes the current editor ID to cards',()=>{

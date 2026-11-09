@@ -38,7 +38,7 @@ export function ProjectHomeNativeActionsView(props: ProjectHomeNativeActionsView
     changed:'projectHomeNative.example.changed',confirmation:'projectHomeNative.example.confirmation',exists:'projectHomeNative.example.exists',
     busy:'projectHomeNative.example.busy',denied:'projectHomeNative.example.denied',unavailable:'projectHomeNative.example.unavailable'} as const;
   const body=unknown?t(example?'projectHomeNative.example.unknown':'projectHomeNative.trash.unknown')
-    :state.kind==='example-created'?t('projectHomeNative.example.created')
+    :state.kind==='example-created'?t(project&&state.reason!=='changed'?'projectHomeNative.example.created':'projectHomeNative.example.createdRecent')
       :state.kind==='example-blocked'?t(exampleReasons[state.reason??'unavailable'])
         :state.kind==='trash-blocked'?t(state.reason==='facts'?'projectHomeNative.trash.factsUnavailable':state.reason==='confirmation'?'projectHomeNative.trash.confirmation':state.reason==='changed'?'projectHomeNative.trash.preparationChanged':state.reason==='denied'?'projectHomeNative.trash.denied':state.reason==='busy'?(actualWindow?'projectHomeNative.trash.open':'projectHomeNative.trash.busy'):'projectHomeNative.trash.unavailable')
         :example?t('projectHomeNative.example.working')
@@ -56,7 +56,7 @@ export function ProjectHomeNativeActionsView(props: ProjectHomeNativeActionsView
           {(state.kind==='confirm-trash'||state.kind==='working-trash')&&<WorkbenchButton variant="danger" disabled={working} loading={state.kind==='working-trash'} data-testid="project-home-trash-confirm" onClick={props.onConfirmTrash}>{t(state.kind==='working-trash'?'projectHomeNative.trash.working':'projectHomeNative.trash.confirm')}</WorkbenchButton>}
           {state.kind==='trash-unknown'&&<WorkbenchButton variant="primary" data-testid="project-home-native-recheck" onClick={props.onRecheck}>{t('projectHomeNative.trash.recheck')}</WorkbenchButton>}
           {state.kind==='example-unknown'&&props.onRefresh&&<WorkbenchButton variant="primary" data-testid="project-home-example-refresh" onClick={props.onRefresh}>{t('projectHomeNative.example.refresh')}</WorkbenchButton>}
-          {state.kind==='example-created'&&<WorkbenchButton variant="primary" data-testid="project-home-example-open" onClick={props.onRetryOpen}>{t('projectFile.home.menu.open')}</WorkbenchButton>}
+          {state.kind==='example-created'&&project&&state.reason!=='changed'&&<WorkbenchButton variant="primary" data-testid="project-home-example-open" onClick={props.onRetryOpen}>{t('projectFile.home.menu.open')}</WorkbenchButton>}
         </>} />
     </Dialog>
   </>;
