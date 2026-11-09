@@ -13,10 +13,35 @@ function configuration(presetId: string, protocol: AgentProtocol): AgentConfigur
 
 test('existing adapted profiles retain identity and reject calls through another protocol selector', () => {
   assert.equal(agentReadToolProfile(configuration('minimax', 'anthropic_messages')), AGENT_READ_TOOL_PROFILES.anthropic_messages.custom);
-  for (const [presetId, profile] of Object.entries(AGENT_CHAT_PROFILES)) assert.equal(agentChatProfile(configuration(presetId, 'chat_completions')), profile);
-  for (const [presetId, profile] of Object.entries(AGENT_RESPONSES_PROFILES)) assert.equal(agentResponsesProfile(configuration(presetId, 'responses')), profile);
+  for (const [presetId, profile] of Object.entries(AGENT_CHAT_PROFILES)) {
+    const selected=configuration(presetId, 'chat_completions');
+    for(const model of profile.models??[selected.model])assert.equal(agentChatProfile({...selected,model}), profile);
+  }
+  for (const [presetId, profile] of Object.entries(AGENT_RESPONSES_PROFILES)) {
+    const selected=configuration(presetId, 'responses');
+    for(const model of profile.models??[selected.model])assert.equal(agentResponsesProfile({...selected,model}), profile);
+  }
   assert.throws(() => agentChatProfile(configuration('minimax', 'anthropic_messages')), {code: 'AGENT_CHAT_VALIDATION'});
   assert.throws(() => agentResponsesProfile(configuration('minimax', 'chat_completions')), {code: 'AGENT_CHAT_VALIDATION'});
+});
+
+test('current OpenAI and OpenRouter defaults select reasoning-family profiles without changing legacy identities', () => {
+  for(const protocol of ['chat_completions','responses'] as const){
+    const selected=configuration('openai',protocol);
+    assert.equal(selected.model,'gpt-5.4-mini');assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
+    const profile=protocol==='chat_completions'?agentChatProfile(selected):agentResponsesProfile(selected);
+    assert.notEqual(profile,protocol==='chat_completions'?AGENT_CHAT_PROFILES.openai:AGENT_RESPONSES_PROFILES.openai);
+    assert.deepEqual(profile,{models:['gpt-5.4-mini'],...(protocol==='chat_completions'?{tokenField:'max_completion_tokens'}:{}),
+      fields:protocol==='chat_completions'?{store:false,reasoning_effort:'none'}:{truncation:'disabled',reasoning:{effort:'none'}},
+      thinkingTier:'optional',contextTokens:400000,maxOutputTokens:128000,outputTokens:32768});
+    assert.throws(()=>protocol==='chat_completions'?agentResponsesProfile(selected):agentChatProfile(selected),{code:'AGENT_CHAT_VALIDATION'});
+  }
+  const selected=configuration('openrouter','chat_completions');
+  assert.equal(selected.model,'openai/gpt-5.4-mini');assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
+  assert.notEqual(agentChatProfile(selected),AGENT_CHAT_PROFILES.openrouter);
+  assert.deepEqual(agentChatProfile(selected),{models:['openai/gpt-5.4-mini'],tokenField:'max_tokens',
+    fields:{provider:{require_parameters:true,allow_fallbacks:false},reasoning:{effort:'none'}},
+    thinkingTier:'optional',contextTokens:400000,maxOutputTokens:128000,outputTokens:32768});
 });
 
 test('unadapted Responses models use their provider generic fields without borrowing named capacity', () => {
