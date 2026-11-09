@@ -13,6 +13,9 @@ import {PROJECT_ENTRY_DESKTOP_CHANNEL,PROJECT_ENTRY_DESKTOP_LIMITS} from '../pac
 import type {ProjectEntryDesktopOwner} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import type {ProjectLocationFacts} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
+import {projectEntryControlErrorSchema} from '../packages/contracts/src/project-entry-control.ts';
+import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
+import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
 const pendingChannel='mioon:project-entries:pending-open:v1';
@@ -84,12 +87,53 @@ test('pending native opens expire with their original ticket and never transfer 
 
 test('missing or expired picker tickets are explicit pre-dispatch failures with no project writes',async t=>{
  const f=await fixture(t),before=readFileSync(f.file),registered=(await f.client.api.listRecent()).registered;
- await assert.rejects(f.bridge.adoptCopy({token:randomUUID()}),{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409});
+ await assert.rejects(f.bridge.adoptCopy({token:randomUUID()}),error=>{assert.equal(error instanceof Error,false);assert.deepEqual(error,{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409,details:{}});return true;});
  let clock=Date.now();t.mock.method(Date,'now',()=>clock);
  const chosen=await f.bridge.chooseLocation({purpose:'create',suggestedName:'Expired',message:''});assert.ok(chosen);
+ const duplicate=await f.bridge.chooseLocation({purpose:'duplicate',suggestedName:'Expired copy',message:''});assert.ok(duplicate);
  clock+=PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs;
  await assert.rejects(f.bridge.createAtSelection({token:chosen.token,name:'Expired',createFolder:true}),{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409});
+ const page=readProjectEntryDesktopClient({__mioonProjectEntries:f.bridge});assert.ok(page);
+ await assert.rejects(page.duplicate({token:duplicate.token,projectId:f.projectId,requestId:randomUUID()}),error=>{assert.ok(error instanceof Error);assert.equal(projectEntryControlErrorSchema.parse(error).code,'PROJECT_ENTRY_TICKET_EXPIRED');return true;});
  t.mock.restoreAll();assert.deepEqual(readFileSync(f.file),before);assert.deepEqual((await f.client.api.listRecent()).registered,registered);
+});
+
+test('preload rejects with exact error DTOs and the page rebuilds its own Error without replaying a request',async t=>{
+ const token=randomUUID(),projectId=randomUUID(),requestId=randomUUID();
+ const cases:Array<{name:string;error:{code:string;status:number;details:Record<string,unknown>};call:(bridge:ProjectEntriesDesktopBridge)=>Promise<unknown>}>=
+ [
+  {name:'adoptCopy expired',error:{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409,details:{}},call:bridge=>bridge.adoptCopy({token})},
+  {name:'duplicate expired',error:{code:'PROJECT_ENTRY_TICKET_EXPIRED',status:409,details:{}},call:bridge=>bridge.duplicate({token,projectId,requestId})},
+  {name:'template destination exists',error:{code:'PROJECT_FILE_EXISTS',status:409,details:{requestId,operation:'instantiateTemplate'}},call:bridge=>bridge.instantiateTemplate!({token,templateId:'timeline-basics',templateVersion:1,name:'Example',requestId})},
+  {name:'location rejected',error:{code:'PROJECT_LOCATION_REJECTED',status:409,details:{}},call:bridge=>bridge.chooseLocation({purpose:'create',suggestedName:'Example',message:''})},
+  {name:'access denied',error:{code:'PROJECT_ACCESS_DENIED',status:403,details:{projectId}},call:bridge=>bridge.openSelectedFile()},
+  {name:'entry busy',error:{code:'PROJECT_ENTRY_BUSY',status:503,details:{}},call:bridge=>bridge.duplicate({token,projectId,requestId})},
+  {name:'host busy',error:{code:'PROJECT_HOST_BUSY',status:409,details:{}},call:bridge=>bridge.copyTo({token,sourceToken:randomUUID(),requestId})},
+  {name:'format details',error:{code:'PROJECT_FORMAT_NEWER',status:409,details:{projectId,requestId,operation:'openPath',database:'history',reason:'format',invalidReason:'unsupported',formatVersion:2,supportedFormatVersion:1}},call:bridge=>bridge.openSelectedFile()},
+  {name:'explicit unknown',error:{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409,details:{requestId,operation:'duplicate'}},call:bridge=>bridge.duplicate({token,projectId,requestId})},
+  {name:'server failure',error:{code:'INTERNAL_ERROR',status:500,details:{}},call:bridge=>bridge.adoptCopy({token})},
+ ];
+ for(const item of cases)await t.test(item.name,async()=>{
+  let calls=0;const expected=projectEntryControlErrorSchema.parse(item.error);
+  const bridge=createProjectEntriesDesktopBridge(async()=>{calls++;return {ok:false,error:expected};});
+  await assert.rejects(item.call(bridge),error=>{assert.equal(error instanceof Error,false);assert.deepEqual(error,expected);return true;});
+  assert.equal(calls,1,'the preload must not retry a refused request');
+  const page=readProjectEntryDesktopClient({__mioonProjectEntries:bridge});assert.ok(page);
+  await assert.rejects(item.call(page),error=>{assert.ok(error instanceof Error);assert.equal(error.message,expected.code);assert.deepEqual(projectEntryControlErrorSchema.parse(error),expected);return true;});
+  assert.equal(calls,2,'the page must dispatch its request exactly once');
+ });
+});
+
+test('malformed or lost native entry replies cannot fabricate a coded business rejection',async()=>{
+ for(const reply of [{ok:false,error:{code:'PROJECT_FILE_EXISTS',status:409}},{ok:false,error:{code:'PROJECT_FILE_EXISTS',status:409,details:{},extra:true}},{ok:false,error:{code:'PROJECT_FILE_EXISTS',status:409,details:{}},extra:true}]){
+  let calls=0;const bridge=createProjectEntriesDesktopBridge(async()=>{calls++;return reply;});
+  const page=readProjectEntryDesktopClient({__mioonProjectEntries:bridge});assert.ok(page);
+  await assert.rejects(page.adoptCopy({token:randomUUID()}),error=>{assert.equal(projectEntryControlErrorSchema.safeParse(error).success,false);return true;});
+  assert.equal(calls,1);
+ }
+ let calls=0;const lost=new Error('Synthetic transport loss'),bridge=createProjectEntriesDesktopBridge(async()=>{calls++;throw lost;});
+ const page=readProjectEntryDesktopClient({__mioonProjectEntries:bridge});assert.ok(page);
+ await assert.rejects(page.adoptCopy({token:randomUUID()}),error=>{assert.equal(error,lost);assert.equal(projectEntryControlErrorSchema.safeParse(error).success,false);return true;});assert.equal(calls,1);
 });
 
 test('preload filters pending notices by the immutable document identity and releases its precise listener',async t=>{

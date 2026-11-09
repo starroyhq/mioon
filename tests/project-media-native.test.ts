@@ -76,6 +76,29 @@ test('native reader uses only the real preload actions and strict DTOs without p
   assert.equal(calls.length, 3);
 });
 
+test('native discard rebuilds a plain coded rejection as a page Error without retrying or changing its input',async()=>{
+  const calls:unknown[]=[],input={projectId,previewToken:id(800)},failure={code:'REVISION_CONFLICT',status:409};
+  const bridge=createNativeAssetMediaBridge(async(_channel,value)=>{calls.push(value);return {ok:false,error:failure};});
+  const client=readProjectMediaNativeClient({__mioonAssetMediaNative:bridge});assert.ok(client);
+  await assert.rejects(client.discard(input),error=>{assert.ok(error instanceof ProjectMediaError);assert.equal(error.code,failure.code);assert.equal(error.status,failure.status);assert.equal(error.outcomeUnknown,false);return true;});
+  assert.deepEqual(calls,[{action:'discard',...input}]);
+});
+
+test('native discard keeps its read-only uncertainty semantics for server, explicit unknown, malformed and lost replies',async t=>{
+  const input={projectId,previewToken:id(800)};
+  const cases=[{error:{code:'ASSET_RELINK_UNAVAILABLE',status:503}},{error:{code:'ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN',status:409}},{error:{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409}},
+    {error:{code:'REVISION_CONFLICT',status:409,extra:true}},null];
+  for(let index=0;index<cases.length;index++)await t.test(String(index),async()=>{
+    const calls:unknown[]=[],item=cases[index];
+    const bridge=createNativeAssetMediaBridge(async(_channel,value)=>{calls.push(value);if(item===null)throw new Error('Synthetic transport loss');return {ok:false,...item};});
+    const client=readProjectMediaNativeClient({__mioonAssetMediaNative:bridge});assert.ok(client);
+    await assert.rejects(client.discard(input),error=>{
+      assert.ok(error instanceof ProjectMediaError);const known=item!==null&&Object.keys(item.error).length===2;
+      assert.equal(error.code,known?item.error.code:'ASSET_RELINK_UNAVAILABLE');assert.equal(error.status,known?item.error.status:undefined);assert.equal(error.outcomeUnknown,false);return true;
+    });assert.deepEqual(calls,[{action:'discard',...input}]);
+  });
+});
+
 test('native reader aborts without dispatch and cleans an ignored-signal late picker preview only', async () => {
   const late = deferred<NativeRelinkPreview | null>(), calls: unknown[] = [], abort = new AbortController();
   const client = readProjectMediaNativeClient({__mioonAssetMediaNative: {choose: async (input: unknown) => {calls.push(input); return late.promise;}, apply: async () => {assert.fail('no apply');}, discard: async (input: unknown) => {calls.push(input);}}})!;
