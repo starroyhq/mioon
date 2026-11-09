@@ -163,6 +163,7 @@ function responsesFields(value:Record<string,unknown>,native:boolean):void {
 // Only official OpenAI Responses opts in; other protocols keep their old caps.
 const responsesEventByteLimits=Object.freeze({
   'response.created':2*1024*1024,'response.in_progress':2*1024*1024,'response.completed':2*1024*1024,
+  'response.incomplete':2*1024*1024,'response.failed':2*1024*1024,
   'response.output_item.added':512*1024,'response.output_item.done':512*1024,
   'response.output_text.done':512*1024,'response.content_part.added':512*1024,'response.content_part.done':512*1024,
   'response.function_call_arguments.done':512*1024,
@@ -360,6 +361,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(!object(raw.response)||raw.response.status!=='completed'||!Array.isArray(raw.response.output)||responseId&&raw.response.id!==responseId)fail();
             responsesFields(raw.response,native);
             for(const item of raw.response.output)if(object(item)){
+              if(native&&item.status==='incomplete')fail();
               if(item.type==='reasoning'&&!reasoning)fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
               if(item.type!=='reasoning')responsesFields(item,native);
             }
@@ -386,8 +388,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             responsesFields(raw.part,native);
             if(type.endsWith('.done')&&raw.part.text!==(parts.get(`${position}:${raw.content_index}`)??''))fail();
           }else if(type==='response.output_item.done'){
-            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
-            if(item.type==='reasoning')reasoningItem(raw.item,native);else responsesFields(raw.item,native);
+            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
+            // Item streaming can finish while its contents remain incomplete.
+            // Only the response terminal classifies the truncation; these items
+            // never become a completed result or an executable tool call.
+            if(item.type==='reasoning')reasoningItem(raw.item,native&&raw.item.status!=='incomplete');else responsesFields(raw.item,native);
             if(item.type==='function_call'){
               if(raw.item.name!==item.name||raw.item.call_id!==item.call_id||raw.item.arguments!==argumentsByIndex.get(position))fail();
             }else if(item.type==='message'){

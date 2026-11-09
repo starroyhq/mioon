@@ -863,3 +863,81 @@ test('OpenAI reasoning-family requests reserve reasoning output and use document
     assert.equal(body.include,undefined);assert.equal(body.reasoning_effort,undefined);assert.equal(body.reasoning,undefined);
   }
 });
+
+type Q11IncompleteItem='message'|'function_call'|'reasoning';
+/** item.done is an item streaming boundary, not proof of a successful response.
+ * The pinned SDK allows incomplete items in this event's ResponseOutputItem. */
+function q11IncompleteItemEvents(body:string,kind:Q11IncompleteItem,terminal:'response.incomplete'|'response.completed',reason='max_output_tokens'):Array<Record<string,unknown>>{
+  const prefix=q11ResponseEvents(body).slice(0,2),response=prefix[0]!.response as Record<string,unknown>,index=0;
+  let initial:Record<string,unknown>,item:Record<string,unknown>,parts:Array<Record<string,unknown>>;
+  if(kind==='message'){
+    const text='Partial text before the output limit',part={type:'output_text',text,annotations:[],logprobs:[]};
+    initial={id:'msg_q11_incomplete',type:kind,role:'assistant',phase:'final_answer',status:'in_progress',content:[]};
+    item={...initial,status:'incomplete',content:[part]};
+    parts=[{type:'response.content_part.added',output_index:index,item_id:item.id,content_index:0,part:{...part,text:''}},
+      {type:'response.output_text.delta',output_index:index,item_id:item.id,content_index:0,delta:text,logprobs:[]},
+      {type:'response.output_text.done',output_index:index,item_id:item.id,content_index:0,text,logprobs:[]},
+      {type:'response.content_part.done',output_index:index,item_id:item.id,content_index:0,part}];
+  }else if(kind==='function_call'){
+    const argumentsJson='{"title":"Partial argument';
+    initial={id:'fc_q11_incomplete',type:kind,call_id:'call_q11_incomplete',name:'mioon_shot_create',status:'in_progress',arguments:''};
+    item={...initial,status:'incomplete',arguments:argumentsJson};
+    parts=[{type:'response.function_call_arguments.delta',output_index:index,item_id:item.id,delta:argumentsJson},
+      {type:'response.function_call_arguments.done',output_index:index,item_id:item.id,name:item.name,arguments:argumentsJson}];
+  }else{
+    const part={type:'summary_text',text:'PRIVATE_Q11_PARTIAL_REASONING'};
+    initial={id:'rs_q11_incomplete',type:kind,status:'in_progress',summary:[]};
+    item={...initial,status:'incomplete',summary:[part],encrypted_content:null};
+    parts=[{type:'response.reasoning_summary_part.added',output_index:index,item_id:item.id,summary_index:0,part:{...part,text:''}},
+      {type:'response.reasoning_summary_text.delta',output_index:index,item_id:item.id,summary_index:0,delta:part.text},
+      {type:'response.reasoning_summary_text.done',output_index:index,item_id:item.id,summary_index:0,text:part.text},
+      {type:'response.reasoning_summary_part.done',output_index:index,item_id:item.id,summary_index:0,part}];
+  }
+  return [...prefix,{type:'response.output_item.added',output_index:index,item:initial},...parts,
+    {type:'response.output_item.done',output_index:index,item},
+    {type:terminal,response:{...response,status:terminal==='response.incomplete'?'incomplete':'completed',incomplete_details:terminal==='response.incomplete'?{reason}:null,output:[item]}}]
+    .map((event,sequence_number)=>({...event,sequence_number}));
+}
+
+for(const kind of ['message','function_call','reasoning'] as const)test(`OpenAI ${kind} item.done incomplete waits for the response terminal before classifying truncation`,async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline partial item boundary'}],definitions,4318);
+  for(const [reason,code] of [['max_output_tokens','AGENT_CHAT_OUTPUT_LIMIT'],['content_filter','AGENT_CHAT_RESPONSES_INCOMPLETE']] as const){
+    const f=q11Stream(configuration,body,q11ResponseWire(q11IncompleteItemEvents(body,kind,'response.incomplete',reason)));
+    let completed=0,toolPlans=0;const deltas:string[]=[];
+    await assert.rejects(async()=>{for await(const event of f.stream){if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}else deltas.push(event.text);}},{code});
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);
+    if(kind!=='message')assert.deepEqual(deltas,[],'Incomplete tools and reasoning cannot become user-visible text');
+    assert.doesNotMatch(deltas.join(''),/PRIVATE_Q11_PARTIAL_REASONING/u);
+  }
+});
+
+test('a completed OpenAI response cannot promote an incomplete item into executable tool or replay evidence',async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline contradictory completion'}],definitions,4318);
+  for(const kind of ['message','function_call','reasoning'] as const){
+    const f=q11Stream(configuration,body,q11ResponseWire(q11IncompleteItemEvents(body,kind,'response.completed')));
+    let completed=0,toolPlans=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}},{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);
+  }
+});
+
+test('OpenAI full-catalog incomplete and failed lifecycle echoes preserve accurate terminal errors above the ordinary event limit',async t=>{
+  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-q11-terminal-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
+  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+  const configuration=q11OpenAi('gpt-5.4-mini'),catalog=tools.list(),body=buildTaskModelRequest(configuration,[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'Offline terminal echo'}],catalog,4318,{toolLoading:true});
+  for(const [terminal,code] of [['response.incomplete','AGENT_CHAT_OUTPUT_LIMIT'],['response.failed','AGENT_CHAT_PROVIDER_ERROR']] as const){
+    const events=q11IncompleteItemEvents(body,'message','response.incomplete');
+    if(terminal==='response.failed'){
+      const event=events.at(-1)!,response=event.response as Record<string,unknown>;
+      events[events.length-1]={...event,type:terminal,response:{...response,status:'failed',incomplete_details:null,error:{code:'server_error',message:'PRIVATE_Q11_PROVIDER_FAILURE'}}};
+    }
+    const last=events.at(-1)!;
+    assert.ok(Buffer.byteLength(q11ResponseWire([last]))>64*1024,'An error terminal also echoes the entire request catalog and instructions');
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let completed=0,toolPlans=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}},(error:unknown)=>{
+      const safe=safeAgentChatError(error);assert.equal(safe.code,code);assert.doesNotMatch(safe.message,/PRIVATE_Q11_PROVIDER_FAILURE/u);return true;
+    });
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+  }
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM jobs').get()?.n,0);
+});

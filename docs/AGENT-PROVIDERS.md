@@ -39,7 +39,7 @@
 
 ### 流和续接
 
-OpenAI 推理档案的 Responses 始终使用 `store:false`，显式带 `include:["reasoning.encrypted_content"]`。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，done 的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。
+OpenAI 推理档案的 Responses 始终使用 `store:false`，显式带 `include:["reasoning.encrypted_content"]`。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，完成的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。item.done 的状态仍可能是 incomplete，此时等整体终端区分输出耗尽或其他未完成原因，不生成完成结果或执行工具；response.completed 却含 incomplete 项仍按协议错误拒绝。
 
 `phase` 仅允许在 assistant 消息上出现，值限 null、`commentary`、`final_answer`；其他位置或值按协议错误拒绝。未知输出项类型报 `AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED`，不再冒充工具未授权。`response.incomplete` 的 max_output_tokens 原因报 `AGENT_CHAT_OUTPUT_LIMIT`，其他未完成报 `AGENT_CHAT_RESPONSES_INCOMPLETE`；这些已观察到的模型失败记录为 failed，不冒充结果未知，不自动重试或执行工具。
 
@@ -47,7 +47,7 @@ OpenAI 推理档案的 Responses 始终使用 `store:false`，显式带 `include
 
 ### Responses 字节边界
 
-仅官方 OpenAI Responses 使用 4 MiB 整流上限；三个生命周期事件 created/in_progress/completed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件、120 秒总时限以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
+仅官方 OpenAI Responses 使用 4 MiB 整流上限；五个生命周期事件 created/in_progress/completed/incomplete/failed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件、120 秒总时限以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
 
 离线实测全部 111 个工具与 instructions，短回复 UTF-8 整流 455916 字节，ASCII 转义为 616795 字节。再加入 131072 字节可见文本和 123026 字节 reasoning 条目及真实 done/terminal 重复回显，整流分别为 1360062 / 2831621 字节，最大 ASCII 事件 721454 字节；原 1 MiB / 64 KiB 不足，现上限可容纳。独立字段都取最大值不代表聚合可豁免：30 个大参数调用等超过整流或历史预算时仍精确拒绝，不声称无界输出。
 
