@@ -7,9 +7,51 @@
 - Ollama：回环 origin；C/R 使用 `/v1`，Messages 使用根路径。不放宽 selfPort、非回环或远端云路由约束。
 - custom：明确选择协议和完整 HTTPS base，保留路径及既有网络校验，不猜测/自动修正。
 
-精确匹配已有适配模型优先，保留其历史 wire 和能力。其余合法型号可使用同协议通用模板，均标“未验证”，未知上下文为 null，输出保守为4096；不继承另一个模型的上下文、推理或供应商托管工具权限。OpenAI 通用写法不发送 reasoning_effort，未知 C/R 不开放 thinkingTier；供应商明确有关闭思考要求时必须有对应策略，否则拒绝。OpenRouter Responses 的关闭思考使用公开 schema 的 `reasoning.enabled:false`。具体字段、关闭策略及204条逐字节夹具见 `agent-generic-profiles.test.ts` / `fixtures/agent-generic-request-fingerprints.json`。
+精确匹配已有适配模型优先，保留其历史 wire 和能力。OpenAI 的 GPT‑5/o 型号族按下文 Q11 规则匹配；其余合法型号继续使用同协议通用模板，标“未验证”，未知上下文为 null，输出保守为4096，不继承另一个模型的容量、推理或供应商托管工具权限。OpenRouter Responses 继续使用原通用档案及 `reasoning.enabled:false`。具体字段和固定夹具见 `agent-generic-profiles.test.ts` / `fixtures/agent-generic-request-fingerprints.json`。
 
-保存、官方目录、手填型号和通用请求模板均不证明账号权限或真实模型可用性。运行时的流/事件/时间、工具和记录预算保持既有规则，两套原有99条指纹不变。
+保存、官方目录、手填型号和通用请求模板均不证明账号权限或真实模型可用性。Q11 的新默认及请求字段会有意识地更新相应指纹；其他型号的旧字节和行为继续回归。流量边界按下文区分协议，工具、记录及总时限不因此放宽。
+
+## OpenAI 推理模型与新默认（Q11，2026-11-09）
+
+新配置的 OpenAI 默认是 `gpt-5.4-mini`，OpenRouter 默认是 `openai/gpt-5.4-mini`。选择依据是官方定位的工具/代理工作负载能力、400,000 上下文及较低用量成本；备选为更强但更贵的 `gpt-5.4`，更便宜的 `gpt-5.4-nano` 需自行评估任务质量。`gpt-4.1-mini` 仍可选择并保留原 4096 输出及非推理请求。目录变更不迁移已保存配置。
+
+来源：[GPT-5.4 Mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[OpenRouter 精确型号](https://openrouter.ai/openai/gpt-5.4-mini)。这些是文档能力，不是账号权限或真实调用认证。
+
+纯型号策略在 `packages/contracts/src/agent-openai-model-family.ts`，请求档案和设置适配标签共用，不能信任模型列表供应商自报的适配标记。
+
+| 型号族（包含日期快照） | 最低 effort | 应用能力档 | 已知上下文 / 最大输出 |
+| --- | --- | --- | --- |
+| `gpt-5`、`gpt-5-mini`、`gpt-5-nano` | `minimal` | required | 400,000 / 128,000 |
+| `gpt-5.1` | `none` | optional | 400,000 / 128,000 |
+| `gpt-5.2` | `none` | optional | 400,000 / 128,000 |
+| `gpt-5.4-mini`、`gpt-5.4-nano` | `none` | optional | 400,000 / 128,000 |
+| `gpt-5.4`、`gpt-5.5` | `none` | optional | 1,050,000 / 128,000 |
+| `o1`、`o3`、`o3-mini`、`o4-mini` | `low` | required | 200,000 / 100,000 |
+| `gpt-5.3-codex`（Responses） | `low` | required | 400,000 / 128,000 |
+| `gpt-5-pro`（Responses） | `high` | required | 400,000 / 272,000 |
+| `gpt-5.4-pro`（Responses） | `medium` | required | 1,050,000 / 128,000 |
+
+来源：[GPT-5](https://developers.openai.com/api/docs/models/gpt-5)、[GPT-5.1](https://developers.openai.com/api/docs/models/gpt-5.1)、[GPT-5.2](https://developers.openai.com/api/docs/models/gpt-5.2)、[GPT-5.4 Nano](https://developers.openai.com/api/docs/models/gpt-5.4-nano)、[GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[o3](https://developers.openai.com/api/docs/models/o3)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini)、[GPT-5.3 Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex)、[GPT-5 Pro](https://developers.openai.com/api/docs/models/gpt-5-pro)、[GPT-5.4 Pro](https://developers.openai.com/api/docs/models/gpt-5.4-pro)。`o1` 仅保留归档配置兼容，不作为新默认或可用性承诺。
+
+应用目前的“思考档”是 unsupported/optional/required 能力分类，没有另加用户努力档位或持久化字段。上述档案发送该型号最低合法 effort：Chat Completions 用 `reasoning_effort`，OpenAI Responses 用 `reasoning.effort`；初代 GPT‑5 的 minimal 和 o 系列的 low 仍可能产生推理，不能因为“最低档”就拒绝载体。新推理档案请求 32768 输出 token，为推理保留空间，并在输入预算中一并扣除。该值是本地请求预算，低于表中模型最大输出，不保证在总时限内用满。其他厂商及旧 4.1-mini 的输出预算不变。
+
+已知父族的日期快照自动继承能力。未来规范命名的 GPT‑5.x 标准文本族可以走 reasoning 载体兼容路径，但保持未验证，容量为 null，不猜 effort，沿用服务端默认；本地仍以 32768 输出及固定记录预算约束。`chat`、`codex`、`pro`、`research` 等特殊后缀必须独立核对，不能借用标准版的 none 或容量；未确认的特化型号不标已适配。`gpt-5.1-mini` 在 SDK 中明确不是 API 型号，不纳入该族。
+
+### 流和续接
+
+OpenAI 推理档案的 Responses 始终使用 `store:false`，显式带 `include:["reasoning.encrypted_content"]`。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，done 的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。
+
+`phase` 仅允许在 assistant 消息上出现，值限 null、`commentary`、`final_answer`；其他位置或值按协议错误拒绝。未知输出项类型报 `AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED`，不再冒充工具未授权。`response.incomplete` 的 max_output_tokens 原因报 `AGENT_CHAT_OUTPUT_LIMIT`，其他未完成报 `AGENT_CHAT_RESPONSES_INCOMPLETE`；这些已观察到的模型失败记录为 failed，不冒充结果未知，不自动重试或执行工具。
+
+来源：[流事件与最终 reasoning 载体](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[推理和 phase 回放](https://developers.openai.com/api/docs/guides/reasoning)，并核对仓库 openai SDK 的 `ResponseReasoningItem` / `ResponseOutputMessage` 类型。SDK 当前说明 store:false 默认返回加密载体；仍显式发送 include，兼容明确请求载体的接口。
+
+### Responses 字节边界
+
+仅官方 OpenAI Responses 使用 4 MiB 整流上限；三个生命周期事件 created/in_progress/completed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件、120 秒总时限以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
+
+离线实测全部 111 个工具与 instructions，短回复 UTF-8 整流 455916 字节，ASCII 转义为 616795 字节。再加入 131072 字节可见文本和 123026 字节 reasoning 条目及真实 done/terminal 重复回显，整流分别为 1360062 / 2831621 字节，最大 ASCII 事件 721454 字节；原 1 MiB / 64 KiB 不足，现上限可容纳。独立字段都取最大值不代表聚合可豁免：30 个大参数调用等超过整流或历史预算时仍精确拒绝，不声称无界输出。
+
+验证仅使用真实形状离线流、真实桌面设置 broker 接线和合成供应商传输，不发真实模型请求、不使用真实密钥；签名包实际 Responses 对话和工具调用由协调人与用户验收。
 
 ## 当前模型清单与检查（X6b）
 

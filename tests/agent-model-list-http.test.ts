@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -8,6 +9,11 @@ import {startServer} from '../apps/server/src/index.ts';
 import {createAgentModelListHttp} from '../apps/server/src/agent-model-list-http.ts';
 import {agentSettingsSnapshotSchema, agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {AGENT_MODEL_LIST_LIMITS, agentModelListResultSchema, agentModelListCacheResultSchema} from '../packages/contracts/src/agent-model-list.ts';
+import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
+import {createAgentSettingsClient, createAgentSettingsBroker} from '../apps/desktop/src/secret-broker.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createAgentModelListService} from '../packages/business/src/agent/model-list-service.ts';
+import {connectionFor} from '../packages/business/src/agent/settings-envelope.ts';
 
 const token = 'synthetic-model-list-http-token';
 const listRoute = '/api/agent/models/list', cacheRoute = '/api/agent/models/cache';
@@ -184,4 +190,54 @@ test('the application-entry deadline cancels pending discovery and returns a saf
   });
   await entered; t.mock.timers.tick(AGENT_MODEL_LIST_LIMITS.totalTimeoutMs);
   assert.deepEqual(await response, {status: 200, value: {ok: true, data: {outcome: 'unreachable', reason: 'timeout'}}});
+});
+
+test('desktop model-list route traverses the real settings client and broker for input, saved keys and cache', async t => {
+  const selfPort = 4318, savedKey = 'SYNTHETIC_SAVED_LIST', inputKey = 'SYNTHETIC_INPUT_LIST';
+  const owner = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const initial = await owner.get();
+  const snapshot = await owner.put({expectedRevision: initial.revision, services: initial.services.map(agentServiceInput), mioSelection: null,
+    secretActions: [{serviceKey: 'openai', action: 'replace', storage: 'session', value: savedKey}]});
+  let posts = 0, providerCalls = 0;
+  const providerKeys: (string | null)[] = [], entries = new Map<string, AgentModelListSuccess>();
+  // Electron's message transport is the only desktop boundary replaced here.
+  // The utility client and main broker retain their real strict option checks.
+  const port = Object.assign(new EventEmitter(), {postMessage(message: unknown) {posts++; queueMicrotask(() => {void broker.handle(message);});}});
+  const broker = createAgentSettingsBroker({agentSettings: owner, getSelfPort: () => selfPort,
+    send: message => queueMicrotask(() => port.emit('message', {data: message}))});
+  const client = createAgentSettingsClient({port});
+  const models = createAgentModelListService({settings: client, selfPort: () => selfPort,
+    cache: {read: key => entries.get(JSON.stringify(key)) ?? null, write: (key, value) => {entries.set(JSON.stringify(key), value); return true;}, remove: () => {}},
+    fetch: async options => {providerCalls++; providerKeys.push(options.apiKey); return {outcome: 'success', models: [{id: 'gpt-4.1-mini', adaptation: 'adapted'}], complete: true, source: 'current_protocol', fetchedAt: '2026-11-09T00:00:00.000Z'};},
+  });
+  const lifetime = new AbortController();
+  const route = createAgentModelListHttp({models, signal: lifetime.signal, selfPort: () => selfPort});
+  const server = http.createServer((req, res) => {void route(req, res, new URL(req.url!, 'http://127.0.0.1'));});
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {lifetime.abort(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await models.close(); client.close(); broker.close(); await owner.close();});
+  const endpoint = `http://127.0.0.1:${(server.address() as {port: number}).port}`;
+  const {model: _model, ...selection} = connectionFor(snapshot.services.find(entry => entry.serviceKey === 'openai')!);
+  const location = {serviceKey: 'openai', expectedSettingsRevision: snapshot.revision, selection};
+  const request = async (path: string, payload: unknown) => {
+    const response = await fetch(endpoint + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    return {status: response.status, body: await response.json() as Envelope};
+  };
+  const firstCache = await request(cacheRoute, location);
+  assert.equal(firstCache.status, 200); assert.deepEqual(firstCache.body, {ok: true, data: {status: 'miss'}});
+  assert.equal(providerCalls, 0); assert.ok(posts > 0, 'Cache must read settings through desktop IPC');
+  const invalid = await client.get({selfPort, isActive: () => true} as Parameters<typeof client.get>[0]).then(() => null, (error: unknown) => error);
+  assert.equal((invalid as {code: string}).code, 'VALIDATION_ERROR', 'The broker client still rejects foreign option keys');
+  for (const credential of [{source: 'input', value: inputKey}, {source: 'saved'}] as const) {
+    const listed = await request(listRoute, {...location, credential});
+    assert.equal(listed.status, 200); assert.equal(listed.body.ok, true);
+    const result = agentModelListResultSchema.parse(listed.body.data); assert.equal(result.outcome, 'success');
+    const cached = await request(cacheRoute, location); assert.equal(cached.status, 200);
+    const cache = agentModelListCacheResultSchema.parse(cached.body.data); assert.equal(cache.status, 'hit');
+    if (cache.status === 'hit') assert.deepEqual(cache.result, result);
+    for (const value of [listed.body, cached.body, [...entries.values()]]) {
+      assert.equal(JSON.stringify(value).includes(inputKey), false); assert.equal(JSON.stringify(value).includes(savedKey), false);
+    }
+  }
+  assert.deepEqual(providerKeys, [inputKey, savedKey]); assert.equal(providerCalls, 2);
+  assert.deepEqual(await client.get({selfPort}), snapshot, 'Discovery never mutates saved settings or verification');
 });

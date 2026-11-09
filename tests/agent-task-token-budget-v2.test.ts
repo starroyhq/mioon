@@ -96,9 +96,12 @@ test('profiles retain documented capacity separately from protocol output limits
   }
   assert.deepEqual(AGENT_MESSAGES_TOKEN_LIMITS.anthropic!.models,['claude-haiku-4-5','claude-haiku-4-5-20251001']);
 });
-test('a snapshot name has its alias limits, and unverified combinations have an unknown window and 4096',()=>{
-  for(const protocol of ['chat_completions','responses'] as const)
-    assert.deepEqual(agentModelTokenLimits({...DEFAULT_AGENT_CONFIGURATION,protocol,model:'gpt-4.1-mini-2025-04-14'}),agentModelTokenLimits({...DEFAULT_AGENT_CONFIGURATION,protocol}),protocol);
+test('a legacy snapshot retains its explicit alias limits, and unverified combinations have an unknown window and 4096',()=>{
+  for(const protocol of ['chat_completions','responses'] as const){
+    const legacy={...DEFAULT_AGENT_CONFIGURATION,protocol,model:'gpt-4.1-mini'};
+    assert.deepEqual(agentModelTokenLimits({...legacy,model:'gpt-4.1-mini-2025-04-14'}),agentModelTokenLimits(legacy),protocol);
+    assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:1047576,outputTokens:4096},`${protocol}: the old mini keeps its original capacity and request limit`);
+  }
   const haiku=presetConfiguration('anthropic','anthropic_messages');
   assert.deepEqual(agentModelTokenLimits({...haiku,model:'claude-haiku-4-5-20251001'}),{contextTokens:200000,outputTokens:16384});
   const generic:AgentConfiguration[]=[
@@ -117,8 +120,12 @@ test('task requests send each model output limit in its protocol field',()=>{
   const history:AgentTaskJson[]=[{role:'user',content:'合成请求'}];
   const body=(configuration:AgentConfiguration):Record<string,unknown>=>JSON.parse(buildTaskModelRequest(configuration,history,[],4318)) as Record<string,unknown>;
   const cases:[AgentConfiguration,string,number][]=[
-    [DEFAULT_AGENT_CONFIGURATION,'max_completion_tokens',4096],
-    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',4096],
+    [DEFAULT_AGENT_CONFIGURATION,'max_completion_tokens',32768],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',32768],
+    [{...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini'},'max_completion_tokens',4096],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses',model:'gpt-4.1-mini'},'max_output_tokens',4096],
+    [presetConfiguration('openrouter','chat_completions'),'max_tokens',32768],
+    [presetConfiguration('openrouter','responses'),'max_output_tokens',4096],
     [presetConfiguration('anthropic','anthropic_messages'),'max_tokens',16384],
     [presetConfiguration('deepseek','chat_completions'),'max_tokens',4096],
     [presetConfiguration('minimax','chat_completions'),'max_completion_tokens',4096],
@@ -132,6 +139,19 @@ test('task requests send each model output limit in its protocol field',()=>{
     for(const other of ['max_tokens','max_completion_tokens','max_output_tokens'])if(other!==field)assert.equal(Object.hasOwn(wire,other),false,`${label} ${other}`);
   }
   assert.deepEqual(body(presetConfiguration('anthropic','anthropic_messages')).thinking,{type:'disabled'},'the catalog Messages model keeps thinking off');
+});
+test('the new default and its snapshot reserve the documented reasoning budget before admitting history',()=>{
+  const probe:AgentTaskJson[]=[taskResponseLanguageContext('en'),{role:'user',content:'.'}];
+  for(const protocol of ['chat_completions','responses'] as const)for(const model of ['gpt-5.4-mini','gpt-5.4-mini-2026-03-17']){
+    const configuration:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol,model};
+    assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:400000,outputTokens:32768});
+    const serialized=buildTaskModelRequest(configuration,probe,[],4318),wire=JSON.parse(serialized) as Record<string,unknown>;
+    assert.equal(wire[protocol==='responses'?'max_output_tokens':'max_completion_tokens'],32768);
+    const overhead=Buffer.byteLength(serialized)-bytes(probe),budget=taskModelHistoryBudget(configuration,[],'en',4318);
+    assert.deepEqual(budget,{bytes:TASK_MODEL_LIMITS.historyBytes,tokens:400000-32768-Math.ceil(overhead/3)},`${protocol}/${model}: reasoning and request overhead are deducted independently of profile lookup`);
+    assert.equal(taskRequestFitsModel((400000-32768)*3,{contextTokens:400000,outputTokens:32768}),true);
+    assert.equal(taskRequestFitsModel((400000-32768)*3+1,{contextTokens:400000,outputTokens:32768}),false);
+  }
 });
 test('a required Messages model applies the answer reserve and minimum thinking budget within max_tokens',()=>{
   assert.equal(ANTHROPIC_MIN_THINKING_BUDGET_TOKENS,1024);assert.equal(AGENT_THINKING_ANSWER_TOKENS,4096);

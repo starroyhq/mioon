@@ -6,6 +6,7 @@ import * as logic from '../apps/web/src/agent-settings.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
 import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
+import * as openAiFamilies from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentModelListClient} from '../apps/web/src/agent-model-list-session.ts';
 import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
@@ -120,6 +121,7 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
   if(id==='./agent-settings.ts')return {...logic,createAgentSettingsSession:(options:logic.AgentSettingsSessionOptions)=>logic.createAgentSettingsSession({...options,client})};
   if(id==='./agent-model-list-session.ts')return {...modelDiscovery,createAgentModelListSession:(options:Parameters<typeof modelDiscovery.createAgentModelListSession>[0])=>modelDiscovery.createAgentModelListSession({...options,client:discovery})};
   if(id==='./agent-model-list-rows.ts')return modelRows;
+  if(id==='../../../packages/contracts/src/agent-openai-model-family.ts')return openAiFamilies;
   if(id==='./SettingsServicesLayout.tsx')return {__esModule:true,default:'ServicesLayout'};
   if(id==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
   if(id==='./AgentTaskPolicy.tsx'||id==='./AgentAuthorizations.tsx'||id==='./AgentConnectionTest.tsx'||id==='./icons.tsx')return {__esModule:true,default:id};
@@ -134,6 +136,57 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
   latest:()=>reports.at(-1)!,reports,unmount(){for(const hook of hooks)hook.cleanup?.();},matches:module.exports.agentDiagnosticMatchesExecution!};return h;
 }
 const ready=async(h:ReturnType<typeof uiHarness>)=>{h.render();await flush();h.render();};
+
+function renderedWorkbenchButton(node:Element):Element{
+ const source=readFileSync(new URL('../packages/ui/src/components/workbench-controls.tsx',import.meta.url),'utf8');
+ const start=source.indexOf('export function WorkbenchButton('),end=source.indexOf('\nexport interface WorkbenchTabOption',start);assert.ok(start>=0&&end>start);
+ const module:{exports:{WorkbenchButton?:(props:Record<string,unknown>)=>Element}}={exports:{}};
+ const react={createElement:(type:unknown,props:Record<string,unknown>,...children:unknown[]):Element=>({type,props:{...props,children}})};
+ Function('module','exports','React','Button','cn',transformSync(source.slice(start,end),{loader:'tsx',format:'cjs'}).code)(module,module.exports,react,'button',(...values:unknown[])=>values.filter(Boolean).join(' '));
+ assert.equal(typeof module.exports.WorkbenchButton,'function');return module.exports.WorkbenchButton!(node.props);
+}
+
+test('actual model fetch and key check show the real button spinner while pending and clear it on completion or cancellation',async()=>{
+ for(const action of ['fetch','check-key'])for(const finish of ['complete','hide']){
+  const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};
+  const pending=deferred(),signals:AbortSignal[]=[],f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result:listed(['old-model'])}),modelsList:async(_input,options)=>{signals.push(options.signal);return pending.promise;}});
+  try{
+   await ready(h);h.view('openai');await flush();h.render();
+   assert.equal(renderedWorkbenchButton(h.find('agent-settings-fetch-openai')).props['aria-busy'],undefined);
+   h.click(`agent-settings-${action}-openai`);assert.equal(signals.length,1);
+   for(const button of ['fetch','check-key']){
+    const rendered=renderedWorkbenchButton(h.find(`agent-settings-${button}-openai`));assert.equal(rendered.props['aria-busy'],true);assert.equal(rendered.props.disabled,true);
+    assert.equal(nodes(rendered).some(item=>item.props.className==='wb-spinner'),true,'The production WorkbenchButton renders its pending indicator');
+   }
+   assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'loading');
+   if(finish==='hide'){h.setVisible(false);assert.equal(signals[0]!.aborted,true);}
+   pending.resolve(listed(['late-model']));await flush();h.render();
+   for(const button of ['fetch','check-key']){const rendered=renderedWorkbenchButton(h.find(`agent-settings-${button}-openai`));assert.equal(rendered.props['aria-busy'],undefined);assert.equal(nodes(rendered).some(item=>item.props.className==='wb-spinner'),false);}
+   if(finish==='complete')assert.ok(h.find('agent-settings-model-row-openai-late-model'));
+   else assert.equal(nodes(h.render()).some(item=>item.props['data-testid']==='agent-settings-model-row-openai-late-model'),false);
+   assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assertNoSecrets(h.reports);
+  }finally{h.unmount();}
+ }
+});
+
+test('actual model labels use documented OpenAI families for snapshots without trusting provider adaptation claims',async()=>{
+ const known='gpt-5.4-mini-2026-03-17',future='gpt-5.9-mini',invalid='gpt-5.1-mini';
+ const initial=adapterSettings({presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',protocol:'responses',model:known},{revision:0});
+ const observation={...listed([known,future,invalid,'gpt-4.1-mini']),models:listed([known,future,invalid,'gpt-4.1-mini']).models.map(model=>({...model,adaptation:'adapted' as const}))};
+ const f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result:observation}),modelsList:async()=>observation});
+ try{
+  await ready(h);h.view('openai');await flush();h.render();
+  for(const locale of i18n.LOCALES){
+   h.setLocale(locale);
+   for(const model of [known,'gpt-4.1-mini'])assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
+   for(const model of [future,invalid])assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)).includes(i18n.translate(locale,'agent.settings.x6.unverified')));
+   assert.ok(JSON.stringify(h.find('agent-settings-current-model')).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
+   assert.match(JSON.stringify(h.find('agent-settings-preset-note-openai')),/GPT-5\.4 mini/);
+   assert.doesNotMatch(JSON.stringify(h.find('agent-settings-preset-note-openai')),/非推理|非推論|Non-reasoning/);
+  }
+  assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.modelId,known);assertNoSecrets(h.reports);
+ }finally{h.unmount();}
+});
 
 test('actual UI retains independent password DOM through brand navigation, locale rerenders and same-receiver protocol changes',async()=>{
  const f=settingsUiFixture(),h=uiHarness(f.client);await ready(h);h.view('openai');h.key('openai','synthetic-secret-A');const a=h.find('agent-settings-key-openai').props.ref;

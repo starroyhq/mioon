@@ -45,3 +45,46 @@ test('optional event-name metadata distinguishes data-only framing from explicit
   const events: Array<{event: string; eventName: string | null; data: string}> = [];for await(const event of parseAgentSse(source,{includeEventName:true} as never))events.push(event as never);
   assert.deepEqual(events,[{event:'message',eventName:null,data:'one'},{event:'message',eventName:'message',data:'two'},{event:'message',eventName:'',data:'three'},{event:'response.created',eventName:'response.created',data:'four'}]);
 });
+
+const q11LifecycleNames=['response.created','response.in_progress','response.completed'];
+const q11LifecycleLimits={includeEventName:true,maxBytes:4*1024*1024,eventByteLimits:{...Object.fromEntries(q11LifecycleNames.map(name=>[name,2*1024*1024])),'response.output_text.done':512*1024}};
+const q11NamedWire=(event:string,value:string)=>`event: ${event}\r\ndata: ${value}\r\n\r\n`;
+
+test('explicit lifecycle event budgets admit bounded echoed data across fragmented names and UTF-8 framing',async()=>{
+  const value=JSON.stringify({instructions:'🙂'.repeat(18*1024),tools:[],output:[]});
+  assert.ok(Buffer.byteLength(value)>70*1024);
+  for(const name of q11LifecycleNames){
+    const wire=Buffer.from(q11NamedWire(name,value)),splits=[0,1,8,name.length+7,name.length+11,wire.length-3,wire.length];
+    const chunks=splits.slice(1).map((end,index)=>wire.subarray(splits[index]!,end));
+    assert.deepEqual(await collect(chunks,q11LifecycleLimits),[{event:name,eventName:name,data:value}]);
+    await assert.rejects(collect([wire]),{code:'AGENT_CHAT_LIMIT'},'The same event keeps the original limit without an explicit opt-in');
+  }
+});
+
+test('lifecycle allowance never extends unlisted, data-only, late-named or renamed frames',async()=>{
+  const large='x'.repeat(70*1024);
+  for(const wire of [
+    q11NamedWire('response.output_text.delta',large),
+    q11NamedWire('response.created.extra',large),
+    `data: ${large}\n\nevent: response.created\n\n`,
+    `data: ${large}\nevent: response.created\n\n`,
+    `event: response.created\ndata: ${large}\nevent: response.output_text.delta\n\n`,
+    `event: response.created\ndata: ${large}\nevent:\n\n`,
+    q11NamedWire('response.created','small')+`data: ${large}\n\n`,
+    q11NamedWire('response.created','small')+q11NamedWire('message',large),
+  ])await assert.rejects(collect(bytes(wire),q11LifecycleLimits),{code:'AGENT_CHAT_LIMIT'});
+});
+
+test('lifecycle event bytes, raw stream bytes and event count remain separately bounded',async()=>{
+  await assert.rejects(collect(bytes(q11NamedWire('response.created','x'.repeat(2*1024*1024))),q11LifecycleLimits),{code:'AGENT_CHAT_LIMIT'});
+  const frame=q11NamedWire('response.created','x'.repeat(1500*1024));
+  assert.ok(Buffer.byteLength(frame)<2*1024*1024);
+  await assert.rejects(collect(bytes(frame.repeat(3)),q11LifecycleLimits),{code:'AGENT_CHAT_LIMIT'});
+  const done=q11NamedWire('response.output_text.done','x'.repeat(70*1024));
+  assert.equal((await collect(bytes(done),q11LifecycleLimits)).length,1);
+  await assert.rejects(collect(bytes(q11NamedWire('response.output_text.done','x'.repeat(512*1024))),q11LifecycleLimits),{code:'AGENT_CHAT_LIMIT'});
+  await assert.rejects(collect(bytes(q11NamedWire('response.created','x'.repeat(1500*1024))),{maxEventBytes:2*1024*1024}),{code:'AGENT_CHAT_LIMIT'},'The default raw stream budget remains 1 MiB even when its per-event ceiling is explicitly larger');
+  await assert.rejects(collect(bytes(q11NamedWire('response.created','{}').repeat(8193)),q11LifecycleLimits),{code:'AGENT_CHAT_LIMIT'});
+  const short={...q11LifecycleLimits,maxEvents:1};
+  await assert.rejects(collect(bytes(q11NamedWire('response.created','{}')+q11NamedWire('response.completed','{}')),short),{code:'AGENT_CHAT_LIMIT'});
+});

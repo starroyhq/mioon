@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
+import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {agentChatProfile,agentResponsesProfile,agentModelTokenLimits,agentModelAdaptation,agentModelThinkingTier,agentResponsesReasoningCapable,AGENT_OPENAI_REASONING_OUTPUT_TOKENS} from '../packages/business/src/agent/model-profiles.ts';
 import {agentCredentialBinding, parseAgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {agentProviderCatalogSchema, resolveAgentPresetBaseUrl} from '../packages/contracts/src/agent-provider-catalog.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
@@ -10,6 +11,71 @@ const c = 'chat_completions', r = 'responses', m = 'anthropic_messages';
 function configuration(presetId: string, platformId: string, protocol: AgentProtocol, addressInput?: string): AgentConfiguration {
   return {presetId, platformId, protocol, model: 'synthetic-model', baseUrl: resolveAgentPresetBaseUrl(AGENT_PRESETS, presetId, platformId, protocol, addressInput)};
 }
+
+test('new OpenAI and OpenRouter defaults use the documented GPT-5.4 mini candidate while retaining the legacy option',()=>{
+ assert.equal(DEFAULT_AGENT_CONFIGURATION.model,'gpt-5.4-mini');
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openai')?.platforms[0]?.model,'gpt-5.4-mini');
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openrouter')?.platforms[0]?.model,'openai/gpt-5.4-mini');
+ assert.doesNotMatch(AGENT_PRESETS.find(preset=>preset.id==='openai')!.description,/非推理文本基线/);
+ assert.ok(AGENT_PRESETS.find(preset=>preset.id==='openai')!.supportedModelHints?.responses?.includes('gpt-5.4-mini'));
+ assert.ok(AGENT_PRESETS.find(preset=>preset.id==='openai')!.supportedModelHints?.responses?.includes('gpt-4.1-mini'));
+});
+
+test('documented OpenAI reasoning families use each supported minimum effort and reserve output for reasoning',()=>{
+ for(const [model,effort,tier,contextTokens,maxOutputTokens] of [
+  ['gpt-5','minimal','required',400000,128000],['gpt-5-mini-2025-08-07','minimal','required',400000,128000],
+  ['gpt-5.1','none','optional',400000,128000],['gpt-5.2','none','optional',400000,128000],
+  ['gpt-5.4-mini','none','optional',400000,128000],['gpt-5.4-mini-2026-03-17','none','optional',400000,128000],
+  ['gpt-5.4','none','optional',1050000,128000],['o3','low','required',200000,100000],['o4-mini-2025-04-16','low','required',200000,100000],
+ ] as const)for(const protocol of [c,r] as const){
+  const config={...configuration('openai','global',protocol),model},profile=protocol===c?agentChatProfile(config):agentResponsesProfile(config);
+  assert.equal(agentModelAdaptation(config),'adapted',`${model}/${protocol}`);assert.equal(agentModelThinkingTier(config),tier);
+  assert.deepEqual(agentModelTokenLimits(config),{contextTokens,outputTokens:profile.outputTokens});assert.equal(profile.maxOutputTokens,maxOutputTokens);
+  assert.equal(profile.outputTokens,AGENT_OPENAI_REASONING_OUTPUT_TOKENS);assert.ok(profile.outputTokens<=maxOutputTokens,'The request reserves bounded space below the documented maximum');
+  if(protocol===c)assert.equal(profile.fields.reasoning_effort,effort);
+  else assert.deepEqual(profile.fields.reasoning,{effort});
+ }
+});
+
+test('unrecognized OpenAI special variants remain conservative and the legacy mini profile remains unchanged',()=>{
+ for(const protocol of [c,r] as const){
+  for(const model of ['gpt-5.1-mini','gpt-5.3-chat-latest','gpt-5-codex','gpt-5.4-codex','o1-preview','o3-deep-research','o3-pro','unknown-model']){
+   const config={...configuration('openai','global',protocol),model},profile=protocol===c?agentChatProfile(config):agentResponsesProfile(config);
+   assert.equal(agentModelAdaptation(config),'unverified');assert.equal(agentModelThinkingTier(config),'unsupported');
+   assert.deepEqual(agentModelTokenLimits(config),{contextTokens:null,outputTokens:4096});
+   assert.deepEqual(profile.fields,protocol===c?{store:false}:{truncation:'disabled'});
+  }
+  const config={...configuration('openai','global',protocol),model:'gpt-4.1-mini'};
+  assert.equal(agentModelAdaptation(config),'adapted');assert.equal(agentModelThinkingTier(config),'unsupported');
+  assert.deepEqual(agentModelTokenLimits(config),{contextTokens:1047576,outputTokens:4096});
+ }
+});
+
+test('documented specialized OpenAI Responses models retain their own minimum instead of borrowing none',()=>{
+ for(const [model,effort,contextTokens,maxOutputTokens] of [['gpt-5.3-codex','low',400000,128000],['gpt-5-pro-2025-10-06','high',400000,272000],['gpt-5.4-pro','medium',1050000,128000]] as const){
+  const config={...configuration('openai','global',r),model};
+  assert.equal(agentResponsesReasoningCapable(config),true);assert.equal(agentModelAdaptation(config),'adapted');
+  assert.equal(agentModelThinkingTier(config),'required');assert.deepEqual(agentResponsesProfile(config).fields,{truncation:'disabled',reasoning:{effort}});
+  assert.equal(agentResponsesProfile(config).maxOutputTokens,maxOutputTokens);assert.deepEqual(agentModelTokenLimits(config),{contextTokens,outputTokens:32768});
+  const chat:AgentConfiguration={...config,protocol:c};assert.equal(agentModelAdaptation(chat),'unverified');assert.deepEqual(agentModelTokenLimits(chat),{contextTokens:null,outputTokens:4096});
+ }
+});
+
+test('canonical future GPT-5 families carry Responses reasoning without claiming effort support, capacity or adaptation',()=>{
+ for(const model of ['gpt-5.9','gpt-5.9-mini-2027-01-01'])for(const protocol of [c,r] as const){
+  const config={...configuration('openai','global',protocol),model},profile=protocol===c?agentChatProfile(config):agentResponsesProfile(config);
+  assert.equal(agentResponsesReasoningCapable(config),protocol===r);assert.equal(agentModelAdaptation(config),'unverified');
+  assert.equal(agentModelThinkingTier(config),'required');assert.deepEqual(agentModelTokenLimits(config),{contextTokens:null,outputTokens:32768});
+  assert.equal(profile.maxOutputTokens,null);assert.deepEqual(profile.fields,protocol===c?{store:false}:{truncation:'disabled'});
+ }
+ assert.equal(agentResponsesReasoningCapable({...configuration('openai','global',r),model:'gpt-4.1-mini'}),false);
+ assert.equal(agentResponsesReasoningCapable({...configuration('custom','custom',r,'https://gateway.example/v1'),model:'gpt-5.4-mini'}),false);
+ const router:AgentConfiguration={...configuration('openrouter','global',c),model:'openai/gpt-5.4-mini'};
+ assert.equal(agentModelAdaptation(router),'adapted');assert.deepEqual(agentModelTokenLimits(router),{contextTokens:400000,outputTokens:32768});
+ assert.deepEqual(agentChatProfile(router).fields,{provider:{require_parameters:true,allow_fallbacks:false},reasoning:{effort:'none'}});
+ const responses:AgentConfiguration={...router,protocol:r};assert.equal(agentResponsesReasoningCapable(responses),false);assert.equal(agentModelAdaptation(responses),'unverified');
+ assert.deepEqual(agentModelTokenLimits(responses),{contextTokens:null,outputTokens:4096});assert.deepEqual(agentResponsesProfile(responses).fields,{provider:{require_parameters:true,allow_fallbacks:false},reasoning:{enabled:false}});
+});
 
 test('the static catalog derives runnable protocols from exact endpoints and preserves blocked documentation', () => {
   assert.equal(agentProviderCatalogSchema.safeParse(AGENT_PRESETS).success, true);

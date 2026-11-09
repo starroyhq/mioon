@@ -1425,10 +1425,10 @@ export const connectionMessages = {
     "ja": "ローカル Ollama"
   },
   "agent.settings.presets.openaiNote": {
-    "zh-Hans": "非推理文本基线；可明确选择 Chat Completions 或 Responses",
-    "zh-Hant": "非推理文字基準；可明確選擇 Chat Completions 或 Responses",
-    "en": "Non-reasoning text baseline. Explicitly select Chat Completions or Responses",
-    "ja": "非推論テキストの基準設定です。Chat Completions または Responses を明示的に選択できます"
+    "zh-Hans": "GPT-5.4 mini 用于文本与工具任务；可选择 Chat Completions 或 Responses",
+    "zh-Hant": "GPT-5.4 mini 用於文字與工具任務；可選擇 Chat Completions 或 Responses",
+    "en": "GPT-5.4 mini for text and tool tasks. Choose Chat Completions or Responses",
+    "ja": "GPT-5.4 mini でテキストとツールのタスクを実行します。Chat Completions または Responses を選択できます"
   },
   "agent.settings.presets.anthropicNote": {
     "zh-Hans": "Messages 文本与 Mio 宿主工具基线；关闭思考，账户及模型访问权限由供应商决定",

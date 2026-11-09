@@ -34,6 +34,11 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
  function context(options:SettingsContextOptions={}):SettingsContextOptions{
   return {...options,selfPort:options.selfPort??selfPort(),signal:options.signal?AbortSignal.any([lifetime.signal,options.signal]):lifetime.signal};
  }
+ function ownerContext(options:SettingsContextOptions):Pick<SettingsContextOptions,'selfPort'|'signal'>{
+  // Activity belongs to this service's admission checkpoints, not the desktop
+  // settings transport, whose option whitelist deliberately rejects callbacks.
+  return {selfPort:options.selfPort,signal:options.signal};
+ }
  function checkpoint(options:SettingsContextOptions):void{if(closed||options.signal?.aborted||options.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_CLOSED');}
  function wait<T>(promise:Promise<T>,options:SettingsContextOptions):Promise<T>{
   // A caller's deadline bounds queue admission and credential waits too. The
@@ -48,7 +53,7 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
  function schedule<T>(operation:()=>T|Promise<T>):Promise<T>{
   const result=tail.then(()=>{if(closed||lifetime.signal.aborted)throw agentSettingsError('AGENT_SETTINGS_CLOSED');return operation();});tail=result.catch(()=>{});return result;
  }
- async function read(options:SettingsContextOptions):Promise<AgentSettingsSnapshot>{checkpoint(options);const value=sanitizeAgentSettingsResult(await owner.get(options));checkpoint(options);return value;}
+ async function read(options:SettingsContextOptions):Promise<AgentSettingsSnapshot>{checkpoint(options);const value=sanitizeAgentSettingsResult(await owner.get(ownerContext(options)));checkpoint(options);return value;}
  function freeze(snapshot:AgentSettingsSnapshot,input:AgentModelListCacheRequest,options:SettingsContextOptions):FrozenList{
   if(snapshot.revision!==input.expectedSettingsRevision)conflict();
   let selection:AgentModelListSelection;try{selection=parseAgentModelListSelection(input.selection,options);}catch{return validation();}
@@ -72,8 +77,8 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
     checkpoint(opts);
     // The pre-read is a cache cleanup hint, not a new prerequisite for the
     // owner's put. Preserve its established validation and error semantics.
-    const prior=agentSettingsSnapshotSchema.safeParse(await owner.get(opts));checkpoint(opts);
-    const before=prior.success?prior.data:null,result=sanitizeAgentSettingsResult(await owner.put(input,opts));
+    const prior=agentSettingsSnapshotSchema.safeParse(await owner.get(ownerContext(opts)));checkpoint(opts);
+    const before=prior.success?prior.data:null,result=sanitizeAgentSettingsResult(await owner.put(input,ownerContext(opts)));
     // An acknowledged owner commit remains committed even if cancellation
     // arrives now. Invalidate observations; never roll back settings or keys.
     for(const prior of before?.services??result.services){
@@ -84,7 +89,7 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
     return result;
    });
   },
-  ...(owner[AGENT_CREDENTIAL_ACQUIRE]?{[AGENT_CREDENTIAL_ACQUIRE](input:unknown,options:SettingsContextOptions={}){const opts=context(options);return schedule(()=>{checkpoint(opts);return owner[AGENT_CREDENTIAL_ACQUIRE]!(input,opts);});}}:{}),
+  ...(owner[AGENT_CREDENTIAL_ACQUIRE]?{[AGENT_CREDENTIAL_ACQUIRE](input:unknown,options:SettingsContextOptions={}){const opts=context(options);return schedule(()=>{checkpoint(opts);return owner[AGENT_CREDENTIAL_ACQUIRE]!(input,ownerContext(opts));});}}:{}),
   close(){return owner.close();},
  };
  return {
@@ -120,7 +125,7 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
      // the saved complete configuration, never that draft or a guessed model.
      if(agentCredentialBinding(saved)!==agentCredentialBinding({...frozen.selection,model:'connection-validation'}))conflict();
      const expected:AgentCredentialRequest={purpose:'model_list',expectedRevision:frozen.snapshot.revision,configuration:saved,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:frozen.snapshot.mioSelectionRevision}};
-     const acquired=await wait(schedule(async()=>{current();const latest=freeze(await read(opts),input,opts);if(!latest.entry||latest.entry.revision!==entry.revision)conflict();return sanitizeAgentCredentialResult(await owner[AGENT_CREDENTIAL_ACQUIRE]!(expected,opts),expected);}),opts);
+     const acquired=await wait(schedule(async()=>{current();const latest=freeze(await read(opts),input,opts);if(!latest.entry||latest.entry.revision!==entry.revision)conflict();return sanitizeAgentCredentialResult(await owner[AGENT_CREDENTIAL_ACQUIRE]!(expected,ownerContext(opts)),expected);}),opts);
      current();apiKey=acquired.apiKey;
     }else{
      if(!descriptor.allowNone)return {outcome:'invalid_key',reason:'required'};

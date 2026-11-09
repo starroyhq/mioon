@@ -74,7 +74,7 @@ for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] a
     const body = buildTaskModelRequest(configuration, history, [], 4318), network = genericNetwork(configuration, genericSse(configuration, undefined, {reasoning: true}));
     const shown: string[] = [];
     await assert.rejects(async () => {for await (const item of createTaskGateway(network.dependencies)({configuration, body, apiKey: 'SYNTHETIC_GENERIC_WIRE_ONLY', selfPort: 4318})) if (item.type === 'delta') shown.push(item.text);},
-      {code: protocol === 'responses' ? 'AGENT_CHAT_TOOLS_UNSUPPORTED' : 'AGENT_CHAT_REASONING_UNSUPPORTED'}, `${configuration.presetId}/${configuration.platformId}`);
+      {code: protocol === 'responses' ? configuration.presetId === 'openai' ? 'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED' : 'AGENT_CHAT_TOOLS_UNSUPPORTED' : 'AGENT_CHAT_REASONING_UNSUPPORTED'}, `${configuration.presetId}/${configuration.platformId}`);
     assert.equal(network.constructions, 1); assert.equal(network.requests.length, 1); assert.ok(!shown.join('').includes('SYNTHETIC_PRIVATE_REASONING'));
   }
 });

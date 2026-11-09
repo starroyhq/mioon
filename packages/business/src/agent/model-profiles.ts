@@ -6,6 +6,7 @@ import {agentPresetPlatform} from '../../../contracts/src/agent-provider-catalog
 import {agentChatError} from './chat-errors.ts';
 import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields} from './anthropic-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
+import {agentOpenAiReasoningFamily,agentOpenAiModelIsAdapted,AGENT_OPENAI_REASONING_MODEL_HINTS} from '../../../contracts/src/agent-openai-model-family.ts';
 
 function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -14,22 +15,27 @@ function fail(code: string): never { throw agentChatError(code); }
 /** What a model can do with thinking. An unsupported (or unverified) model
  * never thinks. An optional model documents an off switch: an optional
  * profile's fields are exactly that switch, and task requests send it. A
- * required model always thinks, so its profile carries no off switch. */
+ * required (or not yet documented) reasoning family has no proven off switch,
+ * so its output may contain reasoning even at the selected minimum. */
 export type AgentThinkingTier = 'unsupported' | 'optional' | 'required';
-/** Chat Completions and Responses always send this limit, including thinking
- * requests. Messages also uses it when the model's maximum is unknown. */
+/** Conservative default for generic models and legacy named profiles. */
 export const AGENT_DEFAULT_OUTPUT_TOKENS = 4096;
-/** Messages caps its documented maximum here. All protocols still share the
- * 1 MiB / 8192-event SSE limits and 120-second deadline, so this does not
- * guarantee that a reply reaches the token limit. Raising Chat Completions or
- * Responses also requires reviewing those limits and rate-limit reservations. */
+/** OpenAI reasoning output includes internal reasoning and the visible answer.
+ * Keep a bounded reserve below each documented maximum (or an unverified
+ * family's unknown maximum); stream/deadline caps remain independently active. */
+export const AGENT_OPENAI_REASONING_OUTPUT_TOKENS = 32768;
+/** Messages caps its documented maximum here. The 120-second deadline and
+ * independent protocol stream limits can end a response sooner. OpenAI
+ * Responses reserves separate framing space for metadata and reasoning; this
+ * does not increase the limits of other protocols or providers. */
 export const AGENT_OUTPUT_TOKEN_CEILING = 16384;
 /** Target answer reserve for required-thinking Messages requests. The minimum
  * thinking budget can leave less when the whole output limit is only 4096. */
 export const AGENT_THINKING_ANSWER_TOKENS = 4096;
 /** contextTokens is the documented context window (input plus output), or null
  * when it is unknown or set by the user's server. outputTokens is the output
- * limit a task request sends: 4096 for Chat Completions and Responses;
+ * limit a task request sends: 32768 for OpenAI reasoning families, otherwise
+ * 4096 for Chat Completions and Responses;
  * min(documented maximum output, 16384) for a listed Messages model, otherwise
  * 4096. Checked 2026-11-02; sources and per-model table: AGENT-PROVIDERS.md. */
 export interface AgentModelTokenLimits {contextTokens: number | null; outputTokens: number}
@@ -39,8 +45,8 @@ interface AgentModelTokenProfile extends AgentModelTokenLimits {maxOutputTokens:
 // Unknown models use a separate conservative generic profile; combinations
 // without a runnable endpoint fail before inference. Sources and region/account
 // caveats: AGENT-PROVIDERS.md.
-// No catalog model requires thinking: each optional profile's model documents
-// the disable switch it sends, and gpt-4.1-mini does not reason.
+// Legacy optional profiles document their disable switch. New OpenAI reasoning
+// families are resolved separately; their minimum need not turn reasoning off.
 // Documented maximum output: gpt-4.1-mini 32,768; deepseek-flash 393,216;
 // glm-4.7 128,000. Kimi and MiniMax list no separate maximum; input plus output
 // must fit the window. qwen-plus has no maximum on its official page.
@@ -72,6 +78,12 @@ const genericChatProfiles: Readonly<Record<string, AgentChatProfile>> = freeze(O
  * uses this protocol's generic template; errors never trigger another attempt. */
 export function agentChatProfile(configuration: AgentConfiguration): AgentChatProfile {
   if (configuration.protocol !== 'chat_completions') throw agentChatError('AGENT_CHAT_VALIDATION');
+  const family = reasoningFamily(configuration);
+  if (family?.chatCompletions) return freeze({models: [configuration.model], tokenField: configuration.presetId === 'openai' ? 'max_completion_tokens' : 'max_tokens',
+    fields: configuration.presetId === 'openai' ? {store: false, ...(family.minimumEffort ? {reasoning_effort: family.minimumEffort} : {})}
+      : {provider: {require_parameters: true, allow_fallbacks: false}, ...(family.minimumEffort ? {reasoning: {effort: family.minimumEffort}} : {})},
+    thinkingTier: family.minimumEffort === 'none' ? 'optional' : 'required', contextTokens: family.contextTokens,
+    maxOutputTokens: family.maxOutputTokens, outputTokens: AGENT_OPENAI_REASONING_OUTPUT_TOKENS});
   const exact = Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : undefined;
   if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
   return Object.hasOwn(genericChatProfiles, configuration.presetId) ? genericChatProfiles[configuration.presetId] : genericChatProfiles.custom;
@@ -112,9 +124,27 @@ const genericResponsesProfiles: Readonly<Record<string, AgentResponsesProfile>> 
  * generic template from the first request, with no error-driven switching. */
 export function agentResponsesProfile(configuration: AgentConfiguration): AgentResponsesProfile {
   if (configuration.protocol !== 'responses') throw agentChatError('AGENT_CHAT_VALIDATION');
+  const family = configuration.presetId === 'openai' ? agentOpenAiReasoningFamily(configuration.model) : null;
+  if (family) return freeze({models: [configuration.model], fields: {truncation: 'disabled', ...(family.minimumEffort ? {reasoning: {effort: family.minimumEffort}} : {})},
+    thinkingTier: family.minimumEffort === 'none' ? 'optional' : 'required', contextTokens: family.contextTokens,
+    maxOutputTokens: family.maxOutputTokens, outputTokens: AGENT_OPENAI_REASONING_OUTPUT_TOKENS});
   const exact = Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : undefined;
   if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
   return Object.hasOwn(genericResponsesProfiles, configuration.presetId) ? genericResponsesProfiles[configuration.presetId] : genericResponsesProfiles.custom;
+}
+function reasoningFamily(configuration: AgentConfiguration) {
+  if (configuration.presetId === 'openai') return agentOpenAiReasoningFamily(configuration.model);
+  if (configuration.presetId === 'openrouter' && configuration.protocol === 'chat_completions' && configuration.model.startsWith('openai/')) {
+    const family = agentOpenAiReasoningFamily(configuration.model.slice('openai/'.length));
+    return family?.documented ? family : null;
+  }
+  return null;
+}
+/** Protocol carrier support is independent of whether this request selects
+ * none effort. Unknown canonical GPT-5.x keeps this carrier but no adaptation,
+ * explicit effort or documented capacity. Other providers retain their policy. */
+export function agentResponsesReasoningCapable(configuration: AgentConfiguration): boolean {
+  return configuration.protocol === 'responses' && configuration.presetId === 'openai' && agentOpenAiReasoningFamily(configuration.model) !== null;
 }
 /** Messages has its own `thinking` request parameter, which every task request
  * sends disabled, so each Messages preset is optional. The other protocols take
@@ -169,9 +199,12 @@ export function agentAdaptedModelHints(presetId: string): Partial<Record<AgentPr
   if (presetId === 'custom') return {};
   const chat = AGENT_CHAT_PROFILES[presetId]?.models, responses = AGENT_RESPONSES_PROFILES[presetId]?.models,
     messages = AGENT_MESSAGES_TOKEN_LIMITS[presetId]?.models;
+  if (presetId === 'openai') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions, ...(chat ?? [])], responses: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses, ...(responses ?? [])]};
+  if (presetId === 'openrouter') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions.map(model => `openai/${model}`), ...(chat ?? [])]};
   return {...(chat ? {chat_completions: [...chat]} : {}), ...(responses ? {responses: [...responses]} : {}), ...(messages ? {anthropic_messages: [...messages]} : {})};
 }
 export function agentModelAdaptation(configuration: AgentConfiguration): 'adapted' | 'unverified' {
+  if (agentOpenAiModelIsAdapted(configuration.presetId, configuration.protocol, configuration.model)) return 'adapted';
   return agentAdaptedModelHints(configuration.presetId)[configuration.protocol]?.includes(configuration.model) ? 'adapted' : 'unverified';
 }
 

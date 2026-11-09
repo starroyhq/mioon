@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { LOCALES, renderMessage } from '../packages/i18n/src/index.ts';
+import { LOCALES, renderMessage, message } from '../packages/i18n/src/index.ts';
+import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
+import { agentChatError, safeAgentChatError } from '../packages/business/src/agent/chat-errors.ts';
 import type { DisplayMessage } from '../packages/i18n/src/index.ts';
 import type { EditTaskClient } from '../apps/web/src/edit-task-client.ts';
 import { readPending, writePending, prepareSubmission, prepareRequestReplay } from '../apps/web/src/submissions.ts';
@@ -37,6 +39,27 @@ function verify(error: unknown, key: string, code?: string): true {
   return true;
 }
 const throws = (fn: () => unknown, key: string, code?: string) => assert.throws(fn, (error: unknown) => verify(error, key, code));
+
+test('Responses output limits, incomplete responses and unsupported item diagnostics retain safe codes in all four languages', () => {
+  for (const [code, key, status] of [
+    ['AGENT_CHAT_OUTPUT_LIMIT', 'agent.task.error.outputLimit', 413],
+    ['AGENT_CHAT_RESPONSES_INCOMPLETE', 'agent.task.error.incomplete', 502],
+    ['AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED', 'agent.task.error.responsesItemUnsupported', 422],
+  ] as const) {
+    const failure = agentChatError(code), before = {code: failure.code, status: failure.status, message: failure.message};
+    assert.equal(failure.code, code); assert.equal(failure.status, status);
+    assert.equal(agentTaskErrorKey(code), key);
+    const descriptor = message(key), outputs = new Set<string>();
+    for (const locale of LOCALES) {
+      const rendered = renderMessage(locale, descriptor); outputs.add(rendered);
+      assert.ok(rendered.length); assert.doesNotMatch(rendered, /Chat Completions|synthetic-private/u);
+    }
+    assert.equal(outputs.size, 4); assert.deepEqual(safeAgentChatError(failure), before);
+    assert.deepEqual({code: failure.code, status: failure.status, message: failure.message}, before);
+  }
+  assert.equal(agentTaskErrorKey('AGENT_CHAT_TOOLS_UNSUPPORTED'), 'agent.task.error.tools');
+  assert.equal(agentTaskErrorKey('AGENT_CHAT_REASONING_UNSUPPORTED'), 'agent.task.error.protocol');
+});
 
 test('pending request diagnostics relabel in all four locales without changing original input or saved bytes', t => {
   const storage = storageFixture(t), original = entry(), frozenInput = JSON.stringify(original);

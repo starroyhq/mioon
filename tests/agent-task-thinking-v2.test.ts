@@ -2,7 +2,7 @@ import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
-import {AGENT_CHAT_PROFILES,AGENT_RESPONSES_PROFILES,agentAnthropicThinkingFields,agentChatProfile,agentModelThinkingTier,agentRequestThinks,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
+import {AGENT_CHAT_PROFILES,AGENT_RESPONSES_PROFILES,agentAnthropicThinkingFields,agentChatProfile,agentModelThinkingTier,agentRequestThinks,agentResponsesProfile,agentResponsesReasoningCapable,AGENT_OPENAI_REASONING_OUTPUT_TOKENS} from '../packages/business/src/agent/model-profiles.ts';
 import {ANTHROPIC_MESSAGES_FIELDS} from '../packages/business/src/agent/anthropic-protocol.ts';
 import {anthropicMessages} from '../packages/business/src/agent/anthropic-wire.ts';
 import {buildTaskModelRequest,createTaskGateway,taskContinuation,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -20,7 +20,7 @@ const history:AgentTaskJson[]=[{role:'user',content:'创建一个镜头'}];
 const argumentsJson=JSON.stringify({title:'Thought shot'});
 const call={id:'call_thought',name:'mioon_shot_create',arguments:{title:'Thought shot'}};
 const json=(value:unknown):string=>`data: ${JSON.stringify(value)}\n\n`;
-const optionalPresets:Record<Exclude<Protocol,'anthropic_messages'>,string[]>={chat_completions:['deepseek','qwen','zhipu','kimi','minimax','ollama'],responses:['deepseek','qwen','ollama']};
+const optionalPresets:Record<Exclude<Protocol,'anthropic_messages'>,string[]>={chat_completions:['openai','openrouter','deepseek','qwen','zhipu','kimi','minimax','ollama'],responses:['openai','deepseek','qwen','ollama']};
 
 function presetConfiguration(presetId:string,protocol:Protocol):AgentConfiguration{
   const configuration=presetConfigurations().find(item=>item.presetId===presetId&&item.protocol===protocol);assert.ok(configuration);return configuration;
@@ -60,24 +60,37 @@ async function loopback(t:TestContext,protocol:Protocol,responses:string[]){
 }
 const deltas=(items:readonly TaskModelItem[]):TaskModelItem[]=>items.filter(item=>item.type==='delta');
 
-test('thinking tiers follow each preset profile, and every task request keeps thinking off',()=>{
-  for(const profile of [...Object.values(AGENT_CHAT_PROFILES),...Object.values(AGENT_RESPONSES_PROFILES)])assert.notEqual(profile.thinkingTier,'required','no catalog model requires thinking yet');
+test('default thinking tiers keep the documented minimum and isolate the new OpenAI output reserve',()=>{
+  for(const profile of [...Object.values(AGENT_CHAT_PROFILES),...Object.values(AGENT_RESPONSES_PROFILES)])assert.notEqual(profile.thinkingTier,'required','Legacy static entries retain their previous thinking tiers');
   let combinations=0;
   for(const configuration of presetConfigurations()){
     const {protocol,presetId,platformId}=configuration,tier=agentModelThinkingTier(configuration),label=`${presetId}/${platformId}/${protocol}`;
     assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(presetId)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
     assert.equal(agentRequestThinks(configuration,body),false,`${label} sends its documented off switch`);
-    if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,label);
+    const outputTokens=presetId==='openai'||presetId==='openrouter'&&protocol==='chat_completions'?AGENT_OPENAI_REASONING_OUTPUT_TOKENS:4096;
+    if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,outputTokens,label);
     if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,{type:'disabled'});
     // Only an optional model's off switch can be lifted; an unsupported or
     // unverified model never admits thinking, whatever the request contains.
     const off=offSwitch(configuration),lifted=Object.fromEntries(Object.entries(body).filter(([key])=>!Object.hasOwn(off,key)));
     assert.equal(agentRequestThinks(configuration,lifted),tier==='optional',label);
-    if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,4096,`${label} keeps its output limit when thinking is requested`);
+    if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,outputTokens,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }
   assert.equal(combinations,51);
+});
+
+test('OpenAI Responses carrier capability is distinct from whether its minimum effort performs reasoning',()=>{
+ for(const [model,effort,thinking] of [['gpt-5','minimal',true],['o3','low',true],['gpt-5.4-mini','none',false]] as const){
+  const configuration:AgentConfiguration={presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',protocol:'responses',model};
+  const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentResponsesReasoningCapable(configuration),true);assert.equal(agentRequestThinks(configuration,body),thinking);
+  assert.deepEqual(body.reasoning,{effort});assert.equal(body.max_output_tokens,32768);assert.deepEqual(body.include,['reasoning.encrypted_content']);
+ }
+ const legacy:AgentConfiguration={presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',protocol:'responses',model:'gpt-4.1-mini'};
+ const body=JSON.parse(buildTaskModelRequest(legacy,history,definitions,4318)) as Record<string,unknown>;
+ assert.equal(agentResponsesReasoningCapable(legacy),false);assert.equal(agentRequestThinks(legacy,body),false);assert.equal(body.max_output_tokens,4096);assert.equal(Object.hasOwn(body,'include'),false);
 });
 test('Messages turns thinking on only for a required model, with a manual budget below max_tokens',()=>{
   for(const tier of ['unsupported','optional'] as const)for(const output of [4096,16384])assert.equal(agentAnthropicThinkingFields(tier,output),ANTHROPIC_MESSAGES_FIELDS);

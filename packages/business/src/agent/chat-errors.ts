@@ -19,6 +19,9 @@ const errors = Object.freeze({
   AGENT_CHAT_TOOLS_UNSUPPORTED: [422, '模型请求了未获本轮授权的工具，或超出了本轮工具调用上限；该请求未执行。'],
   AGENT_CHAT_INSPECTION_UNAVAILABLE: [422, '所选项目的这项资料无法安全读取；没有继续发送模型请求。'],
   AGENT_CHAT_REASONING_UNSUPPORTED: [422, '模型返回了推理或续接数据；当前阶段仅支持非思考文本模式。'],
+  AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED: [422, '模型返回了暂不支持的 Responses 内容类型；本轮已停止，没有执行该内容。'],
+  AGENT_CHAT_OUTPUT_LIMIT: [413, '本轮输出（含推理）达到上限，回复未完成。已保留收到的内容，请拆分任务后重试。'],
+  AGENT_CHAT_RESPONSES_INCOMPLETE: [502, '模型未完成这次回复，已保留收到的内容；请核对结果后重试。'],
   AGENT_CHAT_PROVIDER_ERROR: [502, '模型服务在回复过程中报告错误，已保留收到的文本。'],
 } as const);
 export type AgentChatErrorCode = keyof typeof errors;
