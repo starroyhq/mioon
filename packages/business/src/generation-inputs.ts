@@ -115,6 +115,21 @@ function ownedRecord(db: DatabaseSync,table: string,id: string): GenerationRecor
 // Bounded linked-job probe for subject-bearing version disclosure. Avoid
 // introducing an unbounded legacy get() while deciding whether a guard applies.
 export const readGenerationLinkedJob=(db: DatabaseSync,id: string): GenerationRecord=>ownedRecord(db,'jobs',id);
+/** S5 copies retain ordinary shot versions, not their original execution jobs.
+ * Only an absent row with the existing portable media proof is provenance-only;
+ * a present row must still pass the bounded identity decoder and belong to the
+ * version's current project. This never weakens the strict execution reader. */
+export function readGenerationLinkedJobForDisclosure(db: DatabaseSync,id: string,projectId: string,version: GenerationRecord): GenerationRecord|null {
+ if(typeof id!=='string')fail('INVALID_GENERATION_OWNERSHIP','任务或镜头的项目归属已改变');
+ if(!db.prepare('SELECT 1 FROM jobs WHERE id=? LIMIT 1').get(id)){
+  try{createOwnedMediaGraphReader(db,projectId).version(version.id,version.shotId,version.assetId);}
+  catch{fail('INVALID_GENERATION_OWNERSHIP','任务或镜头的项目归属已改变');}
+  return null;
+ }
+ const job=readGenerationLinkedJob(db,id);
+ if(job.projectId!==projectId)fail('INVALID_GENERATION_OWNERSHIP','任务或镜头的项目归属已改变');
+ return job;
+}
 export function assertGenerationShotOwnership(db: DatabaseSync,shot: GenerationShot): void {
  const saved=ownedRecord(db,'shots',shot.id);
  if(saved.projectId!==shot.projectId)fail('INVALID_GENERATION_OWNERSHIP','镜头的项目归属已改变');

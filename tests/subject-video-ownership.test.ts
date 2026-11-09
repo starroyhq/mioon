@@ -8,6 +8,7 @@ import {fixture,typedFrame,typedImage,rowBytes} from './helpers/strict-timeline-
 import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
 import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.ts';
 import {openProjectDatabase,withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
+import {readGenerationLinkedJob} from '../packages/business/src/generation-inputs.ts';
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
@@ -155,4 +156,44 @@ for(const retainedMarker of ['asset-role','binding-role'])test(`partial ${retain
 test('subject version disclosure rejects oversized or corrupt linked job through a bounded probe',async t=>{
  const f=await fixture(t),p=await publishedSubjectVideo(f),db=f.store.db,saved=f.store.get('jobs',p.job.id),before=rowBytes(f,'versions',p.versionId);
  for(const data of [JSON.stringify({...saved,padding:'x'.repeat(300000)}),'{private corrupt linked job']){db.prepare('UPDATE jobs SET data=? WHERE id=?').run(data,p.job.id);await assert.rejects(f.call('version.list',{shotId:p.shot.id}),error=>(error as Failure).code==='INVALID_GENERATION_OWNERSHIP'&&!JSON.stringify(error).includes('private corrupt'));assert.equal(rowBytes(f,'versions',p.versionId),before);}
+});
+
+test('a missing execution job cannot disclose a subject-bearing retained version',async t=>{
+ const f=await fixture(t),p=await publishedSubjectVideo(f),db=f.store.db,before=rowBytes(f,'versions',p.versionId);
+ db.prepare('DELETE FROM jobs WHERE id=?').run(p.job.id);
+ assert.throws(()=>readGenerationLinkedJob(db,p.job.id),{code:'INVALID_GENERATION_OWNERSHIP'});
+ await assert.rejects(f.call('version.list',{shotId:p.shot.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ await assert.rejects(f.call('project.get',{projectId:f.project.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ assert.equal(rowBytes(f,'versions',p.versionId),before);assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts(),0);
+});
+
+test('job-side subject markers still guard a version whose own snapshot was pruned',async t=>{
+ const f=await fixture(t),p=await publishedSubjectVideo(f),version=f.store.get('versions',p.versionId)!;
+ f.store.db.exec('DROP TRIGGER immutable_versions');
+ f.store.put('versions',{...version,snapshot:{}});const before=rowBytes(f,'versions',p.versionId);
+ await assert.rejects(f.call('version.list',{shotId:p.shot.id}),{code:'INVALID_REFERENCE_MANIFEST'});
+ await assert.rejects(f.call('project.get',{projectId:f.project.id}),{code:'INVALID_REFERENCE_MANIFEST'});
+ assert.equal(rowBytes(f,'versions',p.versionId),before);assert.equal(f.posts(),0);
+});
+
+test('an ordinary retained version cannot borrow a consistently foreign linked execution row',async t=>{
+ const f=await fixture(t),p=await publishedSubjectVideo(f),job=f.store.get('jobs',p.job.id)!,version=f.store.get('versions',p.versionId)!;
+ f.store.db.exec('DROP TRIGGER immutable_versions');
+ f.store.put('versions',{...version,snapshot:{}});
+ withoutProcessTargetRevisions(f.store.db,['jobs'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...job,projectId:f.other.id,snapshot:{}}),p.job.id)));
+ const before=rowBytes(f,'versions',p.versionId);
+ await assert.rejects(f.call('version.list',{shotId:p.shot.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ await assert.rejects(f.call('project.get',{projectId:f.project.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ assert.equal(rowBytes(f,'versions',p.versionId),before);assert.equal(f.posts(),0);
+});
+
+test('an ordinary retained version with a non-string provenance job id is never treated as missing',async t=>{
+ const f=await fixture(t),p=await publishedSubjectVideo(f),db=f.store.db,version=f.store.get('versions',p.versionId)!;
+ db.exec('DROP TRIGGER immutable_versions');
+ db.prepare('UPDATE versions SET data=? WHERE id=?').run(JSON.stringify({...version,snapshot:{},jobId:731}),p.versionId);
+ const before=rowBytes(f,'versions',p.versionId);
+ assert.equal(db.prepare('SELECT jobId FROM versions WHERE id=?').get(p.versionId)?.jobId,p.job.id);
+ await assert.rejects(f.call('version.list',{shotId:p.shot.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ await assert.rejects(f.call('project.get',{projectId:f.project.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+ assert.equal(rowBytes(f,'versions',p.versionId),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
 });

@@ -22,7 +22,8 @@ import {createLocalShotText,LOCAL_SHOT_TEXT_FILENAME} from '@mioon/business/loca
 import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain';
 import {LOCAL_SHOT_TEXT_LIMITS,createLocalShotTextSchemas} from '@mioon/contracts/local-shot-text';
 import {schemas,AppError} from '@mioon/contracts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys,withoutProcessTargetRevisions} from './helpers/project-database.ts';
+import {mediaReferenceFixture} from './helpers/media-reference-fixtures.ts';
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
 const code=(value: string)=>(error: { code: string; message: string|string[]; })=>error.code===value&&!error.message.includes('PRIVATE');
 const authority=(value: { workspaceScope: unknown; instanceId: unknown; projectId: unknown; shotId: unknown; })=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
@@ -52,7 +53,7 @@ async function fixture(t: test.TestContext){
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   const get=(value=shot)=>shotText.get({projectId:value.projectId,shotId:value.id});
   const put=(value=get(),raw={title:'Changed title',prompt:shot.prompt})=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:value.draft?.baseRevision??store.get('shots',value.shotId)!.revision,baseText:value.draft?.baseText??{title:store.get('shots',value.shotId)!.title,prompt:store.get('shots',value.shotId)!.prompt},raw});
-  const prepare=(value=get(),patch={title:value.draft!.raw.title})=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{requestId:randomUUID(),shotId:value.shotId,expectedRevision:value.draft!.baseRevision,patch}});
+  const prepare=(value=get(),patch:LocalShotTextUpdateInput['patch']={title:value.draft!.raw.title})=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{requestId:randomUUID(),shotId:value.shotId,expectedRevision:value.draft!.baseRevision,patch}});
   return {root:localRoot(),file:path.join(localRoot(),LOCAL_SHOT_TEXT_FILENAME),project,shot,get,put,prepare,start,originalUpdate,get store(){return store;},get services(){return services;},get shotText(){return shotText;},get calls(){return calls;},
     setFault(fn: (point: string) => void){fault=fn;},setUpdate(fn: (projectId: string, input: LocalShotTextUpdateInput) => Promise<unknown>){update=fn;},setGuards(value: {ownsLock?:()=>boolean}){extraGuards=value;start();},
     restart(){store.close();store=(open(root) as TypedStore);services=(createServices(store,new Map()) as TypedServices);start();},
@@ -62,6 +63,65 @@ async function fixture(t: test.TestContext){
     snapshot(){return JSON.stringify(schemaObjects(store.db).sort(byName).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','shots','assets','versions','jobs','mutation_requests','asset_range_requests','asset_disposition_requests','subject_requests'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
   };
 }
+
+function selectedCopiedVersion(f:Awaited<ReturnType<typeof fixture>>,snapshot:Record<string,unknown>={}){
+  const id=randomUUID(),jobId=randomUUID(),assetId=randomUUID();
+  // Closed metadata proof for pure ownership tests; the real duplicate test
+  // below this layer produces and copies actual provider output files.
+  const sha256='a'.repeat(64),sizeBytes=42,relativePath='生成/retained.mp4',publication={version:1,publicationId:randomUUID(),projectId:f.project.id,assetId,owner:{kind:'generation',id:jobId,requestId:randomUUID(),inputHash:'b'.repeat(64)},targetKind:'generated',relativePath,sha256,sizeBytes,mimeType:'video/mp4'};
+  const asset={id:assetId,projectId:f.project.id,name:'Retained generated result',mimeType:'video/mp4',provenance:'synthetic-mock',sha256,sizeBytes,
+    reference:mediaReferenceFixture(relativePath,sizeBytes,sha256),referenceRevision:1,publication,producer:{kind:'generation',id:jobId}};f.store.put('assets',asset);
+  const version={id,projectId:f.project.id,shotId:f.shot.id,jobId,number:1,assetId,url:`/media/${assetId}`,sha256,
+    snapshot:{shotId:f.shot.id,referenceAssetIds:[],referenceAssets:[],referenceConnections:[],...snapshot}};
+  f.store.put('versions',version);f.store.put('shots',{...f.shot,selectedVersionId:id});
+  return {asset,version,job:{id:jobId,projectId:f.project.id,shotId:f.shot.id,versionId:id,snapshot:{}}};
+}
+
+test('a copied ordinary selected version can read and retain a text draft without importing its source job',async t=>{
+  const f=await fixture(t),{version}=selectedCopiedVersion(f),before=f.snapshot(),initial=f.get();
+  assert.ok(contract.envelope.safeParse(initial).success);assert.equal(f.store.list('jobs').length,0);
+  const saved=f.shotText.put(f.put(initial,{title:'Copy draft title',prompt:'Copy draft prompt'}));
+  const prepared=f.shotText.prepare(f.prepare(saved,{title:saved.draft!.raw.title,prompt:saved.draft!.raw.prompt}));assert.equal(prepared.intent!.outcome.status,'pending');
+  assert.equal(f.snapshot(),before);assert.equal(f.calls.length,0);assert.equal(f.store.get('shots',f.shot.id)!.selectedVersionId,version.id);
+  f.restart();assert.equal(f.get().intent!.input.requestId,prepared.intent!.input.requestId);assert.equal(f.store.list('jobs').length,0);assert.equal(f.snapshot(),before);
+});
+
+test('a copied ordinary selected version saves text once and recovers the original receipt with no execution jobs',async t=>{
+  const f=await fixture(t),{version}=selectedCopiedVersion(f),prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put())));
+  const result=await f.shotText.execute(action(prepared));assert.equal(result.envelope.intent!.outcome.status,'applied');
+  assert.equal(result.response!.selectedVersionId,version.id);assert.equal(f.calls.length,1);assert.equal(f.store.list('jobs').length,0);
+  const receipt=JSON.stringify(f.receipt(prepared.intent!.input)),before=f.snapshot();
+  f.restart();const recovered=await f.shotText.recover(action(f.get()));
+  assert.deepEqual(recovered.response,result.response);assert.equal(JSON.stringify(f.receipt(prepared.intent!.input)),receipt);assert.equal(f.snapshot(),before);
+  assert.equal(f.calls.length,1);assert.equal(f.store.list('jobs').length,0);
+});
+
+for(const damage of ['missing-subject','foreign','json-owner','oversized','corrupt','wrong-shot','wrong-version'])test(`selected version ${damage} source job fails closed for local text without writes`,async t=>{
+  const f=await fixture(t),initial=f.get(),put=f.put(initial),{job}=selectedCopiedVersion(f,damage==='missing-subject'?{subjectVersionId:randomUUID()}:{});
+  if(damage!=='missing-subject'){
+    const foreign=damage==='foreign'?await foreignProject(t,'PRIVATE foreign'):null;
+    const row={...job,...damage==='foreign'?{projectId:foreign!.id}:damage==='json-owner'?{projectId:randomUUID()}:damage==='wrong-shot'?{shotId:randomUUID()}:damage==='wrong-version'?{versionId:randomUUID()}:damage==='oversized'?{padding:'x'.repeat(128*1024)}:{}};
+    const data=damage==='corrupt'?'{PRIVATE corrupt source job':JSON.stringify(row);
+    withoutProcessTargetRevisions(f.store.db,['jobs'],()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(job.id,foreign?.id??f.project.id,data)));
+  }
+  const before=f.snapshot(),drafts=f.draftState();
+  assert.throws(f.get,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.throws(()=>f.shotText.put(put),code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));
+  assert.equal(f.snapshot(),before);assert.equal(f.draftState(),drafts);assert.equal(f.calls.length,0);
+});
+
+for(const damage of ['missing-publication','wrong-publication-owner','wrong-hash','residual-event','residual-idempotency'])test(`missing source job with ${damage} cannot become a portable version for local text or mutations`,async t=>{
+  const f=await fixture(t),initial=f.get(),put=f.put(initial),{asset,version,job}=selectedCopiedVersion(f);
+  if(damage==='missing-publication'){const {publication:unused,...rest}=asset;void unused;f.store.put('assets',rest);}
+  if(damage==='wrong-publication-owner')f.store.put('assets',{...asset,publication:{...asset.publication,owner:{kind:'generation',id:randomUUID(),requestId:randomUUID(),inputHash:'b'.repeat(64)}}});
+  if(damage==='wrong-hash')f.store.put('assets',{...asset,sha256:'c'.repeat(64)});
+  if(damage==='residual-event')f.store.db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(job.id,'retained source event',new Date().toISOString());
+  if(damage==='residual-idempotency')f.store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)').run('generation',randomUUID(),'b'.repeat(64),job.id);
+  const before=f.snapshot(),drafts=f.draftState(),changes=f.store.db.prepare('SELECT total_changes() n').get()!.n;
+  assert.throws(f.get,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.throws(()=>f.shotText.put(put),code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));
+  await assert.rejects(f.services.call('version.list',{shotId:f.shot.id}),{code:'INVALID_GENERATION_OWNERSHIP'});
+  await assert.rejects(f.services.call('version.select',{shotId:f.shot.id,versionId:version.id,expectedRevision:f.shot.revision,requestId:randomUUID()}),{code:'NOT_FOUND'});
+  assert.equal(f.snapshot(),before);assert.equal(f.draftState(),drafts);assert.equal(f.store.db.prepare('SELECT total_changes() n').get()!.n,changes);assert.equal(f.calls.length,0);
+});
 
 test('GET and independent draft CAS preserve raw/base text with history-only writes and no dispatch',async t=>{
   const f=await fixture(t),before=f.snapshot(),empty=f.get();assert.ok(contract.envelope.safeParse(empty).success);assert.equal(existsSync(f.file),false);

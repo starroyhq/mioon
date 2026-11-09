@@ -140,7 +140,9 @@ export const assetMediaPrepareResponseSchema = z.object({assets:z.array(assetMed
  * crosses ordinary RPC, project.get, task results or a model projection. */
 export function toAssetMediaDto(value:Record<string,unknown>):AssetMediaDto {
   const reference=mediaReferenceSchema.parse(value.reference);
-  const visible=Object.fromEntries(Object.keys(metadata).filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]]));
+  // Older records use null for unknown dimensions. Omit only that sentinel;
+  // the public schema still validates every other metadata value unchanged.
+  const visible=Object.fromEntries(Object.keys(metadata).filter(key=>Object.hasOwn(value,key)&&!((key==='width'||key==='height')&&value[key]===null)).map(key=>[key,value[key]]));
   return assetMediaDtoSchema.parse({...visible,referenceRevision:value.referenceRevision,sha256:reference.fullSha256,
     fingerprint:{sizeBytes:reference.sizeBytes,mtimeMs:reference.mtimeMs,sampledSha256:reference.sampledSha256,fullSha256:reference.fullSha256},
     hashState:reference.fullSha256===null?'sampled':'full',url:projectMediaPath(String(value.projectId),String(value.id))});

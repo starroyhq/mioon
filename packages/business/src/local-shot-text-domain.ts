@@ -3,6 +3,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {LocalShotTextUpdateInput} from '@mioon/contracts/local-shot-text';
 import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';
 import {LocalShotTextError} from './local-shot-text.ts';
+import {hasSubjectGeneration} from './generation-inputs.ts';
+import {createOwnedMediaGraphReader} from './inspection.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
@@ -54,8 +56,14 @@ export function createLocalShotTextDomain({db,canonical,replay,updateShotInProje
     if(Object.hasOwn(shot,'lastFrameAssetId')&&shot.lastFrameAssetId!==null){const value=asset(shot.lastFrameAssetId);if(!['image/png','image/jpeg','image/webp'].includes(String(value.mimeType)))invalid();}
     if(shot.selectedVersionId!==null&&shot.selectedVersionId!==undefined){
       const version=required('versions',shot.selectedVersionId,projectId);if(version.shotId!==shot.id)invalid();
-      asset(version.assetId);const job=required('jobs',version.jobId,projectId);
-      if(job.shotId!==shot.id||(job.versionId!==null&&job.versionId!==undefined&&job.versionId!==version.id))invalid();
+      asset(version.assetId);const job=owned('jobs',version.jobId,projectId,true);
+      if(job){if(job.shotId!==shot.id||(job.versionId!==null&&job.versionId!==undefined&&job.versionId!==version.id))invalid();}
+      else{
+        if(hasSubjectGeneration(version.snapshot))invalid();
+        // Ordinary S5 copies retain their publication and version, not local
+        // execution. Existing portable validation rejects damaged local owners.
+        try{createOwnedMediaGraphReader(db,projectId).version(version.id,shot.id,version.assetId);}catch{invalid();}
+      }
     }
   }
   function shot(projectId:string,shotId:string):Record<string,unknown>|null{
