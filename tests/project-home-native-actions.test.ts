@@ -24,24 +24,27 @@ import {projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
+import {createProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
+import type {ProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
 
 const id=(n:number)=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const projectId=RECENT_PROJECTS[0]!.projectId;
 const selection:ProjectDesktopSelection={token:id(50),displayPath:'/synthetic/Panel name/Panel name.mioon',facts:{fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'},template:{id:'timeline-basics',version:1,name:'Panel name'}};
 const held=<T>()=>Promise.withResolvers<T>();
 type ExampleInput=Parameters<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>[0];
+const templateReceipt=(input:ExampleInput)=>projectCopyResponseSchema.parse({requestId:input.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:input.name,lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0});
 function fixture(onNativeResult?:(projectId:string,permit:()=>boolean)=>Promise<boolean>,onNativeMetadata?:(metadata:ProjectHomeNativeActionMetadata)=>void){
  let snapshot=projectEntriesResponseSchema.parse({version:1,appLibraryScope:'a'.repeat(64),instanceId:id(1),registered:[{project:structuredClone(RECENT_PROJECTS[0]!),availability:{state:'available'},coverUrl:`/api/project-covers/${projectId}`}]}),owner:ProjectHomeNativeActionIdentity|null={appLibraryScope:snapshot.appLibraryScope,instanceId:snapshot.instanceId,epoch:1};
  const reads:unknown[]=[],trashes:ProjectDeleteInput[]=[],examples:ExampleInput[]=[],metadata:ProjectHomeNativeActionMetadata[]=[],opened:string[]=[];
- let ids=100,refreshes=0,allowed=true,openAccepted=false;
+ let ids=100,refreshes=0,allowed=true,openAccepted=false,readOwner:(()=>ProjectHomeNativeActionIdentity|null)|null=null;
  let read:()=>Promise<unknown>=async()=>snapshot;
  let trash:(input:ProjectDeleteInput)=>Promise<unknown>=async input=>projectDeleteResponseSchema.parse({requestId:input.requestId,projectId:input.projectId,projectFile:input.projectFile,trashed:true,records:'retained'});
  let choose:ProjectEntriesDesktopBridge['chooseLocation']=async()=>selection;
- let instantiate:NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>=async input=>projectCopyResponseSchema.parse({requestId:input.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:input.name,lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0});
+ let instantiate:NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>=async input=>templateReceipt(input);
  let refresh=async()=>{refreshes++;};
  let ports:ProjectHomeNativeActions|undefined={trash:async input=>{trashes.push(input);return trash(input);},example:{templates:[{id:'timeline-basics',version:1}],bridge:{chooseLocation:input=>choose(input),instantiateTemplate:async input=>{examples.push(input);return instantiate(input);}}}};
- const controller=createProjectHomeNativeActionsController({ports:()=>ports,owner:()=>owner,canStart:()=>allowed,readDirectory:async()=>{reads.push('GET');return read();},onChange:(_state,next)=>{metadata.push(next);onNativeMetadata?.(next);},onRefresh:()=>refresh(),onOpenCreated:async projectId=>{opened.push(projectId);return openAccepted;},...(onNativeResult?{onOpenNativeResult:onNativeResult}:{}),newRequestId:()=>id(++ids)});controller.activate();
- return {controller,reads,trashes,examples,metadata,opened,get snapshot(){return snapshot;},set snapshot(value){snapshot=value;},get refreshes(){return refreshes;},setOwner(value:ProjectHomeNativeActionIdentity|null){owner=value;},setAllowed(value:boolean){allowed=value;},setRead(value:typeof read){read=value;},setTrash(value:typeof trash){trash=value;},setChoose(value:typeof choose){choose=value;},setInstantiate(value:typeof instantiate){instantiate=value;},setRefresh(value:typeof refresh){refresh=value;},setOpen(value:boolean){openAccepted=value;},setPorts(value:ProjectHomeNativeActions|undefined){ports=value;}};
+ const controller=createProjectHomeNativeActionsController({ports:()=>ports,owner:()=>readOwner?readOwner():owner,canStart:()=>allowed,readDirectory:async()=>{reads.push('GET');return read();},onChange:(_state,next)=>{metadata.push(next);onNativeMetadata?.(next);},onRefresh:()=>refresh(),onOpenCreated:async projectId=>{opened.push(projectId);return openAccepted;},...(onNativeResult?{onOpenNativeResult:onNativeResult}:{}),newRequestId:()=>id(++ids)});controller.activate();
+ return {controller,reads,trashes,examples,metadata,opened,get snapshot(){return snapshot;},set snapshot(value){snapshot=value;},get refreshes(){return refreshes;},setOwner(value:ProjectHomeNativeActionIdentity|null){owner=value;},setOwnerReader(value:()=>ProjectHomeNativeActionIdentity|null){readOwner=value;},setAllowed(value:boolean){allowed=value;},setRead(value:typeof read){read=value;},setTrash(value:typeof trash){trash=value;},setChoose(value:typeof choose){choose=value;},setInstantiate(value:typeof instantiate){instantiate=value;},setRefresh(value:typeof refresh){refresh=value;},setOpen(value:boolean){openAccepted=value;},setPorts(value:ProjectHomeNativeActions|undefined){ports=value;}};
 }
 
 test('missing native capabilities and denied departure permits perform no directory read or mutation',async()=>{
@@ -155,6 +158,7 @@ test('new input or a revoked native permit preserves the verified template recei
  const nativePermit=()=>permit,pending=f.controller.startExample('Storage','Suggested',()=>nativePermit(),nativePermit);await new Promise(setImmediate);permit=false;
  gate.resolve(projectCopyResponseSchema.parse({requestId:f.examples[0]!.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:'Panel name',lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0}));
  assert.equal(await pending,true);assert.equal(opens,0);assert.equal(f.controller.getState().kind,'example-created');assert.equal(f.controller.getMetadata().unknown,false);assert.equal(f.controller.getState().exampleReceipt!.requestId,f.examples[0]!.requestId);assert.equal(f.examples.length,1);
+ assert.equal(f.controller.getState().reason,'changed');assert.equal(await f.controller.retryOpen(),false);assert.equal(opens,0);assert.deepEqual(f.opened,[]);assert.equal(f.controller.close(),true);
 });
 
 test('automatic opening uses the captured live native authority rather than a stale copy of its own busy prop',async()=>{
@@ -163,11 +167,58 @@ test('automatic opening uses the captured live native authority rather than a st
  assert.equal(await f.controller.startExample('Storage','Suggested',permit,permit),true);assert.equal(opens,1);assert.equal(f.controller.getState().kind,'idle');assert.equal(f.examples.length,1);
 });
 
-test('a validated ACK arriving after disposal is retained privately and explicit recheck does not instantiate again',async()=>{
- const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>(),f=fixture();f.setInstantiate(()=>gate.promise);
- const pending=f.controller.startExample('Storage','Suggested');await new Promise(setImmediate);f.controller.dispose();f.controller.activate();
- gate.resolve(projectCopyResponseSchema.parse({requestId:f.examples[0]!.requestId,sourceProjectId:projectId,project:{projectId:id(60),projectFile:selection.displayPath,fileIdentity:{dev:'1',ino:'60'},name:'Panel name',lastOpenedAt:null,summary:null},contentSequence:0,contentToken:'a'.repeat(32),versions:0}));
- assert.equal(await pending,false);assert.equal(f.controller.getState().kind,'example-unknown');assert.equal(await f.controller.recheck(),true);assert.equal(f.examples.length,1);assert.equal(f.controller.getState().kind,'example-created');assert.equal(f.controller.getState().exampleReceipt!.project.projectId,id(60));
+test('a permit revoked during the post-ACK refresh preserves creation but cannot authorize opening or an old-permit retry',async()=>{
+ let permitted=true,opens=0;
+ const f=fixture(async()=>{opens++;return true;}),nativePermit=()=>permitted;
+ f.setRefresh(async()=>{permitted=false;});
+ assert.equal(await f.controller.startExample('Storage','Suggested',nativePermit,nativePermit),true);
+ assert.equal(f.controller.getState().kind,'example-created');assert.equal(f.controller.getState().reason,'changed');assert.ok(f.controller.getState().exampleReceipt);
+ assert.equal(f.controller.getMetadata().unknown,false);assert.equal(f.controller.getMetadata().busy,false);assert.equal(opens,0);
+ permitted=true;assert.equal(await f.controller.retryOpen(),false,'A revoked operation cannot silently regain opening authority.');
+ assert.equal(opens,0);assert.deepEqual(f.opened,[]);assert.equal(f.examples.length,1);assert.equal(f.controller.close(),true);
+});
+
+test('a verified ACK across disposal settles known creation without opening or reusing the old native permit',async()=>{
+ const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>();let opens=0;
+ const f=fixture(async()=>{opens++;return true;}),nativePermit=()=>true;f.setInstantiate(()=>gate.promise);
+ const pending=f.controller.startExample('Storage','Suggested',nativePermit,nativePermit);await new Promise(setImmediate);const original=f.examples[0]!;
+ f.controller.dispose();f.controller.activate();gate.resolve(templateReceipt(original));
+ assert.equal(await pending,true);assert.equal(f.controller.getState().kind,'example-created');assert.equal(f.controller.getMetadata().unknown,false);assert.equal(f.controller.getMetadata().busy,false);
+ assert.equal(f.controller.getState().project,null);assert.equal(f.controller.getState().exampleReceipt,null);assert.equal(opens,0);
+ assert.equal(await f.controller.recheck(nativePermit,nativePermit),false);assert.equal(await f.controller.retryOpen(),false);assert.equal(opens,0);
+ assert.equal(f.examples.length,1);assert.equal(f.examples[0],original);assert.equal(f.controller.close(),true);
+});
+
+test('verified template ACKs after a real owner change are known and closable without leaking an old library project',async()=>{
+ for(const change of ['scope','instance','epoch','blocked'] as const){
+  const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>();let opens=0;
+  const f=fixture(async()=>{opens++;return true;}),nativePermit=()=>true;f.setInstantiate(()=>gate.promise);
+  const pending=f.controller.startExample('Storage','Suggested',nativePermit,nativePermit);await new Promise(setImmediate);const original=f.examples[0]!;
+  f.setOwner(change==='blocked'?null:{appLibraryScope:change==='scope'?'b'.repeat(64):f.snapshot.appLibraryScope,instanceId:change==='instance'?id(2):f.snapshot.instanceId,epoch:change==='epoch'?2:1});
+  gate.resolve(templateReceipt(original));assert.equal(await pending,true,change);
+  assert.equal(f.controller.getState().kind,'example-created',change);assert.equal(f.controller.getState().project,null,change);assert.equal(f.controller.getState().exampleReceipt,null,change);
+  assert.equal(f.controller.getMetadata().unknown,false,change);assert.equal(f.controller.getMetadata().busy,false,change);assert.equal(opens,0,change);
+  assert.equal(await f.controller.retryOpen(),false,change);assert.equal(await f.controller.recheck(nativePermit,nativePermit),false,change);
+  assert.equal(f.examples.length,1,change);assert.equal(f.examples[0],original,change);assert.equal(f.controller.close(),true,change);
+ }
+});
+
+test('an owner or permit change while automatic opening awaits a refusal or error restores a closable known result',async()=>{
+ for(const change of ['owner','permit'] as const)for(const outcome of ['refused','error'] as const){
+  const gate=held<boolean>(),calls:{projectId:string;permit:()=>boolean}[]=[];let permitted=true;
+  const f=fixture(async(projectId,permit)=>{calls.push({projectId,permit});return gate.promise;}),nativePermit=()=>permitted;
+  const pending=f.controller.startExample('Storage','Suggested',nativePermit,nativePermit);await new Promise(setImmediate);
+  assert.equal(f.controller.getState().kind,'opening-example',outcome);assert.equal(calls.length,1,outcome);assert.equal(calls[0]!.permit,nativePermit,outcome);
+  if(change==='owner')f.setOwner({appLibraryScope:f.snapshot.appLibraryScope,instanceId:id(2),epoch:2});else permitted=false;
+  if(outcome==='error')gate.reject(Error('Open unavailable'));else gate.resolve(false);
+  assert.equal(await pending,true,outcome);assert.equal(f.controller.getState().kind,'example-created',outcome);
+  if(change==='owner'){assert.equal(f.controller.getState().project,null,outcome);assert.equal(f.controller.getState().exampleReceipt,null,outcome);}
+  else{assert.ok(f.controller.getState().project,outcome);assert.ok(f.controller.getState().exampleReceipt,outcome);}
+  assert.equal(f.controller.getState().reason,'changed',outcome);
+  assert.equal(f.controller.getMetadata().busy,false,outcome);assert.equal(f.controller.getMetadata().unknown,false,outcome);
+  permitted=true;
+  assert.equal(await f.controller.retryOpen(),false,outcome);assert.equal(f.examples.length,1,outcome);assert.equal(calls.length,1,outcome);assert.equal(f.controller.close(),true,outcome);
+ }
 });
 
 function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>boolean)|null>,prepareRecheck?:(version:number)=>Promise<(()=>boolean)|null>,onOpen?:(id:string)=>Promise<boolean>){
@@ -181,6 +232,43 @@ function screenAction(f:ReturnType<typeof fixture>,prepare:()=>Promise<(()=>bool
  const open=lenientFunction('env',`with(env){${source.slice(end,openEnd)};return open;}`)(env) as (id:string)=>Promise<boolean>;
  return {action,open,env,busy};
 }
+
+function screenIdentity(f:ReturnType<typeof fixture>,directory:ProjectEntryDirectoryController){
+ const source=readFileSync(new URL('../apps/web/src/ProjectHomeDirectoryScreen.tsx',import.meta.url),'utf8');
+ const start=source.indexOf('  function ready()'),end=source.indexOf('  async function reload(',start),scopeStart=source.indexOf('const verifiedScope =');
+ assert.ok(start>=0&&end>start&&scopeStart>=0);
+ let catalog=true,active=true,parent:{appLibraryScope:string;instanceId:string}|null={appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId};
+ const env={directory,active:()=>active,native:f.controller,opening:{current:null},preparingNative:{current:false},form:{current:{busy:false}},current:{current:{summaryScope:f.snapshot.appLibraryScope,catalogReady:()=>catalog,entryIdentity:()=>parent,phase:'home',busy:false}}};
+ const owner=lenientFunction('env',`with(env){${source.slice(scopeStart,source.indexOf('\n',scopeStart))}\n${source.slice(start,end)};return {ready,actionOwner,baseCanAct,canAct};}`)(env) as {ready:()=>unknown;actionOwner:()=>ProjectHomeNativeActionIdentity|null;baseCanAct:()=>boolean;canAct:()=>boolean};
+ return {...owner,setCatalog(value:boolean){catalog=value;},setParent(value:typeof parent){parent=value;},setActive(value:boolean){active=value;}};
+}
+
+test('actual Screen keeps in-flight identity through parent and own directory refresh while forbidding new actions',async()=>{
+ for(const window of ['parent-catalog','screen-directory'] as const){
+  const acknowledgement=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>(),directoryReply=held<unknown>(),calls:{projectId:string;permit:()=>boolean}[]=[];
+  const f=fixture(async(projectId,permit)=>{calls.push({projectId,permit});return false;});f.setInstantiate(()=>acknowledgement.promise);
+  let read=async():Promise<unknown>=>f.snapshot;
+  const directory=createProjectEntryDirectoryController({read:()=>read(),expectedScope:()=>f.snapshot.appLibraryScope});directory.activate();assert.equal(await directory.refresh(),true);
+  const screen=screenIdentity(f,directory);f.setOwnerReader(screen.actionOwner);
+  const verified={appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId,epoch:1};
+  assert.deepEqual(screen.actionOwner(),verified);assert.equal(screen.canAct(),true);
+  const nativePermit=()=>true,pending=f.controller.startExample('Storage','Suggested',nativePermit,nativePermit);await new Promise(setImmediate);const original=f.examples[0]!;
+  assert.equal(screen.baseCanAct(),true);let refresh:Promise<boolean>|null=null;
+  if(window==='parent-catalog')screen.setCatalog(false);
+  else{read=()=>directoryReply.promise;refresh=directory.refresh();assert.equal(directory.getState().phase,'loading');assert.equal(directory.getState().snapshot,null);assert.equal(screen.ready(),null);}
+  assert.deepEqual(screen.actionOwner(),verified,window);assert.equal(screen.baseCanAct(),false,window);assert.equal(screen.canAct(),false,window);
+  acknowledgement.resolve(templateReceipt(original));assert.equal(await pending,true,window);
+  assert.equal(f.controller.getState().kind,'example-created',window);assert.equal(f.controller.getMetadata().unknown,false,window);assert.equal(f.controller.getMetadata().busy,false,window);
+  assert.equal(f.controller.getState().exampleReceipt?.requestId,original.requestId,window);assert.equal(calls.length,1,window);assert.equal(calls[0]!.permit,nativePermit,window);
+  assert.equal(f.examples.length,1,window);assert.equal(f.examples[0],original,window);assert.equal(f.controller.close(),true,window);
+  if(refresh){directoryReply.resolve(f.snapshot);assert.equal(await refresh,true);}
+  screen.setParent(null);assert.equal(screen.actionOwner(),null,'A parent identity refusal remains effective even with a local pin.');
+  screen.setParent({appLibraryScope:'b'.repeat(64),instanceId:f.snapshot.instanceId});assert.equal(screen.actionOwner(),null);
+  screen.setParent({appLibraryScope:f.snapshot.appLibraryScope,instanceId:id(2)});assert.equal(screen.actionOwner(),null);
+  screen.setParent({appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId});screen.setActive(false);assert.equal(screen.actionOwner(),null);
+  f.controller.dispose();directory.dispose();
+ }
+});
 
 function parentScreenFixture(){
  let entry!:ReturnType<typeof createProjectEntryController>,confirmations=0,preparations=0,recheckPreparations=0,legacyWrites=0,consent:boolean|Promise<boolean>=true;
@@ -333,6 +421,23 @@ const ui=module.exports as {render(kind:'home'|'action',props:Record<string,unkn
 const noop=()=>{};
 const view=(state:ProjectHomeNativeActionState,locale:typeof LOCALES[number],extra:Record<string,unknown>={})=>ui.render('action',{state,onClose:noop,onConfirmTrash:noop,onRecheck:noop,onRetryOpen:noop,onDismissNotice:noop,...extra},locale);
 const disabled=(tag:string|null)=>tag!==null&&/\sdisabled=""/u.test(tag);
+
+test('known creation without live opening authority is closable and points to recent projects in every locale',async()=>{
+ for(const changed of ['owner','permit'] as const){
+  const gate=held<Awaited<ReturnType<NonNullable<ProjectEntriesDesktopBridge['instantiateTemplate']>>>>();let allowed=true;
+  const f=fixture(),nativePermit=()=>allowed;f.setInstantiate(()=>gate.promise);
+  const pending=f.controller.startExample('Storage','Suggested',nativePermit,nativePermit);await new Promise(setImmediate);
+  if(changed==='owner')f.setOwner({appLibraryScope:f.snapshot.appLibraryScope,instanceId:id(2),epoch:2});else allowed=false;
+  gate.resolve(templateReceipt(f.examples[0]!));assert.equal(await pending,true);
+  const state=f.controller.getState();assert.equal(state.kind,'example-created');assert.equal(state.reason,'changed');assert.equal(f.controller.getMetadata().unknown,false);
+  for(const locale of LOCALES){const html=view(state,locale);
+   assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.example.createdRecent'))),locale);
+   assert.ok(tagOf(html,'project-home-native-close'),locale);assert.equal(disabled(tagOf(html,'project-home-native-close')),false,locale);
+   assert.equal(tagOf(html,'project-home-example-open'),null,locale);assert.equal(tagOf(html,'project-home-example-refresh'),null,locale);assert.equal(tagOf(html,'project-home-native-recheck'),null,locale);
+  }
+  assert.equal(await f.controller.retryOpen(),false);assert.equal(f.examples.length,1);assert.deepEqual(f.opened,[]);assert.equal(f.controller.close(),true);
+ }
+});
 
 test('12-22 confirmation and unknown/result controls render in four languages without inventing capabilities',async()=>{
  const f=fixture();await f.controller.prepareTrash(projectId);const confirm=f.controller.getState();f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await f.controller.confirmTrash();const unknown=f.controller.getState();

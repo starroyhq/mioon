@@ -4,6 +4,11 @@ import {createProjectEntryDirectoryClient, ProjectEntryDirectoryError} from './p
 import type {ProjectEntryDirectoryErrorCode} from './project-entry-directory-client.ts';
 
 export interface ProjectEntryDirectoryFailure {readonly code: ProjectEntryDirectoryErrorCode; readonly status?: number}
+export interface ProjectEntryDirectoryIdentity {
+  readonly appLibraryScope: string;
+  readonly instanceId: string;
+  readonly epoch: number;
+}
 export interface ProjectEntryDirectoryState {
   readonly phase: 'idle' | 'loading' | 'ready' | 'error' | 'blocked';
   readonly snapshot: ProjectEntriesResponse | null;
@@ -48,6 +53,16 @@ export function createProjectEntryDirectoryController({read, expectedScope = () 
   }
   return {
     getState: (): ProjectEntryDirectoryState => state,
+    /** A refresh clears display rows, not the identity already verified for
+     * an in-flight receipt. New actions still require a ready snapshot. */
+    getVerifiedIdentity(): ProjectEntryDirectoryIdentity | null {
+      if (!active || state.phase === 'blocked' || pinnedScope === null || instanceId === null) return null;
+      try {
+        const expected = expectedScope();
+        if (expected !== null && expected !== undefined && (!validScope(expected) || expected !== pinnedScope)) return null;
+      } catch {return null;}
+      return Object.freeze({appLibraryScope: pinnedScope, instanceId, epoch: state.epoch});
+    },
     activate(): void {if (!active) {active = true; generation++;}},
     dispose(): void {
       active = false; generation++; readSerial++; pending?.abort(); pending = null;

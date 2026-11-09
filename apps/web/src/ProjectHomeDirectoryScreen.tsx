@@ -29,6 +29,8 @@ export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 
   /** Native departure refreshes can finish before React commits their props.
    * Read the owning controller live when it supplies this capability. */
   readonly catalogReady?: boolean | (() => boolean);
+  /** The native parent retains its verified identity while its catalog loads. */
+  readonly entryIdentity?: () => {readonly appLibraryScope: string; readonly instanceId: string} | null;
   readonly onOpen: (projectId: string) => void | Promise<boolean>;
   readonly onRetry: () => void | Promise<boolean>;
   readonly onRefresh: () => void | Promise<unknown>;
@@ -89,10 +91,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   }));
   const [native] = useState(() => createProjectHomeNativeActionsController({
     ports: () => current.current.nativeActions,
-    owner: () => {
-      const state = ready();
-      return active() && catalogReady() && state?.snapshot ? {appLibraryScope: state.snapshot.appLibraryScope, instanceId: state.snapshot.instanceId, epoch: state.epoch} : null;
-    },
+    owner: actionOwner,
     canStart: () => baseCanAct(),
     readDirectory: async () => {
       reads.current++; background.invalidate();
@@ -122,6 +121,12 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   function ready() {
     const state = directory.getState(), expected = verifiedScope(current.current.summaryScope);
     return state.phase === 'ready' && state.snapshot && (expected === null || expected === state.snapshot.appLibraryScope) ? state : null;
+  }
+  function actionOwner() {
+    const verified = directory.getVerifiedIdentity(), parent = current.current.entryIdentity;
+    if (!active() || !verified) return null;
+    const entry = parent?.();
+    return parent && (!entry || entry.appLibraryScope !== verified.appLibraryScope || entry.instanceId !== verified.instanceId) ? null : verified;
   }
   const catalogReady = (): boolean => {
     const value = current.current.catalogReady;

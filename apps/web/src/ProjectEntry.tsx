@@ -34,6 +34,11 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown || Boolean(native?.busy || desktop?.readCloseSnapshot().unknown)} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
     <ProjectHome parentGuardsDeparture catalogReady={() => controller.getState().catalogReady && !identity?.getState().identityBlocked}
+      entryIdentity={identity ? () => {
+        const owner = identity.getState();
+        return !owner.identityBlocked && owner.appLibraryScope && owner.instanceId
+          ? {appLibraryScope: owner.appLibraryScope, instanceId: owner.instanceId} : null;
+      } : undefined}
       readDirectory={identity ? () => readProjectEntryIdentity(identity) : undefined}
       onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting || Boolean(native?.busy || native?.blocked || desktop?.readCloseSnapshot().unknown)} listBusy={state.listBusy} listError={state.listError}
