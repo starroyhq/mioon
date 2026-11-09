@@ -1,15 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {readProjectMediaNativeClient} from '../apps/web/src/project-media-native-client.ts';
 import type {ProjectMediaNativeClient} from '../apps/web/src/project-media-native-client.ts';
 import {createProjectMediaController} from '../apps/web/src/project-media-state.ts';
 import type {ProjectMediaAsset, ProjectMediaOwner} from '../apps/web/src/project-media-state.ts';
 import {createProjectMediaClient, ProjectMediaError} from '../apps/web/src/project-media-client.ts';
 import {createNativeAssetMediaBridge} from '../apps/desktop/src/asset-relink-preload.ts';
+import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
 import {nativeRelinkPreviewSchema, NATIVE_ASSET_MEDIA_CHANNEL, NATIVE_ASSET_MEDIA_LIMITS} from '../packages/contracts/src/asset-media-native.ts';
-import type {NativeRelinkPreview, NativeRelinkApplyResult} from '../packages/contracts/src/asset-media-native.ts';
+import type {NativeAssetMediaPort, NativeRelinkPreview, NativeRelinkApplyResult, NativeRelinkApplyInput} from '../packages/contracts/src/asset-media-native.ts';
 import type {AssetMediaDto} from '../packages/contracts/src/asset-media.ts';
+import {assetMediaDtoSchema, assetMediaRecordSchema, assetMediaStatusListResponseSchema} from '../packages/contracts/src/asset-media.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createAssetMediaServices} from '../packages/business/src/asset-media-services.ts';
+import {createNativeAssetMediaServices} from '../packages/business/src/asset-media-native.ts';
+import {run} from '../packages/business/src/media.ts';
+import {mediaLocationPageSchema} from '../packages/contracts/src/project-media-ui.ts';
 
 const id = (n: number) => `78000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(900), hash = 'a'.repeat(64);
@@ -99,10 +113,11 @@ test('picker cancellation and a mismatched candidate cannot borrow HTTP acceptCh
   }
 });
 
-test('native apply retains the original token and verifies full hashes/revisions without changing old references', async () => {
-  const f = fixture(), timeline = {clips: [{assetId: id(1)}, {assetId: id(3)}]}, history = JSON.stringify(timeline); await f.controller.refresh(); await f.controller.choose(id(1));
+test('native apply retains the original token and verifies complete DTOs/revisions without changing old references', async () => {
+  const f = fixture(), timeline = {clips: [{assetId: id(1)}, {assetId: id(3)}]}, history = JSON.stringify(timeline); await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
   assert.equal(await f.controller.apply(), true); assert.deepEqual(f.calls.find(value => value.kind === 'native-apply')!.input, {projectId, previewToken: id(800), requestId: 'native-original-request-1'});
   assert.equal(f.applied.length, 1); assert.deepEqual(f.controller.getState().nativeConfirmedDirectories, ['/moved']); assert.equal(f.controller.getState().newAdded, 0); assert.equal(JSON.stringify(timeline), history);
+  assert.equal(f.controller.getState().relinkOpen, true, 'A partial apply keeps the dialog available for its changed and missing rows');
   assert.equal(f.calls.some(value => ['http-apply', 'accept-changed', 'confirm'].includes(value.kind)), false); f.controller.dispose();
 });
 
@@ -153,19 +168,19 @@ test('all owner fields, lease loss, cancellation and revision changes discard he
   }
 });
 
-test('a held native ACK cannot publish across owner/lease changes; revision changes remain unknown until original retry', async () => {
+test('a held native ACK cannot publish across owner/lease changes; committed catalog refreshes preserve its receipt', async () => {
   for (const replacement of [null, {...owner(), epoch: 2}, {...owner(), instanceId: id(902)}, 'revision'] as const) {
     const late = deferred<NativeRelinkApplyResult>(), f = fixture({apply: async () => late.promise}); await f.controller.refresh(); await f.controller.choose(id(1)); const writing = f.controller.apply(); await turn();
     if (replacement === 'revision') {f.setAssets([asset(1, 2), asset(2, 2), asset(3), asset(4)]); f.controller.update(f.owner);}
     else {f.setOwner(replacement); if (replacement) f.controller.update(replacement);}
-    late.resolve(success()); assert.equal(await writing, false); assert.equal(f.applied.length, 0);
-    if (replacement === 'revision') assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+    late.resolve(success()); assert.equal(await writing, replacement === 'revision'); assert.equal(f.applied.length, replacement === 'revision' ? 1 : 0);
+    if (replacement === 'revision') assert.equal(f.controller.getState().nativeOutcomeUnknown, false);
     f.controller.dispose();
   }
 });
 
-test('malformed native success never acknowledges duplicate, foreign, stale or sampled assets', async () => {
-  for (const assets of [[dto(1), dto(1)], [dto(1), {...dto(2), projectId: id(999), url: projectMediaPath(id(999), id(2))}], [dto(1, 1), dto(2)], [{...dto(1), sha256: null, fingerprint: {...dto(1).fingerprint, fullSha256: null}, hashState: 'sampled' as const}, dto(2)]]) {
+test('malformed native success never acknowledges duplicate, foreign, stale or inconsistent hash assets', async () => {
+  for (const assets of [[dto(1), dto(1)], [dto(1), {...dto(2), projectId: id(999), url: projectMediaPath(id(999), id(2))}], [dto(1, 1), dto(2)], [{...dto(1), sha256: null, fingerprint: {...dto(1).fingerprint, fullSha256: hash}, hashState: 'sampled' as const}, dto(2)]]) {
     const inputs: unknown[] = [], f = fixture({apply: async input => {inputs.push(input); return {status: 'applied', assets, confirmedDirectories: []};}});
     await f.controller.refresh(); await f.controller.choose(id(1)); assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, true); assert.equal(f.applied.length, 0); await turn(); assert.equal(inputs.length, 1);
     assert.equal(await f.controller.apply(), false); assert.deepEqual(inputs[0], inputs[1]); f.controller.dispose();
@@ -197,4 +212,117 @@ test('a host-reported earlier unknown cannot be cleared by a fresh chooser or a 
   await f.controller.refresh(); f.controller.openRelink(); await f.controller.choose(id(1));
   assert.equal(f.controller.getState().nativeOutcomeUnknown, true); assert.equal(f.controller.getState().canChoose, false); assert.equal(f.controller.getState().canApply, false);
   f.controller.cancelRelink(); await f.controller.choose(id(1)); assert.equal(await f.controller.apply(), false); assert.equal(choices, 1); assert.equal(f.controller.getState().relinkOpen, true); f.controller.dispose();
+});
+
+/** Real project/app databases, filesystem media and native services run through
+ * the actual host/preload/client chain. Only picker/consent and ACK loss are
+ * controlled; the returned relink DTO and durable receipt are never fabricated. */
+async function realNativeFixture(t: test.TestContext, mode: 'normal' | 'lost-ack' | 'not-committed' = 'normal') {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-q08-native-'));
+  const projectDir = path.join(root, 'project'), external = path.join(root, 'moved');
+  mkdirSync(projectDir); mkdirSync(external);
+  const store = openStore(projectDir), app = openAppLibrary({dataDir: path.join(root, 'application')});
+  store.put('projects', {id: store.projectId, name: 'Native sampled relink'});
+  const services = createServices(store, new Map(), {application: createProjectServiceApplication(app)});
+  const media = createAssetMediaServices(store, {outsidePaths: app.outsidePaths});
+  const native = createNativeAssetMediaServices(store, {outsidePaths: app.outsidePaths});
+  const attempts: NativeRelinkApplyInput[] = [], receipts: NativeRelinkApplyResult[] = [], previews: NativeRelinkPreview[] = [];
+  let controller: ReturnType<typeof createProjectMediaController> | undefined;
+  let host: ReturnType<typeof createAssetRelinkHost<object, object>> | undefined;
+  t.after(async () => {controller?.dispose(); host?.dispose(); await turn(); await services.drain(); store.close(); app.close(); rmSync(root, {recursive: true, force: true});});
+  const names = ['q-clip-a.mp4', 'q-clip-b.mp4', 'q-clip-c.mp4'];
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=32x32:d=0.1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', path.join(projectDir, names[0])]);
+  for (const name of names.slice(1)) copyFileSync(path.join(projectDir, names[0]), path.join(projectDir, name));
+  const imported: AssetMediaDto[] = [];
+  for (const name of names) imported.push(assetMediaDtoSchema.parse(await services.call('asset.import', {projectId: store.projectId, requestId: randomUUID(), sourcePath: path.join(projectDir, name)})));
+  assert.deepEqual(imported.map(value => [value.hashState, value.sha256, value.referenceRevision]), Array.from({length: 3}, () => ['sampled', null, 1]));
+  const bytes = names.map(name => readFileSync(path.join(projectDir, name)));
+  for (const name of names) renameSync(path.join(projectDir, name), path.join(external, name));
+  const owner: ProjectMediaOwner = {appLibraryScope: hash, instanceId: randomUUID(), projectId: store.projectId, epoch: 1, session: 'real-native-editor'};
+  let values: ProjectMediaAsset[] = imported;
+  let applied = 0, confirmations = 0;
+  const backend: NativeAssetMediaPort = {...native,
+    preview: async (...args) => {const result = await native.preview(...args); previews.push(result); return result;},
+    apply: async (input, options) => {
+      attempts.push(input);
+      if (mode === 'not-committed' && attempts.length === 1) return {status: 'failed', error: {code: 'ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN', status: 409}, confirmedDirectories: []};
+      const result = await native.apply(input, options); receipts.push(result);
+      if (mode === 'lost-ack' && attempts.length === 1) throw Object.assign(new Error('Synthetic ACK loss after real commit'), {code: 'ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN', status: 409});
+      return result;
+    },
+  };
+  host = createAssetRelinkHost<object, object>({backend,
+    ownerForEvent: () => ({window: {}, windowId: id(910), backendId: id(911), contextId: id(912), projectId: store.projectId, key: owner, isCurrent: () => true}),
+    chooseFile: async () => path.join(external, names[0]),
+    confirmOutside: async (_owner, input) => {confirmations++; assert.equal(input.displayPath, path.join(external, names[0])); return true;},
+  });
+  const bridge = createNativeAssetMediaBridge((channel, input) => {assert.equal(channel, NATIVE_ASSET_MEDIA_CHANNEL); return host!.handle({}, input);});
+  const client = {...createProjectMediaClient(),
+    status: async (input: unknown) => assetMediaStatusListResponseSchema.parse(await media.call('asset.media.status.list', input)),
+    locations: async (input: unknown) => mediaLocationPageSchema.parse(await media.trustedCall('asset.media.location.list', input)),
+    rules: async () => ({projectId: store.projectId, file: 'AGENTS.md' as const, exists: false, text: '', hash: null, trust: 'absent' as const, maxBytes: 8192 as const, readError: null, pendingWrites: false}),
+  };
+  const readStoredAsset = (value: unknown) => {
+    assert.ok(value && typeof value === 'object' && !Array.isArray(value));
+    // Stored imports retain a derived URL for older readers; the reference
+    // record validator deliberately excludes that non-authoritative field.
+    return assetMediaRecordSchema.parse(Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'url')));
+  };
+  const readStoredAssets = () => store.list('assets', store.projectId).map(readStoredAsset);
+  const storedRevision = (assetId: string) => readStoredAsset(store.get('assets', assetId)).referenceRevision;
+  controller = createProjectMediaController({client, nativeRelink: readProjectMediaNativeClient({__mioonAssetMediaNative: bridge})!,
+    readOwner: () => owner, readAssets: () => values, onApplied: () => {applied++; values = readStoredAssets().map(value => ({id: value.id, projectId: value.projectId, name: value.name, mimeType: value.mimeType, referenceRevision: value.referenceRevision})); controller!.update(owner);},
+  });
+  controller.activate(); controller.update(owner); await controller.refresh(); controller.openRelink(); await controller.choose(imported[0].id);
+  assert.equal(confirmations, 1); assert.equal(previews.length, 1); assert.equal(previews[0].outside, true);
+  assert.deepEqual(previews[0].rows.map(value => value.outcome).sort(), ['auto', 'auto', 'picked']);
+  assert.equal(previews[0].foundBy?.count, 2); assert.equal(controller.getState().canApply, true);
+  const sequence = () => store.db.prepare('SELECT contentSequence FROM project_file').get()!.contentSequence;
+  return {controller, store, app, attempts, receipts, imported, values: () => values, applied: () => applied,
+    external, sequence, bytes, storedRevision,
+    refreshCatalog() {values = imported.map(value => ({...value, referenceRevision: storedRevision(value.id)})); controller!.update(owner);},
+    assertFilesUnchanged() {for (const [index, name] of names.entries()) assert.deepEqual(readFileSync(path.join(external, name)), bytes[index]);},
+    replaceChosen() {writeFileSync(path.join(external, names[0]), Buffer.from('A different file after the original unknown'));},
+  };
+}
+
+test('real native three-video outside relink accepts sampled receipts, closes the dialog and restores online media', async t => {
+  const f = await realNativeFixture(t);
+  assert.equal(await f.controller.apply(), true);
+  assert.equal(f.receipts.length, 1); assert.equal(f.receipts[0].status, 'applied');
+  if (f.receipts[0].status !== 'applied') assert.fail('Expected the real backend relink receipt');
+  assert.deepEqual(f.receipts[0].assets.map(value => [value.hashState, value.sha256, value.referenceRevision]), Array.from({length: 3}, () => ['sampled', null, 2]));
+  assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().relinkOpen, false);
+  assert.equal(f.applied(), 1); assert.equal(f.attempts.length, 1);
+  assert.deepEqual(f.controller.getState().nativeConfirmedDirectories, [f.external]);
+  assert.equal(f.store.list('assets', f.store.projectId).length, 3);
+  for (const value of f.values()) {assert.equal(value.referenceRevision, 2); assert.equal(f.controller.statusFor(value).kind, 'online'); assert.equal(f.controller.canRead(value), true);}
+  const state = f.controller.getState(); assert.equal(state.status.kind, 'ready');
+  if (state.status.kind === 'ready') for (const value of Object.values(state.status.value)) {assert.equal(value.outside, true); assert.equal(value.status, 'online'); assert.equal(value.reason, 'same-stats');}
+  f.assertFilesUnchanged();
+});
+
+test('real committed relink with a lost ACK settles by original-key receipt after the catalog observes the new revisions', async t => {
+  const f = await realNativeFixture(t, 'lost-ack');
+  assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+  assert.equal(f.applied(), 0); assert.deepEqual(f.imported.map(value => f.storedRevision(value.id)), [2, 2, 2]);
+  const sequence = f.sequence(); f.refreshCatalog(); await f.controller.refresh();
+  f.app.outsidePaths.revoke(f.store.projectId, f.external);
+  assert.equal(await f.controller.apply(), true); assert.equal(f.controller.getState().nativeOutcomeUnknown, false); assert.equal(f.controller.getState().relinkOpen, false);
+  assert.equal(f.attempts.length, 2); assert.deepEqual(f.attempts[0], f.attempts[1]); assert.equal(f.applied(), 1);
+  assert.equal(f.sequence(), sequence); assert.deepEqual(f.app.outsidePaths.list(f.store.projectId), []);
+  assert.equal(f.store.list('assets', f.store.projectId).length, 3); assert.deepEqual(f.imported.map(value => f.storedRevision(value.id)), [2, 2, 2]);
+  f.assertFilesUnchanged();
+});
+
+test('real unknown before commit cannot acknowledge changed media on retry or mint a second relink intent', async t => {
+  const f = await realNativeFixture(t, 'not-committed'), sequence = f.sequence();
+  assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, true);
+  assert.deepEqual(f.imported.map(value => f.storedRevision(value.id)), [1, 1, 1]);
+  assert.deepEqual(f.app.outsidePaths.list(f.store.projectId), []); f.replaceChosen();
+  assert.equal(await f.controller.apply(), false); assert.equal(f.controller.getState().nativeOutcomeUnknown, false);
+  assert.equal(f.controller.getState().lastError, 'REVISION_CONFLICT');
+  assert.equal(f.applied(), 0); assert.equal(f.attempts.length, 2); assert.deepEqual(f.attempts[0], f.attempts[1]);
+  assert.equal(f.sequence(), sequence); assert.deepEqual(f.app.outsidePaths.list(f.store.projectId), []);
+  assert.deepEqual(f.imported.map(value => f.storedRevision(value.id)), [1, 1, 1]);
 });
