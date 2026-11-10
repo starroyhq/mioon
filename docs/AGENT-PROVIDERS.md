@@ -70,18 +70,49 @@ OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `i
 
 验证仅使用真实形状离线流、真实桌面设置 broker 接线和合成供应商传输，不发真实模型请求、不使用真实密钥；签名包实际 Responses 对话和工具调用由协调人与用户验收。
 
-### 其他厂商目录复核（2026-11-10；默认值不在本卡改）
+## 其他厂商新配置默认与兼容（Q12，核对 2026-11-10）
 
-本次从总目录和生命周期页出发重新核对，不以已知型号单页存在来判定“当前”。替换其他厂商默认值、推理和协议适配交 Q12。
+本轮以各家当前目录、生命周期及协议原页为依据，只更新已确认组合的新配置。所有厂商原默认协议、端点、鉴权方式、旧保存配置和原始 journal 不迁移；OpenAI/OpenRouter 的 Q11 默认及行为不变。型号页可用不代表账号、地域或本机已获权，以下均为离线适配和官方文档证据。
 
-| 厂商与现有默认 | 目录与退役结果 | 相对上轮的更正与边界 |
-| --- | --- | --- |
-| DeepSeek `deepseek-flash` | [目录](https://api-docs.deepseek.com/quick_start/pricing/) 当前对应 V4.1-Flash-1017；V4 Flash/Flash Vision Exp 的旧名临时路由到新 Flash | 默认当前，原结论成立；[更新日志](https://api-docs.deepseek.com/updates/) 与当前目录仍保留 V4 Pro，不能把早期退役安排当成已关停事实 |
-| Qwen `qwen-plus`；Responses `qwen3.8-flash` | [总目录](https://help.aliyun.com/en/model-studio/text-generation-model/) 推荐 3.7-plus、3.8-max、3.8-flash；Plus 裸别名仍列支持 | 补全上轮未明确列出的 3.8-max；[Plus 单页](https://help.aliyun.com/en/model-studio/qwen-plus) 仍指向 2025-12-01，区域工具差异仍须分别查。旧代不等于已弃用；[退役索引](https://help.aliyun.com/en/model-studio/model-depreciation) 的公告未能完整核实所有快照名单 |
-| 智谱/Z.AI `glm-4.7` | [中国总目录](https://docs.bigmodel.cn/cn/guide/start/model-overview) 与 [国际总目录](https://docs.z.ai/guides/overview/overview) 均列最新 5.3 / 5.3-Flash，4.7 仍在其他文本型号中 | 上轮对国际最新代证据不足的限制已解除；已查 [迁移指南](https://docs.bigmodel.cn/cn/guide/start/migrate-to-glm-new)，未找到 4.7 确定退役日。替换不能沿用旧关闭思考参数 |
-| Kimi `kimi-k2.6` | [中国目录](https://platform.kimi.com/docs/models) 与 [国际目录](https://platform.kimi.ai/docs/models) 当前列 K3.1 Pro、高速版和 K3；K2.6 已停止向新账号开放，11-01 前注册者可继续，预计 2026 年 12 月底全面下线 | 原新账号不可用结论成立；区分停止新账号与全面关停，不声称所有旧账号已不可用 |
-| MiniMax `MiniMax-M3` | [可用/退役目录](https://platform.minimax.io/docs/faq/models) 同时列 M3.1 Flash 和 M3；[发布目录](https://platform.minimax.io/docs/release-notes/models) 最新语言型号是 10-19 的 M3.1 Flash | M3 仍可用，不能当成最新；补上 M2.5/M2.7 停新账号和 11-18 退役安排，套餐转路由与 API 用户不同。公告日期与历史表标题措辞有差异，不扩大到 M3 |
-| Ollama `qwen3:8b` | [Qwen 目录](https://ollama.com/search?q=qwen) 已列 3.8、3.6，另有 3.8-flash-next 实验模型；[8B tag](https://ollama.com/library/qwen3:8b) 仍存在 | 上轮只到 3.5，漏了 3.6/3.8，现更正；[3.8 的 27B 版本](https://ollama.com/library/qwen3.8) 约 18GB，不能直接替换 5.2GB 的 8B 默认。未核对本机安装和硬件，不下载模型，未找到统一公开退役清单 |
+| 厂商 / 平台 | 新建默认与状态 | 协议与思考控制 | 容量与本地请求预算 | 日期 |
+| --- | --- | --- | --- | --- |
+| Anthropic 全球 | `claude-sonnet-5-5`，当前/Active | Messages；按用户批准使用 adaptive + `output_config.effort:low` 和下述固定 beta | context 原页 1M、精确整数未知；最大输出已证 128000；本地仍16384 | 2026-11-10 |
+| DeepSeek 全球 | `deepseek-flash`，当前别名，保持 | CC `thinking.type:disabled`；Responses `reasoning.effort:none`；Messages disabled，保留原实现 | 目录1M/384K；原字段/本地4096不变，不把缩写追加包装成精确整数来源 | 2026-11-10 |
+| Qwen 北京/新加坡共享域及六个workspace | `qwen3.8-flash`，当前/正式 | CC `enable_thinking:false`；Responses `reasoning.effort:none`；Messages `thinking.type:disabled` | 原页1M/128K，精确context/max均null；三协议本地4096 | 2026-11-10 |
+| Kimi 中国/国际 | `kimi-k3.1-pro`，当前标准档 | 仅现已开放CC；强制思考，最低 `reasoning_effort:low`，不发送K2旧thinking开关；`max_completion_tokens` | context及CC最大输出均1048576；本地4096 | 2026-11-10 |
+| 智谱中国/国际 | `glm-4.7`，旧代仍可用，按用户决定暂保 | 新Flash CC有依据，但中国Responses说明冲突、两地Messages精确契约不足；现开放/blocked状态不变 | 旧档案/预算不变，不以CC能力认证其他协议 | 2026-11-10 |
+| MiniMax中国/国际 | `MiniMax-M3`，旧代仍可用，按用户决定暂保 | 新Flash强制思考，但Responses输入/输出reasoning schema不对称且无完整回放例子补证；不自造转换 | 旧档案、自然EOF特例和预算不变 | 2026-11-10 |
+| Ollama本机 | `qwen3:8b`，旧代库tag仍在，未确认新默认 | Granite4.2 3B/Qwen3.5 4B的精确量化tag、思考metadata、内存与任务质量待定；不下载/切云端 | 本机有效窗口和独立最大输出未知；原字段/4096不变 | 2026-11-10 |
+
+### Sonnet 的明确模式、版本和代价
+
+Sonnet 5.5 不能用旧 `thinking.disabled`。最低 `between_tools` 模式又不接受 `block_binding`，无法靠一个额外参数安全承受现有动态工具清单、指令及历史压缩造成的前缀变化。用户已明确选择保留 Sonnet，用 `thinking:{type:"adaptive",block_binding:{prefix_mismatch_behavior:"drop_block"}}` + `output_config:{effort:"low"}`；不在客户端剥离思考块或自动重试，不改现有工具授权和历史机制。
+
+这个精确模式发送固定 `anthropic-beta:thinking-binding-controls-2026-08-01`，且仅此新模式使用 `anthropic-version:2026-10-21`。官方示例及当前SDK默认支持的是该新版本，未用它们冒称旧2023兼容；用户已另行批准这一精确版本分流。原 `2023-06-01` 常量及旧型号、旧冻结body、其他厂商和自定义兼容服务不变。SDK与host分别按官方Anthropic/global/精确Sonnet ID、官方地址及实际冻结body推导，不透传任意SDK header。旧请求不能因预设改变而获得beta或新版本。
+
+服务端可能因前缀变化舍弃旧思考，增加输出token、延迟并改变依赖旧推理的任务质量；官方将其列为过渡策略。低effort也不等于完全不思考。客户端仍保留收到的完整、原序 thinking/signature/tool_use 和 tool_result，包括空thinking+非空签名。流只对上述可信请求允许 `message_start.message.input_transformations` 和fallback `message_delta.input_transformations`：严格校验有限type/path/reason，作为被动元数据丢弃，不进入assistant内容、用户文本或工具权限；旧模式仍拒绝这些未知扩展，签名非空要求不放宽。
+
+依据：[Sonnet概览](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)、[迁移](https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide)、[effort精确128000及低档](https://platform.claude.com/docs/en/build-with-claude/effort)、[保留思考与prefix策略](https://platform.claude.com/docs/en/build-with-claude/preserved-thinking)、[新版绑定限制](https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5)、[API版本](https://platform.claude.com/docs/en/api/versioning)、[官方SDK版本默认](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/client.ts)、[beta回执结构](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)。Haiku4.5仍在官方[生命周期表](https://platform.claude.com/docs/en/about-claude/model-deprecations)为Active，旧ID/快照、disabled及原容量/请求字节保留。当前Haiku5.5是可完全关闭思考的较便宜备选，本卡按用户选择不替换成它。
+
+### Qwen / Kimi 的精确新档案与旧配置
+
+Qwen八平台都按已核[区域发布记录](https://help.aliyun.com/zh/model-studio/newly-released-models)、[文本型号](https://help.aliyun.com/zh/model-studio/text-generation-model)、[Base URL](https://help.aliyun.com/zh/model-studio/base-url)切换同一精确ID，不改变共享域/workspace和Key地域边界；香港Messages专页漏地域标签，通用Base URL与型号表有组合依据，但不将文档支持写成空间权限或本地部署保证。CC/Responses/Messages开关分别依据[深度思考](https://help.aliyun.com/zh/model-studio/deep-thinking)、[Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses)、[Messages](https://help.aliyun.com/zh/model-studio/anthropic-api-messages)。不从1M/128K猜精确整数；原Responses实现中的1000000不再当精确容量使用，本地输出/字节/时限不变。`qwen-plus`仍列支持，确切下线表未完整核到，不声称已退役；旧CC字段和未知容量保留。
+
+Kimi两个平台分别核对[中国CC](https://platform.kimi.com/docs/api/chat)、[国际CC](https://platform.kimi.ai/docs/api/chat)、[快速上手](https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart)、[精确context](https://platform.kimi.ai/docs/pricing/chat)、[推理档位](https://platform.kimi.com/docs/guide/use-reasoning-effort)。标准K3.1 Pro是当前代中较便宜版本，官方仍称旗舰，不以名称“Pro”误作最贵Highspeed。流式reasoning_content只私有校验/保留，下一工具轮原样回传assistant推理、tool_calls及匹配的tool结果，low和输出字段不变；推理不显示。Responses/Messages仍按原目录blocked，不借更换默认开放新协议或改变鉴权。
+
+K2.6在[中国](https://platform.kimi.com/docs/models)/[国际](https://platform.kimi.ai/docs/models)目录已停止向新账号开放，旧账号仍可用，预计2026年底全面退役但无精确日期；旧ID档案、disabled/max_tokens和原字节继续作为显式兼容选择，不作为新账号默认。
+
+### 未确认项和保留项
+
+DeepSeek从[当前目录](https://api-docs.deepseek.com/quick_start/pricing/)、[更新](https://api-docs.deepseek.com/updates/)及三协议原文复核，Flash别名已经是当前V4.1-Flash-1017，所以不为“换代”杜撰另一个ID。
+
+智谱[两地目录](https://docs.bigmodel.cn/cn/guide/start/model-overview)、[国际目录](https://docs.z.ai/guides/overview/overview)虽列当前5.3 Flash，但[中国Responses](https://docs.bigmodel.cn/cn/guide/develop/responses/introduction)的none/low映射与型号强制思考说明冲突，Flash组合及两地Messages严格契约仍不足。用户已决定暂保两平台旧默认，不能用已确认CC去掩盖共享默认的其他开放协议缺口。
+
+MiniMax两地的[中国Responses schema](https://platform.minimax.cn/docs/api-reference/text/api/openapi-responses.json)/[国际schema](https://platform.minimax.io/docs/api-reference/text/api/openapi-responses.json)明确输出reasoning.content含reasoning_text，输入ContentPart却未列该类型；CC和Messages回放指南不构成Responses的补证。未发现完整下一轮例子填平，故用户决定暂保M3。此处是文档不能确认，不是证明服务端一定拒绝。两地[状态表](https://platform.minimax.cn/docs/faq/models)/[国际状态表](https://platform.minimax.io/docs/faq/models)仍列M3可用；M2.5/M2.7的退役安排不套给M3。
+
+Ollama按调研“未确认”不改。官方[新发布目录](https://ollama.com/library?sort=newest)、[Granite4.2标签](https://ollama.com/library/granite4.2)、[Qwen3.5标签](https://ollama.com/library/qwen3.5)和[兼容文档](https://docs.ollama.com/api/openai-compatibility)只能支持候选研究；文件大小不能替代8GB整机实测、工具质量或逐tag思考关闭绑定证据。不下载权重，不调用本机模型，不切云路由。
+
+所有可用旧默认均保留精确匹配和原请求语义。未发现上述旧默认已全面关停的明确证据，不因“旧代”而批量删除；明确已下线型号不会加入新建议。没有新增SDK依赖、持久格式、公共设置DTO、并行/strict授权或资源上限；所有测试均为合成凭据、网络替身或本地受控服务，不是模型账户认证。
 
 ## 当前模型清单与检查（X6b）
 

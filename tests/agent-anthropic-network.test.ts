@@ -7,6 +7,7 @@ import type {MockIncoming, MockRequest} from './helpers/strict-agent-workspace-t
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {createAgentTransport, wasAgentTransportSubmissionPrevented} from '../packages/business/src/agent/network-policy.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION} from '../packages/business/src/agent/anthropic-protocol.ts';
+import * as anthropicProtocol from '../packages/business/src/agent/anthropic-protocol.ts';
 
 const configuration: AgentConfiguration = {presetId: 'custom', platformId: 'custom', baseUrl: 'https://messages.example.com/anthropic', model: 'synthetic', protocol: 'anthropic_messages'};
 const lookup = (async () => [{address: '8.8.8.8', family: 4}]) as unknown as typeof import('node:dns/promises').lookup;
@@ -45,6 +46,45 @@ test('Anthropic transport owns the exact prefixed path, fixed version and bound 
   assert.equal(f.calls[0]!.payload, body); assert.equal(f.ends(), 1);
   for await (const _chunk of stream.body) { /* Drain the bounded fixture stream. */ }
   stream.close();
+});
+
+test('Sonnet prefix binding requires the exact official identity and frozen adaptive low request',()=>{
+  const sonnet:AgentConfiguration={presetId:'anthropic',platformId:'global',baseUrl:'https://api.anthropic.com',model:'claude-sonnet-5-5',protocol:'anthropic_messages'};
+  const fields={thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}},output_config:{effort:'low'}};
+  assert.deepEqual(anthropicProtocol.agentSonnetThinkingFields(),fields);
+  assert.equal(anthropicProtocol.SONNET_PREFIX_BINDING_API_VERSION,'2026-10-21');
+  assert.ok(Object.isFrozen(anthropicProtocol.agentSonnetThinkingFields()));assert.ok(Object.isFrozen(anthropicProtocol.agentSonnetThinkingFields().thinking.block_binding));
+  const body={model:sonnet.model,stream:true,...fields};
+  assert.equal(anthropicProtocol.agentSonnetConfiguration(sonnet),true);
+  assert.equal(anthropicProtocol.agentSonnetPrefixBinding(sonnet,body),true);
+  for(const patch of [{presetId:'custom'},{platformId:'custom'},{baseUrl:'https://api.anthropic.com.evil.example'},{baseUrl:'https://api.anthropic.com/v1'},
+    {model:'claude-sonnet-5-5-20990101'},{model:'claude-haiku-4-5'},{protocol:'chat_completions'}]){
+    assert.equal(anthropicProtocol.agentSonnetConfiguration({...sonnet,...patch}),false);
+    assert.equal(anthropicProtocol.agentSonnetPrefixBinding({...sonnet,...patch},body),false);
+  }
+  for(const patch of [{model:'claude-haiku-4-5'},{stream:false},{thinking:{type:'disabled'}},{thinking:{type:'between_tools'}},
+    {thinking:{type:'adaptive'}},{thinking:{...fields.thinking,display:'omitted'}},
+    {thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'error'}}},
+    {thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block',extra:true}}},
+    {output_config:{effort:'medium'}},{output_config:{effort:'low',extra:true}},{output_config:undefined}])assert.equal(anthropicProtocol.agentSonnetPrefixBinding(sonnet,{...body,...patch}),false);
+  for(const invalid of [null,[],false,'serialized'])assert.equal(anthropicProtocol.agentSonnetPrefixBinding(sonnet,invalid),false);
+});
+
+test('only the exact Sonnet frozen request derives the fixed beta header at host dispatch',async t=>{
+  const sonnet:AgentConfiguration={presetId:'anthropic',platformId:'global',baseUrl:'https://api.anthropic.com',model:'claude-sonnet-5-5',protocol:'anthropic_messages'};
+  const fields={thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}},output_config:{effort:'low'}};
+  for(const [selected,body,beta] of [
+    [sonnet,JSON.stringify({model:sonnet.model,stream:true,...fields}),true],
+    [sonnet,JSON.stringify({model:sonnet.model,stream:true,thinking:{type:'disabled'}}),false],
+    [{...sonnet,presetId:'custom',platformId:'custom'},JSON.stringify({model:sonnet.model,stream:true,...fields}),false],
+    [sonnet,'{',false],
+  ] as const){
+    const f=fixture(),stream=await createAgentTransport({lookup,httpsRequest:f.request})({configuration:selected,apiKey:'synthetic-bound-key',body});
+    t.after(()=>stream.close());
+    const headers=f.calls[0]!.options.headers as Record<string,string>;
+    assert.equal(headers['anthropic-beta'],beta?'thinking-binding-controls-2026-08-01':undefined);assert.equal(headers['anthropic-version'],beta?'2026-10-21':'2023-06-01');
+    assert.equal(headers.Authorization,undefined);assert.equal(headers['x-api-key'],'synthetic-bound-key');assert.equal(f.calls[0]!.payload,body);assert.equal(f.ends(),1);stream.close();
+  }
 });
 
 test('OpenAI protocols keep their original Bearer headers and endpoints', async () => {

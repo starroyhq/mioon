@@ -4,7 +4,7 @@ import type {AgentConfiguration} from './config.ts';
 import {AGENT_PRESETS} from './presets.ts';
 import {agentPresetPlatform} from '../../../contracts/src/agent-provider-catalog.ts';
 import {agentChatError} from './chat-errors.ts';
-import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields} from './anthropic-protocol.ts';
+import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields, agentSonnetThinkingFields, agentSonnetConfiguration} from './anthropic-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
 import {agentOpenAiReasoningFamily,agentOpenAiModelIsAdapted,AGENT_OPENAI_REASONING_MODEL_HINTS,AGENT_OPENROUTER_REASONING_MODEL_HINTS} from '../../../contracts/src/agent-openai-model-family.ts';
 
@@ -68,6 +68,12 @@ const profiles: Record<string, AgentChatProfile> = {
   ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}),
 };
 export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
+// New exact models have independent controls; retained legacy names keep the
+// same frozen profiles and request bytes on recovery.
+const vendorChatProfiles: Readonly<Record<string, readonly AgentChatProfile[]>> = freeze({
+  qwen: [{models: ['qwen3.8-flash'], tokenField: 'max_tokens', fields: {enable_thinking: false}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}],
+  kimi: [{models: ['kimi-k3.1-pro'], tokenField: 'max_completion_tokens', fields: {reasoning_effort: 'low'}, thinkingTier: 'required', contextTokens: 1048576, maxOutputTokens: 1048576, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS}],
+});
 // Generic models have a separately bounded profile. They never borrow a named
 // model's context/output capacity or its special stream termination contract.
 const genericChatProfiles: Readonly<Record<string, AgentChatProfile>> = freeze(Object.fromEntries(Object.entries(profiles).map(([id, profile]) => [id, {
@@ -84,6 +90,8 @@ export function agentChatProfile(configuration: AgentConfiguration): AgentChatPr
       : {provider: {require_parameters: true, allow_fallbacks: false}, ...(family.minimumEffort ? {reasoning: {effort: family.minimumEffort}} : {})},
     thinkingTier: family.minimumEffort === 'none' ? 'optional' : 'required', contextTokens: family.contextTokens,
     maxOutputTokens: family.maxOutputTokens, outputTokens: AGENT_OPENAI_REASONING_OUTPUT_TOKENS});
+  const current = Object.hasOwn(vendorChatProfiles, configuration.presetId) ? vendorChatProfiles[configuration.presetId]?.find(profile => profile.models?.includes(configuration.model)) : undefined;
+  if (current) return current;
   const exact = Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : undefined;
   if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
   return Object.hasOwn(genericChatProfiles, configuration.presetId) ? genericChatProfiles[configuration.presetId] : genericChatProfiles.custom;
@@ -100,15 +108,15 @@ export function agentChatAllowsNaturalEof(configuration: AgentConfiguration, bod
 }
 
 // Documentation-backed, deliberately text-only profiles, not live certification.
-// Token limits follow the Chat Completions profile of the same model;
-// qwen3.8-flash documents a 1,000,000-token window but no maximum output.
+// Each protocol uses only confirmed exact capacity; Qwen documents 1M/128K
+// abbreviations, so both exact capacity fields remain unknown.
 interface AgentResponsesProfile extends AgentModelTokenProfile {models: string[] | null; fields: Record<string, unknown>; thinkingTier: AgentThinkingTier}
 const responseProfiles: Record<string, AgentResponsesProfile> = {
   openai: {models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], fields: {truncation: 'disabled'}, thinkingTier: 'unsupported', contextTokens: 1047576, maxOutputTokens: 32768, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
   custom: {models: null, fields: {truncation: 'disabled'}, thinkingTier: 'unsupported', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
   ollama: {models: ['qwen3:8b'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
   deepseek: {models: ['deepseek-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: 393216, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
-  qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: 1000000, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
+  qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}, thinkingTier: 'optional', contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
 };
 export const AGENT_RESPONSES_PROFILES: Readonly<Record<string, AgentResponsesProfile>> = freeze(responseProfiles);
 const genericResponsesProfiles: Readonly<Record<string, AgentResponsesProfile>> = freeze({
@@ -146,20 +154,23 @@ function reasoningFamily(configuration: AgentConfiguration) {
 export function agentResponsesReasoningCapable(configuration: AgentConfiguration): boolean {
   return configuration.protocol === 'responses' && configuration.presetId === 'openai' && agentOpenAiReasoningFamily(configuration.model) !== null;
 }
-/** Messages has its own `thinking` request parameter, which every task request
- * sends disabled, so each Messages preset is optional. The other protocols take
- * the tier from their profile. */
+/** Messages keeps the legacy disabled policy except for the exact approved
+ * native Sonnet configuration. Other protocols take their exact model tier. */
 export function agentModelThinkingTier(configuration: AgentConfiguration): AgentThinkingTier {
   if (configuration.protocol === 'chat_completions') return agentChatProfile(configuration).thinkingTier;
   if (configuration.protocol === 'responses') return agentResponsesProfile(configuration).thinkingTier;
-  if (configuration.protocol === 'anthropic_messages') return 'optional';
+  if (configuration.protocol === 'anthropic_messages') return agentSonnetConfiguration(configuration) ? 'required' : 'optional';
   return fail('AGENT_CHAT_VALIDATION');
 }
-// Messages has no request profile, so its documented limits list exact model
-// names: claude-haiku-4-5 has a 200,000-token window and 64,000 maximum output.
+// Exact Messages token metadata stays separate from its wire controls. Legacy
+// limits retain their original identity; new models do not borrow old capacity.
 const messagesTokenLimits: Record<string, AgentModelTokenProfile & {models: string[]}> = {
   anthropic: {models: ['claude-haiku-4-5', 'claude-haiku-4-5-20251001'], contextTokens: 200000, maxOutputTokens: 64000, outputTokens: Math.min(64000, AGENT_OUTPUT_TOKEN_CEILING)},
+  qwen: {models: ['qwen3.8-flash'], contextTokens: null, maxOutputTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS},
 };
+const vendorMessageTokenLimits: Readonly<Record<string, readonly (AgentModelTokenProfile & {models: string[]})[]>> = freeze({
+  anthropic: [{models: ['claude-sonnet-5-5'], contextTokens: null, maxOutputTokens: 128000, outputTokens: AGENT_OUTPUT_TOKEN_CEILING}],
+});
 export const AGENT_MESSAGES_TOKEN_LIMITS: Readonly<Record<string, Readonly<AgentModelTokenProfile & {models: string[]}>>> = freeze(messagesTokenLimits);
 const tokenLimits = ({contextTokens, outputTokens}: AgentModelTokenLimits): AgentModelTokenLimits => ({contextTokens, outputTokens});
 /** Chat Completions and Responses read the protocol's profile. Any combination
@@ -168,15 +179,17 @@ export function agentModelTokenLimits(configuration: AgentConfiguration): AgentM
   if (configuration.protocol === 'chat_completions') return tokenLimits(agentChatProfile(configuration));
   if (configuration.protocol === 'responses') return tokenLimits(agentResponsesProfile(configuration));
   if (configuration.protocol !== 'anthropic_messages') return fail('AGENT_CHAT_VALIDATION');
+  const current = Object.hasOwn(vendorMessageTokenLimits, configuration.presetId) ? vendorMessageTokenLimits[configuration.presetId]?.find(profile => profile.models.includes(configuration.model)) : undefined;
+  if (current) return tokenLimits(current);
   const listed = Object.hasOwn(AGENT_MESSAGES_TOKEN_LIMITS, configuration.presetId) ? AGENT_MESSAGES_TOKEN_LIMITS[configuration.presetId] : undefined;
   return listed?.models.includes(configuration.model) ? tokenLimits(listed) : {contextTokens: null, outputTokens: AGENT_DEFAULT_OUTPUT_TOKENS};
 }
-/** Messages thinking control: only a model that cannot disable thinking turns it
- * on. max_tokens counts thinking, so the manual budget leaves the answer at
- * AGENT_THINKING_ANSWER_TOKENS when the output limit permits it, while thinking
- * never goes below the documented minimum. Chat Completions and Responses send
- * their profile fields instead. */
-export function agentAnthropicThinkingFields(tier: AgentThinkingTier, outputTokens: number): typeof ANTHROPIC_MESSAGES_FIELDS | ReturnType<typeof anthropicThinkingFields> {
+/** Exact native Sonnet requests use the approved adaptive policy. The legacy
+ * manual helper retains its existing budget semantics for other callers;
+ * Chat Completions and Responses send their own model-specific fields. */
+export function agentAnthropicThinkingFields(tier: AgentThinkingTier, outputTokens: number, configuration?: AgentConfiguration): typeof ANTHROPIC_MESSAGES_FIELDS | ReturnType<typeof anthropicThinkingFields> | ReturnType<typeof agentSonnetThinkingFields> {
+  const sonnet=agentSonnetThinkingFields();
+  if(configuration&&agentSonnetConfiguration(configuration))return sonnet;
   if (tier !== 'required') return ANTHROPIC_MESSAGES_FIELDS;
   const budget = Math.max(ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, outputTokens - AGENT_THINKING_ANSWER_TOKENS);
   if (budget >= outputTokens) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
@@ -197,11 +210,13 @@ export function agentRequestThinks(configuration: AgentConfiguration, body: Reco
  * model came from a fetched list, manual input or an old saved selection. */
 export function agentAdaptedModelHints(presetId: string): Partial<Record<AgentProtocol, string[]>> {
   if (presetId === 'custom') return {};
-  const chat = AGENT_CHAT_PROFILES[presetId]?.models, responses = AGENT_RESPONSES_PROFILES[presetId]?.models,
-    messages = AGENT_MESSAGES_TOKEN_LIMITS[presetId]?.models;
+  const extraChat = Object.hasOwn(vendorChatProfiles, presetId) ? vendorChatProfiles[presetId]!.flatMap(profile => profile.models ?? []) : [];
+  const legacyChat = AGENT_CHAT_PROFILES[presetId]?.models;
+  const chat = extraChat.length ? [...extraChat, ...(legacyChat ?? [])] : legacyChat, responses = AGENT_RESPONSES_PROFILES[presetId]?.models,
+    messages = [...(Object.hasOwn(vendorMessageTokenLimits, presetId) ? vendorMessageTokenLimits[presetId]!.flatMap(profile => profile.models) : []), ...(AGENT_MESSAGES_TOKEN_LIMITS[presetId]?.models ?? [])];
   if (presetId === 'openai') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions], responses: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses]};
   if (presetId === 'openrouter') return {chat_completions: [...AGENT_OPENROUTER_REASONING_MODEL_HINTS]};
-  return {...(chat ? {chat_completions: [...chat]} : {}), ...(responses ? {responses: [...responses]} : {}), ...(messages ? {anthropic_messages: [...messages]} : {})};
+  return {...(chat ? {chat_completions: [...chat]} : {}), ...(responses ? {responses: [...responses]} : {}), ...(messages.length ? {anthropic_messages: [...messages]} : {})};
 }
 export function agentModelAdaptation(configuration: AgentConfiguration): 'adapted' | 'unverified' {
   if (agentOpenAiModelIsAdapted(configuration.presetId, configuration.protocol, configuration.model)) return 'adapted';

@@ -24,6 +24,9 @@ export interface AnthropicStreamOptions {
   /** Only a request that enabled thinking admits thinking blocks. They are kept
    * in their original order for this round's continuation, never as text. */
   thinking?: boolean;
+  /** Only the exact Sonnet frozen adaptive/low request admits its fixed beta's
+   * passive binding metadata. This does not enable thinking or tools. */
+  sonnetPrefixBinding?: boolean;
 }
 export type AnthropicStreamItem = {type: 'delta'; text: string} | {type: 'done'; completion: AnthropicCompletion};
 interface TextBlock {type: 'text'; text: string; closed: boolean}
@@ -45,6 +48,18 @@ function id(value: unknown): string {
 }
 function fields(value: Record<string, unknown>, allowed: readonly string[]): void {
   if (Object.keys(value).some(key => !allowed.includes(key))) fail();
+}
+function inputTransformations(value: unknown): void {
+  if (value === null) return;
+  if (!Array.isArray(value)) fail();
+  for (const entry of value) {
+    if (!object(entry)) fail();
+    fields(entry, ['type', 'path', 'reason']);
+    if (typeof entry.type !== 'string' || !['thinking_dropped', 'thinking_mismatch_allowed'].includes(entry.type) ||
+      typeof entry.reason !== 'string' || !['prefix_binding_mismatch', 'model_binding_mismatch', 'organization_binding_mismatch', 'end_user_binding_mismatch'].includes(entry.reason)) fail();
+    const path = text(entry.path, 256), indices = /^messages\.(0|[1-9][0-9]*)\.content\.(0|[1-9][0-9]*)$/u.exec(path);
+    if (!indices || !Number.isSafeInteger(Number(indices[1])) || !Number.isSafeInteger(Number(indices[2]))) fail();
+  }
 }
 function count(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000_000) fail();
@@ -130,7 +145,9 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       fields(value, ['type', 'message']);
       if (started || !object(value.message)) fail();
       const message = value.message;
-      fields(message, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage', 'container', 'diagnostics', 'stop_details', 'service_tier']);
+      fields(message, ['id', 'type', 'role', 'model', 'content', 'stop_reason', 'stop_sequence', 'usage', 'container', 'diagnostics', 'stop_details', 'service_tier',
+        ...(options.sonnetPrefixBinding === true ? ['input_transformations'] : [])]);
+      if (Object.hasOwn(message, 'input_transformations')) inputTransformations(message.input_transformations);
       if (message.type !== 'message' || message.role !== 'assistant' || !Array.isArray(message.content) || message.content.length ||
         message.stop_reason != null || message.stop_sequence != null || message.container != null || message.diagnostics != null || message.stop_details != null) fail();
       id(message.id); id(message.model);
@@ -218,7 +235,8 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       continue;
     }
     if (value.type === 'message_delta') {
-      fields(value, ['type', 'delta', 'usage']);
+      fields(value, ['type', 'delta', 'usage', ...(options.sonnetPrefixBinding === true ? ['input_transformations'] : [])]);
+      if (Object.hasOwn(value, 'input_transformations')) inputTransformations(value.input_transformations);
       if (stopReason || blocks.some(block => !block.closed) || !object(value.delta) || (!optionalUsage && !object(value.usage))) fail();
       fields(value.delta, ['stop_reason', 'stop_sequence', 'container', 'stop_details']);
       if (value.delta.container != null) fail();

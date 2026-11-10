@@ -75,7 +75,31 @@ test('SDK environment defaults, extra headers, credentials and telemetry cannot 
   assert.equal(f.state.calls, 1); assert.equal(f.state.options.hostname, 'fixture.example.com');
   const serialized = JSON.stringify(f.state.options);
   for (const marker of ['synthetic-env', 'synthetic-webhook', 'private.invalid', 'wrong-version']) assert.equal(serialized.includes(marker), false);
-  assert.equal(f.state.options.headers.Cookie, undefined); assert.equal(f.state.options.headers.Authorization, undefined);
+  assert.equal(f.state.options.headers.Cookie, undefined); assert.equal(f.state.options.headers.Authorization, undefined);assert.equal(f.state.options.headers['anthropic-beta'],undefined);
+});
+
+test('Sonnet fixed beta survives the real SDK without forwarding arbitrary environment headers',async t=>{
+  const previous=process.env.ANTHROPIC_CUSTOM_HEADERS;t.after(()=>{if(previous===undefined)delete process.env.ANTHROPIC_CUSTOM_HEADERS;else process.env.ANTHROPIC_CUSTOM_HEADERS=previous;});
+  process.env.ANTHROPIC_CUSTOM_HEADERS='anthropic-beta: unapproved-beta\nCookie: synthetic-private-cookie';
+  const sonnet:AgentConfiguration={presetId:'anthropic',platformId:'global',baseUrl:'https://api.anthropic.com',model:'claude-sonnet-5-5',protocol:'anthropic_messages'};
+  const body=JSON.stringify({model:sonnet.model,stream:true,max_tokens:16384,messages,thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}},output_config:{effort:'low'}});
+  const f=socketFixture(),response=await createAnthropicSdkTransport(f.dependencies)({configuration:sonnet,body,apiKey:'synthetic-bound-key'});
+  for await(const _chunk of response.body){}
+  assert.equal(f.state.calls,1);assert.equal(f.state.ends,1);assert.equal(f.state.payload,body);
+  assert.equal(f.state.options.headers['anthropic-beta'],'thinking-binding-controls-2026-08-01');assert.equal(f.state.options.headers['anthropic-version'],'2026-10-21');
+  assert.equal(f.state.options.headers.Cookie,undefined);assert.doesNotMatch(JSON.stringify(f.state.options),/unapproved-beta|synthetic-private-cookie/);
+  for(const [selected,fields] of [
+    [sonnet,{thinking:{type:'disabled'}}],
+    [{...sonnet,presetId:'custom',platformId:'custom'},{thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}},output_config:{effort:'low'}}],
+    [{...sonnet,model:'claude-haiku-4-5'},{thinking:{type:'disabled'}}],
+  ] as const){
+    const legacy=JSON.stringify({model:selected.model,stream:true,max_tokens:16384,messages,...fields}),old=socketFixture();
+    const incoming=await createAnthropicSdkTransport(old.dependencies)({configuration:selected,body:legacy,apiKey:'synthetic-bound-key'});
+    for await(const _chunk of incoming.body){}
+    assert.equal(old.state.calls,1);assert.equal(old.state.ends,1);assert.equal(old.state.payload,legacy);
+    assert.equal(old.state.options.headers['anthropic-beta'],undefined);assert.equal(old.state.options.headers['anthropic-version'],'2023-06-01');
+    assert.equal(old.state.options.headers.Cookie,undefined);assert.doesNotMatch(JSON.stringify(old.state.options),/unapproved-beta|synthetic-private-cookie/);
+  }
 });
 
 test('real SDK request transformations fail before any socket when they differ from frozen intent', async () => {

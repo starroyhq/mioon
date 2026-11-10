@@ -7,6 +7,7 @@ import {agentReadToolProfile} from './model-profiles.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
 import {createAnthropicSdkTransport} from './anthropic-sdk-transport.ts';
+import {agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 import {streamAnthropicMessages} from './anthropic-stream.ts';
 import type {AnthropicCompletion} from './anthropic-stream.ts';
 import {parseModelToolArguments} from './model-tool-arguments.ts';
@@ -238,7 +239,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...(chatUsageRequest(configuration)?{stream_options:{include_usage:true}}:{}),
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls};
   }else if(configuration.protocol==='anthropic_messages'){
-    body={model:configuration.model,stream:true,max_tokens:limits.outputTokens,...agentAnthropicThinkingFields(agentModelThinkingTier(configuration),limits.outputTokens),...native,
+    body={model:configuration.model,stream:true,max_tokens:limits.outputTokens,...agentAnthropicThinkingFields(agentModelThinkingTier(configuration),limits.outputTokens,configuration),...native,
       ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:options.toolLoading!==true}}:{})};
   }else{
     const responses=agentResponsesProfile(configuration);
@@ -342,7 +343,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         yield {type:'done',output:{text,toolCalls,providerOutput,...usageOutput()}};
       } else if(options.configuration.protocol==='anthropic_messages') {
         let completion:AnthropicCompletion|undefined;
-        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe,thinking})){
+        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe,thinking,sonnetPrefixBinding:agentSonnetPrefixBinding(options.configuration,parsed)})){
           if(item.type==='delta')yield item;
           else completion=item.completion;
         }

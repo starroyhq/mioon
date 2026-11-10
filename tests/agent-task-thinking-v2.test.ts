@@ -70,20 +70,81 @@ test('default thinking tiers keep the documented minimum and isolate the new Ope
     }
     const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {protocol,presetId,platformId}=configuration,tier=agentModelThinkingTier(configuration),label=`${presetId}/${platformId}/${protocol}`;
-    assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(presetId)?'optional':'unsupported',label);
+    const sonnet=presetId==='anthropic'&&configuration.model==='claude-sonnet-5-5'&&protocol==='anthropic_messages';
+    const required=sonnet||presetId==='kimi'&&configuration.model==='kimi-k3.1-pro'&&protocol==='chat_completions';
+    assert.equal(tier,required?'required':protocol==='anthropic_messages'||optionalPresets[protocol].includes(presetId)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
-    assert.equal(agentRequestThinks(configuration,body),false,`${label} sends its documented off switch`);
+    assert.equal(agentRequestThinks(configuration,body),required,`${label} sends its documented off switch or required minimum`);
     const outputTokens=presetId==='openai'||presetId==='openrouter'&&protocol==='chat_completions'?AGENT_OPENAI_REASONING_OUTPUT_TOKENS:4096;
     if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,outputTokens,label);
-    if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,{type:'disabled'});
-    // Only an optional model's off switch can be lifted; an unsupported or
-    // unverified model never admits thinking, whatever the request contains.
+    if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,sonnet?{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}}:{type:'disabled'});
+    // An optional model can lift its off switch; a required model keeps thinking
+    // even without the minimum effort. Unsupported models still reject it.
     const off=offSwitch(configuration),lifted=Object.fromEntries(Object.entries(body).filter(([key])=>!Object.hasOwn(off,key)));
-    assert.equal(agentRequestThinks(configuration,lifted),tier==='optional',label);
+    assert.equal(agentRequestThinks(configuration,lifted),tier!=='unsupported',label);
     if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,outputTokens,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }
   assert.equal(combinations,51);
+});
+
+test('Sonnet 5.5 requests adaptive low thinking and drop_block while both old Haiku IDs retain their exact disabled request',()=>{
+ const configuration={...presetConfiguration('anthropic','anthropic_messages'),model:'claude-sonnet-5-5'};
+ const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
+ assert.equal(body.model,'claude-sonnet-5-5');assert.equal(agentModelThinkingTier(configuration),'required');assert.equal(agentRequestThinks(configuration,body),true);
+ assert.deepEqual(body.thinking,{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}});assert.deepEqual(body.output_config,{effort:'low'});
+ assert.equal(body.max_tokens,16384);assert.equal(body.max_completion_tokens,undefined);assert.equal(body.max_output_tokens,undefined);
+ assert.equal(body.reasoning,undefined);assert.equal(body.reasoning_effort,undefined);assert.equal(body.enable_thinking,undefined);
+ assert.deepEqual(agentAnthropicThinkingFields('required',16384,configuration),{thinking:{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}},output_config:{effort:'low'}});
+ for(const model of ['claude-haiku-4-5','claude-haiku-4-5-20251001']){
+  const legacy={...configuration,model},old=JSON.parse(buildTaskModelRequest(legacy,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentModelThinkingTier(legacy),'optional',model);assert.equal(agentRequestThinks(legacy,old),false,model);
+  const expected:Record<string,unknown>={...body,model,thinking:{type:'disabled'}};delete expected.output_config;
+  assert.deepEqual(old,expected,`${model}: only its model and thinking policy differ from the new request`);
+  assert.equal(Object.hasOwn(old,'output_config'),false);assert.equal(old.max_tokens,16384);assert.deepEqual(old.thinking,{type:'disabled'});
+  assert.equal(agentAnthropicThinkingFields('optional',16384,legacy),ANTHROPIC_MESSAGES_FIELDS);
+ }
+ const compatible:AgentConfiguration={...configuration,presetId:'custom',platformId:'custom'};
+ const generic=JSON.parse(buildTaskModelRequest(compatible,history,definitions,4318)) as Record<string,unknown>;
+ assert.equal(agentModelThinkingTier(compatible),'optional');assert.deepEqual(generic.thinking,{type:'disabled'});assert.equal(generic.output_config,undefined);assert.equal(generic.max_tokens,4096);
+});
+
+test('Qwen3.8 Flash uses its exact off switch in every open protocol without borrowing OpenAI reasoning fields',()=>{
+ const configurations=presetConfigurations().filter(configuration=>configuration.presetId==='qwen');
+ assert.equal(configurations.length,24);
+ for(const selected of configurations){
+  const configuration={...selected,model:'qwen3.8-flash'},label=`${configuration.platformId}/${configuration.protocol}`;
+  const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentModelAdaptation(configuration),'adapted',label);assert.equal(agentModelThinkingTier(configuration),'optional',label);
+  assert.equal(agentRequestThinks(configuration,body),false,label);assert.equal(body.model,'qwen3.8-flash');
+  assert.equal(body.reasoning_effort,undefined,label);assert.equal(body.include,undefined,label);assert.equal(body.output_config,undefined,label);
+  if(configuration.protocol==='chat_completions'){
+   assert.equal(body.enable_thinking,false,label);assert.equal(body.thinking,undefined);assert.equal(body.reasoning,undefined);assert.equal(body.max_tokens,4096);
+  }else if(configuration.protocol==='responses'){
+   assert.deepEqual(body.reasoning,{effort:'none'},label);assert.equal(body.enable_thinking,undefined);assert.equal(body.thinking,undefined);assert.equal(body.max_output_tokens,4096);
+  }else{
+   assert.deepEqual(body.thinking,{type:'disabled'},label);assert.equal(body.enable_thinking,undefined);assert.equal(body.reasoning,undefined);assert.equal(body.max_tokens,4096);
+  }
+ }
+});
+
+test('Kimi K3.1 Pro Chat Completions admits required reasoning at low effort and leaves old K2.6 and Qwen Plus off wires intact',()=>{
+ const configurations=presetConfigurations().filter(configuration=>configuration.presetId==='kimi'&&configuration.protocol==='chat_completions');
+ assert.equal(configurations.length,2);
+ for(const selected of configurations){
+  const configuration={...selected,model:'kimi-k3.1-pro'},body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentModelThinkingTier(configuration),'required',configuration.platformId);assert.equal(agentRequestThinks(configuration,body),true);
+  assert.equal(agentModelAdaptation(configuration),'adapted');assert.equal(body.reasoning_effort,'low');assert.equal(body.max_completion_tokens,4096);
+  assert.equal(body.thinking,undefined);assert.equal(body.enable_thinking,undefined);assert.equal(body.reasoning,undefined);assert.equal(body.max_tokens,undefined);assert.equal(body.max_output_tokens,undefined);
+  const legacy={...selected,model:'kimi-k2.6'},old=JSON.parse(buildTaskModelRequest(legacy,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentModelThinkingTier(legacy),'optional');assert.equal(agentRequestThinks(legacy,old),false);assert.deepEqual(old.thinking,{type:'disabled'});
+  assert.equal(old.max_tokens,4096);assert.equal(old.max_completion_tokens,undefined);assert.equal(old.reasoning_effort,undefined);
+ }
+ for(const selected of presetConfigurations().filter(configuration=>configuration.presetId==='qwen'&&configuration.protocol==='chat_completions')){
+  const legacy={...selected,model:'qwen-plus'},body=JSON.parse(buildTaskModelRequest(legacy,history,definitions,4318)) as Record<string,unknown>;
+  assert.equal(agentModelThinkingTier(legacy),'optional');assert.equal(agentRequestThinks(legacy,body),false);assert.equal(body.enable_thinking,false);
+  assert.equal(body.max_tokens,4096);assert.equal(body.max_completion_tokens,undefined);assert.equal(body.reasoning_effort,undefined);assert.equal(body.thinking,undefined);
+ }
 });
 
 test('OpenAI Responses carrier capability is distinct from whether its minimum effort performs reasoning',()=>{
@@ -114,7 +175,7 @@ test('Messages turns thinking on only for a required model, with a manual budget
   for(const tier of ['unsupported','optional'] as const)for(const output of [4096,16384])assert.equal(agentAnthropicThinkingFields(tier,output),ANTHROPIC_MESSAGES_FIELDS);
   // An unknown model keeps the smallest documented budget. A documented output
   // limit keeps 4096 tokens for the answer and gives the rest to thinking.
-  for(const [configuration,maxTokens,budgetTokens] of [[presetConfiguration('ollama','anthropic_messages'),4096,1024],[presetConfiguration('anthropic','anthropic_messages'),16384,12288]] as const){
+  for(const [configuration,maxTokens,budgetTokens] of [[presetConfiguration('ollama','anthropic_messages'),4096,1024],[{...presetConfiguration('anthropic','anthropic_messages'),model:'claude-haiku-4-5'},16384,12288]] as const){
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>,fields=agentAnthropicThinkingFields('required',body.max_tokens as number);
     assert.equal(body.max_tokens,maxTokens,configuration.presetId);
     assert.deepEqual(fields,{thinking:{type:'enabled',budget_tokens:budgetTokens}},configuration.presetId);

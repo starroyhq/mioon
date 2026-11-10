@@ -3,7 +3,7 @@ import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import {agentChatError, agentChatStreamError} from './chat-errors.ts';
 import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
-import {ANTHROPIC_MESSAGES_API_VERSION} from './anthropic-protocol.ts';
+import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 export type {RawMessageStreamEvent as AnthropicNativeStreamEvent} from '@anthropic-ai/sdk/resources/messages';
 
@@ -24,6 +24,7 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
     try { body = JSON.parse(options.body); } catch { throw agentChatError('AGENT_CHAT_VALIDATION'); }
     if (!body || typeof body !== 'object' || Array.isArray(body) || (body as {stream?: unknown}).stream !== true ||
       (body as {model?: unknown}).model !== configuration.model) throw agentChatError('AGENT_CHAT_VALIDATION');
+    const sonnetPrefixBinding = agentSonnetPrefixBinding(configuration, body);
     let transport: AgentTransportStream | undefined, transportFailure: unknown;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined, used = false;
     const close = () => { transport?.close(); void reader?.cancel().catch(() => undefined); };
@@ -35,7 +36,8 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
       maxRetries: 0, logLevel: 'off', openTelemetry: false,
       // The pinned host transport's earlier deadline owns timeout classification.
       timeout: AGENT_NETWORK_LIMITS.totalTimeoutMs + 1000,
-      defaultHeaders: {'anthropic-version': ANTHROPIC_MESSAGES_API_VERSION},
+      defaultHeaders: {'anthropic-version': sonnetPrefixBinding ? SONNET_PREFIX_BINDING_API_VERSION : ANTHROPIC_MESSAGES_API_VERSION,
+        ...(sonnetPrefixBinding ? {'anthropic-beta': SONNET_PREFIX_BINDING_BETA} : {})},
       fetch: async (input, init) => {
         try {
           // Any SDK transformation or second fetch fails before host dispatch.

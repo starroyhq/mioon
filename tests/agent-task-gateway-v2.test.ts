@@ -988,3 +988,91 @@ test('OpenAI full-catalog incomplete and failed lifecycle echoes preserve accura
   }
   assert.equal(store.db.prepare('SELECT count(*) AS n FROM jobs').get()?.n,0);
 });
+
+const q12Kimi=(platformId:'china'|'international',model='kimi-k3.1-pro'):AgentConfiguration=>({presetId:'kimi',platformId,protocol:'chat_completions',model,baseUrl:`https://api.moonshot.${platformId==='china'?'cn':'ai'}/v1`});
+function q12KimiFrames(configuration:AgentConfiguration,{toolCall=true,reasoning=true,text='I will save this shot.'}:{toolCall?:boolean;reasoning?:boolean;text?:string}={}):string{
+  const chunk=(delta:Record<string,unknown>,finish_reason:string|null=null)=>json({id:'chatcmpl_q12_kimi',object:'chat.completion.chunk',created:1792741110,model:configuration.model,choices:[{index:0,delta,finish_reason}],system_fingerprint:'synthetic_q12_kimi'});
+  const argumentsJson=JSON.stringify({title:'Kimi saved shot',_mio_step:'Create the saved shot'});
+  return chunk({role:'assistant',content:''})+(reasoning?chunk({reasoning_content:'PRIVATE_KIMI_PLAN_'})+chunk({reasoning_content:'CONTINUED'}):'')+
+    chunk({content:text})+(toolCall?chunk({tool_calls:[{index:0,id:'call_q12_kimi',type:'function',function:{name:'mioon_shot_create',arguments:argumentsJson.slice(0,17)}}]})+
+      chunk({tool_calls:[{index:0,function:{arguments:argumentsJson.slice(17)}}]}):'')+
+    chunk({},toolCall?'tool_calls':'stop')+'data: [DONE]\n\n';
+}
+
+for(const platformId of ['china','international'] as const)test(`Kimi K3.1 Pro ${platformId}: low-effort CC keeps reasoning private and replays the complete tool round`,async()=>{
+  const configuration=q12Kimi(platformId),history=[{role:'user',content:'Save one offline test shot'}],body=buildTaskModelRequest(configuration,history,definitions,4318),request=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(request.model,'kimi-k3.1-pro');assert.equal(request.reasoning_effort,'low');assert.equal(request.max_completion_tokens,4096);
+  for(const field of ['max_tokens','max_output_tokens','thinking','reasoning','stream_options'])assert.equal(Object.hasOwn(request,field),false,field);
+  const first=q11Stream(configuration,body,q12KimiFrames(configuration));let planned:TaskModelOutput|undefined;const shown:string[]=[];
+  for await(const item of first.stream){if(item.type==='done')planned=item.output;else shown.push(item.text);}
+  assert.ok(planned);assert.equal(planned.text,'I will save this shot.');assert.equal(shown.join(''),planned.text);assert.doesNotMatch(shown.join(''),/PRIVATE_KIMI_PLAN_|CONTINUED/u);
+  assert.deepEqual(planned.toolCalls,[{id:'call_q12_kimi',name:'mioon_shot_create',arguments:{title:'Kimi saved shot'}}]);
+  const assistant={role:'assistant',content:'I will save this shot.',reasoning_content:'PRIVATE_KIMI_PLAN_CONTINUED',tool_calls:[{id:'call_q12_kimi',type:'function',function:{name:'mioon_shot_create',arguments:JSON.stringify({title:'Kimi saved shot',_mio_step:'Create the saved shot'})}}]};
+  assert.deepEqual(planned.providerOutput,assistant);assert.equal(taskToolExplanation(planned,'call_q12_kimi'),'Create the saved shot');
+  const continuation=taskContinuation('chat_completions',planned,[{callId:'call_q12_kimi',result:{saved:true}}]);
+  assert.deepEqual(continuation,[assistant,{role:'tool',tool_call_id:'call_q12_kimi',content:'{"saved":true}'}]);
+  const next=buildTaskModelRequest(configuration,[...history,...continuation],definitions,4318),nextRequest=JSON.parse(next) as Record<string,unknown>;
+  assert.equal(nextRequest.reasoning_effort,'low');assert.equal(nextRequest.max_completion_tokens,4096);assert.equal(Object.hasOwn(nextRequest,'thinking'),false);
+  assert.deepEqual((nextRequest.messages as unknown[]).slice(1),[...history,...continuation],'No reasoning, tool evidence or paired result is rewritten');
+  const second=q11Stream(configuration,next,q12KimiFrames(configuration,{toolCall:false,text:'Saved the offline shot.'}));let completed:TaskModelOutput|undefined;const lastShown:string[]=[];
+  for await(const item of second.stream){if(item.type==='done')completed=item.output;else lastShown.push(item.text);}
+  assert.ok(completed);assert.equal(completed.text,'Saved the offline shot.');assert.deepEqual(completed.toolCalls,[]);assert.equal(lastShown.join(''),completed.text);assert.doesNotMatch(lastShown.join(''),/PRIVATE_KIMI_PLAN_|CONTINUED/u);
+  assert.equal((completed.providerOutput as Record<string,unknown>).reasoning_content,'PRIVATE_KIMI_PLAN_CONTINUED');
+  for(const [exchange,wire] of [[first,body],[second,next]] as const){assert.equal(exchange.network.calls,1);assert.equal(exchange.network.ends,1);assert.equal(exchange.network.requests[0]!.body,wire);}
+});
+
+for(const platformId of ['china','international'] as const)test(`Kimi K2.6 ${platformId}: the retained off profile and its tool continuation never acquire K3 reasoning`,async()=>{
+  const configuration=q12Kimi(platformId,'kimi-k2.6'),history=[{role:'user',content:'Legacy offline test'}],body=buildTaskModelRequest(configuration,history,definitions,4318),request=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(request.model,'kimi-k2.6');assert.deepEqual(request.thinking,{type:'disabled'});assert.equal(request.max_tokens,4096);assert.equal(Object.hasOwn(request,'reasoning_effort'),false);assert.equal(Object.hasOwn(request,'max_completion_tokens'),false);
+  const first=q11Stream(configuration,body,q12KimiFrames(configuration,{reasoning:false}));let output:TaskModelOutput|undefined;
+  for await(const item of first.stream)if(item.type==='done')output=item.output;
+  assert.ok(output);assert.equal(output.toolCalls.length,1);assert.equal(Object.hasOwn(output.providerOutput as object,'reasoning_content'),false);
+  const continuation=taskContinuation('chat_completions',output,[{callId:'call_q12_kimi',result:{saved:true}}]),next=JSON.parse(buildTaskModelRequest(configuration,[...history,...continuation],definitions,4318)) as Record<string,unknown>;
+  assert.deepEqual(next.thinking,{type:'disabled'});assert.equal(next.max_tokens,4096);assert.equal(Object.hasOwn(next,'reasoning_effort'),false);assert.deepEqual((next.messages as unknown[]).slice(1),[...history,...continuation]);
+  const rejected=q11Stream(configuration,body,q12KimiFrames(configuration));let completed=0;const shown:string[]=[];
+  await assert.rejects(async()=>{for await(const item of rejected.stream){if(item.type==='done')completed++;else shown.push(item.text);}},{code:'AGENT_CHAT_REASONING_UNSUPPORTED'});
+  assert.equal(completed,0);assert.doesNotMatch(shown.join(''),/PRIVATE_KIMI_PLAN_|CONTINUED/u);assert.equal(first.network.calls,1);assert.equal(rejected.network.calls,1);assert.equal(rejected.network.requests[0]!.body,body);
+});
+
+const q12Sonnet:AgentConfiguration={presetId:'anthropic',platformId:'global',protocol:'anthropic_messages',model:'claude-sonnet-5-5',baseUrl:'https://api.anthropic.com'};
+function q12SonnetWire({thinkingText,toolCall,transformLocation}:{thinkingText:string;toolCall:boolean;transformLocation?:'start'|'delta'}):string{
+  const events:Array<Record<string,unknown>>=nativeAnthropicEvents({model:q12Sonnet.model,text:'The offline shot was saved.',...(toolCall?{toolName:'mioon_shot_create',argumentsJson:JSON.stringify({title:'Sonnet saved shot',_mio_step:'Create the saved shot'})}:{})}).map(event=>({...event}));
+  const start=events[0]!,transformations=[{type:'thinking_dropped',path:'messages.1.content.0',reason:'prefix_binding_mismatch'}];
+  if(transformLocation==='start')start.message={...(start.message as Record<string,unknown>),input_transformations:transformations};
+  for(const event of events.slice(1)){
+    if(typeof event.index==='number')event.index++;
+    if(event.type==='message_delta'&&transformLocation==='delta')event.input_transformations=transformations;
+  }
+  const thinking:Array<Record<string,unknown>>=[{type:'content_block_start',index:0,content_block:{type:'thinking',thinking:''}}];
+  if(thinkingText)thinking.push({type:'content_block_delta',index:0,delta:{type:'thinking_delta',thinking:thinkingText}});
+  thinking.push({type:'content_block_delta',index:0,delta:{type:'signature_delta',signature:toolCall?'SYNTHETIC_SONNET_SIGNATURE_FIRST':'SYNTHETIC_SONNET_SIGNATURE_FINAL'}},{type:'content_block_stop',index:0});
+  return q11ResponseWire([start,...thinking,...events.slice(1)]);
+}
+
+for(const [thinkingText,transformLocation] of [['PRIVATE_SONNET_REASONING','start'],['','delta']] as const)test(`Sonnet adaptive low replays signed ${thinkingText?'private':'empty'} thinking after a tool-prefix change and ${transformLocation} metadata`,async()=>{
+  const history=[{role:'user',content:'Save one offline Sonnet shot'}],body=buildTaskModelRequest(q12Sonnet,history,definitions,4318),request=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(request.model,'claude-sonnet-5-5');assert.equal(request.max_tokens,16384);
+  assert.deepEqual(request.thinking,{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}});assert.deepEqual(request.output_config,{effort:'low'});assert.equal(Object.hasOwn(request,'input_transformations'),false);
+  const first=q11Stream(q12Sonnet,body,q12SonnetWire({thinkingText,toolCall:true}));let planned:TaskModelOutput|undefined;const shown:string[]=[];
+  for await(const item of first.stream){if(item.type==='done')planned=item.output;else shown.push(item.text);}
+  assert.ok(planned);assert.equal(planned.text,'');assert.deepEqual(shown,[]);assert.deepEqual(planned.toolCalls,[{id:'tool_native_fixture',name:'mioon_shot_create',arguments:{title:'Sonnet saved shot'}}]);
+  const assistant={role:'assistant',content:[{type:'thinking',thinking:thinkingText,signature:'SYNTHETIC_SONNET_SIGNATURE_FIRST'},{type:'tool_use',id:'tool_native_fixture',name:'mioon_shot_create',input:{title:'Sonnet saved shot',_mio_step:'Create the saved shot'}}]};
+  assert.deepEqual(planned.providerOutput,assistant);
+  const continuation=taskContinuation('anthropic_messages',planned,[{callId:'tool_native_fixture',result:{saved:true}}]);
+  assert.deepEqual(continuation,[assistant,{role:'user',content:[{type:'tool_result',tool_use_id:'tool_native_fixture',content:'{"saved":true}'}]}]);
+  const expanded=[...definitions,{name:'mioon_shot_inspect',description:'Read a saved shot',parameters:{type:'object',properties:{shotId:{type:'string'}},required:['shotId'],additionalProperties:false}}],next=buildTaskModelRequest(q12Sonnet,[...history,...continuation],expanded,4318),nextRequest=JSON.parse(next) as Record<string,unknown>;
+  assert.equal((request.tools as unknown[]).length,1);assert.equal((nextRequest.tools as unknown[]).length,2);assert.deepEqual(nextRequest.thinking,request.thinking);assert.deepEqual(nextRequest.output_config,{effort:'low'});assert.equal(nextRequest.max_tokens,16384);
+  const nextMessages=nextRequest.messages as Array<Record<string,unknown>>;
+  assert.deepEqual(nextMessages[1],assistant,'The client retains the signed block even when the service reports dropping it');
+  const result=(nextMessages[2]!.content as Array<Record<string,unknown>>)[0]!;assert.equal(result.type,'tool_result');assert.equal(result.tool_use_id,'tool_native_fixture');assert.equal(result.content,'{"saved":true}');
+  const second=q11Stream(q12Sonnet,next,q12SonnetWire({thinkingText:'',toolCall:false,transformLocation}));let completed:TaskModelOutput|undefined;const visible:string[]=[];
+  for await(const item of second.stream){if(item.type==='done')completed=item.output;else visible.push(item.text);}
+  assert.ok(completed);assert.equal(completed.text,'The offline shot was saved.');assert.equal(visible.join(''),completed.text);assert.deepEqual(completed.toolCalls,[]);
+  assert.deepEqual(completed.providerOutput,{role:'assistant',content:[{type:'thinking',thinking:'',signature:'SYNTHETIC_SONNET_SIGNATURE_FINAL'},{type:'text',text:'The offline shot was saved.'}]});
+  assert.doesNotMatch(JSON.stringify(completed),/input_transformations|thinking_dropped|prefix_binding_mismatch/u);assert.doesNotMatch(visible.join(''),/PRIVATE_SONNET_REASONING|SYNTHETIC_SONNET_SIGNATURE/u);assert.deepEqual(planned.providerOutput,assistant);
+  for(const [exchange,wire] of [[first,body],[second,next]] as const){
+    assert.equal(exchange.network.calls,1);assert.equal(exchange.network.ends,1);assert.equal(exchange.network.requests[0]!.body,wire);
+    const headers=(exchange.network.requests[0]!.options as {headers:Record<string,string>}).headers;
+    assert.equal(headers['anthropic-beta'],'thinking-binding-controls-2026-08-01');assert.equal(headers['anthropic-version'],'2026-10-21');assert.equal(headers['x-api-key'],'SYNTHETIC_Q11_OFFLINE_ONLY');
+  }
+});
