@@ -33,8 +33,10 @@ export function readProjectMediaNativeClient(host: unknown = globalThis): Projec
     return {projectId: parsed.data.projectId, previewToken: parsed.data.previewToken};
   }
   const discard = async (value: Input<'discard'>): Promise<void> => {
-    const exact = input('discard', value), result = await call('discard', exact);
-    if (result !== undefined) throw protocol();
+    const exact = input('discard', value);
+    await request(async () => {
+      if (await call('discard', exact) !== undefined) throw protocol();
+    }, {}, false);
   };
   async function request<T>(operation: () => Promise<T>, options: ProjectMediaRequestOptions, write: boolean): Promise<T> {
     if (!record(options) || Object.keys(options).some(key => key !== 'signal') || options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new ProjectMediaError('VALIDATION_ERROR');

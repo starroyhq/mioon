@@ -17,6 +17,9 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 
 
 import {createServices} from '../packages/business/src/services.ts';
+import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import type {ManagedAssetRecord, TimelineRecord} from '../packages/business/src/timeline-inputs.ts';
+import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import { withoutForeignKeys } from './helpers/project-database.ts';
 
 // These deterministic service tests isolate schema/revision/state correctness from
@@ -272,4 +275,67 @@ test('timeline render snapshots revision/assets once and shares mutation idempot
   }
   f.restart(); assert.deepEqual(await f.call('timeline.render', renderInput), render);
   passed(t.name, { exportId: render.id, frozenTimelineRevision: render.timelineRevision, currentTimelineRevision: timeline.revision });
+});
+
+function legacyNullMetadataSnapshot() {
+  const projectId = randomUUID(), imageId = randomUUID(), audioId = randomUUID(), videoTrackId = randomUUID(), audioTrackId = randomUUID();
+  const rect = {x: 0, y: 0, width: 1080, height: 1920};
+  const timeline: TimelineRecord = {id: randomUUID(), projectId, revision: 1, fps: 30, width: 1080, height: 1920,
+    tracks: [{id: videoTrackId, name: 'Picture', kind: 'video', orderIndex: 0, hidden: false, muted: false}, {id: audioTrackId, name: 'Audio', kind: 'audio', orderIndex: 1, hidden: false, muted: false}],
+    clips: [{id: randomUUID(), name: 'Legacy picture', assetId: imageId, trackId: videoTrackId, startFrame: 0, durationFrames: 30, sourceInFrame: 0, rect, gain: 1},
+      {id: randomUUID(), name: 'Legacy tone', assetId: audioId, trackId: audioTrackId, startFrame: 0, durationFrames: 30, sourceInFrame: 0, rect: {...rect}, gain: 1}],
+    durationFrames: 30, createdAt: stamp, updatedAt: stamp};
+  const assets = new Map<string, ManagedAssetRecord>([
+    [imageId, {id: imageId, projectId, sha256: 'a'.repeat(64), mimeType: 'image/png', duration: null, width: 360, height: 480, hasAudio: false, hasVideo: true}],
+    [audioId, {id: audioId, projectId, sha256: 'b'.repeat(64), mimeType: 'audio/wav', duration: 10, width: null, height: null, hasAudio: true, hasVideo: false}],
+  ]);
+  return {projectId, imageId, audioId, timeline, assets,
+    input: (purpose: 'preview' | 'export') => ({projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose}),
+    record(input: {requestId: string; purpose: 'preview' | 'export'}) {
+      const snapshot: {timeline: TimelineRecord; assets: Array<Record<string, unknown>>} = freezeTimelineSnapshot(timeline, assets, undefined);
+      return {id: randomUUID(), projectId, requestId: input.requestId, mode: 'timeline', purpose: input.purpose,
+        timelineRevision: timeline.revision, snapshot, status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
+    }};
+}
+
+test('legacy null metadata freezes as absent for both preview and export without rewriting source records', () => {
+  const f = legacyNullMetadataSnapshot(), before = structuredClone({timeline: f.timeline, assets: [...f.assets]});
+  for (const purpose of ['preview', 'export'] as const) {
+    const input = f.input(purpose), record = f.record(input), image = record.snapshot.assets.find(asset => asset.id === f.imageId)!, audio = record.snapshot.assets.find(asset => asset.id === f.audioId)!;
+    assert.equal(isTimelineRenderRecord(record, input), true);
+    assert.equal(Object.hasOwn(image, 'duration'), false); assert.equal(image.width, 360); assert.equal(image.height, 480);
+    assert.equal(Object.hasOwn(audio, 'width'), false); assert.equal(Object.hasOwn(audio, 'height'), false); assert.equal(audio.duration, 10);
+    assert.equal(isTimelineRenderRecord({...record, status: 'succeeded', assetId: randomUUID(), url: null}, input), false, 'success still needs its exact output URL');
+    const outputId = randomUUID();
+    assert.equal(isTimelineRenderRecord({...record, status: 'succeeded', assetId: outputId, url: `/media/${outputId}`}, input), true);
+  }
+  assert.deepEqual({timeline: f.timeline, assets: [...f.assets]}, before);
+});
+
+test('snapshot null compatibility preserves zero and valid fractional duration without widening render schemas', () => {
+  const f = legacyNullMetadataSnapshot();
+  Object.assign(f.assets.get(f.imageId)!, {duration: 0, width: 0, height: 0});
+  Object.assign(f.assets.get(f.audioId)!, {width: 0, height: 0});
+  const input = f.input('preview'), record = f.record(input), image = record.snapshot.assets.find(asset => asset.id === f.imageId)!, audio = record.snapshot.assets.find(asset => asset.id === f.audioId)!;
+  assert.equal(isTimelineRenderRecord(record, input), true); assert.deepEqual([image.duration, image.width, image.height, audio.width, audio.height], [0, 0, 0, 0, 0]);
+  for (const field of ['duration', 'width', 'height']) {
+    const malformed = structuredClone(record); malformed.snapshot.assets[0]![field] = null;
+    assert.equal(isTimelineRenderRecord(malformed, input), false, `public render schema still rejects ${field}=null`);
+  }
+  f.assets.get(f.imageId)!.duration = 0.25;
+  assert.equal(f.record(input).snapshot.assets[0]!.duration, 0.25);
+  assert.equal(isTimelineRenderRecord(f.record(input), input), true);
+});
+
+test('snapshot compatibility never hides invalid non-null metadata after JSON serialization', () => {
+  const invalidValues = {duration: [-1, NaN, Infinity, -Infinity, '0', false, {}], width: [-1, 0.5, NaN, Infinity, -Infinity, '360', false, {}], height: [-1, 0.5, NaN, Infinity, -Infinity, '480', false, {}]};
+  for (const field of ['duration', 'width', 'height'] as const) for (const value of invalidValues[field]) {
+    const f = legacyNullMetadataSnapshot();
+    // Deliberate malformed-record input: TypeScript cannot validate persisted JSON.
+    Object.assign(f.assets.get(f.imageId)!, {[field]: value});
+    const before = structuredClone([...f.assets]), input = f.input('export'), record = f.record(input), image = record.snapshot.assets[0]!;
+    assert.equal(Object.hasOwn(image, field), true, `${field} must not become an omitted null sentinel`);
+    assert.equal(isTimelineRenderRecord(record, input), false, `${field}=${String(value)} must remain invalid`);
+    assert.deepEqual([...f.assets], before);
+  }
 });

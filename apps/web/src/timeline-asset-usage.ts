@@ -56,9 +56,10 @@ const sameOptionalOwner = (value: Record<string, unknown>, projectId: string, ti
 type IdentityValue = string | number | boolean | readonly number[];
 type IdentityEntry = readonly [string, 0] | readonly [string, 1, IdentityValue];
 type IdentityReader = (value: unknown) => IdentityValue | null;
-function optionalIdentity(entries: IdentityEntry[], value: Record<string, unknown>, field: string, reader: IdentityReader): boolean {
-  if (!Object.hasOwn(value, field)) { entries.push([field, 0]); return true; }
-  const checked = reader(read(value, field));
+function optionalIdentity(entries: IdentityEntry[], value: Record<string, unknown>, field: string, reader: IdentityReader, legacyNullAsAbsent = false): boolean {
+  const present = Object.hasOwn(value, field), current = present ? read(value, field) : undefined;
+  if (!present || legacyNullAsAbsent && current === null) { entries.push([field, 0]); return true; }
+  const checked = reader(current);
   if (checked === null) return false;
   entries.push([field, 1, checked]); return true;
 }
@@ -73,16 +74,20 @@ function rectIdentity(value: unknown): IdentityValue | null {
     integer(width, 2, Number.MAX_SAFE_INTEGER) && integer(height, 2, Number.MAX_SAFE_INTEGER) ? [x, y, width, height] : null;
 }
 
-/** Fixed fields and bounded primitive values only. Explicit absence is distinct
- * from every supplied value. No paths, bytes, arbitrary objects or JSON hooks
+/** Fixed fields and bounded primitive values only. Absence is distinct from
+ * supplied values except the three retained null metadata sentinels. No paths,
+ * bytes, arbitrary objects or JSON hooks
  * enter this token, and it never claims a fresh or authorized business record. */
 function sourceIdentity(asset: Record<string, unknown>, clip: Record<string, unknown>, track: Track): string | null {
   const source: IdentityEntry[] = [], savedClip: IdentityEntry[] = [], savedTrack: IdentityEntry[] = [];
   if (!optionalIdentity(source, asset, 'sha256', value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null) ||
       !optionalIdentity(source, asset, 'mimeType', value => text(value, 200) ? value : null) ||
       !optionalIdentity(source, asset, 'name', value => text(value, 200) ? value : null)) return null;
-  for (const field of ['width', 'height', 'sizeBytes']) if (!optionalIdentity(source, asset, field, safeNonnegative)) return null;
-  if (!optionalIdentity(source, asset, 'duration', finiteNonnegative)) return null;
+  // Early examples used null for these unavailable values. Match absence only
+  // for those sentinels; other supplied metadata still uses the strict readers.
+  for (const field of ['width', 'height']) if (!optionalIdentity(source, asset, field, safeNonnegative, true)) return null;
+  if (!optionalIdentity(source, asset, 'sizeBytes', safeNonnegative) ||
+      !optionalIdentity(source, asset, 'duration', finiteNonnegative, true)) return null;
   for (const field of ['hasAudio', 'hasVideo']) if (!optionalIdentity(source, asset, field, booleanIdentity)) return null;
   for (const field of ['versionId', 'shotId', 'jobId']) if (!optionalIdentity(savedClip, clip, field, uuidIdentity)) return null;
   if (!optionalIdentity(savedClip, clip, 'name', value => text(value, 200) ? value : null) ||

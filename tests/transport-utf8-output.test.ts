@@ -208,6 +208,8 @@ const binarySites = {
 };
 // These are not appendFile loggers or streaming text decoders. Keep each exact
 // Buffer collection and final sink explicit: no directory/file-wide exemption.
+// tests/browser_desktop_bridge_errors.mjs routes stdout/stderr to file
+// descriptors and reads complete logs as UTF-8 after child exit (zero listeners).
 const bufferedSites = {
   'tests/desktop-exit-backend.test.mjs': {
     count: 1, kind: 'complete-message',

@@ -25,7 +25,9 @@ export function createNativeAssetMediaBridge(invoke: (channel: typeof NATIVE_ASS
     const error = value.error as {code?: unknown; status?: unknown} | null;
     if (!error || typeof error !== 'object' || Array.isArray(error) || Object.keys(error).sort().join(',') !== 'code,status' ||
         typeof error.code !== 'string' || !/^[A-Z][A-Z0-9_]{1,99}$/u.test(error.code) || !Number.isInteger(error.status) || Number(error.status) < 400 || Number(error.status) > 599) throw invalid();
-    throw Object.assign(new Error(error.code), {code: error.code, status: error.status});
+    // Keep the rejection cloneable across contextBridge; the page owns Error
+    // construction and its existing known/unknown outcome classification.
+    throw {code: error.code, status: error.status};
   };
   return Object.freeze({
     choose: async (input: Parameters<NativeAssetMediaBridge['choose']>[0]) => {
