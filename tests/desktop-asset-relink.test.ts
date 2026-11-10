@@ -12,6 +12,8 @@ import type {
   NativeRelinkPreviewInput, NativeRelinkPreview, NativeRelinkApplyInput, NativeRelinkApplyResult,
 } from '../packages/contracts/src/asset-media-native.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {readProjectMediaNativeClient} from '../apps/web/src/project-media-native-client.ts';
+import {ProjectMediaError} from '../apps/web/src/project-media-client.ts';
 
 const id = (n: number) => `87000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), assetId = id(2), selectedFile = '/synthetic/移动后的素材/镜头.mp4';
@@ -66,6 +68,37 @@ function fixture(hooks: Hooks = {}) {
     replaceProject() {boundProject = id(++serial);}, closeOwner() {alive = false;}, disable() {enabled = false;}, advance(ms: number) {clock += ms;}};
 }
 const of = (f: ReturnType<typeof fixture>, kind: string) => f.calls.filter(value => value.kind === kind);
+
+test('preload sends plain relink rejection DTOs and the page retains known versus unknown outcomes',async t=>{
+  const errors=[{code:'MEDIA_CHANGED',status:409},{code:'REVISION_CONFLICT',status:409},{code:'ASSET_RELINK_BUSY',status:409},
+    {code:'ASSET_RELINK_UNAVAILABLE',status:503},{code:'ASSET_MEDIA_NATIVE_OUTCOME_UNKNOWN',status:409},{code:'PROJECT_ENTRY_OUTCOME_UNKNOWN',status:409}];
+  const input={projectId,previewToken:id(900),requestId:'preserved-native-intent'};
+  for(const action of ['choose','apply'] as const)for(const failure of errors)await t.test(`${action}/${failure.code}`,async()=>{
+    const calls:unknown[]=[];const bridge=createNativeAssetMediaBridge(async(_channel,input)=>{calls.push(input);return {ok:false,error:failure};});
+    const call=()=>action==='choose'?bridge.choose(selection):bridge.apply(input);
+    await assert.rejects(call(),error=>{assert.equal(error instanceof Error,false);assert.deepEqual(error,failure);return true;});assert.equal(calls.length,1);
+    const page=readProjectMediaNativeClient({__mioonAssetMediaNative:bridge});assert.ok(page);
+    const pending=action==='choose'?page.choose(selection):page.apply(input);
+    await assert.rejects(pending,error=>{
+      assert.ok(error instanceof ProjectMediaError);assert.equal(error.code,failure.code);assert.equal(error.status,failure.status);
+      assert.equal(error.outcomeUnknown,action==='apply'&&(failure.status>=500||failure.code.endsWith('_OUTCOME_UNKNOWN')));return true;
+    });
+    assert.equal(calls.length,2,'the page does not retry a refusal or an unknown write');
+    assert.deepEqual(calls,[{...(action==='choose'?selection:input),action},{...(action==='choose'?selection:input),action}]);
+  });
+});
+
+test('lost transport or malformed relink replies remain unknown after a write and are never automatically repeated',async t=>{
+  const input={projectId,previewToken:id(900),requestId:'unknown-native-intent'};
+  const replies=[null,{ok:false,error:{code:'MEDIA_CHANGED',status:409,extra:true}},{ok:false,error:{code:'MEDIA_CHANGED',status:399}},{ok:false,error:{code:'media_changed',status:409}},{ok:true,data:{}}];
+  for(const action of ['choose','apply'] as const)for(let index=0;index<=replies.length;index++)await t.test(`${action}/${index===replies.length?'transport':'malformed-'+index}`,async()=>{
+    let calls=0;const bridge=createNativeAssetMediaBridge(async()=>{calls++;if(index===replies.length)throw new Error('Synthetic transport loss');return replies[index];});
+    const page=readProjectMediaNativeClient({__mioonAssetMediaNative:bridge});assert.ok(page);
+    await assert.rejects(action==='choose'?page.choose(selection):page.apply(input),error=>{
+      assert.ok(error instanceof ProjectMediaError);assert.equal(error.code,'ASSET_RELINK_UNAVAILABLE');assert.equal(error.status,undefined);assert.equal(error.outcomeUnknown,action==='apply');return true;
+    });assert.equal(calls,1);
+  });
+});
 
 test('a trusted single-file choice yields a bound S1 preview without importing, applying or granting permission', async () => {
   const f = fixture(), preview = await f.bridge.choose(selection); assert.ok(preview);

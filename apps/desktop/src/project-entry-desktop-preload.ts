@@ -12,7 +12,12 @@ export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT
  const request=async(input:unknown):Promise<unknown>=>{
   const value=await invoke(PROJECT_ENTRY_DESKTOP_CHANNEL,projectEntryDesktopRequestSchema.parse(input));
   if(value===null||typeof value!=='object'||!('ok'in value)||typeof value.ok!=='boolean')throw new Error('Invalid project entry response');
-  if(!value.ok){if(Object.keys(value).sort().join(',')!=='error,ok'||!('error'in value))throw new Error('Invalid project entry response');const error=projectEntryControlErrorSchema.parse(value.error);throw Object.assign(new Error(error.code),error);}
+  if(!value.ok){
+   if(Object.keys(value).sort().join(',')!=='error,ok'||!('error'in value))throw new Error('Invalid project entry response');
+   // contextBridge drops custom Error properties. The page rebuilds its own
+   // Error from this strictly validated, cloneable rejection DTO.
+   throw projectEntryControlErrorSchema.parse(value.error);
+  }
   if(Object.keys(value).sort().join(',')!=='data,ok'||!('data'in value))throw new Error('Invalid project entry response');return value.data;
  };
  const subscribePendingOpen:NonNullable<ProjectEntriesDesktopBridge['subscribePendingOpen']>=listener=>{
