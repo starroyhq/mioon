@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {agentOpenAiReasoningFamily} from '../../../contracts/src/agent-openai-model-family.ts';
 import {validateAgentGatewayConfiguration} from './model-profiles.ts';
 import {agentChatProfile,agentChatAllowsNaturalEof} from './model-profiles.ts';
 import {agentResponsesProfile,agentResponsesReasoningCapable} from './model-profiles.ts';
@@ -200,8 +201,20 @@ function call(id:unknown,name:unknown,argumentsJson:unknown,definitions:readonly
   // wrapper keeps its original domain-validation behavior on recovery.
   return {id:identifier(id),name:selected,arguments:!definition||declaresToolExplanation(definition.parameters)?withoutToolExplanation(argumentsValue):argumentsValue};
 }
+function requireTaskToolProtocol(configuration:AgentConfiguration,toolCount:number):void {
+  if(configuration.presetId==='openai'&&configuration.protocol==='chat_completions'&&toolCount){
+    const family=agentOpenAiReasoningFamily(configuration.model);
+    if(family?.documented&&!family.chatCompletions){
+      const failure=agentChatError('AGENT_CHAT_RESPONSES_REQUIRED');
+      // A retained intent can reach this check before transport opens. Keep
+      // the same trusted zero-dispatch proof used by the submission fence.
+      preventedSubmissions.add(failure);throw failure;
+    }
+  }
+}
 export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number,options:{toolLoading?:boolean}={}):string {
   validateAgentGatewayConfiguration(configuration,{selfPort});
+  requireTaskToolProtocol(configuration,definitions.length);
   if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)fail('AGENT_CHAT_LIMIT');
   const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
@@ -280,6 +293,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
       if(!object(value))return fail();const tool=options.configuration.protocol==='chat_completions'?value.function:value;
       if(!object(tool))return fail();return {name:identifier(tool.name),description:string(tool.description),parameters:options.configuration.protocol==='anthropic_messages'?tool.input_schema:tool.parameters};
     });
+    requireTaskToolProtocol(options.configuration,definitions.length);
     // The shared transport sanitizes guard errors for its legacy gain fence.
     // Keep the trusted task guard's original denial; provider data cannot set it.
     let blocked:unknown;

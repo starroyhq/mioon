@@ -83,7 +83,7 @@ test('H1e Chat Completions requests ask for usage only on documentation-backed p
     const body=JSON.parse(buildTaskModelRequest(config,[{role:'user',content:'合成编译'}],[])) as Record<string,unknown>;
     assert.deepEqual(body.stream_options,supported.has(preset.id)?{include_usage:true}:undefined,preset.id);
     assert.equal(body.max_tokens??body.max_completion_tokens,agentModelTokenLimits(config).outputTokens,preset.id);
-    assert.equal(body.max_tokens??body.max_completion_tokens,['openai','openrouter'].includes(preset.id)?AGENT_OPENAI_REASONING_OUTPUT_TOKENS:4096,preset.id);
+    assert.equal(body.max_tokens??body.max_completion_tokens,preset.id==='openrouter'?AGENT_OPENAI_REASONING_OUTPUT_TOKENS:4096,preset.id);
   }
   for(const protocol of ['responses','anthropic_messages'] as const){
     const body=JSON.parse(buildTaskModelRequest(configuration(protocol),[{role:'user',content:'合成编译'}],[])) as Record<string,unknown>;
@@ -100,7 +100,7 @@ test('H1e Chat Completions requests ask for usage only on documentation-backed p
 });
 test('H1e Chat Completions usage requests require the documented official origin and base path',()=>{
   const official:AgentConfiguration[]=[
-    {...DEFAULT_AGENT_CONFIGURATION,baseUrl:'https://api.openai.com/v1/'},
+    {...DEFAULT_AGENT_CONFIGURATION,protocol:'chat_completions',baseUrl:'https://api.openai.com/v1/'},
     {presetId:'deepseek',platformId:'global',protocol:'chat_completions',model:'deepseek-flash',baseUrl:'https://api.deepseek.com'},
     {presetId:'qwen',platformId:'beijing',protocol:'chat_completions',model:'qwen-plus',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1'},
     {presetId:'qwen',platformId:'singapore',protocol:'chat_completions',model:'qwen-plus',baseUrl:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'},

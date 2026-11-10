@@ -1425,10 +1425,10 @@ export const connectionMessages = {
     "ja": "ローカル Ollama"
   },
   "agent.settings.presets.openaiNote": {
-    "zh-Hans": "GPT-5.4 mini 用于文本与工具任务；可选择 Chat Completions 或 Responses",
-    "zh-Hant": "GPT-5.4 mini 用於文字與工具任務；可選擇 Chat Completions 或 Responses",
-    "en": "GPT-5.4 mini for text and tool tasks. Choose Chat Completions or Responses",
-    "ja": "GPT-5.4 mini でテキストとツールのタスクを実行します。Chat Completions または Responses を選択できます"
+    "zh-Hans": "使用当前一代 OpenAI 型号处理文本与工具任务；默认使用 Responses，工具支持取决于型号",
+    "zh-Hant": "使用目前世代的 OpenAI 型號處理文字與工具任務；預設使用 Responses，工具支援依型號而定",
+    "en": "Use current-generation OpenAI models for text and tool tasks. Responses is the default; tool support depends on the model",
+    "ja": "現行世代の OpenAI モデルでテキストとツールのタスクを実行します。既定は Responses で、ツール対応はモデルによって異なります"
   },
   "agent.settings.presets.anthropicNote": {
     "zh-Hans": "Messages 文本与 Mio 宿主工具基线；关闭思考，账户及模型访问权限由供应商决定",

@@ -20,7 +20,7 @@ async function engine(t: TestContext, extra: Record<string, unknown> = {}, stora
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async (value: unknown) => { persisted = value; }}, ...extra} as never);
   t.after(() => settings.close());
   const initial = await settings.get();
-  const saved = await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION,presetId:"custom",platformId:"custom"}, secret: {action: 'replace', storage, value: SECRET}});
+  const saved = await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION,protocol:"chat_completions",model:"gpt-5.4-mini",presetId:"custom",platformId:"custom"}, secret: {action: 'replace', storage, value: SECRET}});
   return {settings, expected: testAgentCredential(saved), get persisted() { return persisted; }};
 }
 const safe = (value: unknown): true => { assert.equal(JSON.stringify(value).includes(SECRET), false); return true; };

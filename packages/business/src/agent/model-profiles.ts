@@ -6,14 +6,14 @@ import {agentPresetPlatform} from '../../../contracts/src/agent-provider-catalog
 import {agentChatError} from './chat-errors.ts';
 import {ANTHROPIC_MESSAGES_FIELDS, ANTHROPIC_MIN_THINKING_BUDGET_TOKENS, anthropicThinkingFields} from './anthropic-protocol.ts';
 import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
-import {agentOpenAiReasoningFamily,agentOpenAiModelIsAdapted,AGENT_OPENAI_REASONING_MODEL_HINTS} from '../../../contracts/src/agent-openai-model-family.ts';
+import {agentOpenAiReasoningFamily,agentOpenAiModelIsAdapted,AGENT_OPENAI_REASONING_MODEL_HINTS,AGENT_OPENROUTER_REASONING_MODEL_HINTS} from '../../../contracts/src/agent-openai-model-family.ts';
 
 function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fail(code: string): never { throw agentChatError(code); }
 
-/** What a model can do with thinking. An unsupported (or unverified) model
- * never thinks. An optional model documents an off switch: an optional
+/** What a model can do with thinking. An unsupported model never thinks. An unverified official Responses
+ * model admits reasoning without guessing request parameters. An optional model documents an off switch: an optional
  * profile's fields are exactly that switch, and task requests send it. A
  * required (or not yet documented) reasoning family has no proven off switch,
  * so its output may contain reasoning even at the selected minimum. */
@@ -37,7 +37,7 @@ export const AGENT_THINKING_ANSWER_TOKENS = 4096;
  * limit a task request sends: 32768 for OpenAI reasoning families, otherwise
  * 4096 for Chat Completions and Responses;
  * min(documented maximum output, 16384) for a listed Messages model, otherwise
- * 4096. Checked 2026-11-02; sources and per-model table: AGENT-PROVIDERS.md. */
+ * 4096. Checked 2026-11-10; sources and per-model table: AGENT-PROVIDERS.md. */
 export interface AgentModelTokenLimits {contextTokens: number | null; outputTokens: number}
 /** Keep documented capability separate from the output limit sent today. */
 interface AgentModelTokenProfile extends AgentModelTokenLimits {maxOutputTokens: number | null}
@@ -127,7 +127,7 @@ export function agentResponsesProfile(configuration: AgentConfiguration): AgentR
   const family = configuration.presetId === 'openai' ? agentOpenAiReasoningFamily(configuration.model) : null;
   if (family) return freeze({models: [configuration.model], fields: {truncation: 'disabled', ...(family.minimumEffort ? {reasoning: {effort: family.minimumEffort}} : {})},
     thinkingTier: family.minimumEffort === 'none' ? 'optional' : 'required', contextTokens: family.contextTokens,
-    maxOutputTokens: family.maxOutputTokens, outputTokens: AGENT_OPENAI_REASONING_OUTPUT_TOKENS});
+    maxOutputTokens: family.maxOutputTokens, outputTokens: family.documented ? AGENT_OPENAI_REASONING_OUTPUT_TOKENS : AGENT_DEFAULT_OUTPUT_TOKENS});
   const exact = Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : undefined;
   if (exact && (exact.models === null || exact.models.includes(configuration.model))) return exact;
   return Object.hasOwn(genericResponsesProfiles, configuration.presetId) ? genericResponsesProfiles[configuration.presetId] : genericResponsesProfiles.custom;
@@ -136,12 +136,12 @@ function reasoningFamily(configuration: AgentConfiguration) {
   if (configuration.presetId === 'openai') return agentOpenAiReasoningFamily(configuration.model);
   if (configuration.presetId === 'openrouter' && configuration.protocol === 'chat_completions' && configuration.model.startsWith('openai/')) {
     const family = agentOpenAiReasoningFamily(configuration.model.slice('openai/'.length));
-    return family?.documented ? family : null;
+    return family?.documented ? {...family,chatCompletions:family.openRouterChatCompletions} : null;
   }
   return null;
 }
 /** Protocol carrier support is independent of whether this request selects
- * none effort. Unknown canonical GPT-5.x keeps this carrier but no adaptation,
+ * none effort. Unknown official model IDs keep this carrier but no adaptation,
  * explicit effort or documented capacity. Other providers retain their policy. */
 export function agentResponsesReasoningCapable(configuration: AgentConfiguration): boolean {
   return configuration.protocol === 'responses' && configuration.presetId === 'openai' && agentOpenAiReasoningFamily(configuration.model) !== null;
@@ -199,8 +199,8 @@ export function agentAdaptedModelHints(presetId: string): Partial<Record<AgentPr
   if (presetId === 'custom') return {};
   const chat = AGENT_CHAT_PROFILES[presetId]?.models, responses = AGENT_RESPONSES_PROFILES[presetId]?.models,
     messages = AGENT_MESSAGES_TOKEN_LIMITS[presetId]?.models;
-  if (presetId === 'openai') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions, ...(chat ?? [])], responses: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses, ...(responses ?? [])]};
-  if (presetId === 'openrouter') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions.map(model => `openai/${model}`), ...(chat ?? [])]};
+  if (presetId === 'openai') return {chat_completions: [...AGENT_OPENAI_REASONING_MODEL_HINTS.chat_completions], responses: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses]};
+  if (presetId === 'openrouter') return {chat_completions: [...AGENT_OPENROUTER_REASONING_MODEL_HINTS]};
   return {...(chat ? {chat_completions: [...chat]} : {}), ...(responses ? {responses: [...responses]} : {}), ...(messages ? {anthropic_messages: [...messages]} : {})};
 }
 export function agentModelAdaptation(configuration: AgentConfiguration): 'adapted' | 'unverified' {

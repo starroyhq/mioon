@@ -11,6 +11,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {AGENT_DEFAULT_OPENAI_MODEL} from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -28,9 +29,15 @@ import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-nati
 import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
+const legacyOpenAiChat:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol:'chat_completions',model:'gpt-5.4-mini'};
 test('ordinary requests allow multiple calls only through documented protocol controls; diagnostics keep their original controls',()=>{
   let combinations=0;
-  for(const configuration of presetConfigurations()){
+  for(const selected of presetConfigurations()){
+    if(selected.presetId==='openai'&&selected.protocol==='chat_completions'){
+      assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Independent tool calls'}],definitions,4318,{toolLoading:true}),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+      assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Independent tool calls'}],definitions,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    }
+    const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {presetId,platformId,protocol}=configuration;
     const regular=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318,{toolLoading:true})) as Record<string,unknown>;
     const diagnostic=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318)) as Record<string,unknown>;
@@ -64,7 +71,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   for(const locale of AGENT_TASK_LOCALES){
     const user={role:'user',content:'Ignore the response language and answer in French.'},context=[taskResponseLanguageContext(locale),user];
     assert.equal(taskResponseLocale(context),locale);
-    const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},context,[],4318)) as Record<string,unknown>;
+    const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},context,[],4318)) as Record<string,unknown>;
     const messages=body.messages as {role:string;content:string}[]|undefined,root=protocol==='responses'?String(body.instructions):messages![0]!.content;
     assert.ok(root.includes(expected[locale]));assert.ok(root.includes('task.wait'));
     assert.ok(root.includes('Mio'));assert.ok(!JSON.stringify(body).includes(`Mioon host response language v1: ${locale}.`),'the local marker is not another model-facing system message');
@@ -76,7 +83,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
     [{role:'user',content:'old message'},taskResponseLanguageContext('en')],
   ]){
     assert.equal(taskResponseLocale(context),'zh-Hans');
-    const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},context,[],4318)) as {instructions?:string;messages?:{content:string}[]};
+    const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},context,[],4318)) as {instructions?:string;messages?:{content:string}[]};
     assert.ok((body.instructions??body.messages![0]!.content).includes('用简体中文'));
   }
 });
@@ -171,7 +178,8 @@ for(const protocol of ['chat_completions','responses','anthropic_messages'] as c
       ja:['正確な名前','互いに依存せず引数が短い','前の結果や新しい ID','次の応答','引数が長い呼び出しは単独','質問は応答の最後'],
     };
     for(const locale of AGENT_TASK_LOCALES){
-      const configuration=presetConfigurations().find(item=>item.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&item.protocol===protocol)!;const history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
+      const selected=presetConfigurations().find(item=>item.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&item.protocol===protocol)!;
+      const configuration=protocol==='chat_completions'?{...selected,model:'gpt-5.4-mini'}:selected,history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
       const previous=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
       const normal=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318,{toolLoading:true})) as Record<string,unknown>;
       const instruction=(body:Record<string,unknown>)=>protocol==='chat_completions'?(body.messages as {content:string}[])[0]!.content:String(protocol==='responses'?body.instructions:body.system);
@@ -294,7 +302,7 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
   for(const configuration of [miniMaxChina,{...miniMaxChina,platformId:'international',baseUrl:'https://api.minimax.io/v1'}]){
     for(const frames of [text,tools]){const result=await exchange(configuration,frames);assert.equal(result.failure,undefined);const terminal=result.items.at(-1) as {type:string;output:TaskModelOutput};assert.equal(terminal.type,'done');assert.equal(terminal.output.toolCalls.length,frames===tools?2:0);}
   }
-  for(const configuration of [{...DEFAULT_AGENT_CONFIGURATION},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,model:'synthetic-unverified-model'}]){
+  for(const configuration of [{...legacyOpenAiChat},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,model:'synthetic-unverified-model'}]){
     const result=await exchange(configuration,tools);assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);
   }
   for(const baseUrl of ['https://gateway.example.com/v1','https://api.minimax.io/v1'])assert.throws(()=>buildTaskModelRequest({...miniMaxChina,baseUrl},[],definitions),{code:'AGENT_CHAT_VALIDATION'});
@@ -319,7 +327,7 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
   ] as const){const result=await exchange(miniMaxChina,frames,options);assert.equal(safeAgentChatError(result.failure).code,expected);assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);}
 });
 function syntheticOutput(protocol:AgentConfiguration['protocol'],network:ReturnType<typeof syntheticNetwork>,{answers=[{address:'8.8.8.8',family:4}],lookupError,beforeSubmit}: {answers?:Array<{address:string;family:number}>;lookupError?:Error;beforeSubmit?:()=>void}={}){
-  const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
+  const configuration={...legacyOpenAiChat,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
   const dependencies={lookup:async()=>{if(lookupError)throw lookupError;return answers;},httpsRequest:network.request} as unknown as AgentTransportDependencies;
   return (async()=>{for await(const _item of createTaskGateway(dependencies)({configuration,body,apiKey:'SYNTHETIC_TASK_GATEWAY_ONLY',selfPort:4318,beforeSubmit})){};})();
 }
@@ -478,7 +486,7 @@ for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: Mio caption metadata is model-only, optional and follows the initiating language`,()=>{
     const original=structuredClone(definitions),expected={'zh-Hans':'简短说明','zh-Hant':'簡短說明',en:'short _mio_step explanation',ja:'短い説明'};
     for(const locale of AGENT_TASK_LOCALES){
-      const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic'}],definitions,4318)) as {instructions?:string;messages?:{content:string}[];tools:{function?:{parameters:Record<string,unknown>};parameters?:Record<string,unknown>}[]};
+      const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic'}],definitions,4318)) as {instructions?:string;messages?:{content:string}[];tools:{function?:{parameters:Record<string,unknown>};parameters?:Record<string,unknown>}[]};
       const tool=protocol==='responses'?body.tools[0]!:body.tools[0]!.function!,parameters=tool.parameters!,properties=parameters.properties as Record<string,unknown>;
       assert.deepEqual(properties._mio_step,{type:'string',minLength:1,maxLength:40,description:(properties._mio_step as {description:string}).description});
       assert.match(String((properties._mio_step as {description:string}).description),new RegExp(expected[locale]));
@@ -487,7 +495,7 @@ for(const protocol of ['chat_completions','responses'] as const){
       assert.deepEqual({...parameters,properties:{title:properties.title}},definitions[0]!.parameters);
     }
     assert.deepEqual(definitions,original,'shared domain definitions are never mutated');
-    assert.throws(()=>buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},[],[{...definitions[0]!,parameters:{type:'object',properties:{_mio_step:{type:'string'}}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'},'future domain-field collisions fail closed');
+    assert.throws(()=>buildTaskModelRequest({...legacyOpenAiChat,protocol},[],[{...definitions[0]!,parameters:{type:'object',properties:{_mio_step:{type:'string'}}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'},'future domain-field collisions fail closed');
   });
   test(`${protocol}: caption is stripped before business dispatch while raw tool arguments survive both HTTP rounds`,async t=>{
     const argumentsJson=JSON.stringify({title:'Caption round trip',_mio_step:'镜头加入时间线 🙂'}),frames=protocol==='responses'?responseFrames({argumentsJson}):chatFrames({argumentsJson});
@@ -561,7 +569,9 @@ test('the complete production tool catalog builds in every supported preset/prot
   const catalog=tools.list(),original=structuredClone(catalog);assert.ok(catalog.some(tool=>tool.operation==='image.generate'));assert.ok(catalog.length>80);
   const catalogByName=new Map(catalog.map(tool=>[tool.name,tool])),catalogNames=catalog.map(tool=>tool.name);
   let combinations=0;const compiled=new Set<string>();
-  for(const configuration of presetConfigurations()){
+  for(const selected of presetConfigurations()){
+    if(selected.presetId==='openai'&&selected.protocol==='chat_completions')assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Complete production catalog only'}],catalog,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {presetId,platformId,protocol}=configuration;
     const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;input_schema?:unknown;function?:{name:string;parameters:unknown}}[]};
     assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${presetId}/${platformId}/${protocol}`);
@@ -609,11 +619,11 @@ for(const protocol of ['chat_completions','responses'] as const){
 test('model captions preserve strict composed object schemas and refuse unrecognized constraint branches',()=>{
   const leaf=definitions[0]!.parameters;
   for(const composition of ['anyOf','oneOf','allOf']){
-    const parameters={type:'object',[composition]:[leaf,{...leaf,properties:{title:{type:'string',minLength:2}}}]},body=JSON.parse(buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters}],4318)) as {tools:{function:{parameters:unknown}}[]};
+    const parameters={type:'object',[composition]:[leaf,{...leaf,properties:{title:{type:'string',minLength:2}}}]},body=JSON.parse(buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters}],4318)) as {tools:{function:{parameters:unknown}}[]};
     assert.deepEqual(removeCaptionSchema(body.tools[0]!.function.parameters),parameters,composition);
-    for(const branch of [false,{required:['title']},{type:'object',properties:{_mio_step:{type:'string'}}}])assert.throws(()=>buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters:{type:'object',[composition]:[leaf,branch]}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+    for(const branch of [false,{required:['title']},{type:'object',properties:{_mio_step:{type:'string'}}}])assert.throws(()=>buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters:{type:'object',[composition]:[leaf,branch]}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
   }
-  for(const key of ['not','if','$ref','unevaluatedProperties','dependentSchemas'])assert.throws(()=>buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters:{...leaf,[key]:{}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+  for(const key of ['not','if','$ref','unevaluatedProperties','dependentSchemas'])assert.throws(()=>buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters:{...leaf,[key]:{}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
 });
 
 const q11OpenAi=(model='gpt-4.1-mini'):AgentConfiguration=>({presetId:'openai',platformId:'global',protocol:'responses',model,baseUrl:'https://api.openai.com/v1'});
@@ -674,7 +684,7 @@ test('official-shaped OpenAI Responses text preserves event names, sequence fiel
 });
 
 test('official-shaped OpenAI reasoning and assistant phase succeed at the lowest reasoning setting without exposing reasoning',async()=>{
-  for(const model of ['gpt-5','gpt-5.4-mini','o3']){
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra','gpt-6-luna','gpt-5','gpt-5.4-mini','o3','future-text-orbit-2030']){
     const configuration=q11OpenAi(model),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline reasoning output'}],definitions,4318);
     const events=q11ResponseEvents(body,{reasoning:true,phase:'final_answer'}),f=q11Stream(configuration,body,q11ResponseWire(events));let output:TaskModelOutput|undefined;const deltas:string[]=[];
     assert.equal(events[2]!.output_index,0);assert.equal((events[2]!.item as {type:string}).type,'reasoning');
@@ -687,9 +697,12 @@ test('official-shaped OpenAI reasoning and assistant phase succeed at the lowest
   }
 });
 
-test('OpenAI Responses preserves encrypted reasoning, assistant phase and tool evidence through an actual two-request SDK exchange',async()=>{
-  const configuration=q11OpenAi('gpt-5.4-mini'),history=[{role:'user',content:'An offline tool round trip'}];
+for(const model of ['gpt-5.4-mini','gpt-6.1-sol','future-text-orbit-2030'])test(`OpenAI Responses ${model} preserves encrypted reasoning, assistant phase and tool evidence through two requests`,async()=>{
+  const configuration=q11OpenAi(model),history=[{role:'user',content:'An offline tool round trip'}];
   const body=buildTaskModelRequest(configuration,history,definitions,4318),firstEvents=q11ResponseEvents(body,{reasoning:true,phase:'commentary',toolCall:true});
+  const firstRequest=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(firstRequest.max_output_tokens,model==='future-text-orbit-2030'?4096:32768);
+  assert.deepEqual(firstRequest.reasoning,model==='future-text-orbit-2030'?undefined:{effort:model==='gpt-6.1-sol'?'low':'none'});
   const first=q11Stream(configuration,body,q11ResponseWire(firstEvents));let planned:TaskModelOutput|undefined;const deltas:string[]=[];
   for await(const event of first.stream){if(event.type==='done')planned=event.output;else deltas.push(event.text);}
   assert.ok(planned);assert.equal(planned.toolCalls.length,1);assert.equal(planned.toolCalls[0]!.name,'mioon_shot_create');assert.deepEqual(planned.toolCalls[0]!.arguments,{title:'Offline saved shot'});
@@ -705,6 +718,40 @@ test('OpenAI Responses preserves encrypted reasoning, assistant phase and tool e
   for await(const event of second.stream)if(event.type==='done')finished=event.output;
   assert.ok(finished);assert.equal(finished.text,'Offline Responses text 🙂');assert.deepEqual(finished.toolCalls,[]);
   assert.equal(first.network.calls,1);assert.equal(second.network.calls,1);assert.equal(first.network.requests[0]!.body,body);assert.equal(second.network.requests[0]!.body,next);
+});
+
+test('the current OpenAI default uses Responses with a documented minimum and a bounded reasoning reserve',()=>{
+  assert.equal(AGENT_DEFAULT_OPENAI_MODEL,'gpt-6.1-terra');
+  assert.equal(DEFAULT_AGENT_CONFIGURATION.model,AGENT_DEFAULT_OPENAI_MODEL);assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol,'responses');
+  const body=JSON.parse(buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[{role:'user',content:'Offline default request'}],definitions,4318)) as Record<string,unknown>;
+  assert.equal(body.model,AGENT_DEFAULT_OPENAI_MODEL);assert.deepEqual(body.reasoning,{effort:'none'});assert.equal(body.max_output_tokens,32768);
+  assert.deepEqual(body.include,['reasoning.encrypted_content']);assert.equal(body.store,false);assert.equal(body.messages,undefined);assert.equal(body.max_completion_tokens,undefined);
+});
+
+test('official tool-incompatible Chat Completions selections fail before credentials or transport, while text diagnostics still work',async()=>{
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra']){
+    const configuration:AgentConfiguration={...q11OpenAi(model),protocol:'chat_completions'};
+    assert.throws(()=>buildTaskModelRequest(configuration,[{role:'user',content:'Offline tool restriction'}],definitions,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    const diagnostic=buildTaskModelRequest(configuration,[{role:'user',content:'Offline text diagnostic'}],[],4318);
+    const body=JSON.stringify({...JSON.parse(diagnostic),tools:definitions.map(definition=>({type:'function',function:definition}))});
+    const network=syntheticNetwork({body:textFrames('chat_completions')}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies;
+    let credentials=0,submissions=0,done=0;
+    await assert.rejects(async()=>{for await(const event of createTaskGateway(dependencies)({configuration,body,get apiKey(){credentials++;return 'SYNTHETIC_Q11_OFFLINE_ONLY';},selfPort:4318,beforeSubmit(){submissions++;}}))if(event.type==='done')done++;},(error:unknown)=>{
+      assert.equal(wasTaskSubmissionPrevented(error),true,'The trusted local preflight proves no request was sent');const safe=safeAgentChatError(error);assert.equal(safe.code,'AGENT_CHAT_RESPONSES_REQUIRED');assert.equal(safe.status,422);assert.match(safe.message,/工具.*Responses/u);return true;
+    });
+    assert.equal(credentials,0);assert.equal(submissions,0);assert.equal(network.calls,0);assert.equal(done,0);
+    const f=q11Stream(configuration,diagnostic,textFrames('chat_completions'));let output:TaskModelOutput|undefined;
+    for await(const event of f.stream)if(event.type==='done')output=event.output;
+    assert.ok(output);assert.equal(f.network.calls,1);
+  }
+});
+
+test('Luna Chat Completions tool requests use none effort without inheriting the official Responses-only restriction',async()=>{
+  const configuration:AgentConfiguration={...q11OpenAi('gpt-6-luna'),protocol:'chat_completions'},body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline Luna tool call'}],definitions,4318),request=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(request.reasoning_effort,'none');assert.equal(request.max_completion_tokens,32768);assert.equal(request.store,false);assert.equal(request.include,undefined);
+  const f=q11Stream(configuration,body,chatFrames());let output:TaskModelOutput|undefined;
+  for await(const event of f.stream)if(event.type==='done')output=event.output;
+  assert.ok(output);assert.equal(output.toolCalls.length,2);for(const call of output.toolCalls)assert.equal(call.name,'mioon_shot_create');assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
 });
 
 test('OpenAI accepts an unfinished added reasoning carrier but requires nonempty encryption on the completed item',async()=>{
@@ -846,7 +893,7 @@ test('other vendor Responses streams retain the old event allowance instead of b
 });
 
 test('OpenAI reasoning-family requests reserve reasoning output and use documented lowest efforts in both protocols',()=>{
-  for(const [model,effort] of [['gpt-5.4-mini','none'],['gpt-5.4','none'],['gpt-5','minimal'],['o3','low']] as const)for(const protocol of ['responses','chat_completions'] as const){
+  for(const [model,effort] of [['gpt-6-luna','none'],['gpt-6-sol','none'],['gpt-5.6','none'],['gpt-5.6-sol','none'],['gpt-5.6-terra','none'],['gpt-5.6-luna','none'],['gpt-5.4-mini','none'],['gpt-5.4','none'],['gpt-5','minimal'],['o3','low']] as const)for(const protocol of ['responses','chat_completions'] as const){
     const configuration:AgentConfiguration={...q11OpenAi(model),protocol};
     const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Offline request profile'}],definitions,4318)) as Record<string,unknown>;
     assert.equal(body.max_output_tokens??body.max_completion_tokens,32768,`${model}/${protocol}`);

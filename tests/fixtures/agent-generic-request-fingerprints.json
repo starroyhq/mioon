@@ -85,12 +85,12 @@
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "Accept-Encoding": "identity",
-        "Content-Length": "24035",
+        "Content-Length": "24077",
         "Connection": "close",
         "Authorization": "Bearer <synthetic>"
       },
-      "bytes": 24035,
-      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+      "bytes": 24077,
+      "sha256": "13c202a62cd1141a20d473345bbd0d00b536da564884e62ef44c59f95dc47f4c"
     },
     {
       "presetId": "openai",
@@ -103,12 +103,12 @@
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "Accept-Encoding": "identity",
-        "Content-Length": "24035",
+        "Content-Length": "24077",
         "Connection": "close",
         "Authorization": "Bearer <synthetic>"
       },
-      "bytes": 24035,
-      "sha256": "bbc117e2b855c0e9fc7590ff5db46338d5de40c5401ffe063c27ee57ac9e07a1"
+      "bytes": 24077,
+      "sha256": "13c202a62cd1141a20d473345bbd0d00b536da564884e62ef44c59f95dc47f4c"
     },
     {
       "presetId": "openai",
@@ -121,12 +121,12 @@
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "Accept-Encoding": "identity",
-        "Content-Length": "25217",
+        "Content-Length": "25259",
         "Connection": "close",
         "Authorization": "Bearer <synthetic>"
       },
-      "bytes": 25217,
-      "sha256": "74d73139104786cbb5e5331cc88b70968483b0c90772e7f85cbdaef573613922"
+      "bytes": 25259,
+      "sha256": "96e732faa988b32a5e89449d8c20b5817e4020d694415b5c508e259b071389a5"
     },
     {
       "presetId": "openai",
@@ -139,12 +139,12 @@
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "Accept-Encoding": "identity",
-        "Content-Length": "25436",
+        "Content-Length": "25478",
         "Connection": "close",
         "Authorization": "Bearer <synthetic>"
       },
-      "bytes": 25436,
-      "sha256": "40c642650426cc91a7ea93f0ff746e5c6f978833f0486e0fee683fe7a12eb8a3"
+      "bytes": 25478,
+      "sha256": "7275181db5be0fa313c6a0b48632e99c358c40ead30a9e2fda5b9107d6a97622"
     },
     {
       "presetId": "anthropic",

@@ -128,6 +128,12 @@ export const agentTaskErrorMessages = {
     "en": "The model response is incomplete or unsupported. Check the protocol and model settings",
     "ja": "モデルの応答が不完全か未対応です。プロトコルとモデル設定を確認してください"
   },
+  "agent.task.error.responsesRequired": {
+    "zh-Hans": "此型号的工具调用仅支持 Responses，请在模型设置中选择 Responses；本轮没有发送模型请求",
+    "zh-Hant": "此型號的工具呼叫僅支援 Responses，請在模型設定中選擇 Responses；本輪沒有傳送模型請求",
+    "en": "This model supports tool calls only through Responses. Select Responses in model settings; no model request was sent",
+    "ja": "このモデルのツール呼び出しには Responses が必要です。モデル設定で Responses を選択してください。モデルへのリクエストは送信していません"
+  },
   "agent.task.error.responsesItemUnsupported": {
     "zh-Hans": "模型返回了暂不支持的 Responses 内容类型，本轮已停止，没有执行该内容",
     "zh-Hant": "模型傳回了暫不支援的 Responses 內容類型，本輪已停止，沒有執行該內容",

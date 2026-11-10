@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
-import {agentChatProfile, AGENT_CHAT_PROFILES, agentResponsesProfile, AGENT_RESPONSES_PROFILES, agentReadToolProfile, AGENT_READ_TOOL_PROFILES, validateAgentGatewayConfiguration} from '../packages/business/src/agent/model-profiles.ts';
-import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
+import {agentChatProfile, AGENT_CHAT_PROFILES, agentResponsesProfile, AGENT_RESPONSES_PROFILES, agentReadToolProfile, AGENT_READ_TOOL_PROFILES, validateAgentGatewayConfiguration, agentModelAdaptation} from '../packages/business/src/agent/model-profiles.ts';
+import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {presetConfigurations,defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 
 function configuration(presetId: string, protocol: AgentProtocol): AgentConfiguration {
   const result = presetConfigurations().find(item => item.presetId === presetId && item.protocol === protocol);
@@ -25,10 +26,29 @@ test('existing adapted profiles retain identity and reject calls through another
   assert.throws(() => agentResponsesProfile(configuration('minimax', 'chat_completions')), {code: 'AGENT_CHAT_VALIDATION'});
 });
 
-test('current OpenAI and OpenRouter defaults select reasoning-family profiles without changing legacy identities', () => {
+test('current OpenAI and OpenRouter defaults use their independently documented protocol policies', () => {
+  const openai=configuration('openai','responses');
+  assert.equal(openai.model,'gpt-6.1-terra');assert.deepEqual(validateAgentGatewayConfiguration(openai),openai);
+  assert.notEqual(agentResponsesProfile(openai),AGENT_RESPONSES_PROFILES.openai);
+  assert.deepEqual(agentResponsesProfile(openai),{models:['gpt-6.1-terra'],fields:{truncation:'disabled',reasoning:{effort:'none'}},
+    thinkingTier:'optional',contextTokens:1050000,maxOutputTokens:128000,outputTokens:32768});
+  assert.throws(()=>agentChatProfile(openai),{code:'AGENT_CHAT_VALIDATION'});
+  const forcedChat={...configuration('openai','chat_completions'),model:'gpt-6.1-terra'};
+  assert.deepEqual(validateAgentGatewayConfiguration(forcedChat),forcedChat,'Saving a protocol choice remains allowed; tool calls have a separate admission check');
+  assert.deepEqual(agentChatProfile(forcedChat).fields,{store:false});assert.equal(agentChatProfile(forcedChat).thinkingTier,'unsupported');
+  assert.throws(()=>agentResponsesProfile(forcedChat),{code:'AGENT_CHAT_VALIDATION'});
+  const selected=configuration('openrouter','chat_completions');
+  assert.equal(selected.model,'openai/gpt-6.1-terra');assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
+  assert.notEqual(agentChatProfile(selected),AGENT_CHAT_PROFILES.openrouter);
+  assert.deepEqual(agentChatProfile(selected),{models:['openai/gpt-6.1-terra'],tokenField:'max_tokens',
+    fields:{provider:{require_parameters:true,allow_fallbacks:false},reasoning:{effort:'none'}},
+    thinkingTier:'optional',contextTokens:1050000,maxOutputTokens:128000,outputTokens:32768});
+});
+
+test('explicit GPT-5.4 mini selections retain both protocol profiles independently of the new default',()=>{
   for(const protocol of ['chat_completions','responses'] as const){
-    const selected=configuration('openai',protocol);
-    assert.equal(selected.model,'gpt-5.4-mini');assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
+    const selected={...configuration('openai',protocol),model:'gpt-5.4-mini'};
+    assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
     const profile=protocol==='chat_completions'?agentChatProfile(selected):agentResponsesProfile(selected);
     assert.notEqual(profile,protocol==='chat_completions'?AGENT_CHAT_PROFILES.openai:AGENT_RESPONSES_PROFILES.openai);
     assert.deepEqual(profile,{models:['gpt-5.4-mini'],...(protocol==='chat_completions'?{tokenField:'max_completion_tokens'}:{}),
@@ -36,12 +56,19 @@ test('current OpenAI and OpenRouter defaults select reasoning-family profiles wi
       thinkingTier:'optional',contextTokens:400000,maxOutputTokens:128000,outputTokens:32768});
     assert.throws(()=>protocol==='chat_completions'?agentResponsesProfile(selected):agentChatProfile(selected),{code:'AGENT_CHAT_VALIDATION'});
   }
-  const selected=configuration('openrouter','chat_completions');
-  assert.equal(selected.model,'openai/gpt-5.4-mini');assert.deepEqual(validateAgentGatewayConfiguration(selected),selected);
-  assert.notEqual(agentChatProfile(selected),AGENT_CHAT_PROFILES.openrouter);
-  assert.deepEqual(agentChatProfile(selected),{models:['openai/gpt-5.4-mini'],tokenField:'max_tokens',
-    fields:{provider:{require_parameters:true,allow_fallbacks:false},reasoning:{effort:'none'}},
-    thinkingTier:'optional',contextTokens:400000,maxOutputTokens:128000,outputTokens:32768});
+});
+
+test('explicit business fixtures run tools in every requested protocol without rewriting the real default enumeration',()=>{
+  const tools=[{name:'synthetic_fixture_tool',description:'Synthetic protocol fixture',parameters:{type:'object',properties:{},required:[],additionalProperties:false}}];
+  for(const [protocol,presetId,model] of [['chat_completions','openai','gpt-6-luna'],['responses','openai','gpt-6.1-terra'],['anthropic_messages','ollama','qwen3:8b']] as const){
+    const selected=defaultTestAgentConfiguration(protocol);assert.equal(selected.protocol,protocol);assert.equal(selected.presetId,presetId);assert.equal(selected.model,model);
+    assert.deepEqual(validateAgentGatewayConfiguration(selected,{selfPort:4318}),selected);
+    const body=JSON.parse(buildTaskModelRequest(selected,[{role:'user',content:'Synthetic fixture only'}],tools,4318)) as Record<string,unknown>;
+    assert.equal(body.model,model);assert.ok(Array.isArray(body.tools));assert.equal(body.tools.length,1);
+    if(protocol==='chat_completions')assert.equal(body.reasoning_effort,'none');
+  }
+  const actual=configuration('openai','chat_completions');assert.equal(actual.model,'gpt-6.1-terra');assert.equal(agentModelAdaptation(actual),'unverified');
+  assert.throws(()=>buildTaskModelRequest(actual,[{role:'user',content:'Synthetic fixture only'}],tools,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
 });
 
 test('unadapted Responses models use their provider generic fields without borrowing named capacity', () => {

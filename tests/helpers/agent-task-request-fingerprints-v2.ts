@@ -186,7 +186,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   assert.ok(anthropic);
   const configuration = official ? protocol === 'anthropic_messages' ? {
     presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol,
-  } : {...DEFAULT_AGENT_CONFIGURATION, protocol} : {presetId: 'ollama', platformId: 'local', protocol,
+  } : {...DEFAULT_AGENT_CONFIGURATION, protocol, ...(protocol === 'chat_completions' ? {model: 'gpt-6-luna'} : {})} : {presetId: 'ollama', platformId: 'local', protocol,
     model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
   // This disposable credential stays only in the real settings session. It is
   // deliberately nondeterministic: only the model-facing body is fingerprinted.

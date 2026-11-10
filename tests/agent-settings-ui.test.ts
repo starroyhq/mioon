@@ -181,7 +181,9 @@ test('actual model labels use documented OpenAI families for snapshots without t
    for(const model of [known,'gpt-4.1-mini'])assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
    for(const model of [future,invalid])assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)).includes(i18n.translate(locale,'agent.settings.x6.unverified')));
    assert.ok(JSON.stringify(h.find('agent-settings-current-model')).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
-   assert.match(JSON.stringify(h.find('agent-settings-preset-note-openai')),/GPT-5\.4 mini/);
+   const note=JSON.stringify(h.find('agent-settings-preset-note-openai'));
+   assert.match(note,/Responses/);assert.match(note,{'zh-Hans':/当前一代/,'zh-Hant':/目前世代/,en:/current-generation/,ja:/現行世代/}[locale]);
+   assert.doesNotMatch(note,/GPT-5\.4 mini/);
    assert.doesNotMatch(JSON.stringify(h.find('agent-settings-preset-note-openai')),/非推理|非推論|Non-reasoning/);
   }
   assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.modelId,known);assertNoSecrets(h.reports);
@@ -239,6 +241,37 @@ test('actual partial list supplements absent adapted models while a complete lis
  }
 });
 
+test('actual OpenAI fallback suggestions contain current models without promoting deprecated or shut down models',async()=>{
+ const initial=adaptedUiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.protocol='responses';
+ const f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'miss'}),modelsList:async()=>assert.fail('Suggestions must not fetch without a credential')});
+ try{
+  await ready(h);h.view('openai');await flush();h.render();
+  const suggestions=nodes(h.render()).map(node=>node.props['data-testid']).filter((id):id is string=>typeof id==='string'&&id.startsWith('agent-settings-model-row-openai-')).map(id=>id.slice('agent-settings-model-row-openai-'.length));
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra','gpt-6-luna'])assert.ok(suggestions.includes(model),`${model} is a current suggestion`);
+  assert.match(suggestions[0]!,/^gpt-6/u,'The current generation leads the fallback suggestions');
+  for(const model of ['gpt-5.4-nano','gpt-5.3-codex','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano','gpt-5-pro','o3','gpt-4.1-mini','o1','o3-mini','o4-mini'])assert.equal(suggestions.includes(model),false,`${model} must not be suggested`);
+  assert.equal(h.latest().dirty,false);assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assertNoSecrets(h.reports);
+ }finally{h.unmount();}
+});
+
+test('actual OpenAI manual and observed legacy rows retain compatibility without adapting shut down models',async()=>{
+ for(const [model,adapted] of [['gpt-4.1-mini',true],['gpt-5.1',true],['o1',false],['o3-mini',false],['o4-mini',false]] as const){
+  const initial=adapterSettings({presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',protocol:'responses',model},{revision:0});
+  const observation={...listed([model]),models:[{id:model,adaptation:'adapted' as const}]};
+  const f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result:observation}),modelsList:async()=>assert.fail('A complete observation must not fetch')});
+  try{
+   await ready(h);h.view('openai');await flush();h.render();
+   for(const locale of i18n.LOCALES){
+    h.setLocale(locale);
+    const expected=i18n.translate(locale,adapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified');
+    assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${model}`)).includes(expected),`${model}/${locale}: observed/manual adaptation is local policy`);
+    assert.ok(JSON.stringify(h.find('agent-settings-current-model')).includes(expected),`${model}/${locale}: persisted current model uses the same policy`);
+   }
+   assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assertNoSecrets(h.reports);
+  }finally{h.unmount();}
+ }
+});
+
 test('actual refresh supplements adapted models during loading and failure despite an older complete cache, then removes the fallback on complete success',async()=>{
  const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='openai')!,platform=initial.presets.find(item=>item.id===entry.presetId)!.platforms.find(item=>item.id===entry.platformId)!,model=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(model);
  const f=settingsUiFixture({initial}),pending=deferred();let requests=0;const discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed(['retained-remote'])}),modelsList:async()=>++requests===1?pending.promise:listed(['replacement-remote'])},h=uiHarness(f.client,discovery);
@@ -264,7 +297,8 @@ test('actual address editing waits for blur, then valid local addresses fetch on
 });
 
 test('actual protocol change fetches the new descriptor without clearing the entered key or saving a Mio selection',async()=>{
- const f=settingsUiFixture(),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
+ const initial=uiSettings(),openai=initial.services.find(entry=>entry.serviceKey==='openai')!;openai.protocol='chat_completions';openai.manualModelIds=['gpt-4.1-mini'];
+ const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
  const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();h.key('openai','synthetic-secret');h.change('agent-settings-protocol-openai','responses');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.selection.protocol,'responses');assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret'});assert.equal(h.keyValue('openai'),'synthetic-secret');assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.serviceKey,custom);h.unmount();
 });
 

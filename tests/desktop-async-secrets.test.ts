@@ -687,7 +687,7 @@ test('Images client rejects a delayed status response before the timeout callbac
 test('initial async status is bounded and legacy keys are never decrypted, preserving old bytes and session-only choice', async t => {
   for (const operation of ['status', 'decrypt']) {
     const f = vault(), codec = codecFor(f, {timeout: 25}), gate = deferred();
-    const configuration = {...DEFAULT_AGENT_CONFIGURATION}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
+    const configuration = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'chat_completions'}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
     const encrypted = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: JSON.stringify({version: 1, binding, value: SENTINEL})})).toString('base64');
     const original = {version: 2, revision: 4, configuration, secret: {binding, encrypted}}, persistence = memory(original);
     let oldDecrypts = 0;

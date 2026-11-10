@@ -37,11 +37,11 @@ test('endpoint derivation preserves complete canonical base path and accepts onl
   }
 });
 
-test('presets retain their original defaults and independently describe each runnable protocol endpoint', () => {
+test('OpenAI defaults to Responses while other presets retain their defaults and independently describe runnable endpoints', () => {
   const candidates = ['openai', 'deepseek', 'qwen', 'custom', 'ollama'];
-  assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol, 'chat_completions');
+  assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol, 'responses');
   for (const preset of AGENT_PRESETS) {
-    const expectedDefault = preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
+    const expectedDefault = preset.id === 'openai' ? 'responses' : preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
     assert.equal(preset.defaultProtocol, expectedDefault);
     assert.deepEqual(preset.availableProtocols, Object.keys(AGENT_PROTOCOLS).filter(protocol => preset.platforms.some(platform => platform.availableProtocols.includes(protocol as typeof platform.defaultProtocol))));
     for (const platform of preset.platforms) {

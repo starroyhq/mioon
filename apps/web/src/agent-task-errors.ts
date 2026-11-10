@@ -25,6 +25,7 @@ const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   AGENT_CHAT_HTTP_ERROR:'agent.task.error.modelRejected', AGENT_CHAT_KEY_REQUIRED:'agent.task.error.key',
   AGENT_CHAT_PROTOCOL_ERROR:'agent.task.error.protocol', AGENT_CHAT_TRUNCATED:'agent.task.error.protocol',
   AGENT_CHAT_PROFILE_UNSUPPORTED:'agent.task.error.protocol', AGENT_CHAT_REASONING_UNSUPPORTED:'agent.task.error.protocol',
+  AGENT_CHAT_RESPONSES_REQUIRED:'agent.task.error.responsesRequired',
   AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED:'agent.task.error.responsesItemUnsupported',
   AGENT_CHAT_OUTPUT_LIMIT:'agent.task.error.outputLimit', AGENT_CHAT_RESPONSES_INCOMPLETE:'agent.task.error.incomplete',
   INVALID_RESPONSE:'agent.task.error.localResponse', AGENT_CHAT_LIMIT:'agent.task.error.limit', AGENT_CHAT_STORAGE_LIMIT:'agent.task.error.limit',

@@ -13,7 +13,7 @@ const source = (label: string, url: string): AgentPresetSource => ({label, url})
 const platform = (id: string, label: string, baseUrl: string, model: string, sources: AgentPresetSource[], notes?: string, baseUrlTemplate?: string): StartingPlatform => ({id, label, baseUrl, model, sources, ...(notes ? {notes} : {}), ...(baseUrlTemplate ? {baseUrlTemplate} : {})});
 const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url'), source('Responses API', 'https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses')];
 const catalog: AgentPresetBase[] = [
-  {id: 'openai', label: 'OpenAI', description: 'GPT-5.4 mini 用于文本与工具任务；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', AGENT_DEFAULT_OPENAI_MODEL, [source('模型文档', 'https://developers.openai.com/api/docs/models/gpt-5.4-mini')])]},
+  {id: 'openai', label: 'OpenAI', description: `${AGENT_DEFAULT_OPENAI_MODEL} 用于文本与工具任务；默认使用 Responses，协议能力取决于型号。`, platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', AGENT_DEFAULT_OPENAI_MODEL, [source('模型文档', `https://developers.openai.com/api/docs/models/${AGENT_DEFAULT_OPENAI_MODEL}`)])]},
   {id: 'anthropic', label: 'Anthropic', description: 'Messages 文本与宿主工具基线；关闭思考，不执行供应商托管工具。', platforms: [platform('global', 'Anthropic', 'https://api.anthropic.com', 'claude-haiku-4-5', [source('Messages API', 'https://platform.claude.com/docs/en/api/messages/create'), source('官方 TypeScript SDK', 'https://github.com/anthropics/anthropic-sdk-typescript')])]},
   {id: 'deepseek', label: 'DeepSeek', description: '非思考模式文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'DeepSeek API', 'https://api.deepseek.com', 'deepseek-flash', [source('Chat API', 'https://api-docs.deepseek.com/api/create-chat-completion/'), source('Responses API', 'https://api-docs.deepseek.com/guides/responses_api/')])]},
   {id: 'qwen', label: 'Qwen / DashScope', description: '区域、工作空间和按量付费账户必须匹配；不继承 Coding Plan 凭证。', platforms: [
@@ -33,7 +33,7 @@ const catalog: AgentPresetBase[] = [
     platform('china', '中国 · MiniMax', 'https://api.minimax.cn/v1', 'MiniMax-M3', [source('中国兼容接口', 'https://platform.minimax.cn/docs/api-reference/text-openai-api'), source('中国 Anthropic 兼容接口', 'https://platform.minimax.cn/docs/api-reference/text-anthropic-api')]),
     platform('international', '国际 · MiniMax', 'https://api.minimax.io/v1', 'MiniMax-M3', [source('国际兼容接口', 'https://platform.minimax.io/docs/api-reference/text-openai-api'), source('国际 Anthropic 兼容接口', 'https://platform.minimax.io/docs/api-reference/text-anthropic-api')]),
   ]},
-  {id: 'openrouter', label: 'OpenRouter', description: '实际能力取决于所选模型和路由供应商。', platforms: [platform('global', 'OpenRouter', 'https://openrouter.ai/api/v1', `openai/${AGENT_DEFAULT_OPENAI_MODEL}`, [source('模型文档', 'https://openrouter.ai/openai/gpt-5.4-mini')])]},
+  {id: 'openrouter', label: 'OpenRouter', description: '实际能力取决于所选模型和路由供应商。', platforms: [platform('global', 'OpenRouter', 'https://openrouter.ai/api/v1', `openai/${AGENT_DEFAULT_OPENAI_MODEL}`, [source('模型文档', `https://openrouter.ai/openai/${AGENT_DEFAULT_OPENAI_MODEL}`)])]},
   {id: 'custom', label: '自定义兼容服务', description: '仅远程 HTTPS；地址和模型由你填写，兼容性未验证。', platforms: [platform('custom', '自定义 · 远程 HTTPS', '', '', [])]},
   {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环；按协议填写基础地址，通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3:8b', [source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
 ];
@@ -41,7 +41,7 @@ function freeze<T extends object>(value: T): Readonly<T> { for (const child of O
 // Runnable protocols derive only from their documentation-backed endpoint.
 // This is a static allowlist, not account access or live model certification.
 const responseModelHints: Record<string, string[]> = {
-  openai: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses, 'gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'],
+  openai: [...AGENT_OPENAI_REASONING_MODEL_HINTS.responses],
   deepseek: ['deepseek-flash'],
   qwen: ['qwen3.8-flash'],
   custom: [],
@@ -113,7 +113,7 @@ function platformEndpoints(presetId: string, item: StartingPlatform): {addressMo
   throw new TypeError('Unclassified agent provider');
 }
 export const AGENT_PRESETS: readonly AgentPresetEntry[] = freeze(catalog.map(preset => {
-  const defaultProtocol: AgentProtocol = preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
+  const defaultProtocol: AgentProtocol = preset.id === 'anthropic' ? 'anthropic_messages' : preset.id === 'openai' ? 'responses' : 'chat_completions';
   const shared = {
     ...(Object.hasOwn(responseModelHints, preset.id) ? {supportedModelHints: {responses: responseModelHints[preset.id]}} : {}),
     ...(preset.id === 'qwen' ? {protocolNotes: {responses: 'qwen3.8-flash有固定非思考档案，其余模型使用未验证通用字段。供应商自动截断无法禁用；区域、工作空间与账户权限须匹配。'}} : {}),
@@ -126,4 +126,4 @@ export const AGENT_PRESETS: readonly AgentPresetEntry[] = freeze(catalog.map(pre
   const availableProtocols = (Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]).filter(protocol => platforms.some(item => item.availableProtocols.includes(protocol)));
   return {...preset, platforms, defaultProtocol, availableProtocols, ...shared};
 }));
-export const DEFAULT_AGENT_CONFIGURATION: Readonly<AgentConfiguration> = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: AGENT_DEFAULT_OPENAI_MODEL, protocol: 'chat_completions'});
+export const DEFAULT_AGENT_CONFIGURATION: Readonly<AgentConfiguration> = Object.freeze({presetId: 'openai', platformId: 'global', baseUrl: 'https://api.openai.com/v1', model: AGENT_DEFAULT_OPENAI_MODEL, protocol: 'responses'});

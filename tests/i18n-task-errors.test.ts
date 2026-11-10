@@ -45,6 +45,7 @@ test('Responses output limits, incomplete responses and unsupported item diagnos
     ['AGENT_CHAT_OUTPUT_LIMIT', 'agent.task.error.outputLimit', 413],
     ['AGENT_CHAT_RESPONSES_INCOMPLETE', 'agent.task.error.incomplete', 502],
     ['AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED', 'agent.task.error.responsesItemUnsupported', 422],
+    ['AGENT_CHAT_RESPONSES_REQUIRED', 'agent.task.error.responsesRequired', 422],
   ] as const) {
     const failure = agentChatError(code), before = {code: failure.code, status: failure.status, message: failure.message};
     assert.equal(failure.code, code); assert.equal(failure.status, status);

@@ -137,7 +137,7 @@ test('public IP gate denies private, metadata, reserved, documentation and IPv6 
 test('DNS validates every answer, exact family, count and syntax; never picks around a bad answer', async () => {
   for (const answers of [[], [{address:'8.8.8.8',family:4},{address:'127.0.0.1',family:4}], [{address:'8.8.8.8',family:6}], [{address:'::ffff:8.8.8.8',family:6}], Array(65).fill({address:'8.8.8.8',family:4})] as const) await assert.rejects(resolveAgentDestination(configuration, {lookup: ((async () => answers) as unknown as typeof import('node:dns/promises').lookup)}), {code:'AGENT_CHAT_NETWORK_DENIED'});
   const destination = await resolveAgentDestination(configuration, {lookup: ((async (hostname: string, options: unknown) => { assert.equal(hostname,'api.openai.com'); assert.deepEqual(options,{all:true,verbatim:true}); return [{address:'8.8.8.8',family:4},{address:'2606:4700:4700::1111',family:6}]; }) as unknown as typeof import('node:dns/promises').lookup)});
-  assert.equal(destination.address,'8.8.8.8'); assert.equal(destination.path,'/v1/chat/completions');
+  assert.equal(destination.address,'8.8.8.8'); assert.equal(destination.path,'/v1/responses');
   await assert.rejects(resolveAgentDestination({...configuration, baseUrl:'https://127.0.0.1/v1'}, {lookup: ((() => assert.fail('no DNS for rejected syntax')) as unknown as typeof import('node:dns/promises').lookup)}), {code:'AGENT_CHAT_NETWORK_DENIED'});
 });
 

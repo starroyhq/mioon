@@ -15,5 +15,8 @@ export function presetConfigurations(): AgentConfiguration[] {
 
 export function defaultTestAgentConfiguration(protocol:AgentProtocol):AgentConfiguration {
   const configuration=presetConfigurations().find(value=>value.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&value.protocol===protocol);
-  if(!configuration)throw new Error('Missing explicit fixture connection');return configuration;
+  if(!configuration)throw new Error('Missing explicit fixture connection');
+  // This is a protocol-specific business fixture, not the application default:
+  // Terra needs Responses for tools; Luna supports CC tools with effort none.
+  return protocol==='chat_completions'?{...configuration,model:'gpt-6-luna'}:configuration;
 }
