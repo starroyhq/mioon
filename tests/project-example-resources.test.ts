@@ -13,6 +13,9 @@ import {PROJECT_BACKUP_APPLICATION_ID} from '../packages/business/src/project-fi
 import {png} from './helpers/timeline-image-fixtures.ts';
 import type {ProjectTemplateManifest} from '../packages/contracts/src/project-template-manifest.ts';
 import {projectExamplesPlugin} from '../apps/web/project-examples-plugin.ts';
+import {DatabaseSync} from 'node:sqlite';
+import {generateProjectFileExample} from '../scripts/create-project-file-example.ts';
+import {assetMediaRecordSchema} from '../packages/contracts/src/asset-media.ts';
 
 const sha = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 function fixture(t: TestContext) {
@@ -136,4 +139,22 @@ test('Vite closeBundle stages into its resolved artifact output without running 
   await plugin.closeBundle.call({} as never);
   assert.deepEqual(verifyProjectExampleResources(path.join(output, 'project-examples'))[0].manifest, f.manifest);
   assert.equal(fs.existsSync(path.join(output, 'index.html')), false, 'the hook only stages fixed resources, not a second frontend build');
+});
+
+test('the offline generator stores canonical imported-media metadata without null dimension or duration sentinels', async t => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()), 'project-example-metadata-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const output = path.join(root, 'timeline-basics'); await generateProjectFileExample(output);
+  const db = new DatabaseSync(path.join(output, 'timeline-basics.mioon'), {readOnly: true});
+  try {
+    const assets = db.prepare('SELECT data FROM assets ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Record<string, unknown>);
+    assert.deepEqual(assets.map(asset => ({mimeType: asset.mimeType, width: asset.width, height: asset.height, duration: asset.duration,
+      hasVideo: asset.hasVideo, hasAudio: asset.hasAudio})), [
+      {mimeType: 'video/mp4', width: 720, height: 1280, duration: 4, hasVideo: true, hasAudio: false},
+      {mimeType: 'video/mp4', width: 720, height: 1280, duration: 5, hasVideo: true, hasAudio: true},
+      {mimeType: 'image/png', width: 360, height: 480, duration: 0, hasVideo: true, hasAudio: false},
+      {mimeType: 'audio/wav', width: 0, height: 0, duration: 10, hasVideo: false, hasAudio: true},
+    ]);
+    for (const asset of assets) assert.ok(assetMediaRecordSchema.safeParse(asset).success, String(asset.name));
+  } finally {db.close();}
 });

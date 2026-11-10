@@ -72,7 +72,10 @@ export function freezeTimelineSnapshot(timeline: TimelineRecord,assets: Readonly
  const snapshot=JSON.parse(JSON.stringify({timeline,...volumeEnvelopeSnapshotFields(timeline),...timelineAudioRoleSnapshotFields(timeline),...timelineDeliveryNameFields(deliveryInput),...timelineExportRangeFields(deliveryInput),...(exportSettings===undefined?{}:{delivery:resolveTimelineExportDelivery(timeline,exportSettings)}),...(timeline.subtitles?.cues.length?{subtitleProfile:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{}),assets:[...new Set(timeline.clips.map(item=>item.assetId))].map(id=>{
   const source=assets.get(id);
   if(!source)throw Object.assign(Error('Timeline snapshot does not match managed asset'),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
-  return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,duration:source.duration,width:source.width,height:source.height,
+  // Early examples used null for unavailable metadata. Omit only that legacy
+  // sentinel before serialization; all other supplied values remain validated.
+  return {id:source.id,sha256:source.sha256,mimeType:source.mimeType,
+   ...(source.duration===null?{}:{duration:source.duration}),...(source.width===null?{}:{width:source.width}),...(source.height===null?{}:{height:source.height}),
    hasAudio:typeof source.hasAudio==='boolean'?source.hasAudio:null,...mediaLocatorFields(source)};
  })}));
  const colourPlan=projectTimelineColourPlan(snapshot);

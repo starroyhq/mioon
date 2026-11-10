@@ -24,15 +24,21 @@ import {CONTENT_TABLES, HISTORY_TABLES} from '../packages/business/src/project-f
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
 import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
 import {generateProjectFileExample} from '../scripts/create-project-file-example.ts';
+import {deriveTimelineAssetUsage} from '../apps/web/src/timeline-asset-usage.ts';
+import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
+import {clipDraftEnvelopeSchema, clipDraftListSchema} from '../packages/contracts/src/local-drafts.ts';
+import {createLocalDeliverySchemas} from '../packages/contracts/src/local-delivery.ts';
+import {schemas} from '../packages/contracts/src/index.ts';
+import {probe} from '../packages/business/src/media.ts';
 
 const token = 'synthetic-s6d-example-acceptance';
 const sourceRoot = fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url));
 const sha = (value: Uint8Array): string => createHash('sha256').update(value).digest('hex');
 const maxBytes = 5 * 1024 * 1024;
 interface Wire<T> {ok: boolean; data?: T; error?: {code: string}}
-interface Asset {id: string; projectId: string; reference: MediaReference; sha256: string; sizeBytes: number; name: string; mimeType: string; width?: number | null; height?: number | null}
+interface Asset {id: string; projectId: string; reference: MediaReference; sha256: string; sizeBytes: number; name: string; mimeType: string; duration: number | null; width?: number | null; height?: number | null}
 interface ReadableAsset extends Omit<Asset, 'width' | 'height'> {url: string; width?: number; height?: number}
-interface Timeline {id: string; projectId: string; durationFrames: number; tracks: Array<{id: string; kind: string}>; clips: Array<{id: string; trackId: string; assetId: string}>}
+interface Timeline {id: string; projectId: string; revision: number; durationFrames: number; tracks: Array<{id: string; kind: string}>; clips: Array<{id: string; trackId: string; assetId: string}>}
 interface ReadableProject {project: {id: string}; assets: ReadableAsset[]; timeline: Timeline}
 type FileEvidence = {path: string; dev: string; ino: string; bytes: number; mtime: string; ctime: string; sha256: string};
 function tree(directory: string, prefix = ''): FileEvidence[] {
@@ -102,6 +108,10 @@ async function fixture(t: TestContext, channel: 'desktop' | 'web' = 'desktop') {
     inspect: <T>(id: string, read: (db: DatabaseSync) => T) => inspect(id, read),
     application: <T>(read: (db: DatabaseSync) => T) => application(read),
     async restart() {await server?.close(); server = undefined; server = await start();},
+    async get<T>(projectId: string, suffix: string) {
+      assert.ok(server); const response = await fetch(server.url + `/api/projects/${projectId}/${suffix}`, {headers: {authorization: `Bearer ${token}`}});
+      return {status: response.status, body: await response.json() as Wire<T>};
+    },
     async readMedia(projectId: string, assetId: string) {
       assert.ok(server); const response = await fetch(server.url + projectMediaPath(projectId, assetId), {headers: {authorization: `Bearer ${token}`}});
       assert.equal(response.status, 200); return Buffer.from(await response.arrayBuffer());
@@ -167,15 +177,24 @@ test('the default web build resources create two new identities with intact time
   assert.equal(existsSync(oldLocation.localDir), false);
 });
 
-test('both instances reopen and serve all media offline after installed examples are removed and the backend restarts', async t => {
+test('legacy-null instances reopen and serve all media offline without rewriting their metadata', async t => {
   const f = await fixture(t), copies = [await f.instantiate(f.input('Offline A')), await f.instantiate(f.input('Offline B'))];
-  const audioRows = new Map(copies.map(copy => [copy.project.projectId, f.withTarget(copy, store => {
+  const assetRows = new Map(copies.map(copy => [copy.project.projectId, f.withTarget(copy, store => {
+    // Preserve Q07's old-instance regression after the shipped data is fixed.
+    store.tx(() => {
+      for (const row of store.db.prepare('SELECT data FROM project.assets').all()) {
+        const asset = JSON.parse(String(row.data)) as Asset;
+        if (asset.mimeType.startsWith('audio/')) store.put('assets', {...asset, width: null, height: null});
+        if (asset.mimeType.startsWith('image/')) store.put('assets', {...asset, duration: null});
+      }
+    });
     const rows = store.db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data));
     const audio = rows.filter(row => (JSON.parse(row) as Asset).mimeType.startsWith('audio/'));
     assert.equal(audio.length, 1);
     assert.equal((JSON.parse(audio[0]!) as Asset).width, null);
     assert.equal((JSON.parse(audio[0]!) as Asset).height, null);
-    return audio;
+    assert.equal((JSON.parse(rows.find(row => (JSON.parse(row) as Asset).mimeType.startsWith('image/'))!) as Asset).duration, null);
+    return rows;
   })]));
   const readable = async (copy: ProjectCopyResponse) => {
     const projectId = copy.project.projectId;
@@ -200,8 +219,11 @@ test('both instances reopen and serve all media offline after installed examples
     const timeline = aggregate.body.data!.timeline;
     assert.equal(timeline.projectId, projectId); assert.equal(timeline.tracks.length, 3); assert.equal(timeline.clips.length, 5); assert.equal(timeline.durationFrames, 300);
     assert.deepEqual(timeline.clips.map(clip => clip.assetId).sort(), f.content.timelines[0]!.clips.map(clip => clip.assetId).sort());
-    const persistedAudio = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data)).filter(row => (JSON.parse(row) as Asset).mimeType.startsWith('audio/')));
-    assert.deepEqual(persistedAudio, audioRows.get(projectId), 'reading the old audio row must not rewrite the project or require a rebuilt instance');
+    const usage = deriveTimelineAssetUsage({projectId, assets, timeline, ready: true});
+    assert.equal(usage.status, 'ready');
+    assert.deepEqual(f.content.assets.map(asset => usage.usesByAssetId[asset.id]?.length ?? 0), [1, 1, 1, 2]);
+    const persisted = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data)));
+    assert.deepEqual(persisted, assetRows.get(projectId), 'reading legacy metadata must not rewrite the project or require a rebuilt instance');
   };
   for (const copy of copies) await readable(copy);
   renameSync(f.installed, f.installed + '-unavailable'); assert.equal(existsSync(f.installed), false);
@@ -225,6 +247,67 @@ test('both instances reopen and serve all media offline after installed examples
   const unavailable = await f.rpc('project.template.instantiate', f.input('No template now'));
   assert.equal(unavailable.status, 404); assert.equal(unavailable.body.error?.code, 'PROJECT_TEMPLATE_NOT_FOUND');
   assert.deepEqual(tree(f.installed + '-unavailable'), f.original);
+});
+
+test('a newly instantiated shipped example passes strict readers and real preview and export rendering', async t => {
+  const f = await fixture(t), copy = await f.instantiate(f.input('Render the shipped example'));
+  const projectId = copy.project.projectId, windowId = randomUUID();
+  await f.native().acquire({projectId, windowId});
+  t.after(() => f.native().release({windowId}));
+  const aggregate = await f.rpc<ReadableProject>('project.get', {projectId}, projectId);
+  assert.equal(aggregate.status, 200); assert.ok(aggregate.body.data);
+  const {assets, timeline} = aggregate.body.data;
+  const usage = deriveTimelineAssetUsage({projectId, assets, timeline, ready: true});
+  assert.equal(usage.status, 'ready');
+  assert.deepEqual(f.content.assets.map(asset => usage.usesByAssetId[asset.id]?.length ?? 0), [1, 1, 1, 2]);
+  for (const asset of assets) {
+    if (asset.mimeType.startsWith('image/')) assert.equal(asset.duration, 0);
+    if (asset.mimeType.startsWith('audio/')) {assert.equal(asset.width, 0); assert.equal(asset.height, 0);}
+  }
+  for (const operation of ['project.inspect', 'timeline.inspect', 'timeline.export.preflight']) {
+    const input = operation === 'timeline.export.preflight' ? {projectId, expectedRevision: timeline.revision} : {projectId};
+    const result = await f.rpc<{status?: string}>(operation, input, projectId);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    if (operation === 'timeline.export.preflight') assert.equal(result.body.data?.status, 'ready');
+  }
+  const drafts = await f.get(projectId, `local-drafts?projectId=${projectId}`);
+  assert.equal(drafts.status, 200); assert.ok(clipDraftListSchema.parse(drafts.body.data).supported);
+  for (const clip of timeline.clips) {
+    const draft = await f.get(projectId, `local-drafts/clip?projectId=${projectId}&timelineId=${timeline.id}&clipId=${clip.id}`);
+    assert.equal(draft.status, 200); assert.ok(clipDraftEnvelopeSchema.parse(draft.body.data).supported);
+  }
+  const delivery = await f.get(projectId, `local-delivery?projectId=${projectId}`);
+  assert.equal(delivery.status, 200);
+  const deliverySchema = createLocalDeliverySchemas(value => schemas['timeline.render'].safeParse(value).success);
+  assert.ok(deliverySchema.envelope.parse(delivery.body.data).supported);
+  const before = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => String(row.data)));
+  interface Render {id: string; status: string; assetId: string | null; snapshot: {assets: Array<Record<string, unknown>>}}
+  for (const purpose of ['preview', 'export'] as const) {
+    const input = {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose};
+    const submitted = await f.rpc<Render>('timeline.render', input, projectId);
+    assert.equal(submitted.status, 200, JSON.stringify(submitted.body)); assert.ok(submitted.body.data);
+    const id = submitted.body.data.id;
+    const raw = () => f.inspect(projectId, db => JSON.parse(String(db.prepare('SELECT data FROM exports WHERE id=?').get(id)!.data)) as Render);
+    assert.ok(isTimelineRenderRecord(raw(), input));
+    const deadline = performance.now() + 180_000;
+    let rendered = submitted.body.data;
+    while (!['succeeded', 'failed'].includes(rendered.status)) {
+      assert.ok(performance.now() < deadline, `the real ${purpose} render finishes`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await f.rpc<Render>('export.get', {exportId: id}, projectId);
+      assert.equal(result.status, 200); assert.ok(result.body.data); rendered = result.body.data;
+    }
+    assert.equal(rendered.status, 'succeeded', JSON.stringify(rendered)); assert.ok(rendered.assetId);
+    const saved = raw(); assert.ok(isTimelineRenderRecord(saved, input));
+    assert.ok(saved.snapshot.assets.every(asset => ['duration', 'width', 'height'].every(key => asset[key] !== null)));
+    const bytes = await f.readMedia(projectId, rendered.assetId); assert.ok(bytes.length > 1024);
+    const output = path.join(f.root, `${purpose}-verified.mp4`); writeFileSync(output, bytes);
+    const media = await probe(output); assert.equal(media.hasVideo, true); assert.equal(media.hasAudio, true);
+    assert.ok(media.duration >= 9.9 && media.duration <= 10.1);
+  }
+  const after = f.inspect(projectId, db => db.prepare('SELECT data FROM project.assets WHERE id IN (?,?,?,?) ORDER BY id').all(...f.content.assets.map(asset => asset.id)).map(row => String(row.data)));
+  assert.deepEqual(after, before, 'rendering never repairs the source metadata');
+  assert.deepEqual(tree(f.installed), f.original);
 });
 
 test('real-example target conflicts preserve both empty and populated existing folders and add no registration', async t => {

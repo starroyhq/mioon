@@ -28,11 +28,13 @@ const uuid = (number: number): string => `10000000-0000-4000-8000-${String(numbe
 const seedProjectId = uuid(1), projectId = uuid(2), contentToken = 'a3c41000000000000000000000000001';
 const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 type ExampleAsset = ManagedAssetRecord & {readonly sizeBytes: number; readonly createdAt: string};
+// Match parseProbeOutput and ordinary imports: unknown dimensions/duration use
+// numeric zero, never null sentinels that strict render records cannot accept.
 const sources = [
   {file: 'scene-a.mp4', id: uuid(21), mimeType: 'video/mp4', name: 'First light · picture', duration: 4, width: 720, height: 1280, hasVideo: true, hasAudio: false},
   {file: 'scene-b.mp4', id: uuid(22), mimeType: 'video/mp4', name: 'After hours · picture and sound', duration: 5, width: 720, height: 1280, hasVideo: true, hasAudio: true},
-  {file: 'overlay-star.png', id: uuid(23), mimeType: 'image/png', name: 'Star card · transparent overlay', duration: null, width: 360, height: 480, hasVideo: true, hasAudio: false},
-  {file: 'sound-bed.wav', id: uuid(24), mimeType: 'audio/wav', name: 'Synthesised tone · independent audio', duration: 10, width: null, height: null, hasVideo: false, hasAudio: true},
+  {file: 'overlay-star.png', id: uuid(23), mimeType: 'image/png', name: 'Star card · transparent overlay', duration: 0, width: 360, height: 480, hasVideo: true, hasAudio: false},
+  {file: 'sound-bed.wav', id: uuid(24), mimeType: 'audio/wav', name: 'Synthesised tone · independent audio', duration: 10, width: 0, height: 0, hasVideo: false, hasAudio: true},
 ] as const;
 const failure = (): AppError => new AppError('PROJECT_FILE_EXISTS', 'Example output already exists; generate into a new directory and review it before replacing a checked-in example.', 409);
 

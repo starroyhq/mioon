@@ -220,6 +220,47 @@ test('source identity preserves omission and canonical field order, and never in
   assert.equal(missing.clipName, explicit.clipName); assert.notEqual(missing.sourceIdentity, explicit.sourceIdentity);
 });
 
+test('legacy null source dimensions and duration share the absent identity without changing frozen inputs', () => {
+  const absent = deriveTimelineAssetUsage(fixture()); assert.equal(absent.status, 'ready');
+  for (const metadata of [{width: null}, {height: null}, {duration: null}, {width: null, height: null, duration: null}]) {
+    const input = {...fixture(), assets: [{...asset(), ...metadata}, asset(unusedAssetId)]}, before = structuredClone(input);
+    freeze(input);
+    const result = deriveTimelineAssetUsage(input);
+    assert.equal(result.status, 'ready'); assert.deepEqual(result, absent);
+    assert.strictEqual(retainTimelineAssetUsage(absent, result), absent);
+    assert.deepEqual(input, before);
+  }
+});
+
+test('explicit numeric source metadata remains distinct from legacy null and absence', () => {
+  const absent = deriveTimelineAssetUsage(fixture()).usesByAssetId[firstAssetId][0].sourceIdentity;
+  for (const field of ['width', 'height', 'duration']) {
+    const identity = (value: number) => {
+      const input = {...fixture(), assets: [{...asset(), [field]: value}, asset(unusedAssetId)]};
+      const result = deriveTimelineAssetUsage(input); assert.equal(result.status, 'ready');
+      return result.usesByAssetId[firstAssetId][0].sourceIdentity;
+    };
+    assert.notEqual(identity(0), absent); assert.notEqual(identity(1), identity(0));
+  }
+  const fractionalDuration = {...fixture(), assets: [{...asset(), duration: 0.5}, asset(unusedAssetId)]};
+  assert.equal(deriveTimelineAssetUsage(fractionalDuration).status, 'ready');
+});
+
+test('legacy null compatibility does not accept other malformed source identity values', () => {
+  for (const field of ['width', 'height', 'duration']) {
+    const invalid = [undefined, '0', false, -1, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, {}, []];
+    if (field !== 'duration') invalid.push(0.5);
+    for (const value of invalid) {
+      const input = {...fixture(), assets: [{...asset(), [field]: value}, asset(unusedAssetId)]}, before = structuredClone(input);
+      assertUnknown(input); assert.deepEqual(input, before);
+    }
+  }
+  for (const field of ['sizeBytes', 'hasAudio', 'hasVideo', 'sha256', 'mimeType', 'name']) {
+    const input = {...fixture(), assets: [{...asset(), [field]: null}, asset(unusedAssetId)]};
+    assertUnknown(input);
+  }
+});
+
 test('malformed or oversized present identity metadata is unknown rather than arbitrarily serialized', () => {
   const mutations = [
 (    input: { assets: { sha256: string; }[]; }) => { input.assets[0].sha256 = 'invalid'; },
