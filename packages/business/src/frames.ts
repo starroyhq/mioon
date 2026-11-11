@@ -16,7 +16,7 @@ import {createFrameOwnershipReader} from './frame-ownership.ts';
 import type {FrameTaskView,FrameTaskSnapshot} from './frame-ownership.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {createFrameStorage} from './frame-storage.ts';
-import {markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
+import {markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import type {FrameStorage,FrameStorageTask,FrameReceipt,FrameSourceSnapshot} from './frame-storage.ts';
 import {decodeManagedFrame} from './frame-decoder.ts';
 import type {DecodeManagedFrameOptions,DecodedManagedFrame} from './frame-decoder.ts';
@@ -219,12 +219,18 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   const check=(): void=>{assertAgentTaskJobEffect(db,'frame',original.row.id);sourceFence(original,verified.info);if(db.prepare('SELECT 1 FROM assets WHERE id=? LIMIT 1').get(receipt.assetId))fail('FRAME_RESULT_INVALID');};
   const file=await storage.publish(stageTask(original),receipt,check,{signal});check();fault('after_media_publication',{taskId:original.row.id});
   const referenceFields='publication' in file?{reference:file.reference,referenceRevision:file.referenceRevision,publication:file.publication}:null;
-  const result=tx(()=>{
+  const commit=()=>tx(()=>{
    check();if(isProjectStore(store)&&'publication' in file)assertPublishedProjectOutput(store,file.publication,{signal,beforeEffect:check});const timestamp=now(),asset={id:receipt.assetId,projectId:original.row.projectId,name:`Frame ${original.input.sourceFrame}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),url:`/media/${receipt.assetId}`,provenance:'extracted-frame',...(isProjectStore(store)?{frameResult:{requestId:original.row.requestId,receipt}}:{}),createdAt:timestamp};
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    const completed=change(original,{state:'succeeded',assetId:asset.id,errorCode:null});graph(asset.projectId).asset(asset.id);fault('before_result_commit',{taskId:original.row.id});return completed;
   });
-  if(isProjectStore(store)&&'publication' in file)try{await markProjectOutputRegistered(store,file.publication,{signal,beforeEffect:()=>{assertAgentTaskJobEffect(db,'frame',result.row.id);current(result);}});}catch{/* A retained publication intent can reconcile a committed result. */}
+  const result = isProjectStore(store) && referenceFields
+    ? await registerVerifiedProjectOutputs(store, {signal, beforeEffect: check}, () => {
+      const completed = commit();
+      return markProjectOutputRegistered(store, referenceFields.publication, {signal, beforeEffect: () => {
+        assertAgentTaskJobEffect(db, 'frame', completed.row.id); current(completed);
+      }}).catch(() => {/* A committed result can reconcile a retained publication intent. */}).then(() => completed);
+    }) : commit();
   try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* Retaining a private stage cannot undo a committed result. */}
  }
  function execute(entry:FrameAttempt):Promise<void>{return withAgentTaskJobOrigin(db,'frame',entry.id,()=>executeInside(entry));}

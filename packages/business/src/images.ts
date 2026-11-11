@@ -16,7 +16,7 @@ import {createOwnedMediaGraphReader} from './inspection.ts';
 import {createImageEditSourceResolver,imageEditFields} from './images/edit-source.ts';
 import type {ImageEditSourceResolver,VerifiedEditSource} from './images/edit-source.ts';
 import {createImageStorage} from './image-storage.ts';
-import {markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
+import {markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import type {ImageReceipt,ImageStorageTask} from './image-storage.ts';
 import {createMockImageAdapter} from './images/adapter.ts';
 import type {ImageAdapterResult} from './images/adapter.ts';
@@ -313,7 +313,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const file=await storage.publish(stageTask(target),receipt,check);check();fault('after_media_publication',{taskId:target.row.id});
   check();
   const referenceFields=isProjectStore(store)?await referenceForPublishedMedia(store,path.join(store.root,file.relativePath),{sha256:receipt.sha256,beforeEffect:()=>{check();}}):null;
-  const result=tx(()=>{
+  const commit=()=>tx(()=>{
    const latest=current(target);if(source)editSources.assertOwned(toInput(latest.input),source.descriptor);if(isProjectStore(store)&&file.publication)assertPublishedProjectOutput(store,file.publication,{beforeEffect:()=>{check();}});const g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
    const maximum=Number(db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id)?.n??0);maxRevision(maximum);const timestamp=now();
    const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),...(file.publication?{publication:file.publication}:{}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
@@ -325,7 +325,13 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    resultListeners.get(db)?.({projectId:g.projectId,requestId:latest.row.requestId,taskId:latest.row.id,versionId:version.id,assetId:asset.id});
    fault('before_result_commit',{taskId:latest.row.id});return completed;
   });
-  if(isProjectStore(store)&&file.publication){try{await markProjectOutputRegistered(store,file.publication,{beforeEffect:owner});}catch{/* The committed result remains authoritative; retain the local receipt/stage. */}}
+  const publication = file.publication;
+  const result = isProjectStore(store) && publication
+    ? await registerVerifiedProjectOutputs(store, {beforeEffect: check}, () => {
+      const completed = commit();
+      return markProjectOutputRegistered(store, publication, {beforeEffect: owner})
+        .catch(() => {/* A committed result can reconcile a retained publication intent. */}).then(() => completed);
+    }) : commit();
   try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* A retained private stage is safe; never undo a committed result. */}
  }
  const remote=createComfyRemoteServices(store,{signal,owner,readTask:(projectId: string,taskId: string)=>task(projectId,taskId) as unknown as ComfyRemoteTask,readReview:(projectId: string,taskId: string)=>reviews.getForTask(projectId,taskId),connector:comfyConnector as unknown as ComfyRemoteConnector,admission:comfyAdmission,fault,

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {chmodSync,readFileSync,statSync} from 'node:fs';
 import {mkdtemp,copyFile,readFile,readdir,rename,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -12,12 +13,127 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {setProjectOutputPublicationTestHooks,isPublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import type {ProjectOutputPublicationProof} from '../packages/business/src/project-output-publication.ts';
 import {outputArtifactSchema} from '../packages/contracts/src/output-artifact.ts';
 import {writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
 import {isTimelineExportAudioOutcome} from '../packages/contracts/src/timeline-export-float.ts';
 
 const row=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 async function sourceFile(root:string):Promise<string>{const file=path.join(root,'source.mp4');await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=144x256:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',file],{timeout:30000});return file;}
+
+function changeCtimeBeforeRegistration(store: ReturnType<typeof openStore>, targetKind: 'exports' | 'generated') {
+  let changed: ProjectOutputPublicationProof | undefined;
+  const clear = setProjectOutputPublicationTestHooks(store, {fault(point, proof) {
+    if (point !== 'after_final' || proof.targetKind !== targetKind || changed) return;
+    assert.equal(store.db.isTransaction, false);
+    assert.equal(store.get('assets', proof.assetId), null);
+    const file = path.join(store.projectDir, proof.relativePath);
+    const before = statSync(file, {bigint: true});
+    const bytes = readFileSync(file);
+    const mode = Number(before.mode & 0o777n);
+    chmodSync(file, mode ^ 0o200);
+    chmodSync(file, mode);
+    const after = statSync(file, {bigint: true});
+    for (const field of ['dev', 'ino', 'birthtimeNs', 'size', 'mode', 'mtimeNs', 'nlink'] as const) {
+      assert.equal(after[field], before[field], field);
+    }
+    assert.notEqual(after.ctimeNs, before.ctimeNs, 'the fixture must change ctime');
+    assert.deepEqual(readFileSync(file), bytes);
+    changed = proof;
+  }});
+  return {clear, proof: () => {
+    assert.ok(changed, 'the metadata change must occur between verification and registration');
+    return changed;
+  }};
+}
+
+test('export registers the verified artifact after a ctime-only change before registration', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-export-registration-'));
+  const source = await sourceFile(root);
+  const store = openStore(root);
+  const providers = new Map<string, Provider>();
+  const services = createServices(store, providers);
+  const change = changeCtimeBeforeRegistration(store, 'exports');
+  let worker: ReturnType<typeof startWorker> | undefined;
+  t.after(async () => {
+    change.clear();
+    await worker?.stop();
+    await services.drain();
+    store.close();
+    await rm(root, {recursive: true, force: true});
+  });
+  const project = row(await services.call('project.create', {name: 'Export registration'}));
+  const projectId = String(project.id);
+  const imported = row(await services.call('asset.import', {
+    projectId, name: 'source.mp4', mimeType: 'video/mp4', dataBase64: (await readFile(source)).toString('base64'),
+  }));
+  const timeline = row(await services.call('timeline.get', {projectId}));
+  const track = row((timeline.tracks as unknown[])[0]);
+  const edited = row(await services.call('timeline.clip.add', {
+    projectId, expectedRevision: timeline.revision, requestId: randomUUID(),
+    assetId: imported.id, trackId: track.id, startFrame: 0, durationFrames: 6,
+  }));
+  const accepted = row(await services.call('timeline.render', {
+    projectId, expectedRevision: edited.revision, requestId: randomUUID(), purpose: 'export',
+  }));
+  worker = startWorker(store, services, providers);
+  await worker.tick();
+  await worker.stop();
+  worker = undefined;
+
+  const proof = change.proof();
+  const completed = row(store.get('exports', String(accepted.id)));
+  assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
+  assert.equal(completed.assetId, proof.assetId);
+  const output = row(await services.call('export.output.get', {projectId, exportId: accepted.id}));
+  assert.equal(output.assetId, proof.assetId);
+  assert.ok(isPublishedProjectOutput(store.get('assets', proof.assetId), proof));
+  assert.deepEqual(await readdir(path.join(root, '导出')), [path.basename(proof.relativePath)]);
+});
+
+test('video generation registers the verified artifact after a ctime-only change before registration', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-generation-registration-'));
+  const source = await sourceFile(root);
+  const store = openStore(root);
+  const provider: Provider = {
+    id: 'ark',
+    capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4], configured: true, enabled: true, mock: false},
+    submit: async () => ({providerJobId: 'fixture-ctime-registration'}),
+    poll: async () => ({status: 'succeeded'}),
+    reconcile: async () => null,
+    download: async (_id, destination) => {await copyFile(source, destination);},
+  };
+  const providers = new Map([['ark', provider]]);
+  const services = createServices(store, providers);
+  const change = changeCtimeBeforeRegistration(store, 'generated');
+  let worker: ReturnType<typeof startWorker> | undefined;
+  t.after(async () => {
+    change.clear();
+    await worker?.stop();
+    await services.drain();
+    store.close();
+    await rm(root, {recursive: true, force: true});
+  });
+  const project = row(await services.call('project.create', {name: 'Generation registration'}));
+  const shot = row(await services.call('shot.create', {projectId: project.id, title: 'Fixture', prompt: 'A blue rectangle', duration: 4}));
+  const accepted = row(await services.call('generation.submit', {
+    shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId: randomUUID(),
+  }));
+  worker = startWorker(store, services, providers);
+  await worker.tick();
+  await worker.tick();
+  await worker.stop();
+  worker = undefined;
+
+  const proof = change.proof();
+  const completed = row(store.get('jobs', String(accepted.id)));
+  assert.equal(completed.status, 'succeeded', JSON.stringify(completed.error));
+  const version = row(store.get('versions', String(completed.versionId)));
+  assert.equal(version.assetId, proof.assetId);
+  assert.ok(isPublishedProjectOutput(store.get('assets', proof.assetId), proof));
+  assert.equal(store.list('versions').length, 1);
+  assert.deepEqual(await readdir(path.join(root, '生成')), [path.basename(proof.relativePath)]);
+});
 
 test('a moved private download stage retains its task and serializes an I/O error without local paths',async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-artifact-private-error-')),source=await sourceFile(root),store=openStore(root);let worker:ReturnType<typeof startWorker>|undefined,moved='';

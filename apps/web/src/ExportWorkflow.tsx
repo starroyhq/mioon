@@ -29,17 +29,19 @@ export interface ExportWorkflowProps {
   /** Replaces the settings step's Next button, e.g. when the settings choose a different kind of export. */
   nextAction?:ReactNode;
   record?: ExportWorkflowRecord | null; projectId?: string | null; activity?: ExportActivity | null; output?: ExportOutput | null;
-  onTasks?: () => void; onRecheck?: () => void; canCheck?: boolean; downloadEnabled?: boolean; fileRecoveryEnabled?:boolean; reviewVersion?: number;
+  onTasks?: () => void; downloadEnabled?: boolean; fileRecoveryEnabled?:boolean; reviewVersion?: number;
   onCancel?: () => unknown; cancelBusy?: boolean; onClose?: () => void; onHistory?: () => void; onReexport?: () => void;
 }
 /** This shell retains presentation only. App owns the exact preflight binding,
  * fixed export identity, observations, cancellation and durable receipt. */
-export default function ExportWorkflow({ preview, children, phase, attempted, exportBusy, pendingExport, record, projectId, activity, output, resultDetails, onTasks, onRecheck, canCheck, downloadEnabled = true, fileRecoveryEnabled=true, reviewVersion = 0, onCancel, cancelBusy, onClose, onHistory, onReexport,checkAction,settingsEstimate,nextAction }: ExportWorkflowProps) {
+export default function ExportWorkflow({ preview, children, phase, attempted, exportBusy, pendingExport, record, projectId, activity, output, resultDetails, onTasks, downloadEnabled = true, fileRecoveryEnabled=true, reviewVersion = 0, onCancel, cancelBusy, onClose, onHistory, onReexport,checkAction,settingsEstimate,nextAction }: ExportWorkflowProps) {
   const { t, formatNumber } = useI18n(), confirm = useConfirmation(), visible=useWorkspaceVisibility();
   const [step, setStep] = useState<Step>(1), [confirming,setConfirming]=useState(false);
   const owner=useMemo(()=>({}),[projectId,record?.id,visible]);
   const previousReview = useRef(reviewVersion), cancelFlight=useRef(false), alive=useRef(true);
-  const current = useRef({ phase, attempted, exportBusy, pendingExport, record, projectId, visible, cancelBusy,owner,onCancel }); current.current = { phase, attempted, exportBusy, pendingExport, record, projectId, visible, cancelBusy,owner,onCancel };
+  const view = {phase, attempted, exportBusy, pendingExport, record, projectId, visible, cancelBusy, owner, onCancel, onReexport};
+  const current = useRef(view);
+  current.current = view;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const active = attempted || Boolean(record), succeeded = Boolean(record&&['succeeded','completed','ready'].includes(record.status));
   const failed=record?.status==='failed'||record?.status==='cancelled';
@@ -55,6 +57,11 @@ export default function ExportWorkflow({ preview, children, phase, attempted, ex
   useEffect(() => { if (!active && phase === 'stale' && step === 3) setStep(2); }, [active, phase, step]);
   const checked = phase === 'ready' || phase === 'incomplete';
   const choose = (next: Step) => { const state = current.current; if (state.exportBusy || state.pendingExport || state.attempted) return; if (next < 3 || next === 3 && ['ready', 'incomplete'].includes(state.phase)) setStep(next); };
+  function reexportFailed() {
+    const latest = current.current;
+    if (!alive.current || latest.owner !== owner || !latest.visible || latest.exportBusy || latest.pendingExport || latest.cancelBusy) return;
+    if (latest.record?.status === 'failed' || latest.record?.status === 'cancelled') latest.onReexport?.();
+  }
   async function cancel(){
     const captured=current.current;
     if(captured.owner!==owner||!captured.onCancel||!captured.visible||!captured.record||!['queued','running'].includes(captured.record.status)||captured.cancelBusy||cancelFlight.current)return;
@@ -84,7 +91,11 @@ export default function ExportWorkflow({ preview, children, phase, attempted, ex
           {!succeeded&&onTasks&&<WorkbenchButton onClick={onTasks} data-testid="export-workflow-tasks">{t('redesign.export.viewTasks')}</WorkbenchButton>}
         </div>
         <footer className="export-workflow-result-actions">
-          {succeeded?<>{onHistory&&<WorkbenchButton variant="ghost" onClick={onHistory} data-testid="export-workflow-history">{t('export.workspace.history')}</WorkbenchButton>}{onReexport&&<WorkbenchButton variant="ghost" onClick={onReexport} data-testid="export-workflow-another">{t('redesign.export.another')}</WorkbenchButton>}{onClose&&<WorkbenchButton onClick={onClose}>{t('redesign.export.close')}</WorkbenchButton>}</>:<>{onCancel&&!failed&&record&&<WorkbenchButton variant="danger-ghost" disabled={Boolean(cancelBusy||confirming)||!['queued','running'].includes(record.status)} onClick={()=>{void cancel();}} data-testid="export-workflow-cancel">{t('redesign.export.cancel')}</WorkbenchButton>}{onClose&&!failed&&<WorkbenchButton onClick={onClose} data-testid="export-workflow-background">{t('redesign.export.background')}</WorkbenchButton>}{onRecheck&&failed&&<WorkbenchButton variant="ghost" disabled={!canCheck||Boolean(exportBusy||pendingExport)} onClick={()=>{setStep(1);onRecheck();}} data-testid="export-workflow-recheck">{t('export.preflight.check')}</WorkbenchButton>}</>}
+          {succeeded?<>{onHistory&&<WorkbenchButton variant="ghost" onClick={onHistory} data-testid="export-workflow-history">{t('export.workspace.history')}</WorkbenchButton>}{onReexport&&<WorkbenchButton variant="ghost" onClick={onReexport} data-testid="export-workflow-another">{t('redesign.export.another')}</WorkbenchButton>}{onClose&&<WorkbenchButton onClick={onClose}>{t('redesign.export.close')}</WorkbenchButton>}</>:<>
+            {onCancel&&!failed&&record&&<WorkbenchButton variant="danger-ghost" disabled={Boolean(cancelBusy||confirming)||!['queued','running'].includes(record.status)} onClick={()=>{void cancel();}} data-testid="export-workflow-cancel">{t('redesign.export.cancel')}</WorkbenchButton>}
+            {onClose&&!failed&&<WorkbenchButton onClick={onClose} data-testid="export-workflow-background">{t('redesign.export.background')}</WorkbenchButton>}
+            {onReexport&&failed&&<WorkbenchButton variant="ghost" disabled={Boolean(exportBusy||pendingExport||cancelBusy)} onClick={reexportFailed} data-testid="export-workflow-reexport">{t('redesign.export.reexport')}</WorkbenchButton>}
+          </>}
         </footer>
       </section>
       <footer className="export-workflow-navigation" hidden={step > 2} inert={step > 2}>

@@ -32,7 +32,7 @@ import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-v
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
-import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
+import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
@@ -383,12 +383,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(projectOwner&&!artifact)artifact=writeOutputArtifact(projectOwner,{owner,kind:'generation',sourceIdentity,stageFile:part,info},checkOutput);
     const published=projectOwner&&artifact?await publishProjectOutput(projectOwner,{owner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'generated',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes},{signal,beforeEffect:checkOutput}):null;
     const publishedReference=published?(({relativePath:_path,...locator})=>locator)(published):null;
-    tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
+    const commit = () => tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:`${String(property(j!.snapshot,'title'))} ${j!.providerId==='mock'?'模拟':'生成'}视频.mp4`,mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
      const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
-    if(projectOwner&&published)await markProjectOutputRegistered(projectOwner,published.publication,{signal});
+    if (projectOwner && published) {
+      await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
+        commit();
+        return markProjectOutputRegistered(projectOwner, published.publication, {signal});
+      });
+    } else commit();
    }
   } catch(error) {
    if(isBackgroundTaskIndexUncertain(error))return;
@@ -538,12 +543,16 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const audioCheck=floatExport?restoredArtifactAudioCheck(artifact,e):undefined;
     const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes},{signal,beforeEffect});checkpoint(signal);beforeEffect();
     const {relativePath:_publishedPath,...locator}=published;
-    tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
+    await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
+     tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
      const output=e.mode==='timeline'?property(e.snapshot,'timeline') as Record<string,unknown>:storyboardOutputGeometry(e),width=numberValue(property(output,'width'))??0,height=numberValue(property(output,'height'))??0,ratio=width===height?'1x1':width>height?'16x9':'9x16';
      const asset={id:artifact.assetId,projectId:e.projectId,name:e.mode==='timeline'?`多轨时间线-${e.purpose==='preview'?'预览':'导出'}-${ratio}.mp4`:`分镜拼接-${ratio}.mp4`,mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
-    });publicationAccepted=true;
-    await markProjectOutputRegistered(writerOwner,published.publication,{signal});return;
+     });
+     publicationAccepted=true;
+     return markProjectOutputRegistered(writerOwner,published.publication,{signal});
+    });
+    return;
    }
    // link is an atomic, non-overwriting publication on the managed filesystem.
    beforeEffect?.();

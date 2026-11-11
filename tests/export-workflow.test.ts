@@ -5,6 +5,7 @@ import {transformSync} from 'esbuild';
 import {message} from '../packages/i18n/src/index.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {mediaUrl} from '../apps/web/src/api.ts';
+import type {ExportWorkflowRecord} from '../apps/web/src/ExportWorkflow.tsx';
 const source=readFileSync(new URL('../apps/web/src/ExportWorkflow.tsx',import.meta.url),'utf8');
 const PROJECT='e1000000-0000-4000-8000-000000000001',ASSET='e1000000-0000-4000-8000-000000000002';
 interface UiNode {readonly type?: unknown; readonly props: Record<string, any> & {children?: unknown}}
@@ -13,7 +14,7 @@ const nodes=(tree: unknown): UiNode[]=>Array.isArray(tree)?tree.flatMap(nodes):t
 
 const find=(tree: unknown,id: string): UiNode=>(nodes(tree).find(node=>node.props?.['data-testid']===id) as UiNode);
 function harness(initial: Record<string, unknown> = {}) {
- const slots: unknown[]=[],effects:(()=>unknown)[]=[],calls:string[]=[];let visible=true,confirmation=async()=>true;const cleanups=new Map<number,()=>void>();let cursor=0,context=1,props: Record<string, unknown>={phase:'idle',children:'retained controls',onRecheck:()=>calls.push('check'),onTasks:()=>calls.push('tasks'),...initial};
+ const slots: unknown[]=[],effects:(()=>unknown)[]=[],calls:string[]=[];let visible=true,confirmation=async()=>true;const cleanups=new Map<number,()=>void>();let cursor=0,context=1,props: Record<string, unknown>={phase:'idle',children:'retained controls',onTasks:()=>calls.push('tasks'),...initial};
  const react={createElement:(type: unknown,props: Record<string, unknown>,...children: unknown[])=>({type,props:{...props,children:children.length===1?children[0]:children}}),createContext:()=>({Provider:'Provider'}),useContext:()=>context,
   useMemo(fn:()=>unknown,deps:unknown[]){const i=cursor++,old=slots[i] as {deps:unknown[];value:unknown}|undefined;if(!old||deps.some((value,n)=>!Object.is(value,old.deps[n])))slots[i]={deps,value:fn()};return (slots[i] as {value:unknown}).value;},
   useRef(value: unknown){const i=cursor++;return slots[i]??=( {current:value} );},useState(value: unknown){const i=cursor++;if(!(i in slots))slots[i]=typeof value==='function'?(value as ()=>unknown)():value;return[slots[i],(next: unknown)=>{slots[i]=typeof next==='function'?(next as (current: unknown)=>unknown)(slots[i]):next;}];},
@@ -54,6 +55,63 @@ test('pending and completed exports show their bound result without automaticall
  tree=h.render({pendingExport:false,record:{id:'export-1',projectId:PROJECT,status:'succeeded',assetId:ASSET,url:`/media/${ASSET}`}});assert.equal(find(tree,'export-workflow').props['data-step'],5);assert.equal(find(tree,'export-workflow-download').props.href,mediaUrl(PROJECT,ASSET));assert.equal(find(tree,'export-workflow-result').props.hidden,false);
  assert.equal(find(h.render({downloadEnabled:false}),'export-workflow-download'),undefined,'held and candidate output cannot acquire a new download authority');
  assert.deepEqual(h.calls,['tasks']);
+});
+
+test('failed and cancelled exports return to step one for an explicit new check and confirmation',()=>{
+ for (const code of ['INVALID_MEDIA','EXPORT_CANCELLED']) {
+  let record:ExportWorkflowRecord|null={id:'first-export',projectId:PROJECT,status:'failed',error:{code,retryable:code==='INVALID_MEDIA'}};
+  let reviewVersion=0;
+  const calls:string[]=[];
+  const checkAction={type:'button',props:{'data-testid':'retry-check',onClick:()=>calls.push('check')}};
+  const h=harness({projectId:PROJECT,record,attempted:true,phase:'ready',checkAction,onReexport:()=>{
+   record=null;
+   reviewVersion++;
+   calls.push('review');
+  }});
+  let tree=h.render();
+  assert.equal(find(tree,'export-workflow').props['data-step'],4);
+  const retry=find(tree,'export-workflow-reexport');
+  assert.ok(retry,'a terminal failure must offer a direct way to start another export');
+  assert.equal(retry.props.children,'重新导出');
+  assert.equal(retry.props.disabled,false);
+  retry.props.onClick();
+  tree=h.render({record,reviewVersion});
+  assert.deepEqual(calls,['review']);
+  assert.equal(find(tree,'export-workflow').props['data-step'],1);
+  assert.equal(find(tree,'export-workflow-next').props.disabled,true);
+  find(tree,'retry-check').props.onClick();
+  h.render({attempted:false,phase:'checking'});
+  tree=h.render({phase:'ready'});
+  assert.equal(find(tree,'export-workflow-next').props.disabled,false);
+  find(tree,'export-workflow-next').props.onClick();
+  tree=h.render();
+  assert.equal(find(tree,'export-workflow').props['data-step'],2);
+  find(tree,'export-workflow-next').props.onClick();
+  assert.equal(find(h.render(),'export-workflow').props['data-step'],3);
+  assert.deepEqual(calls,['review','check']);
+ }
+});
+
+test('a failed result cannot start another export while a request is busy or unknown or after the view changes',()=>{
+ const record={id:'failed-export',projectId:PROJECT,status:'failed'};
+ for (const patch of [{exportBusy:true},{pendingExport:true},{cancelBusy:true}]) {
+  const h=harness({projectId:PROJECT,record,onReexport:()=>assert.fail('locked retry')});
+  const previous=find(h.render(),'export-workflow-reexport');
+  assert.equal(find(h.render(patch),'export-workflow-reexport').props.disabled,true);
+  previous.props.onClick();
+ }
+ const h=harness({projectId:PROJECT,record,onReexport:()=>assert.fail('stale retry')});
+ const previous=find(h.render(),'export-workflow-reexport');
+ for (const next of [{...record,status:'queued'},{...record,status:'running'},null]) {
+  assert.equal(find(h.render({record:next,attempted:true,pendingExport:next===null}),'export-workflow-reexport'),undefined);
+  previous.props.onClick();
+ }
+ h.render({record:{...record,id:'new-failed-export'},pendingExport:false});
+ previous.props.onClick();
+ const visible=harness({projectId:PROJECT,record,onReexport:()=>assert.fail('stale dialog retry')});
+ const beforeHide=find(visible.render(),'export-workflow-reexport');
+ visible.setVisible(false);visible.render();visible.setVisible(true);visible.render();
+ beforeHide.props.onClick();
 });
 
 const deferred=()=>{let resolve!:(value:boolean)=>void;const promise=new Promise<boolean>(yes=>{resolve=yes;});return{promise,resolve};};

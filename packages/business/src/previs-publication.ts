@@ -12,7 +12,7 @@ import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {decodeMediaUpload} from './media-upload.ts';
 import {validatePng} from './images/png.ts';
-import {publishProjectOutput, markProjectOutputRegistered, assertPublishedProjectOutput} from './project-output-publication.ts';
+import {publishProjectOutput, markProjectOutputRegistered, assertPublishedProjectOutput, registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import {previsOutputInputHash, readPrevisOutputSource} from './previs-output-ownership.ts';
 export {readPrevisOutputSource} from './previs-output-ownership.ts';
 
@@ -110,23 +110,23 @@ export function createPrevisPublicationServices(store: ProjectStore, {now = () =
       const asset = assetMediaRecordSchema.parse({id: manifest.assetId, projectId: identity.projectId, name: identity.name, mimeType: 'image/png',
         width: identity.width, height: identity.height, duration: 0, hasAudio: false, hasVideo: true, provenance: 'generated', createdAt: manifest.createdAt,
         reference: published.reference, referenceRevision: published.referenceRevision, sha256: published.sha256, sizeBytes: published.sizeBytes, publication: published.publication, previsOutput: identity});
-      store.tx(() => {
-        sourceFence(identity);
-        assertPublishedProjectOutput(store, published.publication, {signal, beforeEffect: () => sourceFence(identity)});
-        const existing = lookup(identity);
-        if (existing) {if (existing.asset.id !== asset.id) conflict(); return;}
-        if (store.get('assets', asset.id)) conflict();
-        store.put('assets', asset);
+      await registerVerifiedProjectOutputs(store, {signal, beforeEffect: () => sourceFence(identity)}, () => {
+        store.tx(() => {
+          sourceFence(identity);
+          assertPublishedProjectOutput(store, published.publication, {signal, beforeEffect: () => sourceFence(identity)});
+          const existing = lookup(identity);
+          if (existing) {if (existing.asset.id !== asset.id) conflict(); return;}
+          if (store.get('assets', asset.id)) conflict();
+          store.put('assets', asset);
+        });
+        return markProjectOutputRegistered(store, published.publication, {signal, beforeEffect: () => fence(identity)}).catch(cause => {
+          // Registration committed. Keep an ambiguous receipt recoverable by exact lookup.
+          const ambiguous = new AppError('PREVIS_STATE_CONFLICT', '预演图像已登记，本地发布回执仍待核对', 503,
+            {requestId: identity.requestId, submissionMayHaveSucceeded: true});
+          Object.defineProperty(ambiguous, 'cause', {value: cause});
+          throw ambiguous;
+        });
       });
-      try {await markProjectOutputRegistered(store, published.publication, {signal, beforeEffect: () => fence(identity)});}
-      catch (cause) {
-        // The asset transaction already committed. Receipt marking/cleanup may
-        // still fail, so preserve that uncertainty for exact request lookup.
-        const ambiguous = new AppError('PREVIS_STATE_CONFLICT', '预演图像已登记，本地发布回执仍待核对', 503,
-          {requestId: identity.requestId, submissionMayHaveSucceeded: true});
-        Object.defineProperty(ambiguous, 'cause', {value: cause});
-        throw ambiguous;
-      }
       return {...identity, asset: toAssetMediaDto(asset)};
     };
     const operation = execute(); running.set(key, operation);
