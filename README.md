@@ -12,13 +12,13 @@
   <a href="https://mioon.app">官网</a> ·
   <a href="https://github.com/starroyhq/mioon/releases/tag/v0.1.0">下载 v0.1.0</a> ·
   <a href="#mioon-能帮你做什么">功能介绍</a> ·
-  <a href="#开始试用">开始试用</a> ·
+  <a href="#开始使用">开始使用</a> ·
   <a href="docs/USER-GUIDE.zh-CN.md">使用指南</a> ·
   <a href="https://github.com/starroyhq/mioon/issues">问题反馈</a>
 </p>
 
 <p align="center">
-  <img alt="v0.1.0 桌面试用" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.1.0%20%E6%A1%8C%E9%9D%A2%E8%AF%95%E7%94%A8-475569" />
+  <img alt="v0.1.0 桌面版" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.1.0%20%E6%A1%8C%E9%9D%A2%E7%89%88-475569" />
   <img alt="本地保存" src="https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BF%9D%E5%AD%98-16a34a" />
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-blue" /></a>
 </p>
@@ -75,11 +75,11 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 
 界面支持深色、浅色和跟随系统主题，以及简体中文、繁体中文、英语和日语。
 
-## 开始试用
+## 开始使用
 
-桌面版请从 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)选择适合电脑的安装包，按[安装与首次运行指南](docs/INSTALL.zh-CN.md)开始。本次提供 **macOS Apple Silicon 和 macOS Intel** 安装包，Linux 与 Windows 桌面包暂不发布。**以发布页实际公开的安装附件为准；若尚未公开，说明本轮发布仍在准备中**
+从 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)下载适合你的 Mac 的安装包，再按[安装与首次运行指南](docs/INSTALL.zh-CN.md)安装。Apple Silicon 和 Intel 的 DMG 都在 macOS 15 上构建，使用 Developer ID 签名并经 Apple 公证。v0.1.0 只提供 macOS 桌面安装包。
 
-安装包不需要 Node.js 或 pnpm。**FFmpeg 和 ffprobe 不随应用附带**：首次启动可选择下载 Mioon 提供的 7.1.5（GPL，源码随工具发布提供），也可选自己安装的工具，步骤见[首次配置](docs/USER-GUIDE.zh-CN.md#首次启动配置视频工具)。Mioon 目前没有自动更新，更新时需重新下载。功能与验证范围见 [v0.1.0 说明](docs/releases/v0.1.0.zh-CN.md)
+桌面版无需 Node.js 或 pnpm。首次启动按提示配置 FFmpeg 和 ffprobe，可以下载 Mioon 提供的 7.1.5，也可以选择自己安装的工具。更新时需手动下载新安装包。配置和更新步骤见[安装指南](docs/INSTALL.zh-CN.md)。
 
 希望从源码运行时，继续按[源码试用指南](docs/CORE-TRIAL.zh-CN.md)操作；Mac 用户另见 [Mac 源码启动说明](docs/MAC-SOURCE-TRIAL.zh-CN.md)
 
@@ -90,14 +90,14 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 3. **开始剪辑**：把素材加入剪辑区，排好顺序，调整长短并更新预览
 4. **导出成片**：检查设置，等待完成，再打开导出的视频看看
 
-每一步的详细操作见[使用指南](docs/USER-GUIDE.zh-CN.md)，也可以使用仓库提供的[本地示例素材](examples/README.md)练习。首页示例入口、完整项目文件操作、版本/备份、项目规范、用量及本机记录清理等界面仍有未合入项，指南已逐处标“待合入后核对”
+也可以在首页点「从示例开始」，选择保存位置，用内置示例创建一个可编辑的新项目。[使用指南](docs/USER-GUIDE.zh-CN.md)介绍打开和复制项目、版本历史、自动备份、项目规范及本机记录。Mio 每轮用量的入口见 [Mio 使用说明](docs/MIO-GUIDE.zh-CN.md)。
 
 ## 使用前了解这几件事
 
 - **导入不自动上传**：桌面导入引用原文件，不会替你复制媒体。使用外部 AI 功能时，相关提示词或素材会发送给你配置的服务，并可能产生费用
 - **记得保管项目和素材**：当前没有自动云同步；分享或移动时需带上 `.mioon` 和引用的媒体。本机[项目备份](docs/PROJECT-BACKUPS.md)只保存项目内容，不含媒体、Mio 对话或版本历史；需要的本机记录也应另行保管
 - **先从短片开始**：当前适合轻量剪辑，复杂转场、变速和多人协作等功能尚未提供
-- **仍在桌面试用阶段**：先用不重要的素材完成一个短片。模型与生成服务的支持范围不等于所有供应商均已通过真实付费验收；版本范围见[发布说明](docs/releases/v0.1.0.zh-CN.md)。问题与验证限制持续记录在 [Issues](https://github.com/starroyhq/mioon/issues) 中，遇到问题欢迎反馈
+- v0.1.0 支持的平台、功能和验证范围见[发布说明](docs/releases/v0.1.0.zh-CN.md)。
 
 ## 更多说明
 
