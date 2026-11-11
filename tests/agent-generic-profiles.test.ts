@@ -70,6 +70,20 @@ test('new generic metadata cannot upgrade the thinking meaning of old Responses 
   }
 });
 
+test('Kimi K3.1 exact CC controls cannot leak into retained K2.6 or an unverified model in either region',()=>{
+  for(const platformId of ['china','international']){
+    const current=configured('kimi',platformId,'chat_completions','kimi-k3.1-pro'),currentBody=object(JSON.parse(buildTaskModelRequest(current,history,[],4318)));
+    assert.equal(currentBody.reasoning_effort,'low');assert.equal(currentBody.max_completion_tokens,4096);assert.equal(currentBody.thinking,undefined);
+    assert.equal(agentModelAdaptation(current),'adapted');assert.equal(agentModelThinkingTier(current),'required');assert.equal(agentRequestThinks(current,currentBody),true);
+    for(const model of ['kimi-k2.6','kimi-k3.1-pro-unreviewed']){
+      const configuration={...current,model},body=object(JSON.parse(buildTaskModelRequest(configuration,history,[],4318)));
+      assert.deepEqual(body.thinking,{type:'disabled'});assert.equal(body.max_tokens,4096);assert.equal(body.max_completion_tokens,undefined);assert.equal(body.reasoning_effort,undefined);assert.equal(agentRequestThinks(configuration,body),false);
+      assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:model==='kimi-k2.6'?262144:null,outputTokens:4096});
+      assert.equal(agentModelThinkingTier(configuration),model==='kimi-k2.6'?'optional':'unsupported');
+    }
+  }
+});
+
 for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) test(`${protocol}: generic branches reject unrequested reasoning or an incomplete native carrier without retry or rendering it`, async () => {
   for (const configuration of genericConfigurations().filter(item => item.protocol === protocol)) {
     const body = buildTaskModelRequest(configuration, history, [], 4318), network = genericNetwork(configuration, genericSse(configuration, undefined, {reasoning: true}));

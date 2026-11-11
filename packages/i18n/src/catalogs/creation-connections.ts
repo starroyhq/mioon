@@ -1431,10 +1431,10 @@ export const connectionMessages = {
     "ja": "現行世代の OpenAI モデルでテキストとツールのタスクを実行します。既定は Responses で、ツール対応はモデルによって異なります"
   },
   "agent.settings.presets.anthropicNote": {
-    "zh-Hans": "Messages 文本与 Mio 宿主工具基线；关闭思考，账户及模型访问权限由供应商决定",
-    "zh-Hant": "Messages 文字與 Mio 宿主工具基準；停用思考，帳戶與模型存取權限由供應商決定",
-    "en": "Messages text and Mio host-tool baseline with thinking disabled. Account and model access depend on the provider",
-    "ja": "思考を無効にした Messages テキストと Mio ホストツールの基準設定です。アカウントとモデルへのアクセス権はプロバイダーに依存します"
+    "zh-Hans": "Sonnet 5.5 使用低强度自适应思考处理文本与 Mio 宿主工具任务；账户及模型权限由供应商决定",
+    "zh-Hant": "Sonnet 5.5 使用低強度自適應思考處理文字與 Mio 宿主工具任務；帳戶及模型權限由供應商決定",
+    "en": "Sonnet 5.5 uses low-effort adaptive thinking for text and Mio host-tool tasks. Account and model access depend on the provider",
+    "ja": "Sonnet 5.5 の低強度の適応型思考でテキストと Mio ホストツールのタスクを実行します。アカウントとモデルへのアクセス権はプロバイダーに依存します"
   },
   "agent.settings.presets.deepseekNote": {
     "zh-Hans": "非思考模式文本基线；可明确选择 Chat Completions 或 Responses",
@@ -1461,10 +1461,10 @@ export const connectionMessages = {
     "ja": "中国の BigModel と国際版 Z.ai は別のプラットフォームです。キーを共通で使えるとは限りません"
   },
   "agent.settings.presets.kimiNote": {
-    "zh-Hans": "K2.6 非思考模式基线；区域账户分别配置",
-    "zh-Hant": "K2.6 非思考模式基準；區域帳戶須分別設定",
-    "en": "K2.6 non-thinking baseline. Configure regional accounts separately",
-    "ja": "K2.6 の非思考モードの基準設定です。リージョンごとにアカウントを設定してください"
+    "zh-Hans": "K3.1 Pro 使用最低推理强度执行文本与工具任务；区域账户分别配置",
+    "zh-Hant": "K3.1 Pro 使用最低推理強度執行文字與工具任務；區域帳戶須分別設定",
+    "en": "K3.1 Pro uses the lowest reasoning effort for text and tool tasks. Configure regional accounts separately",
+    "ja": "K3.1 Pro の最小推論強度でテキストとツールのタスクを実行します。リージョンごとにアカウントを設定してください"
   },
   "agent.settings.presets.minimaxNote": {
     "zh-Hans": "MiniMax-M3 非思考模式基线；不自动切换到套餐专用模型",

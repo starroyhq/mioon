@@ -9,7 +9,7 @@ import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, errorCode} from './chat-errors.ts';
 import type {AgentChatFailure} from './chat-errors.ts';
-import {ANTHROPIC_MESSAGES_API_VERSION} from './anthropic-protocol.ts';
+import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 
 export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, readTimeoutMs: 20000, totalTimeoutMs: 120000, maxHeaderBytes: 16384, maxDnsAnswers: 64});
 type NetworkLimits = Record<'connectTimeoutMs' | 'readTimeoutMs' | 'totalTimeoutMs' | 'maxHeaderBytes' | 'maxDnsAnswers', number>;
@@ -202,7 +202,11 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
       // is honored rather than silently changing an authenticated configuration.
       if (config.protocol === 'anthropic_messages') {
         if (apiKey) headers['x-api-key'] = apiKey;
-        headers['anthropic-version'] = ANTHROPIC_MESSAGES_API_VERSION;
+        let requestBody: unknown;
+        try { requestBody = JSON.parse(body); } catch { /* An unrecognized body grants no model-specific beta. */ }
+        const sonnetPrefixBinding = agentSonnetPrefixBinding(config, requestBody);
+        headers['anthropic-version'] = sonnetPrefixBinding ? SONNET_PREFIX_BINDING_API_VERSION : ANTHROPIC_MESSAGES_API_VERSION;
+        if (sonnetPrefixBinding) headers['anthropic-beta'] = SONNET_PREFIX_BINDING_BETA;
       } else if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
       const pinnedLookup: NodeLookup = (_hostname, lookupOptions, callback) => {
         let options: unknown = lookupOptions;

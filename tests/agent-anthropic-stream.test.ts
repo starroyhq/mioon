@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {streamAnthropicMessages} from '../packages/business/src/agent/anthropic-stream.ts';
-import type {AnthropicStreamItem} from '../packages/business/src/agent/anthropic-stream.ts';
+import type {AnthropicStreamItem,AnthropicStreamOptions} from '../packages/business/src/agent/anthropic-stream.ts';
 import {nativeAnthropicEvents, nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 import type {AnthropicNativeStreamEvent} from '../packages/business/src/agent/anthropic-sdk-transport.ts';
 
@@ -17,13 +17,76 @@ async function* bytes(source: string, fragmented = false) {
   if (fragmented) {for (const byte of value) yield Buffer.from([byte]);}
   else yield value;
 }
-async function collect(source: string, patch: Partial<typeof options> = {}, fragmented = false) {
+async function collect(source: string, patch: Partial<AnthropicStreamOptions> = {}, fragmented = false) {
   const result: AnthropicStreamItem[] = [];
   for await (const item of streamAnthropicMessages(bytes(source, fragmented), {...options, ...patch})) result.push(item);
   return result;
 }
 const textBody = () => start() + block(0, {type: 'text', text: ''}) + delta(0, {type: 'text_delta', text: '你好 🙂'}) + close(0) + finish();
 const toolBody = (argumentsJson = '{"projectId":"p"}', reason = 'tool_use') => start() + block(0, {type: 'tool_use', id: 'tool_one', name: 'project_inspect', input: {}}) + delta(0, {type: 'input_json_delta', partial_json: argumentsJson}) + close(0) + finish(reason);
+
+function sonnetBody(transformations?:unknown,finalTransformations?:unknown,withTool=false):string{
+  const tool=withTool?block(2,{type:'tool_use',id:'tool_one',name:'project_inspect',input:{projectId:'p'}})+close(2):'';
+  return event('message_start',{message:{id:'msg_sonnet',type:'message',role:'assistant',model:'claude-sonnet-5-5',content:[],stop_reason:null,stop_sequence:null,usage:{input_tokens:7,output_tokens:1},input_transformations:transformations}})+
+    block(0,{type:'thinking',thinking:'',signature:''})+delta(0,{type:'signature_delta',signature:'signed-empty-thinking'})+close(0)+
+    block(1,{type:'text',text:'Completed'})+close(1)+tool+
+    event('message_delta',{delta:{stop_reason:withTool?'tool_use':'end_turn',stop_sequence:null},usage:{output_tokens:4},input_transformations:finalTransformations})+event('message_stop');
+}
+
+test('Sonnet opt-in validates passive input transformations and preserves empty signed thinking without displaying it',async()=>{
+  const baseline=await collect(sonnetBody(),{thinking:true});
+  for(const type of ['thinking_dropped','thinking_mismatch_allowed'])for(const reason of ['prefix_binding_mismatch','model_binding_mismatch','organization_binding_mismatch','end_user_binding_mismatch']){
+    const transformations=[{type,path:'messages.0.content.1',reason}];
+    const actual=await collect(sonnetBody(transformations,transformations),{thinking:true,sonnetPrefixBinding:true});
+    assert.deepEqual(actual,baseline);assert.doesNotMatch(JSON.stringify(actual),/input_transformations|prefix_binding_mismatch|messages\.0/);
+  }
+  for(const value of [null,[]])assert.deepEqual(await collect(sonnetBody(value,value),{thinking:true,sonnetPrefixBinding:true}),baseline);
+  const done=baseline.at(-1)!;assert.equal(done.type,'done');if(done.type!=='done')assert.fail();
+  assert.deepEqual(done.completion.content[0],{type:'thinking',thinking:'',signature:'signed-empty-thinking'});
+  assert.deepEqual(baseline.filter(item=>item.type==='delta'),[{type:'delta',text:'Completed'}]);
+});
+
+const knownTransformation={type:'thinking_dropped',path:'messages.0.content.1',reason:'prefix_binding_mismatch'};
+
+for(const location of ['message_start','message_delta'] as const){
+  for(const field of ['type','reason'] as const){
+    test(`Sonnet ignores an unknown input transformation ${field} in ${location} and completes the tool turn`,async()=>{
+      const metadata=[{...knownTransformation,[field]:'future_binding_check'}];
+      const source=location==='message_start'?sonnetBody(metadata,undefined,true):sonnetBody(undefined,metadata,true);
+      const actual=await collect(source,{thinking:true,sonnetPrefixBinding:true});
+      assert.deepEqual(actual,[
+        {type:'delta',text:'Completed'},
+        {type:'done',completion:{
+          text:'Completed',
+          content:[
+            {type:'thinking',thinking:'',signature:'signed-empty-thinking'},
+            {type:'text',text:'Completed'},
+            {type:'tool_use',id:'tool_one',name:'project_inspect',input:{projectId:'p'}},
+          ],
+          toolCalls:[{id:'tool_one',name:'project_inspect',argumentsJson:'{"projectId":"p"}'}],
+          stopReason:'tool_use',
+          usage:{prompt_tokens:7,completion_tokens:4,total_tokens:11},
+        }},
+      ]);
+    });
+  }
+}
+
+test('Sonnet input transformations require explicit opt-in and exact bounded metadata; missing signatures still fail',async()=>{
+  const valid=knownTransformation;
+  for(const source of [sonnetBody([]),sonnetBody(undefined,[])])await assert.rejects(collect(source,{thinking:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  for(const value of [false,1,{},[null],[{...valid,extra:true}],[{...valid,type:0}],[{...valid,reason:null}],[{...valid,path:'private/source'}],
+    [{...valid,path:'messages.-1.content.0'}],[{...valid,path:'messages.01.content.0'}],[{...valid,path:'messages.9007199254740992.content.0'}],[{type:valid.type,path:valid.path}]]){
+    for(const source of [sonnetBody(value),sonnetBody(undefined,value)])await assert.rejects(collect(source,{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  }
+  for(const field of ['type','reason'] as const){
+    const value=[{...valid,[field]:'x'.repeat(257)}];
+    for(const source of [sonnetBody(value),sonnetBody(undefined,value)]) await assert.rejects(collect(source,{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_LIMIT'});
+  }
+  await assert.rejects(collect(sonnetBody([valid]).replace('signed-empty-thinking',''),{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  await assert.rejects(collect(sonnetBody([{...valid,path:'x'.repeat(64*1024)}]),{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_LIMIT'});
+  await assert.rejects(collect(sonnetBody([valid]).replace('"content":[]','"content":[],"unknown_activity":true'),{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+});
 
 test('native Messages framing preserves fragmented multilingual text and safe token usage', async () => {
   assert.deepEqual(await collect(': keepalive\r\n\r\n' + textBody(), {}, true), [

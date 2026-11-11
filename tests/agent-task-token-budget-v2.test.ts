@@ -8,7 +8,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
-import {AGENT_CHAT_PROFILES,AGENT_DEFAULT_OUTPUT_TOKENS,AGENT_MESSAGES_TOKEN_LIMITS,AGENT_OUTPUT_TOKEN_CEILING,AGENT_RESPONSES_PROFILES,AGENT_THINKING_ANSWER_TOKENS,agentAnthropicThinkingFields,agentModelTokenLimits,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
+import {AGENT_CHAT_PROFILES,AGENT_DEFAULT_OUTPUT_TOKENS,AGENT_MESSAGES_TOKEN_LIMITS,AGENT_OUTPUT_TOKEN_CEILING,AGENT_RESPONSES_PROFILES,AGENT_THINKING_ANSWER_TOKENS,agentAnthropicThinkingFields,agentChatProfile,agentModelTokenLimits,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
 import type {AgentModelTokenLimits} from '../packages/business/src/agent/model-profiles.ts';
 import {ANTHROPIC_MESSAGES_FIELDS,ANTHROPIC_MIN_THINKING_BUDGET_TOKENS} from '../packages/business/src/agent/anthropic-protocol.ts';
 import {TASK_DEFAULT_HISTORY_BUDGET,TASK_MODEL_LIMITS,TASK_TOKEN_ESTIMATE_BYTES,buildTaskModelRequest,taskHistoryFits,taskModelHistoryBudget,taskRequestFitsModel,taskResponseLanguageContext,taskTokenEstimate} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -17,6 +17,7 @@ import {assembleModelInput,assembleRunContext,selectTaskModelTools} from '../pac
 import type {TaskContextPreviousRun,TaskModelContextFragment} from '../packages/business/src/agent/task-context-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 
 type Protocol=AgentConfiguration['protocol'];
 const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
@@ -31,10 +32,12 @@ function presetConfiguration(presetId:string,protocol:Protocol):AgentConfigurati
 }
 /** Every preset and protocol whose model has a documented context window. */
 function documentedWindows():{label:string;configuration:AgentConfiguration;limits:AgentModelTokenLimits}[]{
-  return AGENT_PRESETS.flatMap(preset=>preset.availableProtocols.map(protocol=>{
+  const current=AGENT_PRESETS.flatMap(preset=>preset.availableProtocols.map(protocol=>{
     const configuration=presetConfiguration(preset.id,protocol);
     return {label:`${protocol}/${preset.id}`,configuration,limits:agentModelTokenLimits(configuration)};
-  })).filter(item=>item.limits.contextTokens!==null);
+  }));
+  const configuration={...presetConfiguration('anthropic','anthropic_messages'),model:'claude-haiku-4-5'};
+  return [...current,{label:'anthropic_messages/anthropic/legacy-haiku',configuration,limits:agentModelTokenLimits(configuration)}].filter(item=>item.limits.contextTokens!==null);
 }
 /** The complete production catalog, as the tool-group report measures it. */
 function fullCatalog(t:TestContext){
@@ -64,8 +67,9 @@ test('profiles retain documented capacity separately from protocol output limits
     'responses/custom':unknown,
     'responses/ollama':unknown,
     'responses/deepseek':{contextTokens:1000000,outputTokens:4096},
-    'responses/qwen':{contextTokens:1000000,outputTokens:4096},
+    'responses/qwen':unknown,
     'anthropic_messages/anthropic':{contextTokens:200000,outputTokens:16384},
+    'anthropic_messages/qwen':unknown,
   });
   const maximums={
     ...Object.fromEntries(Object.entries(AGENT_CHAT_PROFILES).map(([id,profile])=>[`chat_completions/${id}`,profile.maxOutputTokens])),
@@ -88,6 +92,7 @@ test('profiles retain documented capacity separately from protocol output limits
     'responses/deepseek':393216,
     'responses/qwen':null,
     'anthropic_messages/anthropic':64000,
+    'anthropic_messages/qwen':null,
   });
   assert.equal(AGENT_DEFAULT_OUTPUT_TOKENS,4096);assert.equal(AGENT_OUTPUT_TOKEN_CEILING,16384);
   for(const [label,entry] of Object.entries(table)){
@@ -95,6 +100,7 @@ test('profiles retain documented capacity separately from protocol output limits
     if(entry.contextTokens!==null)assert.ok(Number.isSafeInteger(entry.contextTokens)&&entry.outputTokens<entry.contextTokens,label);
   }
   assert.deepEqual(AGENT_MESSAGES_TOKEN_LIMITS.anthropic!.models,['claude-haiku-4-5','claude-haiku-4-5-20251001']);
+  assert.deepEqual(AGENT_MESSAGES_TOKEN_LIMITS.qwen!.models,['qwen3.8-flash']);
 });
 test('a legacy snapshot retains its explicit alias limits, and unverified combinations have an unknown window and 4096',()=>{
   for(const protocol of ['chat_completions','responses'] as const){
@@ -139,7 +145,47 @@ test('task requests send each model output limit in its protocol field',()=>{
     assert.equal(wire[field],value,label);
     for(const other of ['max_tokens','max_completion_tokens','max_output_tokens'])if(other!==field)assert.equal(Object.hasOwn(wire,other),false,`${label} ${other}`);
   }
-  assert.deepEqual(body(presetConfiguration('anthropic','anthropic_messages')).thinking,{type:'disabled'},'the catalog Messages model keeps thinking off');
+  assert.deepEqual(body({...presetConfiguration('anthropic','anthropic_messages'),model:'claude-haiku-4-5'}).thinking,{type:'disabled'},'the retained Haiku Messages model keeps thinking off');
+});
+test('Sonnet 5.5 keeps the Messages ceiling and unknown exact context without borrowing the retained Haiku capacity',()=>{
+ const configuration={...presetConfiguration('anthropic','anthropic_messages'),model:'claude-sonnet-5-5'};
+ const history:AgentTaskJson[]=[{role:'user',content:'合成 Sonnet 预算'}];
+ const body=JSON.parse(buildTaskModelRequest(configuration,history,[],4318)) as Record<string,unknown>;
+ assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:null,outputTokens:16384});assert.equal(body.max_tokens,16384);
+ assert.equal(AGENT_OUTPUT_TOKEN_CEILING,16384);assert.ok((body.max_tokens as number)<=128000,'the request stays below the documented exact output maximum');
+ assert.equal(body.max_completion_tokens,undefined);assert.equal(body.max_output_tokens,undefined);
+ assert.equal(taskModelHistoryBudget(configuration,[],'en',4318),TASK_DEFAULT_HISTORY_BUDGET,'unknown exact context uses byte limits instead of a guessed 1M integer');
+ for(const model of ['claude-haiku-4-5','claude-haiku-4-5-20251001']){
+  const legacy={...configuration,model};assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:200000,outputTokens:16384},model);
+  assert.equal(AGENT_MESSAGES_TOKEN_LIMITS.anthropic!.maxOutputTokens,64000);assert.ok(AGENT_MESSAGES_TOKEN_LIMITS.anthropic!.models.includes(model));
+  const old=JSON.parse(buildTaskModelRequest(legacy,history,[],4318)) as Record<string,unknown>;
+  assert.equal(old.max_tokens,16384);assert.deepEqual(old.thinking,{type:'disabled'});assert.equal(old.output_config,undefined);
+  assert.notEqual(taskModelHistoryBudget(legacy,[],'en',4318).tokens,null,`${model}: its exact known capacity remains effective`);
+ }
+});
+test('Qwen3.8 Flash keeps unknown exact capacity and 4096 in every open protocol while Kimi K3.1 Pro uses its own documented window',()=>{
+ const history:AgentTaskJson[]=[{role:'user',content:'合成预算核对'}];
+ for(const selected of presetConfigurations().filter(configuration=>configuration.presetId==='qwen')){
+  const configuration={...selected,model:'qwen3.8-flash'},label=`${configuration.platformId}/${configuration.protocol}`;
+  assert.deepEqual(agentModelTokenLimits(configuration),unknown,label);
+  if(configuration.protocol==='chat_completions')assert.equal(agentChatProfile(configuration).maxOutputTokens,null,label);
+  if(configuration.protocol==='responses')assert.equal(agentResponsesProfile(configuration).maxOutputTokens,null,label);
+  const body=JSON.parse(buildTaskModelRequest(configuration,history,[],4318)) as Record<string,unknown>;
+  const field=configuration.protocol==='responses'?'max_output_tokens':'max_tokens';
+  assert.equal(body[field],4096,label);
+  for(const other of ['max_tokens','max_completion_tokens','max_output_tokens'])if(other!==field)assert.equal(Object.hasOwn(body,other),false,`${label}/${other}`);
+  assert.equal(taskModelHistoryBudget(configuration,[],'en',4318),TASK_DEFAULT_HISTORY_BUDGET,label);
+ }
+ for(const selected of presetConfigurations().filter(configuration=>configuration.presetId==='kimi'&&configuration.protocol==='chat_completions')){
+  const configuration={...selected,model:'kimi-k3.1-pro'},profile=agentChatProfile(configuration),label=configuration.platformId;
+  assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:1048576,outputTokens:4096},label);assert.equal(profile.maxOutputTokens,1048576,label);
+  const serialized=buildTaskModelRequest(configuration,history,[],4318),body=JSON.parse(serialized) as Record<string,unknown>;
+  assert.equal(body.max_completion_tokens,4096,label);assert.equal(body.max_tokens,undefined);assert.equal(body.max_output_tokens,undefined);
+  assert.equal(taskRequestFitsModel((1048576-4096)*3,{contextTokens:1048576,outputTokens:4096}),true,label);
+  assert.equal(taskRequestFitsModel((1048576-4096)*3+1,{contextTokens:1048576,outputTokens:4096}),false,label);
+  const legacy={...selected,model:'kimi-k2.6'};
+  assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:262144,outputTokens:4096},label);assert.equal(agentChatProfile(legacy).maxOutputTokens,null);
+ }
 });
 test('the previous mini default and its snapshot retain their documented reasoning budget',()=>{
   const probe:AgentTaskJson[]=[taskResponseLanguageContext('en'),{role:'user',content:'.'}];
@@ -203,7 +249,7 @@ test('history and request checks accept the exact limit and reject one more',()=
 });
 test('no documented window can bind before the byte caps, with every tool group loaded in every locale',t=>{
   const catalog=fullCatalog(t),windows=documentedWindows();
-  assert.deepEqual(windows.map(item=>item.label).sort(),['anthropic_messages/anthropic','chat_completions/deepseek','chat_completions/kimi','chat_completions/minimax','chat_completions/openai','chat_completions/openrouter','chat_completions/zhipu','responses/deepseek','responses/openai','responses/qwen']);
+  assert.deepEqual(windows.map(item=>item.label).sort(),['anthropic_messages/anthropic/legacy-haiku','chat_completions/deepseek','chat_completions/kimi','chat_completions/minimax','chat_completions/openai','chat_completions/openrouter','chat_completions/zhipu','responses/deepseek','responses/openai']);
   for(const {label,configuration,limits:model} of windows){
     // A request that passes the 512 KiB check always fits the window.
     assert.ok(taskRequestFitsModel(TASK_MODEL_LIMITS.requestBytes,model),label);
@@ -222,7 +268,7 @@ test('the history budget leaves the output limit and the rest of the request, wh
   for(const protocol of ['chat_completions','responses','anthropic_messages'] as const)
     assert.equal(taskModelHistoryBudget(presetConfiguration('ollama',protocol),catalog,'en',4318,{toolLoading:true}),TASK_DEFAULT_HISTORY_BUDGET,`${protocol}: an unknown window keeps the byte budget`);
   const probe:AgentTaskJson[]=[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'.'}];
-  for(const configuration of [presetConfiguration('openai','chat_completions'),DEFAULT_AGENT_CONFIGURATION,presetConfiguration('anthropic','anthropic_messages')]){
+  for(const configuration of [presetConfiguration('openai','chat_completions'),DEFAULT_AGENT_CONFIGURATION,{...presetConfiguration('anthropic','anthropic_messages'),model:'claude-haiku-4-5'}]){
     const {contextTokens,outputTokens}=agentModelTokenLimits(configuration),label=configuration.protocol;assert.ok(contextTokens!==null);
     const rest=(definitions:readonly TaskToolDefinition[]):number=>Buffer.byteLength(buildTaskModelRequest(configuration,probe,definitions,4318,{toolLoading:true}))-bytes(probe);
     const coreBudget=taskModelHistoryBudget(configuration,core,'zh-Hans',4318,{toolLoading:true}),fullBudget=taskModelHistoryBudget(configuration,catalog,'zh-Hans',4318,{toolLoading:true});

@@ -24,6 +24,47 @@ test('current OpenAI defaults use GPT-6.1 Terra over Responses while older model
  assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openai')!.supportedModelHints?.responses?.includes('gpt-4.1-mini'),false);
 });
 
+test('Qwen and Kimi defaults advance only on their existing platforms while deferred and Q11 defaults stay fixed',()=>{
+ const qwen=AGENT_PRESETS.find(preset=>preset.id==='qwen')!,kimi=AGENT_PRESETS.find(preset=>preset.id==='kimi')!;
+ assert.equal(qwen.platforms.length,8);assert.equal(kimi.platforms.length,2);
+ for(const platform of qwen.platforms){
+  assert.equal(platform.model,'qwen3.8-flash',platform.id);
+  assert.deepEqual(platform.availableProtocols,[c,r,m],platform.id);
+  for(const protocol of platform.availableProtocols){
+   const config={...configuration('qwen',platform.id,protocol,platform.addressMode==='workspace'?'synthetic-workspace':undefined),model:'qwen3.8-flash'};
+   assert.equal(agentModelAdaptation(config),'adapted',`${platform.id}/${protocol}`);
+  }
+ }
+ for(const platform of kimi.platforms){
+  assert.equal(platform.model,'kimi-k3.1-pro',platform.id);
+  assert.deepEqual(platform.availableProtocols,[c],platform.id);
+  assert.ok(platform.protocols[r]?.blockedReason);assert.ok(platform.protocols[m]?.blockedReason);
+  assert.equal(agentModelAdaptation({...configuration('kimi',platform.id,c),model:'kimi-k3.1-pro'}),'adapted');
+ }
+ assert.equal(qwen.defaultProtocol,c);assert.equal(kimi.defaultProtocol,c);
+ for(const platform of AGENT_PRESETS.find(preset=>preset.id==='zhipu')!.platforms)assert.equal(platform.model,'glm-4.7',platform.id);
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='ollama')!.platforms[0]!.model,'qwen3:8b');
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='deepseek')!.platforms[0]!.model,'deepseek-flash');
+ assert.deepEqual(DEFAULT_AGENT_CONFIGURATION,{presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'gpt-6.1-terra',protocol:r});
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openrouter')!.platforms[0]!.model,'openai/gpt-6.1-terra');
+ assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openrouter')!.defaultProtocol,c);
+});
+
+test('Sonnet 5.5 is the current Anthropic default while Haiku remains independent and all protocol defaults stay fixed',()=>{
+ const anthropic=AGENT_PRESETS.find(preset=>preset.id==='anthropic')!;
+ assert.equal(anthropic.platforms.length,1);assert.equal(anthropic.platforms[0]!.id,'global');
+ assert.equal(anthropic.platforms[0]!.model,'claude-sonnet-5-5');assert.equal(anthropic.platforms[0]!.baseUrl,'https://api.anthropic.com');
+ assert.deepEqual(anthropic.availableProtocols,[m]);assert.equal(anthropic.defaultProtocol,m);
+ const selected={...configuration('anthropic','global',m),model:'claude-sonnet-5-5'};
+ assert.equal(agentModelAdaptation(selected),'adapted');assert.equal(agentModelThinkingTier(selected),'required');
+ assert.equal(agentAdaptedModelHints('anthropic').anthropic_messages?.[0],'claude-sonnet-5-5');
+ for(const model of ['claude-haiku-4-5','claude-haiku-4-5-20251001']){
+  const legacy={...selected,model};assert.equal(agentModelAdaptation(legacy),'adapted',model);assert.equal(agentModelThinkingTier(legacy),'optional',model);
+  assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:200000,outputTokens:16384},model);
+ }
+ for(const preset of AGENT_PRESETS)assert.equal(preset.defaultProtocol,preset.id==='openai'?r:preset.id==='anthropic'?m:c,preset.id);
+});
+
 test('documented OpenAI reasoning families use each supported minimum effort and reserve output for reasoning',()=>{
  for(const [model,effort,tier,contextTokens,maxOutputTokens] of [
   ['gpt-5','minimal','required',400000,128000],['gpt-5-mini-2025-08-07','minimal','required',400000,128000],

@@ -14,20 +14,20 @@ const platform = (id: string, label: string, baseUrl: string, model: string, sou
 const qwenSources = [source('官方端点与区域', 'https://www.alibabacloud.com/help/en/model-studio/base-url'), source('Responses API', 'https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses')];
 const catalog: AgentPresetBase[] = [
   {id: 'openai', label: 'OpenAI', description: `${AGENT_DEFAULT_OPENAI_MODEL} 用于文本与工具任务；默认使用 Responses，协议能力取决于型号。`, platforms: [platform('global', 'OpenAI', 'https://api.openai.com/v1', AGENT_DEFAULT_OPENAI_MODEL, [source('模型文档', `https://developers.openai.com/api/docs/models/${AGENT_DEFAULT_OPENAI_MODEL}`)])]},
-  {id: 'anthropic', label: 'Anthropic', description: 'Messages 文本与宿主工具基线；关闭思考，不执行供应商托管工具。', platforms: [platform('global', 'Anthropic', 'https://api.anthropic.com', 'claude-haiku-4-5', [source('Messages API', 'https://platform.claude.com/docs/en/api/messages/create'), source('官方 TypeScript SDK', 'https://github.com/anthropics/anthropic-sdk-typescript')])]},
+  {id: 'anthropic', label: 'Anthropic', description: 'Sonnet 5.5 使用低强度自适应思考处理文本与宿主工具任务。', platforms: [platform('global', 'Anthropic', 'https://api.anthropic.com', 'claude-sonnet-5-5', [source('Sonnet 5.5', 'https://platform.claude.com/docs/en/models/sonnet-5-5/overview'), source('Messages API', 'https://platform.claude.com/docs/en/api/messages/create'), source('官方 TypeScript SDK', 'https://github.com/anthropics/anthropic-sdk-typescript')])]},
   {id: 'deepseek', label: 'DeepSeek', description: '非思考模式文本基线；可明确选择 Chat Completions 或 Responses。', platforms: [platform('global', 'DeepSeek API', 'https://api.deepseek.com', 'deepseek-flash', [source('Chat API', 'https://api-docs.deepseek.com/api/create-chat-completion/'), source('Responses API', 'https://api-docs.deepseek.com/guides/responses_api/')])]},
   {id: 'qwen', label: 'Qwen / DashScope', description: '区域、工作空间和按量付费账户必须匹配；不继承 Coding Plan 凭证。', platforms: [
-    platform('beijing', '北京 · 按量付费', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
-    platform('singapore', '新加坡 · 按量付费', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'qwen-plus', qwenSources),
-    ...([['cn-beijing', '北京'], ['ap-southeast-1', '新加坡'], ['us-east-1', '美国东部'], ['cn-hongkong', '香港'], ['ap-northeast-1', '东京'], ['eu-central-1', '法兰克福']] as const).map(([region, label]) => platform(`workspace-${region}`, `${label} · 工作空间端点`, '', 'qwen-plus', qwenSources, '请填写账户实际工作空间端点；模板不是可直接使用的地址。', `https://{WorkspaceId}.${region}.maas.aliyuncs.com/compatible-mode/v1`)),
+    platform('beijing', '北京 · 按量付费', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.8-flash', qwenSources),
+    platform('singapore', '新加坡 · 按量付费', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'qwen3.8-flash', qwenSources),
+    ...([['cn-beijing', '北京'], ['ap-southeast-1', '新加坡'], ['us-east-1', '美国东部'], ['cn-hongkong', '香港'], ['ap-northeast-1', '东京'], ['eu-central-1', '法兰克福']] as const).map(([region, label]) => platform(`workspace-${region}`, `${label} · 工作空间端点`, '', 'qwen3.8-flash', qwenSources, '请填写账户实际工作空间端点；模板不是可直接使用的地址。', `https://{WorkspaceId}.${region}.maas.aliyuncs.com/compatible-mode/v1`)),
   ]},
   {id: 'zhipu', label: 'Zhipu / Z.ai', description: '中国 BigModel 与国际 Z.ai 是独立平台，密钥不假定通用。', platforms: [
     platform('china', '中国 · BigModel', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4.7', [source('中国平台', 'https://docs.bigmodel.cn/cn/guide/start/quick-start')]),
     platform('international', '国际 · Z.ai', 'https://api.z.ai/api/paas/v4', 'glm-4.7', [source('国际 Chat API', 'https://docs.z.ai/api-reference/llm/chat-completion')]),
   ]},
-  {id: 'kimi', label: 'Kimi / Moonshot', description: 'K2.6 非思考模式基线；区域账户分别配置。', platforms: [
-    platform('china', '中国 · Moonshot', 'https://api.moonshot.cn/v1', 'kimi-k2.6', [source('中国平台', 'https://platform.kimi.com/docs/get-api-key')]),
-    platform('international', '国际 · Moonshot', 'https://api.moonshot.ai/v1', 'kimi-k2.6', [source('模型文档', 'https://platform.kimi.ai/docs/api/models-overview')]),
+  {id: 'kimi', label: 'Kimi / Moonshot', description: 'K3.1 Pro 使用最低推理强度执行文本与工具任务；区域账户分别配置。', platforms: [
+    platform('china', '中国 · Moonshot', 'https://api.moonshot.cn/v1', 'kimi-k3.1-pro', [source('K3.1 Pro', 'https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart'), source('推理强度', 'https://platform.kimi.com/docs/guide/use-reasoning-effort')]),
+    platform('international', '国际 · Moonshot', 'https://api.moonshot.ai/v1', 'kimi-k3.1-pro', [source('K3.1 Pro', 'https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart'), source('推理强度', 'https://platform.kimi.ai/docs/guide/use-reasoning-effort')]),
   ]},
   {id: 'minimax', label: 'MiniMax', description: 'MiniMax-M3 非思考模式基线；不自动切换到套餐专用模型。', platforms: [
     platform('china', '中国 · MiniMax', 'https://api.minimax.cn/v1', 'MiniMax-M3', [source('中国兼容接口', 'https://platform.minimax.cn/docs/api-reference/text-openai-api'), source('中国 Anthropic 兼容接口', 'https://platform.minimax.cn/docs/api-reference/text-anthropic-api')]),

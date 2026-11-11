@@ -98,6 +98,20 @@ test('H1e Chat Completions requests ask for usage only on documentation-backed p
     assert.deepEqual(body.stream_options,presetId==='openai'?{include_usage:true}:undefined,presetId);
   }
 });
+test('H1e Kimi K3.1 low-effort usage remains passive metadata in both regional transports',async()=>{
+  for(const platformId of ['china','international'] as const){
+    const config:AgentConfiguration={presetId:'kimi',platformId,protocol:'chat_completions',model:'kimi-k3.1-pro',baseUrl:`https://api.moonshot.${platformId==='china'?'cn':'ai'}/v1`},wire=buildTaskModelRequest(config,[{role:'user',content:'Offline Kimi usage'}],[]),body=JSON.parse(wire) as Record<string,unknown>;
+    assert.equal(body.reasoning_effort,'low');assert.equal(body.max_completion_tokens,4096);assert.equal(body.stream_options,undefined);assert.equal(body.thinking,undefined);
+    const chunk=(delta:Record<string,unknown>,finish_reason:string|null=null)=>json({id:'chatcmpl_kimi_usage',object:'chat.completion.chunk',created:1792741110,model:config.model,choices:[{index:0,delta,finish_reason}]});
+    const frames=chunk({role:'assistant',content:'',reasoning_content:'PRIVATE_KIMI_USAGE_REASONING'})+chunk({content:text})+chunk({},'stop')+
+      json({id:'chatcmpl_kimi_usage',object:'chat.completion.chunk',created:1792741110,model:config.model,choices:[],usage:{prompt_tokens:20,completion_tokens:8,total_tokens:28,prompt_tokens_details:{cached_tokens:5}}})+'data: [DONE]\n\n';
+    const connection=network(frames);let output:TaskModelOutput|undefined;const shown:string[]=[];
+    for await(const item of createTaskGateway(connection.dependencies)({configuration:config,body:wire,apiKey:'SYNTHETIC_H1E_GATEWAY_ONLY'})){if(item.type==='done')output=item.output;else shown.push(item.text);}
+    assert.ok(output);assert.equal(output.text,text);assert.equal(shown.join(''),text);assert.doesNotMatch(shown.join(''),/PRIVATE_KIMI_USAGE_REASONING/u);
+    assert.deepEqual(output.usage,{inputTokens:20,outputTokens:8,cacheReadTokens:5});assert.equal((output.providerOutput as Record<string,unknown>).reasoning_content,'PRIVATE_KIMI_USAGE_REASONING');assert.deepEqual(connection.bodies,[wire]);
+    assert.doesNotMatch(JSON.stringify(taskContinuation('chat_completions',output,[])),/"(?:usage|cached_tokens|cache_read_input_tokens)"/u);
+  }
+});
 test('H1e Chat Completions usage requests require the documented official origin and base path',()=>{
   const official:AgentConfiguration[]=[
     {...DEFAULT_AGENT_CONFIGURATION,protocol:'chat_completions',baseUrl:'https://api.openai.com/v1/'},

@@ -65,7 +65,7 @@ test('OpenAI defaults to Responses while other presets retain their defaults and
   }
   const qwen = AGENT_PRESETS.find(preset => preset.id === 'qwen'); assert.ok(qwen);
   for (const platform of qwen.platforms) {
-    assert.equal(platform.model, 'qwen-plus');
+    assert.equal(platform.model, 'qwen3.8-flash');
     assert.deepEqual((qwen as {supportedModelHints: {responses: string[]}}).supportedModelHints.responses, ['qwen3.8-flash']);
     assert.match((qwen as {protocolNotes: {responses: string}}).protocolNotes.responses, /截断无法禁用/);
   }
