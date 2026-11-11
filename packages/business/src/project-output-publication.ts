@@ -53,7 +53,22 @@ export function setProjectOutputPublicationTestHooks(store: ProjectStore, hooks:
 }
 function invalid(): never {throw new AppError('INVALID_MEDIA', '本地产物或发布回执无法验证', 409);}
 function conflict(): never {throw new AppError('IDEMPOTENCY_CONFLICT', '产物发布身份与原请求不一致', 409);}
-class BytesMismatch extends AppError {constructor(){super('INVALID_MEDIA','本地产物的字节或身份已改变',409);}}
+type VerificationPoint = 'stage-hash' | 'stage-sync' | 'copy-source' | 'copy-target' | 'final-hash' |
+  'final-sync' | 'reference' | 'read-published' | 'registration' | 'registered-cleanup' | 'restore-receipt';
+type MismatchField = 'identity' | 'size' | 'mtime' | 'ctime' | 'hash';
+class BytesMismatch extends AppError {
+  readonly field: MismatchField;
+  constructor(point: VerificationPoint, field: MismatchField) {
+    super('INVALID_MEDIA', `本地产物的字节或身份已改变（${point}/${field}）`, 409, {point, field});
+    this.field = field;
+    console.warn('Project output verification failed', {point, field});
+  }
+}
+class CtimeChanged extends Error {
+  readonly point: VerificationPoint;
+  constructor(point: VerificationPoint) {super('Output ctime changed during verification'); this.point = point;}
+}
+const maxVerificationRetries = 2;
 function fence(store: ProjectStore, options: ProjectOutputOptions): void {
   options.signal?.throwIfAborted();try{options.beforeEffect?.();}catch(error){if(record(error))ownerFailures.add(error);throw error;}assertProjectOutputStore(store);
 }
@@ -143,26 +158,142 @@ function fileMetadata(file: string, check: () => void): BigIntStats {
       isProjectFileHeld(outputFileIdentity(info)) || isAppLibraryHeld(outputFileIdentity(info))) invalid();
   return info;
 }
-function unchanged(a: BigIntStats, b: BigIntStats): boolean {
-  return sameOutputIdentity(outputFileIdentity(a), outputFileIdentity(b)) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+interface ExpectedOutputBytes {readonly sha256: string; readonly sizeBytes: number}
+interface ExpectedOutputFile extends ExpectedOutputBytes {
+  readonly identity?: OutputFileIdentity;
+  readonly mtimeNs?: bigint;
 }
-async function hashFile(file: string, expected: {sha256: string; sizeBytes: number}, check: () => void, expectedIdentity?: OutputFileIdentity): Promise<BigIntStats> {
-  const before = fileMetadata(file, check);
-  if (Number(before.size) !== expected.sizeBytes || expectedIdentity && !sameOutputIdentity(expectedIdentity, outputFileIdentity(before))) throw new BytesMismatch();
+function assertFileFacts(info: BigIntStats, expected: ExpectedOutputFile, point: VerificationPoint): void {
+  if (expected.identity && !sameOutputIdentity(expected.identity, outputFileIdentity(info))) throw new BytesMismatch(point, 'identity');
+  if (!Number.isSafeInteger(expected.sizeBytes) || info.size !== BigInt(expected.sizeBytes)) throw new BytesMismatch(point, 'size');
+  if (expected.mtimeNs !== undefined && info.mtimeNs !== expected.mtimeNs) throw new BytesMismatch(point, 'mtime');
+}
+function pinnedFile(bytes: ExpectedOutputBytes, info: BigIntStats): ExpectedOutputFile {
+  return {...bytes, identity: outputFileIdentity(info), mtimeNs: info.mtimeNs};
+}
+interface FileVerification {
+  observe(info: BigIntStats, point: VerificationPoint): void;
+  current(point: VerificationPoint): BigIntStats;
+}
+/** A metadata change discards this entire read. Every retry compares against
+ * the original identity, size and mtime and reads the expected bytes again. */
+async function verifyStableFile<T>(file: string, expected: ExpectedOutputFile, check: () => void, point: VerificationPoint,
+  read: (verification: FileVerification) => Promise<T>): Promise<{value: T; stats: BigIntStats}> {
+  const first = fileMetadata(file, check);
+  assertFileFacts(first, expected, point);
+  const pinned = pinnedFile(expected, first);
+  for (let attempt = 0; ; attempt++) {
+    const start = attempt === 0 ? first : fileMetadata(file, check);
+    assertFileFacts(start, pinned, point);
+    const observe = (info: BigIntStats, at: VerificationPoint): void => {
+      assertFileFacts(info, pinned, at);
+      if (info.ctimeNs !== start.ctimeNs) throw new CtimeChanged(at);
+    };
+    const current = (at: VerificationPoint): BigIntStats => {
+      const info = fileMetadata(file, check);
+      observe(info, at);
+      return info;
+    };
+    try {
+      const value = await read({observe, current});
+      // No further effects after the reader's final named checkpoint except
+      // this fence across its return to the caller.
+      return {value, stats: current(point)};
+    } catch (error) {
+      if (!(error instanceof CtimeChanged)) throw error;
+      if (attempt >= maxVerificationRetries) throw new BytesMismatch(error.point, 'ctime');
+    }
+  }
+}
+async function readVerifiedBytes(file: string, expected: ExpectedOutputBytes, check: () => void,
+  verification: FileVerification, point: VerificationPoint, bytes?: Buffer): Promise<void> {
   check(); const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
-    check(); const opened = await handle.stat({bigint: true}); check();
-    if (!unchanged(before, opened)) throw new BytesMismatch();
-    const hash = createHash('sha256'), buffer = Buffer.alloc(65536); let offset = 0;
+    check(); verification.observe(await handle.stat({bigint: true}), point);
+    const hash = createHash('sha256'), buffer = bytes ?? Buffer.alloc(65536);
+    let offset = 0;
     while (offset < expected.sizeBytes) {
-      if (!unchanged(opened, fileMetadata(file, check))) throw new BytesMismatch();
-      check(); const result = await handle.read(buffer, 0, Math.min(buffer.length, expected.sizeBytes - offset), offset); check();
-      if (!result.bytesRead) throw new BytesMismatch(); hash.update(buffer.subarray(0, result.bytesRead)); offset += result.bytesRead;
+      verification.current(point);
+      const start = bytes ? offset : 0;
+      const {bytesRead} = await handle.read(buffer, start, Math.min(65536, expected.sizeBytes - offset), offset);
+      check();
+      if (!bytesRead) throw new BytesMismatch(point, 'size');
+      hash.update(buffer.subarray(start, start + bytesRead)); offset += bytesRead;
     }
-    check(); const after = await handle.stat({bigint: true}); check();
-    if (!unchanged(opened, after) || !unchanged(after, fileMetadata(file, check)) || hash.digest('hex') !== expected.sha256) throw new BytesMismatch();
-    return after;
+    verification.observe(await handle.stat({bigint: true}), point);
+    verification.current(point);
+    if (hash.digest('hex') !== expected.sha256) throw new BytesMismatch(point, 'hash');
   } finally {await handle.close();}
+}
+async function syncVerifiedFile(file: string, check: () => void, verification: FileVerification, point: VerificationPoint): Promise<void> {
+  check(); const handle = await open(file, constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    check(); verification.observe(await handle.stat({bigint: true}), point);
+    verification.current(point);
+    await handle.sync(); check();
+    verification.observe(await handle.stat({bigint: true}), point);
+    verification.current(point);
+  } finally {await handle.close();}
+}
+async function hashFile(file: string, expected: ExpectedOutputFile, check: () => void, point: VerificationPoint): Promise<BigIntStats> {
+  const {stats} = await verifyStableFile(file, expected, check, point,
+    verification => readVerifiedBytes(file, expected, check, verification, point));
+  return stats;
+}
+function saveFinalStats(receipt: Receipt, info: BigIntStats): void {
+  receipt.finalStats = {mtimeNs: String(info.mtimeNs), ctimeNs: String(info.ctimeNs)};
+}
+/** Copy a stage once into its exclusive target. A source ctime change calls
+ * for a fresh hash of the entire source, without rewriting the target. */
+async function copyVerifiedStage(stage: string, stageInfo: BigIntStats, targetFile: string, target: FileHandle,
+  targetIdentity: OutputFileIdentity, expected: ExpectedOutputBytes, check: () => void, afterChunk: () => void): Promise<void> {
+  const pinned = pinnedFile(expected, stageInfo);
+  let ctimeChanged = false;
+  const observeSource = (info: BigIntStats): void => {
+    assertFileFacts(info, pinned, 'copy-source');
+    ctimeChanged ||= info.ctimeNs !== stageInfo.ctimeNs;
+  };
+  const ioFence = (): void => {
+    observeSource(fileMetadata(stage, check));
+    if (!sameOutputIdentity(targetIdentity, outputFileIdentity(fileMetadata(targetFile, check)))) throw new BytesMismatch('copy-target', 'identity');
+  };
+  ioFence();
+  const source = await open(stage, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    check(); observeSource(await source.stat({bigint: true}));
+    const buffer = Buffer.alloc(65536), hash = createHash('sha256');
+    let offset = 0;
+    while (offset < expected.sizeBytes) {
+      ioFence();
+      const {bytesRead} = await source.read(buffer, 0, Math.min(buffer.length, expected.sizeBytes - offset), offset);
+      ioFence();
+      if (!bytesRead) throw new BytesMismatch('copy-source', 'size');
+      hash.update(buffer.subarray(0, bytesRead));
+      let written = 0;
+      while (written < bytesRead) {
+        ioFence();
+        const {bytesWritten} = await target.write(buffer, written, bytesRead - written, offset + written);
+        ioFence();
+        if (!bytesWritten) throw new BytesMismatch('copy-target', 'size');
+        written += bytesWritten;
+      }
+      offset += bytesRead;
+      afterChunk();
+    }
+    observeSource(await source.stat({bigint: true}));
+    ioFence();
+    if (hash.digest('hex') !== expected.sha256) throw new BytesMismatch('copy-source', 'hash');
+    // The target is still open for writing. Its verification epoch starts
+    // after close, when the filesystem has finalized its write time.
+    const targetFacts = {...expected, identity: targetIdentity};
+    assertFileFacts(await target.stat({bigint: true}), targetFacts, 'copy-target');
+    ioFence();
+    await target.sync();
+    ioFence();
+    assertFileFacts(await target.stat({bigint: true}), targetFacts, 'copy-target');
+    assertFileFacts(fileMetadata(targetFile, check), targetFacts, 'copy-target');
+    if (ctimeChanged) await hashFile(stage, pinned, check, 'copy-source');
+  } finally {await source.close();}
 }
 export function isPublishedProjectOutput(asset: unknown, expected: PublishedProjectOutputExpectation): boolean {
   if (!record(asset)) return false;
@@ -183,35 +314,76 @@ export function isPublishedProjectOutput(asset: unknown, expected: PublishedProj
     (expected.sha256 === undefined || proof.sha256 === expected.sha256) && (expected.sizeBytes === undefined || proof.sizeBytes === expected.sizeBytes) &&
     (expected.mimeType === undefined || proof.mimeType === expected.mimeType);
 }
-async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, durable=false): Promise<PublishedProjectOutput> {
+async function verifiedFinal(store: ProjectStore, receipt: Receipt, options: ProjectOutputOptions, durable = false, mtimeNs?: bigint): Promise<PublishedProjectOutput> {
   const check = (): void => checkReceiptDirectories(store, receipt, options);
   check(); const file = path.join(store.projectDir, receipt.proof.relativePath);
   const identity = receipt.targetIdentity ?? (receipt.mode === 'link' ? receipt.stageIdentity : undefined);
   if (!identity) invalid();
-  const hashed=await hashFile(file, receipt.proof, check, identity); check();
-  if(durable){
-    // Recovery can observe a complete copy/link whose creator died before
-    // syncing it. Verified bytes alone do not make a DB registration durable.
-    const finalHandle=await open(file,constants.O_RDWR|constants.O_NOFOLLOW|constants.O_NONBLOCK);
-    try{check();const opened=await finalHandle.stat({bigint:true});check();if(!unchanged(hashed,opened))throw new BytesMismatch();await finalHandle.sync();check();const synced=await finalHandle.stat({bigint:true});check();if(!unchanged(opened,synced)||!unchanged(synced,fileMetadata(file,check)))throw new BytesMismatch();}
-    finally{await finalHandle.close();}
-    syncDirectory(path.dirname(file));check();
-  }
-  const reference = await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal, beforeEffect: check}); check();
-  const final=fileMetadata(file,check);if(!unchanged(hashed,final))throw new BytesMismatch();
-  receipt.finalStats={mtimeNs:String(final.mtimeNs),ctimeNs:String(final.ctimeNs)};
-  return {...reference, referenceRevision: 1, relativePath: receipt.proof.relativePath, publication: receipt.proof};
+  const expectedMtime = mtimeNs ?? (receipt.finalStats ? BigInt(receipt.finalStats.mtimeNs) : undefined);
+  const {value, stats} = await verifyStableFile(file, {...receipt.proof, identity, mtimeNs: expectedMtime}, check, 'final-hash', async verification => {
+    await readVerifiedBytes(file, receipt.proof, check, verification, 'final-hash');
+    if (durable) {
+      // Recovery may find a complete target whose creator died before syncing it.
+      await syncVerifiedFile(file, check, verification, 'final-sync');
+      syncDirectory(path.dirname(file));
+      verification.current('final-sync');
+    }
+    const reference = await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal,
+      beforeEffect: () => {verification.current('reference');}});
+    verification.current('reference');
+    return reference;
+  });
+  saveFinalStats(receipt, stats);
+  return {...value, referenceRevision: 1, relativePath: receipt.proof.relativePath, publication: receipt.proof};
+}
+type RegistrationReceipt = Receipt & {finalStats: NonNullable<Receipt['finalStats']>; targetIdentity: OutputFileIdentity};
+class RegistrationCtimeChanged extends CtimeChanged {
+  readonly receipt: RegistrationReceipt;
+  constructor(receipt: RegistrationReceipt) {super('registration'); this.receipt = receipt;}
+}
+function registrationReceipt(store: ProjectStore, proof: ProjectOutputPublicationProof, options: ProjectOutputOptions): RegistrationReceipt {
+  const receipt = readReceipt(store, proof.owner, proof.assetId, options);
+  if (!receipt?.finalStats || !receipt.targetIdentity || !['prepared', 'registered'].includes(receipt.phase) || !isDeepStrictEqual(receipt.proof, proof)) invalid();
+  return {...receipt, finalStats: receipt.finalStats, targetIdentity: receipt.targetIdentity};
+}
+function checkRegistration(store: ProjectStore, receipt: RegistrationReceipt, options: ProjectOutputOptions): BigIntStats {
+  const info = fileMetadata(path.join(store.projectDir, receipt.proof.relativePath), () => checkReceiptDirectories(store, receipt, options));
+  assertFileFacts(info, {...receipt.proof, identity: receipt.targetIdentity, mtimeNs: BigInt(receipt.finalStats.mtimeNs)}, 'registration');
+  if (String(info.ctimeNs) !== receipt.finalStats.ctimeNs) throw new RegistrationCtimeChanged(receipt);
+  return info;
 }
 /** Short-transaction fence over the exact fully checked final inode. No file
  * bytes are read while SQLite owns the result registration transaction.
  * Version restore canonicalizes JSON keys; proof identity binds all fields
  * and values, independently of object property order. */
 export function assertPublishedProjectOutput(store:ProjectStore,proof:ProjectOutputPublicationProof,options:ProjectOutputOptions={}):void{
-  const receipt=readReceipt(store,proof.owner,proof.assetId,options);
-  if(!receipt||!receipt.finalStats||!receipt.targetIdentity||!['prepared','registered'].includes(receipt.phase)||!isDeepStrictEqual(receipt.proof,proof))invalid();
-  checkReceiptDirectories(store,receipt,options);
-  const info=fileMetadata(path.join(store.projectDir,proof.relativePath),()=>checkReceiptDirectories(store,receipt,options));
-  if(!sameOutputIdentity(receipt.targetIdentity,outputFileIdentity(info))||Number(info.size)!==proof.sizeBytes||String(info.mtimeNs)!==receipt.finalStats.mtimeNs||String(info.ctimeNs)!==receipt.finalStats.ctimeNs)invalid();
+  checkRegistration(store, registrationReceipt(store, proof, options), options);
+}
+/** Run the synchronous registration transaction first. A ctime mismatch rolls
+ * it back before we read any bytes. The callback can start post-commit cleanup
+ * synchronously and return its promise without putting cleanup in the retry. */
+export async function registerVerifiedProjectOutputs<T>(store: ProjectStore, options: ProjectOutputOptions,
+  register: () => T | Promise<T>): Promise<T> {
+  if (store.db.isTransaction) throw new TypeError('Output registration must start outside SQLite transactions');
+  const retriesByPublication = new Map<string, number>();
+  for (;;) {
+    try {return register();}
+    catch (error) {
+      if (!(error instanceof RegistrationCtimeChanged)) throw error;
+      if (store.db.isTransaction) throw new TypeError('Output verification must run outside SQLite transactions');
+      const original = error.receipt;
+      // One transaction may register a batch of already published outputs.
+      const id = original.proof.publicationId;
+      const retries = retriesByPublication.get(id) ?? 0;
+      if (retries >= maxVerificationRetries) throw new BytesMismatch('registration', 'ctime');
+      retriesByPublication.set(id, retries + 1);
+      const refreshed = {...original};
+      await verifiedFinal(store, refreshed, options, false, BigInt(original.finalStats.mtimeNs));
+      const latest = registrationReceipt(store, original.proof, options);
+      if (!isDeepStrictEqual(latest, original)) conflict();
+      writeReceipt(store, refreshed, options);
+    }
+  }
 }
 export async function inspectProjectOutput(store: ProjectStore, input: {owner: ProjectOutputOwner; assetId: string}, options: ProjectOutputOptions = {}): Promise<PublishedProjectOutput | null> {
   const receipt = readReceipt(store, input.owner, input.assetId, options);
@@ -219,23 +391,33 @@ export async function inspectProjectOutput(store: ProjectStore, input: {owner: P
   const file = path.join(store.projectDir, receipt.proof.relativePath);
   checkReceiptDirectories(store, receipt, options);
   if (!lstatSync(file, {throwIfNoEntry: false})) return null;
-  try {return await verifiedFinal(store, receipt, options);} catch (error) {if (error instanceof BytesMismatch && receipt.phase !== 'prepared' && receipt.phase !== 'registered') return null; throw error;}
+  try {return await verifiedFinal(store, receipt, options);} catch (error) {if (error instanceof BytesMismatch && error.field !== 'ctime' && receipt.phase !== 'prepared' && receipt.phase !== 'registered') return null; throw error;}
 }
 export async function readPublishedProjectOutput(store: ProjectStore, input: {owner: ProjectOutputOwner; assetId: string}, options: ProjectOutputOptions & {maxBytes: number}): Promise<Buffer | null> {
-  const output = await inspectProjectOutput(store, input, options);
-  if (!output) return null;
-  if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < output.sizeBytes) invalid();
-  const receipt = readReceipt(store, input.owner, input.assetId, options)!;
-  const check = (): void => checkReceiptDirectories(store, receipt, options), file = path.join(store.projectDir, output.relativePath);
-  const before = fileMetadata(file, check); const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const receipt = readReceipt(store, input.owner, input.assetId, options);
+  if (!receipt) return null;
+  const check = (): void => checkReceiptDirectories(store, receipt, options);
+  const file = path.join(store.projectDir, receipt.proof.relativePath);
+  check();
+  if (!lstatSync(file, {throwIfNoEntry: false})) return null;
+  const identity = receipt.targetIdentity ?? (receipt.mode === 'link' ? receipt.stageIdentity : undefined);
+  if (!identity) invalid();
   try {
-    const opened=await handle.stat({bigint:true});check();if(!unchanged(before,opened))invalid();
-    const bytes = Buffer.alloc(output.sizeBytes); let offset = 0;
-    while (offset < bytes.length) {check(); if (!unchanged(before, fileMetadata(file, check))) invalid(); const result = await handle.read(bytes, offset, Math.min(65536, bytes.length - offset), offset); check(); if (!result.bytesRead) invalid(); offset += result.bytesRead;}
-    const after = await handle.stat({bigint: true}); check();
-    if (!unchanged(before, after) || !unchanged(after, fileMetadata(file, check)) || createHash('sha256').update(bytes).digest('hex') !== output.sha256) invalid();
-    return bytes;
-  } finally {await handle.close();}
+    let bytes: Buffer | undefined;
+    const mtimeNs = receipt.finalStats ? BigInt(receipt.finalStats.mtimeNs) : undefined;
+    const {value} = await verifyStableFile(file, {...receipt.proof, identity, mtimeNs}, check, 'read-published', async verification => {
+      if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < receipt.proof.sizeBytes) invalid();
+      bytes ??= Buffer.alloc(receipt.proof.sizeBytes);
+      await readVerifiedBytes(file, receipt.proof, check, verification, 'read-published', bytes);
+      await referenceForPublishedMedia(store, file, {sha256: receipt.proof.sha256, signal: options.signal,
+        beforeEffect: () => {verification.current('reference');}});
+      return bytes;
+    });
+    return value;
+  } catch (error) {
+    if (error instanceof BytesMismatch && error.field !== 'ctime' && receipt.phase !== 'prepared' && receipt.phase !== 'registered') return null;
+    throw error;
+  }
 }
 function nextAttempt(store: ProjectStore, receipt: Receipt, input: ProjectOutputInput, options: ProjectOutputOptions): Receipt {
   if (receipt.attempt >= 16 || receipt.abandoned.length >= 16) throw new AppError('INVALID_MEDIA', '本地产物发布重试已达上限，请检查项目目录', 409);
@@ -247,6 +429,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
   projectOutputOwnerSchema.parse(input.owner); uuid.parse(input.assetId); if (store.db.isTransaction) throw new TypeError('Output I/O must run outside SQLite transactions');
   fence(store, options);
   let receipt = readReceipt(store, input.owner, input.assetId, options);
+  let stageInfo: BigIntStats | undefined;
   if (receipt) {
     if (receipt.proof.targetKind !== input.targetKind || receipt.proof.sha256 !== input.sha256 || receipt.proof.sizeBytes !== input.sizeBytes || receipt.proof.mimeType !== input.mimeType || input.publicationId && receipt.proof.publicationId !== input.publicationId) conflict();
     checkReceiptDirectories(store, receipt, options);
@@ -257,10 +440,14 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     validateManagedFile(file, {root: store.tempDir, private: true, maxBytes: input.sizeBytes});
     const stage = fileMetadata(file, () => fence(store, options));
     if (stage.nlink !== 1n) invalid();
-    const checked=await hashFile(file, input, () => fence(store, options)); fence(store, options);
-    const staged=await open(file,constants.O_RDWR|constants.O_NOFOLLOW|constants.O_NONBLOCK);
-    try{const opened=await staged.stat({bigint:true});fence(store,options);if(!unchanged(checked,opened))invalid();await staged.sync();fence(store,options);if(!unchanged(opened,fileMetadata(file,()=>fence(store,options))))invalid();}finally{await staged.close();}
-    syncDirectory(path.dirname(file));fence(store,options);
+    const check = (): void => fence(store, options);
+    const {stats} = await verifyStableFile(file, pinnedFile(input, stage), check, 'stage-hash', async verification => {
+      await readVerifiedBytes(file, input, check, verification, 'stage-hash');
+      await syncVerifiedFile(file, check, verification, 'stage-sync');
+      syncDirectory(path.dirname(file));
+      verification.current('stage-sync');
+    });
+    stageInfo = stats;
     const directory = ordinaryDirectory(store, input.targetKind, options, true), privateRoot = roots(store, options, true).directory;
     // The key is durable before intent. A crash between these writes reserves
     // the same publication ID without authorizing any final file.
@@ -283,7 +470,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
       const identity = current.targetIdentity ?? (current.mode === 'link' ? current.stageIdentity : null);
       if (identity && sameOutputIdentity(identity, outputFileIdentity(existing))) {
         try {const result = await verifiedFinal(store, current, options,true); current.targetIdentity = identity; current.phase = current.phase === 'registered' ? 'registered' : 'prepared'; writeReceipt(store, current, options); return result;}
-        catch (error) {if (!(error instanceof BytesMismatch) || current.phase === 'prepared' || current.phase === 'registered') throw error;}
+        catch (error) {if (!(error instanceof BytesMismatch) || error.field === 'ctime' || current.phase === 'prepared' || current.phase === 'registered') throw error;}
       } else if (current.targetIdentity || current.phase === 'prepared' || current.phase === 'registered') invalid();
       receipt = nextAttempt(store, current, input, options); continue;
     }
@@ -291,7 +478,9 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     const stage = stagePath(store, current);
     validateManagedDirectory(path.dirname(stage),{root:store.tempDir,private:true});
     validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: current.proof.sizeBytes});
-    await hashFile(stage, current.proof, check, current.stageIdentity); check();
+    stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash');
+    check();
+    let targetMtime: bigint | undefined = stageInfo.mtimeNs;
     try {
       if (!testHooks.get(store)?.forceCopy) {
         try {
@@ -305,25 +494,17 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
       } else {current.mode = 'copy'; writeReceipt(store, current, options);}
       if (current.mode === 'copy') {
         check(); const target = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
-        let source: FileHandle | undefined;
         try {
           testHooks.get(store)?.fault?.('after_target_create', current.proof); check();
           const created = await target.stat({bigint: true}); check();
           current.targetIdentity = outputFileIdentity(created); current.phase = 'copying'; writeReceipt(store, current, options);
           testHooks.get(store)?.fault?.('after_target_identity', current.proof); check();
-          source = await open(stage, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); check();
-          if (!sameOutputIdentity(current.stageIdentity, outputFileIdentity(await source.stat({bigint: true})))) invalid();
-          const buffer = Buffer.alloc(65536); let offset = 0;
-          while (offset < current.proof.sizeBytes) {
-            check(); if (!sameOutputIdentity(current.stageIdentity, outputFileIdentity(fileMetadata(stage, check)))) invalid();
-            const result = await source.read(buffer, 0, Math.min(buffer.length, current.proof.sizeBytes - offset), offset); check(); if (!result.bytesRead) invalid();
-            let written = 0; while (written < result.bytesRead) {check(); const output = await target.write(buffer, written, result.bytesRead - written, offset + written); check(); if (!output.bytesWritten) invalid(); written += output.bytesWritten;}
-            offset += result.bytesRead; testHooks.get(store)?.fault?.('after_copy_chunk', current.proof); check();
-          }
-          await target.sync(); check();
-        } finally {if (source) await source.close(); await target.close();}
+          await copyVerifiedStage(stage, stageInfo, file, target, current.targetIdentity, current.proof, check,
+            () => testHooks.get(store)?.fault?.('after_copy_chunk', current.proof));
+          targetMtime = undefined;
+        } finally {await target.close();}
       }
-      const result = await verifiedFinal(store, current, options,true); check(); current.phase = 'prepared'; writeReceipt(store, current, options);
+      const result = await verifiedFinal(store, current, options, true, targetMtime); check(); current.phase = 'prepared'; writeReceipt(store, current, options);
       testHooks.get(store)?.fault?.('after_final', current.proof); check(); return result;
     } catch (error) {
       if (record(error) && error.code === 'EEXIST') {receipt = nextAttempt(store, current, input, options); continue;}
@@ -342,28 +523,39 @@ export async function markProjectOutputRegistered(store: ProjectStore, proof: Pr
   fence(store, options); projectOutputPublicationProofSchema.parse(proof);
   const asset: unknown = store.get('assets', proof.assetId);
   if (!isPublishedProjectOutput(asset, {projectId: store.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: proof.targetKind, sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType}) || !record(asset) || !isDeepStrictEqual(asset.publication,proof)) invalid();
-  const receipt = readReceipt(store, proof.owner, proof.assetId, options); if (!receipt || !isDeepStrictEqual(receipt.proof,proof)) invalid();
+  const receipt = registrationReceipt(store, proof, options);
   // Publication already hashed and synced the complete target before the DB
   // transaction. Finish our private hard-link cleanup before yielding: once a
   // committed result is observable, this writer must not change its inode epoch.
-  assertPublishedProjectOutput(store,proof,options);
-  receipt.phase = 'registered'; writeReceipt(store, receipt, options); testHooks.get(store)?.fault?.('after_registered', proof); fence(store, options);
-  assertPublishedProjectOutput(store,proof,options);
-  const stage = stagePath(store, receipt), info = lstatSync(stage, {throwIfNoEntry: false, bigint: true});
-  if (info) {
-    const finalFile=path.join(store.projectDir,proof.relativePath),check=():void=>checkReceiptDirectories(store,receipt,options);
-    const before=fileMetadata(finalFile,check);
-    const current = fileMetadata(stage, () => checkReceiptDirectories(store, receipt, options));
-    if (!sameOutputIdentity(receipt.stageIdentity, outputFileIdentity(current)) || current.nlink < 1n || current.nlink > 2n) invalid();
-    unlinkSync(stage); fence(store, options); syncDirectory(path.dirname(stage));
-    const after=fileMetadata(finalFile,check),linked=sameOutputIdentity(outputFileIdentity(before),outputFileIdentity(current));
-    if(!sameOutputIdentity(outputFileIdentity(before),outputFileIdentity(after))||before.size!==after.size||before.mtimeNs!==after.mtimeNs||
-      (linked?after.nlink!==before.nlink-1n:!unchanged(before,after)))invalid();
-    receipt.finalStats={mtimeNs:String(after.mtimeNs),ctimeNs:String(after.ctimeNs)};writeReceipt(store,receipt,options);
+  try {
+    checkRegistration(store, receipt, options);
+    receipt.phase = 'registered'; writeReceipt(store, receipt, options);
+    testHooks.get(store)?.fault?.('after_registered', proof); fence(store, options);
+    const before = checkRegistration(store, receipt, options);
+    const stage = stagePath(store, receipt);
+    if (lstatSync(stage, {throwIfNoEntry: false})) {
+      const check = (): void => checkReceiptDirectories(store, receipt, options);
+      const current = fileMetadata(stage, check);
+      if (!sameOutputIdentity(receipt.stageIdentity, outputFileIdentity(current)) || current.nlink < 1n || current.nlink > 2n) invalid();
+      unlinkSync(stage); fence(store, options); syncDirectory(path.dirname(stage));
+      const after = fileMetadata(path.join(store.projectDir, proof.relativePath), check);
+      assertFileFacts(after, pinnedFile(proof, before), 'registered-cleanup');
+      if (sameOutputIdentity(outputFileIdentity(before), outputFileIdentity(current))) {
+        if (after.nlink !== before.nlink - 1n) throw new BytesMismatch('registered-cleanup', 'identity');
+        saveFinalStats(receipt, after);
+        writeReceipt(store, receipt, options);
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof RegistrationCtimeChanged)) throw error;
+    // Recheck the committed bytes below. Keep the stage if rechecking would
+    // defer its unlink until after readers could pin the final inode.
   }
   // Keep the post-registration full-byte verification. Its remaining effects
   // only update the private receipt, so concurrent readers retain a stable file.
-  await verifiedFinal(store,receipt,options);writeReceipt(store,receipt,options);
+  await verifiedFinal(store, receipt, options);
+  receipt.phase = 'registered';
+  writeReceipt(store, receipt, options);
 }
 async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Record<string, unknown>; stageFile: string}, options: ProjectOutputOptions): Promise<PublishedProjectOutput> {
   const proof = projectOutputPublicationProofSchema.parse(input.asset.publication);
@@ -376,7 +568,8 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   if (lstatSync(targetFile, {throwIfNoEntry: false})) throw new AppError('IDEMPOTENCY_CONFLICT', '导出文件已经存在，不能覆盖', 409);
   const relative = path.relative(store.tempDir, input.stageFile).split(path.sep).join('/'), stage = stagePath(store, {stageRelativePath: relative});
   validateManagedDirectory(path.dirname(stage),{root:store.tempDir,private:true});
-  validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: proof.sizeBytes}); const stageInfo=await hashFile(stage, proof, check); check();
+  validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: proof.sizeBytes});
+  const stageInfo = await hashFile(stage, proof, check, 'stage-hash'); check();
   const privateDirectory=roots(store,options,true).directory,restoreFile=path.join(privateDirectory,`restore-${proof.publicationId}.json`);
   const saved=readPrivateFile(restoreFile,{root:store.tempDir,maxBytes:32768,encoding:'utf8',allowMissing:true});
   let previous:Receipt|null=null;if(saved!==null){try{previous=receiptSchema.parse(JSON.parse(String(saved)));}catch{invalid();}if(!isDeepStrictEqual(previous.proof,proof))conflict();}
@@ -388,34 +581,34 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   // Restoration has one frozen destination. Exclusive copying cannot claim a
   // concurrently recreated file, even if it contains exactly the same bytes.
   const target = await open(targetFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
-  let source: FileHandle | undefined;
   try {
     testHooks.get(store)?.fault?.('after_target_create',proof);check();
     const created=await target.stat({bigint:true});check();if(!created.isFile()||isProjectFileHeld(outputFileIdentity(created))||isAppLibraryHeld(outputFileIdentity(created)))invalid();
     receipt.targetIdentity=outputFileIdentity(created);receipt.phase='copying';writeRestore();testHooks.get(store)?.fault?.('after_target_identity',proof);check();
-    source = await open(stage, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); check();
-    const opened=await source.stat({bigint:true});check();if(!unchanged(stageInfo,opened))invalid();
-    const ioFence=():void=>{check();if(!unchanged(stageInfo,fileMetadata(stage,check))||!sameOutputIdentity(receipt.targetIdentity!,outputFileIdentity(fileMetadata(targetFile,check))))invalid();};
-    const bytes = Buffer.alloc(65536); let offset = 0;
-    while (offset < proof.sizeBytes) {
-      ioFence(); const read = await source.read(bytes, 0, Math.min(bytes.length, proof.sizeBytes - offset), offset); ioFence(); if (!read.bytesRead) invalid();
-      let written = 0; while (written < read.bytesRead) {ioFence(); const result = await target.write(bytes, written, read.bytesRead - written, offset + written); ioFence(); if (!result.bytesWritten) invalid(); written += result.bytesWritten;}
-      offset += read.bytesRead;testHooks.get(store)?.fault?.('after_copy_chunk',proof);ioFence();
+    await copyVerifiedStage(stage, stageInfo, targetFile, target, receipt.targetIdentity, proof, check,
+      () => testHooks.get(store)?.fault?.('after_copy_chunk', proof));
+  } finally {await target.close();}
+  const {value} = await verifyStableFile(targetFile, {...proof, identity: receipt.targetIdentity!}, check, 'restore-receipt', async verification => {
+    await readVerifiedBytes(targetFile, proof, check, verification, 'final-hash');
+    syncDirectory(directory.directory);
+    verification.current('final-sync');
+    const reference = await referenceForPublishedMedia(store, targetFile, {sha256: proof.sha256, signal: options.signal,
+      beforeEffect: () => {verification.current('reference');}});
+    saveFinalStats(receipt, verification.current('reference'));
+    receipt.phase = 'prepared';
+    writeRestore();
+    testHooks.get(store)?.fault?.('after_final', proof);
+    verification.current('restore-receipt');
+    // An explicit restore can bind a new target inode to the same frozen proof.
+    const original = readReceipt(store, proof.owner, proof.assetId, options);
+    if (original && isDeepStrictEqual(original.proof, proof)) {
+      receipt.phase = 'registered';
+      writeReceipt(store, receipt, options);
     }
-    const after=await source.stat({bigint:true});ioFence();if(!unchanged(opened,after))invalid();
-    await target.sync();ioFence();
-  } finally {if (source) await source.close(); await target.close();}
-  const hashed=await hashFile(targetFile, proof, check,receipt.targetIdentity!); syncDirectory(directory.directory); check();
-  const reference = await referenceForPublishedMedia(store, targetFile, {sha256: proof.sha256, signal: options.signal, beforeEffect: check}); check();
-  const final=fileMetadata(targetFile,check);if(!unchanged(hashed,final))invalid();
-  receipt.phase='prepared';receipt.finalStats={mtimeNs:String(final.mtimeNs),ctimeNs:String(final.ctimeNs)};writeRestore();testHooks.get(store)?.fault?.('after_final',proof);check();
-  if(!unchanged(final,fileMetadata(targetFile,check)))invalid();
-  // The explicit missing-file restoration, unlike general publication, is
-  // permitted to replace the old inode fact while retaining the frozen proof.
-  const original=readReceipt(store,proof.owner,proof.assetId,options);
-  if(original&&isDeepStrictEqual(original.proof,proof)){receipt.phase='registered';writeReceipt(store,receipt,options);}
-  writeRestore();
-  return {...reference, referenceRevision: 1, relativePath: proof.relativePath, publication: proof};
+    writeRestore();
+    return reference;
+  });
+  return {...value, referenceRevision: 1, relativePath: proof.relativePath, publication: proof};
 }
 export async function restorePublishedProjectOutput(store:ProjectStore,input:{asset:Record<string,unknown>;stageFile:string},options:ProjectOutputOptions={}):Promise<PublishedProjectOutput>{
   try{return await restoreProjectOutputInside(store,input,options);}catch(error){return normalizeOutputIo(error);}

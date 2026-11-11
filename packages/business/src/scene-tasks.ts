@@ -21,7 +21,7 @@ import {decodeSceneKeyframes} from './scene-keyframe-decoder.ts';
 import type {DecodeSceneKeyframesOptions,DecodedSceneKeyframes} from './scene-keyframe-decoder.ts';
 import {createSceneShotsStorage} from './scene-shots-storage.ts';
 import type {SceneShotsStorageTask,ScenePublishedResult} from './scene-shots-storage.ts';
-import {markProjectOutputRegistered,assertPublishedProjectOutput} from './project-output-publication.ts';
+import {markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import {validatePng} from './images/png.ts';
 import {validateManagedSource,sameManagedFile,verifiedManagedHash} from './managed-media.ts';
 import type {ManagedFileIdentity,ManagedSource} from './managed-media.ts';
@@ -441,7 +441,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   }
   fault('after_media_publication',{taskId:original.row.id});
   const plan=sceneShotPlan(original.snapshot);
-  const built=tx(()=>{
+  const commit=()=>tx(()=>{
    check();if(isProjectStore(store))for(const file of published)if('publication' in file)assertPublishedProjectOutput(store,file.publication,{signal:attemptSignal,beforeEffect:check});
    const value=task(original.row.projectId,original.row.id);if(value.kind!=='shots')invalid();
    const timestamp=now(),projectId=original.row.projectId,snapshot=value.snapshot;
@@ -463,11 +463,18 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   });
   // Start every marker before yielding: its synchronous private-link cleanup
   // must finish for the whole visible batch before any reader can pin a ctime.
-  const registrations:Promise<void>[]=[];
-  if(isProjectStore(store))for(const file of published)if('publication' in file)registrations.push(
-   markProjectOutputRegistered(store,file.publication,{signal:attemptSignal,beforeEffect:()=>{owner();assertAgentTaskJobEffect(db,'scene',built.row.id);const value=task(built.row.projectId,built.row.id);if(value.row.state!=='succeeded'||value.row.revision!==built.row.revision)fail('SCENE_REVISION_CONFLICT');}})
-    .catch(()=>{/* The committed result remains valid; retain its private publication intent. */}));
-  await Promise.all(registrations);
+  const built = isProjectStore(store)
+    ? await registerVerifiedProjectOutputs(store, {signal: attemptSignal, beforeEffect: check}, () => {
+      const completed = commit();
+      const registrations: Promise<void>[] = [];
+      for (const file of published) if ('publication' in file) registrations.push(
+        markProjectOutputRegistered(store, file.publication, {signal: attemptSignal, beforeEffect: () => {
+          owner(); assertAgentTaskJobEffect(db, 'scene', completed.row.id);
+          const value = task(completed.row.projectId, completed.row.id);
+          if (value.row.state !== 'succeeded' || value.row.revision !== completed.row.revision) fail('SCENE_REVISION_CONFLICT');
+        }}).catch(() => {/* A committed result can reconcile a retained publication intent. */}));
+      return Promise.all(registrations).then(() => completed);
+    }) : commit();
   discardShots(built);
  }
  // The origin runner can refuse before executeInside owns its error handling.

@@ -13,6 +13,8 @@ import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt, type TimelineRecoveryInput} from '../packages/business/src/timeline-recovery.ts';
 import {createLocalDelivery,LOCAL_DELIVERY_FILENAME} from '@mioon/business/local-delivery';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
@@ -81,6 +83,57 @@ test('actual shared render accepts once, atomically clears only its captured dra
   const receipt=readTimelineReceipt(f.store.db,prepared.intent!.input,'timeline.render')!.response;assert.equal(JSON.parse(receipt!).snapshot.deliveryName,'Draft title');
   assert.deepEqual(await f.delivery.recover(action(result.envelope)),result);assert.equal(f.calls.length,1);assert.equal(readTimelineReceipt(f.store.db,prepared.intent!.input,'timeline.render')!.response,receipt);
   assert.throws(()=>f.delivery.execute(action(prepared)),code('LOCAL_DELIVERY_CONFLICT'));
+});
+
+test('a failed delivery keeps its original receipt while a fresh export of the same timeline succeeds',async t=>{
+  const f=await fixture(t);
+  const store=f.store;
+  assert.ok(isProjectStore(store));
+  const projectId=f.project.id,expectedRevision=f.timeline.revision;
+  async function submitCheckedExport(){
+    const report=await f.services.call('timeline.export.preflight',{projectId,expectedRevision});
+    assert.equal(report.status,'ready');
+    assert.ok(report.snapshotHash);
+    const intent=f.prepare();
+    const input={...intent.input,preflightSnapshotHash:report.snapshotHash};
+    const prepared=f.delivery.prepare({...intent,input});
+    const result=await f.delivery.execute(action(prepared));
+    assert.equal(result.envelope.intent?.outcome.status,'accepted');
+    assert.ok(result.response);
+    return {input,exportId:result.response.id};
+  }
+  async function renderQueuedExport(){
+    const worker=startWorker(store,f.services,new Map());
+    try {await worker.tick();} finally {await worker.stop();}
+  }
+
+  const first=await submitCheckedExport();
+  const originalReceipt=readTimelineReceipt(store.db,first.input,'timeline.render')?.response;
+  assert.ok(originalReceipt);
+  const removeFailure=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+    if(point==='after_intent'&&proof.owner.kind==='export'&&proof.owner.id===first.exportId) throw new AppError('INVALID_MEDIA','Injected publication failure',409);
+  }});
+  try {await renderQueuedExport();} finally {removeFailure();}
+  const failed=await f.services.call('export.get',{exportId:first.exportId});
+  assert.equal(failed.status,'failed');
+  assert.equal(failed.error?.code,'INVALID_MEDIA');
+  assert.equal(failed.error?.retryable,true);
+  assert.equal(failed.assetId,null);
+
+  const second=await submitCheckedExport();
+  assert.notEqual(second.input.requestId,first.input.requestId);
+  assert.notEqual(second.exportId,first.exportId);
+  assert.equal(second.input.expectedRevision,first.input.expectedRevision);
+  assert.equal(second.input.preflightSnapshotHash,first.input.preflightSnapshotHash);
+  await renderQueuedExport();
+  const completed=await f.services.call('export.get',{exportId:second.exportId});
+  assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));
+  const output=await f.services.call('export.output.get',{projectId,exportId:second.exportId});
+  assert.equal(output.assetId,completed.assetId);
+  assert.ok(output.sizeBytes>0);
+  assert.deepEqual(await f.services.call('export.get',{exportId:first.exportId}),failed);
+  assert.equal(readTimelineReceipt(store.db,first.input,'timeline.render')?.response,originalReceipt);
+  assert.deepEqual(f.calls,[first.input,second.input]);
 });
 
 test('overlapping execute/recover shares one promise while a newer title survives the exact accepted callback',async t=>{

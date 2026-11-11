@@ -5,7 +5,7 @@ import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {assetImportSchema, assetMediaRecordSchema, toAssetMediaDto} from '../../contracts/src/asset-media.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
-import {publishProjectOutput,inspectProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered} from './project-output-publication.ts';
+import {publishProjectOutput,inspectProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,registerVerifiedProjectOutputs} from './project-output-publication.ts';
 import type {PublishedProjectOutput,ProjectOutputOwner} from './project-output-publication.ts';
 import {projectMediaPath} from '../../contracts/src/project-file.ts';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
@@ -208,14 +208,16 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
       assetMediaRecordSchema.parse(record);
       if (asset.id !== assetId || asset.projectId !== store.projectId) conflict();
       fence();
-      const result = store.tx(() => {
+      const proof = projectOutputPublicationProofSchema.safeParse(asset.publication);
+      const commit = () => store.tx(() => {
         fence();
         if (projectImport) {
           const current = store.get('assets', assetId);
           if (current) {if (!object(current) || current.projectId !== store.projectId) conflict(); projectImport.reused(current, receipt); return current;}
         }
         refuseRetiredPath();
-        const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);if(proof.success)assertPublishedProjectOutput(store,proof.data,{signal,beforeEffect:fence});const value = store.put('assets', asset);
+        if (proof.success) assertPublishedProjectOutput(store, proof.data, {signal, beforeEffect: fence});
+        const value = store.put('assets', asset);
         if (origin?.importHandle) {
           const changed = store.db.prepare(`UPDATE ${mioTable(store.db, 'imports')} SET status='imported',assetId=? WHERE id=? AND projectId=? AND status='importing'`).run(assetId, origin.importHandle, store.projectId);
           if (changed.changes !== 1) throw new AppError('AGENT_TASK_UNKNOWN_RESULT', '导入受理记录已改变', 409);
@@ -226,11 +228,13 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         // whose path its older narrow projector would merely remove.
         return origin?.importHandle ? toAssetMediaDto(value) : value;
       });
-      fence(); receipt.phase = 'registered';
-      writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
-      const proof=projectOutputPublicationProofSchema.safeParse(asset.publication);
-      if(proof.success)await markProjectOutputRegistered(store,proof.data,{signal,beforeEffect:fence});
-      return result;
+      const register = () => {
+        const result = commit();
+        fence(); receipt.phase = 'registered';
+        writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
+        return proof.success ? markProjectOutputRegistered(store, proof.data, {signal, beforeEffect: fence}).then(() => result) : result;
+      };
+      return proof.success ? registerVerifiedProjectOutputs(store, {signal, beforeEffect: fence}, register) : register();
     };
     const pending = running.get(key);
     if (pending) return pending.then(() => execute()).catch(normalize);
