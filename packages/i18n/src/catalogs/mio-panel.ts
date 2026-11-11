@@ -328,6 +328,12 @@ export const mioPanelMessages = {
     "en": "Check the result with the provider",
     "ja": "プロバイダーに結果を確認"
   },
+  "agent.panel.settingsChangedTail": {
+    "zh-Hans": "这一轮开始后模型连接设置已变更，不能在原来这一轮重试。请开新对话重新发送。",
+    "zh-Hant": "這一輪開始後模型連線設定已變更，無法在原本這一輪重試。請開新對話重新傳送。",
+    "en": "The model connection settings changed after this round started, so it can't be retried here. Start a new conversation and send it again.",
+    "ja": "このラウンドの開始後にモデル接続の設定が変更されたため、このラウンドでは再試行できません。新しい会話を始めて、もう一度送信してください。"
+  },
   "agent.panel.failedTail": {
     "zh-Hans": "这一步没有成功，后面的步骤还没有执行。处理好后可以让 Mio 重试这一步。",
     "zh-Hant": "這一步沒有成功，後面的步驟還沒有執行。處理好後可以讓 Mio 重試這一步。",
