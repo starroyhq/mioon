@@ -325,6 +325,24 @@ test('skipped rows come only from the skip list, expose actual current values an
 });
 
 
+test('a round ended by changed settings shows its own reason and offers no doomed retry',()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)for(const code of ['AGENT_SETTINGS_CONFLICT','AGENT_TASK_SETTINGS_CHANGED'] as const){
+    const h=harness({status:'failed',locale});try{
+      const step=h.state.snapshot!.steps[0];Object.assign(step,{kind:'model',status:'failed',approvalRequired:false,error:{code:'AGENT_CHAT_TIMEOUT',message:'NEVER_ECHO_PROVIDER_DETAIL'}});
+      h.state.snapshot!.run.pauseReason=code;h.render();
+      assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+      assert.equal(renderedText(h.find('agent-task-run-failure')),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.changed')}));
+      assert.equal(renderedText(h.find('agent-task-run-error')),translate(locale,'agent.panel.settingsChangedTail'));
+      // The older step error stays visible as history.
+      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.timeout')}));
+      // The same code as the step error is not repeated and keeps the retry.
+      h.state.snapshot!.run.pauseReason='AGENT_CHAT_TIMEOUT';h.render();
+      assert.equal(h.find('agent-task-run-failure'),undefined);assert.ok(h.find(`agent-task-retry-${stepId}`));
+      assert.equal(renderedText(h.find('agent-task-run-error')),translate(locale,'agent.panel.failedTail'));
+    }finally{h.unmount();}
+  }
+});
+
 test('retry is bound to the last failed step and never offers an unknown result replay',()=>{
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)for(const kind of ['model','tool'] as const){
     const h=harness({status:'failed',locale});try{
