@@ -55,8 +55,9 @@ function inputTransformations(value: unknown): void {
   for (const entry of value) {
     if (!object(entry)) fail();
     fields(entry, ['type', 'path', 'reason']);
-    if (typeof entry.type !== 'string' || !['thinking_dropped', 'thinking_mismatch_allowed'].includes(entry.type) ||
-      typeof entry.reason !== 'string' || !['prefix_binding_mismatch', 'model_binding_mismatch', 'organization_binding_mismatch', 'end_user_binding_mismatch'].includes(entry.reason)) fail();
+    // Future binding checks may report new values. These fields are passive metadata.
+    text(entry.type, 256);
+    text(entry.reason, 256);
     const path = text(entry.path, 256), indices = /^messages\.(0|[1-9][0-9]*)\.content\.(0|[1-9][0-9]*)$/u.exec(path);
     if (!indices || !Number.isSafeInteger(Number(indices[1])) || !Number.isSafeInteger(Number(indices[2]))) fail();
   }

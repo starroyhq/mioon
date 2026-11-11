@@ -25,10 +25,12 @@ async function collect(source: string, patch: Partial<AnthropicStreamOptions> = 
 const textBody = () => start() + block(0, {type: 'text', text: ''}) + delta(0, {type: 'text_delta', text: '你好 🙂'}) + close(0) + finish();
 const toolBody = (argumentsJson = '{"projectId":"p"}', reason = 'tool_use') => start() + block(0, {type: 'tool_use', id: 'tool_one', name: 'project_inspect', input: {}}) + delta(0, {type: 'input_json_delta', partial_json: argumentsJson}) + close(0) + finish(reason);
 
-function sonnetBody(transformations?:unknown,finalTransformations?:unknown):string{
+function sonnetBody(transformations?:unknown,finalTransformations?:unknown,withTool=false):string{
+  const tool=withTool?block(2,{type:'tool_use',id:'tool_one',name:'project_inspect',input:{projectId:'p'}})+close(2):'';
   return event('message_start',{message:{id:'msg_sonnet',type:'message',role:'assistant',model:'claude-sonnet-5-5',content:[],stop_reason:null,stop_sequence:null,usage:{input_tokens:7,output_tokens:1},input_transformations:transformations}})+
     block(0,{type:'thinking',thinking:'',signature:''})+delta(0,{type:'signature_delta',signature:'signed-empty-thinking'})+close(0)+
-    block(1,{type:'text',text:'Completed'})+close(1)+event('message_delta',{delta:{stop_reason:'end_turn',stop_sequence:null},usage:{output_tokens:4},input_transformations:finalTransformations})+event('message_stop');
+    block(1,{type:'text',text:'Completed'})+close(1)+tool+
+    event('message_delta',{delta:{stop_reason:withTool?'tool_use':'end_turn',stop_sequence:null},usage:{output_tokens:4},input_transformations:finalTransformations})+event('message_stop');
 }
 
 test('Sonnet opt-in validates passive input transformations and preserves empty signed thinking without displaying it',async()=>{
@@ -44,12 +46,42 @@ test('Sonnet opt-in validates passive input transformations and preserves empty 
   assert.deepEqual(baseline.filter(item=>item.type==='delta'),[{type:'delta',text:'Completed'}]);
 });
 
+const knownTransformation={type:'thinking_dropped',path:'messages.0.content.1',reason:'prefix_binding_mismatch'};
+
+for(const location of ['message_start','message_delta'] as const){
+  for(const field of ['type','reason'] as const){
+    test(`Sonnet ignores an unknown input transformation ${field} in ${location} and completes the tool turn`,async()=>{
+      const metadata=[{...knownTransformation,[field]:'future_binding_check'}];
+      const source=location==='message_start'?sonnetBody(metadata,undefined,true):sonnetBody(undefined,metadata,true);
+      const actual=await collect(source,{thinking:true,sonnetPrefixBinding:true});
+      assert.deepEqual(actual,[
+        {type:'delta',text:'Completed'},
+        {type:'done',completion:{
+          text:'Completed',
+          content:[
+            {type:'thinking',thinking:'',signature:'signed-empty-thinking'},
+            {type:'text',text:'Completed'},
+            {type:'tool_use',id:'tool_one',name:'project_inspect',input:{projectId:'p'}},
+          ],
+          toolCalls:[{id:'tool_one',name:'project_inspect',argumentsJson:'{"projectId":"p"}'}],
+          stopReason:'tool_use',
+          usage:{prompt_tokens:7,completion_tokens:4,total_tokens:11},
+        }},
+      ]);
+    });
+  }
+}
+
 test('Sonnet input transformations require explicit opt-in and exact bounded metadata; missing signatures still fail',async()=>{
-  const valid={type:'thinking_dropped',path:'messages.0.content.1',reason:'prefix_binding_mismatch'};
+  const valid=knownTransformation;
   for(const source of [sonnetBody([]),sonnetBody(undefined,[])])await assert.rejects(collect(source,{thinking:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
-  for(const value of [false,1,{},[null],[{...valid,extra:true}],[{...valid,type:'unknown'}],[{...valid,reason:'unknown'}],[{...valid,path:'private/source'}],
+  for(const value of [false,1,{},[null],[{...valid,extra:true}],[{...valid,type:0}],[{...valid,reason:null}],[{...valid,path:'private/source'}],
     [{...valid,path:'messages.-1.content.0'}],[{...valid,path:'messages.01.content.0'}],[{...valid,path:'messages.9007199254740992.content.0'}],[{type:valid.type,path:valid.path}]]){
     for(const source of [sonnetBody(value),sonnetBody(undefined,value)])await assert.rejects(collect(source,{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  }
+  for(const field of ['type','reason'] as const){
+    const value=[{...valid,[field]:'x'.repeat(257)}];
+    for(const source of [sonnetBody(value),sonnetBody(undefined,value)]) await assert.rejects(collect(source,{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_LIMIT'});
   }
   await assert.rejects(collect(sonnetBody([valid]).replace('signed-empty-thinking',''),{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
   await assert.rejects(collect(sonnetBody([{...valid,path:'x'.repeat(64*1024)}]),{thinking:true,sonnetPrefixBinding:true}),{code:'AGENT_CHAT_LIMIT'});
