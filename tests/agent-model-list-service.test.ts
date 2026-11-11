@@ -7,6 +7,7 @@ import {agentServiceInput} from '../packages/contracts/src/agent-connection-sett
 import type {AgentSettingsSnapshot,AgentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import type {AgentModelListRequest,AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import type {AgentModelListCacheStore} from '../packages/business/src/agent/model-list-cache.ts';
+import type {SettingsContextOptions} from '../packages/business/src/agent/settings.ts';
 import {testAgentCredential} from './helpers/agent-settings-fixture.ts';
 
 const success=(id='gpt-4.1-mini',complete=true):AgentModelListSuccess=>({outcome:'success',models:[{id,adaptation:'unverified'}],complete,source:'current_protocol',fetchedAt:'2026-11-04T00:00:00.000Z'});
@@ -167,4 +168,37 @@ test('legacy projected settings and failed list responses never create cache or 
  assert.equal(store.writes,0);assert.equal(writes,0);assert.deepEqual(await owner.get(),snapshot);
  const f=await fixture(t,async()=>({outcome:'unreachable',reason:'http_error'}));
  assert.deepEqual(await f.models.list(request(f.snapshot)),{outcome:'unreachable',reason:'http_error'});assert.equal(f.cache.writes,0);
+});
+
+test('service activity remains local while every settings-owner call receives only transport context',async t=>{
+ const f=await fixture(t,async()=>success());
+ const operations:string[]=[],get=f.owner.get.bind(f.owner),put=f.owner.put.bind(f.owner),acquire=f.owner[AGENT_CREDENTIAL_ACQUIRE].bind(f.owner);
+ function transport(operation:string,options?:SettingsContextOptions){
+  operations.push(operation);assert.deepEqual(Object.keys(options??{}).sort(),['selfPort','signal']);
+  assert.equal(options?.selfPort,4318);assert.ok(options?.signal instanceof AbortSignal);
+ }
+ f.owner.get=async options=>{transport('get',options);return get(options);};
+ f.owner.put=async(input,options)=>{transport('put',options);return put(input,options);};
+ f.owner[AGENT_CREDENTIAL_ACQUIRE]=async(input,options)=>{transport('acquire',options);return acquire(input,options);};
+ let active=true;const options={selfPort:4318,isActive:()=>active};
+ assert.deepEqual(await f.models.settings.get(options),f.snapshot);
+ const saved=sanitizeAgentSettingsResult(await f.models.settings.put({...metadata(f.snapshot),mioSelection:{serviceKey:'openai',modelId:'gpt-4.1-mini'}},options));
+ assert.equal((await f.models.settings[AGENT_CREDENTIAL_ACQUIRE]!(testAgentCredential(saved),options) as {apiKey:string}).apiKey,'SYNTHETIC_A');
+ assert.equal((await f.models.list(request(saved),options)).outcome,'success');
+ assert.equal((await f.models.cache(inputToCache(request(saved)),options)).status,'hit');
+ assert.ok(operations.includes('put'));assert.ok(operations.includes('acquire'));assert.ok(operations.filter(value=>value==='get').length>1);
+ const before=operations.length;active=false;
+ await assert.rejects(f.models.settings.get(options),{code:'AGENT_SETTINGS_CLOSED'});
+ await assert.rejects(f.models.list(request(saved),options),{code:'AGENT_SETTINGS_CLOSED'});
+ assert.equal(operations.length,before,'Inactive admission cannot dispatch to the owner');
+});
+
+test('service-only activity loss still rejects a delayed provider reply without publishing its cache',async t=>{
+ const entered=deferred<void>(),answer=deferred<AgentModelListSuccess>();let active=true;
+ const f=await fixture(t,async()=>{entered.resolve();return answer.promise;});
+ const pending=f.models.list(request(f.snapshot),{isActive:()=>active});
+ const rejected=assert.rejects(pending,{code:'AGENT_SETTINGS_CLOSED'});
+ await entered.promise;active=false;answer.resolve(success());await rejected;
+ assert.equal(f.cache.writes,0);assert.equal(f.cache.values.size,0);
+ assert.deepEqual(await f.owner.get(),f.snapshot);
 });

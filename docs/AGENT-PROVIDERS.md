@@ -7,9 +7,81 @@
 - Ollama：回环 origin；C/R 使用 `/v1`，Messages 使用根路径。不放宽 selfPort、非回环或远端云路由约束。
 - custom：明确选择协议和完整 HTTPS base，保留路径及既有网络校验，不猜测/自动修正。
 
-精确匹配已有适配模型优先，保留其历史 wire 和能力。其余合法型号可使用同协议通用模板，均标“未验证”，未知上下文为 null，输出保守为4096；不继承另一个模型的上下文、推理或供应商托管工具权限。OpenAI 通用写法不发送 reasoning_effort，未知 C/R 不开放 thinkingTier；供应商明确有关闭思考要求时必须有对应策略，否则拒绝。OpenRouter Responses 的关闭思考使用公开 schema 的 `reasoning.enabled:false`。具体字段、关闭策略及204条逐字节夹具见 `agent-generic-profiles.test.ts` / `fixtures/agent-generic-request-fingerprints.json`。
+精确匹配已有适配模型优先，保留其历史 wire 和能力。官方 OpenAI Responses 按下文 Q11 的已知档案、有限旧型号清单和未知型号载体规则处理；其他合法型号使用所选协议的通用模板，标“未验证”，未知上下文为 null，输出保守为 4096，不继承别的型号的容量或供应商托管工具权限。OpenRouter Responses 继续使用原通用档案及 `reasoning.enabled:false`，不会借用官方 OpenAI 的 Responses 档案。具体字段和固定夹具见 `agent-generic-profiles.test.ts` / `fixtures/agent-generic-request-fingerprints.json`。
 
-保存、官方目录、手填型号和通用请求模板均不证明账号权限或真实模型可用性。运行时的流/事件/时间、工具和记录预算保持既有规则，两套原有99条指纹不变。
+保存、官方目录、手填型号和通用请求模板均不证明账号权限或真实模型可用性。Q11 的新默认及请求字段会有意识地更新相应指纹；其他型号的旧字节和行为继续回归。流量边界按下文区分协议，工具、记录及总时限不因此放宽。
+
+## OpenAI 当前型号、默认与兼容（Q11，核对 2026-11-10）
+
+从官方 [型号目录](https://developers.openai.com/api/docs/models)、[完整目录](https://developers.openai.com/api/docs/models/all) 和 [弃用公告](https://developers.openai.com/api/docs/deprecations) 出发核对后，新配置采用 `gpt-6.1-terra`，OpenAI 预设默认协议改为 Responses；其他厂商默认协议不变。Terra 的普通输入/输出价格为每百万 token $1/$5，可用 `none`，定位适合高频、带工具的任务。备选为更省的 `gpt-6-luna`（$0.1/$0.5）和能力更强、最低 effort 为 `low` 的 `gpt-6.1-sol`（$2/$10）。费用随输入长度、缓存和处理档位变化，此处不是费用承诺。`AGENT_DEFAULT_OPENAI_MODEL` 是唯一默认型号常量，OpenRouter 默认在它前面拼 `openai/`。保存过的配置不迁移；`gpt-4.1-mini` 和 `gpt-5.4-mini` 等旧配置仍按其档案处理。上轮把 5.4-mini 当成当前一代的结论已更正。
+
+纯型号策略在 `packages/contracts/src/agent-openai-model-family.ts`，请求档案、设置适配标签和建议列表共用。适配标签来自本地已核对档案，不能相信模型列表供应商自报的标签。下表“当前”表示完整目录未标弃用，包含仍可用的旧代；当前一代排在建议列表前面。已弃用型号保留手填和已保存配置匹配，退出建议；已关停型号退出专用档案和建议，显式排除未知推理载体规则，手填时仅走未验证通用行为，供应商可以拒绝。日期快照继承其精确父型号的规则。
+
+| 型号（包含日期快照） | 状态 | effort 集合；最低档 | 上下文 / 最大输出 | 官方 CC 带工具 | 核对日期 |
+| --- | --- | --- | --- | --- | --- |
+| [`gpt-6.1-terra`](https://developers.openai.com/api/docs/models/gpt-6.1-terra) | 当前一代，默认 | none/low/medium/high/xhigh/max；`none` | 1,050,000 / 128,000 | 须用 Responses | 2026-11-10 |
+| [`gpt-6.1-sol`](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[`gpt-6-astra`](https://developers.openai.com/api/docs/models/gpt-6-astra) | 当前一代 | low/medium/high/xhigh/max；`low` | 1,050,000 / 128,000 | 须用 Responses | 2026-11-10 |
+| [`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna)、[`gpt-6-sol`](https://developers.openai.com/api/docs/models/gpt-6-sol) | 当前 | none/low/medium/high/xhigh/max；`none` | 1,050,000 / 128,000 | 仅 `reasoning_effort:none` | 2026-11-10 |
+| [`gpt-5.6-sol`](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、别名 `gpt-5.6` | 当前 | none/low/medium/high/xhigh/max；`none` | 1,050,000 / 128,000 | 可用 | 2026-11-10 |
+| [`gpt-5.6-terra`](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、[`gpt-5.6-luna`](https://developers.openai.com/api/docs/models/gpt-5.6-luna) | 当前 | none/low/medium/high/xhigh/max；`none` | 1,050,000 / 128,000 | 可用 | 2026-11-10 |
+| `gpt-5.4`、`gpt-5.5` | 当前，旧代 | none/low/medium/high/xhigh；`none` | 1,050,000 / 128,000 | 可用 | 2026-11-10 |
+| `gpt-5.2`、`gpt-5.4-mini` | 当前，旧代 | none/low/medium/high/xhigh；`none` | 400,000 / 128,000 | 可用 | 2026-11-10 |
+| `gpt-5.4-pro` | 当前，旧代 | medium/high/xhigh；`medium` | 1,050,000 / 128,000 | 须用 Responses | 2026-11-10 |
+| `gpt-5.4-nano` | 已弃用 | none/low/medium/high/xhigh；`none` | 400,000 / 128,000 | 兼容保留 | 2026-11-10 |
+| `gpt-5`、`gpt-5-mini`、`gpt-5-nano` | 已弃用 | minimal/low/medium/high；`minimal` | 400,000 / 128,000 | 兼容保留 | 2026-11-10 |
+| `gpt-5.1` | 已弃用 | none/low/medium/high；`none` | 400,000 / 128,000 | 兼容保留 | 2026-11-10 |
+| `gpt-5.3-codex` | 已弃用 | low/medium/high/xhigh；`low` | 400,000 / 128,000 | 须用 Responses | 2026-11-10 |
+| `gpt-5-pro` | 已弃用 | high；`high` | 400,000 / 272,000 | 须用 Responses | 2026-11-10 |
+| `o3` | 已弃用 | low/medium/high；`low` | 200,000 / 100,000 | 兼容保留 | 2026-11-10 |
+| `gpt-4.1-mini` 等有限旧非推理清单 | 已弃用 | 不加推理字段 | 保留旧容量 / 请求上限 4096 | 兼容保留 | 2026-11-10 |
+| `o1`、`o3-mini`、`o4-mini` 等已关停清单 | 已关停 | 无专用档案，不承载推理 | 不再借用旧容量 | 未验证通用请求，接口可拒绝 | 2026-11-10 |
+
+旧代容量、effort 来源：[GPT-5.2](https://developers.openai.com/api/docs/models/gpt-5.2)、[GPT-5.4 Mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4 Pro](https://developers.openai.com/api/docs/models/gpt-5.4-pro)、[GPT-5.4 Nano](https://developers.openai.com/api/docs/models/gpt-5.4-nano)、[GPT-5](https://developers.openai.com/api/docs/models/gpt-5)、[GPT-5.1](https://developers.openai.com/api/docs/models/gpt-5.1)、[GPT-5.3 Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex)、[GPT-5 Pro](https://developers.openai.com/api/docs/models/gpt-5-pro)、[o3](https://developers.openai.com/api/docs/models/o3)。状态以完整目录与弃用公告为准，文档能力不证明账号权限或真实调用成功。
+
+应用的“思考档”仍是 unsupported/optional/required 能力分类，没有新增用户 effort 档位或持久化字段。已知档案发送最低合法 effort：官方 CC 用 `reasoning_effort`，官方 Responses 用 `reasoning.effort`。`none` 归 optional，其他最低值归 required，后者仍可产生推理。已核对的推理档案请求 32768 输出 token，并在输入预算中扣除；这是低于型号最大输出的本地预算，不保证总时限内用满。旧非推理档案和其他厂商的原输出预算不变。
+
+官方 OpenAI 预设中，CC 携带工具且型号已知只支持 Responses 工具调用时，在构造请求和派发前均以 HTTP 422 `AGENT_CHAT_RESPONSES_REQUIRED` 拒绝，并明确提示改选 Responses；不向供应商发无效请求，不自动换协议或重试。不带工具的文本诊断不被此门控误拦。Luna 和旧 Sol 的 CC 工具请求明确发送 `reasoning_effort:"none"`。依据是上述各型号页及 [推理指南](https://developers.openai.com/api/docs/guides/reasoning)；供应商托管工具权限仍没有扩大。
+
+### 未知型号与有限旧清单
+
+官方 OpenAI Responses 不再按 `gpt-5.x`、mini/nano 等名字猜能力。有限的已知旧非推理清单（`gpt-4.1-mini`、`gpt-4.1`、`gpt-4o`、`gpt-4o-mini`）继续使用旧行为；已知关停清单显式排除推理载体兼容，也不恢复旧支持或另增关停派发错误。其余未知 ID，不论今后怎样命名，都允许接收和回放推理载体，能力分类为 required，标签仍“未验证”，不发送 effort，容量和文档最大输出均为 null，本地输出上限回到 4096。`gpt-5.1-mini` 是 SDK 为类型兼容保留的非 API 拼写，不把它标为已适配。
+
+未知 ID 的 4096 只是保守请求值，不能证明该模型支持 4096；真实上限更小时供应商仍可能拒绝，应用如实报告，不猜容量、不静默调参、不自动重试。未知 special suffix 也不能借用相邻型号的 effort、容量、状态或工具承诺。这个载体兼容规则只适用于官方 OpenAI Responses，其他供应商和 CC 通用档案不因此获得推理权限。
+
+### OpenRouter 的独立 CC 依据
+
+OpenRouter 默认精确 ID 为 [`openai/gpt-6.1-terra`](https://openrouter.ai/openai/gpt-6.1-terra)，保留 CC。2026-11-10 核对其 [公开模型目录](https://openrouter.ai/api/v1/models) 与 [供应商端点详情](https://openrouter.ai/api/v1/models/openai/gpt-6.1-terra/endpoints)：该 ID 明确列 CC 端点和 `tools/tool_choice/reasoning/reasoning_effort`，容量为 1,050,000 / 128,000，支持 none/low/medium/high/xhigh/max、默认 medium、非强制推理。因此不继承 OpenAI 官方接口的 Terra CC 工具禁令；默认请求使用已有 OpenRouter 形状 `reasoning:{effort:"none"}`，不增加额外协议。
+
+[OpenRouter CC 参考](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion) 另说明 `reasoning_effort` 是 `reasoning.effort` 的等价简写，不可同时给出不同值；[工具指南](https://openrouter.ai/docs/guides/features/tool-calling) 明确给出 CC 工具往返。精确型号的公开元数据与原生 OpenAI 档案分别核对，不能只按 `openai/` 前缀认定所有路由能力。此处未用真实账户做模型推理验证。
+
+### 流和续接
+
+OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `include:["reasoning.encrypted_content"]` 兼容写法。2026-11-10 的官方指南已说明无状态模式默认返回 `encrypted_content`，不再要求 include，但仍接受它；保留它让请求意图明确，续接始终以实际收到的载体为准。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，完成的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。item.done 的状态仍可能是 incomplete，此时等整体终端区分输出耗尽或其他未完成原因，不生成完成结果或执行工具；response.completed 却含 incomplete 项仍按协议错误拒绝。
+
+`phase` 仅允许在 assistant 消息上出现，值限 null、`commentary`、`final_answer`；其他位置或值按协议错误拒绝。未知输出项类型报 `AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED`，不再冒充工具未授权。`response.incomplete` 的 max_output_tokens 原因报 `AGENT_CHAT_OUTPUT_LIMIT`，其他未完成报 `AGENT_CHAT_RESPONSES_INCOMPLETE`；这些已观察到的模型失败记录为 failed，不冒充结果未知，不自动重试或执行工具。
+
+来源：[流事件与最终 reasoning 载体](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[推理指南的无状态续接与 phase 回放](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses)，并核对仓库 openai SDK 的 `ResponseReasoningItem` / `ResponseOutputMessage` 类型。
+
+### Responses 字节边界
+
+仅官方 OpenAI Responses 使用 4 MiB 整流上限；五个生命周期事件 created/in_progress/completed/incomplete/failed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件、120 秒总时限以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
+
+离线实测全部 111 个工具与 instructions，短回复 UTF-8 整流 455916 字节，ASCII 转义为 616795 字节。再加入 131072 字节可见文本和 123026 字节 reasoning 条目及真实 done/terminal 重复回显，整流分别为 1360062 / 2831621 字节，最大 ASCII 事件 721454 字节；原 1 MiB / 64 KiB 不足，现上限可容纳。独立字段都取最大值不代表聚合可豁免：30 个大参数调用等超过整流或历史预算时仍精确拒绝，不声称无界输出。
+
+验证仅使用真实形状离线流、真实桌面设置 broker 接线和合成供应商传输，不发真实模型请求、不使用真实密钥；签名包实际 Responses 对话和工具调用由协调人与用户验收。
+
+### 其他厂商目录复核（2026-11-10；默认值不在本卡改）
+
+本次从总目录和生命周期页出发重新核对，不以已知型号单页存在来判定“当前”。替换其他厂商默认值、推理和协议适配交 Q12。
+
+| 厂商与现有默认 | 目录与退役结果 | 相对上轮的更正与边界 |
+| --- | --- | --- |
+| DeepSeek `deepseek-flash` | [目录](https://api-docs.deepseek.com/quick_start/pricing/) 当前对应 V4.1-Flash-1017；V4 Flash/Flash Vision Exp 的旧名临时路由到新 Flash | 默认当前，原结论成立；[更新日志](https://api-docs.deepseek.com/updates/) 与当前目录仍保留 V4 Pro，不能把早期退役安排当成已关停事实 |
+| Qwen `qwen-plus`；Responses `qwen3.8-flash` | [总目录](https://help.aliyun.com/en/model-studio/text-generation-model/) 推荐 3.7-plus、3.8-max、3.8-flash；Plus 裸别名仍列支持 | 补全上轮未明确列出的 3.8-max；[Plus 单页](https://help.aliyun.com/en/model-studio/qwen-plus) 仍指向 2025-12-01，区域工具差异仍须分别查。旧代不等于已弃用；[退役索引](https://help.aliyun.com/en/model-studio/model-depreciation) 的公告未能完整核实所有快照名单 |
+| 智谱/Z.AI `glm-4.7` | [中国总目录](https://docs.bigmodel.cn/cn/guide/start/model-overview) 与 [国际总目录](https://docs.z.ai/guides/overview/overview) 均列最新 5.3 / 5.3-Flash，4.7 仍在其他文本型号中 | 上轮对国际最新代证据不足的限制已解除；已查 [迁移指南](https://docs.bigmodel.cn/cn/guide/start/migrate-to-glm-new)，未找到 4.7 确定退役日。替换不能沿用旧关闭思考参数 |
+| Kimi `kimi-k2.6` | [中国目录](https://platform.kimi.com/docs/models) 与 [国际目录](https://platform.kimi.ai/docs/models) 当前列 K3.1 Pro、高速版和 K3；K2.6 已停止向新账号开放，11-01 前注册者可继续，预计 2026 年 12 月底全面下线 | 原新账号不可用结论成立；区分停止新账号与全面关停，不声称所有旧账号已不可用 |
+| MiniMax `MiniMax-M3` | [可用/退役目录](https://platform.minimax.io/docs/faq/models) 同时列 M3.1 Flash 和 M3；[发布目录](https://platform.minimax.io/docs/release-notes/models) 最新语言型号是 10-19 的 M3.1 Flash | M3 仍可用，不能当成最新；补上 M2.5/M2.7 停新账号和 11-18 退役安排，套餐转路由与 API 用户不同。公告日期与历史表标题措辞有差异，不扩大到 M3 |
+| Ollama `qwen3:8b` | [Qwen 目录](https://ollama.com/search?q=qwen) 已列 3.8、3.6，另有 3.8-flash-next 实验模型；[8B tag](https://ollama.com/library/qwen3:8b) 仍存在 | 上轮只到 3.5，漏了 3.6/3.8，现更正；[3.8 的 27B 版本](https://ollama.com/library/qwen3.8) 约 18GB，不能直接替换 5.2GB 的 8B 默认。未核对本机安装和硬件，不下载模型，未找到统一公开退役清单 |
 
 ## 当前模型清单与检查（X6b）
 

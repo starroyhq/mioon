@@ -125,7 +125,7 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/project-trash-broker.ts', 'apps/desktop/src/project-entry-control.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
-  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts',
+  'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts', 'packages/contracts/src/agent-openai-model-family.ts',
   'packages/business/src/agent/settings-envelope.ts', 'packages/contracts/src/agent-connection-settings.ts',
   'packages/contracts/src/agent-connection-private.ts', 'packages/contracts/src/agent-provider-catalog.ts',
   'packages/business/src/agent/model-profiles.ts', 'packages/business/src/agent/anthropic-protocol.ts',
@@ -687,7 +687,7 @@ test('Images client rejects a delayed status response before the timeout callbac
 test('initial async status is bounded and legacy keys are never decrypted, preserving old bytes and session-only choice', async t => {
   for (const operation of ['status', 'decrypt']) {
     const f = vault(), codec = codecFor(f, {timeout: 25}), gate = deferred();
-    const configuration = {...DEFAULT_AGENT_CONFIGURATION}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
+    const configuration = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'chat_completions'}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
     const encrypted = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: JSON.stringify({version: 1, binding, value: SENTINEL})})).toString('base64');
     const original = {version: 2, revision: 4, configuration, secret: {binding, encrypted}}, persistence = memory(original);
     let oldDecrypts = 0;

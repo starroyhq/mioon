@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
 import {createPrivateTemporaryDirectory,validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {agentServiceInput,agentSettingsSnapshotSchema} from '../packages/contracts/src/agent-connection-settings.ts';
-import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 
 test('native Windows headless backend and separate CLI share private storage, diagnostics and synthetic v2 tool/control receipts',{skip:process.platform!=='win32',timeout:180000},async t=>{
@@ -50,7 +50,8 @@ test('native Windows headless backend and separate CLI share private storage, di
  assert.ok(validateManagedFile(path.join(root,'app-library.db'),{root,private:true}));assert.ok(validateManagedFile(service.tokenFile,{root:path.dirname(service.tokenFile),private:true}));assert.equal(modelCalls,0);
  // Only this constructor-injected synthetic generator can answer. This is
  // actual v2 CLI/SQLite/tool execution, never a real vendor/model acceptance.
- const selected=await cli(['agent','settings','set'],{expectedRevision:settings.revision,services:settings.services.map(agentServiceInput),mioSelection:{serviceKey:'openai',modelId:DEFAULT_AGENT_CONFIGURATION.model}});
+ const configuration=defaultTestAgentConfiguration('chat_completions');
+ const selected=await cli(['agent','settings','set'],{expectedRevision:settings.revision,services:settings.services.map(service=>({...agentServiceInput(service),...(service.serviceKey==='openai'?{protocol:configuration.protocol}:{})})),mioSelection:{serviceKey:'openai',modelId:configuration.model}});
  const secured=agentSettingsSnapshotSchema.parse(await cli(['agent','settings','secret','set'],{expectedRevision:selected.revision,serviceKey:'openai'},{key:'SYNTHETIC_WINDOWS_SESSION_NO_PROVIDER',flags:['--key-stdin','--storage','session']}));
  const authorization=await cli(['agent','authorization','list']);
  await cli(['agent','authorization','grant'],{requestId:randomUUID(),expectedRevision:authorization.revision,expectedSettingsRevision:testAgentExecution(secured).revision,destination:authorization.currentTarget.destination,model:authorization.currentTarget.model,scope:'project_agent'});

@@ -20,7 +20,7 @@ import type {WithImplicitCoercion} from 'node:buffer';
 const KEY = 'SYNTHETIC_MIGRATION_KEY_NEVER_LIVE';
 const persistent = {persistentAvailable:true, sessionScope:'app', reasonCode:null} as const;
 const locked = {...persistent, persistentAvailable:false, reasonCode:'OS_SECRET_STORE_UNAVAILABLE'} as const;
-const cc = () => ({...DEFAULT_AGENT_CONFIGURATION});
+const cc = () => ({...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'chat_completions' as const});
 const responses = () => ({...cc(), baseUrl:'https://api.openai.com/v1', protocol:'responses' as const});
 const legacyConfiguration = () => {const {protocol, ...legacy} = cc(); return legacy;};
 const envelope = (configuration:Record<string,unknown> = legacyConfiguration(), version = 1, secret:Record<string,unknown>|null = null, revision = 7) => ({version, revision, configuration, secret});

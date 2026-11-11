@@ -128,6 +128,30 @@ export const agentTaskErrorMessages = {
     "en": "The model response is incomplete or unsupported. Check the protocol and model settings",
     "ja": "モデルの応答が不完全か未対応です。プロトコルとモデル設定を確認してください"
   },
+  "agent.task.error.responsesRequired": {
+    "zh-Hans": "此型号的工具调用仅支持 Responses，请在模型设置中选择 Responses；本轮没有发送模型请求",
+    "zh-Hant": "此型號的工具呼叫僅支援 Responses，請在模型設定中選擇 Responses；本輪沒有傳送模型請求",
+    "en": "This model supports tool calls only through Responses. Select Responses in model settings; no model request was sent",
+    "ja": "このモデルのツール呼び出しには Responses が必要です。モデル設定で Responses を選択してください。モデルへのリクエストは送信していません"
+  },
+  "agent.task.error.responsesItemUnsupported": {
+    "zh-Hans": "模型返回了暂不支持的 Responses 内容类型，本轮已停止，没有执行该内容",
+    "zh-Hant": "模型傳回了暫不支援的 Responses 內容類型，本輪已停止，沒有執行該內容",
+    "en": "The model returned an unsupported Responses item type. This round stopped without executing it",
+    "ja": "モデルが未対応の Responses 項目を返しました。このラウンドを停止し、その内容は実行していません"
+  },
+  "agent.task.error.outputLimit": {
+    "zh-Hans": "本轮输出（含推理）达到上限，回复未完成。已保留收到的内容，请拆分任务后重试",
+    "zh-Hant": "本輪輸出（含推理）達到上限，回覆未完成。已保留收到的內容，請拆分任務後重試",
+    "en": "Output, including reasoning, reached this round’s limit before completion. Received content is retained; split the task and retry",
+    "ja": "推論を含む出力が上限に達し、応答が未完了です。受信した内容は保持されています。タスクを分割して再試行してください"
+  },
+  "agent.task.error.incomplete": {
+    "zh-Hans": "模型未完成这次回复，已保留收到的内容，请核对结果后重试",
+    "zh-Hant": "模型未完成這次回覆，已保留收到的內容，請核對結果後重試",
+    "en": "The model did not complete this response. Received content is retained; check the result before retrying",
+    "ja": "モデルの応答が完了しませんでした。受信した内容は保持されています。結果を確認してから再試行してください"
+  },
   "agent.task.error.limit": {
     "zh-Hans": "已达到输入、输出或存储上限，请核对已保存的记录",
     "zh-Hant": "已達輸入、輸出或儲存上限，請核對已儲存的紀錄",

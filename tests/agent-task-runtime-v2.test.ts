@@ -1,6 +1,7 @@
 import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {agentChatError} from '../packages/business/src/agent/chat-errors.ts';
 
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
@@ -74,7 +75,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=openStore(root),services=createServices(store,providers);
  const project=object(await services.call('project.create',{name:'Runtime project'})),projectId=String(project.id);
  const first=shot(await services.call('shot.create',{projectId,title:'First',prompt:'saved first'})),other=shot(await services.call('shot.create',{projectId,title:'Other',prompt:'saved other'}));
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
  const bridge=desktopBridge?desktopSettingsBridge(settings,4318):null,runtimeSettings=bridge?.settings??settings;
  const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const requests:TaskModelRequest[]=[],scriptRequestIndexes:number[]=[],effects=new Map<string,string>(),baseTools=createAgentTaskTools({store,services});let beforeTool:((prepared:PreparedAgentTaskTool)=>Promise<void>)|undefined,script:Script=async function*(){yield {type:'done',output:output(protocol)};},loadGroups:readonly AgentTaskLoadableToolGroupId[]=[],loadingRequests=0;
@@ -157,6 +158,29 @@ test('all classified Chat Completions stream failures persist safe diagnostics, 
 test('forged stream diagnostics and provider causes never reach persisted task error messages',async t=>{
   const f=await fixture(t,'chat_completions');f.setScript(async function*(){throw Object.assign(Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_TRUNCATED',reason:'missing_done',streamEvidence:{reason:'read_failed'},state:{finishReason:'PRIVATE_KEY'},cause:{reason:'output_limit'}});});
   const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)}),/PRIVATE_PROVIDER_BODY|PRIVATE_KEY|missing_done|read_failed|output_limit/u);assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+});
+for(const [failure,status] of [['AGENT_CHAT_OUTPUT_LIMIT',413],['AGENT_CHAT_RESPONSES_INCOMPLETE',502],['AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED',422]] as const)test(`Responses ${failure} is an observed failure, not an unknown result, and retries only by explicit control`,async t=>{
+  const f=await fixture(t,'responses');
+  const before=[f.store.get('shots',f.first.id),f.store.get('shots',f.other.id)];
+  f.setScript(async function*(){throw Object.assign(new Error('PRIVATE_UNSUPPORTED_RESPONSE'),{code:failure,status});});
+  const sent=await f.send(),done=await f.settle(sent.run.id),model=done.steps[0]!;
+  assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,failure);
+  assert.equal(done.steps.length,1);assert.equal(model.kind,'model');assert.equal(model.status,'failed');assert.equal(model.error?.code,failure);
+  assert.equal(model.error?.message,agentChatError(failure).message,'The accurate bounded model failure survives runtime and journal persistence');
+  assert.equal(done.steps.some(step=>step.status==='unknown'),false);
+  assert.ok(isProjectStore(f.store));const records=createMioRecords(f.store),request=records.request(records.step(model.id).currentRequestId!);
+  assert.equal(request.state,'failed');assert.equal(request.originalBody,f.requests[0]!.body);assert.ok(request.dispatchStartedAt);
+  assert.equal(recordedHints(f,sent.run.id,'dispatch_prevented').length,0,'The model request was dispatched before its output was rejected');
+  assert.deepEqual([f.store.get('shots',f.first.id),f.store.get('shots',f.other.id)],before);
+  assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);assert.equal(f.requests.length,1);
+  assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)}),/PRIVATE_UNSUPPORTED_RESPONSE/u);
+  f.restart();const replay=await f.send('执行测试',sent.run.requestId);await f.runtime.drain();
+  assert.equal(replay.run.id,sent.run.id);assert.equal(replay.run.status,'failed');assert.equal(replay.steps[0]?.status,'failed');assert.equal(f.requests.length,1);
+  f.setScript(async function*(){yield {type:'done',output:output('responses',[],'Explicit retry completed')};});
+  await f.action(replay,'retry',{stepId:model.id});const retried=await f.settle(sent.run.id);
+  assert.equal(retried.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(retried.steps.find(step=>step.id===model.id)?.status,'failed');
+  assert.equal(retried.steps.some(step=>step.status==='unknown'),false);assert.equal(f.effects.size,0);assert.equal(retried.changes.length,0);
+  assert.deepEqual([f.store.get('shots',f.first.id),f.store.get('shots',f.other.id)],before);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, budget continuation and restart`,async t=>{
   const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};

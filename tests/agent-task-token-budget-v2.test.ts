@@ -8,7 +8,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
-import {AGENT_CHAT_PROFILES,AGENT_DEFAULT_OUTPUT_TOKENS,AGENT_MESSAGES_TOKEN_LIMITS,AGENT_OUTPUT_TOKEN_CEILING,AGENT_RESPONSES_PROFILES,AGENT_THINKING_ANSWER_TOKENS,agentAnthropicThinkingFields,agentModelTokenLimits} from '../packages/business/src/agent/model-profiles.ts';
+import {AGENT_CHAT_PROFILES,AGENT_DEFAULT_OUTPUT_TOKENS,AGENT_MESSAGES_TOKEN_LIMITS,AGENT_OUTPUT_TOKEN_CEILING,AGENT_RESPONSES_PROFILES,AGENT_THINKING_ANSWER_TOKENS,agentAnthropicThinkingFields,agentModelTokenLimits,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
 import type {AgentModelTokenLimits} from '../packages/business/src/agent/model-profiles.ts';
 import {ANTHROPIC_MESSAGES_FIELDS,ANTHROPIC_MIN_THINKING_BUDGET_TOKENS} from '../packages/business/src/agent/anthropic-protocol.ts';
 import {TASK_DEFAULT_HISTORY_BUDGET,TASK_MODEL_LIMITS,TASK_TOKEN_ESTIMATE_BYTES,buildTaskModelRequest,taskHistoryFits,taskModelHistoryBudget,taskRequestFitsModel,taskResponseLanguageContext,taskTokenEstimate} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -27,7 +27,7 @@ function presetConfiguration(presetId:string,protocol:Protocol):AgentConfigurati
   const preset=AGENT_PRESETS.find(item=>item.id===presetId)!,platform=preset.platforms.find(item=>item.baseUrl)??preset.platforms[0]!;
   return {presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,protocol,
     baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',
-    model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio'};
+    model:preset.id==='openai'&&protocol==='chat_completions'?'gpt-6-luna':(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio'};
 }
 /** Every preset and protocol whose model has a documented context window. */
 function documentedWindows():{label:string;configuration:AgentConfiguration;limits:AgentModelTokenLimits}[]{
@@ -96,9 +96,12 @@ test('profiles retain documented capacity separately from protocol output limits
   }
   assert.deepEqual(AGENT_MESSAGES_TOKEN_LIMITS.anthropic!.models,['claude-haiku-4-5','claude-haiku-4-5-20251001']);
 });
-test('a snapshot name has its alias limits, and unverified combinations have an unknown window and 4096',()=>{
-  for(const protocol of ['chat_completions','responses'] as const)
-    assert.deepEqual(agentModelTokenLimits({...DEFAULT_AGENT_CONFIGURATION,protocol,model:'gpt-4.1-mini-2025-04-14'}),agentModelTokenLimits({...DEFAULT_AGENT_CONFIGURATION,protocol}),protocol);
+test('a legacy snapshot retains its explicit alias limits, and unverified combinations have an unknown window and 4096',()=>{
+  for(const protocol of ['chat_completions','responses'] as const){
+    const legacy={...DEFAULT_AGENT_CONFIGURATION,protocol,model:'gpt-4.1-mini'};
+    assert.deepEqual(agentModelTokenLimits({...legacy,model:'gpt-4.1-mini-2025-04-14'}),agentModelTokenLimits(legacy),protocol);
+    assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:1047576,outputTokens:4096},`${protocol}: the old mini keeps its original capacity and request limit`);
+  }
   const haiku=presetConfiguration('anthropic','anthropic_messages');
   assert.deepEqual(agentModelTokenLimits({...haiku,model:'claude-haiku-4-5-20251001'}),{contextTokens:200000,outputTokens:16384});
   const generic:AgentConfiguration[]=[
@@ -117,8 +120,13 @@ test('task requests send each model output limit in its protocol field',()=>{
   const history:AgentTaskJson[]=[{role:'user',content:'合成请求'}];
   const body=(configuration:AgentConfiguration):Record<string,unknown>=>JSON.parse(buildTaskModelRequest(configuration,history,[],4318)) as Record<string,unknown>;
   const cases:[AgentConfiguration,string,number][]=[
-    [DEFAULT_AGENT_CONFIGURATION,'max_completion_tokens',4096],
-    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',4096],
+    [DEFAULT_AGENT_CONFIGURATION,'max_output_tokens',32768],
+    [presetConfiguration('openai','chat_completions'),'max_completion_tokens',32768],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',32768],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'chat_completions',model:'gpt-4.1-mini'},'max_completion_tokens',4096],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses',model:'gpt-4.1-mini'},'max_output_tokens',4096],
+    [presetConfiguration('openrouter','chat_completions'),'max_tokens',32768],
+    [presetConfiguration('openrouter','responses'),'max_output_tokens',4096],
     [presetConfiguration('anthropic','anthropic_messages'),'max_tokens',16384],
     [presetConfiguration('deepseek','chat_completions'),'max_tokens',4096],
     [presetConfiguration('minimax','chat_completions'),'max_completion_tokens',4096],
@@ -132,6 +140,36 @@ test('task requests send each model output limit in its protocol field',()=>{
     for(const other of ['max_tokens','max_completion_tokens','max_output_tokens'])if(other!==field)assert.equal(Object.hasOwn(wire,other),false,`${label} ${other}`);
   }
   assert.deepEqual(body(presetConfiguration('anthropic','anthropic_messages')).thinking,{type:'disabled'},'the catalog Messages model keeps thinking off');
+});
+test('the previous mini default and its snapshot retain their documented reasoning budget',()=>{
+  const probe:AgentTaskJson[]=[taskResponseLanguageContext('en'),{role:'user',content:'.'}];
+  for(const protocol of ['chat_completions','responses'] as const)for(const model of ['gpt-5.4-mini','gpt-5.4-mini-2026-03-17']){
+    const configuration:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol,model};
+    assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:400000,outputTokens:32768});
+    const serialized=buildTaskModelRequest(configuration,probe,[],4318),wire=JSON.parse(serialized) as Record<string,unknown>;
+    assert.equal(wire[protocol==='responses'?'max_output_tokens':'max_completion_tokens'],32768);
+    const overhead=Buffer.byteLength(serialized)-bytes(probe),budget=taskModelHistoryBudget(configuration,[],'en',4318);
+    assert.deepEqual(budget,{bytes:TASK_MODEL_LIMITS.historyBytes,tokens:400000-32768-Math.ceil(overhead/3)},`${protocol}/${model}: reasoning and request overhead are deducted independently of profile lookup`);
+    assert.equal(taskRequestFitsModel((400000-32768)*3,{contextTokens:400000,outputTokens:32768}),true);
+    assert.equal(taskRequestFitsModel((400000-32768)*3+1,{contextTokens:400000,outputTokens:32768}),false);
+  }
+});
+test('current OpenAI Responses models reserve output separately from documented context and maximum output',()=>{
+  const probe:AgentTaskJson[]=[taskResponseLanguageContext('en'),{role:'user',content:'.'}];
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra','gpt-6-luna','gpt-6-sol','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']){
+    const configuration:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol:'responses',model};
+    assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:1050000,outputTokens:32768},model);assert.equal(agentResponsesProfile(configuration).maxOutputTokens,128000,model);
+    const serialized=buildTaskModelRequest(configuration,probe,[],4318),wire=JSON.parse(serialized) as Record<string,unknown>;
+    assert.equal(wire.max_output_tokens,32768,model);
+    const overhead=Buffer.byteLength(serialized)-bytes(probe);
+    assert.deepEqual(taskModelHistoryBudget(configuration,[],'en',4318),{bytes:TASK_MODEL_LIMITS.historyBytes,tokens:1050000-32768-Math.ceil(overhead/3)},model);
+    assert.equal(taskRequestFitsModel((1050000-32768)*3,{contextTokens:1050000,outputTokens:32768}),true,model);
+    assert.equal(taskRequestFitsModel((1050000-32768)*3+1,{contextTokens:1050000,outputTokens:32768}),false,model);
+  }
+  for(const model of ['future-text-orbit-2030','gpt-19-experimental']){
+    const configuration:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol:'responses',model};
+    assert.deepEqual(agentModelTokenLimits(configuration),unknown);assert.equal(agentResponsesProfile(configuration).maxOutputTokens,null);assert.equal(taskModelHistoryBudget(configuration,[],'en',4318),TASK_DEFAULT_HISTORY_BUDGET);
+  }
 });
 test('a required Messages model applies the answer reserve and minimum thinking budget within max_tokens',()=>{
   assert.equal(ANTHROPIC_MIN_THINKING_BUDGET_TOKENS,1024);assert.equal(AGENT_THINKING_ANSWER_TOKENS,4096);
@@ -184,7 +222,7 @@ test('the history budget leaves the output limit and the rest of the request, wh
   for(const protocol of ['chat_completions','responses','anthropic_messages'] as const)
     assert.equal(taskModelHistoryBudget(presetConfiguration('ollama',protocol),catalog,'en',4318,{toolLoading:true}),TASK_DEFAULT_HISTORY_BUDGET,`${protocol}: an unknown window keeps the byte budget`);
   const probe:AgentTaskJson[]=[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'.'}];
-  for(const configuration of [DEFAULT_AGENT_CONFIGURATION,{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses' as const},presetConfiguration('anthropic','anthropic_messages')]){
+  for(const configuration of [presetConfiguration('openai','chat_completions'),DEFAULT_AGENT_CONFIGURATION,presetConfiguration('anthropic','anthropic_messages')]){
     const {contextTokens,outputTokens}=agentModelTokenLimits(configuration),label=configuration.protocol;assert.ok(contextTokens!==null);
     const rest=(definitions:readonly TaskToolDefinition[]):number=>Buffer.byteLength(buildTaskModelRequest(configuration,probe,definitions,4318,{toolLoading:true}))-bytes(probe);
     const coreBudget=taskModelHistoryBudget(configuration,core,'zh-Hans',4318,{toolLoading:true}),fullBudget=taskModelHistoryBudget(configuration,catalog,'zh-Hans',4318,{toolLoading:true});

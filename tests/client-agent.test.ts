@@ -21,7 +21,7 @@ const ok=(value: unknown)=>new Response(JSON.stringify({ok:true,data:value}),{he
 
 test('settings, project and doctor accept the actual sanitized preset catalog without making optional metadata required',async()=>{
  for(const protocol of Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]){
- const chosen=protocol==='chat_completions'?DEFAULT_AGENT_CONFIGURATION:{...configuration,protocol};
+ const chosen=protocol===DEFAULT_AGENT_CONFIGURATION.protocol?DEFAULT_AGENT_CONFIGURATION:{...configuration,protocol};
  const actual=sanitizeAgentSettingsResult(adapterSettings(chosen));
  assert.deepEqual(actual.presets,AGENT_PRESETS);
  const client=createAgentClient({env,fetchImpl:async url=>{

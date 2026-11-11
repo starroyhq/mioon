@@ -71,12 +71,13 @@ test('web settings store metadata only, survive restart, expire keys, preserve b
   assert.equal(initial.body.data.presets.length, 10);
   const saved = await f.request(undefined, {method: 'PUT', payload: input(0, {action: 'replace', storage: 'session', value: marker})});
   assert.equal(saved.status, 200); assert.equal(testAgentExecution(saved.body.data).secret.storage, 'session');
+  assert.equal(testAgentExecution(saved.body.data).configuration.protocol, 'responses');assert.equal(testAgentExecution(saved.body.data).configuration.model, 'gpt-6.1-terra');
   assert.equal(JSON.stringify(saved.body).includes(marker), false);
   assert.equal((await fileContents(f.root)).some((content) => content.includes(marker)), false, 'no plaintext key in envelope, SQLite, WAL, or other workspace file');
   const file = path.join(f.root, 'agent-settings/settings.json');
   const envelope = JSON.parse((await readFile(file, 'utf8') as string));
   assert.ok(envelope.services.every((service: {secret: unknown}) => service.secret === null)); assert.equal(envelope.revision, 1); assert.equal(envelope.version, 3);
-  assert.equal(envelope.services.find((service: {serviceKey: string}) => service.serviceKey === 'openai')?.protocol, 'chat_completions');
+  assert.equal(envelope.services.find((service: {serviceKey: string}) => service.serviceKey === 'openai')?.protocol, 'responses');
   const noPersistent = await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'replace', storage: 'persistent', value: marker})});
   assert.equal(noPersistent.status, 409); assert.equal(noPersistent.body.error.code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE');
   await f.restart();
@@ -129,7 +130,7 @@ test('setting a local endpoint performs no provider probe and self-service endpo
 });
 
 test('HTTP projects legacy metadata without rewriting and rejects old clients after an explicit Responses save', async t => {
-  const {protocol, ...legacy} = DEFAULT_AGENT_CONFIGURATION;
+  const {protocol, ...legacy} = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini'};
   const oldCiphertext = Buffer.from('SYNTHETIC_LEGACY_UNUSED_CIPHERTEXT').toString('base64');
   const bytes = JSON.stringify({version: 1, revision: 9, configuration: legacy, secret: {binding:JSON.stringify([legacy.presetId,legacy.platformId,legacy.baseUrl]),encrypted:oldCiphertext}}, null, 2) + '\n';
   const f = await fixture(t, {prepare: async (root: string) => {
@@ -143,7 +144,7 @@ test('HTTP projects legacy metadata without rewriting and rejects old clients af
   assert.equal(testAgentExecution(initial.body.data).secret.configured, false); assert.ok(initial.body.data.notices.includes('LEGACY_KEYS_CLEARED'));
   assert.equal(JSON.stringify(initial.body).includes(oldCiphertext), false);
   assert.equal(await readFile(file, 'utf8'), bytes);
-  const configuration = {...DEFAULT_AGENT_CONFIGURATION, protocol: 'responses' as const};
+  const configuration = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'responses' as const};
   const saved = await f.request(undefined, {method: 'PUT', payload: input(9, {action: 'replace', storage: 'session', value: 'SYNTHETIC_HTTP_MIGRATION_KEY'}, configuration)});
   assert.equal(saved.status, 200); assert.equal(saved.body.data.revision, 10);
   assert.equal(testAgentExecution(saved.body.data).configuration.protocol, 'responses');

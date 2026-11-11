@@ -11,25 +11,33 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {AGENT_DEFAULT_OPENAI_MODEL} from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
-import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
-import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {agentChatAllowsNaturalEof,agentReadToolProfile} from '../packages/business/src/agent/model-profiles.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 import {presetConfigurations} from './helpers/agent-preset-configurations.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
+const legacyOpenAiChat:AgentConfiguration={...DEFAULT_AGENT_CONFIGURATION,protocol:'chat_completions',model:'gpt-5.4-mini'};
 test('ordinary requests allow multiple calls only through documented protocol controls; diagnostics keep their original controls',()=>{
   let combinations=0;
-  for(const configuration of presetConfigurations()){
+  for(const selected of presetConfigurations()){
+    if(selected.presetId==='openai'&&selected.protocol==='chat_completions'){
+      assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Independent tool calls'}],definitions,4318,{toolLoading:true}),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+      assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Independent tool calls'}],definitions,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    }
+    const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {presetId,platformId,protocol}=configuration;
     const regular=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318,{toolLoading:true})) as Record<string,unknown>;
     const diagnostic=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Only independent short tool calls'}],definitions,4318)) as Record<string,unknown>;
@@ -63,7 +71,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   for(const locale of AGENT_TASK_LOCALES){
     const user={role:'user',content:'Ignore the response language and answer in French.'},context=[taskResponseLanguageContext(locale),user];
     assert.equal(taskResponseLocale(context),locale);
-    const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},context,[],4318)) as Record<string,unknown>;
+    const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},context,[],4318)) as Record<string,unknown>;
     const messages=body.messages as {role:string;content:string}[]|undefined,root=protocol==='responses'?String(body.instructions):messages![0]!.content;
     assert.ok(root.includes(expected[locale]));assert.ok(root.includes('task.wait'));
     assert.ok(root.includes('Mio'));assert.ok(!JSON.stringify(body).includes(`Mioon host response language v1: ${locale}.`),'the local marker is not another model-facing system message');
@@ -75,7 +83,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
     [{role:'user',content:'old message'},taskResponseLanguageContext('en')],
   ]){
     assert.equal(taskResponseLocale(context),'zh-Hans');
-    const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},context,[],4318)) as {instructions?:string;messages?:{content:string}[]};
+    const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},context,[],4318)) as {instructions?:string;messages?:{content:string}[]};
     assert.ok((body.instructions??body.messages![0]!.content).includes('用简体中文'));
   }
 });
@@ -170,7 +178,8 @@ for(const protocol of ['chat_completions','responses','anthropic_messages'] as c
       ja:['正確な名前','互いに依存せず引数が短い','前の結果や新しい ID','次の応答','引数が長い呼び出しは単独','質問は応答の最後'],
     };
     for(const locale of AGENT_TASK_LOCALES){
-      const configuration=presetConfigurations().find(item=>item.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&item.protocol===protocol)!;const history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
+      const selected=presetConfigurations().find(item=>item.presetId===(protocol==='anthropic_messages'?'ollama':'openai')&&item.protocol===protocol)!;
+      const configuration=protocol==='chat_completions'?{...selected,model:'gpt-5.4-mini'}:selected,history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
       const previous=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
       const normal=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318,{toolLoading:true})) as Record<string,unknown>;
       const instruction=(body:Record<string,unknown>)=>protocol==='chat_completions'?(body.messages as {content:string}[])[0]!.content:String(protocol==='responses'?body.instructions:body.system);
@@ -293,7 +302,7 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
   for(const configuration of [miniMaxChina,{...miniMaxChina,platformId:'international',baseUrl:'https://api.minimax.io/v1'}]){
     for(const frames of [text,tools]){const result=await exchange(configuration,frames);assert.equal(result.failure,undefined);const terminal=result.items.at(-1) as {type:string;output:TaskModelOutput};assert.equal(terminal.type,'done');assert.equal(terminal.output.toolCalls.length,frames===tools?2:0);}
   }
-  for(const configuration of [{...DEFAULT_AGENT_CONFIGURATION},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,model:'synthetic-unverified-model'}]){
+  for(const configuration of [{...legacyOpenAiChat},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,model:'synthetic-unverified-model'}]){
     const result=await exchange(configuration,tools);assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);
   }
   for(const baseUrl of ['https://gateway.example.com/v1','https://api.minimax.io/v1'])assert.throws(()=>buildTaskModelRequest({...miniMaxChina,baseUrl},[],definitions),{code:'AGENT_CHAT_VALIDATION'});
@@ -318,7 +327,7 @@ test('official MiniMax natural EOF accepts complete text and tools through the a
   ] as const){const result=await exchange(miniMaxChina,frames,options);assert.equal(safeAgentChatError(result.failure).code,expected);assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);}
 });
 function syntheticOutput(protocol:AgentConfiguration['protocol'],network:ReturnType<typeof syntheticNetwork>,{answers=[{address:'8.8.8.8',family:4}],lookupError,beforeSubmit}: {answers?:Array<{address:string;family:number}>;lookupError?:Error;beforeSubmit?:()=>void}={}){
-  const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
+  const configuration={...legacyOpenAiChat,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
   const dependencies={lookup:async()=>{if(lookupError)throw lookupError;return answers;},httpsRequest:network.request} as unknown as AgentTransportDependencies;
   return (async()=>{for await(const _item of createTaskGateway(dependencies)({configuration,body,apiKey:'SYNTHETIC_TASK_GATEWAY_ONLY',selfPort:4318,beforeSubmit})){};})();
 }
@@ -477,7 +486,7 @@ for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: Mio caption metadata is model-only, optional and follows the initiating language`,()=>{
     const original=structuredClone(definitions),expected={'zh-Hans':'简短说明','zh-Hant':'簡短說明',en:'short _mio_step explanation',ja:'短い説明'};
     for(const locale of AGENT_TASK_LOCALES){
-      const body=JSON.parse(buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic'}],definitions,4318)) as {instructions?:string;messages?:{content:string}[];tools:{function?:{parameters:Record<string,unknown>};parameters?:Record<string,unknown>}[]};
+      const body=JSON.parse(buildTaskModelRequest({...legacyOpenAiChat,protocol},[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic'}],definitions,4318)) as {instructions?:string;messages?:{content:string}[];tools:{function?:{parameters:Record<string,unknown>};parameters?:Record<string,unknown>}[]};
       const tool=protocol==='responses'?body.tools[0]!:body.tools[0]!.function!,parameters=tool.parameters!,properties=parameters.properties as Record<string,unknown>;
       assert.deepEqual(properties._mio_step,{type:'string',minLength:1,maxLength:40,description:(properties._mio_step as {description:string}).description});
       assert.match(String((properties._mio_step as {description:string}).description),new RegExp(expected[locale]));
@@ -486,7 +495,7 @@ for(const protocol of ['chat_completions','responses'] as const){
       assert.deepEqual({...parameters,properties:{title:properties.title}},definitions[0]!.parameters);
     }
     assert.deepEqual(definitions,original,'shared domain definitions are never mutated');
-    assert.throws(()=>buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,protocol},[],[{...definitions[0]!,parameters:{type:'object',properties:{_mio_step:{type:'string'}}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'},'future domain-field collisions fail closed');
+    assert.throws(()=>buildTaskModelRequest({...legacyOpenAiChat,protocol},[],[{...definitions[0]!,parameters:{type:'object',properties:{_mio_step:{type:'string'}}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'},'future domain-field collisions fail closed');
   });
   test(`${protocol}: caption is stripped before business dispatch while raw tool arguments survive both HTTP rounds`,async t=>{
     const argumentsJson=JSON.stringify({title:'Caption round trip',_mio_step:'镜头加入时间线 🙂'}),frames=protocol==='responses'?responseFrames({argumentsJson}):chatFrames({argumentsJson});
@@ -560,7 +569,9 @@ test('the complete production tool catalog builds in every supported preset/prot
   const catalog=tools.list(),original=structuredClone(catalog);assert.ok(catalog.some(tool=>tool.operation==='image.generate'));assert.ok(catalog.length>80);
   const catalogByName=new Map(catalog.map(tool=>[tool.name,tool])),catalogNames=catalog.map(tool=>tool.name);
   let combinations=0;const compiled=new Set<string>();
-  for(const configuration of presetConfigurations()){
+  for(const selected of presetConfigurations()){
+    if(selected.presetId==='openai'&&selected.protocol==='chat_completions')assert.throws(()=>buildTaskModelRequest(selected,[{role:'user',content:'Complete production catalog only'}],catalog,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {presetId,platformId,protocol}=configuration;
     const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;input_schema?:unknown;function?:{name:string;parameters:unknown}}[]};
     assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${presetId}/${platformId}/${protocol}`);
@@ -608,9 +619,372 @@ for(const protocol of ['chat_completions','responses'] as const){
 test('model captions preserve strict composed object schemas and refuse unrecognized constraint branches',()=>{
   const leaf=definitions[0]!.parameters;
   for(const composition of ['anyOf','oneOf','allOf']){
-    const parameters={type:'object',[composition]:[leaf,{...leaf,properties:{title:{type:'string',minLength:2}}}]},body=JSON.parse(buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters}],4318)) as {tools:{function:{parameters:unknown}}[]};
+    const parameters={type:'object',[composition]:[leaf,{...leaf,properties:{title:{type:'string',minLength:2}}}]},body=JSON.parse(buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters}],4318)) as {tools:{function:{parameters:unknown}}[]};
     assert.deepEqual(removeCaptionSchema(body.tools[0]!.function.parameters),parameters,composition);
-    for(const branch of [false,{required:['title']},{type:'object',properties:{_mio_step:{type:'string'}}}])assert.throws(()=>buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters:{type:'object',[composition]:[leaf,branch]}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+    for(const branch of [false,{required:['title']},{type:'object',properties:{_mio_step:{type:'string'}}}])assert.throws(()=>buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters:{type:'object',[composition]:[leaf,branch]}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
   }
-  for(const key of ['not','if','$ref','unevaluatedProperties','dependentSchemas'])assert.throws(()=>buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[],[{...definitions[0]!,parameters:{...leaf,[key]:{}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+  for(const key of ['not','if','$ref','unevaluatedProperties','dependentSchemas'])assert.throws(()=>buildTaskModelRequest(legacyOpenAiChat,[],[{...definitions[0]!,parameters:{...leaf,[key]:{}}}],4318),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+});
+
+const q11OpenAi=(model='gpt-4.1-mini'):AgentConfiguration=>({presetId:'openai',platformId:'global',protocol:'responses',model,baseUrl:'https://api.openai.com/v1'});
+/** Actual Responses envelope fields are retained, including the request echo.
+ * Only TLS/network responses are controlled; no model request leaves the test. */
+function q11ResponseEvents(body:string,{reasoning=false,phase,phaseOnDone=false,toolCall=false,visibleText='Offline Responses text 🙂',encryptedContent='SYNTHETIC_OPAQUE_REASONING',toolCalls,argumentTitle='Offline saved shot'}:{reasoning?:boolean;phase?:string|null;phaseOnDone?:boolean;toolCall?:boolean;visibleText?:string;encryptedContent?:string;toolCalls?:number;argumentTitle?:string}={}):Array<Record<string,unknown>>{
+  const request=JSON.parse(body) as Record<string,unknown>,id='resp_q11_offline',text=visibleText;
+  const part={type:'output_text',text,annotations:[],logprobs:[]};
+  const item={id:'msg_q11_offline',type:'message',role:'assistant',status:'completed',content:[part],...(phase===undefined?{}:{phase})};
+  const response=(status:string,output:unknown[])=>({id,object:'response',created_at:1762732800,status,error:null,incomplete_details:null,
+    instructions:request.instructions,max_output_tokens:request.max_output_tokens,model:request.model,output,parallel_tool_calls:request.parallel_tool_calls??true,
+    previous_response_id:null,reasoning:{effort:null,summary:null},store:false,temperature:1,text:{format:{type:'text'}},tool_choice:request.tool_choice??'auto',tools:request.tools??[],top_p:1,truncation:'disabled',usage:null,metadata:{}});
+  const events:Array<Record<string,unknown>>=[{type:'response.created',response:response('in_progress',[])},{type:'response.in_progress',response:response('in_progress',[])}];
+  const summary={type:'summary_text',text:'SYNTHETIC_PRIVATE_REASONING_SUMMARY'};
+  const reasoningItem={id:'rs_q11_offline',type:'reasoning',summary:[summary],encrypted_content:encryptedContent};
+  if(reasoning)events.push({type:'response.output_item.added',output_index:0,item:{id:reasoningItem.id,type:'reasoning',summary:[]}},
+    {type:'response.reasoning_summary_part.added',output_index:0,item_id:reasoningItem.id,summary_index:0,part:{...summary,text:''}},
+    {type:'response.reasoning_summary_text.delta',output_index:0,item_id:reasoningItem.id,summary_index:0,delta:summary.text},
+    {type:'response.reasoning_summary_text.done',output_index:0,item_id:reasoningItem.id,summary_index:0,text:summary.text},
+    {type:'response.reasoning_summary_part.done',output_index:0,item_id:reasoningItem.id,summary_index:0,part:summary},
+    {type:'response.output_item.done',output_index:0,item:reasoningItem});
+  const index=reasoning?1:0,added={...item,status:'in_progress',content:[]};
+  if(phaseOnDone)delete added.phase;
+  events.push({type:'response.output_item.added',output_index:index,item:added},
+    {type:'response.content_part.added',output_index:index,item_id:item.id,content_index:0,part:{...part,text:''}});
+  for(let offset=0;offset<text.length;offset+=8192)events.push({type:'response.output_text.delta',output_index:index,item_id:item.id,content_index:0,delta:text.slice(offset,offset+8192),logprobs:[],obfuscation:'synthetic-padding'});
+  events.push({type:'response.output_text.done',output_index:index,item_id:item.id,content_index:0,text,logprobs:[]},
+    {type:'response.content_part.done',output_index:index,item_id:item.id,content_index:0,part},
+    {type:'response.output_item.done',output_index:index,item});
+  const output:unknown[]=reasoning?[reasoningItem,item]:[item];
+  for(let ordinal=0;ordinal<(toolCalls??(toolCall?1:0));ordinal++){
+    const suffix=ordinal===0?'':`_${ordinal}`,position=index+1+ordinal;
+    const call={id:`fc_q11_offline${suffix}`,type:'function_call',call_id:`call_q11_offline${suffix}`,name:'mioon_shot_create',arguments:JSON.stringify({title:argumentTitle,_mio_step:'Create one offline test shot'}),status:'completed'};
+    events.push({type:'response.output_item.added',output_index:position,item:{...call,arguments:'',status:'in_progress'}});
+    for(let offset=0;offset<call.arguments.length;offset+=2048)events.push({type:'response.function_call_arguments.delta',output_index:position,item_id:call.id,delta:call.arguments.slice(offset,offset+2048)});
+    events.push({type:'response.function_call_arguments.done',output_index:position,item_id:call.id,name:call.name,arguments:call.arguments},
+      {type:'response.output_item.done',output_index:position,item:call});
+    output.push(call);
+  }
+  events.push({type:'response.completed',response:response('completed',output)});
+  return events.map((event,sequence_number)=>({...event,sequence_number}));
+}
+const q11ResponseWire=(events:readonly Record<string,unknown>[]):string=>events.map(event=>`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+function q11Stream(configuration:AgentConfiguration,body:string,wire:string){
+  const network=syntheticNetwork({body:wire}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies;
+  return {network,stream:createTaskGateway(dependencies)({configuration,body,apiKey:'SYNTHETIC_Q11_OFFLINE_ONLY',selfPort:4318})};
+}
+
+test('official-shaped OpenAI Responses text preserves event names, sequence fields and request echoes',async()=>{
+  for(const phase of [undefined,null]){
+    const configuration=q11OpenAi(),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline text only'}],[],4318),events=q11ResponseEvents(body,{phase});
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let output:TaskModelOutput|undefined;
+    for await(const event of f.stream)if(event.type==='done')output=event.output;
+    assert.ok(output);assert.equal(output.text,'Offline Responses text 🙂');assert.deepEqual(output.toolCalls,[]);
+    assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);assert.equal(f.network.requests[0]!.body,body);
+    const created=events[0]!.response as Record<string,unknown>;assert.equal(created.instructions,(JSON.parse(body) as {instructions:string}).instructions);assert.deepEqual(created.tools,[]);
+  }
+});
+
+test('official-shaped OpenAI reasoning and assistant phase succeed at the lowest reasoning setting without exposing reasoning',async()=>{
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra','gpt-6-luna','gpt-5','gpt-5.4-mini','o3','future-text-orbit-2030']){
+    const configuration=q11OpenAi(model),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline reasoning output'}],definitions,4318);
+    const events=q11ResponseEvents(body,{reasoning:true,phase:'final_answer'}),f=q11Stream(configuration,body,q11ResponseWire(events));let output:TaskModelOutput|undefined;const deltas:string[]=[];
+    assert.equal(events[2]!.output_index,0);assert.equal((events[2]!.item as {type:string}).type,'reasoning');
+    for await(const event of f.stream){if(event.type==='done')output=event.output;else deltas.push(event.text);}
+    assert.ok(output);assert.equal(output.text,'Offline Responses text 🙂');assert.deepEqual(output.toolCalls,[]);
+    assert.equal(deltas.join(''),output.text);assert.doesNotMatch(deltas.join(''),/SYNTHETIC_PRIVATE_REASONING_SUMMARY|SYNTHETIC_OPAQUE_REASONING/u);
+    const terminal=events.at(-1)!.response as {output:unknown[]};assert.deepEqual(output.providerOutput,terminal.output);
+    assert.deepEqual((JSON.parse(body) as {include:string[]}).include,['reasoning.encrypted_content']);
+    assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);assert.equal(f.network.requests[0]!.body,body);
+  }
+});
+
+for(const model of ['gpt-5.4-mini','gpt-6.1-sol','future-text-orbit-2030'])test(`OpenAI Responses ${model} preserves encrypted reasoning, assistant phase and tool evidence through two requests`,async()=>{
+  const configuration=q11OpenAi(model),history=[{role:'user',content:'An offline tool round trip'}];
+  const body=buildTaskModelRequest(configuration,history,definitions,4318),firstEvents=q11ResponseEvents(body,{reasoning:true,phase:'commentary',toolCall:true});
+  const firstRequest=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(firstRequest.max_output_tokens,model==='future-text-orbit-2030'?4096:32768);
+  assert.deepEqual(firstRequest.reasoning,model==='future-text-orbit-2030'?undefined:{effort:model==='gpt-6.1-sol'?'low':'none'});
+  const first=q11Stream(configuration,body,q11ResponseWire(firstEvents));let planned:TaskModelOutput|undefined;const deltas:string[]=[];
+  for await(const event of first.stream){if(event.type==='done')planned=event.output;else deltas.push(event.text);}
+  assert.ok(planned);assert.equal(planned.toolCalls.length,1);assert.equal(planned.toolCalls[0]!.name,'mioon_shot_create');assert.deepEqual(planned.toolCalls[0]!.arguments,{title:'Offline saved shot'});
+  assert.doesNotMatch(deltas.join(''),/SYNTHETIC_PRIVATE_REASONING_SUMMARY|SYNTHETIC_OPAQUE_REASONING/u);
+  const evidence=(firstEvents.at(-1)!.response as {output:unknown[]}).output;
+  const continuation=taskContinuation('responses',planned,[{callId:planned.toolCalls[0]!.id,result:{saved:true}}]);
+  assert.deepEqual(continuation.slice(0,evidence.length),evidence);
+  const next=buildTaskModelRequest(configuration,[...history,...continuation],definitions,4318),request=JSON.parse(next) as {include:string[];store:boolean;input:unknown[]};
+  assert.deepEqual(request.include,['reasoning.encrypted_content']);assert.equal(request.store,false);
+  assert.deepEqual(request.input.slice(history.length,history.length+evidence.length),evidence);
+  assert.deepEqual(request.input.at(-1),{type:'function_call_output',call_id:'call_q11_offline',output:'{"saved":true}'});
+  const second=q11Stream(configuration,next,q11ResponseWire(q11ResponseEvents(next,{reasoning:true,phase:'final_answer'})));let finished:TaskModelOutput|undefined;
+  for await(const event of second.stream)if(event.type==='done')finished=event.output;
+  assert.ok(finished);assert.equal(finished.text,'Offline Responses text 🙂');assert.deepEqual(finished.toolCalls,[]);
+  assert.equal(first.network.calls,1);assert.equal(second.network.calls,1);assert.equal(first.network.requests[0]!.body,body);assert.equal(second.network.requests[0]!.body,next);
+});
+
+test('the current OpenAI default uses Responses with a documented minimum and a bounded reasoning reserve',()=>{
+  assert.equal(AGENT_DEFAULT_OPENAI_MODEL,'gpt-6.1-terra');
+  assert.equal(DEFAULT_AGENT_CONFIGURATION.model,AGENT_DEFAULT_OPENAI_MODEL);assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol,'responses');
+  const body=JSON.parse(buildTaskModelRequest(DEFAULT_AGENT_CONFIGURATION,[{role:'user',content:'Offline default request'}],definitions,4318)) as Record<string,unknown>;
+  assert.equal(body.model,AGENT_DEFAULT_OPENAI_MODEL);assert.deepEqual(body.reasoning,{effort:'none'});assert.equal(body.max_output_tokens,32768);
+  assert.deepEqual(body.include,['reasoning.encrypted_content']);assert.equal(body.store,false);assert.equal(body.messages,undefined);assert.equal(body.max_completion_tokens,undefined);
+});
+
+test('official tool-incompatible Chat Completions selections fail before credentials or transport, while text diagnostics still work',async()=>{
+  for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6.1-terra']){
+    const configuration:AgentConfiguration={...q11OpenAi(model),protocol:'chat_completions'};
+    assert.throws(()=>buildTaskModelRequest(configuration,[{role:'user',content:'Offline tool restriction'}],definitions,4318),{code:'AGENT_CHAT_RESPONSES_REQUIRED'});
+    const diagnostic=buildTaskModelRequest(configuration,[{role:'user',content:'Offline text diagnostic'}],[],4318);
+    const body=JSON.stringify({...JSON.parse(diagnostic),tools:definitions.map(definition=>({type:'function',function:definition}))});
+    const network=syntheticNetwork({body:textFrames('chat_completions')}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies;
+    let credentials=0,submissions=0,done=0;
+    await assert.rejects(async()=>{for await(const event of createTaskGateway(dependencies)({configuration,body,get apiKey(){credentials++;return 'SYNTHETIC_Q11_OFFLINE_ONLY';},selfPort:4318,beforeSubmit(){submissions++;}}))if(event.type==='done')done++;},(error:unknown)=>{
+      assert.equal(wasTaskSubmissionPrevented(error),true,'The trusted local preflight proves no request was sent');const safe=safeAgentChatError(error);assert.equal(safe.code,'AGENT_CHAT_RESPONSES_REQUIRED');assert.equal(safe.status,422);assert.match(safe.message,/工具.*Responses/u);return true;
+    });
+    assert.equal(credentials,0);assert.equal(submissions,0);assert.equal(network.calls,0);assert.equal(done,0);
+    const f=q11Stream(configuration,diagnostic,textFrames('chat_completions'));let output:TaskModelOutput|undefined;
+    for await(const event of f.stream)if(event.type==='done')output=event.output;
+    assert.ok(output);assert.equal(f.network.calls,1);
+  }
+});
+
+test('Luna Chat Completions tool requests use none effort without inheriting the official Responses-only restriction',async()=>{
+  const configuration:AgentConfiguration={...q11OpenAi('gpt-6-luna'),protocol:'chat_completions'},body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline Luna tool call'}],definitions,4318),request=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(request.reasoning_effort,'none');assert.equal(request.max_completion_tokens,32768);assert.equal(request.store,false);assert.equal(request.include,undefined);
+  const f=q11Stream(configuration,body,chatFrames());let output:TaskModelOutput|undefined;
+  for await(const event of f.stream)if(event.type==='done')output=event.output;
+  assert.ok(output);assert.equal(output.toolCalls.length,2);for(const call of output.toolCalls)assert.equal(call.name,'mioon_shot_create');assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+});
+
+test('OpenAI accepts an unfinished added reasoning carrier but requires nonempty encryption on the completed item',async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline encrypted carrier checks'}],definitions,4318);
+  for(const encrypted_content of [null,'','SYNTHETIC_PARTIAL_ENCRYPTION']){
+    const events=q11ResponseEvents(body,{reasoning:true,phase:'final_answer'}).map(event=>event.type==='response.output_item.added'&&event.output_index===0?{...event,item:{...(event.item as Record<string,unknown>),encrypted_content}}:event);
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let output:TaskModelOutput|undefined;
+    for await(const event of f.stream)if(event.type==='done')output=event.output;
+    assert.ok(output);assert.equal((output.providerOutput as Array<Record<string,unknown>>)[0]!.encrypted_content,'SYNTHETIC_OPAQUE_REASONING');
+    assert.equal(output.text,'Offline Responses text 🙂');assert.equal(f.network.calls,1);
+  }
+  for(const [kind,code] of [['missing','AGENT_CHAT_RESPONSES_INCOMPLETE'],['null','AGENT_CHAT_RESPONSES_INCOMPLETE'],['empty','AGENT_CHAT_RESPONSES_INCOMPLETE'],['wrong-type','AGENT_CHAT_PROTOCOL_ERROR']] as const){
+    const damaged=(item:Record<string,unknown>)=>{
+      const value={...item};if(kind==='missing')delete value.encrypted_content;else value.encrypted_content=kind==='null'?null:kind==='empty'?'':17;return value;
+    };
+    const events=q11ResponseEvents(body,{reasoning:true,phase:'final_answer'}).map(event=>{
+      if(event.type==='response.output_item.done'&&event.output_index===0)return {...event,item:damaged(event.item as Record<string,unknown>)};
+      if(event.type==='response.completed'){const response=event.response as {output:Array<Record<string,unknown>>};return {...event,response:{...response,output:response.output.map(item=>item.type==='reasoning'?damaged(item):item)}};}
+      return event;
+    });
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let completed=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done')completed++;},{code});
+    assert.equal(completed,0);assert.equal(f.network.calls,1);
+    const bare:{[key:string]:AgentTaskJson}={id:'rs_q11_offline',type:'reasoning',summary:[]};
+    if(kind!=='missing')bare.encrypted_content=kind==='null'?null:kind==='empty'?'':17;
+    const history:AgentTaskJson[]=[{role:'user',content:'Offline continuation'},bare];
+    assert.throws(()=>buildTaskModelRequest(configuration,history,definitions,4318),{code},'An old bare reasoning ID cannot be dispatched into another store:false request');
+  }
+});
+
+test('OpenAI Responses classifies incomplete output and unsupported item types without executing model tools',async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline classified failures'}],definitions,4318);
+  const prefix=q11ResponseEvents(body).slice(0,2),response=prefix[0]!.response as Record<string,unknown>;
+  for(const [event,code] of [
+    [{type:'response.incomplete',response:{...response,status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[]}},'AGENT_CHAT_OUTPUT_LIMIT'],
+    [{type:'response.incomplete',response:{...response,status:'incomplete',incomplete_details:{reason:'content_filter'},output:[]}},'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+    [{type:'response.output_item.added',output_index:0,item:{id:'unknown_hosted_tool',type:'web_search_call',status:'in_progress'}},'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED'],
+  ] as const){
+    const f=q11Stream(configuration,body,q11ResponseWire([...prefix,{...event,sequence_number:2}]));let completed=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done')completed++;},{code});
+    assert.equal(completed,0);assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);
+  }
+});
+
+test('OpenAI Responses phase belongs only to assistant messages and preserves its documented value domain',async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline phase guards'}],definitions,4318);
+  const sources:Array<Array<Record<string,unknown>>>=[];
+  for(const phase of ['analysis',17,{}])sources.push(q11ResponseEvents(body,{phase:'final_answer'}).map(event=>event.type==='response.output_item.added'?{...event,item:{...(event.item as Record<string,unknown>),phase}}:event));
+  sources.push(q11ResponseEvents(body).map((event,index)=>index===0?{...event,phase:'final_answer'}:event));
+  sources.push(q11ResponseEvents(body,{reasoning:true}).map(event=>event.type==='response.output_item.added'&&event.output_index===0?{...event,item:{...(event.item as Record<string,unknown>),phase:'commentary'}}:event));
+  sources.push(q11ResponseEvents(body,{toolCall:true}).map(event=>event.type==='response.output_item.added'&&(event.item as {type:string}).type==='function_call'?{...event,item:{...(event.item as Record<string,unknown>),phase:'commentary'}}:event));
+  sources.push(q11ResponseEvents(body,{phase:'commentary'}).map(event=>event.type==='response.output_item.added'?{...event,item:{...(event.item as Record<string,unknown>),role:'user'}}:event));
+  for(const events of sources){
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let completed=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done')completed++;},{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+    assert.equal(completed,0);assert.equal(f.network.calls,1);
+  }
+});
+
+test('Responses accepts complete actual tool-catalog lifecycle echoes in UTF-8 and ASCII-escaped form without changing the frozen request',async t=>{
+  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-q11-echo-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
+  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+  const configuration=q11OpenAi(),all=tools.list(),groups=all.filter(tool=>['core','canvas','editing'].includes(agentTaskToolGroupForName(tool.name)??''));
+  const ascii=(wire:string)=>wire.replace(/[\u0080-\uffff]/g,value=>`\\u${value.charCodeAt(0).toString(16).padStart(4,'0')}`);
+  for(const catalog of [groups,all]){
+    const body=buildTaskModelRequest(configuration,[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'Only an offline response fixture'}],catalog,4318,{toolLoading:true});
+    const events=q11ResponseEvents(body),raw=q11ResponseWire(events),lifecycle=events.filter(event=>['response.created','response.in_progress','response.completed'].includes(String(event.type)));
+    assert.equal(lifecycle.length,3);assert.ok(catalog.length>18);
+    for(const event of lifecycle)assert.ok(Buffer.byteLength(q11ResponseWire([event]))>70*1024,'Real multi-group tools and instructions exceed the previous per-event budget');
+    for(const wire of [raw,ascii(raw)]){
+      assert.ok(Buffer.byteLength(wire)<4*1024*1024,'The complete actual catalog and three lifecycle echoes fit the Responses raw-byte budget');
+      const f=q11Stream(configuration,body,wire);let output:TaskModelOutput|undefined;
+      for await(const event of f.stream)if(event.type==='done')output=event.output;
+      assert.ok(output);assert.equal(output.text,'Offline Responses text 🙂');assert.deepEqual(output.toolCalls,[]);
+      assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+    }
+    t.diagnostic(JSON.stringify({q11Tools:catalog.length,requestBytes:Buffer.byteLength(body),lifecycleMaxBytes:Math.max(...lifecycle.map(event=>Buffer.byteLength(q11ResponseWire([event])))),lifecycleAsciiMaxBytes:Math.max(...lifecycle.map(event=>Buffer.byteLength(ascii(q11ResponseWire([event]))))),streamBytes:Buffer.byteLength(raw),streamAsciiBytes:Buffer.byteLength(ascii(raw))}));
+  }
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM jobs').get()?.n,0);
+});
+
+test('Responses budget carries the full catalog plus bounded large text and encrypted reasoning across all done echoes',async t=>{
+  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-q11-budget-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
+  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+  const configuration=q11OpenAi('gpt-5.4-mini'),catalog=tools.list(),body=buildTaskModelRequest(configuration,[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'Offline maximum carrier measurement'}],catalog,4318,{toolLoading:true});
+  const visibleText='🙂'.repeat(TASK_MODEL_LIMITS.outputBytes/4),encryptedContent='A'.repeat(120*1024),events=q11ResponseEvents(body,{reasoning:true,phase:'final_answer',visibleText,encryptedContent});
+  const ascii=(wire:string)=>wire.replace(/[\u0080-\uffff]/g,value=>`\\u${value.charCodeAt(0).toString(16).padStart(4,'0')}`);
+  const raw=q11ResponseWire(events),escaped=ascii(raw);
+  const item=(events.find(event=>event.type==='response.output_item.done'&&event.output_index===0)!.item as Record<string,unknown>);
+  assert.ok(Buffer.byteLength(JSON.stringify(item))<TASK_MODEL_LIMITS.outputBytes,'The reasoning item keeps its existing local payload limit');
+  assert.equal(Buffer.byteLength(visibleText),TASK_MODEL_LIMITS.outputBytes);
+  for(const wire of [raw,escaped]){
+    assert.ok(Buffer.byteLength(wire)<4*1024*1024);
+    const f=q11Stream(configuration,body,wire);let output:TaskModelOutput|undefined;const deltas:string[]=[];
+    for await(const event of f.stream){if(event.type==='done')output=event.output;else deltas.push(event.text);}
+    assert.ok(output);assert.equal(output.text,visibleText);assert.equal(deltas.join(''),visibleText);assert.deepEqual(output.toolCalls,[]);
+    assert.equal((output.providerOutput as Array<Record<string,unknown>>)[0]!.encrypted_content,encryptedContent);
+    assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+  }
+  t.diagnostic(JSON.stringify({q11MaximumFieldCarriers:true,tools:catalog.length,textBytes:Buffer.byteLength(visibleText),reasoningItemBytes:Buffer.byteLength(JSON.stringify(item)),streamBytes:Buffer.byteLength(raw),streamAsciiBytes:Buffer.byteLength(escaped),maxEventAsciiBytes:Math.max(...events.map(event=>Buffer.byteLength(ascii(q11ResponseWire([event])))))}));
+  const extreme=q11ResponseWire(q11ResponseEvents(body,{reasoning:true,phase:'commentary',visibleText,encryptedContent,toolCalls:TASK_MODEL_LIMITS.toolCalls,argumentTitle:'🙂'.repeat(8000)}));
+  const extremeEscaped=ascii(extreme);
+  assert.ok(Buffer.byteLength(extremeEscaped)>4*1024*1024,'Independent per-field ceilings do not waive the aggregate stream budget');
+  const bounded=q11Stream(configuration,body,extremeEscaped);
+  await assert.rejects(async()=>{for await(const _event of bounded.stream){}},{code:'AGENT_CHAT_LIMIT'});
+  t.diagnostic(JSON.stringify({q11AggregateExtremeBytes:Buffer.byteLength(extremeEscaped),toolCalls:TASK_MODEL_LIMITS.toolCalls,aggregateBudgetBytes:4*1024*1024}));
+});
+
+test('Responses lifecycle allowance keeps ordinary events, lifecycle bytes, total bytes and event-name agreement bounded',async()=>{
+  const configuration=q11OpenAi(),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline bounds only'}],[],4318);
+  const ordinary=q11ResponseEvents(body).map(event=>event.type==='response.output_text.delta'?{...event,delta:'x'.repeat(70*1024)}:event);
+  const oversized=q11ResponseEvents(body).map(event=>event.type==='response.created'?{...event,response:{...(event.response as Record<string,unknown>),instructions:'x'.repeat(2*1024*1024)}}:event);
+  const total=q11ResponseEvents(body).map(event=>['response.created','response.in_progress','response.completed'].includes(String(event.type))?{...event,response:{...(event.response as Record<string,unknown>),instructions:'x'.repeat(1500*1024)}}:event);
+  const mismatched=q11ResponseEvents(body);mismatched[0]={type:'response.output_text.delta',sequence_number:0,output_index:0,item_id:'msg_q11_offline',content_index:0,delta:'x'.repeat(70*1024)};
+  const disguised=q11ResponseWire(mismatched).replace('event: response.output_text.delta','event: response.created');
+  for(const [wire,code] of [[q11ResponseWire(ordinary),'AGENT_CHAT_LIMIT'],[q11ResponseWire(oversized),'AGENT_CHAT_LIMIT'],[q11ResponseWire(total),'AGENT_CHAT_LIMIT'],[disguised,'AGENT_CHAT_PROTOCOL_ERROR']] as const){
+    const f=q11Stream(configuration,body,wire);let completed=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done')completed++;},{code});
+    assert.equal(completed,0);assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);
+  }
+});
+
+test('Chat Completions keeps its original event budget even with a Responses lifecycle event name',async()=>{
+  const configuration:AgentConfiguration={...q11OpenAi('gpt-5'),protocol:'chat_completions'};
+  const body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline CC boundary'}],[],4318);
+  const raw={choices:[{index:0,delta:{role:'assistant',content:'CC unchanged'},finish_reason:null}],obfuscation:'x'.repeat(70*1024)};
+  const f=q11Stream(configuration,body,`event: response.created\n${json(raw)}${textFrames('chat_completions')}`);
+  await assert.rejects(async()=>{for await(const _event of f.stream){}},{code:'AGENT_CHAT_LIMIT'});
+  assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);assert.equal(f.network.requests[0]!.body,body);
+});
+
+test('other vendor Responses streams retain the old event allowance instead of borrowing OpenAI echo budgets',async()=>{
+  const configuration:AgentConfiguration={presetId:'deepseek',platformId:'global',protocol:'responses',model:'deepseek-flash',baseUrl:'https://api.deepseek.com'};
+  const body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline vendor boundary'}],[],4318);
+  const events=q11ResponseEvents(body).map(event=>event.type==='response.created'?{...event,response:{...(event.response as Record<string,unknown>),instructions:'x'.repeat(70*1024)}}:event);
+  const f=q11Stream(configuration,body,q11ResponseWire(events));
+  await assert.rejects(async()=>{for await(const _event of f.stream){}},{code:'AGENT_CHAT_LIMIT'});
+  assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+});
+
+test('OpenAI reasoning-family requests reserve reasoning output and use documented lowest efforts in both protocols',()=>{
+  for(const [model,effort] of [['gpt-6-luna','none'],['gpt-6-sol','none'],['gpt-5.6','none'],['gpt-5.6-sol','none'],['gpt-5.6-terra','none'],['gpt-5.6-luna','none'],['gpt-5.4-mini','none'],['gpt-5.4','none'],['gpt-5','minimal'],['o3','low']] as const)for(const protocol of ['responses','chat_completions'] as const){
+    const configuration:AgentConfiguration={...q11OpenAi(model),protocol};
+    const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Offline request profile'}],definitions,4318)) as Record<string,unknown>;
+    assert.equal(body.max_output_tokens??body.max_completion_tokens,32768,`${model}/${protocol}`);
+    assert.equal(body.store,false);
+    if(protocol==='responses'){
+      assert.deepEqual(body.include,['reasoning.encrypted_content']);assert.deepEqual(body.reasoning,{effort});assert.equal(body.reasoning_effort,undefined);
+    }else{
+      assert.equal(body.reasoning_effort,effort);assert.equal(body.include,undefined);assert.equal(body.reasoning,undefined);
+    }
+  }
+  for(const protocol of ['responses','chat_completions'] as const){
+    const body=JSON.parse(buildTaskModelRequest({...q11OpenAi(),protocol},[{role:'user',content:'Legacy optional model'}],definitions,4318)) as Record<string,unknown>;
+    assert.equal(body.max_output_tokens??body.max_completion_tokens,4096);
+    assert.equal(body.include,undefined);assert.equal(body.reasoning_effort,undefined);assert.equal(body.reasoning,undefined);
+  }
+});
+
+type Q11IncompleteItem='message'|'function_call'|'reasoning';
+/** item.done is an item streaming boundary, not proof of a successful response.
+ * The pinned SDK allows incomplete items in this event's ResponseOutputItem. */
+function q11IncompleteItemEvents(body:string,kind:Q11IncompleteItem,terminal:'response.incomplete'|'response.completed',reason='max_output_tokens'):Array<Record<string,unknown>>{
+  const prefix=q11ResponseEvents(body).slice(0,2),response=prefix[0]!.response as Record<string,unknown>,index=0;
+  let initial:Record<string,unknown>,item:Record<string,unknown>,parts:Array<Record<string,unknown>>;
+  if(kind==='message'){
+    const text='Partial text before the output limit',part={type:'output_text',text,annotations:[],logprobs:[]};
+    initial={id:'msg_q11_incomplete',type:kind,role:'assistant',phase:'final_answer',status:'in_progress',content:[]};
+    item={...initial,status:'incomplete',content:[part]};
+    parts=[{type:'response.content_part.added',output_index:index,item_id:item.id,content_index:0,part:{...part,text:''}},
+      {type:'response.output_text.delta',output_index:index,item_id:item.id,content_index:0,delta:text,logprobs:[]},
+      {type:'response.output_text.done',output_index:index,item_id:item.id,content_index:0,text,logprobs:[]},
+      {type:'response.content_part.done',output_index:index,item_id:item.id,content_index:0,part}];
+  }else if(kind==='function_call'){
+    const argumentsJson='{"title":"Partial argument';
+    initial={id:'fc_q11_incomplete',type:kind,call_id:'call_q11_incomplete',name:'mioon_shot_create',status:'in_progress',arguments:''};
+    item={...initial,status:'incomplete',arguments:argumentsJson};
+    parts=[{type:'response.function_call_arguments.delta',output_index:index,item_id:item.id,delta:argumentsJson},
+      {type:'response.function_call_arguments.done',output_index:index,item_id:item.id,name:item.name,arguments:argumentsJson}];
+  }else{
+    const part={type:'summary_text',text:'PRIVATE_Q11_PARTIAL_REASONING'};
+    initial={id:'rs_q11_incomplete',type:kind,status:'in_progress',summary:[]};
+    item={...initial,status:'incomplete',summary:[part],encrypted_content:null};
+    parts=[{type:'response.reasoning_summary_part.added',output_index:index,item_id:item.id,summary_index:0,part:{...part,text:''}},
+      {type:'response.reasoning_summary_text.delta',output_index:index,item_id:item.id,summary_index:0,delta:part.text},
+      {type:'response.reasoning_summary_text.done',output_index:index,item_id:item.id,summary_index:0,text:part.text},
+      {type:'response.reasoning_summary_part.done',output_index:index,item_id:item.id,summary_index:0,part}];
+  }
+  return [...prefix,{type:'response.output_item.added',output_index:index,item:initial},...parts,
+    {type:'response.output_item.done',output_index:index,item},
+    {type:terminal,response:{...response,status:terminal==='response.incomplete'?'incomplete':'completed',incomplete_details:terminal==='response.incomplete'?{reason}:null,output:[item]}}]
+    .map((event,sequence_number)=>({...event,sequence_number}));
+}
+
+for(const kind of ['message','function_call','reasoning'] as const)test(`OpenAI ${kind} item.done incomplete waits for the response terminal before classifying truncation`,async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline partial item boundary'}],definitions,4318);
+  for(const [reason,code] of [['max_output_tokens','AGENT_CHAT_OUTPUT_LIMIT'],['content_filter','AGENT_CHAT_RESPONSES_INCOMPLETE']] as const){
+    const f=q11Stream(configuration,body,q11ResponseWire(q11IncompleteItemEvents(body,kind,'response.incomplete',reason)));
+    let completed=0,toolPlans=0;const deltas:string[]=[];
+    await assert.rejects(async()=>{for await(const event of f.stream){if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}else deltas.push(event.text);}},{code});
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);assert.equal(f.network.ends,1);
+    if(kind!=='message')assert.deepEqual(deltas,[],'Incomplete tools and reasoning cannot become user-visible text');
+    assert.doesNotMatch(deltas.join(''),/PRIVATE_Q11_PARTIAL_REASONING/u);
+  }
+});
+
+test('a completed OpenAI response cannot promote an incomplete item into executable tool or replay evidence',async()=>{
+  const configuration=q11OpenAi('gpt-5.4-mini'),body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline contradictory completion'}],definitions,4318);
+  for(const kind of ['message','function_call','reasoning'] as const){
+    const f=q11Stream(configuration,body,q11ResponseWire(q11IncompleteItemEvents(body,kind,'response.completed')));
+    let completed=0,toolPlans=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}},{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);
+  }
+});
+
+test('OpenAI full-catalog incomplete and failed lifecycle echoes preserve accurate terminal errors above the ordinary event limit',async t=>{
+  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-q11-terminal-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
+  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+  const configuration=q11OpenAi('gpt-5.4-mini'),catalog=tools.list(),body=buildTaskModelRequest(configuration,[taskResponseLanguageContext('zh-Hans'),{role:'user',content:'Offline terminal echo'}],catalog,4318,{toolLoading:true});
+  for(const [terminal,code] of [['response.incomplete','AGENT_CHAT_OUTPUT_LIMIT'],['response.failed','AGENT_CHAT_PROVIDER_ERROR']] as const){
+    const events=q11IncompleteItemEvents(body,'message','response.incomplete');
+    if(terminal==='response.failed'){
+      const event=events.at(-1)!,response=event.response as Record<string,unknown>;
+      events[events.length-1]={...event,type:terminal,response:{...response,status:'failed',incomplete_details:null,error:{code:'server_error',message:'PRIVATE_Q11_PROVIDER_FAILURE'}}};
+    }
+    const last=events.at(-1)!;
+    assert.ok(Buffer.byteLength(q11ResponseWire([last]))>64*1024,'An error terminal also echoes the entire request catalog and instructions');
+    const f=q11Stream(configuration,body,q11ResponseWire(events));let completed=0,toolPlans=0;
+    await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}},(error:unknown)=>{
+      const safe=safeAgentChatError(error);assert.equal(safe.code,code);assert.doesNotMatch(safe.message,/PRIVATE_Q11_PROVIDER_FAILURE/u);return true;
+    });
+    assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);assert.equal(f.network.requests[0]!.body,body);
+  }
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM jobs').get()?.n,0);
 });

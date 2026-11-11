@@ -8,6 +8,7 @@ import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as agent from '../apps/web/src/agent-settings.ts';
 import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
 import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
+import * as openAiFamilies from '../packages/contracts/src/agent-openai-model-family.ts';
 import * as image from '../apps/web/src/image-settings.ts';
 import * as comfy from '../apps/web/src/comfy-image-settings.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
@@ -72,6 +73,7 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
     if (name === './settings-navigation-state.ts') return navigation;
     if(name==='./SettingsServicesLayout.tsx')return {default:'SettingsServicesLayout',__esModule:true};
     if(name==='../../../packages/contracts/src/agent-connection-settings.ts')return {AGENT_CONNECTION_LIMITS};
+    if(name==='../../../packages/contracts/src/agent-openai-model-family.ts')return openAiFamilies;
     if(name==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
     if (name === './agent-settings.ts') return { ...agent, createAgentSettingsSession: (options?: agent.AgentSettingsSessionOptions|undefined) => agent.createAgentSettingsSession({ ...options, client: f.client as agent.AgentSettingsClient }) };
     if (name === './agent-model-list-session.ts') return { ...modelDiscovery, createAgentModelListSession: (options?: Parameters<typeof modelDiscovery.createAgentModelListSession>[0]) => modelDiscovery.createAgentModelListSession({ ...options, client: {

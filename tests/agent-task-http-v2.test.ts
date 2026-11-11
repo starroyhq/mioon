@@ -76,7 +76,7 @@ async function cliSnapshot(url:string,token:string,projectId:string,runId:string
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas']){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
+ await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
  let models=0,loadRequests=0;
  const gateway:TaskGateway=async function*(request){const body=JSON.parse(request.body) as {messages?:{role?:string;tool_call_id?:string}[];input?:{type?:string;call_id?:string}[]};
   const answered=body.messages?.some(item=>item.role==='tool'&&item.tool_call_id==='call_http')||body.input?.some(item=>item.type==='function_call_output'&&item.call_id==='call_http');

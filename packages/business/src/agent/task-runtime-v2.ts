@@ -28,7 +28,7 @@ import type {AgentDiagnosticSummary} from '../../../contracts/src/agent-diagnost
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration,agentSettingsError} from './config.ts';
-import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
+import {agentChatError,agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
@@ -51,7 +51,7 @@ const terminal=(run:AgentTaskRun):boolean=>['completed','failed','stopped','reve
 // before a model step completes, so the project is unchanged and the user may
 // explicitly retry. Interrupted dispatches (no recorded outcome), storage
 // faults and explicit unknown results keep the unknown rule.
-const observedModelFailures=new Set(['AGENT_CHAT_CONNECT_FAILED','AGENT_CHAT_TIMEOUT','AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_PROTOCOL_ERROR','AGENT_CHAT_TRUNCATED','AGENT_CHAT_PROVIDER_ERROR','AGENT_CHAT_LIMIT','AGENT_CHAT_TOOLS_UNSUPPORTED','AGENT_CHAT_REASONING_UNSUPPORTED']);
+const observedModelFailures=new Set(['AGENT_CHAT_CONNECT_FAILED','AGENT_CHAT_TIMEOUT','AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_PROTOCOL_ERROR','AGENT_CHAT_TRUNCATED','AGENT_CHAT_PROVIDER_ERROR','AGENT_CHAT_LIMIT','AGENT_CHAT_TOOLS_UNSUPPORTED','AGENT_CHAT_REASONING_UNSUPPORTED','AGENT_CHAT_RESPONSES_REQUIRED','AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED','AGENT_CHAT_OUTPUT_LIMIT','AGENT_CHAT_RESPONSES_INCOMPLETE']);
 const skippedInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'这一处由用户保留，本轮不要再改。请继续处理其他未跳过的目标。',
   'zh-Hant':'這一處由使用者保留，本輪不要再修改。請繼續處理其他未略過的目標。',
@@ -138,6 +138,7 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
 /** `handedBack` marks a foreground approval that X4 handed back to Mio: the
  * step did not run and the run goes on. Other paths keep the pause wording. */
 export function agentTaskFailure(value:string,{handedBack=false,undo=false,policyOnContinuation=false}:{handedBack?:boolean;undo?:boolean;policyOnContinuation?:boolean}={}):Error&{code:string;status:number;handedBack?:true;policyOnContinuation?:true}{
+  if(['AGENT_CHAT_RESPONSES_REQUIRED','AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED','AGENT_CHAT_OUTPUT_LIMIT','AGENT_CHAT_RESPONSES_INCOMPLETE'].includes(value))return agentChatError(value);
   if(policyOnContinuation&&value==='AGENT_TASK_INVALID')return Object.assign(new Error('policy 只能在新对话的第一轮携带；继续对话时请省略 policy。'),{code:value,status:400,policyOnContinuation:true as const});
   const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
   if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});

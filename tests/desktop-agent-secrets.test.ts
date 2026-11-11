@@ -342,7 +342,7 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop v3 legacy pro
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-legacy-desktop-'));
   const safeStorage = fakeVault(), appId = 'app.starroy.mioon.dev';
   const vault = asyncCodec({safeStorage, appId, platform});
-  const {protocol, ...configuration} = DEFAULT_AGENT_CONFIGURATION;
+  const {protocol, ...configuration} = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini'};
   const binding = JSON.stringify([configuration.presetId,configuration.platformId,configuration.baseUrl]);
   const encrypted = await vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
   const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');

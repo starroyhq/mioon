@@ -24,7 +24,7 @@ test('the separate generic fixture locks 204 raw SDK/network requests across all
     assert.deepEqual(rows.map(row => [row.scenario, row.index]), [['text', 1], ['tool_roundtrip', 1], ['tool_roundtrip', 2], ['tool_roundtrip', 3]]);
     assert.deepEqual(agentModelTokenLimits(configuration), {contextTokens: null, outputTokens: 4096});
     assert.equal(agentModelAdaptation(configuration), 'unverified');
-    assert.equal(agentModelThinkingTier(configuration), configuration.protocol === 'anthropic_messages' ? 'optional' : 'unsupported');
+    assert.equal(agentModelThinkingTier(configuration), configuration.protocol === 'anthropic_messages' ? 'optional' : configuration.protocol === 'responses' && configuration.presetId === 'openai' ? 'required' : 'unsupported');
   }
   for (const {configuration, body} of raw) {
     const [presetId, , protocol] = configuration.split('/');
@@ -33,6 +33,7 @@ test('the separate generic fixture locks 204 raw SDK/network requests across all
     if (protocol === 'responses') {
       assert.equal(body.max_output_tokens, 4096); assert.equal(body.store, false);
       assert.equal(body.previous_response_id, undefined); assert.equal(body.conversation, undefined);
+      assert.deepEqual(body.include,presetId==='openai'?['reasoning.encrypted_content']:undefined);
       if (presetId === 'openai' || presetId === 'custom') assert.equal(body.reasoning, undefined);
       else assert.deepEqual(body.reasoning, presetId === 'openrouter' ? {enabled: false} : {effort: 'none'});
     } else {
@@ -69,12 +70,12 @@ test('new generic metadata cannot upgrade the thinking meaning of old Responses 
   }
 });
 
-for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) test(`${protocol}: every generic branch rejects unrequested thinking without retry or rendering it`, async () => {
+for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) test(`${protocol}: generic branches reject unrequested reasoning or an incomplete native carrier without retry or rendering it`, async () => {
   for (const configuration of genericConfigurations().filter(item => item.protocol === protocol)) {
     const body = buildTaskModelRequest(configuration, history, [], 4318), network = genericNetwork(configuration, genericSse(configuration, undefined, {reasoning: true}));
     const shown: string[] = [];
     await assert.rejects(async () => {for await (const item of createTaskGateway(network.dependencies)({configuration, body, apiKey: 'SYNTHETIC_GENERIC_WIRE_ONLY', selfPort: 4318})) if (item.type === 'delta') shown.push(item.text);},
-      {code: protocol === 'responses' ? 'AGENT_CHAT_TOOLS_UNSUPPORTED' : 'AGENT_CHAT_REASONING_UNSUPPORTED'}, `${configuration.presetId}/${configuration.platformId}`);
+      {code: protocol === 'responses' ? configuration.presetId === 'openai' ? 'AGENT_CHAT_RESPONSES_INCOMPLETE' : 'AGENT_CHAT_TOOLS_UNSUPPORTED' : 'AGENT_CHAT_REASONING_UNSUPPORTED'}, `${configuration.presetId}/${configuration.platformId}`);
     assert.equal(network.constructions, 1); assert.equal(network.requests.length, 1); assert.ok(!shown.join('').includes('SYNTHETIC_PRIVATE_REASONING'));
   }
 });

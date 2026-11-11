@@ -1,7 +1,8 @@
 import {isDeepStrictEqual} from 'node:util';
+import {agentOpenAiReasoningFamily} from '../../../contracts/src/agent-openai-model-family.ts';
 import {validateAgentGatewayConfiguration} from './model-profiles.ts';
 import {agentChatProfile,agentChatAllowsNaturalEof} from './model-profiles.ts';
-import {agentResponsesProfile} from './model-profiles.ts';
+import {agentResponsesProfile,agentResponsesReasoningCapable} from './model-profiles.ts';
 import {agentReadToolProfile} from './model-profiles.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
@@ -153,12 +154,32 @@ function noReasoning(value:Record<string,unknown>,admitted?:string):void {
   for(const key of ['reasoning_content','reasoning_details','encrypted_content','thinking','signature','phase'])
     if(key!==admitted&&value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))fail('AGENT_CHAT_REASONING_UNSUPPORTED');
 }
+function responsesFields(value:Record<string,unknown>,native:boolean):void {
+  if(native&&Object.hasOwn(value,'phase')){
+    if(value.type!=='message'||value.role!=='assistant'||!(value.phase===null||value.phase==='commentary'||value.phase==='final_answer'))fail();
+    noReasoning(value,'phase');
+  }else noReasoning(value);
+}
+// Request echoes and repeated output carriers need separate, bounded budgets.
+// Only official OpenAI Responses opts in; other protocols keep their old caps.
+const responsesEventByteLimits=Object.freeze({
+  'response.created':2*1024*1024,'response.in_progress':2*1024*1024,'response.completed':2*1024*1024,
+  'response.incomplete':2*1024*1024,'response.failed':2*1024*1024,
+  'response.output_item.added':512*1024,'response.output_item.done':512*1024,
+  'response.output_text.done':512*1024,'response.content_part.added':512*1024,'response.content_part.done':512*1024,
+  'response.function_call_arguments.done':512*1024,
+  'response.reasoning_summary_part.added':512*1024,'response.reasoning_summary_part.done':512*1024,
+  'response.reasoning_summary_text.done':512*1024,'response.reasoning_text.done':512*1024,
+});
 const reasoningEvents=new Set(['response.reasoning_summary_part.added','response.reasoning_summary_part.done','response.reasoning_summary_text.delta','response.reasoning_summary_text.done','response.reasoning_text.delta','response.reasoning_text.done']);
 /** A thinking request keeps the provider's Responses reasoning item exactly,
  * including encrypted reasoning, for this round's continuation only. */
-function reasoningItem(item:Record<string,unknown>):void {
+function reasoningItem(item:Record<string,unknown>,requireEncrypted=false):void {
   if(Object.keys(item).some(key=>!['id','type','summary','content','encrypted_content','status'].includes(key))||!Array.isArray(item.summary)||item.content!==undefined&&!Array.isArray(item.content))fail();
   if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');
+  // With store:false a bare reasoning ID cannot be used for continuation.
+  // The added item may be partial; only a completed native carrier is retained.
+  if(requireEncrypted&&(item.encrypted_content==null||item.encrypted_content===''))fail('AGENT_CHAT_RESPONSES_INCOMPLETE');
   if(item.encrypted_content!=null)string(item.encrypted_content);
   for(const [parts,kind] of [[item.summary,'summary_text'],[item.content??[],'reasoning_text']] as const)for(const part of parts as unknown[]){
     if(!object(part)||Object.keys(part).length!==2||part.type!==kind)fail();string(part.text);
@@ -180,8 +201,20 @@ function call(id:unknown,name:unknown,argumentsJson:unknown,definitions:readonly
   // wrapper keeps its original domain-validation behavior on recovery.
   return {id:identifier(id),name:selected,arguments:!definition||declaresToolExplanation(definition.parameters)?withoutToolExplanation(argumentsValue):argumentsValue};
 }
+function requireTaskToolProtocol(configuration:AgentConfiguration,toolCount:number):void {
+  if(configuration.presetId==='openai'&&configuration.protocol==='chat_completions'&&toolCount){
+    const family=agentOpenAiReasoningFamily(configuration.model);
+    if(family?.documented&&!family.chatCompletions){
+      const failure=agentChatError('AGENT_CHAT_RESPONSES_REQUIRED');
+      // A retained intent can reach this check before transport opens. Keep
+      // the same trusted zero-dispatch proof used by the submission fence.
+      preventedSubmissions.add(failure);throw failure;
+    }
+  }
+}
 export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number,options:{toolLoading?:boolean}={}):string {
   validateAgentGatewayConfiguration(configuration,{selfPort});
+  requireTaskToolProtocol(configuration,definitions.length);
   if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)fail('AGENT_CHAT_LIMIT');
   const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
@@ -209,8 +242,11 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:options.toolLoading!==true}}:{})};
   }else{
     const responses=agentResponsesProfile(configuration);
+    if(configuration.presetId==='openai')for(const item of modelHistory)if(object(item)&&Object.hasOwn(item,'phase'))responsesFields(item.type===undefined?{...item,type:'message'}:item,true);
+    if(agentResponsesReasoningCapable(configuration))for(const item of modelHistory)if(object(item)&&item.type==='reasoning')reasoningItem(item,true);
     body={model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:limits.outputTokens,
-      ...responses.fields,...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
+      ...responses.fields,...(agentResponsesReasoningCapable(configuration)?{include:['reasoning.encrypted_content']}:{}),
+      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
   }
   const serialized=JSON.stringify(applyTaskAnthropicCaching(configuration,body));if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');
   // Rejected before dispatch, so an oversized request is never paid for.
@@ -257,6 +293,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
       if(!object(value))return fail();const tool=options.configuration.protocol==='chat_completions'?value.function:value;
       if(!object(tool))return fail();return {name:identifier(tool.name),description:string(tool.description),parameters:options.configuration.protocol==='anthropic_messages'?tool.input_schema:tool.parameters};
     });
+    requireTaskToolProtocol(options.configuration,definitions.length);
     // The shared transport sanitizes guard errors for its legacy gain fence.
     // Keep the trusted task guard's original denial; provider data cannot set it.
     let blocked:unknown;
@@ -321,23 +358,34 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
       } else {
         let responseId:string|null=null,completed=false,text='';const added=new Map<number,Record<string,unknown>>(),done=new Map<number,Record<string,unknown>>(),argumentsByIndex=new Map<number,string>(),parts=new Map<string,string>();
         let terminal:Record<string,unknown>|null=null;
-        for await(const frame of parseAgentSse(stream.body,{signal:options.signal,includeEventName:true})) {
+        const native=options.configuration.presetId==='openai',reasoning=thinking||agentResponsesReasoningCapable(options.configuration);
+        for await(const frame of parseAgentSse(stream.body,{signal:options.signal,includeEventName:true,...(native?{maxBytes:4*1024*1024,eventByteLimits:responsesEventByteLimits}:{})})) {
           if(completed)fail();let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}
-          if(!object(raw)||typeof raw.type!=='string'||frame.eventName&&frame.eventName!==raw.type)fail();noReasoning(raw);
+          if(!object(raw)||typeof raw.type!=='string'||frame.eventName&&frame.eventName!==raw.type)fail();responsesFields(raw,native);
           const type=raw.type;
-          if(type==='error'||type==='response.failed'||type==='response.incomplete')fail('AGENT_CHAT_PROVIDER_ERROR');
+          if(type==='error'||type==='response.failed')fail('AGENT_CHAT_PROVIDER_ERROR');
+          if(type==='response.incomplete'){
+            if(!native)fail('AGENT_CHAT_PROVIDER_ERROR');
+            fail(object(raw.response)&&object(raw.response.incomplete_details)&&raw.response.incomplete_details.reason==='max_output_tokens'?'AGENT_CHAT_OUTPUT_LIMIT':'AGENT_CHAT_RESPONSES_INCOMPLETE');
+          }
           if(type==='response.created'||type==='response.in_progress'){
-            if(!object(raw.response))fail();const id=identifier(raw.response.id);if(responseId&&responseId!==id)fail();responseId=id;continue;
+            if(!object(raw.response))fail();responsesFields(raw.response,native);const id=identifier(raw.response.id);if(responseId&&responseId!==id)fail();responseId=id;continue;
           }
           if(type==='response.completed'){
             if(!object(raw.response)||raw.response.status!=='completed'||!Array.isArray(raw.response.output)||responseId&&raw.response.id!==responseId)fail();
+            responsesFields(raw.response,native);
+            for(const item of raw.response.output)if(object(item)){
+              if(native&&item.status==='incomplete')fail();
+              if(item.type==='reasoning'&&!reasoning)fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
+              if(item.type!=='reasoning')responsesFields(item,native);
+            }
             if(raw.response.output.length!==done.size||raw.response.output.some((item,index)=>!isDeepStrictEqual(item,done.get(index))))fail();
             usageCollector.observe(raw.response.usage);terminal=raw.response;completed=true;continue;
           }
           const index=raw.output_index;if(!Number.isSafeInteger(index)||(index as number)<0||(index as number)>=64)fail();const position=index as number;
           if(type==='response.output_item.added'){
-            if(added.has(position)||!object(raw.item)||!['message','function_call',...(thinking?['reasoning']:[])].includes(String(raw.item.type)))fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-            identifier(raw.item.id);if(raw.item.type==='reasoning')reasoningItem(raw.item);else noReasoning(raw.item);added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
+            if(added.has(position)||!object(raw.item)||!['message','function_call',...(reasoning?['reasoning']:[])].includes(String(raw.item.type)))fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
+            identifier(raw.item.id);if(raw.item.type==='reasoning')reasoningItem(raw.item);else responsesFields(raw.item,native);added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
           }
           const item=added.get(position);if(!item||raw.item_id!==undefined&&raw.item_id!==item.id||done.has(position))fail();
           if(type==='response.output_text.delta'){
@@ -351,15 +399,22 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(raw.text!==parts.get(`${position}:${raw.content_index}`))fail();
           }else if(type==='response.content_part.added'||type==='response.content_part.done'){
             if(item.type!=='message'||!object(raw.part)||raw.part.type!=='output_text'||!Number.isSafeInteger(raw.content_index))fail();
+            responsesFields(raw.part,native);
             if(type.endsWith('.done')&&raw.part.text!==(parts.get(`${position}:${raw.content_index}`)??''))fail();
           }else if(type==='response.output_item.done'){
-            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
-            if(item.type==='reasoning')reasoningItem(raw.item);else noReasoning(raw.item);
+            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
+            // Item streaming can finish while its contents remain incomplete.
+            // Only the response terminal classifies the truncation; these items
+            // never become a completed result or an executable tool call.
+            if(item.type==='reasoning')reasoningItem(raw.item,native&&raw.item.status!=='incomplete');else responsesFields(raw.item,native);
             if(item.type==='function_call'){
               if(raw.item.name!==item.name||raw.item.call_id!==item.call_id||raw.item.arguments!==argumentsByIndex.get(position))fail();
             }else if(item.type==='message'){
               if(raw.item.role!=='assistant'||!Array.isArray(raw.item.content))fail();
-              for(const [partIndex,part] of raw.item.content.entries())if(!object(part)||part.type!=='output_text'||part.text!==(parts.get(`${position}:${partIndex}`)??'')||Array.isArray(part.annotations)&&part.annotations.length)fail();
+              for(const [partIndex,part] of raw.item.content.entries()){
+                if(!object(part)||part.type!=='output_text'||part.text!==(parts.get(`${position}:${partIndex}`)??'')||Array.isArray(part.annotations)&&part.annotations.length)fail();
+                responsesFields(part,native);
+              }
             }
             done.set(position,raw.item);
           }else if(item.type==='reasoning'&&reasoningEvents.has(type)){
