@@ -46,13 +46,14 @@ function ui() {
   const fixture = `import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server';
     import ProjectHome from './src/ProjectHome.tsx';
+    import { PendingProjectOpenStatus } from './src/project-file/RecentProjects.tsx';
     import { Button } from '@mioon/ui/components/button';
     import { Input } from '@mioon/ui/components/input';
     import { Textarea } from '@mioon/ui/components/textarea';
     import { Label } from '@mioon/ui/components/label';
     import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
     import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
-    export { React, ProjectHome, Button, Input, Textarea, Label, WorkbenchButton, renderToStaticMarkup };
+    export { React, ProjectHome, PendingProjectOpenStatus, Button, Input, Textarea, Label, WorkbenchButton, renderToStaticMarkup };
     export const render = props => renderToStaticMarkup(<ProjectHome {...props} />);
     export function buttonProps(props) {
       let result;
@@ -108,6 +109,7 @@ function harness(patch:Record<string,unknown> = {}) {
     if (name.endsWith('.css')) return {};
     if (name === './api.ts') return { mediaUrl };
     if (name === './workbench-modal-state.ts') return { hasOpenWorkbenchModal };
+    if (name === './project-file/RecentProjects.tsx') return { PendingProjectOpenStatus: actual.PendingProjectOpenStatus };
     const key = ({ '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label':'Label'} as Record<string,string>)[name];
     if (key) return { [key]: actual[key] };
     assert.fail(`Unexpected presentation dependency: ${name}`);

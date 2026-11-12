@@ -7,6 +7,7 @@ import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -125,6 +126,10 @@ test('desktop close warning describes unconfirmed local drafts and view without 
   assert.ok(at >= 0 && until > at);
   assert.equal(main.indexOf('    confirmClose:', at + 1), -1);
   const source = main.slice(at, until);
+  const closeDialogStart = main.indexOf('  const closeDialog = async');
+  const closeDialogEnd = main.indexOf('  windowAdmissions.set(window, installNativeCloseAdmission', closeDialogStart);
+  assert.ok(closeDialogStart >= 0 && closeDialogEnd > closeDialogStart && closeDialogEnd < at);
+  const dialogSource = stripTypeScriptTypes(main.slice(closeDialogStart, closeDialogEnd), {mode: 'strip'});
   const window = Object.freeze({owner: 'fixture-window'}), context = Object.freeze({backendId: 'fixture-backend'});
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const nt = (key: MessageKey) => translate(locale, key), dialogs: DialogOptions[] = [];
@@ -133,7 +138,10 @@ test('desktop close warning describes unconfirmed local drafts and view without 
       assert.equal(owner, window); assert.equal(backend, context);
       dialogs.push(options); return response;
     };
-    const confirmClose = Function('smokeOutput', 'showOwnedDialog', 'window', 'context', 'nt', `return ({${source}}).confirmClose;`)(false, showOwnedDialog, window, context, nt) as (action: string) => Promise<boolean>;
+    const confirmClose = Function('smokeOutput', 'windowHost', 'showOwnedDialog', 'window', 'context', 'nt',
+      `${dialogSource}\nreturn ({${source}}).confirmClose;`)(
+      false, {isCandidate: () => false}, showOwnedDialog, window, context, nt,
+    ) as (action: string) => Promise<boolean>;
     for (const action of ['reload', 'quit'] as const) {
       assert.equal(await confirmClose(action), false, 'Default keep-editing response cannot close');
       const warning = dialogs.at(-1);
