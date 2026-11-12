@@ -26,14 +26,14 @@ function fixture(t:TestContext,source:'app'|'file'='app') {
 test('workspace settings persist revisioned live opt-in independently of process.env and reject stale writes',t=>{
   const f=fixture(t),before=process.env.MIOON_ENABLE_LIVE_PROVIDER,environment=f.configuration.environment();
   assert.equal(f.configuration.liveEnabled(),false);assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER,'0');
-  assert.throws(()=>f.configuration.assertLiveEnabled(),code('LIVE_GENERATION_DISABLED'));
+  assert.throws(()=>f.configuration.assertLiveEnabled(),{code:'LIVE_GENERATION_DISABLED',status:409,details:{mutationOutcome:'not_applied'}});
   const saved=f.configuration.set({expectedRevision:0,liveGeneration:true});assert.equal(saved.revision,1);
   assert.equal(f.configuration.liveEnabled(),true);assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER,'1');
   assert.equal(process.env.MIOON_ENABLE_LIVE_PROVIDER,before);
   assert.throws(()=>f.configuration.set({expectedRevision:0,liveGeneration:false}),code('WORKSPACE_SETTINGS_CONFLICT'));
   const reopened=createWorkspaceConfiguration({root:f.root,env:{MIOON_ENABLE_LIVE_PROVIDER:'0'},documents:f.library.documents});assert.equal(reopened.liveEnabled(),true);
   reopened.set({expectedRevision:1,liveGeneration:false});assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER,'0');
-  assert.throws(()=>f.configuration.assertLiveEnabled(),code('LIVE_GENERATION_DISABLED'));
+  assert.throws(()=>f.configuration.assertLiveEnabled(),{code:'LIVE_GENERATION_DISABLED',status:409,details:{mutationOutcome:'not_applied'}});
   assert.doesNotMatch(JSON.stringify(saved),/not-public|SYNTHETIC_PRIVATE_SECRET/);
   assert.deepEqual(Object.keys(saved).sort(),['formatVersion','liveGeneration','revision']);
 });

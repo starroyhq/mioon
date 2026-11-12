@@ -86,6 +86,24 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
+test('Mio provider observations expose the workspace live generation gate',async t=>{
+ const provider:Provider={
+  id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
+  async submit(){throw Error('A catalog read cannot submit');},
+  async reconcile(){return null;},
+  async poll(){return {status:'running'};},
+  async download(){throw Error('A catalog read cannot download');},
+ };
+ const f=await fixture(t,{},new Map([['mock',provider]]));
+ for(const liveGeneration of [false,true]){
+  const current=f.services.configuration.get();
+  f.services.configuration.set({expectedRevision:current.revision,liveGeneration});
+  const {outcome}=await f.execute('provider.list',{});
+  assert.ok(Array.isArray(outcome.result)&&outcome.result.length===1);
+  assert.equal(record(outcome.result[0])&&outcome.result[0].liveGenerationEnabled,liveGeneration);
+ }
+ assert.deepEqual(f.store.list('jobs',f.projectId),[]);
+});
 test('background generation polling keeps one submission audit and bounded history while preserving cost uncertainty and publication',async t=>{
  const f=await acceptedGeneratedShot(t),job=f.store.list('jobs',f.projectId)[0];assert.ok(record(job)&&typeof job.id==='string');
  const jobId=job.id,generation=f.journal.snapshot(f.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')!;

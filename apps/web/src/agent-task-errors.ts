@@ -7,6 +7,7 @@ const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   TARGET_CHANGED:'agent.task.error.targetReread', TARGET_EDITING:'agent.task.error.editing',
   PREFLIGHT_STALE:'agent.task.error.preflightStale',
   IMAGE_SETTINGS_SELECTION_REQUIRED:'agent.task.error.imageSelectionRequired',
+  LIVE_GENERATION_DISABLED:'agent.task.error.liveGenerationDisabled',
   GENERATION_FAILED:'agent.task.error.generation', PROVIDER_ERROR:'agent.task.error.generation', PROVIDER_GENERATION_FAILED:'agent.task.error.generation', PROVIDER_NOT_FOUND:'agent.task.error.generation', PROVIDER_UNAVAILABLE:'agent.task.error.generation', PROVIDER_NOT_READY:'agent.task.error.generation', PROVIDER_POLL_TIMEOUT:'agent.task.error.generation', PROVIDER_CONFIGURATION:'agent.task.error.generation', PROVIDER_DISABLED:'agent.task.error.generation', PROVIDER_REGION_CHANGED:'agent.task.error.generation',
   EXPORT_CAPABILITY_TOOL_UNAVAILABLE:'agent.task.error.media', EXPORT_CAPABILITY_UNSUPPORTED:'agent.task.error.media', EXPORT_CAPABILITY_CONFIGURATION:'agent.task.error.media', EXPORT_CAPABILITY_FAILED:'agent.task.error.media', EXPORT_CAPABILITY_TIMEOUT:'agent.task.error.media', SUBTITLE_RENDERER_UNAVAILABLE:'agent.task.error.media',
   AGENT_TASK_NOT_FOUND:'agent.task.error.notFound', AGENT_CHAT_NOT_FOUND:'agent.task.error.notFound',
