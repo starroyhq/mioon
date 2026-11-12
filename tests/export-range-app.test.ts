@@ -95,14 +95,14 @@ async function harness(t: test.TestContext, {gates = {}, projectReady = true}:{g
     async prepare(input: Parameters<LocalDeliveryClient['prepare']>[0]) {
       record('prepare', input); stored = {...stored, intentRevision: stored.intentRevision + 1,
         intent: {intentId: input.intentId, timelineId: input.timelineId, baseRevision: input.baseRevision,
-          draft: clone(input.draft), input: clone(input.input), createdAt: stamp, outcome: {status: 'pending'}}, intentTargetStatus: 'matching'};
+          draft: clone(input.draft), input: clone(input.input), ...(input.outputLocale ? {outputLocale:input.outputLocale} : {}), createdAt: stamp, outcome: {status: 'pending'}}, intentTargetStatus: 'matching'};
       if (gates.prepare) await gates.prepare.promise; return clone(stored);
     },
     async execute(input: Parameters<LocalDeliveryClient['execute']>[0]) { record('execute', input); return settle('execute'); },
     async recover(input: Parameters<LocalDeliveryClient['recover']>[0]) { record('recover', input); return settle('recover'); },
     async discard() { assert.fail('Range changes cannot discard the title through transport'); },
   };
-  const environment = {msg, schemas, isTimelineMutationResponse, hasRequestNotAppliedProof,
+  const environment = {msg, locale: 'en', schemas, isTimelineMutationResponse, hasRequestNotAppliedProof,
     dataRef, currentProject: {current: projectId}, projectEpoch: {current: 1}, navigationEpoch: {current: 0}, panelIntent: {current: 0},
     editorSession: {current: 'normal'}, workspaceRef: {current: {}},
     exportSettingsRef: {current: null}, exportRangeRef: {current: null},

@@ -41,6 +41,8 @@ import {createComfySettings} from './comfy/settings.ts';
 import {COMFY_SETTINGS_ASSERT_CURRENT,COMFY_SETTINGS_READ_CURRENT} from './comfy/settings.ts';
 import {isCompleteComfyImageConfiguration,getComfyImageDestination} from '../../contracts/src/comfy-images.ts';
 import {IMAGE_REVIEW_DESTINATION} from '../../contracts/src/image-reviews.ts';
+import type {OutputLocale} from '../../contracts/src/output-locale.ts';
+import {generatedImageAssetName,recordOutputLocale} from './output-asset-names.ts';
 
 type ImageSettingsService=Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettingsV2=Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
@@ -80,14 +82,15 @@ export interface ImageProfileList {
  items: ImageProfileItem[];
  liveEnabled: boolean;
 }
+type ImageHandlerContext = {signal?: AbortSignal|null; outputLocale?: OutputLocale; [key: string]: unknown};
 export interface ImageService {
  readonly activateBackground: ()=>void;
  readonly isBusy: ()=>boolean;
- readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>>;
+ readonly handlers: Readonly<Record<string,(input: unknown,context?: ImageHandlerContext)=>unknown>>;
  readonly drain: ()=>Promise<void>;
  readonly approveReviewed: ImageReviewService['readForApproval'] extends (...args: never[])=>unknown?(approval: unknown)=>unknown:never;
  readonly rejectReview: (input: unknown)=>unknown;
- readonly generationServices: (operation: GenerationImageServiceOperation, input: unknown)=>unknown;
+ readonly generationServices: (operation: GenerationImageServiceOperation, input: unknown, outputLocale?: OutputLocale)=>unknown;
 }
 export type ImageProfileDependencies=Pick<ImageServicesOptions,'settings'|'customSettings'|'customSettingsV2'|'comfySettings'|'liveGateway'|'customGateway'|'comfyConnector'>;
 /** Pure catalog projection: no store, task history, adapter call or I/O. */
@@ -229,7 +232,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const work="state IN ('queued','dispatching','receiving','persisting')";
   if(count('image_tasks',work,[],IMAGE_LIMITS.queuedGlobal)>=IMAGE_LIMITS.queuedGlobal||count('image_tasks',work+' AND projectId=?',[projectId],IMAGE_LIMITS.queuedPerProject)>=IMAGE_LIMITS.queuedPerProject)fail('IMAGE_QUEUE_FULL');
  }
- function accept(operation: string,input: ImageMutationInput,approval?: unknown,verified?: VerifiedEditSource|null): {response: ImageTaskView; replayed: boolean} {
+ function accept(operation: string,input: ImageMutationInput,approval?: unknown,verified?: VerifiedEditSource|null,outputLocale?: OutputLocale): {response: ImageTaskView; replayed: boolean} {
   owner();const projectId=input.projectId as string;project(projectId);const original=prior(operation,input);if(original){if(approval)reviews.verifyReplay(toInput(input),original.id,approval);return {response:original,replayed:true};}
   if(verified)editSources.assertOwned(operation==='image.generate'?toInput(input):toInput(task(projectId,input.taskId as string,{shallow:true}).input),verified.descriptor);
   capacity(projectId,operation==='image.generate');
@@ -251,10 +254,12 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    if(generation.groupId){const g=group(generation.projectId,generation.groupId);if(g.revision!==generation.expectedRevision)fail('IMAGE_REVISION_CONFLICT');if(g.activeTaskId!==null)fail('IMAGE_GROUP_BUSY');if(g.name!==generation.name)fail('IMAGE_STATE_CONFLICT');maxRevision(g.revision);groupId=g.id;db.prepare('UPDATE image_groups SET activeTaskId=?,revision=revision+1,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(id,timestamp,g.id,g.projectId,g.revision);}
    else{groupId=randomUUID();db.prepare('INSERT INTO image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt) VALUES(?,?,?,1,NULL,?,?,?)').run(groupId,generation.projectId,generation.name,id,timestamp,timestamp);}
    const snapshot={schemaVersion:1,projectId:generation.projectId,groupId,taskId:id,name:generation.name,prompt:generation.prompt,providerId:generation.providerId,model:generation.model,options:generation.options,...(input.purpose==='edit'?{purpose:'edit',inputImage:input.inputImage,sourceImage:verified?.descriptor}:{})};
-   db.prepare("INSERT INTO image_tasks(id,projectId,groupId,requestId,inputHash,input,snapshot,state,revision,dispatched,stagedReceipt,versionId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)").run(id,generation.projectId,groupId,generation.requestId,hash(generation),canonical(generation),canonical(snapshot),timestamp,timestamp);
+   const inputHash=hash(generation);
+   db.prepare("INSERT INTO image_tasks(id,projectId,groupId,requestId,inputHash,input,snapshot,state,revision,dispatched,stagedReceipt,versionId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)").run(id,generation.projectId,groupId,generation.requestId,inputHash,canonical(generation),canonical(snapshot),timestamp,timestamp);
    markBackgroundTaskChanged(db,'image_task',id);
    bindAgentTaskJobInside(db,'image',id);
-   if(generation.providerId!=='mock')reviews.authorizeAcceptance(generation,id,approval,verified??undefined);
+   if(generation.providerId==='mock')recordOutputLocale(db,id,inputHash,outputLocale);
+   else reviews.authorizeAcceptance(generation,id,approval,verified??undefined);
    if(generation.providerId==='comfy-local')remote.prepareTask(generation.projectId,id);
    value=task(generation.projectId,id).dto;
   }else{
@@ -282,10 +287,10 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    try{project(input.projectId as string);if(input.taskId)task(input.projectId as string,input.taskId);if(input.groupId)group(input.projectId as string,input.groupId);if(!db.prepare('SELECT 1 FROM image_requests WHERE requestId=?').get(input.requestId as string)){if(isRecord(cause))cause.details={imageOutcome:{status:'not_accepted',projectId:input.projectId,operation,requestId:input.requestId,inputHash:hash(input)}};}}catch{/* absence evidence remains unknown */}
   }
  }
- function mutate(operation: string,input: ImageMutationInput,approval?: unknown,verified?: VerifiedEditSource|null): unknown {
+ function mutate(operation: string,input: ImageMutationInput,approval?: unknown,verified?: VerifiedEditSource|null,outputLocale?: OutputLocale): unknown {
   if(Buffer.byteLength(canonical(input))>IMAGE_LIMITS.inputBytes)fail('IMAGE_CAPACITY',507);
   let accepted: {response: ImageTaskView; replayed: boolean};
-  try{accepted=tx(()=>accept(operation,input,approval,verified));}
+  try{accepted=tx(()=>accept(operation,input,approval,verified,outputLocale));}
   catch(cause){
    if(!verified)notAccepted(cause,operation,input);
    throw cause;
@@ -295,14 +300,14 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    if(operation!=='image.task.cancelQueued')enqueue(value.id,value.projectId,operation==='image.task.recoverResult');}
   return value;
  }
- function mutateWithSource(operation: string,input: ImageMutationInput,approval?: unknown): unknown {
-  if(operation==='image.task.cancelQueued'||operation==='image.generate'&&input.purpose!=='edit')return mutate(operation,input,approval);
+ function mutateWithSource(operation: string,input: ImageMutationInput,approval?: unknown,outputLocale?: OutputLocale): unknown {
+  if(operation==='image.task.cancelQueued'||operation==='image.generate'&&input.purpose!=='edit')return mutate(operation,input,approval,undefined,outputLocale);
   owner();project(input.projectId as string);const replay=prior(operation,input);
   if(replay){if(approval)reviews.verifyReplay(toInput(input),replay.id,approval);return replay;}
   const target=operation==='image.generate'?null:task(input.projectId as string,input.taskId as string),generation=target?.input??input;
-  if(generation.purpose!=='edit')return mutate(operation,input,approval);
+  if(generation.purpose!=='edit')return mutate(operation,input,approval,undefined,outputLocale);
   const expected=target?.snapshot.sourceImage??(approval?reviews.sourceForApproval(approval):undefined);
-  return editSources.verify(toInput(generation as ImageGenerationView),expected).then((verified: VerifiedEditSource)=>{editSources.assertCurrent(toInput(generation as ImageGenerationView),verified);return mutate(operation,input,approval,verified);});
+  return editSources.verify(toInput(generation as ImageGenerationView),expected).then((verified: VerifiedEditSource)=>{editSources.assertCurrent(toInput(generation as ImageGenerationView),verified);return mutate(operation,input,approval,verified,outputLocale);});
  }
  function diagnose(): void {if(!reported){reported=true;console.error('Skipped invalid local image record.');}}
  function stageTask(value: ImageHistoryTask): ImageStorageTask {return {...value.row,snapshot:value.snapshot} as unknown as ImageStorageTask;}
@@ -316,7 +321,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const commit=()=>tx(()=>{
    const latest=current(target);if(source)editSources.assertOwned(toInput(latest.input),source.descriptor);if(isProjectStore(store)&&file.publication)assertPublishedProjectOutput(store,file.publication,{beforeEffect:()=>{check();}});const g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
    const maximum=Number(db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id)?.n??0);maxRevision(maximum);const timestamp=now();
-   const asset={id:receipt.assetId,projectId:g.projectId,name:`${g.name} · 图像 ${maximum+1}.png`,mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),...(file.publication?{publication:file.publication}:{}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
+   const asset={id:receipt.assetId,projectId:g.projectId,name:generatedImageAssetName(db,latest.row.id,g.projectId,g.name,maximum+1),mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),...(file.publication?{publication:file.publication}:{}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
    const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:receipt.width,height:receipt.height,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,...imageEditFields(latest.snapshot),createdAt:timestamp};
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
@@ -410,7 +415,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   }catch{diagnose();}}
  }
 
- const handlers: Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector},isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown)=>mutateWithSource(operation,input as unknown as ImageMutationInput)]))};
+ const handlers: Record<string,(input: unknown,context?: ImageHandlerContext)=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector},isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown,context?: ImageHandlerContext)=>mutateWithSource(operation,input as unknown as ImageMutationInput,undefined,context?.outputLocale)]))};
  const removeResumer=setAgentTaskJobResumer(db,'image',runId=>{for(const row of db.prepare(`SELECT t.id,t.projectId FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.dispatched=0 ORDER BY t.createdAt,t.id`).all(runId)){const entry=pending.get(String(row.id));if(entry)entry.resumeRequested=true;else enqueue(String(row.id),String(row.projectId),false);}});
  const removeStopper=setAgentTaskJobStopper(db,'image',(runId,stepId)=>{for(const row of db.prepare(`SELECT t.id,t.projectId,t.revision FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted_before_dispatch') AND t.dispatched=0 ORDER BY t.id`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'image',String(row.id),()=>{
   try{handlers['image.task.cancelQueued']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
@@ -422,12 +427,12 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   }
  });});
  async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);releaseProjectMedia();}
- for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input: unknown)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
+ for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input,context)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input,context);};}
  const approveReviewed=(approval: unknown): unknown=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input as unknown as ImageMutationInput,approval);};
  const activateBackground=():void=>{if(backgroundActive||stopped)return;backgroundActive=true;reconcile();remote.reconcile();queueMicrotask(pump);};
- const generationServices=(operation:GenerationImageServiceOperation,raw:unknown):unknown=>{
+ const generationServices=(operation:GenerationImageServiceOperation,raw:unknown,outputLocale?:OutputLocale):unknown=>{
   owner();if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);
-  if(operation==='image.service.review.prepare')return reviews.prepareService(raw);
+  if(operation==='image.service.review.prepare')return reviews.prepareService(raw,outputLocale);
   const parsed=generationImageServiceSchemas['image.service.list'].safeParse(raw);if(!parsed.success)throw new TypeError('Invalid image service list request');project(parsed.data.projectId);
   return generationImageServiceListResponseSchema.parse({projectId:parsed.data.projectId,items:customSettingsV2?.readCurrent().connections??[]});
  };

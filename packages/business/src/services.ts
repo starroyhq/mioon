@@ -87,12 +87,14 @@ import {isPrevisPublicationOperation,previsPublicationSchemas,previsPublicationE
 import {isSubjectVersionHidden} from './subject-variant-visibility.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
+import {recordOutputLocale} from './output-asset-names.ts';
+import type {OutputLocale} from '../../contracts/src/output-locale.ts';
 
 export type ServiceRow=Record<string, unknown>;
 /** Minimum store identity accepted by createServices and startWorker. */
 export interface ServiceStore extends Pick<Store, 'db' | 'root'> {}
 export interface HandlerCallContext { readonly signal?: AbortSignal; readonly [key: string]: unknown }
-export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; readonly [key: string]: unknown }
+export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; readonly outputLocale?: OutputLocale; readonly [key: string]: unknown }
 export type ServiceHandler=(input: never,context?: ServiceHandlerContext)=>unknown;
 export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandlerContext)=>unknown>;
 /** Application-owned services are injected when composing a project runtime.
@@ -148,7 +150,7 @@ export interface OrdinaryServices {
  inspection: InspectionService;
  imageApproval: (input: unknown)=>unknown;
  imageRejection: (input: unknown)=>unknown;
- generationImageServices: (operation: string, input: unknown)=>unknown;
+ generationImageServices: (operation: string, input: unknown, outputLocale?: OutputLocale)=>unknown;
 }
 export interface ShotRecord extends ServiceRow {
  id: string;
@@ -344,7 +346,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
   return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters};
  };
- const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null): JobRecord=>tx(()=>{
+ const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
@@ -354,6 +356,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
+  recordOutputLocale(db,job.id,requestHash,outputLocale);
   if(subjectMode)replaySubjectJob(job,input,retryOfJobId);
   return job;
  });
@@ -513,8 +516,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'edge.delete':(input: ServiceRow)=>tx(()=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};}),
   'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
   'video.connection.list':()=>{return listVideoConnections(videoSettings,currentProfileDate());},
-  'generation.submit':async(input: GenerationSubmitInput)=>{
-   if(!kernelProjectId)return createJob(input);
+  'generation.submit':async(input: GenerationSubmitInput,{outputLocale}: ServiceHandlerContext={})=>{
+   if(!kernelProjectId)return createJob(input,null,null,null,outputLocale);
    // Exact replay needs no fresh filesystem admission and never creates a
    // second provider job after an acknowledgement was lost.
    const prior=dedupe('generation',input.requestId,hash(input),'jobs');if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior as JobRecord,input):prior;
@@ -532,11 +535,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     basis.set(id,JSON.stringify(asset));confirmed.push({assetId:id,referenceRevision:asset.referenceRevision,sha256:asset.sha256});
    }
    if(input.referenceRevisions&&canonical(input.referenceRevisions)!==canonical(confirmed))throw new AppError('REFERENCE_CHANGED','确认中的素材引用修订已改变，请重新确认',409);
-   return createJob(input,null,null,basis);
+   return createJob(input,null,null,basis,outputLocale);
   },
   'job.get':(input: ServiceRow)=>subjectDisclosure('jobs',required('jobs',stringValue(input.jobId) as string)),
   'job.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('jobs',stringValue(input.projectId)).map(value=>subjectDisclosure('jobs',value as ServiceRow,stringValue(input.projectId)));},
-  'job.retry':(input: ServiceRow)=>{
+  'job.retry':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>{
    const old=required('jobs',stringValue(input.jobId) as string) as JobRecord,subjectMode=hasSubjectGeneration(old.snapshot);
    if(subjectMode)validateSubjectGenerationOwnership(db,old);
    const subjectReference=property(old.snapshot,'subjectReference');
@@ -548,7 +551,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(activeChild)throw new AppError('RETRY_ALREADY_ACTIVE','该失败任务已有重试正在处理，请查询已有任务',409,{jobId:property(activeChild,'id')});
    if(newInput.requestId===old.requestId)throw new AppError('NEW_REQUEST_REQUIRED','重试必须使用新的请求 ID',409);
    if(profilePolicy||usesInputProfiles(providers.get(old.providerId)))assertGenerationJobOwnership(db,old);
-   return createJob(newInput,old.snapshot as unknown as JobRecord,old.id);
+   return createJob(newInput,old.snapshot as unknown as JobRecord,old.id,null,outputLocale);
   },
   'job.cancel':(input: ServiceRow)=>{const j=required('jobs',stringValue(input.jobId) as string) as JobRecord;if(hasSubjectGeneration(j.snapshot))currentGenerationClaim(db,j);if(['succeeded','failed','cancelled'].includes(j.status))return subjectDisclosure('jobs',j);return subjectDisclosure('jobs',saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}}));},
   'job.reconcile':async (input: ServiceRow,{signal:callSignal=ownerSignal}: ServiceHandlerContext={})=>{
@@ -577,7 +580,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
-  'export.create':(input: ServiceRow)=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=list('shots',stringValue(input.projectId)).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));return e;}),
+  'export.create':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=list('shots',stringValue(input.projectId)).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));recordOutputLocale(db,e.id,h,outputLocale);return e;}),
   'export.get':(input: ServiceRow)=>subjectDisclosure('exports',required('exports',stringValue(input.exportId) as string),undefined,stringValue(input.exportId)),
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
@@ -616,7 +619,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     return publicValue(await publication.handlers[op](parsed.data));
    }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
-   const schemaResult=isS1PublicOperation(op)?s1PublicOperationSchemas[op].safeParse(input):null;if(schemaResult&&!schemaResult.success)throw new AppError('VALIDATION_ERROR','操作参数无效');const parsed=schemaResult?.success?schemaResult.data:parse(op as OperationName,input);const effect=operationEffect(op);if(op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){assertApplicationMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
+   const schemaResult=isS1PublicOperation(op)?s1PublicOperationSchemas[op].safeParse(input):null;if(schemaResult&&!schemaResult.success)throw new AppError('VALIDATION_ERROR','操作参数无效');const parsed=schemaResult?.success?schemaResult.data:parse(op as OperationName,input);const effect=operationEffect(op);if(op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){assertApplicationMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal,...(context.outputLocale?{outputLocale:context.outputLocale}:{})});checkpoint(signal);
    return publicValue(result);
   })();
   active.add(operation);
@@ -696,13 +699,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }
  const isBusy=():boolean=>active.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
  const assertImageMutationAllowed=():void=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();};
- const generationImageServices=(operation:string,input:unknown):unknown=>{
+ const generationImageServices=(operation:string,input:unknown,outputLocale?:OutputLocale):unknown=>{
   checkpoint(ownerSignal);
   if(!Object.hasOwn(generationImageServiceSchemas,operation))throw new AppError('UNKNOWN_OPERATION','图片服务操作不存在',400);
   const op=operation as GenerationImageServiceOperation,parsed=generationImageServiceSchemas[op].safeParse(input);
   if(!parsed.success)throw new AppError('VALIDATION_ERROR','图片服务参数无效',400);
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
-  return publicValue(images.generationServices(op,parsed.data));
+  return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
  return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

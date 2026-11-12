@@ -5,6 +5,7 @@ import {backup, DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue} from 'node:sqlite';
 import {createPrivateTemporaryDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
 import {rewriteProjectCopyRow,relocateProjectCopyReference} from './copy-values.ts';
@@ -29,6 +30,8 @@ export interface CopyProjectOptions {
   readonly clearProcessRevisions?: true;
   /** Trusted template whitelist: every asset must map to a verified independent copy. */
   readonly referenceTargets?: ReadonlyMap<string, MediaReference>;
+  /** Display text for an isolated template instance, keyed by verified target media path. */
+  readonly templatePresentation?: {readonly description: string; readonly assetNames: ReadonlyMap<string, string>};
   /** Trusted S5 publication; omitted V2 callers retain their existing contract. */
   readonly publish?: (temporary:string,destination:string)=>void;
   /** Trusted recovery-intent ID, or a fresh UUID when S5 copies directly. */
@@ -91,10 +94,20 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
         for (const table of CONTENT_TABLES) {
           for (const original of rows.get(table) ?? []) {
             const row = rewriteProjectCopyRow(table, original, oldId, projectId) as Row;
-            if(table==='projects'&&options.projectName!==undefined&&typeof row.data==='string'){const data=JSON.parse(row.data) as Record<string,unknown>;data.name=options.projectName;row.data=JSON.stringify(data);}
+            if (table === 'projects' && typeof row.data === 'string' && (options.projectName !== undefined || options.templatePresentation)) {
+              const data = JSON.parse(row.data) as Record<string, unknown>;
+              if (options.projectName !== undefined) data.name = options.projectName;
+              if (options.templatePresentation) data.description = options.templatePresentation.description;
+              row.data = JSON.stringify(data);
+            }
             if (table === 'assets' && typeof row.data === 'string') {
               const data = JSON.parse(row.data) as Record<string, unknown>;
               relocateProjectCopyReference(data, sourceProjectDir, path.resolve(options.targetProjectDir ?? parent), options.referenceTargets);
+              if (options.templatePresentation) {
+                const reference = mediaReferenceSchema.parse(data.reference);
+                const name = options.templatePresentation.assetNames.get(reference.path);
+                if (name !== undefined) data.name = name;
+              }
               row.data = JSON.stringify(data);
             }
             const columns = Object.keys(row);

@@ -205,7 +205,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       validateDirectory:directory=>validateManagedDirectory(directory,{root:path.join(root,'media')})});
     const ordinary = services;
     const draftsFactory = createProjectDraftsFactory({store, channel: localDraftChannel, services: ordinary,
-      call: (operation, input) => serviceCall(operation, input), ownsApplicationLock: ownsAppLock});
+      call: (operation, input, context) => serviceCall(operation, input, context), ownsApplicationLock: ownsAppLock});
     let audioPreviewHttp: HttpHandler=async()=>false,continuousAudioHttp: HttpHandler=async()=>false;
     audioPreviewHttp=createTimelineAudioPreviewHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});
     continuousAudioHttp=createTimelineAudioContinuousHttp({service:ordinary.audioPreview,nativeAdmission:nativeAudioPreview,signal:shutdown.signal,assertAvailable:()=>{assertProjectStore(store);}});

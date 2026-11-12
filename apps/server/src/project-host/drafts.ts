@@ -6,7 +6,7 @@ import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain'
 import {createLocalMutationServices} from '@mioon/business/local-mutations';
 import {validateImageConsumption} from '@mioon/business/image-consumption';
 import {canonical, hash} from '@mioon/business/services';
-import type {createServices} from '@mioon/business/services';
+import type {createServices, ServiceHandlerContext} from '@mioon/business/services';
 import {createTimelineRecoveryBoundary, readTimelineReceipt} from '@mioon/business/timeline-recovery';
 import {assertProjectStore, ownsStoreLock} from '@mioon/business/store-runtime';
 import type {ProjectStore} from '@mioon/business/project-file/index';
@@ -22,7 +22,7 @@ interface ProjectDraftsDependencies {
   readonly store: ProjectStore;
   readonly channel: 'web' | 'production' | 'development';
   readonly services: Pick<ReturnType<typeof createServices>, 'assertMutationAllowed' | 'updateShotInProject'>;
-  readonly call: (operation: string, input: unknown) => Promise<unknown>;
+  readonly call: (operation: string, input: unknown, context?: ServiceHandlerContext) => Promise<unknown>;
   readonly ownsApplicationLock: () => boolean;
 }
 
@@ -72,7 +72,7 @@ export function createProjectDraftsFactory({store, channel, services, call, owns
         if (saved.requestHash !== hash({operation: 'timeline.render', input})) throw new AppError('IDEMPOTENCY_CONFLICT', '原导出请求身份与内容不一致。', 409);
         return publicValue(createTimelineRecoveryBoundary(store.db, input).replay('timeline.render', saved.response as string));
       },
-      render: input => fixedBusinessCall(() => call('timeline.render', input))}});
+      render: (input, outputLocale) => fixedBusinessCall(() => call('timeline.render', input, outputLocale ? {outputLocale} : undefined))}});
     const neverMutate = (): never => {throw new Error('Read-only shot receipt boundary');};
     const shotReplay = createLocalMutationServices(store, {canonical, readOnly: true, check: neverMutate, now: neverMutate, references: {guardManualUpdate: neverMutate}});
     const shotDomain = createLocalShotTextDomain({db: store.db, canonical,

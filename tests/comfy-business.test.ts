@@ -18,6 +18,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createComfySettings} from '../packages/business/src/comfy/settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION,COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
 import {imageProfilesResponseSchema} from '../packages/contracts/src/images.ts';
+import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';
 import {deflateSync} from 'node:zlib';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 
@@ -46,7 +47,7 @@ async function fixture(t: test.TestContext,{autoRun=true,fault=()=>{},submit,obs
  await create();await services!.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});const project=await services!.call('project.create',{name:'Comfy synthetic'}),other=await foreignProject(t);
  const f={root,project,other,calls,completed,get store(){return store;},get services(){return services;},get settings(){return settings;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),input:(patch={})=>({projectId:project.id,requestId:randomUUID(),name:'Comfy image',providerId:'comfy-local',model:configuration.model,prompt:'Exact synthetic prompt.',options:COMFY_IMAGE_OPTIONS,...patch}),
   check(){const result={ok:true,baseUrl:configuration.baseUrl,comfyVersion:'0.39.0',checkpoints:[configuration.model],nodeClasses:['CheckpointLoaderSimple','EmptyLatentImage','CLIPTextEncode','KSampler','VAEDecode','SaveImage'],selectedCheckpointAvailable:true};settings.recordCheck(result,settings.clearCheck(result.baseUrl));},
-  prepare:(input: unknown)=>services.call('image.review.prepare',{input,settingsRevision:1}),approve:(review: { id: unknown; })=>services.imageApproval({projectId:project.id,reviewId:review.id,expectedRevision:1}),
+  prepare:(input: unknown,outputLocale?:OutputLocale)=>services.call('image.review.prepare',{input,settingsRevision:1},{outputLocale}),approve:(review: { id: unknown; })=>services.imageApproval({projectId:project.id,reviewId:review.id,expectedRevision:1}),
   task:(id: unknown)=>services.call('image.task.get',{projectId:project.id,taskId:id}),remote:(id: unknown)=>services.call('image.task.remote.get',{projectId:project.id,taskId:id}),
   async query(id: unknown,patch={}){const value=await f.remote(id);return services.call('image.task.observeRemote',{projectId:project.id,taskId:id,requestId:randomUUID(),expectedRevision:value.remote.revision,...patch});},
   async accepted(){const input=f.input(),review=await f.prepare(input),ack=await f.approve(review);await waitFor(()=>f.task(ack.id),(v: { state: string; })=>v.state!=='queued'&&v.state!=='dispatching');return {input,review,ack};},
@@ -58,13 +59,16 @@ async function fixture(t: test.TestContext,{autoRun=true,fault=()=>{},submit,obs
 
 test('Comfy profile discovery and review pin the exact fixed graph before one explicitly approved POST',async t=>{
  const f=await fixture(t);const profile=await f.call('image.profile.list',{});assert.ok(imageProfilesResponseSchema.safeParse(profile).success);assert.equal(profile.liveEnabled,true);assert.equal(profile.items.at(-1)!.providerId,'comfy-local');
- const input=f.input(),review=await f.prepare(input);assert.equal(review.execution!.workflowVersion,1);assert.equal(review.execution!.graph['3'].inputs.text,input.prompt);assert.equal(f.calls.post,0);
+ const input=f.input(),review=await f.prepare(input,'zh-Hant');assert.equal(review.execution!.workflowVersion,1);assert.equal(review.execution!.graph['3'].inputs.text,input.prompt);assert.equal(f.calls.post,0);
+ assert.deepEqual(await f.prepare(input,'en'),review);
  await assert.rejects(f.call('image.generate',input),{code:'IMAGE_REVIEW_REQUIRED'});const ack=await f.approve(review);await waitFor(()=>f.task(ack.id),(v: { state: string; })=>v.state==='receiving');assert.equal(f.calls.post,1);assert.equal(f.calls.get,0);
  assert.deepEqual(await f.approve(review),ack);assert.deepEqual(await f.call('image.generate',input),ack);assert.equal(f.calls.post,1);
  const query=await f.query(ack.id);await waitFor(()=>f.task(ack.id),(v: { state: string; })=>v.state==='succeeded');const remote=await waitFor(()=>f.remote(ack.id),(v: {observation?:{state:string}|null})=>v.observation?.state==='finished');assert.equal(remote.remote.contentVerified,true);assert.equal(remote.observation!.state,'finished');
  const inputQuery={projectId:f.project.id,taskId:ack.id,requestId:query.requestId,expectedRevision:query.remoteRevision-1};assert.deepEqual(await f.call('image.task.observeRemote',inputQuery),query);assert.equal(f.calls.get,1);
  const versions=await f.call('image.version.list',{projectId:f.project.id,groupId:ack.groupId});assert.equal(versions.items[0].width,512);assert.equal(versions.items[0].sha256,remote.remote.resultSha256);
- const bytes=readFileSync(mediaFixturePath(f.root,f.store.get('assets',versions.items[0].assetId)));assert.equal(createHash('sha256').update(bytes).digest('hex'),remote.remote.resultSha256);
+ const asset=f.store.get('assets',versions.items[0].assetId);
+ assert.equal(asset?.name,'Comfy image · 圖像 1.png');
+ const bytes=readFileSync(mediaFixturePath(f.root,asset));assert.equal(createHash('sha256').update(bytes).digest('hex'),remote.remote.resultSha256);
  await f.restart();assert.equal((await f.settings.get()).readiness.checked,false);assert.deepEqual(await f.call('image.generate',input),ack);assert.equal(f.calls.post,1);assert.equal(f.calls.get,1);
 });
 

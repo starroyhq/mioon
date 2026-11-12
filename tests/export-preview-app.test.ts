@@ -19,7 +19,7 @@ function fixture({ rejected = false, pending = false, gated = false }: {rejected
   const waiting = new Promise<void>(done => { resolve = done; });
   const finalContext = { scope: 'owner', projectId, revision: 4, rangeVersion: 9, exportRange: finalRange };
   const binding = { projectId, expectedRevision: 4, exportRange: sampleRange };
-  const env = { msg, isTimelineRenderRecord, isExportPreviewRange,
+  const env = { msg, locale: 'ja', isTimelineRenderRecord, isExportPreviewRange,
     dataRef: { current: { timeline: (record as {snapshot: {timeline: unknown}}).snapshot.timeline } }, dirtyRef: { current: false }, timelineFormatRef: { current: null },
     sampleExportContext: () => ({ ...finalContext, exportRange: sampleRange }), exportCheckContext: () => finalContext,
     sampleExportContextKey: () => liveKey,
@@ -27,7 +27,8 @@ function fixture({ rejected = false, pending = false, gated = false }: {rejected
     exportPreflight: { controller: { setContext() { assert.fail('sample must not mutate final preflight'); } } },
     isBusy: () => false, pendingForProject: () => pending ? [{ key: 'timeline:render:export' }] : [],
     currentProject: { current: projectId }, workspaceRef: { current: { restored: false } }, panelIntent: { current: 1 },
-    localDeliveryRef: { current: { controller: { canPrepare: () => true, async submit(input: {requestId: string}, options: {canExecute: () => boolean}) {
+    localDeliveryRef: { current: { controller: { canPrepare: () => true, async submit(input: {requestId: string}, options: {canExecute: () => boolean; outputLocale?: string}) {
+      assert.equal(options.outputLocale, 'ja');
       calls.push(structuredClone(input)); if (gated) await waiting;
       if (!options.canExecute() || rejected) return null;
       return { ...record, requestId: input.requestId };

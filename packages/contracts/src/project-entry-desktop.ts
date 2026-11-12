@@ -3,6 +3,7 @@ import {projectNameProblem, PROJECT_NAME_MAX_LENGTH} from './project-name.ts';
 import {projectIdSchema} from './project-file.ts';
 import {recentProjectSchema} from './project-registry.ts';
 import {projectEntriesResponseSchema} from './project-entry.ts';
+import {projectTemplateInputSchema} from './project-copies.ts';
 
 export const PROJECT_ENTRY_DESKTOP_CHANNEL = 'mioon:project-entries:v1';
 export const PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT = 'mioon:project-entries:pending-open:v1';
@@ -37,7 +38,7 @@ export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('listRecent')}).strict(),
  z.object({action:z.literal('chooseLocation'),purpose:projectStoragePurposeSchema,suggestedName:name,message:line}).strict(),
  z.object({action:z.literal('createAtSelection'),token:uuid,name,description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional(),createFolder:z.boolean()}).strict(),
- z.object({action:z.literal('instantiateTemplate'),token:uuid,templateId:z.literal('timeline-basics'),templateVersion:z.literal(1),name,requestId:uuid}).strict(),
+ z.object({action:z.literal('instantiateTemplate'),token:uuid,templateId:z.literal('timeline-basics'),templateVersion:z.literal(1),name,locale:projectTemplateInputSchema.shape.locale,requestId:uuid}).strict(),
  z.object({action:z.literal('openSelectedFile')}).strict(),
  z.object({action:z.literal('takePendingOpen')}).strict(),
  z.object({action:z.literal('openPrivacySettings')}).strict(),

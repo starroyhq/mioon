@@ -24,7 +24,7 @@ function storage(t: { after: (arg0: () => boolean|typeof globalThis) => void; })
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: (i:number) => [...values.keys()][i], getItem: (k:string) => values.get(k) ?? null, setItem: (k:string,v:string) => values.set(k, String(v)), removeItem: (k:string) => values.delete(k) } });
   t.after(() => previous ? Object.defineProperty(globalThis, 'sessionStorage', previous) : delete (globalThis as {sessionStorage?: unknown}).sessionStorage);
 }
-interface HarnessState {epoch:number;calls:{operation:string;input:Record<string,unknown>}[];notices:{message:string;type:string}[];refreshes:string[];pending:PendingEntry[];jobs:boolean;auth:boolean}
+interface HarnessState {epoch:number;calls:{operation:string;input:Record<string,unknown>;outputLocale?:string}[];notices:{message:string;type:string}[];refreshes:string[];pending:PendingEntry[];jobs:boolean;auth:boolean}
 interface HarnessData {project:{id:string};shots:{id:string;projectId:string}[];nodes:{id:string;projectId:string}[]}
 function harness(t:test.TestContext,dispatch:(operation:string,input:Record<string,unknown>,state:HarnessState)=>unknown) {
   storage(t);
@@ -37,7 +37,7 @@ function harness(t:test.TestContext,dispatch:(operation:string,input:Record<stri
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
     isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
     isReferenceOperation: () => false, setPending: (value:PendingEntry[]) => { state.pending = value; },
-    rpc: async (operation:string,input:Record<string,unknown>) => { state.calls.push({ operation, input: structuredClone(input) }); return dispatch(operation, input, state); },
+    rpc: async (operation:string,input:Record<string,unknown>,options?:{outputLocale?:string}) => { state.calls.push({ operation, input: structuredClone(input), ...(options?.outputLocale?{outputLocale:options.outputLocale}:{}) }); return dispatch(operation, input, state); },
     refresh: async (id:string) => { state.refreshes.push(id); }, notify: (message:DisplayMessage|string,type:string) => state.notices.push({ message: renderCoreMessage('zh-Hans', message), type }),
     openTasks: (canReveal: () => unknown = () => true) => { if (canReveal()) state.jobs = true; }, setAuth: (value: boolean) => { state.auth = value; }, readableError: (error:Error) => error.message,
     requestCounter: { current: 0 }, clipConnectionBlocked: { current: false }, dataRef: {current: {project:{id:'project-a'},shots:[{id:'shot-a',projectId:'project-a'}],nodes:[]} as HarnessData}, setData: () => {},
@@ -47,6 +47,25 @@ function harness(t:test.TestContext,dispatch:(operation:string,input:Record<stri
 }
 const input = { shotId: 'shot-a', expectedRevision: 3, patch: { prompt: 'Original draft' } };
 const saved = { id: 'shot-a', projectId: 'project-a', revision: 4, prompt: 'Original draft' };
+
+test('lost output response retains the original locale separately from the exact RPC input',async t=>{
+  const h=harness(t,async()=>{throw Error('Response lost');});
+  const input={projectId:'project-a',requestId:'original-export-request'};
+  await h.run('export','export.create',input,undefined,{outputLocale:'ja'});
+  const original=readPending(input.projectId,'export');
+  assert.ok(original);
+  assert.equal(original.outputLocale,'ja');
+  assert.deepEqual(original.input,input);
+  await h.run(original.key,original.operation,original.input,undefined,{replay:true,outputLocale:'en'});
+  assert.deepEqual(h.state.calls,[{operation:'export.create',input,outputLocale:'ja'},{operation:'export.create',input,outputLocale:'ja'}]);
+  assert.deepEqual(readPending(input.projectId,'export'),original);
+
+  clearPending(input.projectId,'export');
+  const legacy=prepareSubmission({projectId:input.projectId,key:'export',operation:'export.create',input,createdAt:'2026-10-10T00:00:00Z'});
+  await h.run(legacy.key,legacy.operation,legacy.input,undefined,{replay:true,outputLocale:'en'});
+  assert.deepEqual(h.state.calls.at(-1),{operation:'export.create',input});
+  assert.deepEqual(readPending(input.projectId,'export'),legacy);
+});
 
 test('actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST', async t => {
   let fail = true;

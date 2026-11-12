@@ -24,6 +24,7 @@ import {createProjectDeletionGate} from '../project-deletion-gate.ts';
 import {composeProjectRuntime, ProjectRuntimeCleanupError} from '../project-runtime.ts';
 import {bindAgentTaskRowValidation} from '@mioon/business/agent/task-project-row-validation-v2';
 import {callObservedRpc} from '../rpc-observation.ts';
+import {readOutputLocale} from '../output-locale-http.ts';
 import {projectHandlerTarget, assertProjectRpc} from './request.ts';
 import type {ProjectHostContext, ProjectHostRuntime, ProjectRequest, UnfinishedTask} from './host.ts';
 import type {ProjectDraftsPort} from './ports.ts';
@@ -178,7 +179,8 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       if (!input || typeof input.operation !== 'string') throw new AppError('VALIDATION_ERROR', '缺少 operation', 400);
       assertProjectRpc(store.db, address, input.operation, input.input || {});
       deletionGate.rpc(res, input.operation, input.input);
-      const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {});
+      const outputLocale = readOutputLocale(req, input.operation);
+      const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {}, outputLocale ? {outputLocale} : undefined);
       if (!res.destroyed && !res.writableEnded) json(res, 200, {ok: true, data});
       return true;
     }

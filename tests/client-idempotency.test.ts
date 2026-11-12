@@ -2,6 +2,8 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareSubmission, readPending, writePending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 import type {PendingEntry} from '../apps/web/src/submissions.ts';
+import { rpc } from '../apps/web/src/api.ts';
+import { OUTPUT_LOCALE_HEADER } from '../packages/contracts/src/output-locale.ts';
 
 class MemorySessionStorage {
   values = new Map<string, string>();
@@ -20,6 +22,19 @@ function fixture(t: TestContext, storage: MemorySessionStorage = new MemorySessi
 function entry(overrides: Partial<PendingEntry> = {}): PendingEntry {
   return { projectId: 'project-a', key: 'generate:shot-a', operation: 'generation.submit', createdAt: '2026-10-09T09:00:00.000Z', input: { shotId: 'shot-a', expectedRevision: 3, requestId: 'original-request', providerId: 'mock', model: 'mock-motion-v1', parameters: { scenario: 'delay', delayMs: 1000 } }, ...overrides } as PendingEntry;
 }
+
+test('web output locale travels as a header while the RPC body remains exact', async () => {
+  const input={projectId:'92000000-0000-4000-8000-000000000001',requestId:'stable-export-request'};
+  const calls:{header:string|null;body:BodyInit|null|undefined}[]=[];
+  const fetcher:typeof fetch=async(_url,options)=>{
+    calls.push({header:new Headers(options?.headers).get(OUTPUT_LOCALE_HEADER),body:options?.body});
+    return Response.json({ok:true,data:{id:'export'}});
+  };
+  await rpc('export.create',input,{fetcher,outputLocale:'zh-Hant'});
+  await rpc('export.create',input,{fetcher});
+  const body=JSON.stringify({operation:'export.create',input});
+  assert.deepEqual(calls,[{header:'zh-Hant',body},{header:null,body}]);
+});
 
 test('client persists the exact request before the caller can dispatch it', (t: TestContext) => {
   const storage = fixture(t); const original = entry(); let calls = 0;

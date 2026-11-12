@@ -25,10 +25,10 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} preserves project fi
  const initial=openProjectStore({projectFile,locate});initial.put('projects',{id:projectId,name:'Crash recovery'});initial.close();
  const stages=path.join(root,'tmp','artifacts');ensurePrivateDirectory(stages,{create:true});
  const bytes=png({extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]}),stageFile=path.join(stages,'complete.png');writeFileSync(stageFile,bytes,{mode:0o600});
- const publication:ProjectOutputInput={owner:{kind:'image',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},assetId:randomUUID(),stageFile,targetKind:'generated',mimeType:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length};
+ const publication:ProjectOutputInput={owner:{kind:scenario.forceCopy?'image':'import',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},assetId:randomUUID(),stageFile,targetKind:scenario.forceCopy?'generated':'assets',mimeType:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length};
  const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/project-output-crash-worker.ts',import.meta.url)),JSON.stringify({root,projectFile,publication,...scenario})],{stdio:'ignore',timeout:30000});
  assert.equal(child.error,undefined);assert.equal(child.status,null);assert.equal(child.signal,'SIGKILL');
- const generated=path.join(projectDir,'生成'),prior=readdirSync(generated).map(name=>({file:path.join(generated,name),bytes:readFileSync(path.join(generated,name)),ino:statSync(path.join(generated,name),{bigint:true}).ino}));
+ const targetDir=path.join(projectDir,scenario.forceCopy?'生成':'素材'),prior=readdirSync(targetDir).map(name=>({file:path.join(targetDir,name),bytes:readFileSync(path.join(targetDir,name)),ino:statSync(path.join(targetDir,name),{bigint:true}).ino}));
  const store=openProjectStore({projectFile,locate}),release=registerProjectMediaStore(store);dispose=()=>{release();store.close();};
  const committed=['after_database_commit','after_registered'].includes(scenario.point);assert.equal(store.list('assets',projectId).length,committed?1:0);
  setProjectOutputPublicationTestHooks(store,{forceCopy:scenario.forceCopy});const output=await publishProjectOutput(store,publication);
@@ -37,5 +37,5 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} preserves project fi
  assert.equal(store.list('assets',projectId).length,1);const asset=store.list('assets',projectId)[0];assert.ok(asset&&typeof asset==='object'&&'id' in asset);assert.equal(asset.id,publication.assetId);
  await markProjectOutputRegistered(store,output.publication);assert.equal(existsSync(stageFile),false);
  assert.deepEqual(readFileSync(path.join(projectDir,output.relativePath)),bytes);
- const names=readdirSync(generated);await publishProjectOutput(store,publication);assert.deepEqual(readdirSync(generated),names);assert.equal(store.list('assets',projectId).length,1);
+ const names=readdirSync(targetDir);await publishProjectOutput(store,publication);assert.deepEqual(readdirSync(targetDir),names);assert.equal(store.list('assets',projectId).length,1);
 });

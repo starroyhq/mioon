@@ -40,6 +40,7 @@ export interface PublishedProjectOutputExpectation {
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const extensions: Readonly<Record<string, string>> = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a'};
 const inFlight = new WeakMap<ProjectStore, Map<string, Promise<PublishedProjectOutput>>>();
+const ordinaryOutputMode = 0o666;
 export interface ProjectOutputPublicationTestHooks {
   readonly forceCopy?: boolean;
   readonly fault?: (point: 'after_intent' | 'after_target_create' | 'after_target_identity' | 'after_copy_chunk' | 'after_final' | 'after_registered', proof: ProjectOutputPublicationProof) => void;
@@ -480,9 +481,13 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: current.proof.sizeBytes});
     stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash');
     check();
+    const upload = current.proof.targetKind === 'assets';
+    const outputMode = upload ? 0o644 : ordinaryOutputMode;
+    // A hard link shares the stage's private permissions. Create generated
+    // files and exports separately so the filesystem applies its usual mode.
     let targetMtime: bigint | undefined = stageInfo.mtimeNs;
     try {
-      if (!testHooks.get(store)?.forceCopy) {
+      if (current.mode === 'link' && upload && !testHooks.get(store)?.forceCopy) {
         try {
           check(); await link(stage, file); check();
           current.targetIdentity = current.stageIdentity; current.phase = 'prepared';
@@ -491,9 +496,9 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
           if (!record(error) || !['EXDEV', 'ENOTSUP', 'EOPNOTSUPP', 'EPERM'].includes(String(error.code))) throw error;
           current.mode = 'copy'; writeReceipt(store, current, options);
         }
-      } else {current.mode = 'copy'; writeReceipt(store, current, options);}
+      } else if (current.mode === 'link') {current.mode = 'copy'; writeReceipt(store, current, options);}
       if (current.mode === 'copy') {
-        check(); const target = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
+        check(); const target = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, outputMode);
         try {
           testHooks.get(store)?.fault?.('after_target_create', current.proof); check();
           const created = await target.stat({bigint: true}); check();
@@ -580,7 +585,7 @@ async function restoreProjectOutputInside(store: ProjectStore, input: {asset: Re
   writeRestore();testHooks.get(store)?.fault?.('after_intent',proof);check();
   // Restoration has one frozen destination. Exclusive copying cannot claim a
   // concurrently recreated file, even if it contains exactly the same bytes.
-  const target = await open(targetFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
+  const target = await open(targetFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, ordinaryOutputMode);
   try {
     testHooks.get(store)?.fault?.('after_target_create',proof);check();
     const created=await target.stat({bigint:true});check();if(!created.isFile()||isProjectFileHeld(outputFileIdentity(created))||isAppLibraryHeld(outputFileIdentity(created)))invalid();

@@ -6,6 +6,8 @@ import {IMAGE_FIXED_OPTIONS, canonicalImageInput} from '../packages/contracts/sr
 import {IMAGE_REVIEW_POLICY, imageReviewIntentSchema, imageReviewResponseSchema, imageReviewSchemas} from '../packages/contracts/src/image-reviews.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import {generationImageServiceSchemas, isGenerationImageServiceResponse} from '../packages/contracts/src/generation-image-services.ts';
+import {createGenerationImageServicesClient} from '../apps/web/src/generation-image-services.ts';
+import {OUTPUT_LOCALE_HEADER} from '../packages/contracts/src/output-locale.ts';
 
 const generation = () => ({projectId: randomUUID(), requestId: randomUUID(), providerId: 'openai-compatible' as const,
   name: 'Synthetic service image', prompt: 'A synthetic contract fixture', model: 'same-model', options: {...IMAGE_FIXED_OPTIONS}});
@@ -59,6 +61,18 @@ test('shared client uses the strict project HTTP path, keeps caller identity and
   await assert.rejects(client.rpc('image.service.review.prepare', request), {code: 'UNKNOWN_OPERATION'});
   assert.throws(() => discoverSchema({operation: 'image.service.review.prepare'}));
   assert.equal(calls.length, 1);
+});
+
+test('web custom image preparation carries the output language separately from the reviewed input', async () => {
+  const {request,response}=fixture(),calls:RequestInit[]=[];
+  const web=createGenerationImageServicesClient({fetchImpl:async(_url,options)=>{
+    calls.push(options!);
+    return Response.json({ok:true,data:response});
+  }});
+  assert.deepEqual(await web.prepare(request,undefined,'ja'),response);
+  assert.equal(calls.length,1);
+  assert.equal(new Headers(calls[0].headers).get(OUTPUT_LOCALE_HEADER),'ja');
+  assert.deepEqual(JSON.parse(String(calls[0].body)),{operation:'image.service.review.prepare',input:request});
 });
 
 test('shared client refuses another same-model same-revision service ACK without retrying the preparation', async () => {

@@ -53,7 +53,7 @@ import AgentSettings from './AgentSettings.tsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import { providerDisplayName, jobStatusDescriptor, statusDescriptor } from './creation-i18n.ts';
-import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage, type Locale } from '../../../packages/i18n/src/index.ts';
 import LanguageControl from './LanguageControl.tsx';
 import WebSettingsCenter from './WebSettingsCenter.tsx';
 import { hasOpenWorkbenchModal } from './workbench-modal-state.ts';
@@ -348,6 +348,7 @@ export interface GenerationReviewArgs {
 export interface ReviewOutcome {dispatched: boolean; rejected: boolean}
 export interface RunOptions {
   replay?: boolean; returnAfterNavigation?: boolean; validateResponse?: (value: unknown) => void;
+  outputLocale?: Locale;
   onFailure?: (error: unknown, outcome: ReviewOutcome) => void; errorMessage?: (error: unknown) => AppMessage;
   expectedSubjectReference?: unknown; subjectRetry?: boolean; expectedRetrySnapshot?: unknown; pendingEntry?: PendingEntry;
   canExecute?: (preparedTask: unknown) => boolean; canRevealTasks?: () => boolean; [key: string]: unknown;
@@ -1248,7 +1249,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   async function run(key: string, operation: string, input: Record<string, unknown>, message?: AppMessage, options: RunOptions = {}): Promise<unknown> {
     if (projectEntryIdentityRef.current!.getState().identityBlocked) return null;
     if (clipConnectionBlocked.current) return null;
-    const invocationOptions = { ...options, canRevealTasks: captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) };
+    const outputLocale = !options.replay && ['generation.submit', 'job.retry', 'export.create', 'timeline.render'].includes(operation) ? locale : undefined;
+    const invocationOptions = { ...options, ...(outputLocale ? {outputLocale} : {}), canRevealTasks: captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) };
     if (isDurableEditOperation(operation) && !options.replay) return runDurable(key, operation, input, message, invocationOptions);
     return runSession(key, operation, input, message, invocationOptions);
   }
@@ -1348,7 +1350,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } catch (error) { if (isCurrent(captured)) notify(readableError(error), 'error'); }
     finally { markBusy(entry.projectId, entry.key, false); }
   }
-  async function runSession(key: string, operation: string, input: Record<string, unknown>, message?: AppMessage, { returnAfterNavigation = false, replay = false, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot, pendingEntry, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) }: RunOptions = {}): Promise<unknown> {
+  async function runSession(key: string, operation: string, input: Record<string, unknown>, message?: AppMessage, { returnAfterNavigation = false, replay = false, outputLocale, validateResponse, onFailure, errorMessage = readableError, expectedSubjectReference, subjectRetry = false, expectedRetrySnapshot, pendingEntry, canRevealTasks = captureTaskWorkspaceIntent(readTaskRevealContext) || (() => false) }: RunOptions = {}): Promise<unknown> {
     if (clipConnectionBlocked.current) return null;
     const captured = context(), projectId = captured.projectId;
     if (operation === 'job.retry' && dataRef.current!.jobs?.length) subjectRetry = subjectRetry || isSubjectRetryPending({ projectId: projectId as string, key, operation, input } as never, dataRef.current!.jobs);
@@ -1374,6 +1376,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         throw Object.assign(localizedError(msg('shell.error.oldPanelRequest')), { code: 'MUTATION_PROJECT_MISMATCH' });
       if (durable) {
         const entry = pendingEntry && replay ? pendingEntry : { projectId, key, operation, input, createdAt: new Date().toISOString(),
+          ...(!replay && outputLocale ? {outputLocale} : {}),
           ...((operation === 'generation.submit' && Object.hasOwn(input, 'subjectVersionId') || operation === 'job.retry' && subjectRetry) && expectedSubjectReference ? { expectedSubjectReference: structuredClone(expectedSubjectReference) } : {}),
           ...(operation === 'job.retry' && subjectRetry ? { subjectRetry: true, ...(expectedRetrySnapshot ? { expectedRetrySnapshot: structuredClone(expectedRetrySnapshot) } : {}) } : {}) };
         if (operation === 'job.retry' && replay && subjectRetry) {
@@ -1400,9 +1403,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         if (operation === 'job.retry' && (stored!.subjectRetry || stored!.expectedSubjectReference || stored!.expectedRetrySnapshot || dataRef.current!.jobs?.length)) subjectRetry = subjectRetry || isSubjectRetryPending(stored, dataRef.current!.jobs || []);
         if (currentProject.current === projectId) setPending(pendingForProject(projectId as string));
       }
+      const retainedLocale = stored?.outputLocale;
       invalidateHistory();
       dispatched = true;
-      const result = await rpc(operation, input, { projectId } as never);
+      const result = await rpc(operation, input, { projectId, ...(retainedLocale ? {outputLocale:retainedLocale} : {}) });
       invalidateHistory();
       if (mutation) validateMutationResponse(stored as never, result);
       if (timeline && !isTimelineMutationResponse(operation, input, result)) throw Object.assign(localizedError(msg('shell.error.timelineAcknowledgement')), { code: 'BACKEND_PROTOCOL_ERROR' });
@@ -2619,7 +2623,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const sampleContextKey = sample ? sampleExportContextKey() : null;
     if (sample) setExportPreviewAttempt({ scope: exportCheckContext().scope, timelineId: dataRef.current!.timeline.id, contextKey: sampleContextKey, input: structuredClone(input), submitting: true, exportId: null, receipt: null });
     const result = (purpose === 'export'
-      ? await localDeliveryRef.current!.controller.submit(input as never, { canExecute: () => isCurrent(captured) && (!sample || sampleContextKey === sampleExportContextKey()), nameCapture: deliveryCapture })
+      ? await localDeliveryRef.current!.controller.submit(input as never, { canExecute: () => isCurrent(captured) && (!sample || sampleContextKey === sampleExportContextKey()), nameCapture: deliveryCapture, outputLocale: locale })
       : await run(`timeline:render:${purpose}`, 'timeline.render', input)) as {id?: string; [key: string]: unknown} | null | undefined;
     if (sample) setExportPreviewAttempt(previous => (previous?.input.requestId === input.requestId ? { ...previous, submitting: false, ...(result && isTimelineRenderRecord(result, input) ? { exportId: result.id as string, receipt: result } : {}) } : previous) as typeof previous);
     if (result) { const matchingDelivery = !deliveryCapture || deliveryNameRef.current?.controller.acknowledge(deliveryCapture, result); if (purpose === 'preview') { updateView('activeMode', 'editing'); setPreviewKind('timeline'); } else if (!sample && matchingDelivery && deliveryPanelChoice === panelIntent.current && deliveryProjectId === currentProject.current && deliveryRangeVersion === exportCheckContext().rangeVersion) { setDeliveryAttempt({ projectId: deliveryProjectId as string, id: result.id as string }); setShowExports(false); return; } if (purpose !== 'preview' && !sample) notify(msg('shell.timelineExportStarted')); }
@@ -2844,7 +2848,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // tasks; each image is an ordinary image edit, paid ones approved here. A
   const variantReviews = useMemo(() => createImageReviewClient(), []), variantSettings = useMemo(() => createImageSettingsClient(), []);
   const subjectVariants = useSubjectVariants({ scope: subjectScope, projectId: workbenchReady ? (data.project?.id ?? null) : null,
-    read: (operation, input) => rpc(operation, input), write: (operation, input) => rpc(operation, input), image: (operation, input) => rpc(operation, input),
+    read: (operation, input) => rpc(operation, input), write: (operation, input) => rpc(operation, input), image: (operation, input) => rpc(operation, input, {outputLocale:locale}),
     approve: review => variantReviews.approve(review), settings: () => variantSettings.read(),
     onVersions: (subjectId, hidden) => { if (hidden.length) subjects.controller.forgetVersions(subjectId, hidden); void subjects.controller.read(); } });
   const subjectFocusActive = Boolean(subjectFocus && libraryTab === 'subjects' && subjects.state?.scope === subjectFocus.scope && subjects.state.subjects[subjectFocus.subjectId] && subjectFocus.basis === subjectFocusBasis(storyboardBatch?.taskId ?? null));

@@ -3,6 +3,8 @@ import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {OrdinaryLocalDelivery,OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalDeliveryOptions,LocalDeliveryGuards} from '../packages/business/src/local-delivery.ts';
 import type {LocalDeliveryPrepare,LocalDeliveryRenderInput} from '@mioon/contracts/local-delivery';
+import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';
+import {outputLocaleFor} from '../packages/business/src/output-asset-names.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,21 +30,21 @@ const authority=(value: Pick<OrdinaryDeliveryEnvelope, 'workspaceScope'|'instanc
 const action=(value:OrdinaryDeliveryEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deferred=<T=void>()=>Promise.withResolvers<T>();
 async function fixture(t: test.TestContext,{mimeType='image/png'}={}){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:(input:LocalDeliveryRenderInput)=>Promise<unknown>,extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
+  const root=mkdtempSync(path.join(tmpdir(),'mioon-local-delivery-'));const open=openStore;let store=(open(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),delivery:OrdinaryLocalDelivery,fault:(point:string)=>void=()=>{},render:LocalDeliveryGuards['render'],extraGuards:Partial<LocalDeliveryGuards>={};let calls: (unknown)[]=[];
   const project=await services.call('project.create',{name:'Local delivery'}),assetId=randomUUID();
   const media=writeStubMediaFixture(root,assetId,mimeType);
   store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic',mimeType,duration:mimeType.startsWith('video/')?3:0,width:2,height:2,hasVideo:true,hasAudio:false,provenance:'user-import',...media,createdAt:new Date().toISOString()});
   const asset=store.get('assets',assetId);assert.ok(asset);
   let timeline=await services.call('timeline.get',{projectId:project.id});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90});
-  const originalRender=(input: unknown)=>services.call('timeline.render',input);render=originalRender;
+  const originalRender=(input: unknown, outputLocale?: OutputLocale)=>(services as unknown as ReturnType<typeof createServices>).call('timeline.render',input,{outputLocale});render=originalRender;
   const guards=()=>({ownsLock:()=>ownsStoreLock(store),
     readTimeline:(id: unknown)=>createTimelineRecoveryBoundary(store.db,({projectId:id} as unknown as Parameters<typeof createTimelineRecoveryBoundary>[1])).read({sourceSemantics:false}),
     isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,
     isRenderResponse:(input: unknown,value: unknown)=>isTimelineMutationResponse('timeline.render',input,value),
     isNotApplied:(input: unknown,error: unknown)=>hasRequestNotAppliedProof(error,input,{operation:'timeline.render'}),
     readReceipt:(input: TimelineRecoveryInput)=>{const saved=readTimelineReceipt(store.db,input,'timeline.render');if(!saved)return null;if(saved.requestHash!==hash({operation:'timeline.render',input}))throw Error('PRIVATE bad hash');return publicValue(createTimelineRecoveryBoundary(store.db,input).replay('timeline.render',saved.response!));},
-    render:(input:LocalDeliveryRenderInput)=>{calls.push(structuredClone(input));return render(input);},...extraGuards});
+    render:(input:LocalDeliveryRenderInput,outputLocale?:OutputLocale)=>{calls.push(structuredClone(input));return render(input,outputLocale);},...extraGuards});
   const localRoot=()=>isProjectStore(store)?store.localDir:root;
   const kernel=()=>{assert.ok(isProjectStore(store));return store;};
   const start=(options:Partial<LocalDeliveryOptions>={})=>delivery=(createLocalDelivery({store:kernel(),guards:guards(),fault:(point:string)=>fault(point),...options})) as OrdinaryLocalDelivery;start();
@@ -149,22 +151,34 @@ test('lost response after actual shared acceptance reconciles from original rece
 });
 
 test('ambiguous transport remains pending through reload and only explicit recover executes original input',async t=>{
-  const f=await fixture(t),prepared=f.delivery.prepare(f.prepare());f.setRender(async()=>{throw Error('PRIVATE before service');});
+  const f=await fixture(t),preparation=f.prepare(f.get(),{outputLocale:'ja'}),prepared=f.delivery.prepare(preparation);f.setRender(async()=>{throw Error('PRIVATE before service');});
+  assert.equal(prepared.intent!.outputLocale,'ja');
+  assert.equal(Object.hasOwn(f.draftRows()[0].intent,'outputLocale'),false);
+  assert.deepEqual(f.delivery.prepare(preparation),prepared);
+  assert.throws(()=>f.delivery.prepare({...preparation,outputLocale:'en'}),code('LOCAL_DELIVERY_CONFLICT'));
   const first=await f.delivery.execute(action(prepared));assert.equal(first.envelope.intent!.outcome.status,'pending');assert.equal(first.response,null);assert.equal(f.calls.length,1);f.restart();assert.equal(f.get().intent!.outcome.status,'pending');assert.equal(f.calls.length,1);
   f.setRender(f.originalRender);const result=await f.delivery.recover(action(f.get()));assert.equal(result.envelope.intent!.outcome.status,'accepted');assert.deepEqual(f.calls[0],f.calls[1]);
+  assert.deepEqual(f.calls[1],preparation.input);
+  assert.equal(outputLocaleFor(f.store.db,String(result.response!.id)),'ja');
+  assert.equal(Object.hasOwn(f.draftRows()[0].intent,'outputLocale'),false);
 });
 
 test('actual shared revision rejection is terminal, never retried after timeline restoration, and permits exact new-intent CAS',async t=>{
-  const f=await fixture(t),saved=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(saved));
+  const f=await fixture(t),saved=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(saved,{outputLocale:'en'}));
   f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1});const rejected=await f.delivery.execute(action(prepared));assert.equal(rejected.envelope.intent!.outcome.status,'not_applied');assert.equal(rejected.envelope.intent!.outcome.code,'REVISION_CONFLICT');assert.deepEqual(rejected.envelope.draft,saved.draft);
   f.store.put('timelines',f.timeline);const oldCalls=f.calls.length;assert.equal((await f.delivery.recover(action(f.get()))).envelope.intent!.outcome.status,'not_applied');assert.equal(f.calls.length,oldCalls);
   const next=f.delivery.prepare(f.prepare(f.get()));assert.notEqual(next.intent!.intentId,prepared.intent!.intentId);assert.throws(()=>f.delivery.recover(action(rejected.envelope)),code('LOCAL_DELIVERY_CONFLICT'));
+  assert.equal(next.intent!.outputLocale,undefined);
+  assert.equal(f.store.db.prepare("SELECT count(*) n FROM idempotency WHERE scope LIKE 'output-locale:delivery:%'").get()!.n,0);
 });
 
 for(const point of ['beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`prepare failure at ${point} produces zero render calls`,async t=>{
-  const f=await fixture(t),input=f.prepare(),before=f.snapshot();f.setFault((label: string)=>{if(label===point)throw Error('PRIVATE fault');});
+  const f=await fixture(t),input=f.prepare(f.get(),{outputLocale:'ja'}),before=f.snapshot();f.setFault((label: string)=>{if(label===point)throw Error('PRIVATE fault');});
   assert.throws(()=>f.delivery.prepare(input),code(['beforePersist','beforeCommit'].includes(point)?'LOCAL_DELIVERY_STORAGE_UNAVAILABLE':'LOCAL_DELIVERY_SAVE_UNCERTAIN'));assert.equal(f.calls.length,0);assert.equal(f.snapshot(),before);f.setFault(()=>{});
-  if(f.get().intent){assert.equal(f.get().intent!.outcome.status,'pending');assert.equal(f.calls.length,0);}
+  const intent=f.get().intent,committed=!['beforePersist','beforeCommit'].includes(point);
+  assert.equal(Boolean(intent),committed);
+  assert.equal(f.store.db.prepare("SELECT count(*) n FROM idempotency WHERE scope LIKE 'output-locale:delivery:%'").get()!.n,committed?1:0);
+  if(intent){assert.equal(intent.outcome.status,'pending');assert.equal(intent.outputLocale,'ja');assert.equal(f.calls.length,0);}
 });
 
 for(const point of ['beforeOutcomePersist','beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`outcome failure at ${point} never permits a fresh intent; explicit recovery uses original receipt`,async t=>{

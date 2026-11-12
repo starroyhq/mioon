@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {LOCALES} from '../../i18n/src/locale.ts';
 import {isNormalizedAbsolutePath} from './media-reference.ts';
 import {PROJECT_FILE_EXTENSION, projectIdSchema} from './project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from './project-name.ts';
@@ -43,6 +44,7 @@ export const projectTemplateInputSchema = z.object({
   templateVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   parentDir: z.string().min(1).max(4096).refine(isNormalizedAbsolutePath, 'Use a normalized absolute path.'),
   name: projectCopyInputSchema.shape.name.unwrap(),
+  locale: z.enum(LOCALES).optional(),
   requestId: projectIdSchema,
 }).strict();
 export type ProjectAdoptCopyInput = z.infer<typeof projectAdoptCopyInputSchema>;

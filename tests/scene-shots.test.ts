@@ -9,7 +9,7 @@ import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync,unlinkSync,lstatSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync,existsSync,readdirSync,readFileSync,mkdirSync,unlinkSync,lstatSync,linkSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -23,6 +23,7 @@ import {validateImageConsumption} from '../packages/business/src/image-consumpti
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
 import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import {projectOutputPublicationReceiptSchema} from '../packages/contracts/src/project-output-publication.ts';
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
 import {decodeManagedFrame} from '../packages/business/src/frame-decoder.ts';
 import {validateManagedSource} from '../packages/business/src/managed-media.ts';
@@ -212,11 +213,21 @@ test('every registered scene keyframe releases its private hard link before the 
  const references=createProjectAssetReferenceServices(store,{outsidePaths:library.outsidePaths}),registered=deferred();
  let observation:Promise<void>|undefined;
  const remove=setProjectOutputPublicationTestHooks(store,{fault:(point,proof)=>{
-  if(point!=='after_registered'||proof.owner.kind!=='scene'||observation)return;
+  if(proof.owner.kind!=='scene')return;
+  const file=path.join(f.root,proof.relativePath);
+  if(point==='after_intent'){
+   // Resume the inode the older publisher linked before recording targetIdentity.
+   const receiptFile=path.join(store.tempDir,'publications',proof.publicationId+'.json');
+   const receipt=projectOutputPublicationReceiptSchema.parse(JSON.parse(readFileSync(receiptFile,'utf8')));
+   linkSync(path.join(store.tempDir,receipt.stageRelativePath),file);
+  }
+  if(point!=='after_registered'||observation)return;
+  const beforeCleanup=lstatSync(file,{bigint:true});
   // A microtask runs as soon as the writer yields. Starting all markers in one
   // turn is essential: an await between markers leaves later finals at nlink=2
   // and their future unlink changes ctime beneath an ordinary L1 reader.
   observation=Promise.resolve().then(async()=>{
+   assert.equal(beforeCleanup.nlink,2n,'exercise a linked publication before cleanup');
    const images=f.images();assert.equal(images.length,3);
    const files=images.map(image=>mediaFixturePath(f.root,image)),before=files.map(file=>lstatSync(file,{bigint:true}));
    for(const info of before)assert.equal(info.nlink,1n,'all visible batch outputs finish their private-link cleanup before any async marker verification');

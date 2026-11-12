@@ -71,10 +71,13 @@ test('exact original ACK wins over stale CAS and changed keys, with no replay de
 });
 
 test('bounded PNG publication owns a new asset and preserves original, legacy history and ACK',async t=>{
+ const previousUmask=process.platform==='win32'?null:process.umask(0o022);
+ if(previousUmask!==null)t.after(()=>{process.umask(previousUmask);});
  const f=fixture(t,{autoRun:true}),original=JSON.stringify(f.store.get('assets',f.asset.id)),source=readFileSync(path.join(f.root,f.asset.relativePath));
  const job=f.store.put('jobs',{id:randomUUID(),projectId:f.project.id,state:'legacy-byte-sentinel'}),input=f.input({sourceFrame:1}),ack=await f.call('frame.extract',input),result=await state(f,ack.id,'succeeded');
  assert.equal(f.calls,1);assert.notEqual(result.result.assetId,f.asset.id);assert.equal(result.revision,4);assert.equal(result.started,true);
- const asset=f.store.get('assets',result.result.assetId)!,file=mediaFixturePath(f.root,asset);assert.equal(asset.provenance,'extracted-frame');assert.deepEqual(readFileSync(file),bytes);assert.equal(statSync(file).mode&0o777,0o600);
+ const asset=f.store.get('assets',result.result.assetId)!,file=mediaFixturePath(f.root,asset);assert.equal(asset.provenance,'extracted-frame');assert.deepEqual(readFileSync(file),bytes);
+ if(previousUmask!==null)assert.equal(statSync(file).mode&0o777,0o644);
  assert.deepEqual(await validatePng(readFileSync(file),{width:4,height:2}),{mimeType:'image/png',width:4,height:2,byteLength:bytes.length,sha256:digest(bytes)});
  assert.equal(JSON.stringify(f.store.get('assets',f.asset.id)),original);assert.deepEqual(readFileSync(path.join(f.root,f.asset.relativePath)),source);assert.deepEqual(f.store.get('jobs',job.id),job);
  assert.equal(count(f.store.db,'versions'),0);assert.equal(count(f.store.db,'image_versions'),0);assert.deepEqual(await f.call('frame.extract',input),ack);assert.equal(f.calls,1);

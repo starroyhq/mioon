@@ -2,9 +2,8 @@ import {mediaFixturePath, mp4HeaderFixture} from './helpers/media-reference-fixt
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {writeFile,readFile,mkdtemp,rm,readdir,unlink} from 'node:fs/promises';
-import fs from 'node:fs';
-import {syncBuiltinESMExports} from 'node:module';
+import {writeFile,readFile,mkdtemp,rm,readdir} from 'node:fs/promises';
+import {renameSync,statSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {selectedRangeFixture} from './fixtures/selected-range-http-fixture.ts';
@@ -18,7 +17,8 @@ import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
-import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
+import {publishProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import {outputArtifactStage,readOutputArtifact} from '../packages/business/src/output-artifact-storage.ts';
 import {exportOutputArtifactIdentity} from '../packages/contracts/src/output-artifact.ts';
 interface Fixture {project:{id:string};timeline:{revision:number};root:string;store:WorkspaceStore;services:OrdinaryServices;restart():Promise<void>}
 interface ExportRecord extends Record<string,unknown>{id:string;requestId:string;snapshot:unknown}
@@ -65,10 +65,11 @@ test('real project worker retains published files after cancellation and never d
   t.after(()=>rm(base,{recursive:true,force:true}));
   await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=1080x1920:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',source],{timeout:30_000});
   const bytes=await readFile(source);
-  for(const mode of ['cancel','replace-output','replace-part','published'] as const)await t.test(mode,async child=>{
+  for(const mode of ['cancel','replace-output','replace-part','published'] as const)await t.test(mode,async ()=>{
     const root=path.join(base,mode),store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
-    let worker:ReturnType<typeof startWorker>|undefined,linkedFile='',linkedPart='',reached=false;
-    const originalLink=fs.promises.link,replacement=Buffer.from('Foreign replacement must be retained');
+    let worker:ReturnType<typeof startWorker>|undefined,clearHook:(()=>void)|undefined,cancellation:Promise<unknown>|undefined;
+    let outputFile='',stageFile='',reached=false;
+    const replacement=Buffer.from('Foreign replacement must be retained');
     try{
       const project=object(await services.call('project.create',{name:'Local cancellation fixture'})),projectId=String(project.id);
       const asset=object(await services.call('asset.import',{projectId,name:'source.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')}));
@@ -77,27 +78,44 @@ test('real project worker retains published files after cancellation and never d
       timeline=object(await services.call('timeline.clip.add',{projectId,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:6}));
       const accepted=object(await services.call('timeline.render',{projectId,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export'})),exportId=String(accepted.id);
       const receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId));
-      child.mock.method(fs.promises,'link',async(...args:Parameters<typeof originalLink>)=>{
-        await originalLink(...args);if(path.dirname(String(args[1]))!==path.join(root,'导出'))return;
-        reached=true;linkedFile=String(args[1]);linkedPart=String(args[0]);
-        if(mode==='replace-output'){await unlink(linkedFile);await writeFile(linkedFile,replacement,{flag:'wx',mode:0o600});}
-        if(mode==='replace-part'){await unlink(linkedPart);await writeFile(linkedPart,replacement,{flag:'wx',mode:0o600});}
-        if(mode!=='published')await services.call('export.cancel',{projectId,exportId});
-      });syncBuiltinESMExports();
+      clearHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+        if(point!=='after_final'||proof.targetKind!=='exports'||proof.owner.id!==exportId)return;
+        const artifact=readOutputArtifact(store,proof.owner,'export',proof.owner.inputHash);assert.ok(artifact);
+        outputFile=path.join(root,proof.relativePath);stageFile=outputArtifactStage(store,artifact);
+        const finalInfo=statSync(outputFile,{bigint:true}),stageInfo=statSync(stageFile,{bigint:true});
+        assert.equal(finalInfo.size,BigInt(proof.sizeBytes));
+        assert.notEqual(finalInfo.ino,stageInfo.ino,'exercise the exclusive copy');
+        assert.equal(store.get('assets',proof.assetId),null,'the complete file has not been registered');
+        if(mode==='replace-output'||mode==='replace-part'){
+          const replaced=mode==='replace-output'?outputFile:stageFile,original=replaced+'.original';
+          const inode=statSync(replaced,{bigint:true}).ino;
+          // Keep the original inode allocated so ext4 cannot reuse it.
+          renameSync(replaced,original);writeFileSync(replaced,replacement,{flag:'wx',mode:0o600});
+          assert.equal(statSync(original,{bigint:true}).ino,inode);
+          assert.notEqual(statSync(replaced,{bigint:true}).ino,inode);
+        }
+        if(mode!=='published'){
+          cancellation=services.call('export.cancel',{projectId,exportId});
+          void cancellation.catch(()=>{});
+          assert.equal(object(store.get('exports',exportId)).status,'failed','cancellation commits at the publication boundary');
+        }
+        reached=true;
+      }});
       worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;
+      if(cancellation)await cancellation;
       assert.equal(reached,true,'the real worker reached non-overwriting publication');
       const final=object(store.get('exports',exportId)),files=await readdir(path.join(root,'导出'));
       assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId)),receipt,'immutable acceptance remains exact');
       const storedAsset=object(store.get('assets',String(asset.id)));
       assert.deepEqual(await readFile(mediaFixturePath(root,storedAsset)),bytes,'source media remains exact');
       if(mode==='published'){
-        assert.equal(final.status,'succeeded');assert.deepEqual(await services.call('export.cancel',{projectId,exportId}),publicValue(final));assert.deepEqual(store.get('exports',exportId),final);assert.ok((await readFile(linkedFile)).length>0);
+        assert.equal(final.status,'succeeded');assert.deepEqual(await services.call('export.cancel',{projectId,exportId}),publicValue(final));assert.deepEqual(store.get('exports',exportId),final);assert.ok((await readFile(outputFile)).length>0);
       }else{
         assert.equal(final.status,'failed');assert.equal(object(final.error).code,'EXPORT_CANCELLED');assert.equal(final.assetId,null);
-        assert.equal(files.includes(path.basename(linkedFile)),true,'ordinary project outputs are retained after cancellation');
-        if(mode==='replace-output')assert.deepEqual(await readFile(linkedFile),replacement);
-        if(mode==='replace-part')assert.deepEqual(await readFile(linkedPart),replacement);
+        assert.equal(files.includes(path.basename(outputFile)),true,'ordinary project outputs are retained after cancellation');
+        if(mode==='replace-output')assert.deepEqual(await readFile(outputFile),replacement);
+        if(mode==='replace-part')assert.deepEqual(await readFile(stageFile),replacement);
       }
-    }finally{child.mock.restoreAll();syncBuiltinESMExports();await worker?.stop();await services.drain();store.close();}
+    }finally{clearHook?.();await worker?.stop();await services.drain();store.close();}
   });
 });
