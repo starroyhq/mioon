@@ -2,7 +2,7 @@
 
 Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图片、视频和音乐完成一个短片，再按需连接 Mio 或生成服务。**导入、剪辑和导出已有素材不需要 AI 账号或密钥**
 
-本指南适用于 **v0.1.0 桌面版**。前往 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)下载安装包。支持的平台和功能范围见[发布说明](releases/v0.1.0.zh-CN.md)。
+本指南适用于 **v0.1.1 桌面版**。前往 [v0.1.1 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.1)下载安装包。支持的平台和功能范围见 [v0.1.0 发布说明](releases/v0.1.0.zh-CN.md)，v0.1.1 的修复见 [v0.1.1 发布说明](releases/v0.1.1.zh-CN.md)。
 
 ## 1. 选对下载文件
 
@@ -10,8 +10,8 @@ Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图
 
 | 你的电脑 | 下载文件 |
 | --- | --- |
-| Mac，Apple Silicon 芯片（M 系列） | `mioon-0.1.0-mac-arm64.dmg` |
-| Mac，Intel 处理器 | `mioon-0.1.0-mac-x64.dmg` |
+| Mac，Apple Silicon 芯片（M 系列） | `mioon-0.1.1-mac-arm64.dmg` |
+| Mac，Intel 处理器 | `mioon-0.1.1-mac-x64.dmg` |
 | Linux 或 Windows | 本版暂不提供桌面安装包 |
 
 在苹果菜单的「关于本机」查看芯片或处理器。两个 DMG 均在 macOS 15 上构建，使用 Developer ID 签名并经 Apple 公证。
