@@ -13,6 +13,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 import {hasRequestNotAppliedProof,isTimelineMutationResponse,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 const at='2026-10-11T12:00:00.000Z';
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_requests','timeline_history','timeline_history_cursors','edit_tasks'];
 // Another project lives in a store of its own: a store holds one project.
@@ -56,6 +57,29 @@ test('undo actually removes the optional field from old snapshots and redo resto
  timeline=await f.call('timeline.redo',request(f,timeline));assert.deepEqual(timeline.subtitles,subtitles);
  timeline=await f.call('timeline.undo',request(f,timeline));timeline=await f.call('timeline.track.update',request(f,timeline,{trackId:timeline.tracks[0].id,patch:{name:'Branch'}}));
  assert.equal(Object.hasOwn(timeline,'subtitles'),false);await rejected(f,'timeline.redo',request(f,timeline),'NOTHING_TO_REDO');
+});
+
+test('cue edits, history and frozen render replay retain the relative layout basis',async t=>{
+ const f=await fixture(t);let timeline=await populated(f);
+ const subtitles={profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,basisPresetId:'landscape_1080',cues:[]};
+ f.store.put('timelines',{...timeline,subtitles});
+ timeline=await add(f,timeline);
+ const added={...subtitles,cues:structuredClone(timeline.subtitles!.cues)};
+ assert.deepEqual(timeline.subtitles,added);
+ const cueId=added.cues[0].id,input=request(f,timeline,{cueId,patch:{text:'换框后的字幕'}});
+ const updated=await f.call('timeline.subtitle.update',input);
+ const expected={...added,cues:[{...added.cues[0],text:input.patch.text}]};
+ assert.deepEqual(updated.subtitles,expected);
+ timeline=await f.call('timeline.subtitle.remove',request(f,updated,{cueId}));
+ assert.deepEqual(timeline.subtitles,subtitles);
+ timeline=await f.call('timeline.undo',request(f,timeline));
+ assert.deepEqual(timeline.subtitles,expected);
+ const renderInput=request(f,timeline,{purpose:'preview'}),accepted=await f.call('timeline.render',renderInput);
+ assert.deepEqual(accepted.snapshot.timeline.subtitles,expected);
+ assert.deepEqual((accepted.snapshot as {subtitleProfile?:unknown}).subtitleProfile,{profileId:subtitles.profileId,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256});
+ f.restart();
+ assert.deepEqual(await f.call('timeline.subtitle.update',input),updated);
+ assert.deepEqual(await f.call('timeline.render',renderInput),accepted);
 });
 
 test('overlap, media bounds, count limits and stale CAS reject atomically with exact bound proofs',async t=>{

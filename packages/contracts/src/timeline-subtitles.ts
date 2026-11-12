@@ -1,6 +1,7 @@
 type Rec = Record<string, unknown>;
 import {z} from 'zod';
-import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,isTimelineSubtitleCodePoint} from './timeline-subtitle-profile.ts';
+import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,isTimelineSubtitleCodePoint,type TimelineSubtitleProfileId} from './timeline-subtitle-profile.ts';
+import {timelineOutputPreset} from './timeline-output-geometry.ts';
 export {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,TIMELINE_SUBTITLE_PROFILE,isTimelineSubtitleCodePoint} from './timeline-subtitle-profile.ts';
 
 export const TIMELINE_SUBTITLE_OPERATIONS=Object.freeze(['timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove']);
@@ -12,6 +13,15 @@ const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9
 const integer=(value: unknown,min: number,max: number): value is number=>Number.isSafeInteger(value)&&(value as number)>=min&&(value as number)<=max;
 const encoder=new TextEncoder();
 const issue=(code: string,message: string,details: Rec={}): SubtitleIssue=>({code,message,details});
+
+function subtitleLayoutRecord(value:unknown):{profileId:TimelineSubtitleProfileId;cues:unknown[]}|null{
+ if(!object(value)||!Array.isArray(value.cues))return null;
+ const {profileId,cues}=value;
+ if(profileId===TIMELINE_SUBTITLE_PROFILE_ID&&fields(value,['profileId','cues']))return {profileId,cues};
+ if(profileId===TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID&&fields(value,['profileId','basisPresetId','cues'])&&
+   typeof value.basisPresetId==='string'&&timelineOutputPreset(value.basisPresetId))return {profileId,cues};
+ return null;
+}
 
 // One non-normalizing text rule is shared by RPC syntax, saved records and the
 // renderer. The initial profile makes no arbitrary-Unicode shaping promise.
@@ -31,9 +41,10 @@ export function getTimelineSubtitleTextIssue(text: unknown): SubtitleIssue | nul
 // durationFrames is media-derived, never extended by subtitles. Intervals use
 // the 30fps timeline clock and exclusive ends; adjacency is legal.
 export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unknown): SubtitleIssue | null {
- if(!fields(subtitles,['profileId','cues'])||subtitles.profileId!==TIMELINE_SUBTITLE_PROFILE_ID||!Array.isArray(subtitles.cues))
+ const layout=subtitleLayoutRecord(subtitles);
+ if(!layout)
   return issue('INVALID_SUBTITLES','字幕数据或固定排版配置无效');
- const cues = subtitles.cues as Rec[];
+ const cues = layout.cues as Rec[];
  if(cues.length>TIMELINE_SUBTITLE_LIMITS.cues)return issue('SUBTITLE_LIMIT','时间线最多支持100条手动字幕',{maxCues:TIMELINE_SUBTITLE_LIMITS.cues});
  const ids=new Set<string>();
  for(const cue of cues){
@@ -49,17 +60,22 @@ export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unk
  return null;
 }
 export const isTimelineSubtitles=(value: unknown,durationFrames: unknown): boolean=>getTimelineSubtitleIssue(value,durationFrames)===null;
+export function timelineSubtitleSnapshotFields(subtitles:unknown):{subtitleProfile?:{profileId:TimelineSubtitleProfileId;fontSha256:string}}{
+ if(subtitles===undefined)return {};
+ const layout=subtitleLayoutRecord(subtitles);
+ if(!layout)throw Object.assign(Error('The saved subtitle rendering profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ return layout.cues.length?{subtitleProfile:{profileId:layout.profileId,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256}}:{};
+}
+
 export function isTimelineSubtitleSnapshotProfile(snapshot: unknown): boolean {
- const container = snapshot as Rec | null | undefined;
- const present=Object.hasOwn((snapshot ?? {}) as object,'subtitleProfile');
- const timeline = container?.timeline as Rec | null | undefined;
- const subtitles = timeline?.subtitles as Rec | null | undefined;
- const cues = subtitles?.cues;
- const required=(Array.isArray(cues)?cues.length:0)>0;
- if(present!==required)return false;
- if(!present)return true;
- const profile = container!.subtitleProfile;
- return fields(profile,['profileId','fontSha256'])&&profile.profileId===TIMELINE_SUBTITLE_PROFILE_ID&&profile.fontSha256===TIMELINE_SUBTITLE_FONT_SHA256;
+ const container=object(snapshot)?snapshot:null,timeline=object(container?.timeline)?container.timeline:null;
+ const present=container!==null&&Object.hasOwn(container,'subtitleProfile');
+ if(timeline===null||!Object.hasOwn(timeline,'subtitles'))return !present;
+ const layout=subtitleLayoutRecord(timeline.subtitles);
+ if(!layout)return false;
+ if(!layout.cues.length)return !present;
+ const profile=container!.subtitleProfile;
+ return present&&fields(profile,['profileId','fontSha256'])&&profile.profileId===layout.profileId&&profile.fontSha256===TIMELINE_SUBTITLE_FONT_SHA256;
 }
 const base={projectId:z.string().uuid(),expectedRevision:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),requestId:z.string().min(8).max(200)};
 const cueFields={text:z.string().superRefine((value,context)=>{const error=getTimelineSubtitleTextIssue(value);if(error)context.addIssue({code:'custom',message:error.message});}),

@@ -6,7 +6,7 @@ import {isTimelineExportRangeSnapshot} from './timeline-export-range.ts';
 import {isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {z} from 'zod';
 import {timelineOutputPreset} from './timeline-format.ts';
-import {TIMELINE_OUTPUT_PRESETS,timelineDeliveryGeometry} from './timeline-output-geometry.ts';
+import {TIMELINE_OUTPUT_MAX_EDGE,TIMELINE_OUTPUT_PRESETS,isTimelineDeliveryGeometry,timelineDeliveryGeometry} from './timeline-output-geometry.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,timelineExportFloatSettingsSchema,timelineExportFloatDeliverySchema,resolveTimelineExportFloatDelivery} from './timeline-export-float.ts';
 export * from './timeline-export-float.ts';
 
@@ -25,7 +25,7 @@ const timelineExportV1SettingsSchema=z.object({
 export const timelineExportSettingsSchema=z.discriminatedUnion('profileId',[timelineExportV1SettingsSchema,timelineExportFloatSettingsSchema]);
 const effectiveSchema=z.object({
  profileId:z.literal(TIMELINE_EXPORT_PROFILE_ID),container:z.literal('mp4'),
- width:z.number().int().min(2).max(1920).multipleOf(2),height:z.number().int().min(2).max(1920).multipleOf(2),fps:z.literal(30),
+ width:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),fps:z.literal(30),
  videoCodec:z.literal('libx264'),pixelFormat:z.literal('yuv420p'),preset:z.literal('veryfast'),
  rateControl:z.discriminatedUnion('mode',[
   z.object({mode:z.literal('crf'),crf:z.union([z.literal(28),z.literal(23),z.literal(18)])}).strict(),
@@ -33,7 +33,7 @@ const effectiveSchema=z.object({
  ]),
  bFrames:z.literal(0),gopFrames:z.literal(60),videoTrackTimescale:z.literal(30000),scaling:z.literal('lanczos'),
  audioCodec:z.literal('aac'),audioKbps:z.literal(128),audioSampleRate:z.literal(48000),audioChannels:z.literal(2),movflags:z.literal('faststart'),
-}).strict();
+}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'});
 export type TimelineExportSettings = z.infer<typeof timelineExportSettingsSchema>;
 export type TimelineExportDelivery = z.infer<typeof timelineExportDeliverySchema>;
 const object=(value: unknown): value is Rec=>value!==null&&typeof value==='object'&&!Array.isArray(value);

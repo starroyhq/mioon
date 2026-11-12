@@ -15,7 +15,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
-import {TIMELINE_OUTPUT_PRESETS,isExportPreflightResponse} from '@mioon/contracts';
+import {isExportPreflightResponse} from '@mioon/contracts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -38,7 +39,7 @@ async function command<B extends boolean=false>(file:string,args:readonly string
 }
 const ffmpeg=(args: string[])=>command('ffmpeg',['-hide_banner','-loglevel','error','-y','-filter_complex_threads','1',...args]);
 async function makeFixtures(root: string){
- for(const {id,width,height} of TIMELINE_OUTPUT_PRESETS)
+ for(const {id,width,height} of TIMELINE_FORMAT_WRITE_PRESETS)
   await ffmpeg(['-f','lavfi','-i',`color=c=red:s=${width}x${height}:r=30`,'-frames:v','1','-threads','1',path.join(root,`${id}.png`)]);
  for(const [rate,first,last] of [[24,'blue','yellow'],[60,'magenta','cyan']] as const){
   await ffmpeg(['-f','lavfi','-i',`color=c=${first}:s=320x180:r=${rate}:d=1`,'-f','lavfi','-i',`color=c=${last}:s=320x180:r=${rate}:d=1`,
@@ -113,7 +114,7 @@ test('three current and three legacy frozen timeline presets render exact real m
   const video=info.streams.find((stream: { codec_type: string; })=>stream.codec_type==='video');
   assert.equal(video.r_frame_rate,`${rate}/1`);assert.equal(video.avg_frame_rate,`${rate}/1`);
  }
- for(const [index,preset] of TIMELINE_OUTPUT_PRESETS.entries())await t.test(preset.id,async()=>{
+ for(const [index,preset] of TIMELINE_FORMAT_WRITE_PRESETS.entries())await t.test(preset.id,async()=>{
   // Parent-owned cleanup keeps every project alive for the retained-ACK audit.
   const f=await fixture(t,sourceRoot);
   const {width,height}=preset,frames=index===1?91:71,project=await f.call('project.create',{name:`Output preset ${preset.id}`});

@@ -22,7 +22,7 @@ import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './
 import {isTimelineColourSnapshot,projectTimelineColourPlan,assertTimelineImageCompositorInputCount,TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
 import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTPUT_FILTER,TIMELINE_COLOUR_OUTPUT_ARGS} from './timeline-colour-lut.ts';
 import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
-import {clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop,clipTransformRenderPlan} from './timeline-transform-filter.ts';
+import {clipLayoutFitFilter,clipRenderPlacement,clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop} from './timeline-transform-filter.ts';
 import {assertTimelineTransformCapability} from './timeline-transform-capability.ts';
 import {segmentTransition,timelineTransitionRegions,transitionFilters,transitionPictureRange,transitionPlanSnapshot,type TransitionLayer} from './timeline-transition-filter.ts';
 import {assertTimelineTransitionCapability} from './timeline-transition-capability.ts';
@@ -118,19 +118,19 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  if(snapshot.colourPlan&&([TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE] as readonly string[]).includes(snapshot.colourPlan.profileId))projectTimelineColourPlan(snapshot as never);
  if(!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
  const colour=snapshot.colourPlan,colourClips=new Map<string, RenderColourPlanClip>((colour?.clips??[]).map(item=>[item.clipId,item]));
+ const clipPlacements=new Map(timeline.clips.map(clip=>[clip.id,clipRenderPlacement(clip,timeline,colourClips.get(clip.id)?.kind==='image'?1:undefined)]));
  if(colour)for(const item of colour.clips){const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId);
   if(item.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:asset?.colourImageEvidence,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);
   else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);}
  const delivery=snapshot.delivery,plan=planTimelineExportRange(transitionPlanSnapshot(snapshot,transitions)),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
- if(timeline.clips.some(clip=>clipTransformRenderPlan(clip as never)?.animated)){await assertTimelineTransformCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
+ if([...clipPlacements.values()].some(placement=>placement.transform?.animated)){await assertTimelineTransformCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
  if(transitions.length){await assertTimelineTransitionCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
  if(delivery){await assertTimelineExportCapability(delivery as never,{signal,beforeEffect,...(floatChecked?{capabilityWorkRoot:path.dirname(destination)}:{})} as never);checkMediaEffect(beforeEffect,signal);}
  if(delivery||plan.selected)beforeEncode?.();
  checkMediaEffect(beforeEffect,signal);
- // The validated frozen snapshot owns output geometry. Keep the editing and
- // audio timebase fixed while portrait, landscape and square share this path.
+ // The validated frozen snapshot owns output geometry and the fixed timebase.
  const {width,height}=timeline;
  const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
   :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
@@ -143,10 +143,10 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    colourStage=await prepareTimelineColourLuts(colour as never,destination,{signal,beforeEffect:effect,readLut} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never);
    effect=colourStage.effect;
    const images=colour.clips.filter(item=>item.kind==='image').map(item=>{
-    const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId),creativeLutPath=colourStage!.path(item.clipId);
-    const crop=clipTransformPixelCrop(clipTransformRenderPlan(clip as never,{maxFactor:1}),item.evidence.width as number,item.evidence.height as number);
+    const placement=clipPlacements.get(item.clipId)!,asset=assets.get(item.assetId),creativeLutPath=colourStage!.path(item.clipId);
+    const crop=clipTransformPixelCrop(placement.transform,item.evidence.width as number,item.evidence.height as number);
     return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset?.path,sourceWidth:item.evidence.width as number,sourceHeight:item.evidence.height as number,...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
-     width:clip!.rect.width,height:clip!.rect.height,...(crop?{crop}:{}),creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
+     width:placement.width,height:placement.height,...(crop?{crop}:{}),creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
    });
    if(images.length){imageStage=await prepareTimelineImageLayers(images as never,destination,{signal,beforeEffect:effect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses} as never);effect=imageStage.effect;}
    // An actual bounded float/colour conversion and LUT invocation, rather than
@@ -186,21 +186,22 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    let visual='base';const sounds=['silence'];const pairing=new Map<string, TransitionLayer>();
    for(const {clip,asset,input,visual:show,audio} of inputs){
     if(show){
-     const {x,y,width,height}=clip.rect,label=`v${input}`,next=`layer${input}`;
+     const {x,y,width,height,rect,transform:plan,relative}=clipPlacements.get(clip.id)!,label=`v${input}`,next=`layer${input}`;
      // rgba padding preserves the lower layers in the letterbox/pillarbox area.
      const planned=colourClips.get(clip.id),image=planned?.kind==='image';
      // A transformed clip renders its rectangle as a larger layer, then rotates,
      // scales and places it per frame; others keep the historical chain.
-     const plan=clipTransformRenderPlan(clip as never,image?{maxFactor:1}:{}),local=begin-clip.startFrame;
+     const local=begin-clip.startFrame;
      const layerWidth=plan?.layerWidth??width,layerHeight=plan?.layerHeight??height,transformStage=plan?`,${clipTransformLayerFilters(plan,local)}`:'';
      if(image){
       filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
-      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan)}scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
+      const fit=relative?clipLayoutFitFilter(layerWidth,layerHeight):`scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
+      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan,relative)}${fit},setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }
      const placement=`:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}`;
-     const position=(shift?: string): string=>plan?clipTransformOverlayPosition(plan,clip.rect,local,shift):shift?`x='${x}+${shift}':y=${y}:eval=frame`:`x=${x}:y=${y}`;
+     const position=(shift?: string): string=>plan?clipTransformOverlayPosition(plan,rect,local,shift):shift?`x='${x}+${shift}':y=${y}:eval=frame`:`x=${x}:y=${y}`;
      // Inside a transition both clips of the cut are on this track: the second
      // one to arrive places the pair; elsewhere a clip is placed as always.
      const transition=segmentTransition(transitions,clip.trackId,begin,end);

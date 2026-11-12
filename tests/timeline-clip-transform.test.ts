@@ -12,8 +12,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
  CLIP_TRANSFORM_PROFILE,canonicalClipTransform,clipTransformAt,clipTransformFieldsAfterEdit,clipTransformGeometry,isIdentityClipTransform,
- splitClipTransformFields,validateClipTransform,type ClipTransform,type ClipTransformKeyframe,
+ projectedClipGeometry,splitClipTransformFields,validateClipTransform,type ClipTransform,type ClipTransformKeyframe,
 } from '../packages/contracts/src/timeline-clip-transform.ts';
+import {CLIP_LAYOUT_PROFILE,isClipLayoutRect,projectClipLayout} from '../packages/contracts/src/timeline-clip-layout.ts';
+import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {isTimelineMutationResponse} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -86,6 +89,45 @@ test('the geometry crops, fits, scales and offsets around the rectangle centre',
  assert.deepEqual(clipTransformGeometry(clip,{width:200,height:100},0),{centerX:320,centerY:140,width:600,height:600,rotation:-30});
 });
 
+test('the saved 720 basis survives a 1080 round trip and projects every keyframe without clipping its offset',()=>{
+ const basis=timelineOutputPreset('portrait_720')!, wide=timelineOutputPreset('landscape_1080')!, ultrawide=timelineOutputPreset('ultrawide_1080')!;
+ const layout={profileId:CLIP_LAYOUT_PROFILE,basisPresetId:basis.id};
+ const clip={layout,durationFrames:60,rect:{x:14,y:312,width:376,height:642},
+  transform:make([{frame:0,x:8192,y:-20,scale:1.2},{frame:60,x:-8192,y:100,scale:1.6}])};
+ const bytes=JSON.stringify(clip), original=projectClipLayout(clip,basis), projected=projectClipLayout(clip,wide);
+ assert.deepEqual(original.rect,clip.rect);
+ assert.deepEqual(original.transform!.keyframes,clip.transform.keyframes);
+ assert.equal(projected.transform!.keyframes[0]!.x,8192*(1920/720));
+ assert.equal(projected.transform!.keyframes[1]!.y,100*(1080/1280));
+ assert.deepEqual(projectClipLayout(clip,ultrawide).transform!.keyframes.map(({x})=>x),[28672,-28672]);
+ const mid=projectedClipGeometry(projected.rect,projected.transform,{width:1920,height:1080},30);
+ assert.equal(mid.centerX,projected.rect.x+projected.rect.width/2);
+ assert.equal(mid.centerY,projected.rect.y+projected.rect.height/2+40*(1080/1280));
+ assert.deepEqual(projectClipLayout(clip,basis),original);
+ assert.equal(JSON.stringify(clip),bytes);
+ for(const invalidLayout of [null,undefined,{...layout,mode:'fill'},{...layout,profileId:'future'},{...layout,basisPresetId:'unknown'}]){
+  assert.equal(isClipLayoutRect({...clip,layout:invalidLayout},wide),false);
+ }
+ assert.equal(isClipLayoutRect({...clip,rect:{...clip.rect,width:718}},wide),false,'only the original basis can bound stored coordinates');
+});
+
+test('an anamorphic source fits by its display size with black space left on either side of the fitted axis',()=>{
+ const frame=timelineOutputPreset('portrait_1080')!;
+ const clip={durationFrames:60,rect:{x:0,y:0,width:frame.width,height:frame.height},
+  layout:{profileId:CLIP_LAYOUT_PROFILE,basisPresetId:frame.id}};
+ const placed=projectClipLayout(clip,frame);
+ const square=projectedClipGeometry(placed.rect,null,{width:1920,height:1080},0);
+ assert.deepEqual(square,{centerX:540,centerY:960,width:1080,height:607.5,rotation:0});
+ const anamorphic=projectedClipGeometry(placed.rect,null,{width:1920,height:1080,sampleAspectRatio:2},0);
+ assert.equal(anamorphic.height,303.75);
+ // Frozen definitions only. G exposes no fill or keep-pixels write.
+ const fill=Math.max(frame.width/1920,frame.height/1080);
+ assert.equal(1080*fill,1920);
+ assert.ok(Math.abs(1920*fill-3413.3333333333335)<1e-9);
+ const keepPixels={width:1920,height:1080};
+ assert.deepEqual([(keepPixels.width-frame.width)/2,(frame.height-keepPixels.height)/2],[420,420]);
+});
+
 async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-clip-transform-')));
  let store=opener(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
@@ -105,6 +147,21 @@ async function fixture(t: test.TestContext,opener:typeof openStore=openStore){
  return f;
 }
 const notApplied=(code: string)=>(error: Rec)=>error.code===code&&error.details?.mutationOutcome==='not_applied'&&error.details?.operation==='timeline.clip.setTransform';
+
+test('the timeline reader distinguishes a saved basis from legacy coordinates and keeps its strict clip shape',async t=>{
+ const f=await fixture(t),video=f.timeline.tracks.find((track: Rec)=>track.kind==='video');
+ await f.call('timeline.clip.add',{trackId:video.id,assetId:f.asset('video/mp4').id,startFrame:0,durationFrames:60});
+ const old=f.timeline, saved=old.clips[0], basis=timelineOutputPreset('landscape_1080')!;
+ const rect={x:1600,y:0,width:320,height:600}, layout={profileId:CLIP_LAYOUT_PROFILE,basisPresetId:basis.id};
+ const record=(clip:Rec)=>({...old,clips:[clip]});
+ assert.equal(isTimelineRecord(old),true);
+ assert.equal(isTimelineRecord(record({...saved,rect})),false,'the legacy clip uses the current, narrower frame');
+ const based=record({...saved,rect,layout,transform:make([{frame:0,x:8192,y:0,scale:1}])});
+ assert.equal(isTimelineRecord(based),true);
+ assert.equal(isTimelineRecord(record({...based.clips[0],layout:{...layout,basisPresetId:'portrait_1080'}})),false);
+ assert.equal(isTimelineRecord(record({...based.clips[0],rect:{...rect,x:1601}})),false);
+ assert.equal(isTimelineRecord(record({...based.clips[0],layout:{...layout,extra:0}})),false);
+});
 
 test('setTransform saves one edit, replays exactly, undoes and clears',async t=>{
  const f=await fixture(t),video=f.timeline.tracks.find((track: Rec)=>track.kind==='video');

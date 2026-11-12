@@ -7,6 +7,7 @@ import {schemas,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_SUBTITLE_PROFILE_ID,TIMELI
 import {INSPECTION_ROW_LIMITS} from '../packages/business/src/inspection-query.ts';
 import {INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
 import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,positionTimelineSubtitle,projectTimelineSubtitleLayout} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 const clone=<T>(value: T): T=>structuredClone(value),at='2026-10-11T12:00:00.000Z';
 const base=()=>({projectId:randomUUID(),expectedRevision:1,requestId:randomUUID()});
 const cue=(patch={})=>({id:randomUUID(),text:'手动字幕 Hello 100%',startFrame:0,durationFrames:30,...patch});
@@ -76,6 +77,50 @@ test('snapshot profile and exact font hash are required only for nonempty cues; 
  const request={projectId:value.projectId,expectedRevision:value.revision,requestId:randomUUID(),purpose:'preview'};
  const record={id:randomUUID(),...request,mode:'timeline',timelineRevision:value.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt:at,updatedAt:at};delete (record as {expectedRevision?: unknown}).expectedRevision;
  assert.equal(isTimelineRenderRecord(record,request),true);assert.equal(isTimelineRenderRecord({...record,snapshot:{...frozen,subtitleProfile:{...frozen.subtitleProfile,fontSha256:'b'.repeat(64)}}},request),false);
+});
+
+test('relative captions retain their basis and canonical proof across a frozen export',()=>{
+ const relative={profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,basisPresetId:'portrait_720',cues:[cue()]};
+ const value={...timeline(),subtitles:relative},asset={id:value.clips[0].assetId,sha256:'a'.repeat(64),mimeType:'image/png',duration:0,width:720,height:1280,relativePath:'media/input.png'};
+ const sources=new Map([[asset.id,asset]]),frozen=freezeTimelineSnapshot(value,sources,undefined);
+ assert.deepEqual(frozen.timeline.subtitles,relative);
+ assert.deepEqual(frozen.subtitleProfile,{profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,fontSha256:TIMELINE_SUBTITLE_FONT_SHA256});
+ assert.equal(isTimelineRecord(value),true);
+ assert.equal(isTimelineSubtitleSnapshotProfile(frozen),true);
+ assert.equal(isTimelineSubtitleSnapshotProfile({...frozen,subtitleProfile:{...frozen.subtitleProfile,profileId:TIMELINE_SUBTITLE_PROFILE_ID}}),false);
+ assert.equal(isTimelineSubtitleSnapshotProfile({...frozen,subtitleProfile:{...frozen.subtitleProfile,basisPresetId:'portrait_720'}}),false);
+ assert.equal(Object.hasOwn(freezeTimelineSnapshot({...value,subtitles:{...relative,cues:[]}},sources,undefined),'subtitleProfile'),false);
+ const invalid=[
+  {profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,cues:relative.cues},
+  {...relative,basisPresetId:'portrait_123'},
+  {...relative,basisPresetId:{width:720,height:1280}},
+  {...relative,bottomInset:48},
+  {...relative,profileId:TIMELINE_SUBTITLE_PROFILE_ID},
+ ];
+ for(const subtitles of invalid){
+  assert.equal(getTimelineSubtitleIssue(subtitles,300)?.code,'INVALID_SUBTITLES');
+  assert.equal(isTimelineRecord({...value,subtitles}),false);
+  assert.equal(isTimelineSubtitleSnapshotProfile({...frozen,timeline:{...value,subtitles}}),false);
+ }
+});
+
+test('subtitle placement keeps the saved relative bottom anchor and short-edge typography',()=>{
+ const legacy={profileId:TIMELINE_SUBTITLE_PROFILE_ID},relative={profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,basisPresetId:'portrait_720'};
+ const portrait={width:720,height:1280},landscape={width:1280,height:720},larger={width:1920,height:1080};
+ const legacyLayout={fontSize:28,outline:2,padding:8,horizontalMargin:48,bottomInset:48,maxOuterHeight:120,lineSpacing:8};
+ assert.deepEqual(projectTimelineSubtitleLayout(larger,legacy),legacyLayout);
+ assert.deepEqual(projectTimelineSubtitleLayout(portrait,relative),legacyLayout);
+ assert.deepEqual(projectTimelineSubtitleLayout(landscape,relative),{...legacyLayout,bottomInset:27});
+ const layout=projectTimelineSubtitleLayout(larger,relative)!;
+ assert.deepEqual(layout,{fontSize:42,outline:3,padding:12,horizontalMargin:72,bottomInset:41,maxOuterHeight:180,lineSpacing:12});
+ assert.deepEqual(positionTimelineSubtitle(larger,layout,{width:481,height:81}),{left:707,top:934,width:505,height:105});
+ assert.equal(positionTimelineSubtitle(larger,layout,{width:1900,height:81}),null);
+ assert.equal(positionTimelineSubtitle(larger,layout,{width:481,height:180}),null);
+ assert.deepEqual(projectTimelineSubtitleLayout(portrait,relative),legacyLayout,'round trip projects the original basis');
+ assert.deepEqual(projectTimelineSubtitleLayout(larger,{...relative,basisPresetId:'landscape_1080'}),legacyLayout);
+ assert.deepEqual(projectTimelineSubtitleLayout({width:2520,height:1080},{...relative,basisPresetId:'portrait_1080'}),{...legacyLayout,bottomInset:27});
+ assert.deepEqual(projectTimelineSubtitleLayout({width:720,height:960},{...relative,basisPresetId:'ultrawide_720'}),{...legacyLayout,bottomInset:64});
+ assert.equal(projectTimelineSubtitleLayout({width:1080,height:1082},relative),null);
 });
 
 test('maximal escaped legitimate aggregate fits the unified256KiB budget while model and render budgets remain independent',()=>{

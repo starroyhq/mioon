@@ -3,12 +3,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {schemas,TIMELINE_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset,TIMELINE_FORMAT_BLOCKED_REASONS,isTimelineFormatReadResponse,isTimelineRecord,isTimelineMutationResponse,DURABLE_EDIT_OPERATIONS,editTaskLane,operationEffect,hasRequestNotAppliedProof} from '@mioon/contracts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
 const projectId=randomUUID();
 const input={projectId,expectedProjectRevision:1,expectedRevision:0,requestId:randomUUID(),presetId:'landscape_720'};
 const timeline=(presetId='landscape_720'): FixtureTimeline=>{const {fps,width,height}=timelineOutputPreset(presetId)!;return {id:randomUUID(),projectId,revision:1,fps,width,height,tracks:[{id:randomUUID(),name:'Video 1',kind:'video',orderIndex:0,hidden:false,muted:false}],clips:[],durationFrames:0,createdAt:'2026-10-11T10:00:00.000Z',updatedAt:'2026-10-11T10:00:00.000Z'};};
-test('format contracts admit three current and three legacy frozen dimension pairs at the unchanged 30fps timebase',()=>{
+test('format writes retain the original closed preset IDs while reads admit the new frame sizes',()=>{
  assert.equal(DEFAULT_TIMELINE_OUTPUT_PRESET,'portrait_1080');assert.equal(Object.isFrozen(TIMELINE_OUTPUT_PRESETS),true);
- assert.deepEqual(TIMELINE_OUTPUT_PRESETS.map(({id,fps,width,height})=>({id,fps,width,height})),[
+ assert.deepEqual(TIMELINE_FORMAT_WRITE_PRESETS.map(({id,fps,width,height})=>({id,fps,width,height})),[
   {id:'portrait_1080',fps:30,width:1080,height:1920},{id:'landscape_1080',fps:30,width:1920,height:1080},{id:'square_1080',fps:30,width:1080,height:1080},
   {id:'portrait_720',fps:30,width:720,height:1280},{id:'landscape_720',fps:30,width:1280,height:720},{id:'square_720',fps:30,width:720,height:720}]);
  for(const preset of TIMELINE_OUTPUT_PRESETS){assert.equal(Object.isFrozen(preset),true);assert.equal(timelineOutputPreset(preset.id),preset);assert.equal(timelineOutputPreset(preset),preset);}
@@ -24,6 +25,9 @@ test('format read response is exact, scoped, bounded, and self-consistent',()=>{
  const existing={...value,timelineId:randomUUID(),timelineRevision:1,eligible:false,blockedReasons:[...TIMELINE_FORMAT_BLOCKED_REASONS]};
  assert.equal(isTimelineFormatReadResponse(existing,{projectId}),true);
  assert.equal(isTimelineFormatReadResponse({...existing,blockedReasons:['PENDING_EDIT','PENDING_EDIT']},{projectId}),false);
+ const ultrawide={...existing,presetId:'ultrawide_1080',width:2520,height:1080};
+ assert.equal(isTimelineFormatReadResponse(ultrawide,{projectId}),true);
+ assert.equal(isTimelineFormatReadResponse({...ultrawide,width:2518},{projectId}),false);
 });
 test('format ACK allows absence revision zero only for this operation and validates the response own format',()=>{
  const value=timeline();assert.equal(isTimelineMutationResponse('timeline.format.set',input,value),true);
@@ -32,8 +36,8 @@ test('format ACK allows absence revision zero only for this operation and valida
  const portrait=timeline('portrait_720');assert.equal(isTimelineRecord(portrait),true);
  assert.equal(isTimelineRecord({...portrait,width:1280}),false);
 });
-test('rectangle syntax admits all preset envelopes while each ACK enforces its own output bounds',()=>{
- for(const preset of TIMELINE_OUTPUT_PRESETS){
+test('legacy rectangle syntax and ACKs retain their original write bounds',()=>{
+ for(const preset of TIMELINE_FORMAT_WRITE_PRESETS){
   const value=timeline(preset.id),clip={id:randomUUID(),trackId:value.tracks[0].id,assetId:randomUUID(),name:'Clip',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:value.width,height:value.height},gain:1};
   value.clips=[clip];value.durationFrames=30;value.revision=2;
   const add={projectId,expectedRevision:1,requestId:randomUUID(),trackId:clip.trackId,assetId:clip.assetId,startFrame:0,durationFrames:30};
