@@ -8,7 +8,6 @@ import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
 import {mock} from 'node:test';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
-import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
@@ -115,7 +114,7 @@ const equivalentRuns = (remaining: number, growth: number): number | null => gro
  * The only replacement is the model gateway, which never opens a socket. */
 async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport['scenario'], options: ContextReportOptions): Promise<ContextProtocolReport> {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-harness-context-report-'));
-  const store = openStore(root),records=createMioRecords(store);
+  const store = openStore(root);
   const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   let services:ReturnType<typeof createServices>|undefined;
   let tools: ReturnType<typeof createAgentTaskTools> | undefined;
@@ -202,23 +201,25 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const snapshot = runtime.journal.snapshot(sent.run.id);
     assert.ok(requests.length > 0, `Measurement did not reach the synthetic gateway: ${snapshot.run.pauseReason ?? snapshot.run.status}`);
     const after = readMioStorage(store.db);
+    const stepBytes = store.db.prepare(`SELECT length(CAST(s.data AS BLOB))+coalesce(length(CAST(e.payloadJson AS BLOB)),b.bytes,0) AS bytes FROM mio_steps s LEFT JOIN mio_entries e ON e.id=s.resultEntryId LEFT JOIN mio_blobs b ON b.sha256=e.payloadBlobHash WHERE s.id=?`);
     const storedStepBytes=(stepId:string):number=>{
-      const row=store.db.prepare(`SELECT length(CAST(s.data AS BLOB))+coalesce(length(CAST(e.payloadJson AS BLOB)),b.bytes,0) AS bytes FROM mio_steps s LEFT JOIN mio_entries e ON e.id=s.resultEntryId LEFT JOIN mio_blobs b ON b.sha256=e.payloadBlobHash WHERE s.id=?`).get(stepId)!;
+      const row=stepBytes.get(stepId)!;
       return Number(row.bytes);
     };
-    const modelSteps=records.steps(sent.run.id).filter(step=>step.kind==='model').map((row,index):ModelStepMeasurement=>{
-      const saved=runtime!.journal.step(row.id),request=record(saved.request);
+    // The journal snapshot has already reconstructed the persisted steps.
+    const modelSteps=snapshot.steps.filter(step=>step.kind==='model').map((saved,index):ModelStepMeasurement=>{
+      const request=record(saved.request);
       noSecret(JSON.stringify(saved));assert.equal(typeof request.body,'string');
-      const appended=flushes.get(row.id)??[],result=saved.result===undefined?undefined:record(saved.result),usage=result?.usage===undefined?undefined:record(result.usage) as ReportTokenUsage;
-      return {index:index+1,status:row.status,storedDataBytes:storedStepBytes(row.id),requestBytes:Buffer.byteLength(request.body as string),historyBytes:Buffer.byteLength(JSON.stringify(request.history)),textBytes:typeof saved.text==='string'?Buffer.byteLength(saved.text):0,checkpointEvents:appended.length,...(usage?{usage}:{}),...(scenario.deltaIntervalMs===undefined?{}:{streaming:{flushes:appended,checkpointRewriteBytes:appended.reduce((sum,value)=>sum+value.checkpointRewriteBytes,0),invalidationEventBytes:appended.reduce((sum,value)=>sum+value.invalidationEventBytes,0),beforeDone:beforeDone.get(index+1)!}})};
+      const appended=flushes.get(saved.id)??[],result=saved.result===undefined?undefined:record(saved.result),usage=result?.usage===undefined?undefined:record(result.usage) as ReportTokenUsage;
+      return {index:index+1,status:saved.status,storedDataBytes:storedStepBytes(saved.id),requestBytes:Buffer.byteLength(request.body as string),historyBytes:Buffer.byteLength(JSON.stringify(request.history)),textBytes:typeof saved.text==='string'?Buffer.byteLength(saved.text):0,checkpointEvents:appended.length,...(usage?{usage}:{}),...(scenario.deltaIntervalMs===undefined?{}:{streaming:{flushes:appended,checkpointRewriteBytes:appended.reduce((sum,value)=>sum+value.checkpointRewriteBytes,0),invalidationEventBytes:appended.reduce((sum,value)=>sum+value.invalidationEventBytes,0),beforeDone:beforeDone.get(index+1)!}})};
     });
     const quotaBytes = after.usage.bytes - before.usage.bytes;
     const quotaRows = after.usage.rows - before.usage.rows;
     const byBytes = equivalentRuns(after.remaining.bytes, quotaBytes), byRows = equivalentRuns(after.remaining.rows, quotaRows);
     const estimates = [byBytes, byRows].filter((value): value is number => value !== null);
-    const toolSteps:ToolStepMeasurement[]|undefined=scenario.stress30Steps?records.steps(sent.run.id).filter(step=>step.kind==='tool').map((row,index)=>{
-      const saved=runtime!.journal.step(row.id),call=record(saved.toolCall);assert.equal(typeof call.name,'string');
-      return {index:index+1,toolName:String(call.name),status:row.status,storedDataBytes:storedStepBytes(row.id),resultBytes:saved.result===undefined?0:Buffer.byteLength(JSON.stringify(saved.result))};
+    const toolSteps:ToolStepMeasurement[]|undefined=scenario.stress30Steps?snapshot.steps.filter(step=>step.kind==='tool').map((saved,index)=>{
+      const call=record(saved.toolCall);assert.equal(typeof call.name,'string');
+      return {index:index+1,toolName:String(call.name),status:saved.status,storedDataBytes:storedStepBytes(saved.id),resultBytes:saved.result===undefined?0:Buffer.byteLength(JSON.stringify(saved.result))};
     }):undefined;
     const usage = summarizeReportUsage(modelSteps.map(step => step.usage ?? null));
     return {
