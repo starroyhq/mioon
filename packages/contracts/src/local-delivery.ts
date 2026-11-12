@@ -90,8 +90,9 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
   const input=z.custom<LocalDeliveryRenderInput>((value:unknown)=>exactRenderInput(value,isRenderInput));
   const intent=z.object({
     intentId:id,timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),
-    input,outputLocale:outputLocaleSchema.optional(),createdAt:stamp,outcome:localDeliveryOutcomeSchema,
+    input,createdAt:stamp,outcome:localDeliveryOutcomeSchema,
   }).strict();
+  const presentedIntent=intent.extend({outputLocale:outputLocaleSchema.optional()});
   const prepare=z.object({
     ...authority,projectId:id,expectedIntentRevision:revision,expectedIntentId:id.nullable(),intentId:id,
     timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),input,outputLocale:outputLocaleSchema.optional(),
@@ -118,9 +119,10 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
   // frozen intent. A changed current revision does not deny original replay.
   const supportedEnvelope=z.object({
     supported:z.literal(true),...authority,projectId:id,draftRevision:revision,draft:localDeliveryDraftValueSchema.nullable(),
-    intentRevision:revision,intent:intent.nullable(),draftTargetStatus:targetStatus,intentTargetStatus:targetStatus,
+    intentRevision:revision,intent:presentedIntent.nullable(),draftTargetStatus:targetStatus,intentTargetStatus:targetStatus,
   }).strict().superRefine((value,context)=>{
-    const result=slot.safeParse({projectId:value.projectId,draftRevision:value.draftRevision,draft:value.draft,intentRevision:value.intentRevision,intent:value.intent});
+    const {outputLocale: _locale,...storedIntent}=value.intent??{outputLocale:undefined};
+    const result=slot.safeParse({projectId:value.projectId,draftRevision:value.draftRevision,draft:value.draft,intentRevision:value.intentRevision,intent:value.intent===null?null:storedIntent});
     if(!result.success)issue(context,'Invalid local delivery slot');
     if((value.draft===null)!==(value.draftTargetStatus==='unset')||(value.intent===null)!==(value.intentTargetStatus==='unset'))issue(context,'Target status must describe its retained identity');
     if(!bytesWithin(value,LOCAL_DELIVERY_LIMITS.httpBytes))issue(context,'Local delivery response exceeds its byte limit');
@@ -140,7 +142,7 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
 export type LocalDeliverySchemas=ReturnType<typeof createLocalDeliverySchemas>;
 export type LocalDeliveryPrepare=z.infer<LocalDeliverySchemas['prepare']>;
 export type LocalDeliverySlot=z.infer<LocalDeliverySchemas['slot']>;
-export type LocalDeliveryIntent=NonNullable<LocalDeliverySlot['intent']>;
 export type LocalDeliveryDisk=z.infer<LocalDeliverySchemas['disk']>;
 export type LocalDeliveryEnvelope=z.infer<LocalDeliverySchemas['envelope']>;
+export type LocalDeliveryIntent=NonNullable<Extract<LocalDeliveryEnvelope,{supported:true}>['intent']>;
 export type LocalDeliveryExecution=z.infer<LocalDeliverySchemas['execution']>;

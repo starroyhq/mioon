@@ -153,24 +153,32 @@ test('lost response after actual shared acceptance reconciles from original rece
 test('ambiguous transport remains pending through reload and only explicit recover executes original input',async t=>{
   const f=await fixture(t),preparation=f.prepare(f.get(),{outputLocale:'ja'}),prepared=f.delivery.prepare(preparation);f.setRender(async()=>{throw Error('PRIVATE before service');});
   assert.equal(prepared.intent!.outputLocale,'ja');
+  assert.equal(Object.hasOwn(f.draftRows()[0].intent,'outputLocale'),false);
+  assert.deepEqual(f.delivery.prepare(preparation),prepared);
   assert.throws(()=>f.delivery.prepare({...preparation,outputLocale:'en'}),code('LOCAL_DELIVERY_CONFLICT'));
   const first=await f.delivery.execute(action(prepared));assert.equal(first.envelope.intent!.outcome.status,'pending');assert.equal(first.response,null);assert.equal(f.calls.length,1);f.restart();assert.equal(f.get().intent!.outcome.status,'pending');assert.equal(f.calls.length,1);
   f.setRender(f.originalRender);const result=await f.delivery.recover(action(f.get()));assert.equal(result.envelope.intent!.outcome.status,'accepted');assert.deepEqual(f.calls[0],f.calls[1]);
   assert.deepEqual(f.calls[1],preparation.input);
   assert.equal(outputLocaleFor(f.store.db,String(result.response!.id)),'ja');
+  assert.equal(Object.hasOwn(f.draftRows()[0].intent,'outputLocale'),false);
 });
 
 test('actual shared revision rejection is terminal, never retried after timeline restoration, and permits exact new-intent CAS',async t=>{
-  const f=await fixture(t),saved=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(saved));
+  const f=await fixture(t),saved=f.delivery.put(f.put()),prepared=f.delivery.prepare(f.prepare(saved,{outputLocale:'en'}));
   f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1});const rejected=await f.delivery.execute(action(prepared));assert.equal(rejected.envelope.intent!.outcome.status,'not_applied');assert.equal(rejected.envelope.intent!.outcome.code,'REVISION_CONFLICT');assert.deepEqual(rejected.envelope.draft,saved.draft);
   f.store.put('timelines',f.timeline);const oldCalls=f.calls.length;assert.equal((await f.delivery.recover(action(f.get()))).envelope.intent!.outcome.status,'not_applied');assert.equal(f.calls.length,oldCalls);
   const next=f.delivery.prepare(f.prepare(f.get()));assert.notEqual(next.intent!.intentId,prepared.intent!.intentId);assert.throws(()=>f.delivery.recover(action(rejected.envelope)),code('LOCAL_DELIVERY_CONFLICT'));
+  assert.equal(next.intent!.outputLocale,undefined);
+  assert.equal(f.store.db.prepare("SELECT count(*) n FROM idempotency WHERE scope LIKE 'output-locale:delivery:%'").get()!.n,0);
 });
 
 for(const point of ['beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`prepare failure at ${point} produces zero render calls`,async t=>{
-  const f=await fixture(t),input=f.prepare(),before=f.snapshot();f.setFault((label: string)=>{if(label===point)throw Error('PRIVATE fault');});
+  const f=await fixture(t),input=f.prepare(f.get(),{outputLocale:'ja'}),before=f.snapshot();f.setFault((label: string)=>{if(label===point)throw Error('PRIVATE fault');});
   assert.throws(()=>f.delivery.prepare(input),code(['beforePersist','beforeCommit'].includes(point)?'LOCAL_DELIVERY_STORAGE_UNAVAILABLE':'LOCAL_DELIVERY_SAVE_UNCERTAIN'));assert.equal(f.calls.length,0);assert.equal(f.snapshot(),before);f.setFault(()=>{});
-  if(f.get().intent){assert.equal(f.get().intent!.outcome.status,'pending');assert.equal(f.calls.length,0);}
+  const intent=f.get().intent,committed=!['beforePersist','beforeCommit'].includes(point);
+  assert.equal(Boolean(intent),committed);
+  assert.equal(f.store.db.prepare("SELECT count(*) n FROM idempotency WHERE scope LIKE 'output-locale:delivery:%'").get()!.n,committed?1:0);
+  if(intent){assert.equal(intent.outcome.status,'pending');assert.equal(intent.outputLocale,'ja');assert.equal(f.calls.length,0);}
 });
 
 for(const point of ['beforeOutcomePersist','beforePersist','beforeCommit','afterCommit','afterPersist','beforeConfirm','afterConfirm'])test(`outcome failure at ${point} never permits a fresh intent; explicit recovery uses original receipt`,async t=>{
