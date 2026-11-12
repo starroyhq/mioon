@@ -7,8 +7,7 @@ import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
 import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
 import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.ts';
-import { OUTPUT_LOCALE_HEADER } from '../../../packages/contracts/src/output-locale.ts';
-import type { Locale } from '../../../packages/i18n/src/types.ts';
+import { OUTPUT_LOCALE_HEADER, type OutputLocale } from '../../../packages/contracts/src/output-locale.ts';
 
 export type RpcFetcher = typeof fetch;
 export interface RpcOptions {
@@ -16,7 +15,7 @@ export interface RpcOptions {
   readonly fetcher?: RpcFetcher;
   /** Addresses the entity-addressed operations, whose input names no project. */
   readonly projectId?: string | null;
-  readonly outputLocale?: Locale;
+  readonly outputLocale?: OutputLocale;
 }
 interface RpcErrorBody {
   readonly code?: unknown;

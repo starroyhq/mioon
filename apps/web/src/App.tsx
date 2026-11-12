@@ -1403,9 +1403,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         if (operation === 'job.retry' && (stored!.subjectRetry || stored!.expectedSubjectReference || stored!.expectedRetrySnapshot || dataRef.current!.jobs?.length)) subjectRetry = subjectRetry || isSubjectRetryPending(stored, dataRef.current!.jobs || []);
         if (currentProject.current === projectId) setPending(pendingForProject(projectId as string));
       }
+      const retainedLocale = stored?.outputLocale;
       invalidateHistory();
       dispatched = true;
-      const retainedLocale = stored?.outputLocale;
       const result = await rpc(operation, input, { projectId, ...(retainedLocale ? {outputLocale:retainedLocale} : {}) });
       invalidateHistory();
       if (mutation) validateMutationResponse(stored as never, result);
