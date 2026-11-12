@@ -129,7 +129,8 @@ const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18
   'packages/business/src/agent/settings-envelope.ts', 'packages/contracts/src/agent-connection-settings.ts',
   'packages/contracts/src/agent-connection-private.ts', 'packages/contracts/src/agent-provider-catalog.ts',
   'packages/business/src/agent/model-profiles.ts', 'packages/business/src/agent/anthropic-protocol.ts',
-  'packages/business/src/agent/chat-errors.ts', 'packages/contracts/src/app-error.ts']);
+  'packages/business/src/agent/chat-errors.ts', 'packages/contracts/src/agent-failure-diagnostic.ts',
+  'packages/contracts/src/app-error.ts']);
 const reviewedTypeScript = approved;
 const urls = new Map<string, string>();
 function moduleUrl(name: string): string {
