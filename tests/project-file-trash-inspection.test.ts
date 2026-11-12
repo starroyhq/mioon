@@ -13,7 +13,7 @@ import {createProjectFile} from '../packages/business/src/project-file/connectio
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 
 function fixture(t:TestContext){
@@ -162,7 +162,9 @@ test('unknown and newer history profiles are refused instead of treating a faile
  const f=fixture(t),db=new DatabaseSync(f.history);
  db.exec('CREATE INDEX foreign_profile ON mio_runs(projectId)');db.close();
  let before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_INVALID'});assert.deepEqual(evidence(f.root),before);
- const newer=new DatabaseSync(f.history);newer.exec('DROP INDEX foreign_profile');newer.prepare('UPDATE schema_version SET version=?').run(HISTORY_SCHEMA_VERSION+1);newer.close();
+ const forged=new DatabaseSync(f.history);forged.exec('DROP INDEX foreign_profile');forged.prepare('UPDATE schema_version SET version=?').run(FORMAT4_HISTORY_SCHEMA_VERSION);forged.close();
+ before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_INVALID'});assert.deepEqual(evidence(f.root),before);
+ const newer=new DatabaseSync(f.history);newer.prepare('UPDATE schema_version SET version=?').run(FORMAT4_HISTORY_SCHEMA_VERSION+1);newer.close();
  before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_FORMAT_NEWER'});assert.deepEqual(evidence(f.root),before);
  const empty=new DatabaseSync(':memory:');try{assert.throws(()=>hasBlockingMioRun(empty,f.projectId),{code:'PROJECT_INVALID'});}finally{empty.close();}
 });

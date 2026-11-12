@@ -231,6 +231,7 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   active='project';source.exec('BEGIN');
   const identity=readCopiedProjectIdentity(source,PROJECT_FILE_APPLICATION_ID,Number(before.size));
   if(identity.projectId!==inspected.projectId||identity.contentSequence!==inspected.contentSequence||identity.contentToken!==inspected.contentToken)throw invalid('project','metadata');
+  if(historyBefore)active='history';
   const historyIdentity=historyBefore?validateHistory(source,'history',identity.projectId):null;
   if(options.onBoundary)await options.onBoundary('locked');
   assertAllowed();
