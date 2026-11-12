@@ -12,6 +12,8 @@
   --wb-selected: #EFF0F0;
   --wb-input: #FFFFFF;
   --wb-line-subtle: #EDEDED;
+  /* Canvas dot grid: 12% contrast dots, matching the canvas design. */
+  --wb-canvas-dot: #0000001F;
   --wb-line: #E5E5E5;
   --wb-line-strong: #D6D8DA;
   --wb-text: #191C1F;

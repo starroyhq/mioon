@@ -37,7 +37,7 @@ export function createWorkspaceConfiguration({root,env=process.env,documents}:{r
       for(const listener of listeners)listener();return result;
     },
     liveEnabled:()=>get().liveGeneration,
-    assertLiveEnabled():void {if(!get().liveGeneration)throw new AppError('LIVE_GENERATION_DISABLED','Live generation is disabled in workspace settings.',409);},
+    assertLiveEnabled():void {if(!get().liveGeneration)throw new AppError('LIVE_GENERATION_DISABLED','Live generation is disabled in workspace settings.',409,{mutationOutcome:'not_applied'});},
     environment():NodeJS.ProcessEnv {
       const copy={...env};Object.defineProperty(copy,'MIOON_ENABLE_LIVE_PROVIDER',{enumerable:true,configurable:false,get:()=>get().liveGeneration?'1':'0'});return copy;
     },

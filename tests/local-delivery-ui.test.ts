@@ -41,7 +41,7 @@ function fixture(t: test.TestContext, options: {context?: Partial<ReadyDeliveryC
       stored = { ...stored, draftRevision: stored.draftRevision + 1, draft: { draftId: input.draftId, timelineId: input.timelineId, baseRevision: input.baseRevision, raw: copy(input.raw), updatedAt: stamp }, draftTargetStatus: input.baseRevision === context.timelineRevision && input.timelineId === context.timelineId ? 'matching' : 'changed' }; return copy(stored); },
     async discard(input: Parameters<LocalDeliveryClient['discard']>[0]) { calls.push({ method: 'discard', input: copy(input) }); if (overrides.discard) return overrides.discard(input); stored = { ...stored, draftRevision: stored.draftRevision + 1, draft: null, draftTargetStatus: 'unset' }; return copy(stored); },
     async prepare(input: Parameters<LocalDeliveryClient['prepare']>[0]) { calls.push({ method: 'prepare', input: copy(input) }); if (overrides.prepare) return overrides.prepare(input);
-      stored = { ...stored, intentRevision: stored.intentRevision + 1, intent: { intentId: input.intentId, timelineId: input.timelineId, baseRevision: input.baseRevision, draft: copy(input.draft), input: copy(input.input), createdAt: stamp, outcome: { status: 'pending' } }, intentTargetStatus: 'matching' }; return copy(stored); },
+      stored = { ...stored, intentRevision: stored.intentRevision + 1, intent: { intentId: input.intentId, timelineId: input.timelineId, baseRevision: input.baseRevision, draft: copy(input.draft), input: copy(input.input), ...(input.outputLocale ? {outputLocale: input.outputLocale} : {}), createdAt: stamp, outcome: { status: 'pending' } }, intentTargetStatus: 'matching' }; return copy(stored); },
     async execute(input: Parameters<LocalDeliveryClient['execute']>[0]) { calls.push({ method: 'execute', input: copy(input) }); return overrides.execute ? overrides.execute(input) : settle(); },
     async recover(input: Parameters<LocalDeliveryClient['recover']>[0]) { calls.push({ method: 'recover', input: copy(input) }); return overrides.recover ? overrides.recover(input) : settle(); },
   };
@@ -167,11 +167,26 @@ test('client uses fixed same-origin endpoints and classifies only exact refusal 
 
 test('explicit recovery retries only the retained unacknowledged preparation then recovers the same input', async t => {
   const f = fixture(t); await f.controller.load(); f.edit('Original'); f.overrides.prepare = () => { throw new Error('lost before publication'); };
-  await f.controller.submit(f.input()); const original = f.calls.find(c => c.method === 'prepare')!.input;
+  await f.controller.submit(f.input(), {outputLocale: 'ja'}); const original = f.calls.find(c => c.method === 'prepare')!.input;
+  assert.equal(original.outputLocale, 'ja');
+  assert.equal(Object.hasOwn(original.input, 'outputLocale'), false);
   await f.controller.load(); assert.equal(f.state().intent, null); assert.equal(f.state().retainedPreparation!.intentId, original.intentId); f.edit('New title');
   delete f.overrides.prepare; const result = await f.controller.recover(); assert.ok(result);
   const prepares = f.calls.filter(c => c.method === 'prepare'); assert.deepEqual(prepares[1].input, original); assert.equal(f.calls.filter(c => c.method === 'recover').length, 1); assert.equal(f.calls.filter(c => c.method === 'execute').length, 0);
   assert.equal(f.state().deliveryName, 'New title'); assert.equal(f.state().dirty, true); assert.equal(f.accepted[0].recovered, true);
+});
+
+test('a prepared intent with a different locale cannot authorize export dispatch', async t => {
+  const f=fixture(t);
+  await f.controller.load();
+  f.overrides.prepare=input=>({...f.stored(),intentRevision:1,intentTargetStatus:'matching',intent:{
+    intentId:input.intentId,timelineId:input.timelineId,baseRevision:input.baseRevision,draft:input.draft,input:input.input,
+    outputLocale:'en',createdAt:stamp,outcome:{status:'pending'},
+  }});
+  assert.equal(await f.controller.submit(f.input(),{outputLocale:'ja'}),null);
+  assert.equal(f.state().retainedPreparation?.outputLocale,'ja');
+  assert.equal(f.state().pending,true);
+  assert.deepEqual(f.calls.map(call=>call.method),['get','prepare']);
 });
 
 test('newer edit during explicit prepare recovery keeps the pending original without dispatch', async t => {

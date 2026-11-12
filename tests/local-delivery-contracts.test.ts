@@ -121,6 +121,9 @@ test('bounded disk keeps project tombstones, one latest intent, no journal or re
   rejects(schemas.disk,{...disk,version:2});
   rejects(schemas.disk,{...disk,journal:[]});
   rejects(schemas.slot,{...f.slot,intent:{...f.intent,snapshot:{}}});
+  const localizedIntent={...f.intent,outputLocale:'ja'};
+  rejects(schemas.slot,{...f.slot,intent:localizedIntent});
+  assert.ok(schemas.envelope.safeParse({...f.envelope,intent:localizedIntent}).success);
   rejects(schemas.slot,{...f.slot,intent:{...f.intent,outcome:{status:'accepted',exportId:randomUUID(),responseSha256:'d'.repeat(64),resolvedAt:stamp,response:{}}}});
   const entries=Array.from({length:LOCAL_DELIVERY_LIMITS.slots},()=>({...tombstone,projectId:randomUUID()}));
   assert.ok(schemas.disk.safeParse({...disk,entries}).success);

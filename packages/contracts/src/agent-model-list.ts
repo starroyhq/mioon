@@ -26,8 +26,8 @@ export type AgentModelListSuccess=z.infer<typeof agentModelListSuccessSchema>;
 export const agentModelListResultSchema=z.union([
  agentModelListSuccessSchema,
  z.object({outcome:z.literal('invalid_key'),reason:z.enum(['required','rejected','permission_denied'])}).strict(),
- z.object({outcome:z.literal('unavailable'),reason:z.enum(['not_provided','unsupported_shape','http_unavailable'])}).strict(),
- z.object({outcome:z.literal('unreachable'),reason:z.enum(['connection_failed','timeout','aborted','http_error','invalid_response','response_limit'])}).strict(),
+ z.object({outcome:z.literal('unavailable'),reason:z.enum(['not_provided','unsupported_shape','http_unavailable','not_found'])}).strict(),
+ z.object({outcome:z.literal('unreachable'),reason:z.enum(['connection_failed','timeout','aborted','http_error','rate_limited','server_error','invalid_response','response_limit'])}).strict(),
  z.object({outcome:z.literal('network_denied'),reason:z.literal('policy')}).strict(),
 ]);
 export type AgentModelListResult=z.infer<typeof agentModelListResultSchema>;

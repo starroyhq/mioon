@@ -167,15 +167,18 @@ test('wrong project, missing keyframe, stale scene and forged PNG identity publi
 });
 
 test('lost local publication before registration resumes the same artifact without adding a second output', async t => {
-  const f = await fixture(t); let interrupted = false;
-  const producer = createPrevisPublicationServices(f.store, {beforeEffect: () => {
-    if (!interrupted && f.outputs().length > 0 && f.store.list('assets').length === 0) {interrupted = true; throw new Error('simulated crash after exclusive publication');}
+  const f = await fixture(t), producer = createPrevisPublicationServices(f.store);
+  const clear = setProjectOutputPublicationTestHooks(f.store, {fault: point => {
+    if (point === 'after_final') throw new Error('simulated crash after exclusive publication');
   }});
-  await assert.rejects(producer.handlers['previs.output.publish'](f.input), /simulated crash/);
+  try {await assert.rejects(producer.handlers['previs.output.publish'](f.input), /simulated crash/);}
+  finally {clear();}
   assert.equal(f.outputs().length, 1); assert.equal(f.store.list('assets').length, 0);
-  const before = f.outputs().map(name => readFileSync(path.join(f.root, '生成', name)));
+  const files = f.outputs(), before = files.map(name => readFileSync(path.join(f.root, '生成', name)));
+  assert.deepEqual(before, [f.bytes]);
   const restarted = createPrevisPublicationServices(f.store), result = await restarted.handlers['previs.output.publish'](f.input);
   assert.equal(result.asset.sha256, f.input.sha256); assert.equal(f.outputs().length, 1); assert.equal(f.store.list('assets').length, 1);
+  assert.deepEqual(f.outputs(), files);
   assert.deepEqual(f.outputs().map(name => readFileSync(path.join(f.root, '生成', name))), before);
 });
 
@@ -198,13 +201,14 @@ test('receipt marking failure after DB commit remains an unknown ACK and resolve
 });
 
 test('a changed scene after final publication preserves the file and refuses asset registration', async t => {
-  const f = await fixture(t); let changed = false;
-  const producer = createPrevisPublicationServices(f.store, {beforeEffect: () => {
-    if (!changed && f.outputs().length > 0) {
-      changed = true; f.store.tx(() => f.store.put('nodes', {...f.node, revision: f.node.revision + 1, sceneRevision: f.node.sceneRevision + 1}));
+  const f = await fixture(t), producer = createPrevisPublicationServices(f.store);
+  const clear = setProjectOutputPublicationTestHooks(f.store, {fault: point => {
+    if (point === 'after_final') {
+      f.store.tx(() => f.store.put('nodes', {...f.node, revision: f.node.revision + 1, sceneRevision: f.node.sceneRevision + 1}));
     }
   }});
-  await assert.rejects(producer.handlers['previs.output.publish'](f.input), {code: 'REVISION_CONFLICT'});
+  try {await assert.rejects(producer.handlers['previs.output.publish'](f.input), {code: 'REVISION_CONFLICT'});}
+  finally {clear();}
   assert.equal(f.outputs().length, 1); assert.equal(f.store.list('assets').length, 0);
   assert.deepEqual(readFileSync(path.join(f.root, '生成', f.outputs()[0]!)), f.bytes);
   assert.equal(await producer.handlers['previs.output.lookup'](previsPublicationIdentity(f.input)), null);

@@ -15,11 +15,15 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
-| `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或严格五字段摘要；不打开关闭的项目 |
+| `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或连接测试摘要；不打开关闭的项目 |
 | `POST /api/agent/models/list` | X6b 应用级只读模型发现：仅列表网络请求，可写独立的无密钥缓存；不打开项目或运行推理 |
 | `POST /api/agent/models/cache` | X6b 单服务缓存读取：无网络、无密钥读取、无文件创建；坏缓存视为未命中 |
 
-首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。诊断摘要仅有 `completedAt`、`status`、`protocol`、`model`、`errorCode`，由项目诊断完成时更新，没有对话内容、请求原文或密钥。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
+首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。连接测试摘要由项目诊断完成时更新，含 `completedAt`、`status`、`protocol`、`model`、`errorCode` 和可选的设置绑定。遇到上游 HTTP 失败时，摘要可另含 `diagnostic:{kind:'http',status,providerType?,providerCode?}`。服务商类型和错误码仅保留已知机器标签或状态式数字码。旧摘要可省略 `diagnostic`。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
+
+模型列表使用 `outcome` 和 `reason` 返回失败分类。上游 401、403、404、429 和 5xx 分别对应
+`rejected`、`permission_denied`、`not_found`、`rate_limited` 和 `server_error`。
+连接错误和超时分别用 `connection_failed` 和 `timeout` 表示。
 
 真实 HTTP 可达的 B1 错误为：
 
@@ -70,7 +74,9 @@ S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的
 
 首次派发时，`createAtSelection`、`duplicate`、`copyTo`、`instantiateTemplate` 的 main 层 409 `PROJECT_ENTRY_UNAVAILABLE` 是写入前拒绝，提示重新系统选择；`copyTo` 必须重新观察来源再选择目标。未知写入的重放可能在操作缓存之前收到 409 或 BUSY，这不能证明原写入未执行，必须恢复原 retry/intent，保留未知与关闭保护，不能放开新的创建或复制。`adoptCopy` 的同码可能发生在写入后，仍保留未知。打开最近项目时，仅尚未消费 renderer admission 的 main busy/owner 拒绝可以解除 openUnknown；消费后的同码不能证明未开窗。
 
-模板实例化补桥新增可选 `templates` 能力（当前仅 `timeline-basics` v1）、`chooseLocation` 的 `template` 用途与 `instantiateTemplate`。main 把真实目标及模板信息绑定到 backend/window/context 的一次性票据；页面只提交 token、固定模板 ID/版本、名称和原 requestId，不能提供 parentDir/路径。私有 main→utility 严格校验命令与复制回执后调用既有 S5 实例化。没有验证过的资源时不声明该能力；取消零写，同票据同输入只回放原结果，目标存在拒绝。确定回执后通过原先确认所发的局部许可，再核目录并打开新 ID；开窗失败只重试打开，不再实例化。
+模板实例化补桥新增可选 `templates` 能力（当前仅 `timeline-basics` v1）、`chooseLocation` 的 `template` 用途与 `instantiateTemplate`。main 把真实目标及模板信息绑定到 backend/window/context 的一次性票据；页面只提交 token、固定模板 ID/版本、名称、原 requestId 和可选 `locale`，不能提供 parentDir/路径。私有 main→utility 严格校验命令与复制回执后调用既有 S5 实例化。没有验证过的资源时不声明该能力；取消零写，同票据同输入只回放原结果，目标存在拒绝。确定回执后通过原先确认所发的局部许可，再核目录并打开新 ID；开窗失败只重试打开，不再实例化。
+
+首页发起时固定界面语言（`zh-Hans`、`zh-Hant`、`en` 或 `ja`）。保存面板仍确认项目名，模板校验后在新实例里写入该语言的项目描述和素材显示名。语言参与请求回执校验，省略时沿用模板中的原始文字。
 
 模板未知回执不能靠重放已拒绝的 promise 核对。界面如实提示项目可能已建好，允许刷新列表和关闭对话框；不自动实例化、不开假回执，也不把列表刷新当作完成证明。关闭后可以明确打开已有项目，未知关闭元数据仍保留，新写继续阻止。按 requestId 查 S5 回执留 0.1.x。模板目标占用检查在位置探测之后异步执行，签票前同时检查所选文件和实际项目目录。
 
@@ -131,6 +137,13 @@ input。其余项目级操作继续保留原有 `input.projectId`，
 Agent 项目任务原 `/api/agent/tasks/v2/{projectId}/…` 对应
 `/api/projects/{projectId}/agent/tasks/v2/…`；全局 `policy` 和 `diagnostics`
 不移入项目路径。请求中已有的项目字段仍须与地址一致。
+
+Mio 模型步骤失败的 `error` 保留原有 `code` 和 `message`，可另含
+`diagnostic`。HTTP 诊断与连接测试同形，协议诊断含原因、事件、输出类型或字段名，
+上限诊断含触发的上限标签。新 Responses 事件名须以 `response.` 开头，包含一至四段标识符，总长最多 96 字节。
+Anthropic 事件、输出类型和字段的新名称使用单个标识符。标识符以 ASCII 小写字母开头，后续可用小写字母、数字和下划线，最多 41 字符。
+不符合格式的名称用 `unrecognized` 表示。诊断没有服务商错误原文、模型文本、
+工具参数、密文、请求体或密钥，随步骤一起保存。旧步骤可省略该字段。
 
 K2 曾保留的旧项目地址已在 P4 退役：把项目操作发到应用 `/api/rpc` 返回 400
 `VALIDATION_ERROR`；认证后的旧项目 REST 和 `/media/{assetId}` 返回 404

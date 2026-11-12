@@ -85,7 +85,7 @@ for (const kind of ['generated', 'exports', 'assets'] as const) for (const point
 }
 
 test('link intent before targetIdentity ACK proves only its stage inode, including project aliases', async t => {
-  const f = fixture(t); await fault(f, 'after_final', false);
+  const f = fixture(t, 'assets'); await fault(f, 'after_final', false);
   const file = target(f), saved = f.receipt(); saved.phase = 'intent'; saved.targetIdentity = null; delete saved.finalStats;
   writeFileSync(f.receiptFile, JSON.stringify(saved), {mode: 0o600});
   const alias = path.join(f.projectDir, 'alias.png'), symbolic = path.join(f.projectDir, 'inside.png'); linkSync(file, alias); symlinkSync(file, symbolic);
@@ -106,7 +106,7 @@ test('prepared requires a complete final epoch and exact committed publication, 
 });
 
 test('link prepared without finalStats cannot be mistaken for a committed complete output', async t => {
-  const f = fixture(t), output = await publishProjectOutput(f.store, f.input); f.register(output);
+  const f = fixture(t, 'assets'), output = await publishProjectOutput(f.store, f.input); f.register(output);
   const saved = f.receipt(); delete saved.finalStats; writeFileSync(f.receiptFile, JSON.stringify(saved), {mode: 0o600});
   const file = target(f); assert.equal((await f.snapshot()).isExcluded(file, lstatSync(file, {bigint: true})), true);
 });

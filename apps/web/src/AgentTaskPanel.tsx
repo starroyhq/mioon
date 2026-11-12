@@ -26,7 +26,7 @@ import AgentTaskContinuityReport from './AgentTaskContinuityReport.tsx';
 import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from './agent-task-reviews.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
 import Icon from './icons.tsx';
-import { agentTaskErrorKey } from './agent-task-errors.ts';
+import { agentTaskDiagnosticDetails, agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import {ProjectRulesNotice, ProjectRulesChangeCard} from './project-file/ProjectRules.tsx';
@@ -50,9 +50,15 @@ export function agentTaskRunFailure(run:Pick<AgentTaskRun,'status'|'pauseReason'
 }
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
-  if (['IMAGE_SETTINGS_SELECTION_REQUIRED', 'GENERATION_FAILED', 'PROVIDER_ERROR', 'PROVIDER_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'PROVIDER_GENERATION_FAILED', 'PROVIDER_NOT_READY', 'PROVIDER_POLL_TIMEOUT', 'PROVIDER_CONFIGURATION', 'PROVIDER_DISABLED', 'PROVIDER_REGION_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_NETWORK_DENIED', 'IMAGE_TIMEOUT', 'COMFY_SETTINGS_CHECK_REQUIRED', 'COMFY_SETTINGS_DISABLED', 'COMFY_SETTINGS_NOT_CONFIGURED', 'COMFY_CONNECTION_FAILED', 'COMFY_NETWORK_DENIED', 'COMFY_TIMEOUT'].includes(code)) return 'models';
+  if (['IMAGE_SETTINGS_SELECTION_REQUIRED', 'GENERATION_FAILED', 'LIVE_GENERATION_DISABLED', 'PROVIDER_ERROR', 'PROVIDER_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'PROVIDER_GENERATION_FAILED', 'PROVIDER_NOT_READY', 'PROVIDER_POLL_TIMEOUT', 'PROVIDER_CONFIGURATION', 'PROVIDER_DISABLED', 'PROVIDER_REGION_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_NETWORK_DENIED', 'IMAGE_TIMEOUT', 'COMFY_SETTINGS_CHECK_REQUIRED', 'COMFY_SETTINGS_DISABLED', 'COMFY_SETTINGS_NOT_CONFIGURED', 'COMFY_CONNECTION_FAILED', 'COMFY_NETWORK_DENIED', 'COMFY_TIMEOUT'].includes(code)) return 'models';
   if (['AGENT_TASK_SETTINGS_CHANGED', 'AGENT_SETTINGS_CONFLICT', 'AGENT_TASK_CONSENT_REQUIRED', 'AGENT_AUTHORIZATION_REQUIRED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR'].includes(code)) return 'agent';
 };
+// The video submission checks this switch before creating a job. A wait can
+// report the same code for a job that already exists.
+const isUnsubmittedVideoGeneration = (step: AgentTaskStep): boolean =>
+  step.kind === 'tool' && step.tier === 'paid' && step.status === 'unknown' &&
+  step.toolCall?.name === 'mioon_generation_submit' && step.error?.code === 'LIVE_GENERATION_DISABLED' &&
+  (step.cost === undefined || step.cost === 'pending');
 // Completed read-only steps (a method, the project, the generation services) stay low-key (09-09); a question keeps its own line.
 const readIcon = (step: AgentTaskStep): string | undefined => step.kind === 'tool' && step.status === 'completed' && step.tier === 'read_only' && step.toolCall?.name !== 'mioon_ask' ? step.toolCall?.name === 'mioon_skill_read' ? 'book' : 'search' : undefined;
 const modelText = (step: AgentTaskStep): string => step.text || (step.result && typeof step.result === 'object' && !Array.isArray(step.result) && typeof step.result.text === 'string' ? step.result.text : '');
@@ -254,22 +260,43 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const markedConflicts = steps.filter(step => step.display?.conflict === true);
   const conflictSteps = markedConflicts.length ? markedConflicts : [steps.filter(step => step.kind === 'tool' && ['intent', 'awaiting_approval'].includes(step.status)).at(-1)].filter((step): step is AgentTaskStep => step !== undefined);
   const parameters = (step: AgentTaskStep) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale,formatOptions).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
-  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => <details className="mio-safe-details"><summary>{t('agent.panel.details')}</summary><p>{taskStepTitle(step,locale,firstRepairs)}</p>{parameters(step)}<p>{t('agent.panel.detailsPrivacy')}</p></details>;
+  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => {
+    const diagnostic = step.kind === 'model' ? agentTaskDiagnosticDetails(step.error?.diagnostic) : undefined;
+    return <details className="mio-safe-details">
+      <summary>{t('agent.panel.details')}</summary>
+      <p>{taskStepTitle(step,locale,firstRepairs)}</p>
+      {parameters(step)}
+      {diagnostic && <>
+        <p>{diagnostic.key === 'agent.panel.diagnostic.http' ? t(diagnostic.key, diagnostic.values) : t(diagnostic.key)}</p>
+        <Input className="mio-diagnostic-code" aria-label={t('agent.panel.diagnostic.code')}
+          data-testid={`agent-task-diagnostic-${step.id}`} data-text-selectable="true"
+          readOnly value={diagnostic.code} onFocus={event => event.currentTarget.select()} />
+      </>}
+      <p>{t('agent.panel.detailsPrivacy')}</p>
+    </details>;
+  };
   function recoveryFor(snapshot:AgentTaskSnapshot){
     const run=snapshot.run,unknown=snapshot.steps.filter(step=>step.status==='unknown'),interrupted=run.status==='interrupted',firstRepairs=taskFirstGoalRepairStepIds(snapshot.steps);
+    const needsReview = unknown.length === 0 || unknown.some(step => !isUnsubmittedVideoGeneration(step));
     const act=(action:Parameters<NonNullable<typeof session.current>['action']>[0],extras?:Parameters<NonNullable<typeof session.current>['action']>[1])=>session.current?.action(action,extras,run.id);
   return interrupted || unknown.length ? <>
-    <p>{t('agent.panel.recoveryBody')}</p>
-    {unknown.map(step => <div key={step.id} className="mio-unknown-step" data-testid={`agent-task-unknown-${step.id}`}>
-      <strong>{t('agent.panel.unknownStep', { name: taskStepTitle(step, locale,firstRepairs) })}</strong>
-      {step.kind === 'model' ? <><p>{t('agent.panel.unknownModel')}</p><Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.panel.markFailed')}</Button></> : step.toolCall?.name !== 'mioon_task_wait' && ['read_only', 'local_reversible'].includes(step.tier ?? '') ? <Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.task.resolveLocal')}</Button> : <>
-        <p>{t(step.tier === 'paid' ? 'agent.task.paidReconcile' : 'agent.task.waitReconcile')}</p><div className="mio-unknown-actions">{onOpenRequests && <Button data-mio-primary disabled={!visible} onClick={() => { if (visibility.current) onOpenRequests(taskBackgroundLocation(step)); }}>{t(step.toolCall?.name === 'mioon_generation_submit' || /^[a-f\d-]{36}$/iu.test(taskBackgroundLocation(step) ?? '') ? 'agent.panel.checkProvider' : 'agent.panel.checkOriginal')}</Button>}
-        {/* The server accepts this only when no task, request receipt or job origin exists for the step. */}
-        {step.tier === 'paid' && <Button variant="ghost" data-testid={`agent-task-mark-failed-${step.id}`} disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.panel.markFailed')}</Button>}</div>
-        {step.toolCall?.name === 'mioon_task_wait' && <Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'accept_result' }); }}>{t('agent.task.resolveAccept')}</Button>}
-      </>}
-    </div>)}
-    <p>{t('agent.panel.recoveryThen')}</p><div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act('resume'); }}>{t('agent.task.resume')}</Button><Button variant="ghost" data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.panel.abandon')}</Button></div><p className="mio-secondary">{t('agent.panel.abandonHelp')}</p>
+    {needsReview && <p>{t('agent.panel.recoveryBody')}</p>}
+    {unknown.map(step => {
+      const notSubmitted = isUnsubmittedVideoGeneration(step), name = taskStepTitle(step, locale,firstRepairs);
+      return <div key={step.id} className="mio-unknown-step" data-testid={`agent-task-unknown-${step.id}`}>
+        <strong>{notSubmitted ? name : t('agent.panel.unknownStep', { name })}</strong>
+        {step.kind === 'model' ? <><p>{t('agent.panel.unknownModel')}</p><Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.panel.markFailed')}</Button></> : step.toolCall?.name !== 'mioon_task_wait' && ['read_only', 'local_reversible'].includes(step.tier ?? '') ? <Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.task.resolveLocal')}</Button> : <>
+          <p>{t(notSubmitted ? 'agent.panel.generationNotSubmitted' : step.tier === 'paid' ? 'agent.task.paidReconcile' : 'agent.task.waitReconcile')}</p>
+          <div className="mio-unknown-actions">
+            {!notSubmitted && onOpenRequests && <Button data-mio-primary disabled={!visible} onClick={() => { if (visibility.current) onOpenRequests(taskBackgroundLocation(step)); }}>{t(step.toolCall?.name === 'mioon_generation_submit' || /^[a-f\d-]{36}$/iu.test(taskBackgroundLocation(step) ?? '') ? 'agent.panel.checkProvider' : 'agent.panel.checkOriginal')}</Button>}
+            {/* The server accepts this only when no task, request receipt or job origin exists for the step. */}
+            {step.tier === 'paid' && <Button variant={notSubmitted ? 'primary' : 'ghost'} data-mio-primary={notSubmitted || undefined} data-testid={`agent-task-mark-failed-${step.id}`} disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'discard' }); }}>{t('agent.panel.markFailed')}</Button>}
+          </div>
+          {step.toolCall?.name === 'mioon_task_wait' && <Button data-mio-primary disabled={blocked} onClick={() => { void act('resolve_unknown', { stepId: step.id, resolution: 'accept_result' }); }}>{t('agent.task.resolveAccept')}</Button>}
+        </>}
+      </div>;
+    })}
+    {needsReview && <p>{t('agent.panel.recoveryThen')}</p>}<div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act('resume'); }}>{t('agent.task.resume')}</Button><Button variant="ghost" data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.panel.abandon')}</Button></div><p className="mio-secondary">{t('agent.panel.abandonHelp')}</p>
   </> : null;
   }
   const interrupted=run?.status==='interrupted',recovery=state.snapshot?recoveryFor(state.snapshot):null;

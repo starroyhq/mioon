@@ -49,7 +49,7 @@ import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-adm
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
-import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/src/project-window-protocol.ts';
+import { PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT, isProjectWindowRequest, type ProjectWindowContext } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
@@ -132,13 +132,13 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     r.children.push(child); return child;
   }
   const frameBridges = new WeakMap<DesktopHarnessFrame, MenuCommandGestureBridge>();
-  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; fullScreen: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; menuPackets: {channel: string; value: MenuCommandIntent}[]; pendingOpenPackets:unknown[]; gestureCalls: {frame: DesktopHarnessFrame; script: string; userGesture: boolean | undefined}[]; gestureInputs: MenuCommandIntent[]; nativeUndos: number; nativeRedos: number; newFrame(url: string): DesktopHarnessFrame; bindMenuGesture(): Promise<void>; popupPolicy(): {action: string};}
+  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; fullScreen: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; menuPackets: {channel: string; value: MenuCommandIntent}[]; projectContexts: ProjectWindowContext[]; pendingOpenPackets:unknown[]; gestureCalls: {frame: DesktopHarnessFrame; script: string; userGesture: boolean | undefined}[]; gestureInputs: MenuCommandIntent[]; nativeUndos: number; nativeRedos: number; newFrame(url: string): DesktopHarnessFrame; bindMenuGesture(): Promise<void>; popupPolicy(): {action: string};}
   class Window extends EventEmitter {
     static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
       super();options.windowCreated?.(config); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0; this.visible = false; this.hides = 0;
-      this.fullScreen = false; this.menuPackets = []; this.pendingOpenPackets=[]; this.nativeUndos = 0; this.nativeRedos = 0;
+      this.fullScreen = false; this.menuPackets = []; this.projectContexts = []; this.pendingOpenPackets=[]; this.nativeUndos = 0; this.nativeRedos = 0;
       this.gestureCalls = []; this.gestureInputs = [];
       this.index = r.windows.length;
       this.disposition = options.disposition?.(this.index) ?? 'clean';
@@ -185,7 +185,11 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       this.webContents = Object.assign(new EventEmitter(), {
         mainFrame: this.newFrame('about:blank'),
         getURL: () => this.webContents.mainFrame.url,
-        send: (channel: string, value: MenuCommandIntent) => { if (channel === MENU_COMMAND_EVENT) this.menuPackets.push({channel, value});if(channel===pendingOpenChannel)this.pendingOpenPackets.push(value); },
+        send: (channel: string, value: MenuCommandIntent | ProjectWindowContext) => {
+          if (channel === MENU_COMMAND_EVENT && 'command' in value) this.menuPackets.push({channel, value});
+          if (channel === PROJECT_WINDOW_EVENT && 'quitting' in value) this.projectContexts.push(value);
+          if (channel === pendingOpenChannel) this.pendingOpenPackets.push(value);
+        },
         undo: () => { this.nativeUndos++; }, redo: () => { this.nativeRedos++; },
         loadURL: (url: string) => this.loadURL(url),
         executeJavaScript: async (script: string) => vm.runInContext(script, renderer),
@@ -764,12 +768,12 @@ test('activate between accepted window close and quit continuation cannot replac
   assert.equal(f.r.windows.length, 1); assert.equal(f.r.backends.length, 1);
 });
 
-async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>) {
-  const launcher = f.r.windows[0], projectId = '79000000-0000-4000-8000-000000000001';
+async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>, projectId = '79000000-0000-4000-8000-000000000001', source = f.r.windows[0]) {
+  const launcher = f.r.windows[0];
   const host = f.get('windowHost');
-  const entryToken = randomUUID(); launcher.entryTickets.set(entryToken, projectId);
-  const opened = await f.r.bridge!({ sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame },
-    { action: 'open', contextId: host.contextFor(launcher).contextId, projectId, entryToken, remember: true });
+  const entryToken = randomUUID(); source.entryTickets.set(entryToken, projectId);
+  const opened = await f.r.bridge!({ sender: source.webContents, senderFrame: source.webContents.mainFrame },
+    { action: 'open', contextId: host.contextFor(source).contextId, projectId, entryToken, remember: true });
   assert.equal((opened as {ok: boolean}).ok, true);
   const editor = f.r.windows.at(-1)!; await host.loadFor(editor);
   assert.equal(f.r.bridge!({ sender: editor.webContents, senderFrame: editor.webContents.mainFrame },
@@ -802,6 +806,152 @@ test('actual main centers and titles the launcher with its own window state', as
   assert.equal(host.showSettings('agent', editor), true);
   assert.equal(f.r.windows.length, 3);
   assert.deepEqual(f.trackedLaunchers.map(window => window.index), [launcher.index]);
+});
+
+for (const source of ['menu', 'settings'] as const) {
+  test(`011 restart from ${source} restores editor IDs against the new backend independently`, async t => {
+    const firstId = '79000000-0000-4000-8000-000000000001', secondId = '79000000-0000-4000-8000-000000000002';
+    const relocated = (projectId: string) => `/synthetic/relocated/${projectId}.mioon`;
+    const prepared: string[] = [], acquired: {projectId: string; expectedProjectFile: string | undefined}[] = [];
+    const openFailure = nativeText('native.openProjectFileFailed'), warning = nativeText('native.projectLocationWarning');
+    const acquire = deferred(), failureSheet = deferred();
+    const f = await harness(t, {
+      release: () => {acquire.resolve(); failureSheet.resolve({response: 0});},
+      dialog: value => value.message === openFailure ? failureSheet.promise : {response: 0},
+      projectLocation: async ({path}) => ({fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true,
+        cloud: path === relocated(secondId) && source === 'menu' ? 'known-icloud' : 'not-reported'}),
+      projectControl: (index, port) => index === 0 ? port : {
+        ...port,
+        prepareAcquire: async ({projectId}) => {
+          prepared.push(projectId);
+          if (source === 'settings' && projectId === firstId) throw Object.assign(failure('PROJECT_MISSING'), {status: 404});
+          assert.ok(port.prepareAcquire);
+          return {...await port.prepareAcquire({projectId}), projectFile: relocated(projectId)};
+        },
+        acquire: async input => {
+          acquired.push({projectId: input.projectId, expectedProjectFile: input.expectedProjectFile});
+          if (source === 'menu' && input.projectId === secondId) await acquire.promise;
+          const lease = await port.acquire(input);
+          return {...lease, project: {...lease.project, projectFile: relocated(input.projectId)}};
+        },
+        openPath: () => assert.fail('Restart must acquire the registered project ID'),
+      },
+    });
+    await f.initial();
+    const {launcher, editor: first} = await openOwnedEditor(f, firstId);
+    const {editor: second} = await openOwnedEditor(f, secondId, first);
+    if (source === 'settings') {
+      const host = f.get('windowHost');
+      assert.equal(host.showSettings('video-tools', second), true);
+      const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+      assert.equal(await f.r.ipcHandlers!.get(WORKSPACE_NATIVE_CHANNEL)!({
+        sender: settings.webContents, senderFrame: settings.webContents.mainFrame,
+      }, {action: 'restart'}), true);
+    } else {
+      const restarting = f.restart();
+      await until(() => acquired.length === 2);
+      assert.equal(f.r.dialogs.filter(value => value.message === warning).length, 1);
+      const host = f.get('windowHost'), newWindows = f.r.windows.filter(window => !window.destroyed);
+      assert.equal(newWindows.length, 2);
+      for (const window of newWindows) {
+        const context = host.contextFor(window);
+        assert.equal(context.quitting, true);
+        assert.equal(context.autoOpen, false);
+      }
+      acquire.resolve();
+      await restarting;
+    }
+    assert.ok([launcher, first, second].every(window => window.closedDelivered));
+    assert.equal(f.r.backends.length, 2);
+    assert.deepEqual(prepared, [firstId, secondId], 'both old editor IDs must be looked up on the fresh backend');
+    const expectedIds = source === 'menu' ? [firstId, secondId] : [secondId];
+    assert.deepEqual(acquired, expectedIds.map(projectId => ({projectId, expectedProjectFile: relocated(projectId)})));
+    const current = f.r.windows.filter(window => !window.destroyed), host = f.get('windowHost');
+    assert.deepEqual(current.flatMap(window => host.contextFor(window)?.editorProjectId ?? []), expectedIds);
+    for (const window of current) {
+      await host.loadFor(window);
+      assert.equal(new URL(window.urls.at(-1)!).port, '45001');
+    }
+    if (source === 'settings') {
+      await until(() => f.r.dialogs.some(value => value.message === openFailure));
+      const notices = f.r.dialogs.filter(value => value.message === openFailure);
+      assert.equal(notices.length, 1);
+      assert.match(notices[0].detail!, /找不到/u);
+      // The surviving editor is already loaded while the independent notice
+      // awaits acknowledgement. Capability discovery resumes on publication.
+      assert.ok(current.every(window => host.contextFor(window).quitting === true));
+      failureSheet.resolve({response: 0});
+      await until(() => current.every(window => host.contextFor(window).quitting === false));
+    }
+    for (const window of current) {
+      const context = host.contextFor(window);
+      assert.equal(context.quitting, false);
+      assert.equal(context.autoOpen, false);
+      assert.ok(window.projectContexts.some(value => value.quitting));
+      assert.equal(window.projectContexts.at(-1)?.quitting, false);
+      const capabilities = await f.r.ipcHandlers!.get(PROJECT_ENTRY_DESKTOP_CHANNEL)!({
+        sender: window.webContents, senderFrame: window.webContents.mainFrame,
+      }, {action: 'capabilities'}) as {ok: boolean; data?: {ready: boolean}};
+      assert.equal(capabilities.ok, true);
+      assert.equal(capabilities.data?.ready, true);
+    }
+    assert.equal(f.fatals().length, 0);
+  });
+}
+
+test('011 restart cancelled by an editor close leaves the original backend running', async t => {
+  const f = await harness(t, {
+    disposition: index => index === 1 ? 'dirty' : 'clean',
+    dialog: value => ({response: value.title === '尚有未保存的修改' ? 1 : 0}),
+  });
+  await f.initial();
+  const {editor} = await openOwnedEditor(f);
+  assert.equal(await f.restart(), false);
+  assert.equal(editor.destroyed, false);
+  assert.equal(f.r.backends.length, 1);
+  assert.equal(f.r.children[0].messages.includes('stop'), false);
+  assert.equal(f.r.windows.filter(window => !window.destroyed && window !== editor).length, 0);
+});
+
+test('011 restart failing before the new service is ready leaves no replacement editor', async t => {
+  const f = await harness(t, {
+    cookie: index => { if (index === 1) throw failure('SYNTHETIC_COOKIE_FAILURE'); },
+    projectControl: (index, port) => index === 0 ? port : {
+      ...port, prepareAcquire: () => assert.fail('A failed backend must never start window restoration'),
+    },
+  });
+  await f.initial();
+  const {launcher, editor} = await openOwnedEditor(f);
+  await f.restart();
+  await until(() => f.fatals().length === 1);
+  assert.ok([launcher, editor].every(window => window.closedDelivered));
+  assert.deepEqual(f.r.windows, [launcher, editor]);
+});
+
+test('011 restart superseded by Quit releases a pending project acquisition without an editor', async t => {
+  const gate = deferred(), released: string[] = [];
+  let candidate = '';
+  const f = await harness(t, {
+    release: () => gate.resolve(),
+    projectControl: (index, port) => index === 0 ? port : {
+      ...port,
+      acquire: async input => {candidate = input.windowId; await gate.promise; return port.acquire(input);},
+      release: input => {released.push(input.windowId); return port.release(input);},
+    },
+  });
+  await f.initial();
+  await openOwnedEditor(f);
+  const restarting = f.restart();
+  await until(() => candidate !== '');
+  f.app.quit();
+  assert.equal(f.get('quitRouter.isPending'), true);
+  gate.resolve();
+  await restarting;
+  await until(() => f.r.finished === 1);
+  assert.ok(released.includes(candidate));
+  assert.equal(f.r.windows.length, 3, 'Only the fresh launcher was constructed');
+  assert.ok(f.r.windows.every(window => window.closedDelivered));
+  assert.equal(f.fatals().length, 0);
 });
 
 function publishMenuState(f: Awaited<ReturnType<typeof harness>>, window: (typeof f.r.windows)[number], patch: Partial<MenuCommandState> = {}) {

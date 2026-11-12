@@ -14,14 +14,14 @@ import {png} from './helpers/timeline-image-fixtures.ts';
 
 const bytes = png({width: 64, height: 64, rgba: false});
 const same = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev && a.ino === b.ino && a.birthtimeNs === b.birthtimeNs;
-function fixture(t: TestContext) {
+function fixture(t: TestContext, copy: boolean) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'mioon-output-durability-'))), store = openStore(root);
   store.put('projects', {id: store.projectId, name: 'Durable publication'});
   t.after(() => {store.close(); fs.rmSync(root, {recursive: true, force: true});});
   const directory = path.join(store.tempDir, 'durability-stage'); ensurePrivateDirectory(directory, {create: true});
   const stageFile = path.join(directory, `${randomUUID()}.png`); writePrivateFileAtomic(stageFile, bytes, {root: store.tempDir, maxBytes: bytes.length});
-  const input: ProjectOutputInput = {owner: {kind: 'image', id: randomUUID(), requestId: randomUUID(), inputHash: 'a'.repeat(64)}, assetId: randomUUID(),
-    targetKind: 'generated', stageFile, mimeType: 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length};
+  const input: ProjectOutputInput = {owner: {kind: copy ? 'image' : 'import', id: randomUUID(), requestId: randomUUID(), inputHash: 'a'.repeat(64)}, assetId: randomUUID(),
+    targetKind: copy ? 'generated' : 'assets', stageFile, mimeType: 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length};
   const count = (): unknown => store.db.prepare('SELECT total_changes() AS n').get()!.n;
   return {root, store, input, count};
 }
@@ -76,7 +76,7 @@ async function syncSpy(file: string, stage: string, failure?: 'file' | 'director
 }
 
 for (const copy of [false, true]) test(`complete ${copy ? 'copy' : 'link'} replay syncs final bytes and parent before registration while inspection stays read-only`, async t => {
-  const f = fixture(t), file = await interrupted(f, copy), identity = fs.lstatSync(file, {bigint: true}), before = f.count(), spy = await syncSpy(file, f.input.stageFile);
+  const f = fixture(t, copy), file = await interrupted(f, copy), identity = fs.lstatSync(file, {bigint: true}), before = f.count(), spy = await syncSpy(file, f.input.stageFile);
   try {
     const output = await publishProjectOutput(f.store, f.input);
     assert.equal(spy.calls.file, 1); assert.equal(spy.calls.directory, 1); assert.equal(f.count(), before);
@@ -93,7 +93,7 @@ for (const copy of [false, true]) test(`complete ${copy ? 'copy' : 'link'} repla
 
 for (const copy of [false, true]) for (const failure of ['file', 'directory'] as const)
   test(`${copy ? 'copy' : 'link'} replay ${failure} sync failure preserves the completed file and prevents DB registration`, async t => {
-    const f = fixture(t), file = await interrupted(f, copy), identity = fs.lstatSync(file, {bigint: true}), before = f.count(), spy = await syncSpy(file, f.input.stageFile, failure);
+    const f = fixture(t, copy), file = await interrupted(f, copy), identity = fs.lstatSync(file, {bigint: true}), before = f.count(), spy = await syncSpy(file, f.input.stageFile, failure);
     const register = async () => {
       const output = await publishProjectOutput(f.store, f.input);
       f.store.tx(() => {assertPublishedProjectOutput(f.store, output.publication); const {relativePath: _relative, ...fields} = output;

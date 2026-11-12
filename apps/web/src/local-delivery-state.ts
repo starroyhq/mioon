@@ -1,5 +1,5 @@
 import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
-import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
+import type { Locale, MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createLocalDeliverySchemas, localDeliveryDraftPutSchema, LOCAL_DELIVERY_LIMITS } from '@mioon/contracts/local-delivery';
@@ -40,6 +40,8 @@ interface Options {
 }
 const copy = <T,>(value: T): T => structuredClone(value);
 export const sameLocalDeliveryValue = (left: unknown, right: unknown): boolean => JSON.stringify(left, (_, value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value) === JSON.stringify(right, (_, value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
+type RenderRequest = Pick<LocalDeliveryIntent, 'input' | 'outputLocale'>;
+const sameRenderRequest = (left: RenderRequest, right: RenderRequest): boolean => left.outputLocale === right.outputLocale && sameLocalDeliveryValue(left.input, right.input);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const message = (error: unknown) => error instanceof Error ? error.message : '本地交付状态尚未确认，当前名称与原请求仍保留。';
 const authority = (envelope: LocalDeliverySupported) => ({ workspaceScope: envelope.workspaceScope, instanceId: envelope.instanceId, projectId: envelope.projectId });
@@ -95,13 +97,13 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     envelope = copy(next); loaded = true;
     // Only the exact retained request, observed terminal, can settle an unknown
     // preparation. An empty GET or a different intent cannot erase that fence.
-    if (retained && next.intent?.intentId === retained.intentId && sameLocalDeliveryValue(next.intent.input, retained.input) && !pendingIntent(next.intent)) uncertain.delete(next.projectId);
+    if (retained && next.intent?.intentId === retained.intentId && sameRenderRequest(next.intent, retained) && !pendingIntent(next.intent)) uncertain.delete(next.projectId);
     emit({ intent: copy(next.intent), intentUncertain: uncertain.has(next.projectId), intentPhase: next.intent?.outcome.status ?? 'idle' });
   }
   const draftMatches = (draft: LocalDeliveryDraftValue | null, raw = state.deliveryName, baseline = state.baseline) => Boolean(draft && baseline && draft.timelineId === baseline.timelineId && draft.baseRevision === baseline.baseRevision && draft.raw.deliveryName === raw);
   const preparationUnconfirmed = () => {
     const retained = context.projectId ? uncertain.get(context.projectId) : null;
-    return Boolean(retained && (!envelope?.intent || envelope.intent.intentId !== retained.intentId || !sameLocalDeliveryValue(envelope.intent.input, retained.input)));
+    return Boolean(retained && (!envelope?.intent || envelope.intent.intentId !== retained.intentId || !sameRenderRequest(envelope.intent, retained)));
   };
   const readyToSave = () => active && loaded && envelope && context.connected && context.projectId && state.dirty && !state.candidate && !state.autosavePaused && !operation && !preparationUnconfirmed();
   function schedule() { if (timer) clearTimeout(timer); timer = undefined; if (readyToSave() && !saving) timer = setTimeout(() => { timer = undefined; void flush(); }, delay); }
@@ -173,7 +175,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
     const result = await (recovered ? transport.recover(input) : transport.execute(input)); sync();
     if (!belongs(owner)) return null;
     const settled = validateEnvelope(result.envelope, next.projectId);
-    if (!settled.intent || settled.intent.intentId !== intent.intentId || !sameLocalDeliveryValue(settled.intent.input, intent.input) || settled.intent.timelineId !== intent.timelineId || settled.intent.baseRevision !== intent.baseRevision) throw localDeliveryProtocolError();
+    if (!settled.intent || settled.intent.intentId !== intent.intentId || !sameRenderRequest(settled.intent, intent) || settled.intent.timelineId !== intent.timelineId || settled.intent.baseRevision !== intent.baseRevision) throw localDeliveryProtocolError();
     if (settled.intent.outcome.status === 'accepted') {
       if (!validateResponse(intent.input, result.response) || !object(result.response) || result.response.id !== settled.intent.outcome.exportId || !object(result.response.snapshot) || !object(result.response.snapshot.timeline) || result.response.snapshot.timeline.id !== intent.timelineId) throw localDeliveryProtocolError();
     } else if (result.response !== null) throw localDeliveryProtocolError();
@@ -306,7 +308,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       if (timer) clearTimeout(timer); timer = undefined;
       serial++; suppressNextNameChange = true; emit({ dirty: false, autosavePaused: true, leaveWithoutSaving: true }); return true;
     },
-    async submit(input: LocalDeliveryRenderInput, options: { canExecute?: () => boolean; nameCapture?: unknown } = {}): Promise<unknown | null> {
+    async submit(input: LocalDeliveryRenderInput, {canExecute, nameCapture, outputLocale}: {canExecute?: () => boolean; nameCapture?: unknown; outputLocale?: Locale} = {}): Promise<unknown | null> {
       if (!canPrepare() || !context.projectId || !context.timelineId || !context.timelineRevision || !isRenderInput(input) || input.projectId !== context.projectId || input.expectedRevision !== context.timelineRevision || input.purpose !== 'export' ||
           (context.deliveryName === '' ? Object.hasOwn(input, 'deliveryName') : input.deliveryName !== context.deliveryName)) return null;
       const token = capture(), owner = generation;
@@ -314,7 +316,7 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
       const previous = copy(envelope), intentId = createId(), exact = copy(input);
       const draft = draftMatches(previous.draft) ? { draftId: previous.draft!.draftId, revision: previous.draftRevision, raw: copy(previous.draft!.raw) } : null;
       const preparedInput: LocalDeliveryPrepare = { ...authority(previous), expectedIntentRevision: previous.intentRevision, expectedIntentId: previous.intent?.intentId ?? null, intentId,
-        timelineId: context.timelineId!, baseRevision: context.timelineRevision!, draft, input: exact };
+        timelineId: context.timelineId!, baseRevision: context.timelineRevision!, draft, input: exact, ...(outputLocale ? {outputLocale} : {}) };
       if (!schemas.prepare.safeParse(preparedInput).success) { intentFailure(localDeliveryProtocolError()); return null; }
       const lock = {}; operation = lock; readSerial++; uncertain.set(previous.projectId, copy(preparedInput)); emit({ busy: true, intentPhase: 'preparing', intentUncertain: true, intentError: '', intentErrorDisplay: undefined, intentFailure: null });
       try {
@@ -326,10 +328,10 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
         }
         sync(); if (!belongs(owner)) return null;
         const next = validateEnvelope(result, previous.projectId);
-        if (!next.intent || next.intent.intentId !== intentId || !sameLocalDeliveryValue(next.intent.input, exact) || next.intent.timelineId !== preparedInput.timelineId || next.intent.baseRevision !== preparedInput.baseRevision || !sameLocalDeliveryValue(next.intent.draft, preparedInput.draft)) throw localDeliveryProtocolError();
+        if (!next.intent || next.intent.intentId !== intentId || !sameRenderRequest(next.intent, preparedInput) || next.intent.timelineId !== preparedInput.timelineId || next.intent.baseRevision !== preparedInput.baseRevision || !sameLocalDeliveryValue(next.intent.draft, preparedInput.draft)) throw localDeliveryProtocolError();
         receive(next, previous, 'intent'); uncertain.delete(previous.projectId); emit({ intentUncertain: false });
-        if (!isCurrent(token) || !context.visible || !context.connected || context.busy || context.timelineId !== token.timelineId || context.timelineRevision !== token.baseRevision || options.canExecute?.() === false) return null;
-        return await executeOriginal(next, token, false, options.nameCapture ?? null);
+        if (!isCurrent(token) || !context.visible || !context.connected || context.busy || context.timelineId !== token.timelineId || context.timelineRevision !== token.baseRevision || canExecute?.() === false) return null;
+        return await executeOriginal(next, token, false, nameCapture ?? null);
       } catch (error) { sync(); if (belongs(owner)) intentFailure(error, uncertain.has(previous.projectId)); return null; }
       finally { if (operation === lock) operation = null; if (belongs(owner)) { emit({ busy: false }); schedule(); } }
     },
@@ -350,10 +352,10 @@ export function createLocalDeliveryController({ context: initial, getContext, cl
           const result = await transport.prepare(originalPrepare); sync();
           if (!belongs(owner)) return null;
           const next = validateEnvelope(result, previous.projectId);
-          if (!next.intent || next.intent.intentId !== retained.intentId || !sameLocalDeliveryValue(next.intent.input, retained.input) || !sameLocalDeliveryValue(next.intent.draft, retained.draft) || next.intent.timelineId !== retained.timelineId || next.intent.baseRevision !== retained.baseRevision) throw localDeliveryProtocolError();
+          if (!next.intent || next.intent.intentId !== retained.intentId || !sameRenderRequest(next.intent, retained) || !sameLocalDeliveryValue(next.intent.draft, retained.draft) || next.intent.timelineId !== retained.timelineId || next.intent.baseRevision !== retained.baseRevision) throw localDeliveryProtocolError();
           receive(next, previous, 'intent'); previous = copy(next);
         }
-        if (!previous.intent || retained && (previous.intent.intentId !== retained.intentId || !sameLocalDeliveryValue(previous.intent.input, retained.input))) throw localDeliveryProtocolError();
+        if (!previous.intent || retained && (previous.intent.intentId !== retained.intentId || !sameRenderRequest(previous.intent, retained))) throw localDeliveryProtocolError();
         if (!isCurrent(token) || !context.visible || !context.connected || context.busy || context.timelineId !== token.timelineId || context.timelineRevision !== token.baseRevision) return null;
         return await executeOriginal(previous, token, true, null);
       } catch (error) { sync(); if (belongs(owner)) intentFailure(error, state.intentUncertain); return null; }

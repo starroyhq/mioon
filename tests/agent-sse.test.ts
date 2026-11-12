@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseAgentSse} from '../packages/business/src/agent/sse.ts';
+import {agentChatDiagnostic, errorCode} from '../packages/business/src/agent/chat-errors.ts';
 type SseOptions = Parameters<typeof parseAgentSse>[1];
 const collect = async (source: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>, options?: SseOptions) => { const result: Array<{event: string; data: string}> = []; for await (const event of parseAgentSse(source as AsyncIterable<Uint8Array>, options as never)) result.push(event); return result; };
 const bytes = (text: string): Buffer[] => [Buffer.from(text)];
@@ -25,10 +26,15 @@ test('SSE rejects invalid UTF-8, incomplete data frame and non-byte input withou
 });
 
 test('SSE bounds raw bytes, event/line bytes and number of events including fragmented lines', async () => {
-  await assert.rejects(collect(bytes(':1234567890\n'), {maxBytes: 8}), {code: 'AGENT_CHAT_LIMIT'});
-  await assert.rejects(collect(bytes('data: 你好\n\n'), {maxEventBytes: 10}), {code: 'AGENT_CHAT_LIMIT'});
-  await assert.rejects(collect(Array.from({length: 20}, () => Buffer.from('x')), {maxEventBytes: 10}), {code: 'AGENT_CHAT_LIMIT'});
-  await assert.rejects(collect(bytes('data: a\n\ndata: b\n\n'), {maxEvents: 1}), {code: 'AGENT_CHAT_LIMIT'});
+  for(const [source, options, limit] of [
+    [bytes(':1234567890\n'), {maxBytes:8}, 'stream_bytes'],
+    [bytes('data: 你好\n\n'), {maxEventBytes:10}, 'stream_event_bytes'],
+    [Array.from({length:20}, () => Buffer.from('x')), {maxEventBytes:10}, 'stream_event_bytes'],
+    [bytes('data: a\n\ndata: b\n\n'), {maxEvents:1}, 'stream_events'],
+  ] as const) await assert.rejects(collect(source, options), error=>{
+    assert.deepEqual(agentChatDiagnostic(error), {kind:'limit',limit});
+    return errorCode(error)==='AGENT_CHAT_LIMIT';
+  });
 });
 
 test('SSE closes the source iterator on early return and rejects an already-aborted signal', async () => {

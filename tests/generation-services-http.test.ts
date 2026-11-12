@@ -14,13 +14,15 @@ import {IMAGE_REVIEW_LIMITS} from '../packages/contracts/src/image-reviews.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
 import {startServer} from '../apps/server/src/index.ts';
 import {customImageSettingsV2Error} from '../packages/business/src/images/custom-settings-v2.ts';
+import {OUTPUT_LOCALE_HEADER} from '../packages/contracts/src/output-locale.ts';
+import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';
 
 const projectId=randomUUID(),connectionId=randomUUID();
 const generation={projectId,name:'Image',providerId:'openai-compatible',model:'custom-image',prompt:'Synthetic scene',options:IMAGE_FIXED_OPTIONS,requestId:randomUUID()};
 async function fixture(approvalErrorCode?: string) {
-  const calls:Array<{operation:string;input:unknown}>=[];
+  const calls:Array<{operation:string;input:unknown;outputLocale?:OutputLocale}>=[];
   const handler=createImageHttp({approve:()=>{if(approvalErrorCode)throw customImageSettingsV2Error(approvalErrorCode);return assert.fail('Preparation must not approve');},reject:()=>assert.fail('Preparation must not reject'),
-    generationServices:(operation,input)=>{calls.push({operation,input});return {operation,prepared:true};}});
+    generationServices:(operation,input,outputLocale)=>{calls.push({operation,input,...(outputLocale?{outputLocale}:{})});return {operation,prepared:true};}});
   return {calls,async request({pathname='/api/images/services',method='POST',input,headers={},raw,address={projectId}}:
     {pathname?:string;method?:string;input?:unknown;headers?:Record<string,string>;raw?:Buffer;address?:{projectId:string}|null}={}) {
     const req=Readable.from(raw?[raw]:input===undefined?[]:[Buffer.from(JSON.stringify(input))]) as IncomingMessage;
@@ -53,6 +55,18 @@ test('dedicated project service POST accepts only list or explicit-ID preparatio
   assert.equal((await f.request({input:list,address:null})).status,404);
   assert.equal((await f.request({input:list,pathname:'/api/images/services/extra'})).status,404);
   const method=await f.request({input:list,method:'GET'});assert.equal(method.status,405);assert.equal(method.headers.Allow,'POST');
+});
+
+test('service preparation forwards the locale header outside the strict review input',async()=>{
+  const f=await fixture(),prepare={operation:'image.service.review.prepare',input:{input:generation,connectionId,configurationRevision:1}};
+  const header=OUTPUT_LOCALE_HEADER.toLowerCase();
+  assert.equal((await f.request({input:prepare,headers:{[header]:'ja'}})).status,200);
+  assert.deepEqual(f.calls,[{...prepare,outputLocale:'ja'}]);
+  const invalid=await f.request({input:prepare,headers:{[header]:'system'}});
+  assert.equal(invalid.status,400);
+  assert.equal(invalid.data?.error?.code,'VALIDATION_ERROR');
+  assert.equal((await f.request({input:{...prepare,input:{...prepare.input,locale:'ja'}}})).status,400);
+  assert.equal(f.calls.length,1);
 });
 
 test('service inputs cannot name another project and invalid bodies never reach a domain callback',async()=>{

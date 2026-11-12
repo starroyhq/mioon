@@ -8,12 +8,13 @@ import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer, type ServerOptions} from '../apps/server/src/index.ts';
 import {stageProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import type {ProjectEntryDesktopOwner} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
+import {createProjectHomeNativeActionsController} from '../apps/web/src/project-home-native-actions-state.ts';
 import {createProjectEntryControlBroker, createProjectEntryControlClient} from '../apps/desktop/src/project-entry-control.ts';
 import {parseProjectEntryControlResult, projectEntryControlCommandSchema} from '../packages/contracts/src/project-entry-control.ts';
 import {PROJECT_ENTRY_DESKTOP_LIMITS, projectEntryDesktopRequestSchema} from '../packages/contracts/src/project-entry-desktop.ts';
@@ -64,12 +65,14 @@ interface Options {
  readonly corruptReply?:boolean;
   readonly corruptResources?:boolean;
  readonly admit?:()=>Promise<boolean>;
+ readonly onCopyBoundary?:ServerOptions['projectCopyActionBoundaryForTest'];
 }
 async function fixture(t:TestContext,options:Options={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-template-entry-')),installed=path.join(root,'examples'),target=path.join(root,'target');mkdirSync(target);
  if(options.installed!==false)await stageProjectExampleResources(resourceRoot,installed);
  if(options.corruptResources){const copied=path.join(installed,'timeline-basics','media','overlay-star.png');chmodSync(copied,0o600);writeFileSync(copied,'Changed installed resource');}
- const server=await startServer({dataDir:path.join(root,'app'),projectTemplatesDir:installed,port:0,token:'synthetic-template-bridge'});
+ const server=await startServer({dataDir:path.join(root,'app'),projectTemplatesDir:installed,port:0,token:'synthetic-template-bridge',
+  ...(options.onCopyBoundary ? {projectCopyActionBoundaryForTest:options.onCopyBoundary} : {})});
  const backendId=randomUUID(),windowId=randomUUID(),window={},otherWindow={},inputs:ProjectTemplateInput[]=[],probes:{path:string;purpose:string;isDirectory:boolean}[]=[],operations=new Map<string,string>();
  let contextId=randomUUID(),ownerBackendId=backendId,active=true,chooserCalls=0,adoptions=0,client!:ReturnType<typeof createProjectEntryControlClient>;
  const original=server.projectEntries.instantiateTemplate!;
@@ -196,7 +199,8 @@ test('real main save-panel wiring creates and sealed-opens the shipped example f
    assert.equal(f.panelCalls.length,1);assert.equal(f.panelCalls[0]!.parent,f.source);assert.equal(f.panelCalls[0]!.defaultPath,path.join(f.documents,name+'.mioon'));assert.equal(f.panelCalls[0]!.message,message);
    assert.deepEqual(f.order,['documents','save','probe','cloud-warning']);assert.equal(f.dialogs.size,0);assert.equal(f.windowHost.canHideToTray(),true);
    assert.equal(selection.displayPath,path.join(f.documents,name,name+'.mioon'));
-   const response=await f.desktop.instantiateTemplate!(f.input(selection));
+   const response=await f.desktop.instantiateTemplate!({...f.input(selection),locale:'zh-Hant'});
+   assert.equal(f.inputs[0]?.locale,'zh-Hant');
    assert.equal(response.project.projectFile,selection.displayPath);assert.equal(response.project.name,name);
    assert.equal(await f.entry.openNativeResult(response.project.projectId,grant),true);
    assert.equal(f.consumed.length,1,'Opening consumes the real entry controller seal exactly once');
@@ -213,6 +217,15 @@ test('real main save-panel wiring creates and sealed-opens the shipped example f
    await assert.rejects(f.desktop.chooseLocation({purpose:'template',suggestedName:name,message}),{code:'PROJECT_FILE_EXISTS'});
    assert.equal(f.panelCalls.length,2);assert.equal(f.inputs.length,1);assert.deepEqual(files(path.dirname(selection.displayPath)),instance);
    assert.equal((await f.client.api.listRecent()).registered.length,registered.length,'Selecting the same destination never registers or overwrites another instance');
+
+   // A confirmed native overwrite sheet returns the occupied file path.
+   const chosenFile = f.panelCalls[0]!.defaultPath;
+   writeFileSync(chosenFile, 'Existing save-panel file', {flag:'wx'});
+   await assert.rejects(f.desktop.chooseLocation({purpose:'template',suggestedName:name,message}),{code:'PROJECT_FILE_EXISTS'});
+   assert.equal(f.panelCalls.length,3);assert.equal(f.inputs.length,1);
+   assert.equal(readFileSync(chosenFile,'utf8'),'Existing save-panel file');
+   assert.deepEqual(files(path.dirname(selection.displayPath)),instance);
+   assert.equal((await f.client.api.listRecent()).registered.length,registered.length);
   }finally{await f.dispose();}
  });
 });
@@ -294,6 +307,56 @@ test('existing selected files and target folders are not overwritten or register
  await assert.rejects(f.choose('Occupied'),{code:'PROJECT_FILE_EXISTS'});assert.equal(readFileSync(path.join(f.target,'Occupied.mioon'),'utf8'),'Existing selected file');assert.deepEqual(f.inputs,[]);
  const selected=await f.choose('Folder');mkdirSync(path.join(f.target,'Folder'));writeFileSync(path.join(f.target,'Folder','keep'),'Existing directory');const before=files(f.target);
  await assert.rejects(f.bridge.instantiateTemplate!(f.input(selected)),{code:'PROJECT_FILE_EXISTS'});assert.deepEqual(files(f.target),before);assert.deepEqual((await f.client.api.listRecent()).registered,[]);
+});
+
+test('a template destination occupied during publication keeps its precise refusal through the renderer', async t => {
+ for (const phase of ['records-published', 'directory-placeholder'] as const) await t.test(phase, async t => {
+  const name = 'Occupied during publication';
+  let occupied: string | undefined;
+  const f = await fixture(t, {onCopyBoundary(boundary, input) {
+   if (boundary !== phase) return;
+   assert.ok('parentDir' in input);
+   occupied = path.join(input.parentDir, input.name);
+   if (phase === 'records-published') mkdirSync(occupied);
+   writeFileSync(path.join(occupied, 'keep.txt'), 'Concurrent file', {flag:'wx'});
+  }});
+  const installed = files(f.installed);
+  const desktop = readProjectEntryDesktopClient({__mioonProjectEntries:f.bridge});
+  assert.ok(desktop?.instantiateTemplate);
+  const directory = await desktop.listRecent();
+  const identity = {appLibraryScope:directory.appLibraryScope, instanceId:directory.instanceId, epoch:1};
+  let failure: unknown;
+  const controller = createProjectHomeNativeActionsController({
+   ports: () => ({example:{templates:[{id:'timeline-basics',version:1}],bridge:{
+    chooseLocation: desktop.chooseLocation,
+    async instantiateTemplate(input) {
+     try {return await desktop.instantiateTemplate!(input);}
+     catch (error) {failure = error; throw error;}
+    },
+   }}}),
+   owner: () => identity,
+   canStart: () => true,
+   readDirectory: desktop.listRecent,
+   onRefresh: () => assert.fail('A refused creation must not be treated as a verified write'),
+   onOpenCreated: () => assert.fail('A refused creation must not open a project'),
+  });
+  controller.activate();
+  t.after(() => controller.dispose());
+  assert.equal(await controller.startExample('Storage', name), false);
+  assert.equal(f.chooserCalls, 1);
+  assert.equal(f.inputs.length, 1);
+  assert.equal(occupied, path.join(f.target, name));
+  assert.deepEqual(readdirSync(occupied!), ['keep.txt']);
+  assert.equal(readFileSync(path.join(occupied!, 'keep.txt'), 'utf8'), 'Concurrent file');
+  assert.deepEqual(files(f.installed), installed);
+  assert.deepEqual((await desktop.listRecent()).registered, []);
+  assert.equal(controller.getState().kind, 'example-blocked');
+  assert.equal(controller.getMetadata().unknown, false);
+  assert.ok(failure instanceof Error && 'code' in failure && 'status' in failure);
+  assert.equal(failure.status, 409);
+  assert.deepEqual([failure.code, controller.getState().reason], phase === 'directory-placeholder'
+   ? ['PROJECT_COPY_TARGET_CHANGED', 'unavailable'] : ['PROJECT_FILE_EXISTS', 'exists']);
+ });
 });
 
 test('template location admission precedes target occupancy checks',async t=>{

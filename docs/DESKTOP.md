@@ -87,7 +87,7 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 - 渠道在构建时写入主进程和 `build/package.json` 的 `mioonDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
 - `app.setAppUserModelId`（Windows）、Linux desktop name / WM_CLASS 与打包 ID 保持一致；macOS bundle ID 来自 builder 配置，尚未实机验证。
 - 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；界面统一为 Mioon，npm workspace 为 `@mioon/*`，CLI 为 `mioon`，不提供旧命令别名。
-- 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.1.0`。
+- 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.1.1`。
 
 ## 数据位置与单实例
 

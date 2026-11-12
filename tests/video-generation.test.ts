@@ -139,16 +139,42 @@ test('historical MiniMax uncertain submission never falls back or resubmits afte
 test('configured video submission and explicit retry require the persisted workspace live opt-in',async t=>{
  const f=await fixture(t,{liveGeneration:false});
  assert.equal(f.services.configuration.get().liveGeneration,false);assert.equal(f.services.configuration.get().revision,0);
- await assert.rejects(f.submit(),{code:'LIVE_GENERATION_DISABLED'});assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ const input=f.input(),denial={code:'LIVE_GENERATION_DISABLED',status:409,details:{mutationOutcome:'not_applied'}};
+ await assert.rejects(f.services.call('generation.submit',input),denial);assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ assert.equal(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId),undefined);
  await f.live(true);const job=await f.submit();await f.tick();await f.stop();
  assert.equal(f.job(job.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
  f.services.saveJob(f.job(job.id),{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'synthetic definitive failure'}});
  const before=structuredClone(f.job(job.id)),retryInput={jobId:job.id,requestId:randomUUID()};
- await f.live(false);await assert.rejects(f.services.call('job.retry',retryInput),{code:'LIVE_GENERATION_DISABLED'});
+ await f.live(false);await assert.rejects(f.services.call('job.retry',retryInput),denial);
  assert.deepEqual(f.job(job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
  await f.live(true);const retry=await f.services.call('job.retry',retryInput) as JobRecord;
  assert.equal(retry.retryOfJobId,job.id);assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();
  assert.equal(f.job(retry.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,2);
+});
+
+for(const [problem,code] of [
+ ['removed credential','VIDEO_SETTINGS_NOT_CONFIGURED'],
+ ['disabled connection','VIDEO_SETTINGS_DISABLED'],
+ ['disabled model','VIDEO_SETTINGS_DISABLED'],
+ ['missing output host','VIDEO_SETTINGS_NOT_CONFIGURED'],
+] as const)test(`video admission proves a ${problem} left no submission or receipt`,async t=>{
+ const f=await fixture(t,problem==='missing output host'?{providerId:'vidu'}:{}),configuration=structuredClone(f.configuration);
+ if(problem==='disabled connection')configuration.enabled=false;
+ if(problem==='disabled model')configuration.models[0]!.enabled=false;
+ if(problem==='missing output host')configuration.outputHosts=[];
+ const saved=await f.settings.put({action:'save',expectedRevision:1,configuration,secret:{action:problem==='removed credential'?'remove':'keep'}});
+ const input={...f.input(),configurationRevision:saved.connections[0]!.revision};
+ await assert.rejects(f.services.call('generation.submit',input),{code,status:409,details:{mutationOutcome:'not_applied'}});
+ assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ assert.equal(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId),undefined);
+});
+
+test('a reference revision disagreement rejects video generation before creating a job or receipt',async t=>{
+ const f=await fixture(t),input={...f.input(),referenceRevisions:[{assetId:randomUUID(),referenceRevision:1,sha256:'a'.repeat(64)}]};
+ await assert.rejects(f.services.call('generation.submit',input),{code:'REFERENCE_CHANGED',status:409,details:{mutationOutcome:'not_applied'}});
+ assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ assert.equal(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId),undefined);
 });
 
 test('revoking the workspace live switch after queueing prevents every generation POST until an explicit enabled retry',async t=>{
@@ -222,7 +248,9 @@ for(const cause of ['explicit removal','session restart'])test(`missing credenti
 
 test('uncertain accepted submissions survive restarts and config edits without another generation POST',async t=>{
  const f=await fixture(t,{persistent:true});f.reply(()=>{throw Error('synthetic response lost');});const job=await f.submit();await f.tick();
- assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,1);await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});
+ const unknown=f.job(job.id);
+ assert.equal(unknown.status,'submission_unknown');assert.equal(unknown.submissionCount,1);assert.equal((unknown.error as ServiceRow).mutationOutcome,undefined);
+ assert.equal(f.calls.length,1);await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});
  const next=structuredClone(f.configuration);next.region='cn';await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:f.secret('new-synthetic-key')});
  await f.restart();assert.equal(f.services.configuration.get().liveGeneration,true);f.ready(job.id);await f.tick();assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,1);
 });
@@ -308,7 +336,11 @@ test('Kling external task reconciliation binds the existing task without a repla
 });
 
 test('old environment generations do not acquire a newly configured UI connection',async t=>{
- const f=await fixture(t);await assert.rejects(f.services.call('generation.submit',{shotId:f.shot.id,expectedRevision:f.shot.revision,requestId:randomUUID(),providerId:'minimax',model:f.configuration.models[0]!.modelId}),{code:'PROVIDER_DISABLED'});
+ const f=await fixture(t);await assert.rejects(f.services.call('generation.submit',{shotId:f.shot.id,expectedRevision:f.shot.revision,requestId:randomUUID(),providerId:'minimax',model:f.configuration.models[0]!.modelId}),error=>{
+  assert.equal((error as {details?:ServiceRow}).details?.providerId,'minimax');
+  assert.equal((error as {details?:ServiceRow}).details?.mutationOutcome,'not_applied');
+  return (error as {code?:string}).code==='PROVIDER_DISABLED'&&(error as {status?:number}).status===403;
+ });
  assert.equal(f.calls.length,0);assert.equal(resolveVideoEndpoint('minimax','cn'),'https://api.minimax.cn');
 });
 

@@ -24,11 +24,80 @@ function fixture(t:TestContext,kind:ProjectOutputInput['targetKind']='generated'
  store.put('projects',{id:projectId,name:'Publication fixture',revision:1});const release=registerProjectMediaStore(store);
  t.after(()=>{release();try{store.close();}finally{rmSync(root,{recursive:true,force:true});}});
  const stages=path.join(store.tempDir,'verified-artifacts');ensurePrivateDirectory(stages,{create:true});const stageFile=path.join(stages,`${randomUUID()}.png`);writeFileSync(stageFile,bytes,{mode:0o600});
- const input:ProjectOutputInput={owner:{kind:kind==='exports'?'export':'image',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},assetId:randomUUID(),targetKind:kind,stageFile,mimeType:'image/png',sha256:sha(bytes),sizeBytes:bytes.length};
+ const input:ProjectOutputInput={owner:{kind:kind==='exports'?'export':kind==='assets'?'import':'image',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},assetId:randomUUID(),targetKind:kind,stageFile,mimeType:'image/png',sha256:sha(bytes),sizeBytes:bytes.length};
  const key=()=>({owner:input.owner,assetId:input.assetId});const count=()=>Number(store.db.prepare('SELECT total_changes() AS n').get()!.n);
  const register=(output:PublishedProjectOutput)=>{const{relativePath:_relative,...stored}=output;return store.put('assets',{id:output.publication.assetId,projectId,name:'Published.png',mimeType:input.mimeType,width:64,height:64,...stored,provenance:kind==='exports'?'export':'generated',createdAt:new Date().toISOString()});};
  return{root,projectDir,projectFile,projectId,store,input,key,count,register};
 }
+
+function useUmask(t: TestContext, mask: number): void {
+ const original = process.umask(mask);
+ t.after(() => {process.umask(original);});
+}
+const permissionBits = (file: string): number => statSync(file).mode & 0o777;
+
+for (const {kind, mask, forceCopy} of [
+ {kind: 'exports', mask: 0o022, forceCopy: false},
+ {kind: 'generated', mask: 0o022, forceCopy: false},
+ {kind: 'generated', mask: 0o002, forceCopy: true},
+ {kind: 'exports', mask: 0o077, forceCopy: false},
+] as const) test(`${kind} publication honors umask ${mask.toString(8)} with a private stage`, async t => {
+ const f = fixture(t, kind), expectedMode = 0o666 & ~mask;
+ useUmask(t, mask);
+ let createdMode: number | undefined;
+ setProjectOutputPublicationTestHooks(f.store, {forceCopy, fault(point, proof) {
+  if (point === 'after_target_create') {
+   createdMode = permissionBits(path.join(f.projectDir, proof.relativePath));
+   assert.equal(permissionBits(f.input.stageFile), 0o600);
+  }
+ }});
+ const output = await publishProjectOutput(f.store, f.input);
+ const file = path.join(f.projectDir, output.relativePath);
+ assert.equal(permissionBits(file), expectedMode);
+ assert.equal(permissionBits(f.input.stageFile), 0o600);
+ assert.notEqual(statSync(file, {bigint: true}).ino, statSync(f.input.stageFile, {bigint: true}).ino);
+ assert.equal(createdMode, expectedMode);
+ f.store.tx(() => {assertPublishedProjectOutput(f.store, output.publication); f.register(output);});
+ await markProjectOutputRegistered(f.store, output.publication);
+ assert.equal(permissionBits(file), expectedMode);
+ assert.deepEqual(readFileSync(file), bytes);
+});
+
+test('replaying an existing publication preserves its earlier permissions', async t => {
+ const f = fixture(t, 'exports');
+ useUmask(t, 0o077);
+ linkLegacyStage(f);
+ const output = await publishProjectOutput(f.store, f.input);
+ const file = path.join(f.projectDir, output.relativePath);
+ f.register(output);
+ await markProjectOutputRegistered(f.store, output.publication);
+ assert.equal(permissionBits(file), 0o600);
+ process.umask(0o022);
+ assert.deepEqual(await publishProjectOutput(f.store, f.input), output);
+ assert.equal(permissionBits(file), 0o600);
+});
+
+test('restoring a missing export honors the current umask with a private stage', async t => {
+ const f = fixture(t, 'exports');
+ useUmask(t, 0o077);
+ const output = await publishProjectOutput(f.store, f.input), asset = f.register(output);
+ await markProjectOutputRegistered(f.store, output.publication);
+ const file = path.join(f.projectDir, output.relativePath);
+ unlinkSync(file);
+ process.umask(0o002);
+ const stage = path.join(path.dirname(f.input.stageFile), 'restore.png');
+ writeFileSync(stage, bytes, {mode: 0o600});
+ let createdMode: number | undefined;
+ setProjectOutputPublicationTestHooks(f.store, {fault(point) {
+  if (point === 'after_target_create') createdMode = permissionBits(file);
+ }});
+ const restored = await restorePublishedProjectOutput(f.store, {asset, stageFile: stage});
+ assert.deepEqual(restored.publication, output.publication);
+ assert.equal(permissionBits(file), 0o664);
+ assert.equal(createdMode, 0o664);
+ assert.equal(permissionBits(stage), 0o600);
+ assertPublishedProjectOutput(f.store, output.publication);
+});
 
 function changeCtimeOnly(file: string): void {
  const before = statSync(file, {bigint: true}), mode = Number(before.mode & 0o777n);
@@ -72,12 +141,20 @@ async function afterFullOutputRead(t: TestContext, probe: string, target: () => 
  });
 }
 
-function observePublicationTarget(f: ReturnType<typeof fixture>): () => string {
+function observePublicationTarget(f: ReturnType<typeof fixture>, afterIntent?: (file: string) => void): () => string {
  let target = '';
  setProjectOutputPublicationTestHooks(f.store, {fault(point, proof) {
-  if (point === 'after_intent') target = path.join(f.projectDir, proof.relativePath);
+  if (point === 'after_intent') {
+   target = path.join(f.projectDir, proof.relativePath);
+   afterIntent?.(target);
+  }
  }});
  return () => target;
+}
+
+function linkLegacyStage(f: ReturnType<typeof fixture>): () => string {
+ // Simulate the old producer linking its completed stage before target ACK.
+ return observePublicationTarget(f, file => linkSync(f.input.stageFile, file));
 }
 
 for (const kind of ['exports','generated'] as const) test(`${kind} publication accepts ctime-only changes during the final full read`, async t => {
@@ -110,7 +187,8 @@ test('publication accepts ctime-only changes during the private stage hash', asy
 });
 
 for (const location of ['stage','final'] as const) test(`publication accepts ctime-only changes during ${location} file sync`, async t => {
- const f = fixture(t), target = location === 'stage' ? () => f.input.stageFile : observePublicationTarget(f);
+ const f = fixture(t, location === 'final' ? 'assets' : 'generated');
+ const target = location === 'stage' ? () => f.input.stageFile : observePublicationTarget(f);
  const prototype = await outputHandlePrototype(f.input.stageFile), original = prototype.sync;
  let changed = false;
  t.mock.method(prototype, 'sync', async function(this: FileHandle) {
@@ -151,7 +229,7 @@ function changeAlreadyReadByte(file: string): void {
 
 for (const [change, field] of [['already-read byte','hash'],['size','size'],['same-byte replacement','identity'],['mtime','mtime']] as const)
 test(`publication rejects a changed ${change} during the final read`, async t => {
- const f = fixture(t), target = observePublicationTarget(f), changesBefore = f.count();
+ const f = fixture(t, 'assets'), target = observePublicationTarget(f), changesBefore = f.count();
  utimesSync(f.input.stageFile, frozenTime, frozenTime);
  let changed = false;
  await afterFullOutputRead(t, f.input.stageFile, target, file => {
@@ -195,7 +273,7 @@ test('publication rejects an output whose ctime keeps changing across complete h
 });
 
 for (const changeBytes of [false,true]) test(`reading published bytes ${changeBytes ? 'rejects an already-read byte change with restored mtime' : 'tolerates a ctime-only change'}`, async t => {
- const f = fixture(t);
+ const f = fixture(t, 'assets');
  utimesSync(f.input.stageFile, frozenTime, frozenTime);
  const output = await publishProjectOutput(f.store, f.input), file = path.join(f.projectDir, output.relativePath);
  let changed = false;
@@ -216,6 +294,7 @@ for (const changeBytes of [false,true]) test(`reading published bytes ${changeBy
 
 for (const changeBytes of [false,true]) test(`registration after ctime drift ${changeBytes ? 'rejects changed bytes' : 'verifies complete bytes outside the transaction and commits'}`, async t => {
  const f = fixture(t, 'exports'), before = f.count();
+ linkLegacyStage(f);
  utimesSync(f.input.stageFile, frozenTime, frozenTime);
  const output = await publishProjectOutput(f.store, f.input), file = path.join(f.projectDir, output.relativePath);
  let attempts = 0, fullHashes = 0;
@@ -265,15 +344,20 @@ test('a single transaction registers multiple outputs that each had a ctime-only
 });
 
 for(const forceCopy of [false,true])test(`exclusive ${forceCopy?'cross-volume copy':'link'} publishes ordinary files and only removes its registered private stage`,async t=>{
- const f=fixture(t),before=f.count();setProjectOutputPublicationTestHooks(f.store,{forceCopy});
- const output=await publishProjectOutput(f.store,f.input);assert.match(output.relativePath,/^生成\//u);assert.equal(f.count(),before);
+ const kind=forceCopy?'generated':'assets',f=fixture(t,kind),before=f.count();setProjectOutputPublicationTestHooks(f.store,{forceCopy});
+ const output=await publishProjectOutput(f.store,f.input);assert.match(output.relativePath,forceCopy?/^生成\//u:/^素材\//u);assert.equal(f.count(),before);
+ if(!forceCopy){
+  const target=path.join(f.projectDir,output.relativePath);
+  assert.equal(statSync(target).nlink,2);
+  assert.equal(permissionBits(target),permissionBits(f.input.stageFile));
+ }
  assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);assert.equal(statSync(f.projectDir).mode&0o777,0o755);
  assert.deepEqual(await publishProjectOutput(f.store,f.input),output);assert.deepEqual(await readPublishedProjectOutput(f.store,f.key(),{maxBytes:bytes.length}),bytes);
  const sentinels=[path.join(f.projectDir,'keep.png'),path.join(f.store.localDir,'keep'),path.join(f.store.cacheDir,'keep'),path.join(f.store.tempDir,'keep')];for(const file of sentinels)writeFileSync(file,'untouched',{mode:0o600});
  f.store.tx(()=>{assertPublishedProjectOutput(f.store,output.publication);f.register(output);});await markProjectOutputRegistered(f.store,output.publication);
  assert.equal(existsSync(f.input.stageFile),false);for(const file of sentinels)assert.equal(readFileSync(file,'utf8'),'untouched');
  assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);
- assert.equal(isPublishedProjectOutput(f.store.get('assets',f.input.assetId),{projectId:f.projectId,owner:f.input.owner,targetKind:'generated'}),true);
+ assert.equal(isPublishedProjectOutput(f.store.get('assets',f.input.assetId),{projectId:f.projectId,owner:f.input.owner,targetKind:kind}),true);
 });
 
 for(const sameBytes of [false,true])test(`a preexisting ${sameBytes?'same-byte':'different-byte'} target is preserved rather than claimed`,async t=>{
@@ -298,7 +382,7 @@ for(const point of ['after_intent','after_target_create','after_target_identity'
 });
 
 test('link recovery accepts only its intent-bound nlink=2 file; replacing it with identical bytes fails closed',async t=>{
- const f=fixture(t),sentinel=Error('final');const remove=setProjectOutputPublicationTestHooks(f.store,{fault:point=>{if(point==='after_final')throw sentinel;}});
+ const f=fixture(t,'assets'),sentinel=Error('final');const remove=setProjectOutputPublicationTestHooks(f.store,{fault:point=>{if(point==='after_final')throw sentinel;}});
  await assert.rejects(publishProjectOutput(f.store,f.input),e=>e===sentinel);remove();assert.equal(statSync(f.input.stageFile).nlink,2);
  const output=await inspectProjectOutput(f.store,f.key());assert.ok(output);assert.deepEqual(await readPublishedProjectOutput(f.store,f.key(),{maxBytes:bytes.length}),bytes);
  const file=path.join(f.projectDir,output.relativePath),old=file+'.owned';renameSync(file,old);writeFileSync(file,bytes,{mode:0o644});
@@ -388,7 +472,7 @@ test('version-canonicalized publication facts retain strict registration and mis
 });
 
 test('a registered output keeps its visible inode epoch stable while asynchronous registration work finishes',async t=>{
- const f=fixture(t),output=await publishProjectOutput(f.store,f.input);f.register(output);
+ const f=fixture(t,'assets'),output=await publishProjectOutput(f.store,f.input);f.register(output);
  const final=path.join(f.projectDir,output.relativePath),registered=markProjectOutputRegistered(f.store,output.publication);
  const ready=statSync(final,{bigint:true}),read=registeredProjectAssetReferences(f.projectDir)!.read(f.input.assetId,{maxBytes:bytes.length,expectedSha256:f.input.sha256,expectedReferenceRevision:1});
  await registered;assert.deepEqual((await read).bytes,bytes);

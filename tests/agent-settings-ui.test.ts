@@ -8,7 +8,7 @@ import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
 import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
 import * as openAiFamilies from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentModelListClient} from '../apps/web/src/agent-model-list-session.ts';
-import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
+import type {AgentModelListResult,AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
 import {adapterSettings} from './helpers/agent-adapter-fixture.ts';
@@ -167,6 +167,42 @@ test('actual model fetch and key check show the real button spinner while pendin
    assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assertNoSecrets(h.reports);
   }finally{h.unmount();}
  }
+});
+
+test('model list failures explain the next step in all four locales and keep the last observation',async()=>{
+ const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};
+ const previous=listed(['last-fetched-model']);
+ let next:AgentModelListResult=previous;
+ const f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result:previous}),modelsList:async()=>next});
+ const cases=[
+  [{outcome:'invalid_key',reason:'rejected'},'invalidKey'],
+  [{outcome:'invalid_key',reason:'permission_denied'},'permissionDenied'],
+  [{outcome:'unavailable',reason:'not_found'},'notFound'],
+  [{outcome:'unreachable',reason:'rate_limited'},'rateLimited'],
+  [{outcome:'unreachable',reason:'server_error'},'serverError'],
+  [{outcome:'unreachable',reason:'connection_failed'},'connectionFailed'],
+  [{outcome:'unreachable',reason:'timeout'},'timeout'],
+  [{outcome:'network_denied',reason:'policy'},'networkDenied'],
+ ] as const;
+ try{
+  await ready(h);h.view('openai');await flush();h.render();
+  for(const [failure,suffix] of cases){
+   next=failure;
+   h.click('agent-settings-fetch-openai');await flush();h.render();
+   assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],failure.outcome);
+   for(const locale of i18n.LOCALES){
+    h.setLocale(locale);
+    const copy=i18n.catalogs[`agent.settings.models.${suffix}` as keyof typeof i18n.catalogs]?.[locale];
+    assert.equal(typeof copy,'string',`${locale} ${suffix}`);
+    const children=h.find('agent-settings-model-list-status-openai').props.children;
+    assert.ok(Array.isArray(children));
+    assert.equal(children[0],copy);
+   }
+   assert.ok(h.find('agent-settings-model-row-openai-last-fetched-model'));
+  }
+  assert.equal(f.calls.length,0);
+  assert.equal(f.saved().verification,'not_tested');
+ }finally{h.unmount();}
 });
 
 test('actual model labels use documented OpenAI families for snapshots without trusting provider adaptation claims',async()=>{

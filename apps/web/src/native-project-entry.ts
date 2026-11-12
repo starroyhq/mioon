@@ -29,6 +29,7 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
   const [, rerender] = useState(0);
   const [desktopClient] = useState(() => readProjectEntryDesktopClient(typeof window === 'undefined' ? null : window));
   const desktopRef = useRef<NativeProjectDesktopController | null>(null);
+  const receiveContext = useRef<(next: ProjectWindowContext) => void>(() => {});
   const [identity] = useState(() => suppliedIdentity ?? createProjectEntryIdentityOwner({
     ...(contractChecks.readDirectory ? {read: () => contractChecks.readDirectory!()} : {}),
   }));
@@ -58,9 +59,29 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     const releaseIdentity = identity.subscribe(() => rerender(value => value + 1));
     const win = window as EntryWindow, admission = { consume: controller.consume };
     win.__mioonProjectEntryAdmission = admission;
-    const updateContext = (next: ProjectWindowContext) => {controller.updateContext(next); if (next.leaseRevoked || next.quitting) desktop?.retireOwner();};
-    const release = bridge.subscribe(updateContext);
     let wasVisible = document.visibilityState !== 'hidden', bootPending = context.role === 'launcher';
+    let refreshAfterQuit = false;
+    const updateContext = (next: ProjectWindowContext) => {
+      controller.updateContext(next);
+      if (controller.getContext() !== next) return;
+      if (next.leaseRevoked) {
+        refreshAfterQuit = false;
+        bootPending = false;
+        desktop?.retireOwner();
+      } else if (next.quitting) {
+        refreshAfterQuit = true;
+        bootPending = false;
+        desktop?.retireOwner('quit');
+      } else if (refreshAfterQuit && controller.isNativeActionCurrent()) {
+        refreshAfterQuit = false;
+        // Recheck the catalog without re-running the launcher's initial
+        // automatic open. Native capability discovery joins this fresh read.
+        void controller.refresh();
+        if (desktop?.recoverAfterQuit()) void desktop.initialize(next.role === 'editor');
+      }
+    };
+    receiveContext.current = updateContext;
+    const release = bridge.subscribe(updateContext);
     const visibility = () => {
       if (!effectActive) return;
       const visible = document.visibilityState !== 'hidden', returned = !wasVisible && visible;
@@ -74,18 +95,19 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     };
     const interaction = () => {if (effectActive) controller.interacted();};
     visibility(); updateContext(context);
-    if (context.role === 'launcher') void controller.boot().then(() => {if (effectActive) return desktop?.initialize(false);}).finally(() => { bootPending = false; });
+    if (context.role === 'launcher') void controller.boot().then(() => {if (effectActive && bootPending) return desktop?.initialize(false);}).finally(() => { bootPending = false; });
     else void desktop?.initialize(true);
     document.addEventListener('visibilitychange', visibility);
     document.addEventListener('input', interaction, true); document.addEventListener('pointerdown', interaction, true); document.addEventListener('keydown', interaction, true);
     return () => {
       effectActive = false;
+      receiveContext.current = () => {};
       release(); releaseIdentity(); desktop?.dispose(); controller.dispose();
       if (win.__mioonProjectEntryAdmission === admission) delete win.__mioonProjectEntryAdmission;
       document.removeEventListener('visibilitychange', visibility);
       document.removeEventListener('input', interaction, true); document.removeEventListener('pointerdown', interaction, true); document.removeEventListener('keydown', interaction, true);
     };
   }, [controller, bridge, identity, desktop]);
-  useEffect(() => {controller.updateContext(context); if (context.leaseRevoked || context.quitting) desktop?.retireOwner();}, [controller, context, desktop]);
+  useEffect(() => {receiveContext.current(context);}, [context]);
   return Object.assign(controller, {desktop});
 }

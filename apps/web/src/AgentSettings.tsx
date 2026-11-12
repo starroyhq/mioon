@@ -7,7 +7,7 @@ import {WorkbenchBadge,WorkbenchButton,WorkbenchTabs} from '@mioon/ui/components
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {AgentTaskConnectionTest} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import {AGENT_CONNECTION_LIMITS} from '../../../packages/contracts/src/agent-connection-settings.ts';
-import type {AgentModelListCacheRequest,AgentModelListRequest} from '../../../packages/contracts/src/agent-model-list.ts';
+import type {AgentModelListCacheRequest,AgentModelListRequest,AgentModelListResult} from '../../../packages/contracts/src/agent-model-list.ts';
 import {agentOpenAiModelIsAdapted} from '../../../packages/contracts/src/agent-openai-model-family.ts';
 import {createAgentModelListSession} from './agent-model-list-session.ts';
 import type {AgentModelListView} from './agent-model-list-session.ts';
@@ -37,6 +37,36 @@ interface AgentSettingsProps {
 const serviceOrder=['minimax','deepseek','openai','anthropic','qwen','zhipu','kimi','openrouter','ollama'];
 const storageReasons:Readonly<Record<string,Parameters<Translate>[0]>>={WEB_SESSION_ONLY:'connections.storage.webReason',LINUX_BASIC_TEXT:'connections.storage.basicReason',OS_SECRET_STORE_UNAVAILABLE:'connections.storage.unavailableReason'};
 const storageReason=(storage:AgentSettingsSnapshot['storage'],t:Translate):string=>t(storage.reasonCode&&storageReasons[storage.reasonCode]|| (storage.persistentAvailable?'connections.storage.availableReason':'connections.storage.fallbackReason'));
+const modelListFailureMessages={
+ required:'agent.settings.models.waitingKey',
+ rejected:'agent.settings.models.invalidKey',
+ permission_denied:'agent.settings.models.permissionDenied',
+ not_found:'agent.settings.models.notFound',
+ not_provided:'agent.settings.models.unavailable',
+ unsupported_shape:'agent.settings.models.unavailable',
+ http_unavailable:'agent.settings.models.unavailable',
+ connection_failed:'agent.settings.models.connectionFailed',
+ timeout:'agent.settings.models.timeout',
+ rate_limited:'agent.settings.models.rateLimited',
+ server_error:'agent.settings.models.serverError',
+ aborted:'agent.settings.models.unreachable',
+ http_error:'agent.settings.models.unreachable',
+ invalid_response:'agent.settings.models.unreachable',
+ response_limit:'agent.settings.models.unreachable',
+ policy:'agent.settings.models.networkDenied',
+} as const satisfies Record<Exclude<AgentModelListResult,{outcome:'success'}>['reason'],Parameters<Translate>[0]>;
+function modelListStatus(list?:AgentModelListView){
+ if(list?.result&&list.result.outcome!=='success')return modelListFailureMessages[list.result.reason];
+ switch(list?.phase){
+  case 'success':
+   if(!list.observation?.complete)return 'agent.settings.models.partial';
+   return list.observation.models.length?'agent.settings.models.success':'agent.settings.models.empty';
+  case 'loading':return 'agent.settings.models.loading';
+  case 'waiting_key':return 'agent.settings.models.waitingKey';
+  case 'error':return 'agent.settings.models.unreachable';
+  default:return 'agent.settings.models.idle';
+ }
+}
 export {agentDiagnosticMatchesExecution} from './agent-settings.ts';
 
 /** One retained settings session owns all non-secret drafts. Each password has
@@ -167,7 +197,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   const listIdentity=base?JSON.stringify([key,entry.presetId,entry.platformId,base,entry.protocol]):null,list=modelLists[key]?.identity===listIdentity?modelLists[key]:undefined;
   const familyHints=[...entry.manualModelIds,...(list?.observation?.models.map(model=>model.id)??[]),...(savedModel?[savedModel]:[]),...(selectedModel?[selectedModel]:[])].filter(model=>agentOpenAiModelIsAdapted(entry.presetId,entry.protocol,model));
   const models=agentModelListRows({observation:list?.observation,adaptedIds:[...new Set([...hints,...familyHints])],manualIds:entry.manualModelIds,currentId:savedModel,draftId:selectedModel,custom:entry.presetId==='custom',hasCompleteList:list?.phase==='success'&&list.observation?.complete===true,showMissing:list?.phase==='success'&&!changedBinding&&saved?.protocol===entry.protocol}),missing=models.find(model=>model.missing);
-  const listBusy=list?.phase==='loading',listStatus=list?.phase==='success'?(list.observation?.complete?list.observation.models.length?'agent.settings.models.success':'agent.settings.models.empty':'agent.settings.models.partial'):list?.phase==='loading'?'agent.settings.models.loading':list?.phase==='waiting_key'?'agent.settings.models.waitingKey':list?.phase==='invalid_key'?'agent.settings.models.invalidKey':list?.phase==='unavailable'?'agent.settings.models.unavailable':list?.phase==='network_denied'?'agent.settings.models.networkDenied':list?.phase==='unreachable'||list?.phase==='error'?'agent.settings.models.unreachable':'agent.settings.models.idle';
+  const listBusy=list?.phase==='loading',listStatus=modelListStatus(list);
   const messagesV1=entry.presetId==='custom'&&entry.protocol==='anthropic_messages'&&/\/v1\/?$/u.test(entry.addressInput.trim());
   const ownTest=snapshot!.execution?.binding.serviceKey===key?snapshot!.execution:null;
   const addressRow=<div className="mio-settings-row"><Label htmlFor={`agent-address-${key}`}>{t(platform.addressMode==='workspace'?'agent.settings.x6.workspace':platform.addressMode==='local'?'agent.settings.x6.localOrigin':platform.addressMode==='custom'?'agent.settings.x6.customBase':'mio.settings.label.baseUrl')}</Label><div className="mio-settings-control">

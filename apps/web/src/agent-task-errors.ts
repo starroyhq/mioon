@@ -1,4 +1,5 @@
 import type { agentTaskErrorMessages } from '../../../packages/i18n/src/catalogs/agent-task-errors.ts';
+import { agentFailureDiagnosticSchema } from '../../../packages/contracts/src/agent-failure-diagnostic.ts';
 
 type ErrorKey = keyof typeof agentTaskErrorMessages;
 const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
@@ -6,6 +7,7 @@ const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   TARGET_CHANGED:'agent.task.error.targetReread', TARGET_EDITING:'agent.task.error.editing',
   PREFLIGHT_STALE:'agent.task.error.preflightStale',
   IMAGE_SETTINGS_SELECTION_REQUIRED:'agent.task.error.imageSelectionRequired',
+  LIVE_GENERATION_DISABLED:'agent.task.error.liveGenerationDisabled',
   GENERATION_FAILED:'agent.task.error.generation', PROVIDER_ERROR:'agent.task.error.generation', PROVIDER_GENERATION_FAILED:'agent.task.error.generation', PROVIDER_NOT_FOUND:'agent.task.error.generation', PROVIDER_UNAVAILABLE:'agent.task.error.generation', PROVIDER_NOT_READY:'agent.task.error.generation', PROVIDER_POLL_TIMEOUT:'agent.task.error.generation', PROVIDER_CONFIGURATION:'agent.task.error.generation', PROVIDER_DISABLED:'agent.task.error.generation', PROVIDER_REGION_CHANGED:'agent.task.error.generation',
   EXPORT_CAPABILITY_TOOL_UNAVAILABLE:'agent.task.error.media', EXPORT_CAPABILITY_UNSUPPORTED:'agent.task.error.media', EXPORT_CAPABILITY_CONFIGURATION:'agent.task.error.media', EXPORT_CAPABILITY_FAILED:'agent.task.error.media', EXPORT_CAPABILITY_TIMEOUT:'agent.task.error.media', SUBTITLE_RENDERER_UNAVAILABLE:'agent.task.error.media',
   AGENT_TASK_NOT_FOUND:'agent.task.error.notFound', AGENT_CHAT_NOT_FOUND:'agent.task.error.notFound',
@@ -40,4 +42,30 @@ export function agentTaskErrorKey(code: unknown): ErrorKey {
   if (Object.hasOwn(codes, code)) return codes[code];
   if (/^(?:FFMPEG_|FFPROBE_|TIMELINE_(?:SUBTITLE|EXPORT|RENDER)_)/u.test(code)) return 'agent.task.error.media';
   return 'agent.task.error.generic';
+}
+
+export function agentTaskDiagnosticDetails(value: unknown) {
+  const parsed = agentFailureDiagnosticSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const diagnostic = parsed.data;
+  if (diagnostic.kind === 'http') {
+    const { status, providerType, providerCode } = diagnostic;
+    const parts = [
+      'MIO', 'http', status,
+      ...(providerType ? [`type=${providerType}`] : []),
+      ...(providerCode !== undefined ? [`code=${providerCode}`] : []),
+    ];
+    return { key: 'agent.panel.diagnostic.http' as const, values: { status }, code: parts.join('/') };
+  }
+  if (diagnostic.kind === 'limit') {
+    return { key: 'agent.panel.diagnostic.limit' as const, code: `MIO/limit/${diagnostic.limit}` };
+  }
+  const { reason, event, item, field } = diagnostic;
+  const parts = [
+    'MIO', 'protocol', reason,
+    ...(event ? [`event=${event}`] : []),
+    ...(item ? [`item=${item}`] : []),
+    ...(field ? [`field=${field}`] : []),
+  ];
+  return { key: `agent.panel.diagnostic.${reason}` as const, code: parts.join('/') };
 }

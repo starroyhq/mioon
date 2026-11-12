@@ -103,7 +103,7 @@ test('loading the global completed summary never opens a project, and disposal s
   assert.ok(g.calls.read <= 1); assert.equal(g.calls.send.length <= 1, true);
 });
 
-test('global diagnostic response permits five safe summary fields and an optional complete current-selection witness',()=>{
+test('global diagnostic response accepts old summaries, safe HTTP evidence and a complete current-selection witness',()=>{
  const summary=stored('failed',{errorCode:'PROVIDER_FAILED'});assert.deepEqual(agentTaskConnectionTestResponseSchema.parse({test:summary}),{test:summary});
  for(const extra of [{runId},{projectId:projectA},{baseUrl:configuration.baseUrl},{createdAt:at},{updatedAt:at},{failureCode:'PROVIDER_FAILED'}])
   assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...extra}}).success,false);
@@ -111,6 +111,19 @@ test('global diagnostic response permits five safe summary fields and an optiona
  const execution=project(projectA).settings.execution!,witness={settingsRevision:execution.revision,settingsBinding:execution.binding};
  assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...witness}}).success,true);
  for(const partial of [{settingsRevision:execution.revision},{settingsBinding:execution.binding},{...witness,settingsBinding:{...execution.binding,entryRevision:-1}}])assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...partial}}).success,false);
+ const diagnostic={kind:'http',status:403,providerType:'permission_error',providerCode:'permission_denied'} as const;
+ for(const evidence of [diagnostic,{kind:'http',status:503},{...diagnostic,providerCode:403}]){
+  const test={...summary,...witness,diagnostic:evidence};
+  assert.deepEqual(agentTaskConnectionTestResponseSchema.parse({test}),{test});
+ }
+ for(const evidence of [
+  {...diagnostic,status:200},
+  {...diagnostic,providerType:'sk-synthetic-key-marker'},
+  {...diagnostic,providerCode:'private_user_scene_notes'},
+  {...diagnostic,message:'Private user scene notes'},
+  {...diagnostic,request:'sk-synthetic-key-marker'},
+  {kind:'protocol',reason:'terminal_mismatch'},
+ ])assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,diagnostic:evidence}}).success,false);
  assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:null}).success,true);
 });
 

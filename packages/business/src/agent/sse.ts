@@ -1,4 +1,4 @@
-import {agentChatError, agentChatStreamError} from './chat-errors.ts';
+import {agentChatError, agentChatLimitError, agentChatProtocolError, agentChatStreamError} from './chat-errors.ts';
 
 export const AGENT_SSE_LIMITS = Object.freeze({maxBytes: 1024 * 1024, maxEventBytes: 64 * 1024, maxEvents: 8192});
 export interface AgentSseOptions {
@@ -35,11 +35,11 @@ export async function* parseAgentSse(source: AsyncIterable<Uint8Array>, options:
   };
   function acceptLine(value: string): AgentSseEvent | null {
     eventBytes += Buffer.byteLength(value, 'utf8') + 1;
-    if (eventBytes > eventByteLimit()) throw agentChatError('AGENT_CHAT_LIMIT');
+    if (eventBytes > eventByteLimit()) throw agentChatLimitError('stream_event_bytes');
     if (!value) {
       const result: AgentSseEvent | null = hasData ? {event: event || 'message', data: data.join('\n'), ...(options.includeEventName ? {eventName: eventNamed ? event : null} : {})} : null;
       event = ''; eventNamed = false; data.length = 0; hasData = false; eventBytes = 0;
-      if (result && ++events > limits.maxEvents) throw agentChatError('AGENT_CHAT_LIMIT');
+      if (result && ++events > limits.maxEvents) throw agentChatLimitError('stream_events');
       return result;
     }
     if (value.startsWith(':')) return null;
@@ -51,7 +51,7 @@ export async function* parseAgentSse(source: AsyncIterable<Uint8Array>, options:
     else if (name === 'event') {
       event = field; eventNamed = true;
       // A later field can narrow the budget after data was already buffered.
-      if (eventBytes > eventByteLimit()) throw agentChatError('AGENT_CHAT_LIMIT');
+      if (eventBytes > eventByteLimit()) throw agentChatLimitError('stream_event_bytes');
     }
     return null;
   }
@@ -62,7 +62,7 @@ export async function* parseAgentSse(source: AsyncIterable<Uint8Array>, options:
       if (text[i] !== '\r' && text[i] !== '\n') continue;
       const segment = text.slice(start, i);
       line += segment; lineBytes += Buffer.byteLength(segment, 'utf8');
-      if (lineBytes + eventBytes > eventByteLimit()) throw agentChatError('AGENT_CHAT_LIMIT');
+      if (lineBytes + eventBytes > eventByteLimit()) throw agentChatLimitError('stream_event_bytes');
       const framed = acceptLine(line); line = ''; lineBytes = 0;
       if (framed) yield framed;
       if (text[i] === '\r') {
@@ -73,19 +73,19 @@ export async function* parseAgentSse(source: AsyncIterable<Uint8Array>, options:
     }
     const segment = text.slice(start);
     line += segment; lineBytes += Buffer.byteLength(segment, 'utf8');
-    if (lineBytes + eventBytes > eventByteLimit()) throw agentChatError('AGENT_CHAT_LIMIT');
+    if (lineBytes + eventBytes > eventByteLimit()) throw agentChatLimitError('stream_event_bytes');
   }
   for await (const chunk of source) {
     if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
-    if (!(chunk instanceof Uint8Array)) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
+    if (!(chunk instanceof Uint8Array)) throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'chunk'});
     bytes += chunk.byteLength;
-    if (bytes > limits.maxBytes) throw agentChatError('AGENT_CHAT_LIMIT');
+    if (bytes > limits.maxBytes) throw agentChatLimitError('stream_bytes');
     let text: string;
-    try { text = decoder.decode(chunk, {stream: true}); } catch { throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR'); }
+    try { text = decoder.decode(chunk, {stream: true}); } catch { throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'utf8'}); }
     yield* consume(text);
   }
   let last = '';
-  try { last = decoder.decode(); } catch { throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR'); }
+  try { last = decoder.decode(); } catch { throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'utf8'}); }
   yield* consume(last);
   if (hasData || (line && !line.startsWith(':'))) throw agentChatStreamError('unframed_sse');
 }

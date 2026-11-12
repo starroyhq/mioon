@@ -1,7 +1,8 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
-import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliveryIntent,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute} from '@mioon/contracts/local-delivery';
+import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute} from '@mioon/contracts/local-delivery';
+import {outputLocaleSchema,type OutputLocale} from '../../contracts/src/output-locale.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {createLocalDraftRepository, LocalDraftRepositoryError} from './local-draft-repository.ts';
 
@@ -33,7 +34,12 @@ const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item:unknown)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const same=(a:unknown,b:unknown):boolean=>canonical(a)===canonical(b);
 const sha=(value:unknown):string=>createHash('sha256').update(canonical(value)).digest('hex');
-const terminal=(intent:LocalDeliveryIntent|null):boolean=>intent!==null&&intent.outcome.status!=='pending';
+type StoredIntent=NonNullable<LocalDeliverySlot['intent']>;
+const terminal=(intent:StoredIntent|null):boolean=>intent!==null&&intent.outcome.status!=='pending';
+const localeScopePrefix='output-locale:delivery:';
+const localeScopes=outputLocaleSchema.options.map(locale=>localeScopePrefix+locale);
+const localeScopeParameters=localeScopes.map(()=>'?').join(',');
+const intentDigest=({outcome:_outcome,...identity}:StoredIntent):string=>sha(identity);
 function plain(value:unknown,depth=0,budget={nodes:0}):void{
   if(++budget.nodes>128||depth>8)fail('LOCAL_DELIVERY_VALIDATION');
   if(value===null||typeof value==='boolean')return;
@@ -60,7 +66,7 @@ export interface LocalDeliveryGuards{
   isRenderResponse(input:LocalDeliveryRenderInput,value:unknown):boolean;
   isNotApplied(input:LocalDeliveryRenderInput,error:unknown):boolean;
   /** The backend binds only services.call('timeline.render', input). */
-  render(input:LocalDeliveryRenderInput):Promise<unknown>;
+  render(input:LocalDeliveryRenderInput,outputLocale?:OutputLocale):Promise<unknown>;
 }
 export type LocalDeliveryFaultPoint='beforePersist'|'afterPersist'|'beforeCommit'|'afterCommit'|'beforeConfirm'|'afterConfirm'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
 export interface LocalDeliveryOptions{
@@ -114,7 +120,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
   function target(value:Pick<LocalDeliveryDraftValue,'timelineId'|'baseRevision'>|null,current:Record<string,unknown>|null):'unset'|'matching'|'changed'|'missing'{
     if(!value)return 'unset';if(!current||current.id!==value.timelineId)return 'missing';return current.revision===value.baseRevision?'matching':'changed';
   }
-  function receipt(intent:LocalDeliveryIntent):unknown|null{
+  function receipt(intent:StoredIntent):unknown|null{
     const value=guards.readReceipt(clone(intent.input));if(value===null)return null;
     if(guards.isRenderResponse(intent.input,value)!==true||!object(value)||value.status!=='queued'||!object(value.snapshot)||!object(value.snapshot.timeline)||value.snapshot.timeline.id!==intent.timelineId)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     if(Buffer.byteLength(JSON.stringify(value))>LOCAL_DELIVERY_LIMITS.renderResponseBytes)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
@@ -129,10 +135,22 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
     }
     return saved;
   }
+  function preparedLocale(projectId:string,intent:StoredIntent):OutputLocale|undefined{
+    const rows=store.db.prepare(`SELECT scope FROM idempotency WHERE scope IN (${localeScopeParameters}) AND requestId=? AND requestHash=? AND resourceId=? LIMIT 2`)
+      .all(...localeScopes,projectId,intentDigest(intent),intent.intentId);
+    if(rows.length>1)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
+    const locale=outputLocaleSchema.safeParse(String(rows[0]?.scope).slice(localeScopePrefix.length));
+    return locale.success?locale.data:undefined;
+  }
+  function clearPreparedLocale(projectId:string):void{
+    store.db.prepare(`DELETE FROM idempotency WHERE scope IN (${localeScopeParameters}) AND requestId=?`).run(...localeScopes,projectId);
+  }
   function response(row:LocalDeliverySlot):LocalDeliveryEnvelope{
     owned();const current=timeline(row.projectId);evidence(row);owned();
     const shown=uncertain.get(row.projectId)===row.intent?.intentId&&row.intent?{...row,intent:{...row.intent,outcome:{status:'pending' as const}}}:row;
-    return clone({supported:true,workspaceScope:identity(),instanceId,...shown,draftTargetStatus:target(row.draft,current),intentTargetStatus:target(row.intent,current)});
+    const outputLocale=shown.intent?preparedLocale(row.projectId,shown.intent):undefined;
+    const intent=outputLocale&&shown.intent?{...shown.intent,outputLocale}:shown.intent;
+    return clone({supported:true,workspaceScope:identity(),instanceId,...shown,intent,draftTargetStatus:target(row.draft,current),intentTargetStatus:target(row.intent,current)});
   }
   function confirmSaved():void{
     owned();identity();try{
@@ -157,17 +175,17 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
       throw error;
     }
   }
-  function persist(disk:LocalDeliveryDisk,check?:()=>void):void{
+  function persist(disk:LocalDeliveryDisk,check?:()=>void,writeCompanion?:()=>void):void{
     owned();if(disk.workspaceScope!==identity())fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
     const bytes=JSON.stringify(disk)+'\n';
     if(disk.entries.length>LOCAL_DELIVERY_LIMITS.slots||Buffer.byteLength(bytes)>LOCAL_DELIVERY_LIMITS.envelopeBytes)fail('LOCAL_DELIVERY_CAPACITY');
     if(disk.entries.some(row=>Buffer.byteLength(JSON.stringify(row))>LOCAL_DELIVERY_LIMITS.rowBytes))fail('LOCAL_DELIVERY_LIMIT');
     const before=readDigests.get(disk);if(before===undefined)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     fault('beforePersist');owned();if(disk.workspaceScope!==identity())fail('LOCAL_DELIVERY_SCOPE_MISMATCH');
-    let published=false;try{repository.save(disk,before,check?()=>repositoryCheck(check):undefined);published=true;fault('afterPersist');if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');confirmSaved();if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');}
+    let published=false;try{repository.save(disk,before,check?()=>repositoryCheck(check):undefined,writeCompanion);published=true;fault('afterPersist');if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');confirmSaved();if(sha(read())!==sha(disk))fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');}
     catch(error){if(published)fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');throw error;}
   }
-  function exact(args:LocalDeliveryExecute):{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:LocalDeliveryIntent}{
+  function exact(args:LocalDeliveryExecute):{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:StoredIntent}{
     writable(args);const disk=read(),row=slot(disk,args.projectId);
     if(!row.intent||row.intent.intentId!==args.intentId||row.intentRevision!==args.expectedIntentRevision)fail('LOCAL_DELIVERY_CONFLICT');
     return {disk,row,intent:row.intent};
@@ -175,20 +193,20 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
   async function run(args:LocalDeliveryExecute):Promise<LocalDeliveryExecution>{
     try{
     // Scheduled only after the project single-flight claim is installed.
-    const initial=exact(args),original=clone(initial.intent),originalDigest=sha(original);
-    const finish=():{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:LocalDeliveryIntent}=>{
-      const latest=exact(args);if(sha(latest.intent)!==originalDigest)fail('LOCAL_DELIVERY_CONFLICT');
+    const initial=exact(args),original=clone(initial.intent),originalDigest=sha(original),outputLocale=preparedLocale(args.projectId,original);
+    const finish=():{disk:LocalDeliveryDisk;row:LocalDeliverySlot;intent:StoredIntent}=>{
+      const latest=exact(args);if(sha(latest.intent)!==originalDigest||preparedLocale(args.projectId,latest.intent)!==outputLocale)fail('LOCAL_DELIVERY_CONFLICT');
       const current=timeline(args.projectId);if(!current||current.id!==original.timelineId)fail('LOCAL_DELIVERY_CONFLICT');return latest;
     };
       finish();confirmSaved(); // Includes an earlier uncertain prepare publication.
       let result=receipt(original),error:unknown;
       if(result===null){
         fault('beforeDispatch');finish();
-        try{result=await guards.render(clone(original.input));}catch(caught){error=caught;}
+        try{result=await guards.render(clone(original.input),outputLocale);}catch(caught){error=caught;}
         fault('afterDispatch');
       }
       let latest=finish();const saved=receipt(original);
-      let outcome:LocalDeliveryIntent['outcome']|null=null;
+      let outcome:StoredIntent['outcome']|null=null;
       if(saved!==null){
         if(!object(saved)||typeof saved.id!=='string')fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
         if(error===undefined&&result!==null&&(guards.isRenderResponse(original.input,result)!==true||!same(result,saved)))fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
@@ -235,7 +253,7 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
   }
   return {
     assertProjectDeletable(projectId:string):void{guarded(()=>{admission();owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');});},
-    removeProject(projectId:string):void{guarded(()=>{mutation();owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk);confirmSaved();});},
+    removeProject(projectId:string):void{guarded(()=>{mutation();owned();if(!/^[a-f0-9-]{36}$/iu.test(projectId))fail('LOCAL_DELIVERY_VALIDATION');const disk=read();if(flights.has(projectId)||uncertain.has(projectId)||disk.entries.some(row=>row.projectId===projectId&&row.intent&&row.intent.outcome.status==='pending'))fail('LOCAL_DELIVERY_CONFLICT');const entries=disk.entries.filter(row=>row.projectId!==projectId);if(entries.length===disk.entries.length)return;disk.entries=entries;persist(disk,undefined,()=>clearPreparedLocale(projectId));confirmSaved();});},
     get(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{admission();if(!active())return unsupported;const {projectId}=parse(schemas.project,value);return response(slot(read(),projectId));});},
     put(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
       mutation();if(!active())return unsupported;const args=parse(schemas.put,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
@@ -254,14 +272,26 @@ export function createLocalDelivery({store,channel='web',guards,signal,fault=()=
     });},
     prepare(value:unknown):LocalDeliveryEnvelope{return guarded(()=>{
       mutation();if(!active())return unsupported;const args=parse(schemas.prepare,value);writable(args);const disk=read(),row=slot(disk,args.projectId),current=timeline(args.projectId);evidence(row);
+      const {projectId,outputLocale}=args;
       const intent={intentId:args.intentId,timelineId:args.timelineId,baseRevision:args.baseRevision,draft:args.draft,input:args.input};
-      if(row.intentRevision===args.expectedIntentRevision+1&&row.intent&&same(intent,{intentId:row.intent.intentId,timelineId:row.intent.timelineId,baseRevision:row.intent.baseRevision,draft:row.intent.draft,input:row.intent.input})){confirmSaved();return response(row);}
+      if(row.intentRevision===args.expectedIntentRevision+1&&row.intent&&same(intent,{intentId:row.intent.intentId,timelineId:row.intent.timelineId,baseRevision:row.intent.baseRevision,draft:row.intent.draft,input:row.intent.input})
+        &&preparedLocale(projectId,row.intent)===outputLocale){confirmSaved();return response(row);}
       if(row.intentRevision!==args.expectedIntentRevision||(row.intent?.intentId??null)!==args.expectedIntentId||row.intentRevision===Number.MAX_SAFE_INTEGER||row.intent&&!terminal(row.intent)||flights.has(args.projectId)||uncertain.has(args.projectId))fail('LOCAL_DELIVERY_CONFLICT');
       if(disk.entries.some(item=>item.intent&&(item.intent.intentId===args.intentId||item.intent.input.requestId===args.input.requestId)))fail('LOCAL_DELIVERY_CONFLICT');
       if(target(intent,current)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');
       if(args.draft&&(!row.draft||row.draftRevision!==args.draft.revision||row.draft.draftId!==args.draft.draftId||row.draft.timelineId!==args.timelineId||row.draft.baseRevision!==args.baseRevision||!same(row.draft.raw,args.draft.raw)))fail('LOCAL_DELIVERY_CONFLICT');
-      const next:LocalDeliverySlot={...row,intentRevision:row.intentRevision+1,intent:{...intent,createdAt:new Date().toISOString(),outcome:{status:'pending'}}};
-      replace(disk,next);persist(disk,()=>{const actual=timeline(args.projectId);evidence(row);if(target(intent,actual)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');});return response(next);
+      const savedIntent:StoredIntent={...intent,createdAt:new Date().toISOString(),outcome:{status:'pending'}};
+      const next:LocalDeliverySlot={...row,intentRevision:row.intentRevision+1,intent:savedIntent};
+      // Persist the language with the intent, using a separate receipt so the
+      // installed reader can still parse the original strict draft row.
+      replace(disk,next);
+      persist(disk,()=>{const actual=timeline(projectId);evidence(row);if(target(intent,actual)!=='matching')fail('LOCAL_DELIVERY_CONFLICT');},()=>{
+        clearPreparedLocale(projectId);
+        if(outputLocale)store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)')
+          .run(localeScopePrefix+outputLocale,projectId,intentDigest(savedIntent),savedIntent.intentId);
+      });
+      if(preparedLocale(projectId,savedIntent)!==outputLocale)fail('LOCAL_DELIVERY_SAVE_UNCERTAIN');
+      return response(next);
     });},
     execute,recover:execute,
     isBusy:():boolean=>flights.size>0,

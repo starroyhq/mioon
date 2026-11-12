@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration} from './config.ts';
-import {agentChatError, agentChatStreamError} from './chat-errors.ts';
+import {agentChatDiagnostic, agentChatError, agentChatProtocolError, agentChatStreamError} from './chat-errors.ts';
 import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 
@@ -67,7 +67,7 @@ export function createOpenAiSdkTransport(dependencies: AgentTransportDependencie
       const response = configuration.protocol === 'chat_completions'
         ? await sdk.chat.completions.create(body as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, {signal: options.signal}).asResponse()
         : await sdk.responses.create(body as OpenAI.Responses.ResponseCreateParamsStreaming, {signal: options.signal}).asResponse();
-      if (!transport || !response.body) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
+      if (!transport || !response.body) throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: transport ? 'body' : 'sdk_response'});
       const incoming = transport, responseReader = response.body.getReader();
       reader = responseReader;
       const bodyStream = async function* (): AsyncGenerator<Uint8Array, void, undefined> {
@@ -84,11 +84,13 @@ export function createOpenAiSdkTransport(dependencies: AgentTransportDependencie
         } finally { close(); }
       };
       return {body: bodyStream(), close, error: () => incoming.error()};
-    } catch {
+    } catch (error) {
       close();
       if (transportFailure !== undefined) throw transportFailure;
       // Never expose SDK error messages, headers or provider response bodies.
-      throw agentChatError(options.signal?.aborted ? 'AGENT_CHAT_ABORTED' : 'AGENT_CHAT_PROTOCOL_ERROR');
+      if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
+      if (agentChatDiagnostic(error)) throw error;
+      throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'sdk_response'});
     }
   };
 }

@@ -31,6 +31,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   message: () => string; isCurrent?: () => boolean; canStart?: () => boolean; onOpened?: () => void; onChange?: () => void; newId?: () => string; now?: () => number;
 }) {
   let active = false, generation = 0, dismissedRisk = false, draftVersion = 0;
+  let retiredForQuit = false;
   let initialization: {generation: number; promise: Promise<void>} | null = null;
   let pendingEditor: boolean | null = null, pendingHint = 1, consumedHint = 0;
   let pendingTake: {generation: number; promise: Promise<void>} | null = null;
@@ -69,7 +70,9 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     }
     return retiredWrites.size > 0;
   }
-  function retireOwner() {
+  function retireOwner(cause: 'quit' | 'lost' = 'lost') {
+    if (cause === 'lost') retiredForQuit = false;
+    else if (!state.blocked) retiredForQuit = true;
     const blocked = state.blocked; retireWrites();
     if (!blocked) {
       generation++; initialization = null; pendingOpen = null; pendingTake = null; pendingPresentation = null; pendingEditor = null;
@@ -77,6 +80,22 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       emit({blocked: true, busy: false, capabilities: null, risks: [],
         ...(!retiredWrites.size ? {action: {kind: 'idle'} as const, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})} : {})});
     }
+  }
+  function subscribePending() {
+    const serial = generation;
+    releasePending = client.subscribePendingOpen?.(() => {if (current(serial)) {pendingHint++; void drainPendingOpen(serial);}}) ?? null;
+  }
+  function recoverAfterQuit() {
+    if (!active || !retiredForQuit || !isCurrent() || identity.getState().identityBlocked || retiredWrites.size) return false;
+    retiredForQuit = false;
+    generation++;
+    pendingHint = 1;
+    consumedHint = 0;
+    // Draft text and a known create receipt can survive. Picker tickets and
+    // failure actions belong to the retired generation.
+    emit({blocked: false, selection: null, selectionInvalid: false, failure: null});
+    subscribePending();
+    return true;
   }
   function fail(error: unknown, context: 'open' | 'create' = 'open', projectId?: string) {
     if (!current()) return;
@@ -156,7 +175,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       }
       return false;
     } finally {
-      if (!current(serial)) retireWrites();
+      if (serial === generation && !current(serial)) retireWrites();
       const recorded = [...dispatchedWrites].find(value => value === intent);
       if (recorded) dispatchedWrites.delete(recorded);
       if (active && serial === generation) {
@@ -216,7 +235,9 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   async function initializeOwner(editor: boolean, serial: number, owns: () => boolean) {
     if (!owns()) return;
     try {
-      await readProjectEntryIdentity(identity); const capabilities = await client.capabilities();
+      await readProjectEntryIdentity(identity);
+      if (!owns()) return;
+      const capabilities = await client.capabilities();
       if (!owns()) return;
       emit({capabilities: {...capabilities, saveAs: false}});
       if (editor && capabilities.ready && capabilities.locationFacts) {
@@ -258,7 +279,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       if (!current(serial)) return false; knownCreated = created.project.projectId;
       emit({createState: {kind: 'created', projectName: created.project.name}}); return true;
     }, {write: true, mutation: 'createAtSelection', preserveDraft: true, after: async grant => {if (knownCreated) {const opened = await openCreated(knownCreated, grant); if (opened && current(serial)) emit({createOpen: false});}}});
-    if (!success && !retry && current()) emit({createState: {kind: 'error', code: 'unknown'}});
+    if (!success && !retry && current(serial)) emit({createState: {kind: 'error', code: 'unknown'}});
     return success;
   }
   async function copy(kind: 'duplicate' | 'copy-to', projectId?: string) {
@@ -295,11 +316,10 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     activate() {if (!active) {
       active = true; generation++; pendingEditor = null; pendingHint = 1; consumedHint = 0;
       release = identity.subscribe(() => {if (identity.getState().identityBlocked && !state.blocked) retireOwner();});
-      const serial = generation;
-      releasePending = client.subscribePendingOpen?.(() => {if (current(serial)) {pendingHint++; void drainPendingOpen(serial);}}) ?? null;
+      subscribePending();
     }},
     dispose() {const retired = retireWrites(); if (!retired) emit({busy: false, action: {kind: 'idle'}, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})}); active = false; generation++; initialization = null; pendingOpen = null; pendingTake = null; pendingPresentation = null; pendingEditor = null; releasePending?.(); releasePending = null; release?.(); release = null;},
-    retireOwner,
+    retireOwner, recoverAfterQuit,
     observeAvailability() {if (active && !isCurrent() && (dispatchedWrites.size || retryIntent)) retireOwner();},
     initialize, getState: () => state, subscribe(listener: () => void) {listeners.add(listener); return () => {listeners.delete(listener);};},
     showCreate() {if (!startable() || state.busy || retry || !state.capabilities?.ready || !state.capabilities.create) return false;
@@ -314,13 +334,14 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       if (failure?.reselect === 'duplicate') return copy('duplicate', failure.projectId);
       if (!failure?.projectId) return openFile();
       const opened = await openCreated(failure.projectId); if (opened && current() && state.failure === failure) emit({failure: null}); return opened;},
-    retryOpen: async () => {if (!knownCreated || !startable() || state.busy) return false; const opened = await openCreated(knownCreated); if (opened && current()) emit({createOpen: false}); return opened;},
+    retryOpen: async () => {if (!knownCreated || !startable() || state.busy) return false; const serial = generation; const opened = await openCreated(knownCreated); if (opened && current(serial)) emit({createOpen: false}); return opened;},
     resumeKnownOpen: async (editor = false) => {
       if (!current() || !canStart()) return;
+      const serial = generation;
       // Hidden boot keeps its first hint; later OS notifications use the same
       // serial drain without rereading or replaying an unknown write.
       if (!editor) {pendingEditor = false; if (!state.capabilities) await initialize(false); else await drainPendingOpen();}
-      const pending = pendingOpen; if (!pending || !current(pending.generation) || !canStart()) return; pendingOpen = null; await pending.resume(); void drainPendingOpen();
+      const pending = pendingOpen; if (!pending || pending.generation !== serial || !current(serial) || !canStart()) return; pendingOpen = null; await pending.resume(); void drainPendingOpen(serial);
     },
     getDraftVersion: () => draftVersion,
     recheck: async () => retry ? retry() : false,

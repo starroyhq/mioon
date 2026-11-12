@@ -44,7 +44,7 @@ import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity }
 import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
 import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
-import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, type ProjectQuitWindow, type ProjectWindowRestartOptions } from '../apps/desktop/src/project-window-quit.ts';
+import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
@@ -239,16 +239,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     installSessionPolicy() {}, installWindowPolicy() {}, isAllowedNavigation: () => true,
     writeConnection: async (_: unknown, value: DesktopHarnessConnection) => { records.connections.push(value); },
     removeConnectionOnShutdown: async () => { records.removals++; await options.remove?.(records.removals); },
-    createProjectWindowHost, MultiWindowQuitCoordinator,
-    // Restart captures its start callback at construction time. Observe that
-    // real callback's result too; do not replace its body or lifecycle policy.
-    MultiWindowRestartCoordinator: class extends MultiWindowRestartCoordinator {
-      constructor(config: ProjectWindowRestartOptions<ProjectQuitWindow>) {
-        super({ ...config, start: (...args) => (config.start(...args) as Promise<unknown>).then(
-          (report: unknown) => { records.starts.push({ report }); return report; },
-          (error: {code?: string}) => { records.starts.push({ error }); throw error; }) });
-      }
-    },
+    createProjectWindowHost, MultiWindowQuitCoordinator, MultiWindowRestartCoordinator,
     createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
@@ -280,12 +271,12 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     get: (expression: string) => vm.runInContext(expression, context),
     restart: () => menu.getMenuItemById('app-restart')!.click!(),
     fatals: () => records.dialogs.filter(item => item.title === '无法启动 Mioon'),
-    async success(index: number|undefined = records.backends.length - 1) {
+    async success(index: number|undefined = records.backends.length - 1, projectId?: string) {
       await until(() => records.windows.some(win => !win.destroyed && win.urls.length));
       const backend = records.backends[index], connection = records.connections.at(-1), win = records.windows.at(-1);
       assert.equal((connection)!.pid, backend.child!.pid);
       assert.equal((connection)!.url, backend.origin);
-      assert.equal((win)!.urls.at(-1), `${backend.origin}/`);
+      assert.equal((win)!.urls.at(-1), projectId ? `${backend.origin}/?project=${projectId}` : `${backend.origin}/`);
       assert.equal((win)!.config.webPreferences.session, records.sessions.at(-1));
       assert.equal((records.sessions.at(-1))!.cookie.value, (connection)!.token);
       assert.equal((records.scopes.at(-1))!.signal.aborted, false);
@@ -500,13 +491,14 @@ for (const editor of [true, false]) test(`settings native restart confirms befor
   const confirmations: DesktopHarnessDialog[] = [];
   const runtime = await harness(t, {realRendererClose: true, dialog: value => {confirmations.push(value); return 0;}});
   const {parent, settings, restart} = await openRestartSettings(runtime, editor);
+  const projectId = runtime.get('windowHost').contextFor(parent).editorProjectId ?? undefined;
   const oldChild = runtime.records.children[0];
   const oldWindows = runtime.records.windows.slice();
   const pending = restart();
   assert.equal(confirmations[0]?.message, nativeText('native.restartQuestion'));
   assert.equal(oldWindows.every(window => !window.destroyed), true, 'Restart question precedes any native close');
   await pending;
-  await runtime.success(1);
+  await runtime.success(1, projectId);
   assert.equal(parent.destroyed, true);
   assert.equal(settings.destroyed, true);
   assert.equal(runtime.records.children.length, 2);
@@ -532,8 +524,9 @@ test('cancelling the settings restart question retains every window and the curr
 test('settings restart keeps the real renderer dirty-discard confirmation before restarting', async t => {
   const runtime = await harness(t, {realRendererClose: true});
   const {parent, restart} = await openRestartSettings(runtime);
+  const projectId = runtime.get('windowHost').contextFor(parent).editorProjectId;
   runtime.rendererControls.get(parent)!.setDirty(true);
-  await restart(); await runtime.success(1);
+  await restart(); await runtime.success(1, projectId);
   assert.deepEqual(runtime.records.dialogs.map(value => value.message), [nativeText('native.restartQuestion'), nativeText('native.discardQuitMessage')]);
   assert.equal(parent.destroyed, true);
   assert.equal(runtime.records.children.length, 2);
@@ -548,9 +541,7 @@ test('a real renderer input during discard confirmation still cancels settings r
   const {parent, restart} = await openRestartSettings(runtime);
   const renderer = runtime.rendererControls.get(parent)!;
   renderer.setDirty(true); interact = () => renderer.admission.interacted();
-  // The shared helper reports that its question was accepted; the later
-  // native admission remains responsible for this independent close veto.
-  await restart();
+  assert.equal(await restart(), false);
   assert.deepEqual(runtime.records.dialogs.map(value => value.message), [nativeText('native.restartQuestion'), nativeText('native.discardQuitMessage'), nativeText('native.leaveChanged')]);
   assert.equal(parent.destroyed, false);
   assert.equal(runtime.records.children.length, 1);

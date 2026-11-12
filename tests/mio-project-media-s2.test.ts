@@ -198,30 +198,32 @@ const interruptions = [
   {point: 'after_final', forceCopy: true, decision: 'exclude'},
 ] as const;
 for (const scenario of interruptions) test(`host reopens ${scenario.forceCopy ? 'copy' : 'link'} ${scenario.point} without exposing or repairing an unpublished target`, async t => {
-  const f = fixture(t), input = f.input(), stop = new Error('stop publication'); let file = '';
+  const f = fixture(t), input = f.input(scenario.forceCopy ? 'image' : 'import'), directory = scenario.forceCopy ? '生成' : '素材';
+  const stop = new Error('stop publication'); let file = '';
   const remove = setProjectOutputPublicationTestHooks(f.store, {forceCopy: scenario.forceCopy,
     fault: (point, proof) => {file = path.join(f.projectDir, proof.relativePath); if (point === scenario.point) throw stop;}});
   await assert.rejects(publishProjectOutput(f.store, input), error => error === stop); remove();
   for (const reopened of [false, true]) {
     if (reopened) await f.reopen();
-    if (scenario.decision === 'reject') await assert.rejects(f.list('生成'), invalid);
+    if (scenario.decision === 'reject') await assert.rejects(f.list(directory), invalid);
     else {
       if (scenario.decision === 'exclude') {
         const snapshot = await f.snapshot(); assert.equal(snapshot.isExcluded(file, lstatSync(file, {bigint: true})), true);
       }
-      assert.deepEqual((await f.list('生成')).entries, []);
+      assert.deepEqual((await f.list(directory)).entries, []);
     }
     assert.equal(f.store.get('assets', input.assetId), null);
   }
 });
 
 for (const forceCopy of [false, true]) test(`prepared ${forceCopy ? 'copy' : 'link'} is visible after the exact DB commit even before registered ACK`, async t => {
-  const f = fixture(t), input = f.input(); setProjectOutputPublicationTestHooks(f.store, {forceCopy});
+  const f = fixture(t), input = f.input(forceCopy ? 'image' : 'import'), directory = forceCopy ? '生成' : '素材';
+  setProjectOutputPublicationTestHooks(f.store, {forceCopy});
   const output = await publishProjectOutput(f.store, input); f.register(input, output);
   const receipt = path.join(f.store.tempDir, 'publications', output.publication.publicationId + '.json');
   assert.equal(row(JSON.parse(readFileSync(receipt, 'utf8'))).phase, 'prepared');
-  assert.equal((await f.list('生成')).entries.length, 1); await f.reopen();
-  assert.equal((await f.list('生成')).entries.length, 1); assert.equal(row(JSON.parse(readFileSync(receipt, 'utf8'))).phase, 'prepared');
+  assert.equal((await f.list(directory)).entries.length, 1); await f.reopen();
+  assert.equal((await f.list(directory)).entries.length, 1); assert.equal(row(JSON.parse(readFileSync(receipt, 'utf8'))).phase, 'prepared');
 });
 
 for (const point of ['after_intent', 'after_target_create', 'after_target_identity', 'after_copy_chunk', 'after_final'] as const)

@@ -62,14 +62,14 @@ interface FixtureOptions {
   api?: ApiFn; approve?: ApproveFn; reject?: RejectFn; settings?: Obj; customSettings?: Obj; session?: Record<string, unknown>;
 }
 interface Fixture {
-  session: ReturnType<typeof createImageGenerationSession>; api: ApiFn; reviewClient: Record<string, unknown>;
+  session: ReturnType<typeof createImageGenerationSession>; api: (operation: string, input: InputView, options?: {outputLocale?: string}) => Promise<unknown>; reviewClient: Record<string, unknown>;
   settingsClient: Record<string, unknown>; customSettingsClient: Record<string, unknown>;
-  privateCalls: {action: string; review: ReviewFixture}[]; calls: Array<{operation: string; input: InputView}>; data: DataStore; storage: MemoryStorage;
+  privateCalls: {action: string; review: ReviewFixture}[]; calls: Array<{operation: string; input: InputView; outputLocale?: string}>; data: DataStore; storage: MemoryStorage;
   changes: Obj[]; notifications: unknown[][]; timers: Map<number, () => void>;
   keyCount(): number; tick(): Promise<boolean>;
 }
 function fixture(options: FixtureOptions = {}): Fixture {
-  const calls: Array<{operation: string; input: InputView}> = [], privateCalls: {action: string; review: ReviewFixture}[] = [], changes: Obj[] = [], notifications: unknown[][] = [], timers = new Map<number, () => void>(), storage = (options.storage || memoryStorage()) as MemoryStorage;
+  const calls: Fixture['calls'] = [], privateCalls: {action: string; review: ReviewFixture}[] = [], changes: Obj[] = [], notifications: unknown[][] = [], timers = new Map<number, () => void>(), storage = (options.storage || memoryStorage()) as MemoryStorage;
   let sequence = 0, keys = 0;
   const data: DataStore = { groups: options.groups || [], tasks: options.tasks || [], versions: options.versions || [], reviews: options.reviews || [], receipts: new Map() };
   function accept(input: Obj | undefined): TaskFixture {
@@ -78,8 +78,8 @@ function fixture(options: FixtureOptions = {}): Fixture {
     data.tasks = [result, ...data.tasks]; data.groups = [group({ id: result.groupId, name: result.name, revision: input!.expectedRevision ? (input!.expectedRevision as number) + 1 : 1, activeTaskId: result.id })];
     data.receipts.set(String(input!.requestId), { projectId, requestId: input!.requestId, operation: 'image.generate', response: structuredClone(result) }); return result;
   }
-  const api: ApiFn = async (operation: string, input: InputView): Promise<unknown> => {
-    calls.push({ operation, input: structuredClone(input) });
+  const api = async (operation: string, input: InputView, rpcOptions?: {outputLocale?: string}): Promise<unknown> => {
+    calls.push({ operation, input: structuredClone(input), ...(rpcOptions?.outputLocale ? {outputLocale: rpcOptions.outputLocale} : {}) });
     if (options.api) { const response = await options.api(operation, input, data); if (response !== undefined) return response; }
     if (operation === 'image.group.list') return page(data.groups.slice(0, input.limit as number));
     if (operation === 'image.group.get') return data.groups.find(item => item.id === input.groupId);
@@ -741,6 +741,10 @@ test('four-language changes preserve mounted image drafts and the same pending p
     assert.equal(f.calls.length, before); assert.equal(f.privateCalls.length, 0);
   }
   ui.click('image-generate'); await flush(); ui.show(false); held.resolve(original!); await flush(); ui.show(true); await flush(); ui.render();
+  assert.equal(f.calls.find(call=>call.operation==='image.review.prepare')?.outputLocale,'zh-Hans');
+  const retained=JSON.parse([...f.storage.data.values()][0]!);
+  assert.equal(retained.outputLocale,'zh-Hans');
+  assert.deepEqual(retained.input,original!.input);
   const approval = ui.find('image-review-approve'); assert.ok(approval);
   const pendingCalls = f.calls.length;
   for (const locale of ['ja', 'en', 'zh-Hant'] as const) {
@@ -749,6 +753,7 @@ test('four-language changes preserve mounted image drafts and the same pending p
   }
   ui.click('image-review-approve'); await flush(); ui.render();
   assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.name, name); assert.equal(f.privateCalls[0].review.input.prompt, prompt);
+  assert.deepEqual(f.privateCalls[0].review.input,original!.input);
   ui.unmount(); f.session.dispose(); languageStore.dispose();
 });
 

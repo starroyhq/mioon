@@ -56,7 +56,7 @@ OpenRouter 默认精确 ID 为 [`openai/gpt-6.1-terra`](https://openrouter.ai/op
 
 ### 流和续接
 
-OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `include:["reasoning.encrypted_content"]` 兼容写法。2026-11-10 的官方指南已说明无状态模式默认返回 `encrypted_content`，不再要求 include，但仍接受它；保留它让请求意图明确，续接始终以实际收到的载体为准。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，完成的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。item.done 的状态仍可能是 incomplete，此时等整体终端区分输出耗尽或其他未完成原因，不生成完成结果或执行工具；response.completed 却含 incomplete 项仍按协议错误拒绝。
+OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `include:["reasoning.encrypted_content"]` 兼容写法。2026-11-10 的官方指南已说明无状态模式默认返回 `encrypted_content`，不再要求 include，但仍接受它；保留它让请求意图明确，续接始终以实际收到的载体为准。最终 reasoning 条目及其加密内容、assistant 消息的 `phase`、function_call、function_call_output 原样进入下一轮。推理只校验并保留为私有续接记录，不作为可见文本输出。added reasoning 可不完整，完成的原生推理载体必须可续接；缺失加密内容判为未完成，不能只回放 `rs_…` ID。item.done 的状态仍可能是 incomplete，此时等整体终端区分输出耗尽或其他未完成原因，不生成完成结果或执行工具；response.completed 却含 incomplete 项仍按协议错误拒绝。 官方 Responses 的 reasoning 项在 `output_item.done` 与 `response.completed` 中可能携带不同密文。两份载体分别通过校验，其余字段必须完全相同。续接使用已校验的终态输出。
 
 `phase` 仅允许在 assistant 消息上出现，值限 null、`commentary`、`final_answer`；其他位置或值按协议错误拒绝。未知输出项类型报 `AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED`，不再冒充工具未授权。`response.incomplete` 的 max_output_tokens 原因报 `AGENT_CHAT_OUTPUT_LIMIT`，其他未完成报 `AGENT_CHAT_RESPONSES_INCOMPLETE`；这些已观察到的模型失败记录为 failed，不冒充结果未知，不自动重试或执行工具。
 

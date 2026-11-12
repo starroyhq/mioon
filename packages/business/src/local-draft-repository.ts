@@ -110,7 +110,7 @@ export function createLocalDraftRepository<Disk extends DraftBundle>({store, kin
     names.push('data'); values.push(JSON.stringify(row));
     return {names, values};
   }
-  function save(disk: Disk, expectedDigest: string, check?: () => void): void {
+  function save(disk: Disk, expectedDigest: string, check?: () => void, writeCompanion?: () => void): void {
     // 0.1.0 has no Windows successful-write contract. Refuse before BEGIN,
     // including requests that would otherwise just acknowledge a replay.
     if (process.platform === 'win32') failure('STORAGE_UNAVAILABLE');
@@ -165,6 +165,7 @@ export function createLocalDraftRepository<Disk extends DraftBundle>({store, kin
           }
         }
         if (localDraftDigest(read()) !== localDraftDigest(next)) failure('CONFLICT');
+        writeCompanion?.();
         fault?.('beforeCommit');
         check?.();
         if (scope() !== workspaceScope) failure('SCOPE_MISMATCH');
@@ -177,5 +178,5 @@ export function createLocalDraftRepository<Disk extends DraftBundle>({store, kin
       throw error;
     }
   }
-  return {scope: () => safe(scope), read: () => safe(read), save: (disk: Disk, expectedDigest: string, check?: () => void) => safe(() => save(disk, expectedDigest, check)), confirm: () => safe(() => {scope();})};
+  return {scope: () => safe(scope), read: () => safe(read), save: (disk: Disk, expectedDigest: string, check?: () => void, writeCompanion?: () => void) => safe(() => save(disk, expectedDigest, check, writeCompanion)), confirm: () => safe(() => {scope();})};
 }

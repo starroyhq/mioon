@@ -6,12 +6,14 @@ import type {RequestOptions, request as httpsRequest} from 'node:https';
 import type {MockIncoming, MockRequest} from './helpers/strict-agent-workspace-types.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {createAgentTransport, wasAgentTransportSubmissionPrevented} from '../packages/business/src/agent/network-policy.ts';
+import {createAnthropicSdkTransport} from '../packages/business/src/agent/anthropic-sdk-transport.ts';
+import {agentChatDiagnostic} from '../packages/business/src/agent/chat-errors.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION} from '../packages/business/src/agent/anthropic-protocol.ts';
 import * as anthropicProtocol from '../packages/business/src/agent/anthropic-protocol.ts';
 
 const configuration: AgentConfiguration = {presetId: 'custom', platformId: 'custom', baseUrl: 'https://messages.example.com/anthropic', model: 'synthetic', protocol: 'anthropic_messages'};
 const lookup = (async () => [{address: '8.8.8.8', family: 4}]) as unknown as typeof import('node:dns/promises').lookup;
-function fixture({peer = '8.8.8.8', status = 200}: {peer?: string; status?: number} = {}) {
+function fixture({peer = '8.8.8.8', status = 200, body = 'data: synthetic\n\n'}: {peer?: string; status?: number; body?: string} = {}) {
   const calls: {options: RequestOptions; payload?: string}[] = [];
   let ends = 0;
   const request = ((options: RequestOptions, callback: (response: MockIncoming) => void) => {
@@ -20,7 +22,7 @@ function fixture({peer = '8.8.8.8', status = 200}: {peer?: string; status?: numb
     child.setTimeout = () => {}; child.destroy = () => {};
     child.end = payload => {
       ends++; call.payload = payload;
-      const incoming = Readable.from(['data: synthetic\n\n']) as MockIncoming;
+      const incoming = Readable.from([Buffer.from(body)]) as MockIncoming;
       incoming.statusCode = status; incoming.headers = {'content-type': 'text/event-stream'};
       callback(incoming);
     };
@@ -46,6 +48,19 @@ test('Anthropic transport owns the exact prefixed path, fixed version and bound 
   assert.equal(f.calls[0]!.payload, body); assert.equal(f.ends(), 1);
   for await (const _chunk of stream.body) { /* Drain the bounded fixture stream. */ }
   stream.close();
+});
+
+test('Messages SDK wrapping preserves the safe HTTP diagnostic from the pinned transport', async () => {
+  const status = 403, body = JSON.stringify({model:configuration.model,stream:true,max_tokens:30,messages:[{role:'user',content:'Synthetic prompt'}]});
+  const f = fixture({status,body:JSON.stringify({type:'error',error:{type:'permission_error',message:'Synthetic private message with sk-proj-synthetic-credential'}})});
+  const open = createAnthropicSdkTransport({lookup,httpsRequest:f.request});
+  await assert.rejects(open({configuration,apiKey:'synthetic-bound-key',body}), error=>{
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'http',status,providerType:'permission_error'});
+    assert.equal(wasAgentTransportSubmissionPrevented(error),false);
+    return (error as {code?:string}).code==='AGENT_CHAT_HTTP_ERROR';
+  });
+  assert.equal(f.ends(),1);
+  assert.equal(f.calls[0]!.payload,body);
 });
 
 test('Sonnet prefix binding requires the exact official identity and frozen adaptive low request',()=>{

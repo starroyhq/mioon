@@ -413,6 +413,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  assertProjectStore(store);
  const catalogProfile='native';
  const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
+ const liveGenerationEnabled=()=>services.configuration.liveEnabled();
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
@@ -776,6 +777,9 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      // never mint a usable digest for a stripped or truncated observation.
      if(!isTimelineMixLoudnessResponse(result,parsed)||canonical(result)!==canonical(value))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度报告无法完整提供给助理');
      if(isTimelineLoudnessApplicableReport(result))result={...result,candidateDigest:await timelineLoudnessCandidateDigest(result)};
+    }else if(prepared.operation==='provider.list'&&Array.isArray(value)){
+     const enabled=liveGenerationEnabled();
+     result=projectResult(value.map(provider=>object(provider)?{...provider,liveGenerationEnabled:enabled}:provider));
     }else result=previsWrite(prepared.operation)?taskResult(prepared.operation,prepared.projectId,value):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
@@ -961,6 +965,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,diagnosticList:listDiagnosticAgentTaskTools,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList:listDiagnosticAgentTaskTools,liveGenerationEnabled,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

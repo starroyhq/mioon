@@ -30,6 +30,7 @@ import {clipDraftEnvelopeSchema, clipDraftListSchema} from '../packages/contract
 import {createLocalDeliverySchemas} from '../packages/contracts/src/local-delivery.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {probe} from '../packages/business/src/media.ts';
+import {LOCALES} from '../packages/i18n/src/locale.ts';
 
 const token = 'synthetic-s6d-example-acceptance';
 const sourceRoot = fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url));
@@ -175,6 +176,53 @@ test('the default web build resources create two new identities with intact time
   assert.deepEqual(f.native().listRecent().registered.map(value => value.project.projectId).sort(), [first.project.projectId, second.project.projectId].sort());
   const oldLocation = projectLocation(serverAppDirectories(f.dataDir, {projectsDir: f.projectsDir}), f.content.identity.projectId);
   assert.equal(existsSync(oldLocation.localDir), false);
+});
+
+test('a shipped example instance stores the requested four-language display text and retains its verified media', async t => {
+  const f = await fixture(t);
+  const labels = {
+    'zh-Hans': ['时间线入门', '一段原创的十秒钟时间线，展示剪切、空白、画中画和独立音频。', '晨光 · 画面', '夜色 · 画面与声音', '星形卡片 · 透明叠加', '合成音 · 独立音频'],
+    'zh-Hant': ['時間軸入門', '一段原創的十秒鐘時間軸，展示剪接、空白、子母畫面和獨立音訊。', '晨光 · 畫面', '夜色 · 畫面與聲音', '星形卡片 · 透明疊加', '合成音 · 獨立音訊'],
+    en: ['Timeline basics', 'An original ten-second study of cuts, a gap, picture-in-picture and independent audio.', 'First light · picture', 'After hours · picture and sound', 'Star card · transparent overlay', 'Synthesised tone · independent audio'],
+    ja: ['タイムラインの基本', 'カット、空白、ピクチャーインピクチャー、独立した音声を使った、オリジナルの10秒間の作例です。', '朝の光 · 映像', '夜のひととき · 映像と音声', '星のカード · 透過オーバーレイ', '合成音 · 独立した音声'],
+  } as const;
+  const media = ['media/scene-a.mp4', 'media/scene-b.mp4', 'media/overlay-star.png', 'media/sound-bed.wav'];
+  const old = await f.instantiate(f.input('Older example'));
+  f.withTarget(old, store => {
+    const project = store.get('projects', old.project.projectId) as {description: string};
+    assert.equal(project.description, f.content.project.description);
+    assert.deepEqual(f.content.assets.map(asset => (store.get('assets', asset.id) as Asset).name), f.content.assets.map(asset => asset.name));
+  });
+  const original = tree(path.dirname(old.project.projectFile));
+  const native = f.native(); assert.ok(native.instantiateTemplate);
+  const invalid = f.input('Unsupported locale');
+  assert.equal((await f.rpc('project.template.instantiate', {...invalid, locale: 'system'})).status, 400);
+  assert.equal(existsSync(path.join(f.targets, invalid.name)), false);
+  for (const locale of LOCALES) {
+    const [name, description, ...assetNames] = labels[locale];
+    const input = {...f.input(name), locale};
+    const copy = await native.instantiateTemplate(input);
+    assert.equal(copy.project.name, name);
+    f.withTarget(copy, store => {
+      const project = store.get('projects', copy.project.projectId) as {name: string; description: string};
+      assert.equal(project.name, name);
+      assert.equal(project.description, description);
+      for (const [index, relative] of media.entries()) {
+        const source = f.content.assets.find(asset => asset.reference.path === relative); assert.ok(source);
+        const asset = store.get('assets', source.id) as Asset;
+        assert.equal(asset.name, assetNames[index], relative);
+        assert.equal(asset.reference.path, relative);
+        assert.equal(asset.reference.fullSha256, source.reference.fullSha256);
+        assert.equal(sha(readFileSync(path.join(store.projectDir, relative))), source.reference.fullSha256);
+      }
+    });
+    assert.deepEqual(await f.instantiate(input), copy);
+    const changedLocale = await f.rpc<ProjectCopyResponse>('project.template.instantiate', {...input, locale: locale === 'en' ? 'ja' : 'en'});
+    assert.equal(changedLocale.status, 409);
+    assert.equal(changedLocale.body.error?.code, 'REQUEST_ID_REUSED');
+  }
+  assert.deepEqual(tree(path.dirname(old.project.projectFile)), original);
+  assert.deepEqual(tree(f.installed), f.original);
 });
 
 test('legacy-null instances reopen and serve all media offline without rewriting their metadata', async t => {

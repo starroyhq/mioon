@@ -13,7 +13,7 @@ import type {AgentConfiguration} from '../packages/business/src/agent/config.ts'
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {AGENT_DEFAULT_OPENAI_MODEL} from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {agentChatDiagnostic,agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -57,11 +57,12 @@ test('ordinary requests allow multiple calls only through documented protocol co
 test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
   const failure=agentChatStreamError('missing_done',{finishReason:'tool_calls',done:false,frameCount:3,toolCount:2,outputBytes:6});
   assert.equal(agentChatStreamReason(failure),'missing_done');
+  assert.deepEqual(agentChatDiagnostic(failure),{kind:'protocol',reason:'incomplete_stream',field:'done'});
   assert.match(safeAgentChatError(failure).message,/missing_done；结束原因 tool_calls；完成标记 未收到；帧数 3；工具数 2；输出字节 6/u);
   const forged=Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_TRUNCATED',reason:'missing_done',streamEvidence:{reason:'missing_finish'},state:{finishReason:'PRIVATE_KEY'},cause:failure});
   for(const value of [forged,{...failure},Object.assign(new Error('wrapped'),{code:failure.code,cause:failure})]){
     annotateAgentChatStreamError(value,{done:true,frameCount:1});
-    assert.equal(agentChatStreamReason(value),undefined);assert.equal(safeAgentChatError(value).message,'模型连接提前结束，回复可能不完整；可手动重试。');
+    assert.equal(agentChatStreamReason(value),undefined);assert.equal(agentChatDiagnostic(value),undefined);assert.equal(safeAgentChatError(value).message,'模型连接提前结束，回复可能不完整；可手动重试。');
   }
   const invalid=agentChatStreamError('read_failed',JSON.parse('{"finishReason":"PRIVATE_KEY","done":"PRIVATE_KEY","frameCount":8193,"toolCount":31,"outputBytes":-1,"body":"PRIVATE_PROVIDER_BODY"}'));
   assert.equal(safeAgentChatError(invalid).message,'模型连接提前结束，回复可能不完整；可手动重试。 流终止诊断：read_failed。');
@@ -363,11 +364,12 @@ for(const protocol of ['chat_completions','responses'] as const){
       assert.equal(network.ends,1);assert.equal(wasTaskSubmissionPrevented(failure),false);assert.equal(wasTaskSubmissionPrevented(forged),false);
     }
   });
-  test(`${protocol}: task gateway retains only trusted HTTP status without changing dispatch evidence`,async()=>{
-    const network=syntheticNetwork({status:429,body:'synthetic-provider-body-marker'});let failure:unknown;
+  test(`${protocol}: task gateway retains safe HTTP details without changing dispatch evidence`,async()=>{
+    const network=syntheticNetwork({status:429,body:JSON.stringify({error:{type:'rate_limit_error',code:'insufficient_quota',message:'Synthetic user message and sk-proj-synthetic-credential'}})});let failure:unknown;
     await assert.rejects(syntheticOutput(protocol,network),error=>{failure=error;return safeAgentChatError(error).code==='AGENT_CHAT_HTTP_ERROR';});
     assert.deepEqual(safeAgentChatError(failure),{code:'AGENT_CHAT_HTTP_ERROR',status:502,message:'模型服务拒绝了请求（HTTP 429），请检查账户、模型和配置后手动重试。'});
     assert.equal(agentChatHttpStatus(failure),429);assert.equal(network.calls,1);assert.equal(network.ends,1);assert.equal(wasTaskSubmissionPrevented(failure),false);
+    assert.deepEqual(agentChatDiagnostic(failure),{kind:'http',status:429,providerType:'rate_limit_error',providerCode:'insufficient_quota'});
     assert.equal(agentChatHttpStatus({...failure as Record<string,unknown>}),undefined);
   });
   test(`${protocol}: real fragmented local SSE preserves multiple calls and exact continuation IDs`,async t=>{
@@ -466,14 +468,68 @@ for(const protocol of ['chat_completions','responses'] as const){
   });
 }
 test('Responses SDK integration preserves explicit event-name agreement and rejects server-side tool modalities',async t=>{
-  for(const [source,expected] of [
-    ['event: response.audio.delta\n'+responseFrames(),'AGENT_CHAT_PROTOCOL_ERROR'],
-    [responseFrames().replaceAll('"type":"function_call"','"type":"web_search_call"'),'AGENT_CHAT_TOOLS_UNSUPPORTED'],
-    [responseFrames().replace('"type":"response.function_call_arguments.delta"','"type":"response.audio.delta"'),'AGENT_CHAT_PROTOCOL_ERROR'],
-  ] as const){const f=await fixture(t,'responses',source);await assert.rejects(f.output(),{code:expected});assert.equal(f.requests.length,1);}
+  for(const [source,expected,diagnostic] of [
+    ['event: response.queued\n'+responseFrames(),'AGENT_CHAT_PROTOCOL_ERROR',{kind:'protocol',reason:'invalid_event',event:'response.queued',field:'event_name'}],
+    [responseFrames().replaceAll('"type":"function_call"','"type":"web_search_call"'),'AGENT_CHAT_TOOLS_UNSUPPORTED',{kind:'protocol',reason:'unsupported_item',event:'response.output_item.added',item:'web_search_call'}],
+    [responseFrames().replace('"type":"response.function_call_arguments.delta"','"type":"response.queued"'),'AGENT_CHAT_PROTOCOL_ERROR',{kind:'protocol',reason:'unknown_event',event:'response.queued'}],
+  ] as const){
+    const f=await fixture(t,'responses',source);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),diagnostic);
+      return safeAgentChatError(error).code===expected;
+    });
+    assert.equal(f.requests.length,1);
+  }
+});
+test('all gateway protocols discard unrecognized event names and payload text from diagnostics',async t=>{
+  const marker='sk-proj-synthetic-private-event',payload={type:marker,content:'Synthetic user dialogue'};
+  for(const protocol of ['chat_completions','responses','anthropic_messages'] as const){
+    const f=await fixture(t,protocol,`event: ${marker}\n${json(payload)}`,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unknown_event',event:'unrecognized'});
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)),/synthetic-private-event|Synthetic user dialogue/u);
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    });
+    assert.equal(f.requests.length,1);
+  }
+});
+test('Responses retains bounded new event and output item names without allowing malformed names',async t=>{
+  const longestEvent=`response.${'a'.repeat(41)}.${'b'.repeat(41)}.tag`;
+  for(const [name,expected] of [
+    ['response.future_feature.added','response.future_feature.added'],
+    [longestEvent,longestEvent],
+    [`${longestEvent}s`,'unrecognized'],
+    [`response.${'a'.repeat(42)}`,'unrecognized'],
+    ['response.future feature','unrecognized'],
+    ['response.future:feature','unrecognized'],
+    ['response.Future_feature','unrecognized'],
+    ['sk-proj-synthetic-event','unrecognized'],
+    ['bare_future_event','unrecognized'],
+  ] as const){
+    const f=await fixture(t,'responses',`event: ${name}\n${json({type:name})}`,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unknown_event',event:expected});
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    });
+  }
+  for(const [name,expected] of [
+    ['future_tool_call','future_tool_call'],
+    ['sk-proj-synthetic-item','unrecognized'],
+  ] as const){
+    const source=json({type:'response.output_item.added',output_index:0,item:{id:'item_new',type:name,status:'in_progress'}});
+    const f=await fixture(t,'responses',source,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unsupported_item',event:'response.output_item.added',item:expected});
+      return safeAgentChatError(error).code==='AGENT_CHAT_TOOLS_UNSUPPORTED';
+    });
+  }
 });
 test('Responses final snapshot must agree with all streamed argument and item evidence',async t=>{
-  const f=await fixture(t,'responses',responseFrames({mismatch:true}));await assert.rejects(f.output(),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  const f=await fixture(t,'responses',responseFrames({mismatch:true}));
+  await assert.rejects(f.output(),error=>{
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'terminal_mismatch',event:'response.completed',item:'function_call',field:'arguments'});
+    return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+  });
 });
 test('Chat Completions duplicate argument keys and filtered tool output never execute',async t=>{
   for(const options of [{duplicate:true},{filtered:true}]){const f=await fixture(t,'chat_completions',chatFrames(options));await assert.rejects(f.output(),{code:options.filtered?'AGENT_CHAT_PROVIDER_ERROR':'AGENT_CHAT_PROTOCOL_ERROR'});}
@@ -718,6 +774,197 @@ for(const model of ['gpt-5.4-mini','gpt-6.1-sol','future-text-orbit-2030'])test(
   for await(const event of second.stream)if(event.type==='done')finished=event.output;
   assert.ok(finished);assert.equal(finished.text,'Offline Responses text 🙂');assert.deepEqual(finished.toolCalls,[]);
   assert.equal(first.network.calls,1);assert.equal(second.network.calls,1);assert.equal(first.network.requests[0]!.body,body);assert.equal(second.network.requests[0]!.body,next);
+});
+
+const q15Carriers = {
+  added: 'gAAAAA_SYNTHETIC_ADDED_CARRIER',
+  done: 'gAAAAA_SYNTHETIC_ITEM_DONE_CARRIER',
+  completed: 'gAAAAA_SYNTHETIC_RESPONSE_COMPLETED_CARRIER',
+};
+
+function q15ResponseEvents(body: string, options: {phase?: 'commentary' | 'final_answer'; toolCall?: boolean; visibleText: string}): Array<Record<string, unknown>> {
+  const events = q11ResponseEvents(body, {...options, reasoning: true});
+  const carrier = (item: Record<string, unknown>, encrypted_content: string) => ({...item, summary: [], content: [], encrypted_content});
+  return events.filter(event => !String(event.type).startsWith('response.reasoning_summary_')).map((event, sequence_number) => {
+    const frame = {...event, sequence_number};
+    if (event.output_index === 0 && (event.type === 'response.output_item.added' || event.type === 'response.output_item.done')) {
+      const encryptedContent = event.type === 'response.output_item.added' ? q15Carriers.added : q15Carriers.done;
+      return {...frame, item: carrier(event.item as Record<string, unknown>, encryptedContent)};
+    }
+    if (event.type === 'response.completed') {
+      const response = event.response as {output: Array<Record<string, unknown>>};
+      const output = response.output.map(item => item.type === 'reasoning' ? carrier(item, q15Carriers.completed) : structuredClone(item));
+      return {...frame, response: {...response, output}};
+    }
+    return frame;
+  });
+}
+
+function q15CompletedOutput(events: readonly Record<string, unknown>[]): Array<Record<string, unknown>> {
+  return (events.at(-1)!.response as {output: Array<Record<string, unknown>>}).output;
+}
+
+test('Q15 Responses replays the terminal encrypted carrier through a commentary tool round and the next request', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const history = [{role: 'user', content: 'Save one offline test shot'}];
+  const body = buildTaskModelRequest(configuration, history, definitions, 4318);
+  const firstEvents = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+  const evidence = q15CompletedOutput(firstEvents);
+  const first = q11Stream(configuration, body, q11ResponseWire(firstEvents));
+  const visible: string[] = [];
+  let planned: TaskModelOutput | undefined;
+  for await (const event of first.stream) {
+    if (event.type === 'done') planned = event.output;
+    else visible.push(event.text);
+  }
+  assert.ok(planned);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(planned.text, visible.join(''));
+  assert.deepEqual(planned.providerOutput, evidence);
+  assert.deepEqual(evidence[0], {id: 'rs_q11_offline', type: 'reasoning', summary: [], content: [], encrypted_content: q15Carriers.completed});
+  assert.equal(evidence[1]!.phase, 'commentary');
+  assert.deepEqual(planned.toolCalls, [{id: 'call_q11_offline', name: 'mioon_shot_create', arguments: {title: 'Offline saved shot'}}]);
+
+  const continuation = taskContinuation('responses', planned, [{callId: 'call_q11_offline', result: {saved: true}}]);
+  const toolResult = {type: 'function_call_output', call_id: 'call_q11_offline', output: '{"saved":true}'};
+  assert.deepEqual(continuation, [...evidence, toolResult]);
+  const nextBody = buildTaskModelRequest(configuration, [...history, ...continuation], definitions, 4318);
+  const next = JSON.parse(nextBody) as Record<string, unknown>;
+  assert.deepEqual(next.input, [...history, ...evidence, toolResult]);
+  assert.deepEqual(next.reasoning, {effort: 'low'});
+  assert.deepEqual(next.include, ['reasoning.encrypted_content']);
+  assert.equal(next.store, false);
+  assert.doesNotMatch(nextBody, /SYNTHETIC_ADDED_CARRIER|SYNTHETIC_ITEM_DONE_CARRIER/u);
+
+  const secondEvents = q15ResponseEvents(nextBody, {phase: 'final_answer', visibleText: 'The offline shot is saved.'});
+  const second = q11Stream(configuration, nextBody, q11ResponseWire(secondEvents));
+  let finished: TaskModelOutput | undefined;
+  for await (const event of second.stream) {
+    if (event.type === 'done') finished = event.output;
+  }
+  assert.ok(finished);
+  assert.equal(finished.text, 'The offline shot is saved.');
+  assert.deepEqual(finished.providerOutput, q15CompletedOutput(secondEvents));
+  assert.deepEqual(finished.toolCalls, []);
+  for (const [exchange, wire] of [[first, body], [second, nextBody]] as const) {
+    assert.equal(exchange.network.calls, 1);
+    assert.equal(exchange.network.ends, 1);
+    assert.equal(exchange.network.requests[0]!.body, wire);
+  }
+});
+
+test('Q15 Responses still rejects terminal differences outside the reasoning ciphertext', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal comparison'}], definitions, 4318);
+  for (const [index, field, value] of [
+    [0, 'id', 'rs_q15_other'],
+    [0, 'summary', [{type: 'summary_text', text: 'Changed summary'}]],
+    [0, 'content', [{type: 'reasoning_text', text: 'Changed reasoning'}]],
+    [0, 'status', 'completed'],
+    [0, 'unexpected', true],
+    [1, 'phase', 'final_answer'],
+    [2, 'arguments', '{"title":"Changed arguments"}'],
+    [2, 'future_receipt_tag', 'Changed receipt'],
+    [2, 'sk-proj-synthetic-field', 'Changed receipt'],
+    [2, 'type', 'future_tool_call'],
+    [2, 'type', 'sk-proj-synthetic-item'],
+  ] as const) {
+    const events = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+    const output = q15CompletedOutput(events);
+    output[index] = {...output[index]!, [field]: value};
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    const visible: string[] = [];
+    let completed = 0;
+    await assert.rejects(async () => {
+      for await (const event of exchange.stream) {
+        if (event.type === 'done') completed++;
+        else visible.push(event.text);
+      }
+    }, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {
+        kind:'protocol',reason:field==='unexpected'?'invalid_field':'terminal_mismatch',event:'response.completed',
+        item:field==='type'?(value==='future_tool_call'?value:'unrecognized'):['reasoning','message','function_call'][index],
+        field:field==='sk-proj-synthetic-field'?'unrecognized':field,
+      });
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)), /Changed|CARRIER|I will save/u);
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    }, `output ${index} ${field}`);
+    assert.equal(completed, 0);
+    assert.equal(visible.join(''), 'I will save a shot.');
+    assert.equal(exchange.network.calls, 1);
+  }
+});
+
+test('Responses diagnostics identify a changed item.done type and a new field in a strict reasoning part', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal comparison'}], definitions, 4318);
+  for (const [name, expected] of [['future_tool_call', 'future_tool_call'], ['sk-proj-synthetic-item', 'unrecognized']] as const) {
+    const events = q15ResponseEvents(body, {toolCall: true, visibleText: 'Offline reply'});
+    const done = events.find(event => event.type === 'response.output_item.done' && (event.item as Record<string,unknown>).type === 'function_call');
+    assert.ok(done);
+    done.item = {...done.item as Record<string,unknown>, type: name};
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    await assert.rejects(async () => {for await (const _event of exchange.stream) {}}, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {kind:'protocol',reason:'terminal_mismatch',event:'response.output_item.done',item:expected,field:'type'});
+      return safeAgentChatError(error).code === 'AGENT_CHAT_PROTOCOL_ERROR';
+    });
+  }
+  for (const [name, expected] of [['future_reasoning_field', 'future_reasoning_field'], ['sk-proj-synthetic-field', 'unrecognized']] as const) {
+    const events = q15ResponseEvents(body, {visibleText: 'Offline reply'});
+    q15CompletedOutput(events)[0]!.summary = [{type:'summary_text',text:'Synthetic private summary',[name]:'Synthetic private value'}];
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    await assert.rejects(async () => {for await (const _event of exchange.stream) {}}, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {kind:'protocol',reason:'invalid_field',event:'response.completed',item:'reasoning',field:expected});
+      return safeAgentChatError(error).code === 'AGENT_CHAT_PROTOCOL_ERROR';
+    });
+  }
+});
+
+for (const [kind, encrypted_content, code] of [
+  ['missing', undefined, 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['null', null, 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['empty', '', 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['nonstring', 17, 'AGENT_CHAT_PROTOCOL_ERROR'],
+  ['unpaired surrogate', '\ud800', 'AGENT_CHAT_PROTOCOL_ERROR'],
+  ['oversized', 'A'.repeat(TASK_MODEL_LIMITS.outputBytes), 'AGENT_CHAT_LIMIT'],
+] as const) test(`Q15 Responses rejects an invalid terminal encrypted carrier (${kind}) after a valid item done`, async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal carrier validation'}], definitions, 4318);
+  const events = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+  const item = q15CompletedOutput(events)[0]!;
+  if (encrypted_content === undefined) delete item.encrypted_content;
+  else item.encrypted_content = encrypted_content;
+  const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+  const visible: string[] = [];
+  let completed = 0;
+  await assert.rejects(async () => {
+    for await (const event of exchange.stream) {
+      if (event.type === 'done') completed++;
+      else visible.push(event.text);
+    }
+  }, {code});
+  assert.equal(completed, 0);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(exchange.network.calls, 1);
+});
+
+test('Q15 Responses keeps ciphertext equality for a non-OpenAI thinking stream', async () => {
+  const configuration: AgentConfiguration = {presetId: 'deepseek', platformId: 'global', protocol: 'responses', model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com'};
+  const request = JSON.parse(buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline compatibility boundary'}], definitions, 4318)) as Record<string, unknown>;
+  const body = JSON.stringify({...request, reasoning: {effort: 'low'}});
+  const events = q15ResponseEvents(body, {toolCall: true, visibleText: 'I will save a shot.'});
+  const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+  const visible: string[] = [];
+  let completed = 0;
+  await assert.rejects(async () => {
+    for await (const event of exchange.stream) {
+      if (event.type === 'done') completed++;
+      else visible.push(event.text);
+    }
+  }, {code: 'AGENT_CHAT_PROTOCOL_ERROR'});
+  assert.equal(completed, 0);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(exchange.network.calls, 1);
 });
 
 test('the current OpenAI default uses Responses with a documented minimum and a bounded reasoning reserve',()=>{

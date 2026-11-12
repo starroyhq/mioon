@@ -6,6 +6,9 @@ import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {projectTemplateManifestSchema} from '../../../../packages/contracts/src/project-template-manifest.ts';
 import type {ProjectTemplateManifest} from '../../../../packages/contracts/src/project-template-manifest.ts';
 import type {MediaReference} from '../../../../packages/contracts/src/media-reference.ts';
+import type {Locale} from '../../../../packages/i18n/src/types.ts';
+import {projectHomeNativeMessages} from '../../../../packages/i18n/src/catalogs/project-home-native.ts';
+import type {CopyProjectOptions} from '../../../../packages/business/src/project-file/copy.ts';
 import {isAppLibraryHeld} from '../../../../packages/business/src/app-db/connection.ts';
 import {isProjectFileHeld} from '../../../../packages/business/src/project-file/held-files.ts';
 import {inspectCopiedProjectFile, syncCopiedDirectory, syncCopiedFile, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
@@ -21,12 +24,13 @@ export interface ProjectTemplateDescription {
 }
 export interface PreparedProjectTemplateAssets {
   readonly referenceTargets: ReadonlyMap<string, MediaReference>;
+  readonly presentation?: CopyProjectOptions['templatePresentation'];
   /** Absolute staging files, useful to the owning publication intent. */
   readonly files: readonly string[];
 }
 export interface ProjectTemplateCatalog {
   describe(templateId: string, version: number): ProjectTemplateDescription;
-  prepareAssets(templateId: string, version: number, options: {readonly directory: string; readonly targetDirectory: string; readonly assertMutationAllowed?: () => void}): PreparedProjectTemplateAssets;
+  prepareAssets(templateId: string, version: number, options: {readonly directory: string; readonly targetDirectory: string; readonly locale?: Locale; readonly assertMutationAllowed?: () => void}): PreparedProjectTemplateAssets;
   /** Recheck a complete stage or a published folder without reopening or
    * comparing the newly keyed/renamed project against the source template. */
   verifyPreparedAssets(templateId: string, version: number, directory: string): void;
@@ -116,7 +120,7 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
       const verified = readManifestFile(directory, item);
       if (!detectMediaType(item.path, verified.header)) throw invalid('not-media', item.path);
     }
-  }, prepareAssets(templateId, version, {directory, targetDirectory, assertMutationAllowed = () => {}}) {
+  }, prepareAssets(templateId, version, {directory, targetDirectory, locale, assertMutationAllowed = () => {}}) {
     const selected = select(templateId, version), description = describe(templateId, version);
     if (!path.isAbsolute(directory) || path.normalize(directory) !== directory || !path.isAbsolute(targetDirectory) || path.normalize(targetDirectory) !== targetDirectory) throw invalid('target-path');
     validateProjectCopyStagingDirectory(directory);
@@ -157,7 +161,16 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
       assertMutationAllowed();
       for (const folder of [...directories].reverse()) syncCopiedDirectory(folder);
       syncCopiedDirectory(directory);
-      return {referenceTargets, files: created.map(value => value.file)};
+      const presentation = templateId === 'timeline-basics' && version === 1 && locale ? {
+        description: projectHomeNativeMessages['projectHomeNative.example.description'][locale],
+        assetNames: new Map([
+          ['media/scene-a.mp4', projectHomeNativeMessages['projectHomeNative.example.firstLight'][locale]],
+          ['media/scene-b.mp4', projectHomeNativeMessages['projectHomeNative.example.afterHours'][locale]],
+          ['media/overlay-star.png', projectHomeNativeMessages['projectHomeNative.example.starCard'][locale]],
+          ['media/sound-bed.wav', projectHomeNativeMessages['projectHomeNative.example.soundBed'][locale]],
+        ]),
+      } : undefined;
+      return {referenceTargets, files: created.map(value => value.file), ...(presentation ? {presentation} : {})};
     } catch (error) {
       for (const item of created.reverse()) {
         const actual = lstatSync(item.file, {bigint: true, throwIfNoEntry: false});

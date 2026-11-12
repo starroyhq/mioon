@@ -99,7 +99,7 @@ const sourceDetails = (source: SourceView | Record<string, unknown> | null | und
 
 /** Kept mounted by AgentDockPane. Hiding stops reads and media, never resets a draft. */
 export default function ImageGeneration({ revealTask = null, editIntent = null, isEditIntentCurrent, onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, generationServicesClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }: ImageGenerationProps) {
-  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { locale, t, renderMessage, formatDate, formatNumber } = useI18n();
   const [state, setState] = useState<ImageGenerationState>(initialImageGenerationState), [page, setPage] = useState('compose'), [settingsSlot, setSettingsSlot] = useState<SettingsSlot>('official');
   const recoveryRoot = useRef<HTMLElement | null>(null), recoveryAttempt = useRef<string | null>(null);
   const imageSettingsClient = useMemo(() => settingsClient || createImageSettingsClient(), [settingsClient]);
@@ -111,6 +111,7 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
   const nativeActive = useNativeSettingsActivity(nativeSettingsScope, (active: boolean) => session.current?.setVisible(active && paneVisible && page === 'compose' && document.visibilityState !== 'hidden'));
   const visible = paneVisible && nativeActive && !settingsOverlayOpen;
   const callbacks = useRef<ImageGenerationCallbacks>({ onGenerated, onDirtyChange, onRevealAsset });
+  const outputLocale = useRef(locale);
   const composerVisible = visible && page === 'compose';
   const intentContext = useRef<IntentContext | null>(null), [editAdmission, setEditAdmission] = useState<ImageEditIntentState>({ phase: 'idle' });
   const [editController] = useState<EditController>(() => createImageEditIntentController({
@@ -119,13 +120,14 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
     onChange: (value: ImageEditIntentState) => { if (lifetime.current && !lifetime.current.closed) setEditAdmission(value); },
   }));
   const interaction = useMemo(() => ({ projectId, visible: composerVisible }), [projectId, composerVisible, state.draft, state.providerId, state.mode, state.inputImage, state.target]), interactionRef = useRef<typeof interaction | null>(interaction), visibilityRef = useRef(composerVisible);
-  useLayoutEffect(() => { callbacks.current = { onGenerated, onDirtyChange, onRevealAsset }; });
+  useLayoutEffect(() => { callbacks.current = { onGenerated, onDirtyChange, onRevealAsset }; outputLocale.current = locale; });
   useLayoutEffect(() => {
     const owner = { projectId, closed: false }; lifetime.current = owner;
     setState(initialImageGenerationState());
     if (!projectId) return () => { owner.closed = true; callbacks.current.onDirtyChange(false); };
     const closeReport = createImageGenerationCloseReporter(nativeCloseRegistry);
     const current = createImageGenerationSession({ projectId, api, storage, reviewClient, settings: settingsSnapshot.current, settingsReader: () => imageSettingsClient.read(), customSettings: customSettingsSnapshot.current, customSettingsReader: customImageSettingsClient ? () => customImageSettingsClient.read() : undefined, generationServices, comfySettings: comfySettingsSnapshot.current, comfySettingsReader: () => localImageSettingsClient.read(), comfyAvailabilityReader: () => localImageSettingsClient.readAvailability(),
+      getOutputLocale: () => outputLocale.current,
       onChange: (value: ImageGenerationState) => { if (!owner.closed && lifetime.current === owner) { closeReport.publish({ state: value as unknown as CloseState, dirty: imageDraftDirty(value), rejectionBlocked: current.getNativeCloseState().rejectionBlocked }); setState(value); } },
       onGenerated: (id: string, task: ImageTaskView) => { if (!owner.closed && lifetime.current === owner) callbacks.current.onGenerated(id, task); },
     });
