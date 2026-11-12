@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
-import {agentChatError, agentChatStreamError} from './chat-errors.ts';
+import {agentChatDiagnostic, agentChatError, agentChatProtocolError, agentChatStreamError} from './chat-errors.ts';
 import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
@@ -61,7 +61,7 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
     });
     try {
       const response = await sdk.messages.create(body as Anthropic.Messages.MessageCreateParamsStreaming, {signal: options.signal}).asResponse();
-      if (!transport || !response.body) throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR');
+      if (!transport || !response.body) throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: transport ? 'body' : 'sdk_response'});
       const incoming = transport, responseReader = response.body.getReader(); reader = responseReader;
       const bodyStream = async function* (): AsyncGenerator<Uint8Array, void, undefined> {
         try {
@@ -73,10 +73,12 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
         } finally { close(); }
       };
       return {body: bodyStream(), close, error: () => incoming.error()};
-    } catch {
+    } catch (error) {
       close();
       if (transportFailure !== undefined) throw transportFailure;
-      throw agentChatError(options.signal?.aborted ? 'AGENT_CHAT_ABORTED' : 'AGENT_CHAT_PROTOCOL_ERROR');
+      if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
+      if (agentChatDiagnostic(error)) throw error;
+      throw agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'sdk_response'});
     }
   };
 }

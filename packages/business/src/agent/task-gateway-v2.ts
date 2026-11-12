@@ -22,8 +22,9 @@ import {AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOA
 import {agentTaskSkillInstructions} from './task-skills-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
-import {agentChatError,agentChatStreamError,annotateAgentChatStreamError} from './chat-errors.ts';
-import type {AgentStreamState} from './chat-errors.ts';
+import {agentChatError,agentChatLimitError,agentChatProtocolError,agentChatStreamError,annotateAgentChatStreamError} from './chat-errors.ts';
+import type {AgentChatErrorCode,AgentStreamState} from './chat-errors.ts';
+import type {AgentFailureLimit,AgentProtocolFailureReason} from '../../../contracts/src/agent-failure-diagnostic.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_TASK_LOCALES,AGENT_TASK_STEP_STATUSES,DEFAULT_AGENT_TASK_LOCALE} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskLocale} from '@mioon/contracts/agent-tasks-v2';
@@ -144,20 +145,29 @@ export function taskResponseLocale(context:readonly AgentTaskJson[]|undefined):A
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function fail(code='AGENT_CHAT_PROTOCOL_ERROR'):never {throw agentChatError(code);}
-function string(value:unknown,max=TASK_MODEL_LIMITS.outputBytes):string {
-  if(typeof value!=='string'||Buffer.byteLength(value)>max||Buffer.from(value).toString('utf8')!==value)fail();
-  return value as string;
+function protocolFailure(reason:AgentProtocolFailureReason,details?:Parameters<typeof agentChatProtocolError>[2],code:AgentChatErrorCode='AGENT_CHAT_PROTOCOL_ERROR'):never {
+  throw agentChatProtocolError(code,reason,details);
 }
-function identifier(value:unknown):string {const result=string(value,256);if(!result||/[\u0000-\u0020\u007f]/u.test(result))fail();return result;}
+function string(value:unknown,max=TASK_MODEL_LIMITS.outputBytes,field='text',limit:AgentFailureLimit='output_bytes'):string {
+  if(typeof value!=='string')protocolFailure('invalid_field',{field});
+  if(Buffer.byteLength(value)>max)throw agentChatLimitError(limit,'AGENT_CHAT_PROTOCOL_ERROR');
+  if(Buffer.from(value).toString('utf8')!==value)protocolFailure('invalid_field',{field});
+  return value;
+}
+function identifier(value:unknown,field='id'):string {
+  const result=string(value,256,field,'identifier_bytes');
+  if(!result||/[\u0000-\u0020\u007f]/u.test(result))protocolFailure('invalid_field',{field});
+  return result;
+}
 /** Reasoning fails closed unless the request asked for thinking, and even then
  * only that protocol's documented carrier is admitted. */
 function noReasoning(value:Record<string,unknown>,admitted?:string):void {
   for(const key of ['reasoning_content','reasoning_details','encrypted_content','thinking','signature','phase'])
-    if(key!==admitted&&value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+    if(key!==admitted&&value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))protocolFailure('invalid_field',{field:key},'AGENT_CHAT_REASONING_UNSUPPORTED');
 }
 function responsesFields(value:Record<string,unknown>,native:boolean):void {
   if(native&&Object.hasOwn(value,'phase')){
-    if(value.type!=='message'||value.role!=='assistant'||!(value.phase===null||value.phase==='commentary'||value.phase==='final_answer'))fail();
+    if(value.type!=='message'||value.role!=='assistant'||!(value.phase===null||value.phase==='commentary'||value.phase==='final_answer'))protocolFailure('invalid_field',{field:'phase',item:value.type});
     noReasoning(value,'phase');
   }else noReasoning(value);
 }
@@ -173,31 +183,41 @@ const responsesEventByteLimits=Object.freeze({
   'response.reasoning_summary_text.done':512*1024,'response.reasoning_text.done':512*1024,
 });
 const reasoningEvents=new Set(['response.reasoning_summary_part.added','response.reasoning_summary_part.done','response.reasoning_summary_text.delta','response.reasoning_summary_text.done','response.reasoning_text.delta','response.reasoning_text.done']);
+const responsesItemEvents=new Set(['response.output_item.added','response.output_item.done','response.output_text.delta','response.output_text.done','response.function_call_arguments.delta','response.function_call_arguments.done','response.content_part.added','response.content_part.done',...reasoningEvents]);
+const responsesItemFields=['type','id','status','role','content','summary','encrypted_content','phase','call_id','name','arguments'] as const;
+function terminalMismatchField(terminal:Record<string,unknown>,streamed:Record<string,unknown>):string {
+  return responsesItemFields.find(field=>Object.hasOwn(terminal,field)!==Object.hasOwn(streamed,field)||!isDeepStrictEqual(terminal[field],streamed[field]))??'unknown_field';
+}
 /** A thinking request keeps the provider's Responses reasoning item exactly,
  * including encrypted reasoning, for this round's continuation only. */
-function reasoningItem(item:Record<string,unknown>,requireEncrypted=false):void {
-  if(Object.keys(item).some(key=>!['id','type','summary','content','encrypted_content','status'].includes(key))||!Array.isArray(item.summary)||item.content!==undefined&&!Array.isArray(item.content))fail();
-  if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');
+function reasoningItem(item:Record<string,unknown>,requireEncrypted=false,event?:string):void {
+  const diagnostic={item:'reasoning',event};
+  if(Object.keys(item).some(key=>!['id','type','summary','content','encrypted_content','status'].includes(key)))protocolFailure('invalid_field',{...diagnostic,field:'unknown_field'});
+  if(!Array.isArray(item.summary))protocolFailure('invalid_field',{...diagnostic,field:'summary'});
+  if(item.content!==undefined&&!Array.isArray(item.content))protocolFailure('invalid_field',{...diagnostic,field:'content'});
+  if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_item_bytes');
   // With store:false a bare reasoning ID cannot be used for continuation.
   // The added item may be partial; only a completed native carrier is retained.
-  if(requireEncrypted&&(item.encrypted_content==null||item.encrypted_content===''))fail('AGENT_CHAT_RESPONSES_INCOMPLETE');
-  if(item.encrypted_content!=null)string(item.encrypted_content);
+  if(requireEncrypted&&(item.encrypted_content==null||item.encrypted_content===''))protocolFailure('invalid_field',{...diagnostic,field:'encrypted_content'},'AGENT_CHAT_RESPONSES_INCOMPLETE');
+  if(item.encrypted_content!=null)string(item.encrypted_content,TASK_MODEL_LIMITS.outputBytes,'encrypted_content','encrypted_content_bytes');
   for(const [parts,kind] of [[item.summary,'summary_text'],[item.content??[],'reasoning_text']] as const)for(const part of parts as unknown[]){
-    if(!object(part)||Object.keys(part).length!==2||part.type!==kind)fail();string(part.text);
+    if(!object(part)||Object.keys(part).length!==2||part.type!==kind)protocolFailure('invalid_field',{...diagnostic,field:kind==='summary_text'?'summary':'content'});
+    string(part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
   }
 }
 /** Preserve the public task parser's original bounds and failure semantics. */
 export function parseTaskArguments(source:string):AgentTaskJson {
-  string(source,TASK_MODEL_LIMITS.argumentBytes);
-  return parseModelToolArguments(source,TASK_MODEL_LIMITS.argumentBytes);
+  string(source,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');
+  try{return parseModelToolArguments(source,TASK_MODEL_LIMITS.argumentBytes);}
+  catch{protocolFailure('invalid_field',{field:'arguments'});}
 }
 
 function call(id:unknown,name:unknown,argumentsJson:unknown,definitions:readonly TaskToolDefinition[],knownTools?:readonly TaskToolDefinition[]):AgentTaskToolCall {
-  const selected=identifier(name),definition=definitions.find(tool=>tool.name===selected);
+  const selected=identifier(name,'name'),definition=definitions.find(tool=>tool.name===selected);
   // A host catalog admits known but unloaded calls so runtime can return a
   // recoverable denial. The provider/body cannot extend that trusted catalog.
-  if(knownTools?!knownTools.some(tool=>tool.name===selected):!definition)fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-  const argumentsValue=parseTaskArguments(string(argumentsJson,TASK_MODEL_LIMITS.argumentBytes));
+  if(knownTools?!knownTools.some(tool=>tool.name===selected):!definition)protocolFailure('invalid_field',{field:'name'},'AGENT_CHAT_TOOLS_UNSUPPORTED');
+  const argumentsValue=parseTaskArguments(string(argumentsJson,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes'));
   // Inspect the actual journaled request, so an old intent without this model
   // wrapper keeps its original domain-validation behavior on recovery.
   return {id:identifier(id),name:selected,arguments:!definition||declaresToolExplanation(definition.parameters)?withoutToolExplanation(argumentsValue):argumentsValue};
@@ -216,7 +236,7 @@ function requireTaskToolProtocol(configuration:AgentConfiguration,toolCount:numb
 export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number,options:{toolLoading?:boolean}={}):string {
   validateAgentGatewayConfiguration(configuration,{selfPort});
   requireTaskToolProtocol(configuration,definitions.length);
-  if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)fail('AGENT_CHAT_LIMIT');
+  if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)throw agentChatLimitError('history_bytes');
   const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const limits=agentModelTokenLimits(configuration);
@@ -249,9 +269,9 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...responses.fields,...(agentResponsesReasoningCapable(configuration)?{include:['reasoning.encrypted_content']}:{}),
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
   }
-  const serialized=JSON.stringify(applyTaskAnthropicCaching(configuration,body));if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');
+  const serialized=JSON.stringify(applyTaskAnthropicCaching(configuration,body));if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)throw agentChatLimitError('request_bytes');
   // Rejected before dispatch, so an oversized request is never paid for.
-  if(!taskRequestFitsModel(Buffer.byteLength(serialized),limits))fail('AGENT_CHAT_LIMIT');return serialized;
+  if(!taskRequestFitsModel(Buffer.byteLength(serialized),limits))throw agentChatLimitError('context_tokens');return serialized;
 }
 /** One request's history budget. A known context window also leaves tokens for
  * the output limit and the rest of this request: instructions, tool catalog
@@ -313,32 +333,44 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         streamState={finishReason:null,done:false,frameCount:0,toolCount:0,outputBytes:0};
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal})) {
           streamState.frameCount=(streamState.frameCount??0)+1;
-          if(frame.event==='error')fail('AGENT_CHAT_PROVIDER_ERROR');if(frame.event!=='message')fail();
-          if(done)fail();if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
-          let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}if(!object(raw)||raw.error)fail('AGENT_CHAT_PROVIDER_ERROR');
-          noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)fail();usageCollector.observe(raw.usage);if(!raw.choices.length)continue;
-          const choice=raw.choices[0];if(!object(choice)||choice.index!==0||!object(choice.delta))fail();noReasoning(choice.delta,thinking?'reasoning_content':undefined);
-          if(finished)fail();const delta=choice.delta;
-          if(delta.content!=null){const part=string(delta.content);text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};}
+          if(frame.event==='error')protocolFailure('provider_error',{event:'error'},'AGENT_CHAT_PROVIDER_ERROR');
+          if(frame.event!=='message')protocolFailure('unknown_event',{event:frame.event});
+          if(done)protocolFailure('invalid_event',{event:'message',field:'done'});
+          if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
+          let raw:unknown;try{raw=JSON.parse(frame.data);}catch{protocolFailure('invalid_event',{event:'message',field:'json'});}
+          if(!object(raw))protocolFailure('invalid_event',{event:'message',field:'json'},'AGENT_CHAT_PROVIDER_ERROR');
+          if(raw.error)protocolFailure('provider_error',{event:'message'},'AGENT_CHAT_PROVIDER_ERROR');
+          noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)protocolFailure('invalid_field',{event:'message',field:'choices'});
+          usageCollector.observe(raw.usage);if(!raw.choices.length)continue;
+          const choice=raw.choices[0];
+          if(!object(choice)||choice.index!==0)protocolFailure('invalid_field',{event:'message',field:'index'});
+          if(!object(choice.delta))protocolFailure('invalid_field',{event:'message',field:'delta'});
+          noReasoning(choice.delta,thinking?'reasoning_content':undefined);
+          if(finished)protocolFailure('invalid_event',{event:'message',field:'finish_reason'});
+          const delta=choice.delta;
+          if(delta.content!=null){const part=string(delta.content,TASK_MODEL_LIMITS.outputBytes,'content');text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part)yield {type:'delta',text:part};}
           // Reasoning is retained for this round's continuation, never shown as text.
-          if(thinking&&delta.reasoning_content!=null){reasoning+=string(delta.reasoning_content);if(Buffer.byteLength(reasoning)>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');}
+          if(thinking&&delta.reasoning_content!=null){reasoning+=string(delta.reasoning_content,TASK_MODEL_LIMITS.outputBytes,'reasoning_content','reasoning_bytes');if(Buffer.byteLength(reasoning)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_bytes');}
           if(delta.refusal!=null&&delta.refusal!=='')refused=true;
-          if(delta.function_call!=null)fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-          if(delta.tool_calls!=null){if(!Array.isArray(delta.tool_calls))fail();for(const fragment of delta.tool_calls){
-            if(!object(fragment)||!Number.isSafeInteger(fragment.index)||(fragment.index as number)<0||(fragment.index as number)>=TASK_MODEL_LIMITS.toolCalls)fail();
+          if(delta.function_call!=null)protocolFailure('unsupported_item',{event:'message',item:'function_call'},'AGENT_CHAT_TOOLS_UNSUPPORTED');
+          if(delta.tool_calls!=null){if(!Array.isArray(delta.tool_calls))protocolFailure('invalid_field',{event:'message',field:'tool_calls'});for(const fragment of delta.tool_calls){
+            if(!object(fragment)||!Number.isSafeInteger(fragment.index)||(fragment.index as number)<0)protocolFailure('invalid_field',{event:'message',field:'index'});
+            if((fragment.index as number)>=TASK_MODEL_LIMITS.toolCalls)throw agentChatLimitError('tool_calls','AGENT_CHAT_PROTOCOL_ERROR');
             const index=fragment.index as number,current=calls.get(index)??{id:'',name:'',arguments:''};
-            if(fragment.type!==undefined&&fragment.type!=='function')fail();if(fragment.id!==undefined)current.id+=string(fragment.id,256);
-            if(fragment.function!==undefined){if(!object(fragment.function))fail();if(fragment.function.name!==undefined)current.name+=string(fragment.function.name,256);if(fragment.function.arguments!==undefined)current.arguments+=string(fragment.function.arguments,TASK_MODEL_LIMITS.argumentBytes);}
-            if(Buffer.byteLength(current.arguments)>TASK_MODEL_LIMITS.argumentBytes)fail('AGENT_CHAT_LIMIT');calls.set(index,current);streamState.toolCount=calls.size;
+            if(fragment.type!==undefined&&fragment.type!=='function')protocolFailure('unsupported_item',{event:'message',item:fragment.type});
+            if(fragment.id!==undefined)current.id+=string(fragment.id,256,'id','identifier_bytes');
+            if(fragment.function!==undefined){if(!object(fragment.function))protocolFailure('invalid_field',{event:'message',item:'function',field:'function_call'});if(fragment.function.name!==undefined)current.name+=string(fragment.function.name,256,'name','identifier_bytes');if(fragment.function.arguments!==undefined)current.arguments+=string(fragment.function.arguments,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');}
+            if(Buffer.byteLength(current.arguments)>TASK_MODEL_LIMITS.argumentBytes)throw agentChatLimitError('argument_bytes');calls.set(index,current);streamState.toolCount=calls.size;
           }}
-          if(choice.finish_reason!=null){if(!['stop','tool_calls','length','content_filter'].includes(String(choice.finish_reason)))fail();finished=String(choice.finish_reason);streamState.finishReason=finished as AgentStreamState['finishReason'];}
+          if(choice.finish_reason!=null){if(!['stop','tool_calls','length','content_filter'].includes(String(choice.finish_reason)))protocolFailure('invalid_field',{event:'message',field:'finish_reason'});finished=String(choice.finish_reason);streamState.finishReason=finished as AgentStreamState['finishReason'];}
         }
         const streamFailure=stream.error();if(streamFailure)throw streamFailure.code==='AGENT_CHAT_TRUNCATED'?agentChatStreamError('read_failed'):streamFailure;if(options.signal?.aborted)fail('AGENT_CHAT_ABORTED');
         const naturalEof=agentChatAllowsNaturalEof(options.configuration,parsed)&&(finished==='stop'||finished==='tool_calls');
-        if(!done&&!naturalEof)throw agentChatStreamError('missing_done');if(finished==='length')throw agentChatStreamError('output_limit');if(finished==='content_filter'||refused)fail('AGENT_CHAT_PROVIDER_ERROR');
-        const ordered=[...calls.entries()].sort((a,b)=>a[0]-b[0]);if(ordered.some(([index],position)=>index!==position))fail();
+        if(!done&&!naturalEof)throw agentChatStreamError('missing_done');if(finished==='length')throw agentChatStreamError('output_limit');if(finished==='content_filter'||refused)protocolFailure('provider_error',{event:'message',field:'finish_reason'},'AGENT_CHAT_PROVIDER_ERROR');
+        const ordered=[...calls.entries()].sort((a,b)=>a[0]-b[0]);if(ordered.some(([index],position)=>index!==position))protocolFailure('invalid_field',{event:'message',field:'index'});
         const toolCalls=ordered.map(([,item])=>call(item.id,item.name,item.arguments,definitions,options.knownTools));
-        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(finished==='tool_calls')!==!!toolCalls.length)fail();
+        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)protocolFailure('invalid_field',{event:'message',field:'id'});
+        if((finished==='tool_calls')!==!!toolCalls.length)protocolFailure('terminal_mismatch',{event:'message',field:'finish_reason'});
         const providerOutput:AgentTaskJson={role:'assistant',content:text||null,...(reasoning?{reasoning_content:reasoning}:{}),...(toolCalls.length?{tool_calls:ordered.map(([,item])=>({id:item.id,type:'function',function:{name:item.name,arguments:item.arguments}}))}:{})};
         yield {type:'done',output:{text,toolCalls,providerOutput,...usageOutput()}};
       } else if(options.configuration.protocol==='anthropic_messages') {
@@ -348,12 +380,13 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           else completion=item.completion;
         }
         const streamFailure=stream.error();if(streamFailure)throw streamFailure;if(options.signal?.aborted)fail('AGENT_CHAT_ABORTED');
-        if(!completion)fail('AGENT_CHAT_TRUNCATED');
+        if(!completion)throw agentChatStreamError('missing_done');
         if(completion.stopReason==='max_tokens')throw agentChatStreamError('output_limit');
-        if(completion.stopReason==='refusal')fail('AGENT_CHAT_PROVIDER_ERROR');
-        if(!['end_turn','tool_use'].includes(completion.stopReason))fail();
+        if(completion.stopReason==='refusal')protocolFailure('provider_error',{event:'message_delta',field:'stop_reason'},'AGENT_CHAT_PROVIDER_ERROR');
+        if(!['end_turn','tool_use'].includes(completion.stopReason))protocolFailure('invalid_field',{event:'message_delta',field:'stop_reason'});
         const toolCalls=completion.toolCalls.map(item=>call(item.id,item.name,item.argumentsJson,definitions,options.knownTools));
-        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(completion.stopReason==='tool_use')!==!!toolCalls.length)fail();
+        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)protocolFailure('invalid_field',{event:'message_stop',field:'id'});
+        if((completion.stopReason==='tool_use')!==!!toolCalls.length)protocolFailure('terminal_mismatch',{event:'message_stop',field:'stop_reason'});
         const providerOutput:AgentTaskJson={role:'assistant',content:completion.content};
         yield {type:'done',output:{text:completion.text,toolCalls,providerOutput,...usageOutput()}};
       } else {
@@ -361,82 +394,126 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         let terminal:Record<string,unknown>|null=null;
         const native=options.configuration.presetId==='openai',reasoning=thinking||agentResponsesReasoningCapable(options.configuration);
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal,includeEventName:true,...(native?{maxBytes:4*1024*1024,eventByteLimits:responsesEventByteLimits}:{})})) {
-          if(completed)fail();let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}
-          if(!object(raw)||typeof raw.type!=='string'||frame.eventName&&frame.eventName!==raw.type)fail();responsesFields(raw,native);
+          const event=frame.eventName??undefined;
+          if(completed)protocolFailure('invalid_event',{event,field:'done'});
+          let raw:unknown;try{raw=JSON.parse(frame.data);}catch{protocolFailure('invalid_event',{event,field:'json'});}
+          if(!object(raw)||typeof raw.type!=='string')protocolFailure('invalid_field',{event,field:'type'});
+          if(frame.eventName&&frame.eventName!==raw.type)protocolFailure('invalid_event',{event:frame.eventName,field:'event_name'});
+          responsesFields(raw,native);
           const type=raw.type;
-          if(type==='error'||type==='response.failed')fail('AGENT_CHAT_PROVIDER_ERROR');
+          if(type==='error'||type==='response.failed')protocolFailure('provider_error',{event:type},'AGENT_CHAT_PROVIDER_ERROR');
           if(type==='response.incomplete'){
-            if(!native)fail('AGENT_CHAT_PROVIDER_ERROR');
-            fail(object(raw.response)&&object(raw.response.incomplete_details)&&raw.response.incomplete_details.reason==='max_output_tokens'?'AGENT_CHAT_OUTPUT_LIMIT':'AGENT_CHAT_RESPONSES_INCOMPLETE');
+            if(!native)protocolFailure('provider_error',{event:type},'AGENT_CHAT_PROVIDER_ERROR');
+            if(object(raw.response)&&object(raw.response.incomplete_details)&&raw.response.incomplete_details.reason==='max_output_tokens')throw agentChatLimitError('max_output_tokens','AGENT_CHAT_OUTPUT_LIMIT');
+            protocolFailure('incomplete_stream',{event:type},'AGENT_CHAT_RESPONSES_INCOMPLETE');
           }
           if(type==='response.created'||type==='response.in_progress'){
-            if(!object(raw.response))fail();responsesFields(raw.response,native);const id=identifier(raw.response.id);if(responseId&&responseId!==id)fail();responseId=id;continue;
+            if(!object(raw.response))protocolFailure('invalid_event',{event:type});
+            responsesFields(raw.response,native);const id=identifier(raw.response.id);
+            if(responseId&&responseId!==id)protocolFailure('invalid_field',{event:type,field:'id'});
+            responseId=id;continue;
           }
           if(type==='response.completed'){
-            if(!object(raw.response)||raw.response.status!=='completed'||!Array.isArray(raw.response.output)||responseId&&raw.response.id!==responseId)fail();
+            if(!object(raw.response))protocolFailure('invalid_event',{event:type});
+            if(raw.response.status!=='completed')protocolFailure('terminal_mismatch',{event:type,field:'status'});
+            if(!Array.isArray(raw.response.output))protocolFailure('invalid_field',{event:type,field:'output'});
+            if(responseId&&raw.response.id!==responseId)protocolFailure('terminal_mismatch',{event:type,field:'id'});
             responsesFields(raw.response,native);
-            if(raw.response.output.length!==done.size)fail();
+            if(raw.response.output.length!==done.size)protocolFailure('terminal_mismatch',{event:type,field:'output'});
             for(const [index,item] of raw.response.output.entries()){
               const streamed=done.get(index);
-              if(!object(item)||!streamed||native&&item.status==='incomplete')fail();
+              if(!object(item)||!streamed)protocolFailure('terminal_mismatch',{event:type,field:'output'});
+              if(native&&item.status==='incomplete')protocolFailure('terminal_mismatch',{event:type,item:item.type,field:'status'});
               if(item.type==='reasoning'){
-                if(!reasoning)fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
-                reasoningItem(item,native);
+                if(!reasoning)protocolFailure('unsupported_item',{event:type,item:item.type},native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
+                reasoningItem(item,native,type);
               }else responsesFields(item,native);
               // OpenAI can re-encrypt an already validated reasoning item at
               // completion. Compare the rest and replay the original terminal item.
               const comparable=native&&item.type==='reasoning'&&streamed.type==='reasoning'
                 ? {...item,encrypted_content:streamed.encrypted_content}
                 : item;
-              if(!isDeepStrictEqual(comparable,streamed))fail();
+              if(!isDeepStrictEqual(comparable,streamed))protocolFailure('terminal_mismatch',{event:type,item:streamed.type,field:terminalMismatchField(comparable,streamed)});
             }
             usageCollector.observe(raw.response.usage);terminal=raw.response;completed=true;continue;
           }
-          const index=raw.output_index;if(!Number.isSafeInteger(index)||(index as number)<0||(index as number)>=64)fail();const position=index as number;
+          if(!responsesItemEvents.has(type))protocolFailure('unknown_event',{event:type});
+          const index=raw.output_index;
+          if(!Number.isSafeInteger(index)||(index as number)<0)protocolFailure('invalid_field',{event:type,field:'output_index'});
+          if((index as number)>=64)throw agentChatLimitError('output_items','AGENT_CHAT_PROTOCOL_ERROR');
+          const position=index as number;
           if(type==='response.output_item.added'){
-            if(added.has(position)||!object(raw.item)||!['message','function_call',...(reasoning?['reasoning']:[])].includes(String(raw.item.type)))fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
-            identifier(raw.item.id);if(raw.item.type==='reasoning')reasoningItem(raw.item);else responsesFields(raw.item,native);added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
+            const unsupported=native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED';
+            if(added.has(position))protocolFailure('invalid_field',{event:type,field:'output_index'},unsupported);
+            if(!object(raw.item))protocolFailure('invalid_event',{event:type},unsupported);
+            if(!['message','function_call',...(reasoning?['reasoning']:[])].includes(String(raw.item.type)))protocolFailure('unsupported_item',{event:type,item:raw.item.type},unsupported);
+            identifier(raw.item.id);
+            if(raw.item.type==='reasoning')reasoningItem(raw.item,false,type);else responsesFields(raw.item,native);
+            added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
           }
-          const item=added.get(position);if(!item||raw.item_id!==undefined&&raw.item_id!==item.id||done.has(position))fail();
+          const item=added.get(position);
+          if(!item||done.has(position))protocolFailure('invalid_field',{event:type,field:'output_index'});
+          if(raw.item_id!==undefined&&raw.item_id!==item.id)protocolFailure('invalid_field',{event:type,item:item.type,field:'item_id'});
+          const details={event:type,item:item.type};
           if(type==='response.output_text.delta'){
-            if(item.type!=='message'||!Number.isSafeInteger(raw.content_index))fail();const part=string(raw.delta),key=`${position}:${raw.content_index}`;
-            parts.set(key,(parts.get(key)??'')+part);text+=part;if(Buffer.byteLength(text)>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};
+            if(item.type!=='message')protocolFailure('invalid_event',details);
+            if(!Number.isSafeInteger(raw.content_index))protocolFailure('invalid_field',{...details,field:'content_index'});
+            const part=string(raw.delta),key=`${position}:${raw.content_index}`;
+            parts.set(key,(parts.get(key)??'')+part);text+=part;if(Buffer.byteLength(text)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part)yield {type:'delta',text:part};
           }else if(type==='response.function_call_arguments.delta'){
-            if(item.type!=='function_call')fail();const next=(argumentsByIndex.get(position)??'')+string(raw.delta,TASK_MODEL_LIMITS.argumentBytes);if(Buffer.byteLength(next)>TASK_MODEL_LIMITS.argumentBytes)fail('AGENT_CHAT_LIMIT');argumentsByIndex.set(position,next);
+            if(item.type!=='function_call')protocolFailure('invalid_event',details);
+            const next=(argumentsByIndex.get(position)??'')+string(raw.delta,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');
+            if(Buffer.byteLength(next)>TASK_MODEL_LIMITS.argumentBytes)throw agentChatLimitError('argument_bytes');
+            argumentsByIndex.set(position,next);
           }else if(type==='response.function_call_arguments.done'){
-            if(item.type!=='function_call'||raw.arguments!==argumentsByIndex.get(position)||raw.name!==undefined&&raw.name!==item.name)fail();
+            if(item.type!=='function_call')protocolFailure('invalid_event',details);
+            if(raw.arguments!==argumentsByIndex.get(position))protocolFailure('terminal_mismatch',{...details,field:'arguments'});
+            if(raw.name!==undefined&&raw.name!==item.name)protocolFailure('terminal_mismatch',{...details,field:'name'});
           }else if(type==='response.output_text.done'){
-            if(raw.text!==parts.get(`${position}:${raw.content_index}`))fail();
+            if(raw.text!==parts.get(`${position}:${raw.content_index}`))protocolFailure('terminal_mismatch',{...details,field:'text'});
           }else if(type==='response.content_part.added'||type==='response.content_part.done'){
-            if(item.type!=='message'||!object(raw.part)||raw.part.type!=='output_text'||!Number.isSafeInteger(raw.content_index))fail();
+            if(item.type!=='message'||!object(raw.part))protocolFailure('invalid_event',details);
+            if(raw.part.type!=='output_text')protocolFailure('unsupported_item',{event:type,item:raw.part.type});
+            if(!Number.isSafeInteger(raw.content_index))protocolFailure('invalid_field',{...details,field:'content_index'});
             responsesFields(raw.part,native);
-            if(type.endsWith('.done')&&raw.part.text!==(parts.get(`${position}:${raw.content_index}`)??''))fail();
+            if(type.endsWith('.done')&&raw.part.text!==(parts.get(`${position}:${raw.content_index}`)??''))protocolFailure('terminal_mismatch',{...details,field:'text'});
           }else if(type==='response.output_item.done'){
-            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
+            if(!object(raw.item))protocolFailure('invalid_event',details);
+            if(raw.item.id!==item.id)protocolFailure('terminal_mismatch',{...details,field:'id'});
+            if(raw.item.type!==item.type)protocolFailure('terminal_mismatch',{...details,field:'type'});
+            if(raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))protocolFailure('terminal_mismatch',{...details,field:'status'});
             // Item streaming can finish while its contents remain incomplete.
             // Only the response terminal classifies the truncation; these items
             // never become a completed result or an executable tool call.
-            if(item.type==='reasoning')reasoningItem(raw.item,native&&raw.item.status!=='incomplete');else responsesFields(raw.item,native);
+            if(item.type==='reasoning')reasoningItem(raw.item,native&&raw.item.status!=='incomplete',type);else responsesFields(raw.item,native);
             if(item.type==='function_call'){
-              if(raw.item.name!==item.name||raw.item.call_id!==item.call_id||raw.item.arguments!==argumentsByIndex.get(position))fail();
+              if(raw.item.name!==item.name)protocolFailure('terminal_mismatch',{...details,field:'name'});
+              if(raw.item.call_id!==item.call_id)protocolFailure('terminal_mismatch',{...details,field:'call_id'});
+              if(raw.item.arguments!==argumentsByIndex.get(position))protocolFailure('terminal_mismatch',{...details,field:'arguments'});
             }else if(item.type==='message'){
-              if(raw.item.role!=='assistant'||!Array.isArray(raw.item.content))fail();
+              if(raw.item.role!=='assistant')protocolFailure('invalid_field',{...details,field:'role'});
+              if(!Array.isArray(raw.item.content))protocolFailure('invalid_field',{...details,field:'content'});
               for(const [partIndex,part] of raw.item.content.entries()){
-                if(!object(part)||part.type!=='output_text'||part.text!==(parts.get(`${position}:${partIndex}`)??'')||Array.isArray(part.annotations)&&part.annotations.length)fail();
+                if(!object(part))protocolFailure('invalid_field',{...details,field:'content'});
+                if(part.type!=='output_text')protocolFailure('unsupported_item',{event:type,item:part.type});
+                if(part.text!==(parts.get(`${position}:${partIndex}`)??''))protocolFailure('terminal_mismatch',{...details,field:'text'});
+                if(Array.isArray(part.annotations)&&part.annotations.length)protocolFailure('invalid_field',{...details,field:'annotations'});
                 responsesFields(part,native);
               }
             }
             done.set(position,raw.item);
           }else if(item.type==='reasoning'&&reasoningEvents.has(type)){
             // Streamed reasoning is checked, never shown; continuation returns the completed item.
-            if(!Number.isSafeInteger(type.startsWith('response.reasoning_summary_')?raw.summary_index:raw.content_index))fail();
-            if(type.includes('_part.')){if(!object(raw.part)||raw.part.type!=='summary_text')fail();string(raw.part.text);}
-            else string(type.endsWith('.delta')?raw.delta:raw.text);
-          }else fail();
+            const field=type.startsWith('response.reasoning_summary_')?'summary_index':'content_index';
+            if(!Number.isSafeInteger(raw[field]))protocolFailure('invalid_field',{...details,field});
+            if(type.includes('_part.')){if(!object(raw.part)||raw.part.type!=='summary_text')protocolFailure('invalid_field',{...details,field:'part'});string(raw.part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');}
+            else string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+          }else protocolFailure('invalid_event',details);
         }
-        if(stream.error())throw stream.error();if(!terminal||!completed)fail('AGENT_CHAT_TRUNCATED');
+        if(stream.error())throw stream.error();if(!terminal||!completed)throw agentChatStreamError('missing_done');
         const output=terminal.output as Record<string,unknown>[],toolCalls=output.filter(item=>item.type==='function_call').map(item=>call(item.call_id,item.name,item.arguments,definitions,options.knownTools));
-        if(toolCalls.length>TASK_MODEL_LIMITS.toolCalls||new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)fail();
+        if(toolCalls.length>TASK_MODEL_LIMITS.toolCalls)throw agentChatLimitError('tool_calls','AGENT_CHAT_PROTOCOL_ERROR');
+        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)protocolFailure('invalid_field',{event:'response.completed',item:'function_call',field:'id'});
         yield {type:'done',output:{text,toolCalls,providerOutput:output as AgentTaskJson[],...usageOutput()}};
       }
     }catch(error){if(blocked)throw blocked;if(streamState)annotateAgentChatStreamError(error,streamState);throw error;}finally{stream.close();}

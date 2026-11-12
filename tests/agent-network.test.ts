@@ -11,7 +11,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {isPublicAgentAddress, resolveAgentDestination, assertPinnedAgentSocket, createAgentTransport, wasAgentTransportSubmissionPrevented} from '../packages/business/src/agent/network-policy.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatHttpError, agentChatHttpStatus, safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatDiagnostic, agentChatHttpError, agentChatHttpStatus, safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest, createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 const configuration = {...DEFAULT_AGENT_CONFIGURATION};
 const publicAnswers = async () => [{address: '8.8.8.8', family: 4}];
@@ -33,7 +33,7 @@ function injectedRequest({peer = '8.8.8.8', authorized = true, status = 200, hea
 }
 const openArgs = {configuration, apiKey: 'synthetic-key-marker', body: '{}'};
 
-test('HTTP rejection exposes only the trusted status and preserves the sent boundary', async () => {
+test('HTTP rejection keeps its status and omits malformed diagnostics while preserving the sent boundary', async () => {
   for (const status of [301, 401, 403, 404, 429, 503] as const) {
     const headers = {'x-provider-secret': 'synthetic-header-marker'};
     Object.defineProperty(headers, 'content-type', {get() { assert.fail('HTTP rejection must not inspect response headers'); }});
@@ -43,11 +43,59 @@ test('HTTP rejection exposes only the trusted status and preserves the sent boun
     const safe = safeAgentChatError(failure);
     assert.deepEqual(safe, {code:'AGENT_CHAT_HTTP_ERROR',status:502,message:`模型服务拒绝了请求（HTTP ${status}），请检查账户、模型和配置后手动重试。`});
     assert.equal(agentChatHttpStatus(failure), status);
+    assert.deepEqual(agentChatDiagnostic(failure), {kind:'http',status});
     assert.equal(fixture.ends, 1);
     assert.equal(wasAgentTransportSubmissionPrevented(failure), false);
-    assert.equal(fixture.response.readableDidRead, false);
+    assert.equal(fixture.response.readableDidRead, status >= 400);
     assert.equal(JSON.stringify(safe).includes('marker'), false);
   }
+});
+
+test('HTTP error type and code are admitted only from bounded, complete error bodies and a closed vocabulary', async () => {
+  const sensitive = 'sk-proj-synthetic-private-fixture';
+  const providerError = JSON.stringify({error:{type:'permission_error',code:'model_not_found',message:`Synthetic user dialogue ${sensitive}`,param:'synthetic-private-value'}});
+  for (const [status, body, expected] of [
+    [403, providerError, {kind:'http',status:403,providerType:'permission_error',providerCode:'model_not_found'}],
+    [503, JSON.stringify({error:{type:'overloaded_error',code:503,message:sensitive}}), {kind:'http',status:503,providerType:'overloaded_error',providerCode:503}],
+    [401, JSON.stringify({error:{type:sensitive,code:'private_user_dialogue',message:'invalid_api_key'}}), {kind:'http',status:401}],
+    [429, providerError.padEnd(AGENT_HTTP_DIAGNOSTIC_MAX_BYTES+1), {kind:'http',status:429}],
+    [301, providerError, {kind:'http',status:301}],
+  ] as const) {
+    const fixture = injectedRequest({status,body});
+    const open = createAgentTransport({lookup:publicAnswers as unknown as typeof import('node:dns/promises').lookup,httpsRequest:fixture.request as unknown as typeof import('node:https').request});
+    await assert.rejects(open(openArgs), error => {
+      assert.deepEqual(agentChatDiagnostic(error), expected);
+      assert.equal(agentChatDiagnostic({...error as Record<string,unknown>}), undefined);
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)), /synthetic-private|private_user_dialogue|Synthetic user dialogue/u);
+      return (error as Failure).code === 'AGENT_CHAT_HTTP_ERROR';
+    });
+    assert.equal(fixture.ends,1);
+    assert.equal(fixture.response.readableDidRead,status!==301);
+  }
+  const fixture = injectedRequest({status:403,responseStream:new Readable({read(){}})});
+  const open = createAgentTransport({lookup:publicAnswers as unknown as typeof import('node:dns/promises').lookup,httpsRequest:fixture.request as unknown as typeof import('node:https').request,limits:{totalTimeoutMs:30}});
+  await assert.rejects(open(openArgs), error => {
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'http',status:403});
+    return (error as Failure).code==='AGENT_CHAT_HTTP_ERROR';
+  });
+  assert.equal(fixture.response.destroyed,true);
+});
+
+test('an optional non-400 error body has a one-second deadline and cannot erase the known HTTP status', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const fixture = injectedRequest({status:429,responseStream:new Readable({read(){}})});
+  const open = createAgentTransport({lookup:publicAnswers as unknown as typeof import('node:dns/promises').lookup,httpsRequest:fixture.request as unknown as typeof import('node:https').request});
+  const settled = assert.rejects(open(openArgs), error => {
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'http',status:429});
+    return (error as Failure).code==='AGENT_CHAT_HTTP_ERROR';
+  });
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.equal(fixture.ends,1);
+  t.mock.timers.tick(999);
+  assert.equal(fixture.response.destroyed,false);
+  t.mock.timers.tick(1);
+  await settled;
+  assert.equal(fixture.response.destroyed,true);
 });
 
 test('HTTP status evidence accepts only integer non-success statuses without coercion', () => {
@@ -172,9 +220,17 @@ test('mismatched peer, port or untrusted TLS fails before request.end; equivalen
 });
 
 test('redirects, non-SSE and compressed responses are closed once without body/header/error leakage', async () => {
-  for (const options of [{status:302,headers:{location:'https://key-marker.example.com'}},{status:401},{headers:{'content-type':'application/json'}},{headers:{'content-type':'text/event-stream','content-encoding':'gzip'}}] as const) {
+  for (const [options, diagnostic] of [
+    [{status:302,headers:{location:'https://key-marker.example.com'}},{kind:'http',status:302}],
+    [{status:401},{kind:'http',status:401}],
+    [{headers:{'content-type':'application/json'}},{kind:'protocol',reason:'invalid_event',field:'content_type'}],
+    [{headers:{'content-type':'text/event-stream','content-encoding':'gzip'}},{kind:'protocol',reason:'invalid_event',field:'content_encoding'}],
+  ] as const) {
     const fixture = injectedRequest(options);
-    await assert.rejects(createAgentTransport({lookup:(publicAnswers as unknown as typeof import('node:dns/promises').lookup),httpsRequest:(fixture.request as unknown as typeof import('node:https').request)})(openArgs),error => !JSON.stringify(safeAgentChatError(error)).includes('marker'));
+    await assert.rejects(createAgentTransport({lookup:(publicAnswers as unknown as typeof import('node:dns/promises').lookup),httpsRequest:(fixture.request as unknown as typeof import('node:https').request)})(openArgs),error => {
+      assert.deepEqual(agentChatDiagnostic(error),diagnostic);
+      return !JSON.stringify(safeAgentChatError(error)).includes('marker');
+    });
     assert.equal(fixture.calls,1); assert.equal(fixture.destroyed,true);
   }
 });

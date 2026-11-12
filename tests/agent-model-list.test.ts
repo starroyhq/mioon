@@ -33,9 +33,26 @@ test('unknown lists do not fetch; all five outcomes remain fixed and raw provide
  const qwen={presetId:'qwen',platformId:'beijing',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',protocol:'chat_completions'} as const;
  assert.deepEqual(await fetchAgentModelList({selection:qwen,apiKey:null},{transport}),{outcome:'unavailable',reason:'not_provided'});
  assert.deepEqual(await fetchAgentModelList({selection:openai,apiKey:null},{transport}),{outcome:'invalid_key',reason:'required'});assert.equal(calls,0);
- for(const status of [401,403,404,405,429,500,501,301,307]){
-  const result=await fetchAgentModelList({selection:openai,apiKey:key},{transport:async()=>({status,body:Buffer.from('raw synthetic-key-marker body')})});
-  assert.deepEqual(result,status===401?{outcome:'invalid_key',reason:'rejected'}:[404,405,501].includes(status)?{outcome:'unavailable',reason:'http_unavailable'}:{outcome:'unreachable',reason:'http_error'});
+ const failures=[
+  [401,{outcome:'invalid_key',reason:'rejected'}],
+  [403,{outcome:'invalid_key',reason:'permission_denied'}],
+  [404,{outcome:'unavailable',reason:'not_found'}],
+  [405,{outcome:'unavailable',reason:'http_unavailable'}],
+  [429,{outcome:'unreachable',reason:'rate_limited'}],
+  [500,{outcome:'unreachable',reason:'server_error'}],
+  [501,{outcome:'unreachable',reason:'server_error'}],
+  [599,{outcome:'unreachable',reason:'server_error'}],
+  [301,{outcome:'unreachable',reason:'http_error'}],
+  [307,{outcome:'unreachable',reason:'http_error'}],
+ ] as const;
+ const privateBody=Buffer.from(JSON.stringify({error:{message:'Private user scene notes',type:'invalid_request_error',code:'sk-synthetic-key-marker'}}));
+ for(const [status,expected] of failures){
+  const result=await fetchAgentModelList({selection:openai,apiKey:key},{transport:async()=>({status,body:privateBody})});
+  assert.deepEqual(result,expected,`HTTP ${status}`);
+  assert.deepEqual(agentModelListResultSchema.parse(result),expected);
+ }
+ for(const reason of ['connection_failed','timeout'] as const){
+  assert.deepEqual(await fetchAgentModelList({selection:openai,apiKey:key},{transport:async()=>{throw new AgentModelListTransportError(reason);}}),{outcome:'unreachable',reason});
  }
  assert.deepEqual(await fetchAgentModelList({selection:openai,apiKey:key},{transport:async()=>{throw new AgentModelListTransportError('policy');}}),{outcome:'network_denied',reason:'policy'});
  const result=await fetchAgentModelList({selection:openai,apiKey:key},{transport:async()=>json({data:[]}),now});assert.deepEqual(result,{outcome:'success',models:[],complete:true,source:'current_protocol',fetchedAt:now().toISOString()});

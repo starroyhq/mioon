@@ -28,7 +28,7 @@ import type {AgentDiagnosticSummary} from '../../../contracts/src/agent-diagnost
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration,agentSettingsError} from './config.ts';
-import {agentChatError,agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
+import {agentChatDiagnostic,agentChatError,agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
@@ -169,6 +169,11 @@ function retainModelContinuation(protocol:AgentConfiguration['protocol'],fragmen
 function retainedToolContextResult(step:AgentTaskStep|undefined):AgentTaskJson {
   if(!step||!['completed','rejected','denied','failed'].includes(step.status))return null;
   return step.result??{error:{code:step.status}};
+}
+function diagnosticHttpFailure({run,steps}:AgentTaskSnapshot):AgentDiagnosticSummary['diagnostic'] {
+  if(run.status!=='failed'||run.pauseReason!=='AGENT_CHAT_HTTP_ERROR')return;
+  const last=steps.at(-1);
+  if(last?.kind==='model'&&last.status==='failed'&&last.error?.code===run.pauseReason&&last.error.diagnostic?.kind==='http')return last.error.diagnostic;
 }
 function safeSnapshot(value:AgentTaskSnapshot,store:Store):AgentTaskSnapshot {
   const copy=structuredClone(value),readTarget=agentTaskDisplayTargetReader(store,value.run.projectId);delete copy.run.context;
@@ -646,8 +651,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const failure=code(error);
       if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
       const message=agentChatHttpStatus(error)===undefined&&agentChatStreamReason(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
-      if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='intent')journal.updateStep(runId,step.id,{status:'failed',error:{code:failure,message}});
-      if(inflight&&!prevented&&observedModelFailures.has(failure)&&journal.step(inflight).status==='dispatch_started')journal.updateStep(runId,inflight,{status:'failed',error:{code:failure,message}});
+      const diagnostic=agentChatDiagnostic(error),stepError={code:failure,message,...(diagnostic?{diagnostic}:{})};
+      if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='intent')journal.updateStep(runId,step.id,{status:'failed',error:stepError});
+      if(inflight&&!prevented&&observedModelFailures.has(failure)&&journal.step(inflight).status==='dispatch_started')journal.updateStep(runId,inflight,{status:'failed',error:stepError});
       for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message}});
       if(failure==='AGENT_TASK_UNKNOWN_RESULT'){pause(runId,'unknown_outcome');return;}
       changeStatus(runId,'failed',failure);journal.appendEvent(runId,'error',{code:failure,message});
@@ -666,8 +672,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const run=journal.run(runId);
       if(onDiagnosticCompleted&&run.diagnostic?.profile==='text'&&terminal(run)){
         const config=record(run.configuration)?run.configuration:{};
+        const diagnostic=run.status==='failed'&&run.pauseReason==='AGENT_CHAT_HTTP_ERROR'?diagnosticHttpFailure(journal.snapshot(runId)):undefined;
         onDiagnosticCompleted(agentDiagnosticSummarySchema.parse({completedAt:run.updatedAt,status:run.status,
-          protocol:config.protocol,model:config.model,...(run.settingsBinding&&run.settingsRevision!==undefined?{settingsBinding:run.settingsBinding,settingsRevision:run.settingsRevision}:{}),errorCode:run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:null}));
+          protocol:config.protocol,model:config.model,...(run.settingsBinding&&run.settingsRevision!==undefined?{settingsBinding:run.settingsBinding,settingsRevision:run.settingsRevision}:{}),errorCode:run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:null,...(diagnostic?{diagnostic}:{})}));
       }
       if(entry.restartRequested&&!closed&&!storageFaulted&&run.status==='running')queueMicrotask(()=>launch(runId));
     }).catch(failClosed);
@@ -923,7 +930,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     latestConnectionTest:()=>{checkOpen();const found=hasTables?journal.latestDiagnostic('text'):null;if(!found)return {test:null};
       const {run}=found,configuration=record(run.configuration)?run.configuration:{},text=(value:unknown):string=>typeof value==='string'?value:'';
       const failureCode=run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:undefined;
-      return {test:{runId:run.id,projectId:run.projectId,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,protocol:text(configuration.protocol),baseUrl:text(configuration.baseUrl),model:text(configuration.model),...(failureCode?{failureCode}:{})}};},
+      const diagnostic=diagnosticHttpFailure(found);
+      return {test:{runId:run.id,projectId:run.projectId,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,protocol:text(configuration.protocol),baseUrl:text(configuration.baseUrl),model:text(configuration.model),...(failureCode?{failureCode}:{}),...(diagnostic?{diagnostic}:{})}};},
     conversation:(projectId:string,conversationId:string,cursor?:string)=>{checkOpen();if(!hasTables||!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const page=journal.conversation(projectId,conversationId,{cursor});return {...page,runs:page.runs.map(run=>{const {context,...summary}=run;return summary;})};},
     timelineRevision:(projectId:string)=>{checkOpen();const row=store.db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(projectId);return row?Number(row.revision):null;},
     get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id),store);},

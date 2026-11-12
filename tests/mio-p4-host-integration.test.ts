@@ -13,6 +13,7 @@ import {agentTaskPolicySchema, agentTaskSnapshotSchema} from '../packages/contra
 import {agentDiagnosticSummarySchema} from '../packages/contracts/src/agent-diagnostic-summary.ts';
 import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import {MIO_STORAGE_TABLES, mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
+import {agentChatHttpError, agentChatProtocolError} from '../packages/business/src/agent/chat-errors.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';
@@ -25,7 +26,7 @@ const diagnosticDocument = 'agent-diagnostic-summary-v1.json';
 const globalTables = ['agent_task_policy_v2', 'agent_task_policy_requests_v2'];
 function object(value: unknown): Record<string, unknown> {assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;}
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, modelFailure?: (call: number) => Error) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mio-p4-host-'));
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   let client!: ReturnType<typeof createAgentClient>;
@@ -33,6 +34,7 @@ async function fixture(t: TestContext) {
   const outside: DatabaseSync[] = [];
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.(); calls++;
+    if (modelFailure) throw modelFailure(calls);
     yield {type: 'delta', text: reply};
     yield {type: 'done', output: {text: reply, toolCalls: [], providerOutput: {role: 'assistant', content: reply}, usage: reportedUsage}};
   };
@@ -59,19 +61,19 @@ async function fixture(t: TestContext) {
     await authorizeHttpSnapshot(request, await client.list({projectId}), 'project_agent');
     return projectId;
   }
-  async function completed(projectId: string, runId: string) {
+  async function settled(projectId: string, runId: string, expectedStatus: 'completed' | 'failed' = 'completed') {
     const deadline = Date.now() + 30_000;
     for (;;) {
       const snapshot = await client.status({projectId, runId});
       if (['completed', 'failed', 'stopped'].includes(snapshot.run.status)) {
-        assert.equal(snapshot.run.status, 'completed');
+        assert.equal(snapshot.run.status, expectedStatus);
         if (snapshot.executionEndedAt) return snapshot;
       }
       assert.ok(Date.now() < deadline, 'The offline P4 runtime did not complete');
       await new Promise(resolve => setTimeout(resolve, 5));
     }
   }
-  return {root, request, createProject, completed,
+  return {root, request, createProject, settled,
     get client() {return client;}, get calls() {return calls;},
     project: <T>(projectId: string, read: (db: DatabaseSync) => T) => inspectProject(projectId, read),
     application: <T>(read: (db: DatabaseSync) => T) => inspectApplication(read),
@@ -97,7 +99,7 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
 
   const projectId = await f.createProject(), settings = await f.client.settingsGet();
   const accepted = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_USER_PROMPT', expectedSettingsRevision: testAgentExecution(settings).revision, locale: 'en'});
-  const done = agentTaskSnapshotSchema.parse(await f.completed(projectId, accepted.run.id));
+  const done = agentTaskSnapshotSchema.parse(await f.settled(projectId, accepted.run.id));
   assert.equal(done.run.stepLimit, saved.policy.stepLimit, 'The hosted R1 journal reads the real B1 policy port');
   assert.equal(done.run.budget, saved.policy.stepLimit); assert.equal(f.calls, 1);
   const records = f.project(projectId, db => {
@@ -132,7 +134,7 @@ test('a real text diagnostic persists only the safe B1 summary and selected-entr
   assert.deepEqual(await f.client.diagnoseLatest(), {test: null});
   assert.equal(f.application(db => db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)), undefined);
   const sent = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_DIAGNOSTIC_PROMPT', expectedSettingsRevision: testAgentExecution(settings).revision, locale: 'en', diagnostic: {profile: 'text'}});
-  await f.completed(projectId, sent.run.id);
+  await f.settled(projectId, sent.run.id);
   const deadline = Date.now() + 30_000;
   let latest = await f.client.diagnoseLatest();
   while (latest.test === null) {assert.ok(Date.now() < deadline, 'The terminal diagnostic did not publish its application summary'); await new Promise(resolve => setTimeout(resolve, 5)); latest = await f.client.diagnoseLatest();}
@@ -154,4 +156,55 @@ test('a real text diagnostic persists only the safe B1 summary and selected-entr
   assert.equal(f.application(db => String(db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)!.data)), raw);
   assert.equal(f.application(db => db.prepare('SELECT total_changes() AS n').get()!.n), beforeAppChanges);
   assert.equal(outside.prepare('SELECT total_changes() AS n').get()!.n, beforeProjectChanges); assert.equal(outside.isOpen, true); assert.equal(f.calls, calls);
+});
+
+test('model failure details reach HTTP and reopen with older steps and the application summary', {timeout: 60_000}, async t => {
+  const privateMessage = 'Private user text with synthetic credential sk-synthetic-011b';
+  const diagnostic = {kind: 'http', status: 404, providerType: 'invalid_request_error', providerCode: 'model_not_found'};
+  const mismatch = {event: 'response.completed', item: 'reasoning', field: 'summary'};
+  const f = await fixture(t, call => {
+    if (call === 1) return Object.assign(new Error(privateMessage), {code: 'AGENT_CHAT_HTTP_ERROR', diagnostic});
+    if (call === 2) return agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'terminal_mismatch', mismatch);
+    return agentChatHttpError(404, Buffer.from(JSON.stringify({error: {type: diagnostic.providerType, code: diagnostic.providerCode, message: privateMessage}})));
+  });
+  const projectId = await f.createProject(), settings = await f.client.settingsGet();
+  const send = {projectId, text: 'Check the current model', expectedSettingsRevision: testAgentExecution(settings).revision};
+  const older = await f.client.send({...send, requestId: randomUUID()});
+  const olderFailure = (await f.settled(projectId, older.run.id, 'failed')).steps[0]!.error!;
+  assert.equal(olderFailure.code, 'AGENT_CHAT_HTTP_ERROR');
+  assert.deepEqual(Object.keys(olderFailure).sort(), ['code', 'message']);
+  assert.equal(olderFailure.message.includes(privateMessage), false);
+
+  const protocolRun = await f.client.send({...send, requestId: randomUUID()});
+  const protocolFailure = (await f.settled(projectId, protocolRun.run.id, 'failed')).steps[0]!.error!;
+  assert.equal(protocolFailure.code, 'AGENT_CHAT_PROTOCOL_ERROR');
+  assert.deepEqual(protocolFailure.diagnostic, {kind: 'protocol', reason: 'terminal_mismatch', ...mismatch});
+
+  const sent = await f.client.send({...send, requestId: randomUUID(), diagnostic: {profile: 'text'}});
+  const failed = await f.settled(projectId, sent.run.id, 'failed');
+  assert.equal(failed.steps[0]!.kind, 'model');
+  assert.equal(failed.steps[0]!.status, 'failed');
+  assert.equal(failed.steps[0]!.error?.code, 'AGENT_CHAT_HTTP_ERROR');
+  assert.deepEqual(failed.steps[0]!.error?.diagnostic, diagnostic);
+
+  const errorInStorage = (runId: string) => f.project(projectId, db => String(db.prepare("SELECT json_extract(data, '$.controls.error') AS error FROM mio_steps WHERE runId=?").get(runId)!.error));
+  assert.deepEqual(JSON.parse(errorInStorage(older.run.id)), olderFailure);
+  assert.deepEqual(JSON.parse(errorInStorage(protocolRun.run.id)), protocolFailure);
+  assert.deepEqual(JSON.parse(errorInStorage(sent.run.id)), failed.steps[0]!.error);
+  const latest = await f.client.diagnoseLatest();
+  assert.equal(latest.test?.status, 'failed');
+  assert.equal(latest.test?.errorCode, 'AGENT_CHAT_HTTP_ERROR');
+  assert.deepEqual(latest.test?.diagnostic, diagnostic);
+  const raw = f.application(db => String(db.prepare('SELECT data FROM app_documents WHERE name=?').get(diagnosticDocument)!.data));
+  assert.deepEqual(agentDiagnosticSummarySchema.parse(JSON.parse(raw)), latest.test);
+  for (const evidence of [JSON.stringify(failed), errorInStorage(sent.run.id), raw]) {
+    assert.doesNotMatch(evidence, /Private user text|sk-synthetic-011b/u);
+  }
+
+  await f.restart();
+  assert.deepEqual(await f.client.diagnoseLatest(), latest);
+  assert.deepEqual((await f.client.status({projectId, runId: older.run.id})).steps[0]!.error, olderFailure);
+  assert.deepEqual((await f.client.status({projectId, runId: protocolRun.run.id})).steps[0]!.error, protocolFailure);
+  assert.deepEqual((await f.client.status({projectId, runId: sent.run.id})).steps[0]!.error, failed.steps[0]!.error);
+  assert.equal(f.calls, 3);
 });

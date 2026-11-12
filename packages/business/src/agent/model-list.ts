@@ -30,7 +30,11 @@ export async function fetchAgentModelList({selection:input,apiKey,signal,selfPor
    const page=await bounded(transport({selection,apiKey,signal:controller.signal,selfPort,...(descriptor.pagination==='cursor'&&cursor!==undefined?{cursor}:{}),...(descriptor.pagination==='offset'?{offset}:{}),maxBytes:AGENT_MODEL_LIST_LIMITS.rawBytes-rawBytes}),controller.signal);
    if(controller.signal.aborted)throw new AgentModelListTransportError('aborted');
    if(page.status===401)return {outcome:'invalid_key',reason:'rejected'};
-   if([404,405,501].includes(page.status))return {outcome:'unavailable',reason:'http_unavailable'};
+   if(page.status===403)return {outcome:'invalid_key',reason:'permission_denied'};
+   if(page.status===404)return {outcome:'unavailable',reason:'not_found'};
+   if(page.status===405)return {outcome:'unavailable',reason:'http_unavailable'};
+   if(page.status===429)return {outcome:'unreachable',reason:'rate_limited'};
+   if(page.status>=500&&page.status<=599)return {outcome:'unreachable',reason:'server_error'};
    if(page.status!==200)return {outcome:'unreachable',reason:'http_error'};
    if(!(page.body instanceof Uint8Array)||page.body.byteLength>AGENT_MODEL_LIST_LIMITS.rawBytes-rawBytes)return {outcome:'unreachable',reason:'response_limit'};
    rawBytes+=page.body.byteLength;

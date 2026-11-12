@@ -13,7 +13,7 @@ import type {AgentConfiguration} from '../packages/business/src/agent/config.ts'
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {AGENT_DEFAULT_OPENAI_MODEL} from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {agentChatDiagnostic,agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -57,11 +57,12 @@ test('ordinary requests allow multiple calls only through documented protocol co
 test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
   const failure=agentChatStreamError('missing_done',{finishReason:'tool_calls',done:false,frameCount:3,toolCount:2,outputBytes:6});
   assert.equal(agentChatStreamReason(failure),'missing_done');
+  assert.deepEqual(agentChatDiagnostic(failure),{kind:'protocol',reason:'incomplete_stream',field:'done'});
   assert.match(safeAgentChatError(failure).message,/missing_done；结束原因 tool_calls；完成标记 未收到；帧数 3；工具数 2；输出字节 6/u);
   const forged=Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_TRUNCATED',reason:'missing_done',streamEvidence:{reason:'missing_finish'},state:{finishReason:'PRIVATE_KEY'},cause:failure});
   for(const value of [forged,{...failure},Object.assign(new Error('wrapped'),{code:failure.code,cause:failure})]){
     annotateAgentChatStreamError(value,{done:true,frameCount:1});
-    assert.equal(agentChatStreamReason(value),undefined);assert.equal(safeAgentChatError(value).message,'模型连接提前结束，回复可能不完整；可手动重试。');
+    assert.equal(agentChatStreamReason(value),undefined);assert.equal(agentChatDiagnostic(value),undefined);assert.equal(safeAgentChatError(value).message,'模型连接提前结束，回复可能不完整；可手动重试。');
   }
   const invalid=agentChatStreamError('read_failed',JSON.parse('{"finishReason":"PRIVATE_KEY","done":"PRIVATE_KEY","frameCount":8193,"toolCount":31,"outputBytes":-1,"body":"PRIVATE_PROVIDER_BODY"}'));
   assert.equal(safeAgentChatError(invalid).message,'模型连接提前结束，回复可能不完整；可手动重试。 流终止诊断：read_failed。');
@@ -363,11 +364,12 @@ for(const protocol of ['chat_completions','responses'] as const){
       assert.equal(network.ends,1);assert.equal(wasTaskSubmissionPrevented(failure),false);assert.equal(wasTaskSubmissionPrevented(forged),false);
     }
   });
-  test(`${protocol}: task gateway retains only trusted HTTP status without changing dispatch evidence`,async()=>{
-    const network=syntheticNetwork({status:429,body:'synthetic-provider-body-marker'});let failure:unknown;
+  test(`${protocol}: task gateway retains safe HTTP details without changing dispatch evidence`,async()=>{
+    const network=syntheticNetwork({status:429,body:JSON.stringify({error:{type:'rate_limit_error',code:'insufficient_quota',message:'Synthetic user message and sk-proj-synthetic-credential'}})});let failure:unknown;
     await assert.rejects(syntheticOutput(protocol,network),error=>{failure=error;return safeAgentChatError(error).code==='AGENT_CHAT_HTTP_ERROR';});
     assert.deepEqual(safeAgentChatError(failure),{code:'AGENT_CHAT_HTTP_ERROR',status:502,message:'模型服务拒绝了请求（HTTP 429），请检查账户、模型和配置后手动重试。'});
     assert.equal(agentChatHttpStatus(failure),429);assert.equal(network.calls,1);assert.equal(network.ends,1);assert.equal(wasTaskSubmissionPrevented(failure),false);
+    assert.deepEqual(agentChatDiagnostic(failure),{kind:'http',status:429,providerType:'rate_limit_error',providerCode:'insufficient_quota'});
     assert.equal(agentChatHttpStatus({...failure as Record<string,unknown>}),undefined);
   });
   test(`${protocol}: real fragmented local SSE preserves multiple calls and exact continuation IDs`,async t=>{
@@ -466,14 +468,37 @@ for(const protocol of ['chat_completions','responses'] as const){
   });
 }
 test('Responses SDK integration preserves explicit event-name agreement and rejects server-side tool modalities',async t=>{
-  for(const [source,expected] of [
-    ['event: response.audio.delta\n'+responseFrames(),'AGENT_CHAT_PROTOCOL_ERROR'],
-    [responseFrames().replaceAll('"type":"function_call"','"type":"web_search_call"'),'AGENT_CHAT_TOOLS_UNSUPPORTED'],
-    [responseFrames().replace('"type":"response.function_call_arguments.delta"','"type":"response.audio.delta"'),'AGENT_CHAT_PROTOCOL_ERROR'],
-  ] as const){const f=await fixture(t,'responses',source);await assert.rejects(f.output(),{code:expected});assert.equal(f.requests.length,1);}
+  for(const [source,expected,diagnostic] of [
+    ['event: response.queued\n'+responseFrames(),'AGENT_CHAT_PROTOCOL_ERROR',{kind:'protocol',reason:'invalid_event',event:'response.queued',field:'event_name'}],
+    [responseFrames().replaceAll('"type":"function_call"','"type":"web_search_call"'),'AGENT_CHAT_TOOLS_UNSUPPORTED',{kind:'protocol',reason:'unsupported_item',event:'response.output_item.added',item:'web_search_call'}],
+    [responseFrames().replace('"type":"response.function_call_arguments.delta"','"type":"response.queued"'),'AGENT_CHAT_PROTOCOL_ERROR',{kind:'protocol',reason:'unknown_event',event:'response.queued'}],
+  ] as const){
+    const f=await fixture(t,'responses',source);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),diagnostic);
+      return safeAgentChatError(error).code===expected;
+    });
+    assert.equal(f.requests.length,1);
+  }
+});
+test('all gateway protocols discard unrecognized event names and payload text from diagnostics',async t=>{
+  const marker='sk-proj-synthetic-private-event',payload={type:marker,content:'Synthetic user dialogue'};
+  for(const protocol of ['chat_completions','responses','anthropic_messages'] as const){
+    const f=await fixture(t,protocol,`event: ${marker}\n${json(payload)}`,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unknown_event',event:'unrecognized'});
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)),/synthetic-private-event|Synthetic user dialogue/u);
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    });
+    assert.equal(f.requests.length,1);
+  }
 });
 test('Responses final snapshot must agree with all streamed argument and item evidence',async t=>{
-  const f=await fixture(t,'responses',responseFrames({mismatch:true}));await assert.rejects(f.output(),{code:'AGENT_CHAT_PROTOCOL_ERROR'});
+  const f=await fixture(t,'responses',responseFrames({mismatch:true}));
+  await assert.rejects(f.output(),error=>{
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'terminal_mismatch',event:'response.completed',item:'function_call',field:'arguments'});
+    return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+  });
 });
 test('Chat Completions duplicate argument keys and filtered tool output never execute',async t=>{
   for(const options of [{duplicate:true},{filtered:true}]){const f=await fixture(t,'chat_completions',chatFrames(options));await assert.rejects(f.output(),{code:options.filtered?'AGENT_CHAT_PROVIDER_ERROR':'AGENT_CHAT_PROTOCOL_ERROR'});}
@@ -820,7 +845,14 @@ test('Q15 Responses still rejects terminal differences outside the reasoning cip
         if (event.type === 'done') completed++;
         else visible.push(event.text);
       }
-    }, {code: 'AGENT_CHAT_PROTOCOL_ERROR'}, `output ${index} ${field}`);
+    }, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {
+        kind:'protocol',reason:field==='unexpected'?'invalid_field':'terminal_mismatch',event:'response.completed',
+        item:['reasoning','message','function_call'][index],field:field==='unexpected'?'unknown_field':field,
+      });
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)), /Changed|CARRIER|I will save/u);
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    }, `output ${index} ${field}`);
     assert.equal(completed, 0);
     assert.equal(visible.join(''), 'I will save a shot.');
     assert.equal(exchange.network.calls, 1);
