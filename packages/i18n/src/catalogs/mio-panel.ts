@@ -376,6 +376,12 @@ export const mioPanelMessages = {
     "en": "The model request may have been sent. Mark it as failed before continuing",
     "ja": "モデルリクエストは送信済みの可能性があります。失敗として記録してから続行してください"
   },
+  "agent.panel.generationNotSubmitted": {
+    "zh-Hans": "真实生成未开启，这次请求未提交",
+    "zh-Hant": "真實生成未開啟，這次請求未送出",
+    "en": "Live generation was off, so this request was not submitted",
+    "ja": "実サービス生成がオフだったため、今回のリクエストは送信されていません"
+  },
   "agent.panel.markFailed": {
     "zh-Hans": "标记为失败",
     "zh-Hant": "標記為失敗",
