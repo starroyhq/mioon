@@ -1,6 +1,5 @@
 import {spawn} from 'node:child_process';
 import path from 'node:path';
-import {testCommand} from '../../scripts/lib/local-tooling.ts';
 
 const TAIL_LINES = 12;
 const LINE_LIMIT = 8192;
@@ -20,22 +19,24 @@ interface FileResult {
 }
 
 function runTestFile(root: string, file: string, {env, timeoutFor, write, signal}: RunOptions): Promise<FileResult> {
-  const command = testCommand(root, [file], 1, process.execPath, 'tap');
   const timeoutMs = timeoutFor(file);
   const rootPrefix = path.resolve(root) + path.sep;
   return new Promise(resolve => {
     const start = performance.now();
     const elapsed = () => Math.round((performance.now() - start) / 10) / 100;
     write(`TEST_FILE_START ${file}\n`);
-    const child = spawn(command.command, command.args, {
-      cwd: command.cwd, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+    // The outer process group isolates each file. Running the entry directly
+    // avoids the extra node --test worker and keeps module errors fatal.
+    const child = spawn(process.execPath, ['--test-reporter=tap', '--test-concurrency=1', file], {
+      cwd: root, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     });
     const tail: string[] = [];
     const emitLine = (line: string) => {
       const relative = line.replaceAll(rootPrefix, '');
-      const text = /(?:\/Users\/|\/home\/|~\/|\/private\/tmp\/claude-|-Users-)/.test(relative)
+      const safe = /(?:\/Users\/|\/home\/|~\/|\/private\/tmp\/claude-|-Users-)/.test(relative)
         ? '[local path omitted]'
         : relative.length > LINE_LIMIT ? '[long output line omitted]' : relative;
+      const text = /^\s*(?:::|##\[)/.test(safe) ? '# ' + safe : safe;
       write(text + '\n');
       if (text.trim()) {
         tail.push(text);

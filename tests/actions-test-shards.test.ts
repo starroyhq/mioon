@@ -157,13 +157,22 @@ test('report rejects invalid indexes and source identities', () => {
   for (const sha of ['', 'main', 'b'.repeat(39), 'z'.repeat(40), 'a'.repeat(40) + '\n']) assert.throws(() => shardReport(files, {index: 0, count: 4}, sha), /INVALID_SOURCE_SHA/);
 });
 test('shard deadlines leave room for slow files and the shard environment disables external effects', () => {
-  assert.equal(shardFileTimeoutMs(39.04), 300_000);
-  assert.equal(shardFileTimeoutMs(933.12), 2_099_520);
-  assert.equal(shardFileTimeoutMs(3600), 2_100_000);
+  assert.equal(shardFileTimeoutMs(39.04), 600_000);
+  assert.equal(shardFileTimeoutMs(933.12), 2_919_360);
+  assert.equal(shardFileTimeoutMs(3600), 10_920_000);
   assert.equal(shardFileTimeoutMs(undefined), 2_100_000);
   const environment = toolingEnvironment({PATH: '/usr/bin', HOME: '/owned', NODE_OPTIONS: '--import=private-loader', NODE_PATH: '/private-modules', GH_TOKEN: 'private-gh-token', APPLE_API_KEY: 'private-key', MIOON_FFMPEG_PATH: '/owned/ffmpeg', MIOON_FFPROBE_PATH: '/owned/ffprobe'}, {mediaPaths: true});
   assert.equal(environment.NODE_OPTIONS, undefined); assert.equal(environment.NODE_PATH, undefined); assert.equal(environment.GH_TOKEN, undefined); assert.equal(environment.APPLE_API_KEY, undefined);
   assert.equal(environment.MIOON_FFMPEG_PATH, '/owned/ffmpeg'); assert.equal(environment.MIOON_FFPROBE_PATH, '/owned/ffprobe'); assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER, '0');
+});
+
+test('a file completing within three times its recorded duration has time left before its deadline', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const timings = parseTestTimings(await readFile(path.join(root, TIMINGS_FILE), 'utf8'));
+  assert.ok(timings.size > 0);
+  for (const [file, seconds] of timings) {
+    assert.ok(shardFileTimeoutMs(seconds) > 3 * seconds * 1000, `Triple the recorded duration must fit: ${file}`);
+  }
 });
 
 const table = (files: Record<string, unknown>) => JSON.stringify({schema: 1, unit: 'seconds', files});
@@ -287,4 +296,37 @@ test('a shard times out a file with an inherited pipe, kills its descendant and 
   assert.equal(await readFile(path.join(root, 'next-ran'), 'utf8'), 'ok');
   await assert.rejects(readFile(path.join(root, 'descendant-expired')), {code: 'ENOENT'});
   assert.deepEqual(Object.keys(result.timings), [next]);
+});
+
+test('the shard fails on a module load error after a test has been registered', {
+  skip: process.platform === 'win32' ? 'the full shard uses POSIX process groups' : false,
+  timeout: 15_000,
+}, async t => {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-shard-load-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await mkdir(path.join(root, 'tests'));
+  const broken = 'tests/a-broken.test.mjs', next = 'tests/b-next.test.mjs';
+  await writeFile(path.join(root, broken), `
+    import test from 'node:test';
+    test('registered before load failure', () => {});
+    await import('./broken-module.mjs');
+  `);
+  await writeFile(path.join(root, 'tests/broken-module.mjs'), 'throw new Error("synthetic module load failure");\n');
+  await writeFile(path.join(root, next), `
+    import test from 'node:test';
+    test('next test completes', () => {console.log('::warning::synthetic output');});
+  `);
+
+  const output: string[] = [];
+  const result = await runShardFiles(root, [broken, next], {
+    concurrency: 1, env: toolingEnvironment(), timeoutFor: () => 5_000,
+    write: text => output.push(text), signal: t.signal,
+  });
+  assert.equal(result.code, 1);
+  const diagnostics = output.join('');
+  assert.match(diagnostics, /synthetic module load failure/u);
+  assert.match(diagnostics, /TEST_FILE_FAILED tests\/a-broken\.test\.mjs/u);
+  assert.match(diagnostics, /# ::warning::synthetic output/u);
+  assert.match(diagnostics, /ok 1 - next test completes/u);
+  assert.deepEqual(Object.keys(result.timings), [broken, next]);
 });

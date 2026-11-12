@@ -25,12 +25,13 @@ export interface ShardReport {
 export const TIMINGS_FILE = '.github/test-timings.json';
 /**
  * Test files that must not share the runner's CPUs; each shard runs its share of them alone, before its other
- * files. With three files at a time a file runs about 1.5 times slower on average and up to about twice as slow,
- * so a test needs real headroom against its own deadline. The list holds files with a test whose serial CI time
+ * files. Shared execution and runner speed both affect the wall time, so a test needs headroom
+ * against its own deadline. The list holds files with a test whose serial CI time
  * (main, 2026-10-23) was at least a third of its declared timeout, shown as that share, and files that failed in
  * CI for another reason when sharing CPUs. Add a file only with such evidence.
  */
 export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
+  'tests/agent-task-h1e-report-v2.test.ts', // shared-phase file timeouts in 43152802447 and 43156789540
   'tests/asset-disposition-transports.test.ts', // 46%
   'tests/desktop-async-secrets.test.ts', // 40%
   'tests/export-settings-capabilities.test.ts', // 70%
@@ -133,10 +134,9 @@ export function shardReport(full: readonly string[], options: ShardOptions, sour
     exclusiveFiles: files.filter(file => exclusive.has(file))};
 }
 export function shardFileTimeoutMs(seconds: number | undefined): number {
-  // The slowest recorded file took 933.12 s. Allow 2.25x for contention,
-  // with a five-minute floor and a 35-minute ceiling on the 60-minute job.
-  const maximum = 35 * 60_000;
-  return seconds === undefined ? maximum : Math.min(maximum, Math.max(5 * 60_000, Math.ceil(seconds * 2250)));
+  // Before per-file deadlines, H1E finished in 332.51 s on a 108.22 s
+  // recording. Leave two minutes beyond triple the recording, with a 10 min floor.
+  return seconds === undefined ? 35 * 60_000 : Math.max(10 * 60_000, Math.ceil(seconds * 3000) + 120_000);
 }
 /** The shard's exclusive files alone on a quiet runner, then its shared files `concurrency` at a time; each phase records timings. */
 export function shardPhases(report: Pick<ShardReport, 'files' | 'exclusiveFiles'>, concurrency: number) {
