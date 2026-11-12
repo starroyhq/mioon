@@ -1,9 +1,8 @@
 /* Short-lived marks on canvas and timeline targets ("Mio 修改"). The glow sits outside the target and keeps
-   its selection outline, so a selected target that Mio changed shows both. Colours follow the accent, which
-   is near-white in the dark theme and near-black in the light theme. */
+   its selection outline. Mio passes the run colour. Other marks use the theme accent. */
 [data-mio-mark] {
-  --mio-mark-ring: color-mix(in srgb, var(--wb-accent) 70%, transparent);
-  --mio-mark-glow: color-mix(in srgb, var(--wb-accent) 35%, transparent);
+  --mio-mark-ring: color-mix(in srgb, var(--mio-mark-color, var(--wb-accent)) 70%, transparent);
+  --mio-mark-glow: color-mix(in srgb, var(--mio-mark-color, var(--wb-accent)) 35%, transparent);
   box-shadow: var(--mio-mark-selection, 0 0 0 0 transparent), 0 0 0 var(--mio-mark-ring-width, 1px) var(--mio-mark-ring), 0 0 var(--mio-mark-blur, 14px) var(--mio-mark-glow) !important;
   transition: box-shadow .4s ease-out;
   animation: mio-mark-glow-in .18s ease-out;

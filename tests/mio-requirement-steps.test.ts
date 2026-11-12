@@ -9,6 +9,7 @@ import {LOCALES,translate,validateCatalogs} from '../packages/i18n/src/index.ts'
 import type {Locale} from '../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../packages/i18n/src/catalogs/mio-panel.ts';
 import * as presentation from '../apps/web/src/agent-task-presentation.ts';
+import * as mioFollow from '../apps/web/src/mio-follow.ts';
 import * as requirements from '../apps/web/src/agent-task-requirements.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
@@ -180,6 +181,8 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
     if(name==='./project-rules-client.ts')return rulesModule;
     if(name==='./project-rules-proposal.ts')return rulesProposal;
     if(name==='./agent-task-presentation.ts')return presentation;
+    if(name==='./mio-follow.ts')return mioFollow;
+    if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{mioFollow:true}})};
     if(name==='./agent-task-requirements.ts')return requirements;
     if(name==='./agent-task-reviews.ts')return reviews;
     if(name==='./agent-task-questions.ts')return questions;

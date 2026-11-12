@@ -113,6 +113,11 @@
   --wb-media-overlay: rgb(0 0 0 / 64%);
   --wb-shadow-color: rgb(0 0 0 / 45%);
   --wb-shadow: 0 8px 24px var(--wb-shadow-color);
+  --wb-mio-follow-ink: #0A1C24;
+  --wb-mio-follow-gradient-dark: #143958;
+  --wb-mio-follow-pointer-shadow: #304D795C;
+  --wb-mio-follow-light-outline: #182938;
+  --wb-mio-follow-light-pointer-shadow: #243D50;
   --wb-font-sans: "PingFang SC", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --wb-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   --wb-text-display: 24px;

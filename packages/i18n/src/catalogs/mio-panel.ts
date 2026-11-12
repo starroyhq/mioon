@@ -1,6 +1,12 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const mioPanelMessages = {
+  "agent.follow.toggle": {"zh-Hans": "跟随 Mio", "zh-Hant": "跟隨 Mio", "en": "Follow Mio", "ja": "Mio を追う"},
+  "agent.follow.canvas": {"zh-Hans": "在画布中查看", "zh-Hant": "在畫布中查看", "en": "View on canvas", "ja": "キャンバスで表示"},
+  "agent.follow.timeline": {"zh-Hans": "在时间线中查看", "zh-Hant": "在時間軸中查看", "en": "View on timeline", "ja": "タイムラインで表示"},
+  "agent.follow.locator": {"zh-Hans": "Mio 在 {target}", "zh-Hant": "Mio 在 {target}", "en": "Mio is at {target}", "ja": "Mio は {target} にいます"},
+  "agent.follow.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
+  "agent.follow.saveError": {"zh-Hans": "跟随设置未保存，请重试。", "zh-Hant": "跟隨設定未儲存，請重試。", "en": "The follow setting could not be saved. Try again.", "ja": "追跡設定を保存できませんでした。もう一度お試しください。"},
   "agent.panel.goal.title": {"zh-Hans": "整理要求", "zh-Hant": "整理要求", "en": "Set requirements", "ja": "要件を整理"},
   "agent.panel.goal.titleCount": {"zh-Hans": "整理要求 · {count} 项", "zh-Hant": "整理要求 · {count} 項", "en": "Set requirements · {count}", "ja": "要件を整理 · {count} 件"},
   "agent.panel.goal.repairTitle": {"zh-Hans": "按未达成的要求补做", "zh-Hant": "按未達成的要求補做", "en": "Repair unmet requirements", "ja": "未達成の要件を補完"},
