@@ -9,6 +9,16 @@ const id = '11111111-1111-4111-8111-111111111111';
 const envelope = (patch: Partial<UiPreferencesResponse> = {}) => ({ revision: 2, preferences: { ...DEFAULT_UI_PREFERENCES }, recentOpened: {}, recoveredDefaults: false, writable: true, ...patch });
 const response = (data: unknown) => Response.json({ ok: true, data });
 
+test('the client reads a legacy preference response as canonical with Mio Follow on', async () => {
+  const current = envelope({ preferences: { ...DEFAULT_UI_PREFERENCES, theme: 'light' } });
+  const { mioFollow: _follow, ...oldPreferences } = current.preferences;
+  const legacy = createUiPreferencesClient(async () => response({ ...current, preferences: oldPreferences }));
+  assert.deepEqual(await legacy.get(), current);
+
+  const invalid = createUiPreferencesClient(async () => response({ ...current, preferences: { ...oldPreferences, mioFollow: 'false' } }));
+  await assert.rejects(invalid.get(), { code: 'UI_PREFERENCES_PROTOCOL' });
+});
+
 test('private preference reads and writes use cookie authentication and validate exact acknowledgements', async () => {
   const calls: [RequestInfo | URL, RequestInit | undefined][] = [];
   const client = createUiPreferencesClient(async (url, options) => {

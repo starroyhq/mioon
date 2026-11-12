@@ -1,6 +1,8 @@
 import type { AgentTaskChange, AgentTaskSnapshot } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { createTargetMarks, markableTargets, markTargetElements } from './target-marks.ts';
 import type { TargetMarks, TargetMarksOptions } from './target-marks.ts';
+import { mioFollowColor } from './mio-follow.ts';
+import type { MioFollowTarget } from './mio-follow.ts';
 
 export interface AgentTaskReveal { changeId: string; nonce: number }
 export interface AgentChangeMarks {
@@ -20,6 +22,7 @@ export interface AgentChangeMarks {
   reset(): void;
   dispose(): void;
 }
+const markEntry = (change: AgentTaskChange) => ({ owner: change.id, targets: change.targets, color: mioFollowColor(change.runId) });
 const ended = (change: AgentTaskChange): boolean => change.status !== 'applied' || change.modifiedAfter === true;
 // The refreshed canvas and timeline commit, and React Flow measures new nodes, within two frames.
 const afterTwoFrames = (callback: () => void): void => { requestAnimationFrame(() => requestAnimationFrame(callback)); };
@@ -39,13 +42,33 @@ export function createAgentChangeMarks({ afterLayout = afterTwoFrames, ...option
     show(changes) {
       if (!changes.length) return;
       const owner = epoch;
-      afterLayout(() => { if (owner === epoch) marks.mark(changes.map(change => ({ owner: change.id, targets: change.targets })), { requireVisible: true }); });
+      afterLayout(() => { if (owner === epoch) marks.mark(changes.map(markEntry), { requireVisible: true }); });
     },
-    locate(change) { marks.mark([{ owner: change.id, targets: change.targets }], { requireVisible: false }); },
+    locate(change) { marks.mark([markEntry(change)], { requireVisible: false }); },
     clear() { epoch++; marks.clear(); },
     reset() { epoch++; marks.clear(); seen.clear(); },
     dispose() { epoch++; seen.clear(); marks.dispose(); },
   };
+}
+
+/** Bring a saved clip or cue into its own scroll viewport without seeking or selecting it. */
+export function revealMioFollowTimeline(target: MioFollowTarget, behavior: ScrollBehavior, document: Document = globalThis.document): boolean {
+  const element = markTargetElements(target, document)[0];
+  const viewport = element?.closest<HTMLElement>('[data-testid="timeline-scroll"]');
+  if (!element || !viewport || viewport.closest('[hidden], [inert]') || !viewport.offsetWidth) return false;
+  const bounds = viewport.getBoundingClientRect(), clip = element.getBoundingClientRect();
+  if (!clip.width || !clip.height || !bounds.width) return false;
+  const scale = bounds.width / viewport.offsetWidth;
+  const header = viewport.querySelector('.track-label')?.getBoundingClientRect();
+  const ruler = viewport.querySelector('.timeline-ruler-row')?.getBoundingClientRect();
+  const left = Math.max(bounds.left, header?.right ?? bounds.left), right = bounds.left + viewport.clientWidth * scale;
+  const top = Math.max(bounds.top, ruler?.bottom ?? bounds.top), bottom = bounds.top + viewport.clientHeight * scale;
+  if (left >= right || top >= bottom) return false;
+  let x = viewport.scrollLeft, y = viewport.scrollTop;
+  if (clip.left < left || clip.right > right) x += (clip.left + clip.width / 2 - (left + right) / 2) / scale;
+  if (clip.top < top || clip.bottom > bottom) y += (clip.top + clip.height / 2 - (top + bottom) / 2) / scale;
+  if (x !== viewport.scrollLeft || y !== viewport.scrollTop) viewport.scrollTo({ left: x, top: y, behavior });
+  return true;
 }
 
 /**
