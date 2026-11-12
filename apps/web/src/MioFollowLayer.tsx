@@ -1,6 +1,7 @@
 import React, { useId, useLayoutEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { coveredInsets, measuredOverlays } from './canvas-fit.ts';
 import type { Box, Side } from './canvas-fit.ts';
 import Icon from './icons.tsx';
@@ -225,7 +226,7 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
         <span className="mio-follow-bubble" data-testid="mio-follow-bubble">{focus.text}</span>
       </div>
     </div>
-    {target && <button ref={locator} type="button" className="mio-follow-locator" data-testid="mio-follow-locator" data-placed="false"
+    {target && <WorkbenchButton ref={locator} type="button" variant="secondary" className="mio-follow-locator" data-testid="mio-follow-locator" data-placed="false"
       onClick={() => {
         const view = document.defaultView;
         if (view && reveal.current(target, revealBehavior(view, reduceMotion))) {
@@ -235,7 +236,7 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
       }}>
       <span className="mio-follow-locator-mark"><Icon name="sparkle" size={10} /></span>
       <span>{t('agent.follow.locator', { target: target.name })}</span><Icon name="arrow" size={14} className="mio-follow-locator-arrow" />
-    </button>}
+    </WorkbenchButton>}
   </div>, document.body);
 }
 

@@ -84,6 +84,7 @@ function harness(dispatch: (operation:string,input:ReferenceInput)=>unknown, { p
   };
   if (projectSnapshot) {
     const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: (callback: unknown) => callback, emptyData: {}, projectEpoch,
+      mioFollowCandidate: { current: null }, setMioFollow() {},
       setProviders() {}, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, readGenerationProviderDirectory, viewRef, viewReady: { current: true },
       // The fixture registers no editing owners, matching the real empty wait.
       refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },

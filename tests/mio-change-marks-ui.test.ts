@@ -219,6 +219,7 @@ function followHarness() {
     switch (id) {
       case 'react': return react;
       case 'react-dom': return { createPortal: (child: RootTree) => child };
+      case '@mioon/ui/components/workbench-controls': return { WorkbenchButton: 'WorkbenchButton' };
       case './canvas-fit.ts': return { coveredInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }), measuredOverlays: () => [] };
       case './icons.tsx': return 'Icon';
       case './i18n/I18nProvider.tsx': return { useI18n: () => ({ t: (key: string, input?: { target: string }) => key === 'agent.task.title' ? 'Mio' : `Mio 在 ${input?.target}` }) };
@@ -336,7 +337,9 @@ test('Mio offers an explicit reveal while follow is off and places reduced-motio
     assert.deepEqual(h.revealed, []);
     assert.equal(h.locator.dataset.placed, 'true');
     const button = nodes(tree).find(node => node.props['data-testid'] === 'mio-follow-locator');
-    assert.equal(button?.type, 'button');
+    assert.equal(button?.type, 'WorkbenchButton');
+    assert.equal(button.props.type, 'button');
+    assert.equal(button.props.variant, 'secondary');
     button?.props.onClick();
     assert.deepEqual(h.revealed, [['clip', 'auto']]);
     clip.rect = box(560, 660, 140, 42); clip.visible = true;

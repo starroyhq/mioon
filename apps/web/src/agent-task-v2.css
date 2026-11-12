@@ -27,7 +27,7 @@
 .mio-steps>summary,.agent-task-history>summary,.mio-safe-details>summary{cursor:pointer;min-height:var(--wb-control-compact);color:var(--wb-soft);font-size:var(--wb-text-caption);line-height:var(--wb-control-compact)}
 .mio-panel .mio-step{padding:var(--wb-space-1) 0;border:0;background:transparent;min-width:0}
 .mio-panel .mio-step[data-mio-follow]{margin-inline:-3px;padding-inline:3px;border-radius:6px;background:color-mix(in srgb,var(--mio-follow-color) 12%,transparent);box-shadow:inset 0 0 0 1px var(--mio-follow-color)}
-:root[data-theme=light] .mio-panel .mio-step[data-mio-follow]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mio-follow-color) 62%,#000)}
+:root[data-theme=light] .mio-panel .mio-step[data-mio-follow]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mio-follow-color) 62%,var(--wb-accent))}
 .mio-follow-links{display:flex;flex-wrap:wrap;margin-inline-start:var(--wb-space-6)}
 .mio-follow-links .mio-follow-link{padding-inline:0 var(--wb-space-2);min-height:22px;height:22px;color:var(--wb-text);font-size:var(--wb-text-caption)}
 .mio-step-line{display:flex;align-items:flex-start;gap:var(--wb-space-2);min-height:var(--wb-control-compact)}

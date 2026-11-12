@@ -6,7 +6,6 @@
   z-index: 31;
   overflow: hidden;
   pointer-events: none;
-  --mio-follow-ink: #0a1c24;
   --mio-follow-border: var(--mio-follow-color);
 }
 
@@ -29,12 +28,12 @@
 .mio-follow-pointer {
   display: block;
   overflow: visible;
-  filter: drop-shadow(.5px 1.5px 3px #304d795c);
+  filter: drop-shadow(.5px 1.5px 3px var(--wb-mio-follow-pointer-shadow));
 }
 .mio-follow-cursor[data-side="left"] .mio-follow-pointer { transform: scaleX(-1); }
 .mio-follow-pointer-light { stop-color: color-mix(in srgb, var(--mio-follow-color) 42%, white); }
 .mio-follow-pointer-middle { stop-color: color-mix(in srgb, var(--mio-follow-color) 80%, white); }
-.mio-follow-pointer-dark { stop-color: color-mix(in srgb, var(--mio-follow-color) 78%, #143958); }
+.mio-follow-pointer-dark { stop-color: color-mix(in srgb, var(--mio-follow-color) 78%, var(--wb-mio-follow-gradient-dark)); }
 
 .mio-follow-cursor-label {
   position: absolute;
@@ -59,7 +58,7 @@
   padding: 0 8px 0 6px;
   border-radius: 10px;
   background: var(--mio-follow-color);
-  color: var(--mio-follow-ink);
+  color: var(--wb-mio-follow-ink);
   box-shadow: 0 2px 8px var(--wb-shadow-color);
   font-size: 11px;
   font-weight: 600;
@@ -80,9 +79,11 @@
   overflow-wrap: anywhere;
 }
 
-.mio-follow-locator {
+.mio-follow-locator.wb-button {
   display: inline-flex;
   box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
   max-width: min(240px, calc(100vw - 24px));
   height: 28px;
   align-items: center;
@@ -96,9 +97,11 @@
   font: 500 12px var(--wb-font-sans);
   cursor: pointer;
   white-space: nowrap;
+  transition: none;
+  translate: none;
 }
 .mio-follow-locator[data-placed="true"] { pointer-events: auto; }
-.mio-follow-locator:focus-visible { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
+.mio-follow-locator.wb-button:focus-visible { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
 .mio-follow-locator > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mio-follow-locator-mark {
   display: grid;
@@ -108,9 +111,10 @@
   place-items: center;
   border-radius: 9px;
   background: var(--mio-follow-color);
-  color: var(--mio-follow-ink);
+  color: var(--wb-mio-follow-ink);
 }
-.mio-follow-locator-arrow { flex: none; color: var(--wb-text-secondary); }
+.mio-follow-locator .mio-follow-locator-mark svg { width: 10px; height: 10px; stroke-width: 1.65; }
+.mio-follow-locator svg.mio-follow-locator-arrow { width: 14px; height: 14px; stroke-width: 1.65; flex: none; color: var(--wb-soft); }
 .mio-follow-locator[data-side="left"] .mio-follow-locator-arrow { transform: rotate(180deg); }
 .mio-follow-locator[data-side="top"] .mio-follow-locator-arrow { transform: rotate(-90deg); }
 .mio-follow-locator[data-side="bottom"] .mio-follow-locator-arrow { transform: rotate(90deg); }
@@ -134,11 +138,11 @@
 .timeline-clip[data-mio-follow-highlight]:not(.selected) { z-index: 3; }
 
 :root.light :is(.mio-follow-layer, [data-mio-follow-highlight]) {
-  --mio-follow-border: color-mix(in srgb, var(--mio-follow-color) 60%, #182938);
+  --mio-follow-border: color-mix(in srgb, var(--mio-follow-color) 60%, var(--wb-mio-follow-light-outline));
 }
 :root.light .mio-follow-bubble { border-color: var(--mio-follow-border); }
 :root.light .mio-follow-pointer {
-  filter: drop-shadow(0 0 1px #243d50) drop-shadow(.5px 1.5px 3px #304d795c);
+  filter: drop-shadow(0 0 1px var(--wb-mio-follow-light-pointer-shadow)) drop-shadow(.5px 1.5px 3px var(--wb-mio-follow-pointer-shadow));
 }
 
 .mio-follow-layer[data-reduced-motion="true"] .mio-follow-cursor { transition: none; }

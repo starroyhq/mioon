@@ -56,6 +56,7 @@ test('the actual App refresh rechecks renderer session after an asynchronous edi
     const snapshot={project:{id:projectId},shots:[],nodes:[]};
     const noop=()=>{};
     const env={useCallback:(fn:()=>Promise<unknown>)=>fn,currentProject:{current:projectId},projectSessionReady:()=>true,requestCounter:{current:0},projectEpoch:{current:1},workspaceRef,editorSession,
+      mioFollowCandidate:{current:null},setMioFollow:noop,
       rpc:async()=>snapshot,readGenerationProviderDirectory:async()=>({providers:[],videoUnavailable:false}),importSession:{current:{active:true}},
       projectResponseMatches:()=>true,application:null,refreshAgentEditingTargets:async()=>{entered();await held;},
       reconcilePending:()=>{published++;},dataRef:{current:null},emptyData:{},setData:noop,setProviders:noop,setVideoDirectoryUnavailable:noop,setLastSync:noop,setOnline:noop,setPending:noop,pendingForProject:()=>[],
