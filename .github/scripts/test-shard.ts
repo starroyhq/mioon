@@ -3,8 +3,8 @@ import {execFileSync} from 'node:child_process';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {discoverTests, executeCommand, toolingEnvironment} from '../../scripts/lib/local-tooling.ts';
-import type {CommandSpec} from '../../scripts/lib/local-tooling.ts';
+import {discoverTests, preflight, toolingEnvironment} from '../../scripts/lib/local-tooling.ts';
+import {runShardFiles} from './test-shard-runner.ts';
 
 export interface ShardOptions {index: number; count: number; concurrency?: number}
 /** Recorded seconds per test file, from `.github/test-timings.json`. */
@@ -132,17 +132,18 @@ export function shardReport(full: readonly string[], options: ShardOptions, sour
     fullCount: sorted.length, shardIndex: options.index, shardCount: options.count, selectedCount: files.length, estimatedSeconds, files,
     exclusiveFiles: files.filter(file => exclusive.has(file))};
 }
-export function shardCommand(root: string, files: readonly string[], execPath = process.execPath, {concurrency = 1, timings}: {concurrency?: number; timings?: string} = {}): CommandSpec {
-  const selected = catalog(files);
-  return {command: execPath, cwd: root, args: [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', `--concurrency=${concurrency}`, '--reporter=tap',
-    ...(timings ? [`--timings=${timings}`] : []), ...selected.map(file => `--file=${file.slice('tests/'.length)}`)]};
+export function shardFileTimeoutMs(seconds: number | undefined): number {
+  // The slowest recorded file took 933.12 s. Allow 2.25x for contention,
+  // with a five-minute floor and a 35-minute ceiling on the 60-minute job.
+  const maximum = 35 * 60_000;
+  return seconds === undefined ? maximum : Math.min(maximum, Math.max(5 * 60_000, Math.ceil(seconds * 2250)));
 }
 /** The shard's exclusive files alone on a quiet runner, then its shared files `concurrency` at a time; each phase records timings. */
-export function shardCommands(root: string, report: Pick<ShardReport, 'files' | 'exclusiveFiles' | 'shardIndex'>, concurrency: number, execPath = process.execPath): CommandSpec[] {
-  const directory = `artifacts/checks-linux-${report.shardIndex}`, alone = new Set(report.exclusiveFiles), shared = report.files.filter(file => !alone.has(file));
+export function shardPhases(report: Pick<ShardReport, 'files' | 'exclusiveFiles'>, concurrency: number) {
+  const alone = new Set(report.exclusiveFiles), shared = report.files.filter(file => !alone.has(file));
   return [
-    ...(alone.size ? [shardCommand(root, report.exclusiveFiles, execPath, {concurrency: 1, timings: `${directory}/timings-alone.json`})] : []),
-    ...(shared.length ? [shardCommand(root, shared, execPath, {concurrency, timings: `${directory}/timings.json`})] : []),
+    ...(alone.size ? [{files: report.exclusiveFiles, concurrency: 1, timings: 'timings-alone.json'}] : []),
+    ...(shared.length ? [{files: shared, concurrency, timings: 'timings.json'}] : []),
   ];
 }
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
@@ -151,7 +152,8 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   const environment = toolingEnvironment(process.env, {mediaPaths: true});
   const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
   const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8');
-  const report = shardReport(full, options, sourceSha, parseTestTimings(timingsText), timingsText);
+  const timings = parseTestTimings(timingsText);
+  const report = shardReport(full, options, sourceSha, timings, timingsText);
   // Reuse the full lane's own selection validation before launching any test.
   const admitted = await discoverTests(root, {suite: 'full', files: report.files.map(file => file.slice('tests/'.length))});
   if (JSON.stringify(admitted) !== JSON.stringify(report.files)) fail('SHARD_SELECTION_MISMATCH');
@@ -159,14 +161,35 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   await mkdir(path.dirname(output), {recursive: true});
   await writeFile(output, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
   process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files (${report.exclusiveFiles.length} alone), about ${report.estimatedSeconds} s, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}\n`);
-  // Both phases run so one failure still reports the other; an interrupted phase (signal exit) ends the shard.
-  let code = 0;
-  for (const command of shardCommands(root, report, options.concurrency ?? 1)) {
-    const result = (await executeCommand(command, {env: environment})).code;
-    code ||= result;
-    if (result >= 128) break;
+  const {report: prerequisites} = await preflight(root);
+  if (!prerequisites.buildReady) {
+    console.error(JSON.stringify(prerequisites, null, 2));
+    return 1;
   }
-  return code;
+  const controller = new AbortController();
+  let interrupted = 0;
+  const interrupt = (code: number) => {interrupted ||= code; controller.abort();};
+  const onInterrupt = () => interrupt(130), onTerminate = () => interrupt(143);
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onTerminate);
+  try {
+    let code = 0;
+    for (const phase of shardPhases(report, options.concurrency ?? 1)) {
+      if (interrupted) break;
+      const result = await runShardFiles(root, phase.files, {
+        concurrency: phase.concurrency, env: environment, signal: controller.signal,
+        timeoutFor: file => shardFileTimeoutMs(timings.get(file)),
+        write: text => {process.stdout.write(text);},
+      });
+      await writeFile(path.join(path.dirname(output), phase.timings),
+        JSON.stringify({schema: 1, unit: 'seconds', files: result.timings}, null, 1) + '\n', {mode: 0o600});
+      code ||= result.code;
+    }
+    return interrupted || code;
+  } finally {
+    process.off('SIGINT', onInterrupt);
+    process.off('SIGTERM', onTerminate);
+  }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().then(code => {process.exitCode = code;}).catch(() => {console.error('TEST_SHARD_FAILED'); process.exitCode = 1;});
