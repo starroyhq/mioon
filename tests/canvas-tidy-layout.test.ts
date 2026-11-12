@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CANVAS_GRID } from '../packages/contracts/src/canvas-position.ts';
-import { layoutCanvas } from '../packages/contracts/src/canvas-tidy-layout.ts';
+import { layoutCanvas, TIDY_SHOTS_PER_ROW } from '../packages/contracts/src/canvas-tidy-layout.ts';
 import type { CanvasLayoutEdge, CanvasLayoutNode, CanvasLayoutShot } from '../packages/contracts/src/canvas-tidy-layout.ts';
 
 type LayoutInput = Parameters<typeof layoutCanvas>[0];
@@ -78,14 +78,33 @@ function geometry(input: LayoutInput) {
   return { edgeLength, crossings, overlap: hasOverlap(cards), width, height };
 }
 
-function assertStoryRow(input: LayoutInput, orderedIds: readonly string[]) {
-  const row = new Map(input.shots.map(item => [item.id, item]));
-  const ordered = orderedIds.map(id => row.get(id)!);
-  assert.equal(new Set(ordered.map(item => item.position.y)).size, ordered.length === 0 ? 0 : 1);
+function assertStoryRows(input: LayoutInput, orderedIds: readonly string[]) {
+  assert.equal(TIDY_SHOTS_PER_ROW, 10);
+  const byId = new Map(input.shots.map(item => [item.id, item]));
+  const ordered = orderedIds.map(id => byId.get(id)!);
   const gap = (input.grid ?? CANVAS_GRID).gap;
-  for (let index = 1; index < ordered.length; index++) {
-    const previous = ordered[index - 1]!, current = ordered[index]!;
-    assert.ok(current.position.x >= previous.position.x + previous.width + gap, `${previous.id} precedes ${current.id} with a gutter`);
+  let previousBottom = -Infinity;
+  for (let start = 0; start < ordered.length; start += TIDY_SHOTS_PER_ROW) {
+    const row = ordered.slice(start, start + TIDY_SHOTS_PER_ROW);
+    const top = row[0]!.position.y;
+    assert.ok(top >= previousBottom + gap, 'story rows progress downwards with a gutter');
+    for (const [index, current] of row.entries()) {
+      assert.equal(current.position.y, top, `${current.id} stays on its story row`);
+      const previous = row[index - 1];
+      if (previous) assert.ok(current.position.x >= previous.position.x + previous.width + gap,
+        `${previous.id} precedes ${current.id} with a gutter`);
+    }
+    previousBottom = Math.max(...row.map(item => item.position.y + item.height));
+  }
+}
+
+function assertReferencesAboveShots(input: LayoutInput) {
+  const shots = new Map(input.shots.map(item => [item.id, item]));
+  const nodes = new Map(input.nodes.map(item => [item.id, item]));
+  const gap = (input.grid ?? CANVAS_GRID).gap;
+  for (const { source, target } of input.edges) {
+    const ref = nodes.get(source), served = shots.get(target);
+    if (ref && served) assert.ok(ref.position.y + ref.height + gap <= served.position.y, `${ref.id} stays above ${served.id}`);
   }
 }
 
@@ -172,7 +191,8 @@ for (const { name, input, story } of samples) test(`canvas tidy layout: ${name}`
     assert.ok(movable.has(move.id), `only selected objects move: ${move.id}`);
     assert.equal(move.kind, kinds.get(move.id));
   }
-  if (story) assertStoryRow(final, story);
+  if (story) assertStoryRows(final, story);
+  assertReferencesAboveShots(final);
   const reversed = {
     ...input,
     shots: [...input.shots].reverse(),
@@ -199,6 +219,74 @@ test('a shared reference is placed once and minimizes total Manhattan edge lengt
   // the median. The nearest clear upper position attains the vertical minimum.
   const minimum = center(right!).x - center(left!).x + 3 * (reference.height + CANVAS_GRID.gap);
   assert.equal(geometry(final).edgeLength, minimum);
+});
+
+test('wrapped rows leave room for the tallest reference above the next row', () => {
+  const { shots: standard } = series(TIDY_SHOTS_PER_ROW + 2);
+  const shots = standard.map((item, index) => index === 2 ? { ...item, width: 420, height: 330 } : item);
+  const refs = [
+    node('first-row-image', 'image', -1200, -1100, 100, 48),
+    node('next-row-image', 'image', -1600, -1100, 144, 420),
+    node('next-row-text', 'text', -2000, -1100, 120, 200),
+  ];
+  const targets = [shots[2]!, shots[TIDY_SHOTS_PER_ROW]!, shots[TIDY_SHOTS_PER_ROW + 1]!];
+  const input: LayoutInput = { shots, nodes: refs, edges: refs.map((ref, index) => edge(ref.id, targets[index]!.id)) };
+  const result = layoutCanvas(input);
+  assert.equal(result.status, 'moved');
+  const final = applyMoves(input, result);
+  assertStoryRows(final, shots.map(item => item.id));
+  const firstBottom = Math.max(...final.shots.slice(0, TIDY_SHOTS_PER_ROW).map(item => item.position.y + item.height));
+  const finalShots = new Map(final.shots.map(item => [item.id, item]));
+  const gap = CANVAS_GRID.gap;
+  for (const [index, ref] of final.nodes.entries()) {
+    const target = finalShots.get(targets[index]!.id)!;
+    assert.ok(ref.position.y + ref.height + gap <= target.position.y, `${ref.id} is above its own shot`);
+    if (index > 0) assert.ok(ref.position.y >= firstBottom + gap, `${ref.id} fits in the inter-row band`);
+  }
+  assert.equal(geometry(final).overlap, false);
+  assert.deepEqual(layoutCanvas(final), { status: 'no-movement', moves: [] });
+});
+
+test('partial tidy wraps by the count of selected shots and leaves fixed cards untouched', () => {
+  const { shots } = series(TIDY_SHOTS_PER_ROW * 2 + 4);
+  const selected = shots.filter((_, index) => index % 2 === 1).map(item => item.id);
+  const fixedNote = node('fixed-note', 'text', -1500, 4000);
+  const input: LayoutInput = { shots, nodes: [fixedNote], edges: [], selectedIds: new Set(selected) };
+  const result = layoutCanvas(input);
+  assert.equal(result.status, 'moved');
+  const final = applyMoves(input, result);
+  assertStoryRows(final, selected);
+  assert.deepEqual(final.shots.filter((_, index) => index % 2 === 0), shots.filter((_, index) => index % 2 === 0));
+  assert.deepEqual(final.nodes, input.nodes);
+  assert.equal(geometry(final).overlap, false);
+  assert.deepEqual(layoutCanvas(final), { status: 'no-movement', moves: [] });
+});
+
+test('a reference shared across rows is placed once at the minimum total Manhattan edge length', () => {
+  const { shots } = series(TIDY_SHOTS_PER_ROW + 2);
+  const targets = [0, TIDY_SHOTS_PER_ROW, TIDY_SHOTS_PER_ROW + 1];
+  const shared = node('cross-row-reference', 'image', -900, -600, 144, 180);
+  const input: LayoutInput = {
+    shots, nodes: [shared], edges: targets.map((index, target) => edge(shared.id, shots[index]!.id, target === 2)),
+  };
+  const result = layoutCanvas(input);
+  assert.equal(result.status, 'moved');
+  assert.equal(result.moves.filter(move => move.id === shared.id).length, 1);
+  const final = applyMoves(input, result);
+  assertStoryRows(final, shots.map(item => item.id));
+  const served = targets.map(index => final.shots[index]!);
+  const reference = final.nodes[0]!;
+  const nearestTop = Math.min(...served.map(item => item.position.y)) - CANVAS_GRID.gap - reference.height;
+  assert.ok(reference.position.y <= nearestTop);
+  // The median gives the horizontal minimum for three ends, including when
+  // the first-frame link is elsewhere. The upper shot bounds the vertical minimum.
+  const ends = served.map(center);
+  const xs = ends.map(point => point.x);
+  const nearestCentre = nearestTop + reference.height / 2;
+  const minimum = Math.max(...xs) - Math.min(...xs) + ends.reduce((total, point) => total + point.y - nearestCentre, 0);
+  assert.equal(geometry(final).edgeLength, minimum);
+  assert.equal(geometry(final).overlap, false);
+  assert.deepEqual(layoutCanvas(final), { status: 'no-movement', moves: [] });
 });
 
 test('a shared reference breaks a shortest-length tie by avoiding a fixed edge crossing', () => {
@@ -257,6 +345,21 @@ test('a fixed connected card anchors either a selected shot or a node-only selec
     assert.notDeepEqual(first.moves[0]!.position, second.moves[0]!.position,
       'shifting the connected fixed card well outside the default grid changes the planned position');
   }
+});
+
+test('a single selected shot preserves both coordinates of its fixed reference anchor above the origin', () => {
+  const reference = node('anchor', 'image', 4000, -3000);
+  const selected = shot('selected', 0, -1200, -900);
+  const input: LayoutInput = {
+    shots: [selected], nodes: [reference], edges: [edge(reference.id, selected.id, true)],
+    selectedIds: new Set([selected.id]),
+  };
+  const result = layoutCanvas(input);
+  assert.equal(result.status, 'moved');
+  assert.deepEqual(result.moves, [{
+    id: selected.id, kind: 'shot', position: { x: reference.position.x, y: reference.position.y + reference.height + CANVAS_GRID.gap },
+  }]);
+  assert.deepEqual(layoutCanvas(applyMoves(input, result)), { status: 'no-movement', moves: [] });
 });
 
 test('a selection containing only an edge cannot move any card', () => {
@@ -353,4 +456,26 @@ test('a blocked upper reference cannot leak the shot move that was already plann
     selectedIds: new Set(['shot', 'reference']),
   };
   assert.deepEqual(layoutCanvas(blocked), { status: 'no-fit', moves: [] }, 'the fixed card covers all legal positions above the shot');
+});
+
+test('a reference blocked above the second row cannot leak the planned first row', () => {
+  const grid = { columnWidth: 10, rowHeight: 10, gap: 1, coordinateLimit: 100 };
+  const shots = Array.from({ length: TIDY_SHOTS_PER_ROW + 1 }, (_, index) => shot(`shot-${index}`, index, index * 8, 20, 5, 5));
+  const fixed = node('fixed', 'text', -99, -99, 198, 159);
+  const base: LayoutInput = { grid, shots, nodes: [fixed], edges: [], selectedIds: new Set(shots.map(item => item.id)) };
+  const result = layoutCanvas(base);
+  assert.equal(result.status, 'moved');
+  const final = applyMoves(base, result);
+  assertStoryRows(final, shots.map(item => item.id));
+  assert.equal(geometry(final).overlap, false);
+
+  const reference = node('reference', 'image', -50, -90, 5, 40);
+  const blocked: LayoutInput = {
+    ...base,
+    nodes: [fixed, reference],
+    edges: [edge(reference.id, shots.at(-1)!.id, true)],
+    selectedIds: new Set([...base.selectedIds!, reference.id]),
+  };
+  // The full-width wall leaves less than 40px above any legal shot below it.
+  assert.deepEqual(layoutCanvas(blocked), { status: 'no-fit', moves: [] });
 });

@@ -35,6 +35,8 @@ export type CanvasLayoutResult =
   | { readonly status: 'moved'; readonly moves: readonly CanvasLayoutMove[] }
   | { readonly status: 'no-movement' | 'no-fit'; readonly moves: readonly [] };
 
+export const TIDY_SHOTS_PER_ROW = 10;
+
 // Deterministic work limits keep dense inputs bounded on any machine.
 const MAX_CARDS = 4096;
 const MAX_EDGES = 16384;
@@ -50,6 +52,8 @@ type Adjacency = ReadonlyMap<string, readonly Link[]>;
 interface Reference { node: CanvasLayoutNode; shots: readonly string[]; firstFrame: readonly string[]; links: readonly Link[] }
 interface Endpoint { id: string; point: CanvasPosition; firstFrame: boolean }
 interface Route { source: string; target: string; start: CanvasPosition; end: CanvasPosition }
+interface ShotSlot { shot: CanvasLayoutShot; offset: number; step: number; remaining: number }
+interface ShotRow { slots: ShotSlot[]; headroom: number; height: number; floor: number }
 
 const compareId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const compareNode = (a: CanvasLayoutNode, b: CanvasLayoutNode) => compareId(a.type, b.type) || compareId(a.id, b.id);
@@ -117,73 +121,114 @@ function fixedLinkOrigin(
   return { x: middle('x'), y: middle('y') };
 }
 
-function planShotRow(
-  shots: readonly CanvasLayoutShot[], movable: ReadonlySet<string>, fixed: Positions, adjacent: Adjacency,
-  headroom: number, grid: CanvasGrid, budget: Budget, finish: (positions: Positions) => boolean,
-): Positions | undefined {
-  const steps = shots.map(shot => cardStep(shot.width, grid.columnWidth, grid.gap));
-  const shotIds = new Set(shots.map(shot => shot.id));
-  const row: { shot: CanvasLayoutShot; offset: number; step: number; remaining: number }[] = [];
-  let offset = 0, anchorOffset = 0;
-  let anchor: CanvasPosition | undefined;
-  for (const [index, shot] of shots.entries()) {
-    const step = steps[index]!;
-    if (movable.has(shot.id)) row.push({ shot, offset, step, remaining: 0 });
-    else if (!anchor) { anchor = shot.position; anchorOffset = offset; }
-    offset += step;
+function placeShotRow(row: ShotRow, left: number, y: number, fixed: Positions, grid: CanvasGrid, budget: Budget): CanvasBox[] | undefined {
+  const positions: CanvasBox[] = [];
+  let nextX = -grid.coordinateLimit;
+  for (const { shot, offset, step, remaining } of row.slots) {
+    const start = boundedStart(left + offset, remaining, grid.coordinateLimit)!;
+    const preferred = Math.max(start, nextX), previous = positions.at(-1);
+    let found: CanvasBox | undefined;
+    for (let skip = 0; skip <= SEARCH_RINGS * 2 && budget.remaining >= 0; skip++) {
+      const box = boxAt(shot, { x: preferred + skip * grid.columnWidth, y });
+      if ((!previous || canvasBoxesSeparated(previous, box, grid.gap)) && clear(box, fixed, grid, budget)) { found = box; break; }
+    }
+    if (!found) return;
+    positions.push(found);
+    nextX = found.x + step;
   }
-  if (row.length === 0) {
+  return positions;
+}
+
+function planShotRows(
+  shots: readonly CanvasLayoutShot[], movableShots: readonly CanvasLayoutShot[], references: readonly Reference[],
+  fixed: Positions, adjacent: Adjacency, grid: CanvasGrid, budget: Budget, finish: (positions: Positions) => boolean,
+): Positions | undefined {
+  if (!movableShots.length) {
     const trial = new Map(fixed);
     return finish(trial) ? trial : undefined;
   }
-  let span = row.at(-1)!.shot.width;
-  for (let index = row.length - 1; index >= 0; index--) {
-    row[index]!.remaining = span;
-    if (index > 0) span += row[index - 1]!.step;
-  }
-  const origin = anchor ?? fixedLinkOrigin(row.map(({ shot, offset }) => ({ card: shot, offset })), fixed, adjacent, grid.gap) ?? CANVAS_GRID_ORIGIN;
-  const maxHeight = Math.max(...row.map(({ shot }) => shot.height));
-  // Unselected reference cards keep their positions. Selected shots can still pass below them.
-  let floor = -grid.coordinateLimit;
-  for (const { shot } of row) {
-    for (const link of adjacent.get(shot.id) ?? []) {
-      const id = otherEnd(link, shot.id);
-      const card = fixed.get(id);
-      if (card && !shotIds.has(id)) floor = Math.max(floor, card.y + card.height + grid.gap);
+  const { gap, coordinateLimit, columnWidth, rowHeight } = grid;
+  const rows: ShotRow[] = [], rowIndex = new Map<string, number>();
+  const shotIds = new Set(shots.map(shot => shot.id));
+  const wraps = movableShots.length > TIDY_SHOTS_PER_ROW;
+  let storyOffset = 0, rowOffset = 0, anchorOffset = 0;
+  let anchor: CanvasPosition | undefined;
+  for (const shot of shots) {
+    const step = cardStep(shot.width, columnWidth, gap);
+    let row = rows.at(-1);
+    if (!fixed.has(shot.id)) {
+      if (!row || row.slots.length === TIDY_SHOTS_PER_ROW) {
+        row = { slots: [], headroom: 0, height: 0, floor: -coordinateLimit };
+        rows.push(row);
+        rowOffset = 0;
+      }
+      rowIndex.set(shot.id, rows.length - 1);
+      row.slots.push({ shot, offset: wraps ? rowOffset : storyOffset, step, remaining: 0 });
+      row.height = Math.max(row.height, shot.height);
+      rowOffset += step;
+      // Fixed reference cards constrain only the shots they serve.
+      for (const link of adjacent.get(shot.id) ?? []) {
+        const id = otherEnd(link, shot.id), card = fixed.get(id);
+        if (card && !shotIds.has(id)) row.floor = Math.max(row.floor, card.y + card.height + gap);
+      }
+    } else if (!anchor) {
+      anchor = shot.position;
+      anchorOffset = wraps ? (row?.slots.length === TIDY_SHOTS_PER_ROW ? 0 : rowOffset) : storyOffset;
     }
+    storyOffset += step;
   }
-  const top = boundedStart(Math.max(origin.y, floor) - headroom, maxHeight + headroom, grid.coordinateLimit);
-  if (top === undefined || span >= 2 * grid.coordinateLimit) return;
+  for (const { node, shots: served } of references) {
+    const firstRow = served.find(id => rowIndex.has(id));
+    if (firstRow === undefined) continue;
+    const row = rows[rowIndex.get(firstRow)!]!;
+    // A shared card is above its earliest row and reserves space there once.
+    row.headroom = Math.max(row.headroom, node.height + gap);
+  }
+  for (const { slots } of rows) {
+    let span = slots.at(-1)!.shot.width;
+    for (let index = slots.length - 1; index >= 0; index--) {
+      slots[index]!.remaining = span;
+      if (index > 0) span += slots[index - 1]!.step;
+    }
+    if (span >= 2 * coordinateLimit) return;
+  }
+
+  const first = rows[0]!;
+  const linked = anchor || !fixed.size ? undefined : fixedLinkOrigin(
+    first.slots.map(({ shot, offset }) => ({ card: shot, offset })), fixed, adjacent, gap,
+  );
+  // A later row's reference can anchor columns without pushing all earlier rows down.
+  const later = anchor || linked || !wraps || !fixed.size ? undefined : fixedLinkOrigin(
+    rows.slice(1).flatMap(row => row.slots.map(({ shot, offset }) => ({ card: shot, offset }))), fixed, adjacent, gap,
+  );
+  const originX = (anchor?.x ?? linked?.x ?? later?.x ?? CANVAS_GRID_ORIGIN.x) - anchorOffset;
+  const originY = anchor?.y ?? linked?.y ?? CANVAS_GRID_ORIGIN.y;
+  const totalHeight = rows.reduce((height, row) => height + row.headroom + row.height, (rows.length - 1) * gap);
+  const top = boundedStart(Math.max(originY, first.floor) - first.headroom, totalHeight, coordinateLimit);
+  if (top === undefined) return;
 
   for (const ring of NEARBY) {
-    const y = top + headroom + ring * grid.rowHeight;
-    if (y < floor || y - headroom <= -grid.coordinateLimit || y + maxHeight >= grid.coordinateLimit) continue;
-    // A fixed wall can block the preferred columns to the right. Try starting farther left on the same story row.
-    for (let shift = 0; shift <= SEARCH_RINGS; shift++) {
-      const positions: CanvasBox[] = [];
-      let nextX = -grid.coordinateLimit;
-      for (const { shot, offset, step, remaining } of row) {
-        const desired = origin.x + offset - anchorOffset - shift * grid.columnWidth;
-        const start = boundedStart(desired, remaining, grid.coordinateLimit)!;
-        // Earlier movable shots are clear by construction because nextX advances by at least width + gap.
-        const preferred = Math.max(start, nextX);
-        const previous = positions.at(-1);
-        let found: CanvasBox | undefined;
-        for (let skip = 0; skip <= SEARCH_RINGS * 2 && budget.remaining >= 0; skip++) {
-          const box = boxAt(shot, { x: preferred + skip * grid.columnWidth, y });
-          if ((!previous || canvasBoxesSeparated(previous, box, grid.gap)) && clear(box, fixed, grid, budget)) { found = box; break; }
+    const start = top + ring * rowHeight;
+    if (start <= -coordinateLimit || start + totalHeight >= coordinateLimit || start + first.headroom < first.floor) continue;
+    // Keep the preferred story row, trying earlier columns when fixed cards block the right.
+    for (let shift = 0; shift <= SEARCH_RINGS && budget.remaining >= 0; shift++) {
+      const left = originX - shift * columnWidth, trial = new Map(fixed);
+      let bandTop = start, completed = 0;
+      for (const row of rows) {
+        let y = Math.max(bandTop + row.headroom, row.floor);
+        let positions: CanvasBox[] | undefined;
+        const skips = completed === 0 ? 0 : SEARCH_RINGS;
+        for (let skip = 0; skip <= skips && y + row.height < coordinateLimit && budget.remaining >= 0; skip++, y += rowHeight) {
+          positions = placeShotRow(row, left, y, fixed, grid, budget);
+          if (positions) break;
         }
-        if (!found) break;
-        positions.push(found);
-        nextX = found.x + step;
+        if (!positions) break;
+        row.slots.forEach(({ shot }, index) => trial.set(shot.id, positions[index]!));
+        // The next band starts after this row's tallest shot, with room for its own reference cards.
+        bandTop = y + row.height + gap;
+        completed++;
       }
-      if (positions.length === row.length) {
-        const trial = new Map(fixed);
-        row.forEach(({ shot }, index) => trial.set(shot.id, positions[index]!));
-        // A row is accepted only when its references and the rest of the grid can also fit.
-        if (finish(trial)) return trial;
-      }
-      if (budget.remaining < 0) return;
+      if (completed === rows.length && finish(trial)) return trial;
     }
   }
 }
@@ -376,9 +421,7 @@ export function layoutCanvas({ shots, nodes, edges, selectedIds, grid = CANVAS_G
     || shotOrder(a.firstFrame[0] ?? a.shots[0]!, b.firstFrame[0] ?? b.shots[0]!) || compareNode(a.node, b.node));
 
   const movableShots = story.filter(shot => movable.has(shot.id));
-  const headroom = references.reduce((space, ref) => ref.shots.some(id => movable.has(id))
-    ? Math.max(space, ref.node.height + grid.gap) : space, 0);
-  const placed = planShotRow(story, movable, fixed, adjacent, headroom, grid, budget, positions =>
+  const placed = planShotRows(story, movableShots, references, fixed, adjacent, grid, budget, positions =>
     placeLoose(loose, movableShots, positions, adjacent, grid, budget)
     && placeReferences(references, links, positions, grid, budget));
   if (!placed) return noFit;
