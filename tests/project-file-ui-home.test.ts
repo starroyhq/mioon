@@ -332,6 +332,66 @@ const noAction = (): void => {};
 const newProjectProps = {open: true, values: {name: '新项目', description: '', presetId: 'portrait_1080', createFolder: true}, location: {display: '/Users/example/Movies/Mioon'}, state: {kind: 'editing'}, onChange: noAction, onSubmit: noAction, onClose: noAction};
 const openProps = {open: true, projectName: '访谈剪辑样片', failure: OPEN_FAILURES.missing, action: {kind: 'idle'}, platform: 'mac', onClose: noAction};
 
+test('native rows and grid place their metadata next to the cover, keeping missing and waiting actions', () => {
+  const homeDirectory = '/private/tmp/launcher-home';
+  const projects = entries().map(entry => ({...entry, project: {...entry.project, projectFile: `${homeDirectory}/Projects/${entry.project.projectId}.mioon`}}));
+  const missing = {...projects.at(-1)!, availability: {state: 'missing'} as const};
+  const state = {kind: 'ready', value: [...projects.slice(0, -1), missing]};
+  const waiting = {kind: 'ready', value: waitingProjects(state.value, [{projectId: missing.project.projectId, taskCount: 2, reasonCodes: ['PROJECT_MISSING']}])};
+  const props = {state, waiting, homeDirectory, nativeLayout: true, sort: 'recent', now: new Date('2026-10-21T14:40:00+08:00'),
+    onSortChange: noAction, onViewChange: noAction, onRetry: noAction, onOpen: noAction, onLocate: noAction};
+  const firstCard = (page: string) => page.slice(page.indexOf(`data-testid="pf-card-${PROJECT_IDS.ui}"`)).split('</article>')[0]!;
+  const listBeforeGrid = /data-testid="pf-home-view-list"[\s\S]+data-testid="pf-home-view-grid"/u;
+  for (const locale of LOCALES) {
+    const list = controlled.render('recent', {...props, view: 'list'}, locale);
+    assert.match(tagOf(list, 'pf-recent-projects')!, /data-native-layout="true"/u);
+    assert.match(tagOf(list, 'pf-home-list')!, /data-layout="list"/u);
+    assert.match(list, listBeforeGrid);
+    assert.equal(count(list, /data-testid="pf-card-open-/gu), projects.length);
+    assert.match(firstCard(list), /class="pf-card-cover"[\s\S]+class="pf-card-name"[^>]*>[^<]+<\/span>[\s\S]+class="pf-card-meta"><span>~\/Projects<\/span><\/span><\/span><\/button>/u);
+    assert.match(firstCard(list), /class="pf-card-list-info"><span class="pf-card-aspect">9:16<\/span><span class="pf-card-duration">00:42<\/span><span>[^<]+<\/span>/u);
+    assert.ok(tagOf(list, `pf-waiting-action-${PROJECT_IDS.interview}`));
+    const grid = controlled.render('recent', {...props, view: 'grid'}, locale);
+    assert.match(tagOf(grid, 'pf-home-list')!, /data-layout="grid"/u);
+    assert.match(firstCard(grid), /class="pf-card-cover"[\s\S]+class="pf-card-duration">00:42<\/span>[\s\S]+class="pf-card-grid-meta"><div class="pf-card-meta"><span>[^<]+<\/span><span class="pf-card-aspect">9:16<\/span>/u);
+    assert.ok(!firstCard(grid).includes('~/Projects'));
+    for (const [view, page] of [['list', list], ['grid', grid]] as const) {
+      const missingCard = page.slice(page.indexOf(`data-testid="pf-card-${PROJECT_IDS.interview}"`)).split('</article>')[0]!;
+      assert.match(missingCard, /class="pf-card-meta" data-tone="danger"/u);
+      assert.ok(missingCard.includes(escapeHtml(translate(locale, 'projectFile.home.missing'))));
+      assert.equal(missingCard.includes(escapeHtml(translate(locale, 'projectFile.home.lastSeen', {place: '~/Projects'}))), view === 'list');
+      assert.ok(tagOf(missingCard, `pf-card-locate-${PROJECT_IDS.interview}`));
+      assert.ok(tagOf(missingCard, `pf-card-waiting-${PROJECT_IDS.interview}`));
+      assert.ok(tagOf(missingCard, `pf-card-menu-${PROJECT_IDS.interview}`));
+    }
+    const busy = controlled.render('recent', {...props, view: 'list', busy: true}, locale);
+    assert.equal(disabled(tagOf(busy, `pf-card-open-${PROJECT_IDS.ui}`)), true);
+    assert.equal(disabled(tagOf(busy, `pf-card-locate-${PROJECT_IDS.interview}`)), true);
+  }
+  assert.match(controlled.render('recent', {...props, nativeLayout: false, view: 'grid'}, 'en'), /data-testid="pf-home-view-grid"[\s\S]+data-testid="pf-home-view-list"/u);
+});
+
+test('custom launcher empty content appears only after an empty directory has loaded', () => {
+  const props = {nativeLayout: true, view: 'list', sort: 'recent', now: new Date(), emptyContent: 'Custom empty content',
+    onSortChange: noAction, onViewChange: noAction, onRetry: noAction, onOpen: noAction};
+  const empty = controlled.render('recent', {...props, state: {kind: 'ready', value: []}}, 'en');
+  assert.ok(tagOf(empty, 'pf-home-empty'));
+  assert.match(empty, /Custom empty content/u);
+  assert.doesNotMatch(empty, /pf-home-heading/u);
+  for (const [state, query, expected] of [
+    [{kind: 'loading'}, '', 'pf-home-loading'],
+    [{kind: 'error', retryable: true}, '', 'pf-home-error'],
+    [{kind: 'ready', value: entries()}, 'no matching project', 'pf-home-no-matches'],
+  ] as const) {
+    const page = controlled.render('recent', {...props, state, query}, 'en');
+    assert.ok(tagOf(page, expected));
+    assert.doesNotMatch(page, /Custom empty content/u);
+  }
+  const web = controlled.render('recent', {...props, nativeLayout: false, state: {kind: 'ready', value: []}}, 'en');
+  assert.ok(tagOf(web, 'pf-home-empty'));
+  assert.doesNotMatch(web, /data-native-layout|Custom empty content/u);
+});
+
 test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
   const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
   const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'}, {state: 'invalid', reason: 'corrupt'}];

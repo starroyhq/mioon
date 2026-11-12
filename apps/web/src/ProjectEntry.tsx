@@ -11,11 +11,13 @@ import {readProjectEntryIdentity} from './project-entry-identity.ts';
 import type {NativeProjectDesktopController} from './native-project-desktop-state.ts';
 import {NativeProjectEntryDialogs} from './NativeProjectEntryDialogs.tsx';
 import {browserRpc} from './browser-rpc.ts';
+import type {ProjectHomeProps} from './ProjectHome.tsx';
 
 /** A scoped workspace catalog and new-project form. It remains mounted when
  * hidden so its inputs and unknown request always retain their exact owner. */
-export default function ProjectEntry({ controller, status, help, onSettings, editor = false, onRegisterMenuHelp, onMenuHelpStateChange }: {
+export default function ProjectEntry({ controller, status, help, launcher, onSettings, editor = false, onRegisterMenuHelp, onMenuHelpStateChange }: {
   readonly controller: ProjectEntryController & {readonly desktop?: NativeProjectDesktopController | null}; readonly status?: ReactNode; readonly help?: ReactNode; readonly editor?: boolean;
+  readonly launcher?: Omit<NonNullable<ProjectHomeProps['launcher']>, 'empty'>;
   readonly onSettings: (slot: ProjectWindowSettingsSlot) => void;
   readonly onRegisterMenuHelp?: (control: MenuHelpControl) => () => void; readonly onMenuHelpStateChange?: () => void;
 }) {
@@ -23,6 +25,7 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
   const state = controller.getState(), context = controller.getContext();
   const identity = controller.identity;
   const desktop = controller.desktop ?? null, native = desktop?.getState(), capability = native?.capabilities;
+  const homeDirectory = typeof window === 'undefined' ? undefined : (window as Window & {__mioonHomeDirectory?: unknown}).__mioonHomeDirectory;
   const disabled = context.quitting ? t('projects.quittingCreate')
     : desktop && (!capability?.ready || !capability.create) ? t('projects.listUnavailable')
     : state.createUnknown ? t('projects.previousCreateUnknown')
@@ -40,7 +43,9 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
           ? {appLibraryScope: owner.appLibraryScope, instanceId: owner.instanceId} : null;
       } : undefined}
       readDirectory={identity ? () => readProjectEntryIdentity(identity) : undefined}
-      onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+      onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'}
+      launcher={launcher} nativeLayout homeDirectory={typeof homeDirectory === 'string' ? homeDirectory : undefined}
+      active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting || Boolean(native?.busy || native?.blocked || desktop?.readCloseSnapshot().unknown)} listBusy={state.listBusy} listError={state.listError}
       onRequestCreate={desktop ? () => {void controller.show('new');} : undefined}
       onOpenFile={capability?.ready && capability.open ? () => {void desktop?.openFile();} : undefined}

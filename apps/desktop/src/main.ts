@@ -455,7 +455,8 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     startup.checkpoint();
     const tools = await toolsFromUser(startup);
     startup.checkpoint();
-    const directories = desktopAppDirectories({platform:process.platform,home:app.getPath('home'),env:process.env,appId:identity.appId,
+    const homeDirectory = app.getPath('home');
+    const directories = desktopAppDirectories({platform:process.platform,home:homeDirectory,env:process.env,appId:identity.appId,
       dataDir:paths.dataDir,videosDir:app.getPath('videos'),userDataOverridden:process.env.MIOON_DESKTOP_USER_DATA!==undefined});
     // Main owns the single settings instance across trusted backend restarts.
     if (!agentSettings) {
@@ -527,7 +528,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           backgroundColor: context.appearance.backgroundColor(), show: false,
           autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
           ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
-          webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') },
+          webPreferences: {
+            ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs'),
+            ...(creation.role !== 'settings' ? {additionalArguments: [`--mioon-home-directory=${homeDirectory}`]} : {}),
+          },
         });
         if (launcher) {
           window.on('page-title-updated', (event, pageTitle) => {

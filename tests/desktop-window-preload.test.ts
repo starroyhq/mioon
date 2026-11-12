@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { runInNewContext } from 'node:vm';
 import { createProjectWindowBridge } from '../apps/desktop/src/project-window-preload.ts';
 import { isProjectWindowContext, isProjectWindowRequest, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
 import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.ts';
@@ -82,6 +83,23 @@ test('actual sandbox preload bundle requires only Electron and exposes no arbitr
   const text=result.outputFiles[0].text;
   const imports=Object.values(result.metafile.outputs).flatMap(output=>output.imports.map(item=>item.path));
   assert.deepEqual(imports,['electron']); assert.match(text,/exposeInMainWorld\("__mioonProjectWindow"/); assert.doesNotMatch(text,/node:|\.sendSync\(|\.postMessage\(|webContents|process\.env/);
+  const homeDirectory = '/synthetic/home with spaces';
+  for (const [isMainFrame, argv, expected] of [
+    [true, [`--mioon-home-directory=${homeDirectory}`], homeDirectory],
+    [false, [`--mioon-home-directory=${homeDirectory}`], undefined],
+    [true, ['--unrelated=synthetic'], undefined],
+  ] as const) {
+    const exposed = new Map<string, unknown>();
+    runInNewContext(text, {
+      process: {isMainFrame, argv},
+      TextEncoder, TextDecoder, URL,
+      require: (module: string) => {
+        assert.equal(module, 'electron');
+        return {contextBridge: {exposeInMainWorld: (name: string, value: unknown) => exposed.set(name, value)}, ipcRenderer: {}, webUtils: {}};
+      },
+    });
+    assert.equal(exposed.get('__mioonHomeDirectory'), expected);
+  }
 });
 test('restart confirmation cannot act on replaced startup/backend or a newly requested Quit', async () => {
   let owner: Record<string, unknown> = {}, available=true, calls=0; const deferred=Promise.withResolvers<boolean>();

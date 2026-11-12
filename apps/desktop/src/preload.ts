@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 // Marker remains available if any later bridge setup fails.
 contextBridge.exposeInMainWorld('__mioonDesktop', true);
+// Display metadata for shortening paths already present in the project list.
+if (process.isMainFrame) {
+  const prefix = '--mioon-home-directory=';
+  const homeDirectory = process.argv.find(argument => argument.startsWith(prefix))?.slice(prefix.length);
+  if (homeDirectory) contextBridge.exposeInMainWorld('__mioonHomeDirectory', homeDirectory);
+}
 import {createProjectEntriesDesktopBridge} from './project-entry-desktop-preload.ts';
 import { createProjectWindowBridge } from './project-window-preload.ts';
 const projectWindowBridge=createProjectWindowBridge({
