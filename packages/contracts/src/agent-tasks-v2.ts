@@ -26,6 +26,7 @@ export interface AgentTaskDisplay {conflict?:true;operation:string;targets:Agent
 export interface AgentTaskDiagnostic {profile:'text'|'read_only'|'catalog';toolNames?:string[]}
 export type AgentTaskJson=null|boolean|number|string|AgentTaskJson[]|{[key:string]:AgentTaskJson};
 export interface AgentTaskPolicy {revision:number;stepLimit:number;modes:Record<AgentTaskTier,AgentTaskMode>}
+export type AgentTaskPolicyUpdate=Omit<AgentTaskPolicy,'stepLimit'>&{stepLimit?:number};
 export interface AgentTaskTarget {kind:string;id:string;revision:number;revisionBefore?:number;revisionAfter?:number}
 export interface AgentTaskNote {requestId:string;text:string;createdAt:string;modelStepId?:string}
 export interface AgentTaskSkippedTarget {target:AgentTaskTarget;stepId:string;createdAt:string}
@@ -45,6 +46,7 @@ export const agentTaskTierSchema=z.enum(AGENT_TASK_TIERS);
 export const agentTaskLocaleSchema=z.enum(AGENT_TASK_LOCALES);
 export const agentTaskPolicyModesSchema=z.object({read_only:z.enum(['direct','confirm']),local_reversible:z.enum(['direct','confirm']),local_irreversible:z.enum(['direct','confirm']),paid:z.enum(['direct','confirm'])}).strict();
 export const agentTaskPolicySchema=z.object({revision,stepLimit:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),modes:agentTaskPolicyModesSchema}).strict();
+export const agentTaskPolicyUpdateSchema=agentTaskPolicySchema.partial({stepLimit:true});
 export const agentTaskDiagnosticSchema=z.object({profile:z.enum(['text','read_only','catalog']),toolNames:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u)).min(1).max(200).optional()}).strict().refine(value=>value.toolNames===undefined||value.profile==='catalog'&&new Set(value.toolNames).size===value.toolNames.length,{message:'Only catalog diagnostics may select a unique tool subset.'});
 export const agentTaskTextSchema=z.string().min(1).max(32*1024).refine(value=>value.trim().length>0&&new TextEncoder().encode(value).length<=32*1024,{message:'Task text must contain 1–32768 UTF-8 bytes.'});
 /** Mio's structured question (C3), asked through the host tool `mioon_ask`.

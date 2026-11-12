@@ -59,9 +59,9 @@ test('real project journals share only injected app policy, preserving CAS, repl
   const policyStore = library.agentPolicy;
   const a = projectJournal(first, policyStore), b = projectJournal(second, policyStore);
   assert.deepEqual(a.policy(), DEFAULT_AGENT_TASK_POLICY);
-  const requestId = randomUUID(), input = {...a.policy(), stepLimit: 12};
+  const requestId = randomUUID(), input = {...a.policy(), stepLimit: 12, modes: {...a.policy().modes, local_reversible: 'confirm' as const}};
   const saved = a.updatePolicy(input, requestId);
-  assert.deepEqual(saved, {...input, revision: 1});
+  assert.deepEqual(saved, {...input, revision: 1, stepLimit: DEFAULT_AGENT_TASK_POLICY.stepLimit});
   assert.deepEqual(b.policy(), saved);
   assert.deepEqual(b.updatePolicy(input, requestId), saved);
   assert.deepEqual(b.lookupPolicy(requestId), saved);
@@ -73,8 +73,9 @@ test('real project journals share only injected app policy, preserving CAS, repl
     assert.equal(store.db.prepare('PRAGMA database_list').all().some(row => String(row.file) === library.databaseFile), false);
   }
   // A project rollback cannot undo a separately committed app-global policy.
-  assert.throws(() => first.tx(() => {a.updatePolicy({...saved, stepLimit: 14}, randomUUID()); throw Error('project rollback');}), /project rollback/);
-  assert.equal(b.policy().stepLimit, 14);
+  const modes = {...saved.modes, local_irreversible: 'direct' as const};
+  assert.throws(() => first.tx(() => {a.updatePolicy({revision: saved.revision, modes}, randomUUID()); throw Error('project rollback');}), /project rollback/);
+  assert.deepEqual(b.policy(), {...saved, revision: 2, modes});
   const run = a.create({projectId: first.projectId, requestId: randomUUID(), text: 'Synthetic model step', configuration: {protocol: 'chat_completions', model: 'synthetic'}}).run;
   const model = beginSyntheticModel(a, run.id);
   assert.deepEqual(a.snapshot(run.id).steps, [model]);
@@ -103,10 +104,10 @@ test('the app policy port checks the expected revision inside its own transactio
 test('policy CAS refuses an outer application transaction without changing policy or its receipt', t => {
   const {library, first} = fixture(t), store = library.agentPolicy;
   const journal = projectJournal(first, store);
-  const before = journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY), stepLimit: 12}, randomUUID());
+  const before = journal.updatePolicy({revision: 0, modes: {...DEFAULT_AGENT_TASK_POLICY.modes, local_reversible: 'confirm'}}, randomUUID());
   const requestId = randomUUID(), receipts = library.db.prepare('SELECT * FROM agent_task_policy_requests_v2 ORDER BY requestId').all();
   library.tx(() => {
-    assert.throws(() => journal.updatePolicy({...before, stepLimit: 14}, requestId), /Nested transactions are not supported/u);
+    assert.throws(() => journal.updatePolicy({revision: before.revision, modes: {...before.modes, local_irreversible: 'direct'}}, requestId), /Nested transactions are not supported/u);
     assert.equal(library.db.isTransaction, true);
     assert.deepEqual(store.read(), before);
     assert.equal(store.readRequest(requestId), null);
@@ -129,7 +130,7 @@ test('runtime policy injection retains explicit paid confirmation and rejects st
   const runtime = createMioRuntime({store: first, policyStore: library.agentPolicy, agentSettings: settings,
     authorizations: createTestAuthorizations(first, settings), selfPort: () => 4318});
   t.after(() => runtime.close());
-  const input = {requestId: randomUUID(), expectedRevision: 0, stepLimit: 30, modes: {...runtime.policy().modes, paid: 'direct'}};
+  const input = {requestId: randomUUID(), expectedRevision: 0, modes: {...runtime.policy().modes, paid: 'direct'}};
   assert.throws(() => runtime.updatePolicy(input), {code: 'AGENT_TASK_APPROVAL_REQUIRED'});
   assert.equal(library.agentPolicy.read(), null);
   assert.equal(runtime.updatePolicy({...input, acknowledgePaid: true}).modes.paid, 'direct');

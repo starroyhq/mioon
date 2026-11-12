@@ -13,13 +13,13 @@ import {assembleRunContext} from '../packages/business/src/agent/task-context-v2
 import type {TaskContextHistoryRun} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskRunRecordBackground,TaskRunRecordChange,TaskRunRecordTarget} from '../packages/business/src/agent/task-run-record-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskJson, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskJson, AgentTaskPolicyUpdate, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-function fixture(t: TestContext, stepLimit = 30) {
+function fixture(t: TestContext, safetyStepLimit?: number) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mio-journal-'));
-  let store = openStore(root), policy = {...structuredClone(DEFAULT_AGENT_TASK_POLICY), stepLimit};
+  let store = openStore(root), policy = structuredClone(DEFAULT_AGENT_TASK_POLICY);
   store.put('projects', {id: store.projectId, name: 'Mio journal synthetic project'});
-  const options = {policy: () => structuredClone(policy), updatePolicy: (next: typeof policy) => {policy = {...next, revision: policy.revision + 1}; return structuredClone(policy);}, lookupPolicy: () => null};
+  const options = {policy: () => structuredClone(policy), updatePolicy: (next: AgentTaskPolicyUpdate) => {policy = {...policy, modes: next.modes, revision: policy.revision + 1}; return structuredClone(policy);}, lookupPolicy: () => null, safetyStepLimit};
   let journal = createMioJournal(store, options);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   return {root, get store() {return store;}, get journal() {return journal;}, get records() {return createMioRecords(store);},
@@ -78,7 +78,33 @@ test('notes bind once at intent, later notes do not rewrite request and replayed
   f.reopen(); assert.deepEqual(f.journal.lookupControl(input.requestId), receipt);
 });
 
-test('tool calls derive from their canonical model, approval spends no extra budget and wait remains free', t => {
+test('a retained thirty-step record remains readable and uses the 200-step safety window', t => {
+  const f = fixture(t), run = f.start();
+  f.store.tx(() => f.store.db.prepare('UPDATE mio_runs SET stepLimit=30,budget=30 WHERE id=?').run(run.id));
+  f.reopen();
+  const before = f.store.db.prepare('SELECT total_changes() AS count').get()!.count;
+  assert.equal(f.journal.run(run.id).budget, 30);
+  assert.equal(f.journal.policy().stepLimit, 30);
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS count').get()!.count, before);
+  for (let index = 0; index < 31; index++) model(f, run.id).complete();
+  const current = f.journal.run(run.id);
+  assert.equal(current.status, 'running');
+  assert.equal(current.stepLimit, 30);
+  assert.equal(current.stepsUsed, 31);
+  assert.equal(current.budget, 31);
+  assert.deepEqual(f.journal.safetyWindow(run.id), {startStepsUsed: 0, afterPosition: 0, remaining: 169});
+  for (let index = current.stepsUsed; index < 200; index++) model(f, run.id).complete();
+  assert.equal(f.journal.run(run.id).stepsUsed, 200);
+  assert.equal(f.journal.safetyWindow(run.id).remaining, 0);
+  assert.throws(() => model(f, run.id), {code: 'AGENT_TASK_BUDGET_EXHAUSTED'});
+  const paused = f.journal.transition(run.id, f.journal.run(run.id).revision, 'paused', 'safety_limit');
+  f.journal.resume(run.id, paused.revision, {resetSafetyWindow: true});
+  model(f, run.id).complete();
+  assert.equal(f.journal.run(run.id).stepsUsed, 201);
+  assert.deepEqual(f.journal.safetyWindow(run.id), {startStepsUsed: 200, afterPosition: 200, remaining: 199});
+});
+
+test('tool calls derive from their canonical model, approval preserves the safety window and wait remains free', t => {
   const f = fixture(t, 2), run = f.start(), call = {id: 'call-one', name: 'mioon_project_get', arguments: {text: '\ud800'}};
   const response = model(f, run.id, [call]); response.complete();
   const tool = f.journal.beginStep(run.id, {kind: 'tool', toolCall: call, data: {sourceModelStepId: response.step.id}});
@@ -94,8 +120,11 @@ test('tool calls derive from their canonical model, approval spends no extra bud
   assert.deepEqual(f.journal.snapshot(run.id).steps.map(step => step.position), [1, 2, 3]);
   assert.equal(f.journal.run(run.id).stepsUsed, 2);
   assert.throws(() => model(f, run.id), {code: 'AGENT_TASK_BUDGET_EXHAUSTED'});
-  f.journal.transition(run.id, f.journal.run(run.id).revision, 'paused', 'budget');
-  const continued = f.journal.resume(run.id, f.journal.run(run.id).revision, {extendBudget: true}); assert.equal(continued.budget, 4);
+  f.journal.transition(run.id, f.journal.run(run.id).revision, 'paused', 'safety_limit');
+  const continued = f.journal.resume(run.id, f.journal.run(run.id).revision, {resetSafetyWindow: true}); assert.equal(continued.budget, 30);
+  assert.deepEqual(f.journal.safetyWindow(run.id), {startStepsUsed: 2, afterPosition: 3, remaining: 2});
+  f.reopen();
+  assert.deepEqual(f.journal.safetyWindow(run.id), {startStepsUsed: 2, afterPosition: 3, remaining: 2});
   const next = model(f, run.id); assert.equal(next.step.position, 4); assert.equal(f.journal.step(tool.id).status, 'completed');
 });
 
@@ -106,7 +135,7 @@ test('unknown model requests retain bytes and fence continuation through restart
   assert.equal(f.journal.step(pending.step.id).status, 'unknown'); assert.equal(f.journal.step(pending.step.id).text, 'partial \ud800');
   assert.equal(f.records.request(f.records.step(pending.step.id).currentRequestId!).originalBody, pending.body);
   const before = f.journal.snapshot(run.id);
-  assert.throws(() => f.journal.resume(run.id, before.run.revision, {extendBudget: true}), {code: 'AGENT_TASK_UNKNOWN_RESULT'});
+  assert.throws(() => f.journal.resume(run.id, before.run.revision, {resetSafetyWindow: true}), {code: 'AGENT_TASK_UNKNOWN_RESULT'});
   assert.deepEqual(f.journal.snapshot(run.id), before);
   f.journal.updateStep(run.id, pending.step.id, {status: 'failed', result: {discarded: true}});
   assert.deepEqual(f.journal.step(pending.step.id).result, {discarded: true});

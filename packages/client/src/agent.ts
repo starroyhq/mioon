@@ -8,6 +8,7 @@ import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
 import {agentTaskAnswerControlObjectSchema,agentTaskConversationPolicySchema,agentTaskConversationPolicySetSchema,agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema,agentTaskConnectionTestResponseSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskPolicyUpdateSchema} from '@mioon/contracts/agent-tasks-v2';
 import {mioRunUsageSchema} from '@mioon/contracts/mio-run-usage';
 import {mioStorageSnapshotSchema} from '@mioon/contracts/mio-storage';
 import {agentTaskChecksSchema,agentTaskChecksInputSchema} from '@mioon/contracts/agent-tasks-v2';
@@ -26,7 +27,7 @@ const sendSchema=agentTaskSendSchema;
 const location=z.object({projectId:id,runId:id}).strict();
 const settingInput=agentSettingsMetadataSchema;
 const settingSecretInput=z.object({expectedRevision:revision,serviceKey:agentServiceKeySchema}).strict();
-const policyInput=agentTaskPolicySchema.omit({revision:true}).extend({requestId,expectedRevision:revision,acknowledgePaid:z.boolean().optional()}).strict();
+const policyInput=agentTaskPolicyUpdateSchema.omit({revision:true}).extend({requestId,expectedRevision:revision,acknowledgePaid:z.boolean().optional()}).strict();
 const conversationPolicyLocation=z.object({projectId:id,conversationId:id}).strict();
 const conversationPolicyInput=agentTaskConversationPolicySetSchema.extend({projectId:id,conversationId:id}).strict();
 const uploadInput=z.object({projectId:id,requestId,name:z.string().min(1).max(200),mimeType:z.string().min(1).max(100),dataBase64:z.string().max(40*1024*1024)}).strict();
@@ -34,7 +35,7 @@ const watchInput=location.extend({after:revision.optional()});
 export const AGENT_COMMAND_SCHEMAS=Object.freeze({
  'agent.settings.get':z.object({}).strict(),'agent.settings.set':settingInput,'agent.settings.secret.set':settingSecretInput,'agent.settings.secret.remove':settingSecretInput,
  'agent.doctor':z.object({projectId:id.optional()}).strict(),'agent.diagnose':sendSchema.extend({diagnostic:agentDiagnosticSchema}),'agent.diagnose.latest':z.object({}).strict(),
- 'agent.policy.get':z.object({}).strict(),'agent.policy.set':policyInput,'agent.policy.lookup':z.object({requestId}).strict(),
+ 'agent.policy.get':z.object({}).strict(),'agent.policy.set':policyInput.omit({stepLimit:true}),'agent.policy.lookup':z.object({requestId}).strict(),
  'agent.conversation.policy.get':conversationPolicyLocation,'agent.conversation.policy.set':conversationPolicyInput,
  'agent.task.conversation':z.object({projectId:id,conversationId:id,cursor:z.string().max(512).optional()}).strict(),
  'agent.task.list':z.object({projectId:id}).strict(),'agent.task.history':z.object({projectId:id,cursor:z.string().max(512).optional()}).strict(),

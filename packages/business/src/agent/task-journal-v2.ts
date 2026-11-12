@@ -7,16 +7,16 @@ import type { Store } from '../store-contract.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import type {TaskContextHistoryInput,TaskContextHistoryRun} from './task-context-v2.ts';
 import type {FrozenMioRules} from './mio-rules.ts';
-import type {AgentTaskConversationPolicy,AgentTaskConversationPolicySetInput,AgentTaskPolicyModes} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskConversationPolicy,AgentTaskConversationPolicySetInput,AgentTaskPolicyModes,AgentTaskPolicyUpdate} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskStep,AgentTaskChange,AgentTaskEvent,AgentTaskSnapshot,AgentTaskStatus,AgentTaskStepStatus,AgentTaskJson,AgentTaskReceipt,AgentTaskPolicy,AgentTaskTarget,AgentTaskClaim,AgentTaskEditingInput,AgentTaskDiagnostic,AgentTaskConversation,AgentTaskConversationPage,AgentTaskHistoryPage,AgentTaskNote,AgentTaskSkippedTarget} from '../../../contracts/src/agent-tasks-v2.ts';
 
 export type AgentTaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'createdAt'|'status'|'modifiedAfter'|'undoDisposition'>;
 export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?:AgentTaskJson;data?:AgentTaskJson;toolCall?:AgentTaskStep['toolCall'];targets?:AgentTaskTarget[];tier?:AgentTaskStep['tier']}
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
-export interface AgentTaskJournalOptions {policyStore?:AgentPolicyStore}
+export interface AgentTaskJournalOptions {policyStore?:AgentPolicyStore;safetyStepLimit?:number}
 /** Current journal port; the real project and app policy adapters own storage. */
-export function createAgentTaskJournal(store:Store,{policyStore=testProjectAppLibrary(store)?.agentPolicy}:AgentTaskJournalOptions={}):AgentTaskJournal{
- assertProjectStore(store);return createMioProjectJournal(store,policyStore);
+export function createAgentTaskJournal(store:Store,{policyStore=testProjectAppLibrary(store)?.agentPolicy,safetyStepLimit}:AgentTaskJournalOptions={}):AgentTaskJournal{
+ assertProjectStore(store);return createMioProjectJournal(store,policyStore,safetyStepLimit);
 }
 export interface AgentTaskJournal {
 "expireClaims": (maxAgeMs?: number) => number;
@@ -43,6 +43,7 @@ export interface AgentTaskJournal {
 "events": (runId: string, after?: number) => AgentTaskEvent[];
 "eventSequence": (runId: string, after?: number) => number;
 "run": (id: string) => AgentTaskRun;
+"safetyWindow": (runId: string) => {startStepsUsed: number; afterPosition: number; remaining: number};
 "step": (id: string) => AgentTaskStep;
 "transition": (runId: string, expectedRevision: number, status: AgentTaskStatus, reason?: string) => AgentTaskRun;
 "beginStep": (runId: string, input: AgentTaskStepInput) => AgentTaskStep;
@@ -63,10 +64,10 @@ export interface AgentTaskJournal {
 "beginControl": (input: AgentTaskControlRecord) => AgentTaskReceipt;
 "finishControl": (requestId: string, result: AgentTaskJson) => AgentTaskReceipt;
 "lookupControl": (requestId: string) => AgentTaskReceipt | null;
-"resume": (runId: string, expectedRevision: number, options?: { extendBudget?: boolean; }) => AgentTaskRun;
+"resume": (runId: string, expectedRevision: number, options?: {resetSafetyWindow?: boolean}) => AgentTaskRun;
 "recover": () => number;
 "policy": () => AgentTaskPolicy;
-"updatePolicy": (input: AgentTaskPolicy, requestId?: string) => AgentTaskPolicy;
+"updatePolicy": (input: AgentTaskPolicyUpdate, requestId?: string) => AgentTaskPolicy;
 "lookupPolicy": (requestId: string) => AgentTaskPolicy | null;
 "targetRevision": (projectId: string, kind: string, id: string) => number;
 "revisionSnapshot": (projectId: string) => AgentTaskTarget[];

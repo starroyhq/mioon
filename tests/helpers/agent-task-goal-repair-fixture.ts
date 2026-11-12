@@ -8,6 +8,7 @@ import {createAgentSettings} from '../../packages/business/src/agent/settings.ts
 import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
+import {createAgentTaskJournal} from '../../packages/business/src/agent/task-journal-v2.ts';
 import {createMockProvider} from '../../packages/business/src/providers/mock.ts';
 import type {Provider,ProviderContext} from '../../packages/business/src/provider-registry.ts';
 import {createTestAuthorizations,authorizeTestScope} from './agent-authorizations.ts';
@@ -26,7 +27,7 @@ export function goalOutput(protocol:GoalProtocol,calls:AgentTaskToolCall[]=[],te
    :{role:'assistant',content:text,...(calls.length?{tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}:{})};
  return {text,toolCalls:calls,providerOutput};
 }
-export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,existingProjectId?:string){
+export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,existingProjectId?:string,safetyStepLimit?:number){
  const store=openStore(root),mock=createMockProvider({db:store.db,root}),context=(value:ProviderContext)=>({signal:value.signal??undefined,beforeSubmit:value.beforeSubmit,requestId:value.requestId,jobId:value.jobId,...(typeof value.providerRegion==='string'?{providerRegion:value.providerRegion}:{})});
  const provider:Provider={...mock,submit:(snapshot,value)=>mock.submit(snapshot,context(value)),reconcile:(id,value)=>mock.reconcile(id,context(value)),poll:(id,value)=>mock.poll(id,context(value)),download:(id,destination,value)=>mock.download(id,destination,context(value)),cancel:(id,value)=>mock.cancel(id,context(value))};
  const services=createServices(store,new Map([['mock',provider]]));
@@ -47,7 +48,7 @@ export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,ex
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[];
  let plan:(index:number)=>AgentTaskToolCall[]|Promise<AgentTaskToolCall[]>=()=>[];
  const gateway:TaskGateway=async function*(request){bodies.push(request.body);yield {type:'done',output:goalOutput(protocol,await plan(bodies.length))};};
- const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
+ const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318,...(safetyStepLimit===undefined?{}:{journal:createAgentTaskJournal(store,{safetyStepLimit})})});
  return {store,services,settings,tools,runtime,bodies,projectId:project.id,
   plan(next:typeof plan){plan=next;},
   async send(extra:Record<string,unknown>={}){const sent=await runtime.send(project.id,{requestId:randomUUID(),text:'Make the requested shots',expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...extra});await runtime.drain();return runtime.get(project.id,sent.run.id);},

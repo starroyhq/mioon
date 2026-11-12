@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {transformSync} from 'esbuild';
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskRequirement} from '../packages/contracts/src/agent-task-checks-v2.ts';
 import {LOCALES,translate,validateCatalogs} from '../packages/i18n/src/index.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../packages/i18n/src/catalogs/mio-panel.ts';
@@ -34,6 +35,21 @@ function goal(position:number,conditions:AgentTaskJson[]=[{type:'subtitle_count'
 function snapshot(steps:AgentTaskStep[],status:AgentTaskSnapshot['run']['status']='completed'):AgentTaskSnapshot {
   return {run:{id:runId,projectId,requestId:'h4b-step-fixture',text:'Make a vertical cut.',status,revision:1,stepLimit:30,budget:30,stepsUsed:steps.length,configuration:{},createdAt:'2026-10-29T12:00:00.000Z',updatedAt:'2026-10-29T12:00:01.000Z'},steps,changes:[]};
 }
+
+test('a completed legacy round does not explain an unmet requirement using its saved budget',()=>{
+  const goalStep=goal(1),round=snapshot([goalStep]);
+  round.run.stepsUsed=round.run.budget;
+  const item:AgentTaskRequirement={
+    id:'unmet-subtitles',type:'subtitle_count',source:'goal',goalStepId:goalStep.id,status:'failed',
+    target:{kind:'project',id:projectId},basis:[{kind:'project',id:projectId,revision:1}],expected:{min:1},current:{count:0},
+  };
+  assert.equal(requirements.taskRequirementStatus(item,round),'failed');
+  assert.equal(requirements.taskRequirementNote([item],round),undefined);
+  round.run.status='paused';
+  round.run.pauseReason='safety_limit';
+  round.run.stepsUsed=1;
+  assert.equal(requirements.taskRequirementNote([item],round),'safety');
+});
 
 test('H4b goal step titles use only normalized counts in four languages',()=>{
   const titles={'zh-Hans':'整理要求 · 1 项','zh-Hant':'整理要求 · 1 項',en:'Set requirements · 1',ja:'要件を整理 · 1 件'};
@@ -215,6 +231,15 @@ test('H4b real Panel exposes completion checks during active repairs, including 
     const h=panel(snapshot(steps,'running'));
     try{assert.equal(h.render().some(node=>node.type==='checks'),false);}finally{h.close();}
   }
+});
+
+test('a current safety pause still shows the declared requirements',()=>{
+  const round=snapshot([goal(1)],'paused');
+  round.run.pauseReason='safety_limit';
+  const h=panel(round);
+  try{
+    assert.ok(h.render().some(node=>node.type==='checks'));
+  }finally{h.close();}
 });
 
 test('H4b real Panel labels a model-tool-model repair continuation exactly once, including recovery copy',()=>{

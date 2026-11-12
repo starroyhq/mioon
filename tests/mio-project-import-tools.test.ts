@@ -12,6 +12,7 @@ import {testProjectAppLibrary} from '../packages/business/src/project-service-ap
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools,listAgentTaskTools,listDiagnosticAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createMioProjectImport} from '../packages/business/src/agent/mio-project-import.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -40,7 +41,7 @@ function output(protocol:AgentProtocol,calls:AgentTaskToolCall[]=[]):TaskModelOu
   return {text,toolCalls:calls,providerOutput};
 }
 type Script=(index:number,request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
-async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{withoutPort?:boolean}={}){
+async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{safetyStepLimit?:number;withoutPort?:boolean}={}){
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-project-import-tools-'));
   let store=openStore(root),services=createServices(store,new Map());
   await services.call('project.create',{name:'Mio project import tool test'});
@@ -69,7 +70,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
       async lookup(preparation,context){lookups.push(structuredClone(preparation));return actual.lookup(preparation,context);},
     };
     const tools=createAgentTaskTools({store,services,...(options.withoutPort?{}:{projectImport})});
-    const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
+    const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318,...(options.safetyStepLimit===undefined?{}:{journal:createAgentTaskJournal(store,{safetyStepLimit:options.safetyStepLimit})})});
     return {actual,tools,runtime};
   }
   let current=build();
@@ -179,9 +180,9 @@ for(const protocol of protocols)test(protocol+': loading and importing in one re
 });
 
 for(const protocol of protocols)test(protocol+': legacy assets groups cannot discover or authorize project file import after reopening',async t=>{
-  const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+  const f=await fixture(t,protocol,{safetyStepLimit:2});
   f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['assets']})]:index===2?[call(MIO_PROJECT_FILE_IMPORT_TOOL,{path:'source.png'})]:[])};});
-  const {sent,original}=await f.frozen('groups'),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(f.requests[0]?.body,original);
+  const {sent,original}=await f.frozen('groups'),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.requests[0]?.body,original);
   const load=paused.steps.find(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(load);assert.equal(load.status,'completed');const receipt=object(load.result);assert.deepEqual(receipt.groups,['assets']);assert.ok(Array.isArray(receipt.tools));assert.ok(!receipt.tools.includes(MIO_PROJECT_FILE_IMPORT_TOOL));
   await f.reopen();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const done=await f.settle(sent.run.id);
   assert.equal(done.steps.find(step=>step.toolCall?.name===MIO_PROJECT_FILE_IMPORT_TOOL)?.error?.code,'TOOL_NOT_LOADED');assert.equal(f.prepares.length,0);assert.equal(f.executions.length,0);assert.equal(imports(f).length,0);

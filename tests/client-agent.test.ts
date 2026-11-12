@@ -4,7 +4,7 @@ interface FetchCapture {url: string; options: Omit<RequestInit, 'body' | 'header
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createAgentClient,AGENT_CONTROL_COMMANDS} from '../packages/client/src/agent.ts';
+import {createAgentClient,AGENT_COMMAND_SCHEMAS,AGENT_CONTROL_COMMANDS} from '../packages/client/src/agent.ts';
 import {sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {AGENT_PROTOCOLS} from '@mioon/contracts';
@@ -242,8 +242,10 @@ test('receipt lookups reject a different resource or request identity',async()=>
 test('policy CAS and independent read routes preserve their exact boundaries',async()=>{
  const calls: FetchCapture[]=[];const upload={id:randomUUID(),name:'reference.png',mimeType:'image/png',status:'selected'};
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options} as FetchCapture);if((url as string).includes('/policy/requests/'))return ok({found:true,policy:{...policy,revision:1},readOnly:false});if((url as string).endsWith('/policy'))return ok({policy:{...policy,revision:(options)!.method==='PUT'?1:0},readOnly:false});if((url as string).includes('/uploads/requests/'))return ok({found:true,upload});if((url as string).includes('/history?'))return ok({conversations:[{id:runId,projectId,title:'synthetic',createdAt:snapshot().run.createdAt,updatedAt:snapshot().run.updatedAt,lastRunId:runId,lastRunStatus:'completed',changeCount:0,runCount:1}],nextCursor:null});return ok({version:2,instanceId:'synthetic-instance',projectId,runs:[snapshot().run],policy,settings,authorization:{revision:0,scopes:[]}});}});
- await client.policyGet();await client.policySet({requestId,expectedRevision:0,stepLimit:30,modes:policy.modes});await client.policyLookup({requestId});await client.list({projectId});await client.history({projectId,cursor:'retained-cursor'});await client.uploadLookup({projectId,requestId});
+ await client.policyGet();await client.policySet({requestId,expectedRevision:0,modes:policy.modes});await client.policyLookup({requestId});await client.list({projectId});await client.history({projectId,cursor:'retained-cursor'});await client.uploadLookup({projectId,requestId});
  assert.equal(calls.filter(call=>call.options.method!=='GET').length,1);assert.equal(calls[1].options.method,'PUT');assert.equal(JSON.parse((calls[1].options.body)!).expectedRevision,0);assert.ok(calls[4].url.endsWith('/history?cursor=retained-cursor'));assert.ok(calls[5].url.endsWith(`/uploads/requests/${requestId}`));
+ assert.equal(Object.hasOwn(JSON.parse(calls[1].options.body!), 'stepLimit'),false);
+ assert.equal(Object.hasOwn(AGENT_COMMAND_SCHEMAS['agent.policy.set'].shape, 'stepLimit'),false);
 });
 
 test('conversation send and read bind project, conversation and cursor without expanding authority',async()=>{

@@ -21,7 +21,7 @@ import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
 import { agentTaskAnswerTextValid, taskQuestionOf } from './agent-task-questions.ts';
 import AgentTaskChecks from './AgentTaskChecks.tsx';
-import { isTaskGoalRepairActive } from './agent-task-requirements.ts';
+import { isTaskGoalRepairActive, isTaskGoalSafetyPaused } from './agent-task-requirements.ts';
 import AgentTaskContinuityReport from './AgentTaskContinuityReport.tsx';
 import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from './agent-task-reviews.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
@@ -287,6 +287,26 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   </> : null;
   }
   const interrupted=run?.status==='interrupted',recovery=state.snapshot?recoveryFor(state.snapshot):null;
+  function pauseMessage(reason: string | undefined, steps: readonly AgentTaskStep[]) {
+    switch (reason) {
+      case 'conflict':
+      case 'editing':
+        return {title:t('agent.panel.conflictTitle'),body:t('agent.panel.conflictBody')};
+      case 'repeated_tool_failure': {
+        const failed=steps.filter(step=>step.kind==='tool'&&['failed','rejected','denied'].includes(step.status)).at(-1);
+        const operation=taskOperationTitle(failed?.display?.operation??failed?.toolCall?.name??'',locale);
+        return {title:t('agent.panel.stalledTitle'),body:t('agent.panel.repeatedFailureBody',{operation}),supplement:true};
+      }
+      case 'no_tool_progress':
+        return {title:t('agent.panel.stalledTitle'),body:t('agent.panel.noToolProgressBody'),supplement:true};
+      case 'safety_limit':
+        return {title:t('agent.panel.neutralPauseTitle'),body:t('agent.panel.safetyPauseBody'),supplement:true};
+      case 'budget':
+        return {title:t('agent.panel.neutralPauseTitle'),body:t('agent.panel.pauseBody'),supplement:true};
+      default:
+        return {title:t('agent.panel.pauseTitle'),body:t(reason==='user'?'agent.panel.pauseBody':agentTaskErrorKey(reason))};
+    }
+  }
   function renderRound(snapshot:AgentTaskSnapshot){
     const run=snapshot.run,steps=snapshot.steps,changes=snapshot.changes,skipped=run.skippedTargets??[],notes=run.notes??[],unknown=steps.filter(step=>step.status==='unknown');
     // A retry can end the round before a new step exists, e.g. when the model
@@ -296,6 +316,8 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskRunDurationSeconds(snapshot),canUndo=['completed','failed','stopped'].includes(run.status)&&unknown.length===0&&!snapshot.backgroundPending,backgroundPending=snapshot.backgroundPending===true;
     const approval=steps.filter(step=>(step.status==='awaiting_approval'||step.approvalRequired===true)&&step.toolCall?.name!=='mioon_project_rules_set'),marked=steps.filter(step=>step.display?.conflict===true);
     const conflictSteps=marked.length?marked:[steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1)].filter((step):step is AgentTaskStep=>step!==undefined);
+    const conflictPaused=run.pauseReason==='conflict'||run.pauseReason==='editing';
+    const pause=run.status==='paused'&&unknown.length===0?pauseMessage(run.pauseReason,steps):null;
     // Answered questions sit before the reply that followed them; the waiting
     // or stopped one follows the reply that asked it.
     const asks=steps.flatMap(step=>{const question=taskQuestionOf(step);return question?[{step,question}]:[];});
@@ -310,7 +332,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const afterReply=notes.filter(note=>!beforeReply.includes(note));
     const noteMessages=(items:typeof notes)=>items.map(note=><div key={note.requestId} className="agent-chat-message is-user mio-user mio-user-note" data-testid="agent-task-note"><span className="mio-note-label">{t('agent.panel.note')}</span><p>{note.text}</p></div>);
     return <article className="mio-round" key={run.id} data-testid="agent-task-round" data-run-id={run.id}>
-        <div className="agent-task-status mio-run-status" data-testid="agent-task-status" role="status"><span className="mio-run-tag" data-status={run.status}>{['accepted', 'running'].includes(run.status) ? <span className="wb-spinner" aria-hidden="true" /> : <Icon name={run.status === 'completed' ? 'check' : run.status === 'failed' ? 'close' : run.status === 'reverted' ? 'undo' : run.status === 'stopped' ? 'stop' : run.status === 'paused' ? 'pause' : run.status === 'awaiting_answer' ? 'question' : 'clock'} />}<strong>{t(`agent.task.status.${run.status}`)}</strong>{!['accepted', 'reverted'].includes(run.status) && <span> · {run.status === 'completed' ? t('agent.panel.usedSteps', { count: run.stepsUsed }) : t('agent.task.budget', { used: run.stepsUsed, limit: run.budget })}</span>}</span>
+        <div className="agent-task-status mio-run-status" data-testid="agent-task-status" role="status"><span className="mio-run-tag" data-status={run.status}>{['accepted', 'running'].includes(run.status) ? <span className="wb-spinner" aria-hidden="true" /> : <Icon name={run.status === 'completed' ? 'check' : run.status === 'failed' ? 'close' : run.status === 'reverted' ? 'undo' : run.status === 'stopped' ? 'stop' : run.status === 'paused' ? 'pause' : run.status === 'awaiting_answer' ? 'question' : 'clock'} />}<strong>{t(`agent.task.status.${run.status}`)}</strong>{!['accepted', 'reverted'].includes(run.status) && <span> · {t('agent.panel.usedSteps', { count: run.stepsUsed })}</span>}</span>
           {run.status === 'running' && <Button variant="ghost" size="compact" data-testid="agent-task-pause" disabled={blocked} onClick={() => { void act('pause'); }}>{t('agent.task.pause')}</Button>}
           {run.status === 'awaiting_answer' && <Button variant="ghost" size="compact" className="mio-run-stop" data-testid="agent-task-stop-question" disabled={blocked} onClick={() => { void act('stop'); }}><Icon name="stop" />{t('agent.task.stop')}</Button>}
           {finished(run.status) && elapsed !== undefined && <span className="mio-secondary">{t('agent.panel.elapsed', { seconds: elapsed })}</span>}
@@ -345,7 +367,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           return <article key={`${entry.stepId}:${entry.target.kind}:${entry.target.id}:${index}`} className="mio-skipped" data-testid="agent-task-skipped"><Icon name="play" /><div><p>{t('agent.panel.skippedOperation',{operation})}</p><p className="mio-secondary">{taskTargetTitle(entry.target.kind,entry.target.id,locale,targetName,target?.name)}</p>{current.length>0&&<p className="mio-secondary">{t('agent.panel.retainedValue',{value:current.map(value=>`${value.label} ${value.value}`).join(' · ')})}</p>}</div></article>;
         })}</section>}
         {answered&&approval.some(step=>step.tier==='paid')&&<p className="mio-answer-not-approval" data-testid="agent-task-answer-not-approval"><Icon name="info" />{t('agent.panel.question.notApproval')}</p>}
-        {((run.status === 'completed'&&latest)||isTaskGoalRepairActive(snapshot)) && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached} visible={visible&&!historyOpen} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
+        {((run.status === 'completed'&&latest)||isTaskGoalRepairActive(snapshot)||snapshot===state.snapshot&&isTaskGoalSafetyPaused(snapshot)) && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached} visible={visible&&!historyOpen} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
         {steps.filter(step => step.kind === 'tool' && step.toolCall?.name === 'mioon_project_rules_set').map(step => {
           const proposal = rulesProposalOf(step), pending = state.pending?.runId === run.id && (state.pending.action === 'approve' || state.pending.action === 'deny') ? state.pending : null;
           const rejected = step.status === 'denied' || step.status === 'rejected' && step.result && typeof step.result === 'object' && !Array.isArray(step.result) && step.result.error && typeof step.result.error === 'object' && !Array.isArray(step.result.error) && step.result.error.code === 'USER_REJECTED';
@@ -353,9 +375,9 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal && canInteract() && visibility.current) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal && canInteract() && visibility.current) void act('deny', {stepId: step.id});}} /></div>;
         })}
         {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
-        {run.status === 'paused' && unknown.length === 0 && <section className="mio-card" data-testid="agent-task-paused">
-          <strong>{t(run.pauseReason === 'budget' ? 'agent.panel.budgetTitle' : ['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictTitle' : 'agent.panel.pauseTitle')}</strong>
-          {['conflict', 'editing'].includes(run.pauseReason ?? '') && conflictSteps.map(step => {
+        {pause && <section className="mio-card" data-testid="agent-task-paused">
+          <strong>{pause.title}</strong>
+          {conflictPaused && conflictSteps.map(step => {
             const current = taskCurrentEntries(step.display, locale,formatOptions), planned = taskDisplayEntries(step.display, locale,formatOptions);
             return <dl key={step.id} className="mio-conflict-values" data-testid="agent-task-conflict-values">
               <div><dt>{t('agent.panel.conflictTarget')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)}</dd></div>
@@ -363,8 +385,9 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
               {planned.length > 0 && <div><dt>{t('agent.panel.originalPlan')}</dt><dd>{planned.map((entry, index) => <p key={index}>{entry.label} {entry.value}</p>)}</dd></div>}
             </dl>;
           })}
-          <p>{run.pauseReason === 'budget' ? t('agent.panel.budgetBody', { count: run.stepsUsed }) : t(['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictBody' : run.pauseReason === 'user' ? 'agent.panel.pauseBody' : agentTaskErrorKey(run.pauseReason))}</p>
-          <div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act(['conflict','editing'].includes(run.pauseReason??'')?'skip':'resume'); }}>{['conflict','editing'].includes(run.pauseReason??'')?t('agent.panel.skipContinue'):run.pauseReason === 'budget' ? t('agent.task.nextRound', { count: run.stepLimit }) : t('agent.task.resume')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>
+          <p>{pause.body}</p>
+          {pause.supplement&&snapshot===state.snapshot&&!readOnly&&<p className="mio-secondary">{t('agent.panel.pauseSupplement')}</p>}
+          <div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act(conflictPaused?'skip':'resume'); }}>{t(conflictPaused?'agent.panel.skipContinue':'agent.task.resume')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>
         </section>}
         {run.status === 'failed' && runFailure && <p className="mio-error" role="alert" data-testid="agent-task-run-failure">{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(runFailure))})}</p>}
         {run.status === 'failed' && <p className="mio-error" role="alert" data-testid="agent-task-run-error">{t(settingsChanged?'agent.panel.settingsChangedTail':'agent.panel.failedTail')}</p>}

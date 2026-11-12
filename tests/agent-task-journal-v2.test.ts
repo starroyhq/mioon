@@ -24,10 +24,8 @@ import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
-import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-
-function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=store.projectId;store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
-function start(f:ReturnType<typeof fixture>,stepLimit=30){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'},policy:{...structuredClone(DEFAULT_AGENT_TASK_POLICY),stepLimit}});}
+function fixture(safetyStepLimit?:number){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=store.projectId;store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store,{safetyStepLimit}),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
+function start(f:ReturnType<typeof fixture>){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'}});}
 function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=beginFixtureToolStep(f.journal,runId,{});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
 
 for(const status of ['completed','failed','stopped'] as const)test(`${status} execution end survives later undo, reverted state and restart`,t=>{
@@ -76,46 +74,65 @@ test('native terminal runs without canonical execution timestamps do not invent 
  }finally{f.close();}
 });
 test('v2 requests and controls replay original receipt without repeating state changes',()=>{const f=fixture();try{const first=start(f),input={requestId:randomUUID(),runId:first.run.id,expectedRevision:first.run.revision,action:'pause'};let calls=0;const result=f.journal.performControl(input,()=>{calls++;return {status:f.journal.transition(first.run.id,first.run.revision,'paused').status};});assert.equal(result.revision,first.run.revision+1);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),result);assert.equal(calls,1);assert.throws(()=>f.journal.performControl({...input,action:'stop'},()=>null),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.journal.lookupRequest(f.projectId,first.run.requestId)?.run.id,first.run.id);}finally{f.close();}});
-test('v2 budget is cumulative and an explicitly resumed round does not repeat completed steps',()=>{const f=fixture();try{const run=start(f,2).run;for(let i=0;i<2;i++){const model=beginFixtureModelStep(f.journal,run.id);model.complete(String(i));}assert.throws(()=>f.journal.beginStep(run.id,{kind:'model'}),{code:'AGENT_TASK_BUDGET_EXHAUSTED'});let current=f.journal.run(run.id);current=f.journal.transition(run.id,current.revision,'paused','budget');current=f.journal.resume(run.id,current.revision,{extendBudget:true});assert.equal(current.budget,4);assert.equal(current.stepsUsed,2);assert.equal(f.journal.snapshot(run.id).steps.length,2);}finally{f.close();}});
-test('approval resume preserves an exhausted budget and finishes only the existing counted intent',()=>{
- const f=fixture();try{
-  const run=start(f,2).run,tool=beginFixtureToolStep(f.journal,run.id,{});f.journal.updateStep(run.id,tool.id,{status:'awaiting_approval'});let current=f.journal.run(run.id);f.journal.transition(run.id,current.revision,'awaiting_approval');
+test('explicit continuation durably resets the safety window once without repeating completed steps',()=>{
+ const f=fixture(2);try{
+  const run=start(f).run;
+  for(let i=0;i<2;i++)beginFixtureModelStep(f.journal,run.id).complete(String(i));
+  assert.throws(()=>f.journal.beginStep(run.id,{kind:'model'}),{code:'AGENT_TASK_BUDGET_EXHAUSTED'});
+  const paused=f.journal.transition(run.id,f.journal.run(run.id).revision,'paused','safety_limit');
+  const input={requestId:randomUUID(),runId:run.id,expectedRevision:paused.revision,action:'resume'};
+  const receipt=f.journal.performControl(input,()=>{f.journal.resume(run.id,paused.revision,{resetSafetyWindow:true});return null;});
+  assert.equal(receipt.revision,paused.revision+1);
+  assert.deepEqual(f.journal.performControl(input,()=>assert.fail('replay cannot reset the window')),receipt);
+  assert.deepEqual(f.journal.safetyWindow(run.id),{startStepsUsed:2,afterPosition:2,remaining:2});
+  assert.equal(f.journal.run(run.id).stepsUsed,2);assert.equal(f.journal.snapshot(run.id).steps.length,2);
+  f.store.close();const reopened=openStore(f.root);try{
+   const journal=createAgentTaskJournal(reopened,{safetyStepLimit:2});journal.recover();
+   assert.deepEqual(journal.lookupControl(input.requestId),receipt);
+   assert.deepEqual(journal.safetyWindow(run.id),{startStepsUsed:2,afterPosition:2,remaining:2});
+  }finally{reopened.close();}
+ }finally{f.close();}
+});
+test('approval resume preserves an exhausted safety window and finishes only the existing counted intent',()=>{
+ const f=fixture(2);try{
+  const run=start(f).run,tool=beginFixtureToolStep(f.journal,run.id,{});f.journal.updateStep(run.id,tool.id,{status:'awaiting_approval'});let current=f.journal.run(run.id);f.journal.transition(run.id,current.revision,'awaiting_approval');
   f.journal.updateStep(run.id,tool.id,{status:'intent'});current=f.journal.resume(run.id,f.journal.run(run.id).revision);
-  assert.equal(current.stepsUsed,2);assert.equal(current.budget,2);f.journal.markDispatch(run.id,tool.id);f.journal.completeStep(run.id,tool.id,{result:{approved:true}});
+  assert.equal(current.stepsUsed,2);assert.equal(current.budget,30);assert.equal(f.journal.safetyWindow(run.id).remaining,0);f.journal.markDispatch(run.id,tool.id);f.journal.completeStep(run.id,tool.id,{result:{approved:true}});
   assert.equal(f.journal.snapshot(run.id).steps.length,2);assert.equal(f.journal.step(tool.id).status,'completed');assert.throws(()=>f.journal.beginStep(run.id,{kind:'model'}),{code:'AGENT_TASK_BUDGET_EXHAUSTED'});
  }finally{f.close();}
 });
-for(const reason of ['user','budget','interrupted'] as const)for(const full of [false,true])test(`explicit continuation ${reason} ${full?'at':'below'} budget preserves CAS and uses the original round size`,()=>{
- const f=fixture();try{
-  const run=start(f,2).run;for(let index=0;index<(full?2:1);index++){const model=beginFixtureModelStep(f.journal,run.id);model.complete(String(index));}
+for(const reason of ['user','budget','interrupted'] as const)for(const full of [false,true])test(`explicit continuation ${reason} ${full?'at':'below'} the safety limit preserves CAS and starts a fresh window`,()=>{
+ const f=fixture(2);try{
+  const run=start(f).run,stepsUsed=full?2:1;for(let index=0;index<stepsUsed;index++){const model=beginFixtureModelStep(f.journal,run.id);model.complete(String(index));}
   const before=f.journal.run(run.id),paused=f.journal.transition(run.id,before.revision,reason==='interrupted'?'interrupted':'paused',reason);
   f.journal.updatePolicy({...f.journal.policy(),stepLimit:7});const saved=f.journal.snapshot(run.id);
-  assert.throws(()=>f.journal.resume(run.id,paused.revision-1,{extendBudget:true}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.snapshot(run.id),saved);
-  const current=f.journal.resume(run.id,paused.revision,{extendBudget:true});assert.equal(current.stepLimit,2);assert.equal(current.budget,full?4:2);assert.equal(current.stepsUsed,full?2:1);
-  assert.throws(()=>f.journal.resume(run.id,paused.revision,{extendBudget:true}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.equal(f.journal.run(run.id).budget,full?4:2);
+  assert.throws(()=>f.journal.resume(run.id,paused.revision-1,{resetSafetyWindow:true}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.snapshot(run.id),saved);
+  const current=f.journal.resume(run.id,paused.revision,{resetSafetyWindow:true});assert.equal(current.stepLimit,30);assert.equal(current.budget,30);assert.equal(current.stepsUsed,stepsUsed);
+  const window={startStepsUsed:stepsUsed,afterPosition:stepsUsed,remaining:2};assert.deepEqual(f.journal.safetyWindow(run.id),window);
+  assert.throws(()=>f.journal.resume(run.id,paused.revision,{resetSafetyWindow:true}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.safetyWindow(run.id),window);
  }finally{f.close();}
 });
-test('budget continuation refuses overflow atomically while approval resume never adds a round',()=>{
- const f=fixture();try{
-  const run=start(f,2).run,paused=f.journal.transition(run.id,run.revision,'awaiting_approval'),limit=Number.MAX_SAFE_INTEGER-1;
+test('safety continuation refuses counter overflow atomically while approval resume preserves the current window',()=>{
+ const f=fixture(2);try{
+  const run=start(f).run,paused=f.journal.transition(run.id,run.revision,'awaiting_approval'),limit=Number.MAX_SAFE_INTEGER;
   f.store.db.prepare('UPDATE mio_runs SET budget=?,stepsUsed=? WHERE id=?').run(limit,limit,run.id);const before=f.journal.snapshot(run.id);
-  assert.throws(()=>f.journal.resume(run.id,paused.revision,{extendBudget:true}),{code:'AGENT_TASK_BUDGET_LIMIT'});assert.deepEqual(f.journal.snapshot(run.id),before);
+  assert.throws(()=>f.journal.resume(run.id,paused.revision,{resetSafetyWindow:true}),{code:'AGENT_TASK_BUDGET_LIMIT'});assert.deepEqual(f.journal.snapshot(run.id),before);
   const approved=f.journal.resume(run.id,paused.revision);assert.equal(approved.budget,limit);assert.equal(approved.stepsUsed,limit);
  }finally{f.close();}
 });
-test('approval and explicit continuation both preserve unknown-result fencing before changing any budget',()=>{
- const f=fixture();try{
-  const run=start(f,1).run,step=beginFixtureModelStep(f.journal,run.id).step;f.journal.markDispatch(run.id,step.id);f.journal.recover();const saved=f.journal.snapshot(run.id);
-  for(const extendBudget of [false,true]){assert.throws(()=>f.journal.resume(run.id,saved.run.revision,{extendBudget}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.journal.snapshot(run.id),saved);}
+test('approval and explicit continuation both preserve unknown-result fencing before resetting the window',()=>{
+ const f=fixture(1);try{
+  const run=start(f).run,step=beginFixtureModelStep(f.journal,run.id).step;f.journal.markDispatch(run.id,step.id);f.journal.recover();const saved=f.journal.snapshot(run.id);
+  for(const resetSafetyWindow of [false,true]){assert.throws(()=>f.journal.resume(run.id,saved.run.revision,{resetSafetyWindow}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.journal.snapshot(run.id),saved);}
  }finally{f.close();}
 });
 for(const reason of ['editing','conflict','user','budget'] as const)test(`restart preserves unresolved ${reason} selection without resuming the run`,()=>{
- const f=fixture();try{
-  const run=start(f,2).run,step=beginFixtureToolStep(f.journal,run.id,{});
+ const f=fixture(2);try{
+  const run=start(f).run,step=beginFixtureToolStep(f.journal,run.id,{});
   f.journal.transition(run.id,f.journal.run(run.id).revision,'paused',reason);
   assert.equal(f.journal.recover(),1);const saved=f.journal.snapshot(run.id);
   assert.equal(saved.run.status,'interrupted');assert.equal(saved.run.pauseReason,reason==='editing'||reason==='conflict'?reason:'restart');
-  assert.equal(saved.steps[1]?.id,step.id);assert.equal(saved.steps[1]?.status,'intent');assert.equal(saved.run.budget,2);assert.equal(saved.run.stepsUsed,2);
+  assert.equal(saved.steps[1]?.id,step.id);assert.equal(saved.steps[1]?.status,'intent');assert.equal(saved.run.budget,30);assert.equal(saved.run.stepsUsed,2);assert.equal(f.journal.safetyWindow(run.id).remaining,0);
   assert.equal(f.journal.recover(),0);assert.deepEqual(f.journal.snapshot(run.id),saved);
  }finally{f.close();}
 });

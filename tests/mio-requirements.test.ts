@@ -30,16 +30,18 @@ test('H4b original active rounds and paused repairs do not expose completion ear
   running.steps.push(repairStep());running.run.status='paused';assert.equal(isTaskGoalRepairActive(running),false);assert.equal(component(running,report([requirement()])).render(),null);
   running.run.status='completed';assert.equal(taskRequirementStatus(requirement(),running),'failed');
 });
-test('H4b three explanatory notes reflect requirements and the single repair or budget boundary',()=>{
+test('H4b explanatory notes reflect requirements, the single repair and a safety pause',()=>{
   const snap=snapshot(),failed=[requirement()],pending=[requirement({status:'pending'})];
   assert.equal(taskRequirementNote(failed,snap),undefined);assert.equal(taskRequirementNote(pending,snap),'waiting');
-  snap.run.stepsUsed=snap.run.budget;assert.equal(taskRequirementNote(failed,snap),'budget');assert.equal(taskRequirementNote(pending,snap),'waiting');
+  snap.run.stepsUsed=snap.run.budget;assert.equal(taskRequirementNote(failed,snap),undefined);assert.equal(taskRequirementNote(pending,snap),'waiting');
   assert.equal(taskRequirementNote([requirement({status:'passed'})],snap),undefined);
   snap.steps.push(repairStep());assert.equal(taskRequirementNote(failed,snap),'once');assert.equal(taskRequirementNote(pending,snap),undefined);
-  for(const [status,hasRepair,used,key] of [['failed',true,12,'once'],['pending',false,12,'waiting'],['failed',false,30,'budget']] as const){
-    const value=snapshot();value.run.stepsUsed=used;if(hasRepair)value.steps.push(repairStep());
+  for(const [status,hasRepair,key] of [['failed',true,'once'],['pending',false,'waiting'],['failed',false,'safety']] as const){
+    const value=snapshot();if(hasRepair)value.steps.push(repairStep());
+    if(key==='safety'){value.run.status='paused';value.run.pauseReason='safety_limit';}
     const tree=component(value,report([requirement({status})])).render(),note=nodes(tree).find(node=>node.props['data-testid']==='agent-task-check-note')!;
     assert.equal(text(note),translate('zh-Hans',`agent.requirements.note.${key}`));assert.equal(nodes(note).some(node=>node.type==='button'),false);
+    if(key==='safety')assert.ok(!nodes(tree).some(node=>node.props.className==='mio-check-refresh'));
   }
 });
 test('H4b new declarations and clearing receipts suppress cached previous requirements immediately',()=>{
