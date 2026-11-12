@@ -5,7 +5,9 @@ import {chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFi
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore,openStore} from '../packages/business/src/project-file/index.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {testStoreApplicationDirectory, testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageHistoryReaders} from '../packages/business/src/images/history.ts';
@@ -54,6 +56,30 @@ test('historical notes bytes survive reopening but current DTOs and package docu
   assert.equal(reopened.db.prepare('SELECT total_changes() AS n').get()!.n, before);
   assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM projects').get()!.n, 1);
   assert.deepEqual(reopened.get('projects', projectId), project);
+});
+
+test('the legacy package cannot collect or import a live format 4 project',t=>{
+ const root=scratch(t),released=openStore(path.join(root,'released'));
+ t.after(()=>released.close());
+ ensureProjectRow(released,{name:'Released source'});
+ const options={media:'used' as const,includeExports:false};
+ const old=collectProject(released,released.projectId,options).document;
+ const target=path.join(root,'candidate');mkdirSync(target,{mode:0o700});
+ const store=createProjectStore({projectFile:path.join(target,'project.mioon'),format4:{},locate:()=>({
+  localDir:path.join(target,'local'),cacheDir:path.join(target,'cache'),tempDir:path.join(target,'tmp'),
+ })});
+ t.after(()=>store.close());
+ ensureProjectRow(store,{name:'Candidate source'});
+ const id=randomUUID(),batch=randomUUID();
+ store.put('nodes',{id,projectId:store.projectId,type:'text',label:'Archived'});
+ store.db.prepare("UPDATE project.nodes SET archivedAt='2026-11-12T00:00:00.000Z',archiveBatchId=?,archiveReason='user-delete' WHERE id=?").run(batch,id);
+ const before=store.db.prepare('SELECT total_changes() n').get()?.n;
+ assert.throws(()=>collectProject(store,store.projectId,options),{code:'PROJECT_PACKAGE_NEWER_FORMAT',
+  details:{projectFormatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedProjectFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ assert.throws(()=>createProjectFromDocument(store,{document:old,files:new Map(),name:'Refused legacy import',move:false}),
+  {name:'TypeError',message:'Legacy project package imports cannot run on project databases.'});
+ assert.equal(store.db.prepare('SELECT total_changes() n').get()?.n,before);
+ assert.equal(store.db.prepare('SELECT archiveBatchId FROM project.nodes WHERE id=?').get(id)?.archiveBatchId,batch);
 });
 
 test('the exact test opener owns one real B1 application and releases it with its project', async t => {

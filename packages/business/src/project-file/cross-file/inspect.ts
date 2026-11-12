@@ -2,7 +2,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import type {ForeignKeyViolation, SchemaObject} from '../../../../contracts/src/project-file.ts';
 import {relationConstraintName} from './install.ts';
-import {CROSS_FILE_RELATIONS} from './relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from './relations.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION} from '../schema/databases.ts';
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 
@@ -30,7 +31,9 @@ export function foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[] {
       violations.push({schema, table: String(row.table), rowid: row.rowid === null ? null : Number(row.rowid), parent: String(row.parent), parentSchema: schema, constraint: `fk:${String(row.fkid)}`});
     }
   }
-  for (const relation of CROSS_FILE_RELATIONS) {
+  const relations = db.prepare('SELECT version FROM main.schema_version').get()?.version === FORMAT4_HISTORY_SCHEMA_VERSION
+    ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
+  for (const relation of relations) {
     const {child, parent} = relation;
     const keySet = child.columns.map(column => `c.${quote(column)} IS NOT NULL`).join(' AND ');
     const matches = parent.columns.map((column, i) => `p.${quote(column)}=c.${quote(child.columns[i]!)}`).join(' AND ');

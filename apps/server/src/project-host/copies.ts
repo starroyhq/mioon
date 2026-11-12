@@ -7,6 +7,8 @@ import type {ProjectCopyInput, ProjectCopyOperation, ProjectCopyResponse} from '
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {copyProjectToNewFile} from '../../../../packages/business/src/project-file/copy.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import {inspectCopiedProjectFile, openProjectBackup, syncCopiedFile, syncCopiedDirectory, publishProjectCopyFile,
   createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
@@ -35,7 +37,7 @@ export interface ProjectCopies extends Omit<ReturnType<typeof createProjectCopyA
   recover(): Promise<void>;
   drain(): Promise<void>;
 }
-export function createProjectCopies({manager, library, directories, assertProjectFile, signal, onBoundary, projectTemplates, onActionBoundary}: {
+export function createProjectCopies({manager, library, directories, assertProjectFile, signal, onBoundary, projectTemplates, targetFormat, onActionBoundary}: {
   readonly manager: ProjectHostManager;
   readonly library: AppLibrary;
   readonly directories: AppDirectories;
@@ -44,9 +46,10 @@ export function createProjectCopies({manager, library, directories, assertProjec
   /** Trusted failure seam, never a request or environment option. */
   readonly onBoundary?: (boundary: ProjectCopyBoundary, input: ProjectCopyInput) => void | Promise<void>;
   readonly projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  readonly targetFormat?: ProjectFileFormat;
   readonly onActionBoundary?: (boundary: ProjectCopyActionBoundary, input: ProjectCopyActionInput) => void | Promise<void>;
 }): ProjectCopies {
-  const actions = createProjectCopyActions({manager, library, directories, assertProjectFile, signal, projectTemplates, onActionBoundary});
+  const actions = createProjectCopyActions({manager, library, directories, assertProjectFile, signal, projectTemplates, targetFormat, onActionBoundary});
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;
   const records = createCopyRecords(directories.dataDir, assertAllowed);
   const running = new Map<string, {digest: string; promise: Promise<ProjectCopyResponse>}>();
@@ -195,7 +198,8 @@ export function createProjectCopies({manager, library, directories, assertProjec
         || actual.contentSequence !== response.contentSequence) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标内容与复制提交不一致。');
       // This opens only the completed target with its completed, matching
       // history. It validates all cross-file constraints, without a factory.
-      const store = openProjectStore({projectFile: target, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy});
+      const store = openProjectStore({projectFile: target, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy,
+        ...(actual.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
       try {
         if (store.historyState !== 'current' || canonicalJson(readProjectContentStamp(store.db)) !== canonicalJson({contentSequence: actual.contentSequence, contentToken: actual.contentToken})) {
           throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标记录未通过完整内容身份校验。');
@@ -271,6 +275,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
         copied = await copyProjectToNewFile(source, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
           targetProjectDir: path.dirname(input.projectFile), projectId: intent.projectId, contentToken: intent.contentToken,
           expectedSource: {projectId: input.projectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
+          ...(targetFormat === undefined ? {} : {targetFormat}),
           ...(input.name === undefined ? {} : {projectName: input.name}), publish: (from, to) => publishProjectCopyFile(from, to)});
       } finally {source.close();}
       assertAllowed();
@@ -278,7 +283,8 @@ export function createProjectCopies({manager, library, directories, assertProjec
       if (lstatSync(localDir, {throwIfNoEntry: false})) {validatePrivateDirectory(localDir); rmSync(localDir, {recursive: true});}
       ensurePrivateDirectory(localDir, {create: true});
       initializeProjectCopyHistory(stageHistory(intent), intent.projectId, copied);
-      const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir, cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'tmp')})});
+      const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir, cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'tmp')}),
+        ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
       let versions = 0;
       try {
         if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制目标的初始内容身份不匹配。');

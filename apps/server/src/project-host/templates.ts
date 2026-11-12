@@ -20,6 +20,7 @@ export type {ProjectTemplateManifest} from '../../../../packages/contracts/src/p
 export interface ProjectTemplateCatalogEntry {readonly directory: string; readonly manifest: ProjectTemplateManifest}
 export interface ProjectTemplateDescription {
   readonly templateId: string; readonly version: number; readonly projectFile: string; readonly projectId: string; readonly sourceProjectDir: string;
+  readonly sourceGeneration: string;
   readonly sourceStamp: {readonly contentSequence: number; readonly contentToken: string};
 }
 export interface PreparedProjectTemplateAssets {
@@ -102,14 +103,14 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
   };
   const describe = (templateId: string, version: number): ProjectTemplateDescription => {
     const {directory, manifest} = select(templateId, version);
-    const before = sourceFile(directory, manifest.projectFile);
+    const before = sourceFile(directory, manifest.projectFile), sourceGeneration = generation(before.info);
     readManifestFile(directory, manifest.projectFile);
     const projectFile = before.file;
     const inspected = inspectCopiedProjectFile(projectFile);
     // Hash verification and the SQLite content pair must describe the same
     // file generation, including edits between the two synchronous readers.
-    if (generation(sourceFile(directory, manifest.projectFile).info) !== generation(before.info)) throw invalid('source-changed', manifest.projectFile.path);
-    return {templateId, version, projectFile, projectId: inspected.projectId, sourceProjectDir: path.dirname(projectFile),
+    if (generation(sourceFile(directory, manifest.projectFile).info) !== sourceGeneration) throw invalid('source-changed', manifest.projectFile.path);
+    return {templateId, version, projectFile, projectId: inspected.projectId, sourceProjectDir: path.dirname(projectFile), sourceGeneration,
       sourceStamp: {contentSequence: inspected.contentSequence, contentToken: inspected.contentToken}};
   };
   return {describe, verifyPreparedAssets(templateId, version, directory) {

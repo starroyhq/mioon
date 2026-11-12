@@ -80,6 +80,13 @@ export const CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze(
   {index: 74, child: {schema: "main", table: "project_version_capture_marks", columns: ["projectId"], nullable: [false]}, parent: {schema: "project", table: "projects", columns: ["id"]}, originallyDeferred: false},
   {index: 75, child: {schema: "main", table: "mio_imports", columns: ["assetId"], nullable: [true]}, parent: {schema: "project", table: "assets", columns: ["id"]}, originallyDeferred: false},
 ]);
+export const FORMAT4_CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze([
+  ...CROSS_FILE_RELATIONS,
+  ...['canvas_requests', 'canvas_history_entries', 'canvas_history_state'].map((table, offset): CrossFileRelation => ({
+    index: 76 + offset, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]},
+    parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false,
+  })),
+]);
 export const DROPPED_CONTENT_KEYS: readonly DroppedContentKey[] = Object.freeze([
   {child: {table: "image_groups", columns: ["activeTaskId","id","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: true},
   {child: {table: "image_versions", columns: ["taskId","groupId","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: false},

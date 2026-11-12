@@ -3,6 +3,7 @@ import {gzipSync, gunzipSync} from 'node:zlib';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {canonicalJson, PROJECT_SNAPSHOT_PROFILE, snapshotInvalid, validateProjectDocument, decodeSupportedProjectDocument, validateProjectDocumentForCopy} from './document.ts';
 import type {ProjectDocument} from './document.ts';
+import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES, PROJECT_SNAPSHOT_MAX_COMPRESSED_BYTES} from './limits.ts';
 export {PROJECT_SNAPSHOT_MAX_RAW_BYTES, PROJECT_SNAPSHOT_MAX_COMPRESSED_BYTES} from './limits.ts';
 
@@ -46,8 +47,8 @@ function decodeEnvelope(input: EncodedProjectDocument): unknown {
   return document;
 }
 
-export function decodeProjectDocument(input: EncodedProjectDocument): ProjectDocument {
-  return decodeSupportedProjectDocument(decodeEnvelope(input));
+export function decodeProjectDocument(input: EncodedProjectDocument, targetFormat?: ProjectFileFormat): ProjectDocument {
+  return decodeSupportedProjectDocument(decodeEnvelope(input), targetFormat);
 }
 
 /** Checks transport and known frozen structure without claiming that every

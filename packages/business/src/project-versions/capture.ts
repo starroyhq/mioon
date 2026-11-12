@@ -3,7 +3,7 @@ import type {AgentTaskEffectOrigin} from '../agent/task-effects-v2.ts';
 import {isProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import type {ProjectVersionSummary} from '../../../contracts/src/project-versions.ts';
-import {captureProjectDocumentInside, validateProjectDocument} from './document.ts';
+import {captureProjectDocumentInside, readSnapshotProjectFormat, validateProjectDocument} from './document.ts';
 import type {ProjectDocument} from './document.ts';
 import {encodeProjectDocument} from './codec.ts';
 import {storeProjectVersionInside, versionError} from './repository.ts';
@@ -84,7 +84,7 @@ export function saveBeforeBulkChangeInside(store: ProjectStore, options: Capture
   if (typeof options.assertMutationAllowed !== 'function' || !options.requestId) throw new TypeError('Bulk capture requires write admission and a request identity');
   options.assertMutationAllowed();
   const document = options.document ? validateProjectDocument(options.document) : captureProjectDocumentInside(store);
-  if (document.projectId !== store.projectId || document.evidence.contentSequence !== sequence(store))
+  if (document.projectId !== store.projectId || document.projectFormatVersion !== readSnapshotProjectFormat(store.db) || document.evidence.contentSequence !== sequence(store))
     throw versionError('PROJECT_ID_MISMATCH', '大改动前态不属于当前项目状态。', 400);
   const date = (options.now ?? (() => new Date()))();
   const version = storeProjectVersionInside(store.db, {projectId: store.projectId, trigger: options.trigger,

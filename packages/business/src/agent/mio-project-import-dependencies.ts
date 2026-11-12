@@ -22,6 +22,8 @@ import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION} from '../../../contracts/src/mio-project-import.ts';
 import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {INSPECTION_ROW_LIMITS} from '../inspection-query.ts';
@@ -275,8 +277,17 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     const target = db.prepare('SELECT id,projectId FROM project.assets WHERE id=?').get(assetId);
     if (!target || target.projectId !== store.projectId) deny('invalid');
     const tables: {schema: 'main' | 'project' | 'cache'; table: string}[] = [];
+    const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
     for (const schema of ['project', 'main', 'cache'] as const) {
       const expected = new Set<string>([...ignored[schema], ...Object.keys(consumerCells[schema])]);
+      if (schema === 'main' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION) {
+        // CB will own the meaning of the retained canvas patches. Until that
+        // decoder ships, an empty ledger is the only proof of no consumers.
+        for (const table of CANVAS_HISTORY_TABLES) {
+          expected.add(table);
+          if (db.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get()) deny('unsupported');
+        }
+      }
       for (const row of db.prepare(`SELECT name,type FROM ${schema}.sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' LIMIT 257`).iterate()) {
         if (typeof row.name !== 'string' || row.type !== 'table' || !expected.delete(row.name)) deny('unsupported');
         tables.push({schema, table: row.name});

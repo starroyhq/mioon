@@ -44,11 +44,12 @@ function updateSubjectInside(store:ProjectStore,id:SnapshotRow[string],steps:rea
  * caller owns CAS, the before-version, original receipt and final commit. */
 export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {requestId, now = new Date().toISOString()}: {requestId: string; now?: string}): void {
   const current = restorePlanCurrent(store, plan);
+  const format = current.projectFormatVersion;
   if (completed.has(plan)) throw new TypeError('A restore plan can only be applied once');
   if (new Date(now).toISOString() !== now) throw new TypeError('A restore timestamp must be an ISO instant');
   const indexes = new Map(insertOrder.concat('timelines').map(table => [table, {
-    current: new Map(current.tables[table].map(row => [rowKey(table,row),row])),
-    desired: new Map(plan.document.tables[table].map(row => [rowKey(table,row),row])),
+    current: new Map(current.tables[table].map(row => [rowKey(table,row,format),row])),
+    desired: new Map(plan.document.tables[table].map(row => [rowKey(table,row,format),row])),
     changes: plan.changes.filter(change => change.table === table && change.action !== 'keep-current'),
   }]));
   const admissions: RestoreAdmissionRow[] = [];
@@ -72,7 +73,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
       for(const table of insertOrder){
         const item=indexes.get(table)!,adds=item.changes.filter(change=>!item.current.has(change.key)&&item.desired.has(change.key));
         adds.sort((a,b)=>Number(item.desired.get(a.key)!.number??item.desired.get(a.key)!.position??0)-Number(item.desired.get(b.key)!.number??item.desired.get(b.key)!.position??0));
-        const columns=tableColumns(table),insert=store.db.prepare(`INSERT INTO project.${quote(table)}(${columns.map(quote).join(',')}) VALUES(${columns.map(()=>'?').join(',')})`);
+        const columns=tableColumns(table,format),insert=store.db.prepare(`INSERT INTO project.${quote(table)}(${columns.map(quote).join(',')}) VALUES(${columns.map(()=>'?').join(',')})`);
         for(const change of adds){
           const saved=item.desired.get(change.key)!,id=table==='projects'?store.projectId:String(saved.id??saved.assetId);
           const ledger=Number(store.db.prepare('SELECT revision FROM project.agent_task_target_revisions_v2 WHERE projectId=? AND kind=? AND targetId=?').get(store.projectId,targetKinds[table],id)?.revision??0);
@@ -80,7 +81,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
         }
       }
       for(const table of insertOrder){
-        const item=indexes.get(table)!,keys=primaryKeys(table),columns=tableColumns(table).filter(column=>!keys.includes(column));
+        const item=indexes.get(table)!,keys=primaryKeys(table,format),columns=tableColumns(table,format).filter(column=>!keys.includes(column));
         const update=store.db.prepare(`UPDATE project.${quote(table)} SET ${columns.map(column=>`${quote(column)}=?`).join(',')} WHERE ${keys.map(key=>`${quote(key)} IS ?`).join(' AND ')}`);
         for(const change of item.changes){
           const old=item.current.get(change.key),saved=item.desired.get(change.key);if(!old||!saved)continue;
@@ -96,7 +97,7 @@ export function applyRestorePlanInside(store: ProjectStore, plan: RestorePlan, {
       // Mutable references have now moved. Reverse dependencies can be removed
       // without deleting any retained result, owner or tombstone.
       for(const table of [...insertOrder].reverse()){
-        const item=indexes.get(table)!,keys=primaryKeys(table),remove=store.db.prepare(`DELETE FROM project.${quote(table)} WHERE ${keys.map(key=>`${quote(key)} IS ?`).join(' AND ')}`);
+        const item=indexes.get(table)!,keys=primaryKeys(table,format),remove=store.db.prepare(`DELETE FROM project.${quote(table)} WHERE ${keys.map(key=>`${quote(key)} IS ?`).join(' AND ')}`);
         for(const change of item.changes){const old=item.current.get(change.key);if(old&&!item.desired.has(change.key))remove.run(...keys.map(key=>snapshotCellValue(old[key])));}
       }
       if(store.db.prepare('PRAGMA project.foreign_key_check').get())throw new AppError('PROJECT_VERSION_DEPENDENCY_CONFLICT','恢复内容的依赖无法闭合。',409);

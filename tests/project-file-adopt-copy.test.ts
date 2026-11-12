@@ -15,7 +15,8 @@ import {createProjectFile,inspectProjectFileReadOnly} from '../packages/business
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
 import {createProjectCopyStagingDirectory,inspectCopiedProjectFile,openProjectBackup} from '../packages/business/src/project-file/backup.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
-import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../packages/business/src/project-file/schema/databases.ts';
 
 const code=(expected:string)=>(error:unknown):boolean=>Boolean(error&&typeof error==='object'&&'code' in error&&error.code===expected);
 const fileIdentity=(file:string)=>{const info=lstatSync(file,{bigint:true});return {dev:String(info.dev),ino:String(info.ino)};};
@@ -36,28 +37,33 @@ function fixture(t:TestContext){
  t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();rmSync(root,{recursive:true,force:true});});
  return {root,original,selected,projectId,location,source,directory,options};
 }
-async function build(copy:LockedProjectCopyReplacement,root:string){
+async function build(copy:LockedProjectCopyReplacement,root:string,targetFormat?:ProjectFileFormat){
  const directory=createProjectCopyStagingDirectory(root,'.project-copy-'),file=path.join(directory,'project.mioon'),reader=openProjectBackup(copy.projectFile);
  try{
-  const result=await copyProjectToNewFile(reader,{projectFile:file,sourceProjectDir:root,targetProjectDir:root,projectId:randomUUID(),contentToken:randomBytes(16).toString('hex'),clearProcessRevisions:true,publish:(temporary,destination)=>renameSync(temporary,destination)});
+  const result=await copyProjectToNewFile(reader,{projectFile:file,sourceProjectDir:root,targetProjectDir:root,projectId:randomUUID(),contentToken:randomBytes(16).toString('hex'),clearProcessRevisions:true,targetFormat,publish:(temporary,destination)=>renameSync(temporary,destination)});
   return {file,directory,expected:{...result,fileIdentity:fileIdentity(file)}};
  }finally{reader.close();}
 }
 
-test('adoption builds and replaces only the selected copy under a new identity without old local records',async t=>{
+for(const format of [PROJECT_FILE_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION] as const)test(`adoption builds a format ${format} target and replaces only the selected copy under a new identity`,async t=>{
  const f=fixture(t),original=evidence(f.original),history=evidence(path.join(f.location.localDir,'history.db')),oldSelected=fileIdentity(f.selected);
  let newId='',newToken='';
  await withLockedProjectCopy(f.options,async copy=>{
   assert.equal(copy.identity.projectId,f.projectId);assert.equal(copy.identity.formatVersion,PROJECT_FILE_SCHEMA_VERSION);
-  const stage=await build(copy,f.root);newId=stage.expected.projectId;newToken=stage.expected.contentToken;
+  const before=lstatSync(f.selected,{bigint:true});
+  const stage=await build(copy,f.root,format);newId=stage.expected.projectId;newToken=stage.expected.contentToken;
+  const after=lstatSync(f.selected,{bigint:true});
+  for(const field of ['dev','ino','size','mtimeNs','ctimeNs'] as const)assert.equal(after[field],before[field],field);
   const copied=copy.replace(stage.file,stage.expected);
   assert.equal(copied.projectId,newId);assert.equal(copied.contentToken,newToken);assert.equal(existsSync(stage.file),false);
-  const target=inspectCopiedProjectFile(f.selected);assert.equal(target.projectId,newId);assert.equal(target.formatVersion,PROJECT_FILE_SCHEMA_VERSION);
+  const target=inspectCopiedProjectFile(f.selected);assert.equal(target.projectId,newId);assert.equal(target.formatVersion,format);
  });
  assert.notEqual(newId,f.projectId);assert.notEqual(newToken,f.source.contentToken);assert.notDeepEqual(fileIdentity(f.selected),oldSelected);
- const store=openProjectStore({projectFile:f.selected,locate:id=>({localDir:path.join(f.root,'new',id),cacheDir:path.join(f.root,'new-cache',id),tempDir:path.join(f.root,'new-tmp',id)})});
+ const store=openProjectStore({projectFile:f.selected,locate:id=>({localDir:path.join(f.root,'new',id),cacheDir:path.join(f.root,'new-cache',id),tempDir:path.join(f.root,'new-tmp',id)}),
+  ...(format===FORMAT4_PROJECT_SCHEMA_VERSION?{format4:{}}:{})});
  try{
   assert.equal(store.projectId,newId);assert.equal(store.historyState,'fresh');
+  assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version,format===FORMAT4_PROJECT_SCHEMA_VERSION?FORMAT4_HISTORY_SCHEMA_VERSION:HISTORY_SCHEMA_VERSION);
   assert.equal((store.get('projects',newId) as {note:string}|null)?.note,f.projectId,'free text is not globally rekeyed');
   assert.equal(store.db.prepare('SELECT count(*) n FROM main.project_versions').get()!.n,0);
   assert.equal(store.db.prepare('SELECT count(*) n FROM main.mio_runs').get()!.n,0);

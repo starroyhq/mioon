@@ -11,10 +11,11 @@ import {createMemoryProjectRegistry, createProjectHostManager, projectLocation, 
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createProjectBackup,inspectProjectBackup,inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 import type {ProjectBackupsOptions} from '../apps/server/src/project-host/backups.ts';
 
-async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs' | 'outsidePaths'>> = {}) {
+async function setup(t: TestContext, options: Partial<Pick<ProjectBackupsOptions, 'backup' | 'slowMs' | 'outsidePaths' | 'targetFormat'>> = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'project-backups-'));
   const directories = serverAppDirectories(root), registry = createMemoryProjectRegistry();
   const warnings: string[] = [];
@@ -134,6 +135,27 @@ test('backup restores with a new ID and empty local records; request replay surv
   writeFileSync(path.join(recordRoot, 'index.json'), JSON.stringify({version: 1, projectId: id, backups: []}), {mode: 0o600});
   assert.deepEqual(await restarted.restore(input), restored);
   assert.equal(f.registry.list().length, 2);
+});
+
+test('trusted backup restore publishes a format 4 target without changing its format 3 backup', async t => {
+  const f = await setup(t, {targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION}), projectId = f.project.projectId;
+  const lease = await f.manager.acquire(projectId, 'window'); lease.release(); await f.manager.close(projectId);
+  const backupId = (await f.backups.list({projectId})).backups[0]!.backupId;
+  const backupFile = path.join(projectLocation(f.directories, projectId).localDir, 'backups', backupId, 'project.mioon');
+  const before = readFileSync(backupFile);
+  assert.equal(inspectProjectBackup(backupFile).formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const projectFile = path.join(f.directories.projectsDir, 'format4-restored.mioon');
+  const input = {projectId, backupId, requestId: randomUUID(), projectFile}, restored = await f.backups.restore(input);
+  assert.equal(inspectCopiedProjectFile(projectFile).formatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.notEqual(restored.project.projectId, projectId);
+  assert.equal(existsSync(projectLocation(f.directories, restored.project.projectId).localDir), false);
+  const store = openProjectStore({projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+  try {
+    assert.equal(store.historyState, 'fresh');
+    assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    assert.deepEqual(await f.backups.restore(input), restored);
+  } finally {store.close();}
+  assert.deepEqual(readFileSync(backupFile), before);
 });
 
 test('a validated same-sequence fork with a different token cannot suppress the current file backup',async t=>{

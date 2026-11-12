@@ -8,6 +8,8 @@ import type {ProjectCopyActionInput, ProjectCopyActionOperation, ProjectAdoptCop
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {copyProjectToNewFile} from '../../../../packages/business/src/project-file/copy.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import {withLockedProjectCopy} from '../../../../packages/business/src/project-file/adopt-copy.ts';
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
@@ -41,9 +43,10 @@ const fileFailure = (error: unknown): unknown => {
 
 /** Selected-file operations do not acquire the original project's runtime.
  * All source reads go through the closed-file kernel capabilities. */
-export function createProjectCopyActions({manager, library, directories, assertProjectFile, signal, projectTemplates = [], onActionBoundary}: {
+export function createProjectCopyActions({manager, library, directories, assertProjectFile, signal, projectTemplates = [], targetFormat, onActionBoundary}: {
   manager: ProjectHostManager; library: AppLibrary; directories: AppDirectories; assertProjectFile: (file: string) => void;
   signal: AbortSignal; projectTemplates?: readonly ProjectTemplateCatalogEntry[];
+  targetFormat?: ProjectFileFormat;
   onActionBoundary?: (phase: ProjectCopyActionBoundary, input: ProjectCopyActionInput) => void | Promise<void>;
 }) {
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;
@@ -188,7 +191,8 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (!registered) {
       const identity = inspectCopiedProjectFile(target);
       if (identity.projectId !== intent.projectId || identity.contentSequence !== response.contentSequence || identity.contentToken !== response.contentToken) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标内容身份已改变。');
-      const store = openProjectStore({projectFile: target, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy});
+      const store = openProjectStore({projectFile: target, locate: id => projectLocation(directories, id), checkCopy: library.registry.checkCopy,
+        ...(identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
       try {if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '新项目记录身份不匹配。');} finally {store.close();}
     }
     const confirmations = intent.operation === 'project.copy-to' ? copiedProjectConfirmationDirectories(library.outsidePaths, intent.sourceProjectId, path.dirname(intent.sourceFile)) : [];
@@ -219,13 +223,15 @@ export function createProjectCopyActions({manager, library, directories, assertP
       copied = await copyProjectToNewFile(source, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
         targetProjectDir: path.dirname(intent.targetFile), projectId: intent.projectId, contentToken: intent.contentToken,
         expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
+        ...(targetFormat === undefined ? {} : {targetFormat}),
         ...('name' in intent.input ? {projectName: intent.input.name} : {}),
         ...(template ? {referenceTargets: template.referenceTargets, templatePresentation: template.presentation} : {}),
         publish: (from, to) => publishProjectCopyFile(from, to)});
     } finally {source.close();}
     assertAllowed();
     ensurePrivateDirectory(localStage(intent), {create: true}); initializeProjectCopyHistory(historyStage(intent), intent.projectId, copied);
-    const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')})});
+    const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')}),
+      ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4: {}} : {})});
     let versions = 0;
     try {
       if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制初始记录身份不匹配。');
@@ -277,6 +283,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (!matches(sourceFile, intent.sourceIdentity)) throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件已被替换。');
     if (operation === 'project.copy-to' && manager.status(sourceProjectId)) throw copyFailure('PROJECT_HOST_BUSY', '源项目尚未关闭。');
     const captured = await captureClosedProjectSnapshot({projectFile: sourceFile, directory, assertMutationAllowed: assertAllowed,
+      ...(template ? {expectedProjectGeneration: template.sourceGeneration} : {}),
       historyFile: id => operation === 'project.copy-to' ? path.join(projectLocation(directories, id).localDir, 'history.db') : path.join(work(intent), 'no-template-history')});
     if (!matches(sourceFile, intent.sourceIdentity)) throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件已被替换。');
     if (operation === 'project.copy-to' && (manager.status(sourceProjectId) || !captured.historyFile

@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import type {SQLInputValue} from 'node:sqlite';
 import {declaredSchema, validateDeclaredSchema} from './helpers/project-file-schema-derivation.ts';
 import {tokenizeSql} from './helpers/sql-tokenizer.ts';
-import {buildDatabase, schemaStatements} from '../packages/business/src/project-file/schema/databases.ts';
+import {buildDatabase, schemaStatements, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {CROSS_FILE_RELATIONS} from '../packages/business/src/project-file/cross-file/relations.ts';
 import type {CrossFileRelation} from '../packages/business/src/project-file/cross-file/relations.ts';
@@ -46,6 +46,39 @@ function addProject(db: DatabaseSync): string {
   db.prepare('INSERT INTO projects(id,data) VALUES(?,?)').run(projectId, '{}');
   return projectId;
 }
+
+test('the format 4 archive fields advance shared evidence and canvas records belong to the attached project', () => {
+  const db = attachedConnection();
+  try {
+    db.exec('PRAGMA recursive_triggers=ON; BEGIN');
+    buildDatabase(db, 'project', 'project', undefined, FORMAT4_PROJECT_SCHEMA_VERSION);
+    buildDatabase(db, 'history', 'main', undefined, FORMAT4_HISTORY_SCHEMA_VERSION);
+    buildDatabase(db, 'cache', 'cache');
+    db.exec('COMMIT');
+    installCrossFileTriggers(db, true);
+    const projectId = addProject(db), shotId = randomUUID(), batchId = randomUUID(), archivedAt = '2026-11-12T00:00:00.000Z';
+    db.prepare('INSERT INTO project.shots(id,projectId,data) VALUES(?,?,?)').run(shotId, projectId, '{}');
+    const revision = () => db.prepare("SELECT revision FROM project.agent_task_target_revisions_v2 WHERE kind='shot' AND targetId=?").get(shotId)?.revision;
+    const before = sequences(db), originalRevision = Number(revision());
+    assert.throws(() => db.prepare('UPDATE project.shots SET archivedAt=? WHERE id=?').run(archivedAt, shotId), /CHECK constraint/u);
+    assert.throws(() => db.prepare('UPDATE project.shots SET archivedAt=?,archiveBatchId=?,archiveReason=? WHERE id=?').run(archivedAt, batchId, 'reference-source', shotId), /CHECK constraint/u);
+    assert.deepEqual(sequences(db), before);
+    db.prepare('UPDATE project.shots SET archivedAt=?,archiveBatchId=?,archiveReason=? WHERE id=?').run(archivedAt, batchId, 'user-delete', shotId);
+    assert.equal(revision(), originalRevision + 1);
+    assert.ok(sequences(db).file > before.file);
+    assert.equal(sequences(db).file, sequences(db).seen);
+    const state = db.prepare("INSERT INTO main.canvas_history_state VALUES(?,0,1,'{}')");
+    assert.throws(() => state.run(randomUUID()), /FOREIGN KEY/u);
+    state.run(projectId);
+    const receipt = db.prepare("INSERT INTO main.canvas_requests VALUES(?,?,'archive',?,'{}',?)");
+    assert.throws(() => receipt.run('canvas-request-01', randomUUID(), 'a'.repeat(64), archivedAt), /FOREIGN KEY/u);
+    receipt.run('canvas-request-01', projectId, 'a'.repeat(64), archivedAt);
+    assert.throws(() => db.exec("DELETE FROM main.canvas_requests"), /must be retained/u);
+    assert.deepEqual(foreignKeyCheck(db), []);
+    db.prepare('UPDATE project.shots SET archivedAt=NULL,archiveBatchId=NULL,archiveReason=NULL WHERE id=?').run(shotId);
+    assert.equal(revision(), originalRevision + 2);
+  } finally {db.close();}
+});
 function sqliteError(action: () => unknown): {message: string; errcode: number} {
   try {
     action();

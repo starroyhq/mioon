@@ -14,7 +14,9 @@ import {
 } from './backup.ts';
 import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
-import {PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import type {ProjectFileFormat} from './schema/databases.ts';
+import {upgradeProject3To4Inside} from './schema/format4-upgrade.ts';
 import {CONTENT_TABLES} from './schema/tables.ts';
 import {isProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
@@ -40,6 +42,8 @@ export interface CopyProjectOptions {
   readonly contentToken?: string;
   /** Bind a retry to the verified source, including same-sequence forks. */
   readonly expectedSource?: Pick<ProjectBackupIdentity,'projectId'|'contentSequence'|'contentToken'>;
+  /** Trusted candidate only. Normal copies write the active format. */
+  readonly targetFormat?: ProjectFileFormat;
 }
 export interface ProjectCopyResult extends ProjectBackupIdentity {readonly projectFile: string}
 type Row = Record<string, SQLInputValue>;
@@ -71,6 +75,12 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
     try {
       db.exec('PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL');
       const actual=readCopiedProjectIdentity(db,live?PROJECT_FILE_APPLICATION_ID:PROJECT_BACKUP_APPLICATION_ID,Number(lstatSync(temporary).size));
+      const targetFormat = options.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
+      if (targetFormat !== 3 && targetFormat !== FORMAT4_PROJECT_SCHEMA_VERSION) throw failed('format');
+      if (targetFormat < actual.formatVersion) {
+        throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',
+          formatVersion: actual.formatVersion, supportedFormatVersion: targetFormat});
+      }
       if(actual.projectId!==oldId || actual.contentToken===contentToken)throw failed('metadata');
       if(options.expectedSource && (actual.projectId!==options.expectedSource.projectId || actual.contentSequence!==options.expectedSource.contentSequence || actual.contentToken!==options.expectedSource.contentToken))throw failed('source-changed');
       const triggers = db.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid").all();
@@ -114,10 +124,11 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
             db.prepare(`INSERT INTO "${table}"(${columns.map(column => `"${column}"`).join(',')}) VALUES(${columns.map(() => '?').join(',')})`).run(...columns.map(column => row[column]));
           }
         }
-        // Build back the exact current DDL in its original creation order,
+        // Build back the exact source DDL in its original creation order,
         // preserving SQLite's trigger execution order as well as the manifest.
         for (const trigger of triggers) db.exec(String(trigger.sql));
         db.exec(`PRAGMA application_id=${PROJECT_FILE_APPLICATION_ID}`);
+        if (actual.formatVersion !== targetFormat && targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION) upgradeProject3To4Inside(db, 'main');
         if (db.prepare('PRAGMA foreign_key_check').get() !== undefined) throw failed('foreign-key');
         db.exec('COMMIT; PRAGMA foreign_keys=ON');
       } catch (error) {
@@ -125,6 +136,7 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
         throw error;
       }
       identity = readCopiedProjectIdentity(db, PROJECT_FILE_APPLICATION_ID, Number(lstatSync(temporary).size));
+      if (identity.formatVersion !== targetFormat) throw failed('format');
     } finally { db.close(); }
     syncCopiedFile(temporary);
     (options.publish ?? publishCopiedFile)(temporary, target);

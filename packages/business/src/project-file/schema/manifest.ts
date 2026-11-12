@@ -801,3 +801,29 @@ export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = O
     {type: "trigger", name: "previs_thumbnail_capacity", tbl_name: "previs_thumbnails", sha256: "7268e75c514503dfad5caac4449986f639f47dbb50a5c9e05c45faecbe5c23f4"},
   ])},
 });
+
+export const FORMAT4_MANIFEST_CHANGES: Readonly<Record<"project" | "history", SchemaManifest>> = Object.freeze({
+  project: {version: 4, entries: Object.freeze([
+    {type: "index", name: "canvas_archived_edges", tbl_name: "edges", sha256: "885c4e60e8f187f63a4ac056380040766f1d9db746dbbb1b4810c1a72172f400"},
+    {type: "index", name: "canvas_archived_nodes", tbl_name: "nodes", sha256: "fff28bb382dab5a42af652adca6a9783521a6bedf563fcf1b138121b50617114"},
+    {type: "index", name: "canvas_archived_shots", tbl_name: "shots", sha256: "1c2c6c8950c0891228037606096ce9359b4d136dc241d18603fc5f7240c962d5"},
+    {type: "table", name: "edges", tbl_name: "edges", sha256: "d6bdaec6799fcf181eb010856f1940870be7e05175422fb4b0a0d5d53d3609e5"},
+    {type: "table", name: "nodes", tbl_name: "nodes", sha256: "042a227ef29cc9ada12d9ff3fc6bb2ccb7f1bc4a60ed2f9357d0b366319b8ccb"},
+    {type: "table", name: "shots", tbl_name: "shots", sha256: "153ecf6370d4c8286b4a95fd044ff347cef3fd2fc58d906a019ba4f60c38f294"},
+    {type: "trigger", name: "agent_target_edges_update_v2", tbl_name: "edges", sha256: "122b9acf48f79d5721200ca326124d14d0e0274666ed4a6960aef9215dbb66b3"},
+    {type: "trigger", name: "agent_target_nodes_update_v2", tbl_name: "nodes", sha256: "ffd60e4bd68174db5d8cc0e45618d9973b57cec8a1cfc41be32baf38affecbf9"},
+    {type: "trigger", name: "agent_target_shots_update_v2", tbl_name: "shots", sha256: "9008ce73b870c69ecea3908f783c14848535a6a105916b64414945935171fb48"},
+  ])},
+  history: {version: 11, entries: Object.freeze([
+    {type: "index", name: "sqlite_autoindex_canvas_history_entries_1", tbl_name: "canvas_history_entries", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {type: "index", name: "sqlite_autoindex_canvas_history_entries_2", tbl_name: "canvas_history_entries", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {type: "index", name: "sqlite_autoindex_canvas_history_state_1", tbl_name: "canvas_history_state", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {type: "index", name: "sqlite_autoindex_canvas_requests_1", tbl_name: "canvas_requests", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {type: "table", name: "canvas_history_entries", tbl_name: "canvas_history_entries", sha256: "f2ef1f3d8d30c320313abed25c9f97653eb4f9a61029e273fa00d4b9170e27a5"},
+    {type: "table", name: "canvas_history_state", tbl_name: "canvas_history_state", sha256: "3a10ecaa09605534961c25061f93925c5d057a2a48b791161cb21ba245041880"},
+    {type: "table", name: "canvas_requests", tbl_name: "canvas_requests", sha256: "f247021babec3c872b565193752a899d83e13d4e283c43b675fa8fe97ece1bd8"},
+    {type: "trigger", name: "immutable_canvas_requests", tbl_name: "canvas_requests", sha256: "fa3ec70ad0e46513b1a74e836a1225cd73e997eb44d1b3d8556c83f3331caac5"},
+    {type: "trigger", name: "reject_canvas_request_replacement", tbl_name: "canvas_requests", sha256: "a36c2ead3f0c5a2ab61c336fea4dc3b85488496b8aec03fcdaf105fd850441d1"},
+    {type: "trigger", name: "retain_canvas_requests", tbl_name: "canvas_requests", sha256: "66897a173e499bbb612080ac0cd34463522ecdd56a200405ae4c1f2341769318"},
+  ])},
+});

@@ -333,6 +333,15 @@ node tests/helpers/project-file-schema-derivation.ts --check
 
 `tests/project-file-schema.test.ts` 另记每个数据库版本的独立摘要，重新生成不能替代升版本。`tests/fixtures/kernel-history-previous-schema/` 仅保存仍支持升级的旧内核 history SQL，逐版对原有白名单核对；它不依赖当前领域或旧工作区建库器，也不由 `--write` 更新。生成文件发生合并冲突时，同步 main 后重新生成，不手工拼接。
 
+### 格式 4 候选
+
+- 普通桌面和服务端仍创建、打开和复制项目 3、本机记录 10、缓存 2。只有内核的受信调用方显式传入 `format4` 能力，或给隔离复制目标传入 `targetFormat: 4`，才会写入候选格式。等 0.2.0 的画布和画框功能完成后，由宿主一起启用这些入口。候选能力不通过环境变量或项目输入开启。
+- `inspectProjectFormatReadOnly` 验证格式 3 和 4 的头、精确清单及身份，返回格式与内容身份。原地升级需要 `approveUpgrade` 对项目 ID、内容序号、内容令牌及本机记录版本的确认。宿主可用 `PROJECT_FORMAT_UPGRADE_REQUIRED` 的详情接确认界面。拒绝后保留旧文件。内容身份分叉按原来的只读处置流程。
+- 升级前，在持锁连接上核验配对，从原文件描述符逐字节复制项目和已有 `history.db` 到本机记录的 `format-upgrade-backups`。校验旧清单、完整性和配对，记录哈希后整体发布。旧项目没有本机记录时，备份记下这一事实，迁移开始前建立有效的空历史 10。备份失败时保留旧格式。该备份与普通滚动备份分开，保留原项目 ID、内容令牌和历史行号。配对恢复需保留原素材位置。
+- 在同一连接的事务中为 shots、nodes、edges 增加 `archivedAt`、`archiveBatchId`、`archiveReason`，本机记录增加独立的画布回执、历史和游标。版本字段最后写入，旧数据与内容令牌保留。归档字段随后发生变化时会推进内容和目标修订。格式升级是单向的，0.1.0 和 0.1.1 读到格式 4 会报 `PROJECT_FORMAT_NEWER`。
+- 格式 4 时间线兼容原像素布局和字幕 `bottom_cjk_v1`。新版片段用 `layout: {profileId: "mioon-clip-layout-v2", basisPresetId}`，新版字幕用 `profileId: "bottom_cjk_relative_v2"` 与 `basisPresetId`，基准为 0.2.0 的十二档画框之一。升级保留旧几何字节，明确修改画框时才由画框事务写入新版布局。旧格式源不得夹带新版标记。
+- 旧自动备份、命名版本、复制源及签名模板可验证并读取。需要格式 4 的复制、采用副本和模板实例在新暂存目标转换，签名资源保留发布字节。旧命名版本先校验原快照再适配归档列，格式 4 版本携带这些列。旧包格式不承接格式 4。
+
 ## 跨文件约束
 以下记录 K1 从旧工作区拆分时的约束去向；现行对象以权威声明及 `--report` 为准。
 

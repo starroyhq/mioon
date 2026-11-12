@@ -9,6 +9,7 @@ import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
 import {DRAFT_SCHEMA} from './domains/drafts.ts';
+import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, canvasArchiveColumnDefinitions, canvasArchiveRevisionStatements} from './domains/canvas.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -21,8 +22,12 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 3;
+/** The 0.2.0 profile is only used by explicitly admitted kernel callers. */
+export const FORMAT4_PROJECT_SCHEMA_VERSION = 4;
+export type ProjectFileFormat = typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
 /** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation; 9 adds host-local drafts; 10 adds UUID-bound custom image reviews. */
 export const HISTORY_SCHEMA_VERSION = 10;
+export const FORMAT4_HISTORY_SCHEMA_VERSION = 11;
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
@@ -64,6 +69,19 @@ const SINGLE_PROJECT_TRIGGERS: readonly string[] = Object.freeze([
 const CONTENT_SEQUENCE_TRIGGERS: readonly string[] = Object.freeze(CONTENT_TABLES.flatMap(table =>
   (['insert', 'update', 'delete'] as const).map(operation =>
     `CREATE TRIGGER project_file_sequence_${table}_${operation} AFTER ${operation.toUpperCase()} ON ${table} BEGIN UPDATE project_file SET contentSequence=contentSequence+1,contentToken=lower(hex(randomblob(16)));END`)));
+export const FORMAT4_ARCHIVE_UPDATE_TRIGGERS = canvasArchiveRevisionStatements(CONTENT_SCHEMA);
+export const FORMAT4_ARCHIVE_SEQUENCE_TRIGGERS = CONTENT_SEQUENCE_TRIGGERS.filter(sql =>
+  CANVAS_ARCHIVE_TABLES.some(table => sql.startsWith(`CREATE TRIGGER project_file_sequence_${table}_update `)));
+const triggerName = (sql: string): string | undefined => sql.split(' ', 3)[2];
+const archiveUpdateByName = new Map(FORMAT4_ARCHIVE_UPDATE_TRIGGERS.map(sql => [triggerName(sql), sql]));
+const FORMAT4_CONTENT_SCHEMA = [
+  ...CONTENT_SCHEMA.map(sql => {
+    const table = CANVAS_ARCHIVE_TABLES.find(table => sql.startsWith(`CREATE TABLE ${table}(`));
+    if (table) return `${sql.slice(0, -1)}, ${canvasArchiveColumnDefinitions(table).join(', ')})`;
+    return archiveUpdateByName.get(triggerName(sql)) ?? sql;
+  }),
+  ...CANVAS_ARCHIVE_INDEXES,
+];
 
 /** The single state row of a local history database: which project it records
  * and the last project-file content sequence it has seen. */
@@ -86,7 +104,12 @@ const DOMAIN_STATEMENTS: Readonly<Record<DatabaseKind, readonly string[]>> = {
 /** Complete DDL of one database: `schema_version`, its metadata table, the domain
  * files in order and the triggers this kernel adds. `domainStatements` replaces
  * the committed domain files; only the schema derivation passes it. */
-export function schemaStatements(kind: DatabaseKind, domainStatements: readonly string[] = DOMAIN_STATEMENTS[kind]): readonly string[] {
+export function schemaStatements(kind: DatabaseKind, domainStatements?: readonly string[], version = SCHEMA_VERSIONS[kind]): readonly string[] {
+  if (version !== SCHEMA_VERSIONS[kind] && !(kind === 'project' && version === FORMAT4_PROJECT_SCHEMA_VERSION) &&
+      !(kind === 'history' && version === FORMAT4_HISTORY_SCHEMA_VERSION)) throw new TypeError(`Unsupported ${kind} schema version`);
+  domainStatements ??= kind === 'project' && version === FORMAT4_PROJECT_SCHEMA_VERSION ? FORMAT4_CONTENT_SCHEMA
+    : kind === 'history' && version === FORMAT4_HISTORY_SCHEMA_VERSION ? [...DOMAIN_STATEMENTS.history, ...CANVAS_HISTORY_SCHEMA]
+      : DOMAIN_STATEMENTS[kind];
   if (kind === 'project') return [SCHEMA_VERSION_TABLE_SQL, ...PROJECT_FILE_METADATA, ...domainStatements, ...SINGLE_PROJECT_TRIGGERS, ...CONTENT_SEQUENCE_TRIGGERS];
   if (kind === 'history') return [SCHEMA_VERSION_TABLE_SQL, ...HISTORY_STATE_METADATA, HISTORY_RESOLUTION_SCHEMA, ...domainStatements];
   return [SCHEMA_VERSION_TABLE_SQL, ...domainStatements];
@@ -96,9 +119,11 @@ const CREATE_PREFIX = /^CREATE (TABLE|INDEX|UNIQUE INDEX|TRIGGER) /;
 
 /** Creates one database inside the caller's open transaction, as `schema`
  * (`main` or an attached name), then writes its application_id and version. */
-export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: string, statements: readonly string[] = schemaStatements(kind)): void {
+export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: string, statements?: readonly string[], version = SCHEMA_VERSIONS[kind]): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(schema)) throw new TypeError(`Invalid schema name: ${schema}`);
   if (!db.isTransaction) throw new Error('Building a database requires an open transaction');
+  const definition = schemaStatements(kind, undefined, version);
+  statements ??= definition;
   for (const sql of statements) {
     if (!CREATE_PREFIX.test(sql)) throw new Error(`Schema statement cannot be qualified: ${sql.slice(0, 60)}`);
     db.exec(sql.replace(CREATE_PREFIX, `CREATE $1 ${schema}.`));
@@ -107,6 +132,6 @@ export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: stri
   // incremental counter only when that schema actually includes it.
   if(kind==='history'&&statements.some(sql=>sql.startsWith('CREATE TABLE mio_storage_counters(')))initializeMioStorageCounters(db,schema);
   db.exec(`PRAGMA ${schema}.application_id=${APPLICATION_IDS[kind]}`);
-  if (kind === 'project') db.exec(`PRAGMA ${schema}.user_version=${PROJECT_FILE_SCHEMA_VERSION}`);
-  db.prepare(`INSERT INTO ${schema}.schema_version VALUES(?)`).run(SCHEMA_VERSIONS[kind]);
+  if (kind === 'project') db.exec(`PRAGMA ${schema}.user_version=${version}`);
+  db.prepare(`INSERT INTO ${schema}.schema_version VALUES(?)`).run(version);
 }

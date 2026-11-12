@@ -16,7 +16,8 @@ import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {openProjectBackup,inspectCopiedProjectFile,publishProjectCopyFile} from '../packages/business/src/project-file/backup.ts';
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
-import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {initializeProjectCopyHistory} from '../packages/business/src/project-file/copy-history.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {V5_HISTORY_V8_MANIFEST} from '../packages/business/src/project-file/schema/history-v8-manifest.ts';
 import {S8_HISTORY_V9_MANIFEST} from '../packages/business/src/project-file/schema/history-v9-manifest.ts';
@@ -119,18 +120,43 @@ test('current history with real S8 repository rows is captured read-only without
  unchanged(f.history,before);unchanged(f.projectFile,source);
 });
 
-for(const damage of ['unknown-object','wrong-project','future','old-unknown','malformed','switch-pending'] as const)test(`unreadable history ${damage} refuses the entire capture without staging`,async t=>{
+for(const damage of ['unknown-object','wrong-project','future','forged-candidate','old-unknown','malformed','switch-pending'] as const)test(`unreadable history ${damage} refuses the entire capture without staging`,async t=>{
  const f=fixture(t),db=new DatabaseSync(f.history);
  try{
   if(damage==='unknown-object')db.exec('CREATE TABLE unreviewed_extra(value)');
   if(damage==='wrong-project'){db.exec('DROP TRIGGER history_state_guard_identity');db.prepare('UPDATE history_state SET projectId=?').run(randomUUID());}
-  if(damage==='future'||damage==='old-unknown')db.prepare('UPDATE schema_version SET version=?').run(damage==='future'?HISTORY_SCHEMA_VERSION+1:1);
+  if(damage==='future'||damage==='forged-candidate'||damage==='old-unknown')db.prepare('UPDATE schema_version SET version=?')
+   .run(damage==='future'?FORMAT4_HISTORY_SCHEMA_VERSION+1:damage==='forged-candidate'?FORMAT4_HISTORY_SCHEMA_VERSION:1);
  }finally{db.close();}
  if(damage==='malformed')writeFileSync(f.history,'not sqlite');
  if(damage==='switch-pending')writeFileSync(path.join(f.location.localDir,'history-switch-active.json'),'{}');
  const before=evidence(f.history),source=evidence(f.projectFile);
  await assert.rejects(captureClosedProjectSnapshot(f.options),code(damage==='future'?'PROJECT_FORMAT_NEWER':damage==='switch-pending'?'PROJECT_HISTORY_SWITCH_PENDING':'PROJECT_INVALID'));
  unchanged(f.history,before);unchanged(f.projectFile,source);assert.equal(existsSync(f.directory),false);
+});
+
+test('closed capture reads both project and history pairs and leaves their formats and bytes unchanged', async t => {
+ const f=fixture(t), legacyFiles=[evidence(f.projectFile),evidence(f.history)] as const;
+ const legacy=await captureClosedProjectSnapshot(f.options);
+ assert.equal(legacy.identity.formatVersion,PROJECT_FILE_SCHEMA_VERSION);
+ const reader=openProjectBackup(legacy.projectFile),projectFile=path.join(f.root,'candidate.mioon'),historyFile=path.join(f.root,'candidate.history.db');
+ try {
+  const copy=await copyProjectToNewFile(reader,{projectFile,sourceProjectDir:f.projectDir,targetFormat:FORMAT4_PROJECT_SCHEMA_VERSION});
+  initializeProjectCopyHistory(historyFile,copy.projectId,copy);
+ } finally {reader.close();}
+ const candidateFiles=[evidence(projectFile),evidence(historyFile)] as const;
+ const candidate=await captureClosedProjectSnapshot({projectFile,historyFile:()=>historyFile,directory:path.join(f.root,'candidate-snapshot')});
+ assert.equal(candidate.identity.formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ const history=new DatabaseSync(candidate.historyFile!,{readOnly:true});
+ try {
+  assert.equal(history.prepare('SELECT version FROM schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
+  const state=history.prepare('SELECT * FROM history_state').get();
+  assert.equal(state?.projectId,candidate.identity.projectId);
+  assert.equal(state?.seenContentSequence,candidate.identity.contentSequence);
+  assert.equal(state?.seenContentToken,candidate.identity.contentToken);
+ } finally {history.close();}
+ unchanged(f.projectFile,legacyFiles[0]);unchanged(f.history,legacyFiles[1]);
+ unchanged(projectFile,candidateFiles[0]);unchanged(historyFile,candidateFiles[1]);
 });
 
 test('held project or history is refused before opening fs descriptors',async t=>{
