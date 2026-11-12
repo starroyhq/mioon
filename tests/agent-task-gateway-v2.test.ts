@@ -493,6 +493,37 @@ test('all gateway protocols discard unrecognized event names and payload text fr
     assert.equal(f.requests.length,1);
   }
 });
+test('Responses retains bounded new event and output item names without allowing malformed names',async t=>{
+  const longestEvent=`response.${'a'.repeat(41)}.${'b'.repeat(41)}.tag`;
+  for(const [name,expected] of [
+    ['response.future_feature.added','response.future_feature.added'],
+    [longestEvent,longestEvent],
+    [`${longestEvent}s`,'unrecognized'],
+    [`response.${'a'.repeat(42)}`,'unrecognized'],
+    ['response.future feature','unrecognized'],
+    ['response.future:feature','unrecognized'],
+    ['response.Future_feature','unrecognized'],
+    ['sk-proj-synthetic-event','unrecognized'],
+    ['bare_future_event','unrecognized'],
+  ] as const){
+    const f=await fixture(t,'responses',`event: ${name}\n${json({type:name})}`,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unknown_event',event:expected});
+      return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
+    });
+  }
+  for(const [name,expected] of [
+    ['future_tool_call','future_tool_call'],
+    ['sk-proj-synthetic-item','unrecognized'],
+  ] as const){
+    const source=json({type:'response.output_item.added',output_index:0,item:{id:'item_new',type:name,status:'in_progress'}});
+    const f=await fixture(t,'responses',source,[]);
+    await assert.rejects(f.output(),error=>{
+      assert.deepEqual(agentChatDiagnostic(error),{kind:'protocol',reason:'unsupported_item',event:'response.output_item.added',item:expected});
+      return safeAgentChatError(error).code==='AGENT_CHAT_TOOLS_UNSUPPORTED';
+    });
+  }
+});
 test('Responses final snapshot must agree with all streamed argument and item evidence',async t=>{
   const f=await fixture(t,'responses',responseFrames({mismatch:true}));
   await assert.rejects(f.output(),error=>{
@@ -833,6 +864,10 @@ test('Q15 Responses still rejects terminal differences outside the reasoning cip
     [0, 'unexpected', true],
     [1, 'phase', 'final_answer'],
     [2, 'arguments', '{"title":"Changed arguments"}'],
+    [2, 'future_receipt_tag', 'Changed receipt'],
+    [2, 'sk-proj-synthetic-field', 'Changed receipt'],
+    [2, 'type', 'future_tool_call'],
+    [2, 'type', 'sk-proj-synthetic-item'],
   ] as const) {
     const events = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
     const output = q15CompletedOutput(events);
@@ -848,7 +883,8 @@ test('Q15 Responses still rejects terminal differences outside the reasoning cip
     }, error => {
       assert.deepEqual(agentChatDiagnostic(error), {
         kind:'protocol',reason:field==='unexpected'?'invalid_field':'terminal_mismatch',event:'response.completed',
-        item:['reasoning','message','function_call'][index],field:field==='unexpected'?'unknown_field':field,
+        item:field==='type'?(value==='future_tool_call'?value:'unrecognized'):['reasoning','message','function_call'][index],
+        field:field==='sk-proj-synthetic-field'?'unrecognized':field,
       });
       assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)), /Changed|CARRIER|I will save/u);
       return safeAgentChatError(error).code==='AGENT_CHAT_PROTOCOL_ERROR';
@@ -856,6 +892,31 @@ test('Q15 Responses still rejects terminal differences outside the reasoning cip
     assert.equal(completed, 0);
     assert.equal(visible.join(''), 'I will save a shot.');
     assert.equal(exchange.network.calls, 1);
+  }
+});
+
+test('Responses diagnostics identify a changed item.done type and a new field in a strict reasoning part', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal comparison'}], definitions, 4318);
+  for (const [name, expected] of [['future_tool_call', 'future_tool_call'], ['sk-proj-synthetic-item', 'unrecognized']] as const) {
+    const events = q15ResponseEvents(body, {toolCall: true, visibleText: 'Offline reply'});
+    const done = events.find(event => event.type === 'response.output_item.done' && (event.item as Record<string,unknown>).type === 'function_call');
+    assert.ok(done);
+    done.item = {...done.item as Record<string,unknown>, type: name};
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    await assert.rejects(async () => {for await (const _event of exchange.stream) {}}, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {kind:'protocol',reason:'terminal_mismatch',event:'response.output_item.done',item:expected,field:'type'});
+      return safeAgentChatError(error).code === 'AGENT_CHAT_PROTOCOL_ERROR';
+    });
+  }
+  for (const [name, expected] of [['future_reasoning_field', 'future_reasoning_field'], ['sk-proj-synthetic-field', 'unrecognized']] as const) {
+    const events = q15ResponseEvents(body, {visibleText: 'Offline reply'});
+    q15CompletedOutput(events)[0]!.summary = [{type:'summary_text',text:'Synthetic private summary',[name]:'Synthetic private value'}];
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    await assert.rejects(async () => {for await (const _event of exchange.stream) {}}, error => {
+      assert.deepEqual(agentChatDiagnostic(error), {kind:'protocol',reason:'invalid_field',event:'response.completed',item:'reasoning',field:expected});
+      return safeAgentChatError(error).code === 'AGENT_CHAT_PROTOCOL_ERROR';
+    });
   }
 });
 

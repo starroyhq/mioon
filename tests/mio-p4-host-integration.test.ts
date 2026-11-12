@@ -162,9 +162,11 @@ test('model failure details reach HTTP and reopen with older steps and the appli
   const privateMessage = 'Private user text with synthetic credential sk-synthetic-011b';
   const diagnostic = {kind: 'http', status: 404, providerType: 'invalid_request_error', providerCode: 'model_not_found'};
   const mismatch = {event: 'response.completed', item: 'reasoning', field: 'summary'};
+  const unknownEvent = {event: 'response.future_output.revision_done'};
   const f = await fixture(t, call => {
     if (call === 1) return Object.assign(new Error(privateMessage), {code: 'AGENT_CHAT_HTTP_ERROR', diagnostic});
     if (call === 2) return agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'terminal_mismatch', mismatch);
+    if (call === 3) return agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'unknown_event', {eventProtocol: 'responses', ...unknownEvent});
     return agentChatHttpError(404, Buffer.from(JSON.stringify({error: {type: diagnostic.providerType, code: diagnostic.providerCode, message: privateMessage}})));
   });
   const projectId = await f.createProject(), settings = await f.client.settingsGet();
@@ -180,6 +182,11 @@ test('model failure details reach HTTP and reopen with older steps and the appli
   assert.equal(protocolFailure.code, 'AGENT_CHAT_PROTOCOL_ERROR');
   assert.deepEqual(protocolFailure.diagnostic, {kind: 'protocol', reason: 'terminal_mismatch', ...mismatch});
 
+  const unknownRun = await f.client.send({...send, requestId: randomUUID()});
+  const unknownFailure = (await f.settled(projectId, unknownRun.run.id, 'failed')).steps[0]!.error!;
+  assert.equal(unknownFailure.code, 'AGENT_CHAT_PROTOCOL_ERROR');
+  assert.deepEqual(unknownFailure.diagnostic, {kind: 'protocol', reason: 'unknown_event', ...unknownEvent});
+
   const sent = await f.client.send({...send, requestId: randomUUID(), diagnostic: {profile: 'text'}});
   const failed = await f.settled(projectId, sent.run.id, 'failed');
   assert.equal(failed.steps[0]!.kind, 'model');
@@ -190,6 +197,7 @@ test('model failure details reach HTTP and reopen with older steps and the appli
   const errorInStorage = (runId: string) => f.project(projectId, db => String(db.prepare("SELECT json_extract(data, '$.controls.error') AS error FROM mio_steps WHERE runId=?").get(runId)!.error));
   assert.deepEqual(JSON.parse(errorInStorage(older.run.id)), olderFailure);
   assert.deepEqual(JSON.parse(errorInStorage(protocolRun.run.id)), protocolFailure);
+  assert.deepEqual(JSON.parse(errorInStorage(unknownRun.run.id)), unknownFailure);
   assert.deepEqual(JSON.parse(errorInStorage(sent.run.id)), failed.steps[0]!.error);
   const latest = await f.client.diagnoseLatest();
   assert.equal(latest.test?.status, 'failed');
@@ -205,6 +213,7 @@ test('model failure details reach HTTP and reopen with older steps and the appli
   assert.deepEqual(await f.client.diagnoseLatest(), latest);
   assert.deepEqual((await f.client.status({projectId, runId: older.run.id})).steps[0]!.error, olderFailure);
   assert.deepEqual((await f.client.status({projectId, runId: protocolRun.run.id})).steps[0]!.error, protocolFailure);
+  assert.deepEqual((await f.client.status({projectId, runId: unknownRun.run.id})).steps[0]!.error, unknownFailure);
   assert.deepEqual((await f.client.status({projectId, runId: sent.run.id})).steps[0]!.error, failed.steps[0]!.error);
-  assert.equal(f.calls, 3);
+  assert.equal(f.calls, 4);
 });

@@ -55,7 +55,8 @@ function id(value: unknown, field = 'id'): string {
   return result;
 }
 function fields(value: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(value).some(key => !allowed.includes(key))) invalidField('unknown_field');
+  const unexpected = Object.keys(value).find(key => !allowed.includes(key));
+  if (unexpected !== undefined) invalidField(unexpected);
 }
 function inputTransformations(value: unknown): void {
   if (value === null) return;
@@ -147,12 +148,13 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
   for await (const frame of parseAgentSse(body, {...AGENT_SSE_LIMITS, includeEventName: true, signal: options.signal})) {
     if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
     const event = frame.eventName ?? undefined;
-    if (stopped) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {event, field: 'done'});
+    const eventDetails = {event, eventProtocol: 'anthropic_messages' as const};
+    if (stopped) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {...eventDetails, field: 'done'});
     let value: unknown;
     try { value = parseModelToolArguments(frame.data, AGENT_SSE_LIMITS.maxEventBytes); }
-    catch { fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {event, field: 'json'}); }
-    if (!object(value) || frame.eventName !== value.type || frame.event !== value.type) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {event, field: 'event_name'});
-    if (!messageEvents.has(frame.event)) fail('AGENT_CHAT_PROTOCOL_ERROR', 'unknown_event', {event});
+    catch { fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {...eventDetails, field: 'json'}); }
+    if (!object(value) || frame.eventName !== value.type || frame.event !== value.type) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {...eventDetails, field: 'event_name'});
+    if (!messageEvents.has(frame.event)) fail('AGENT_CHAT_PROTOCOL_ERROR', 'unknown_event', eventDetails);
     if (value.type === 'error') fail('AGENT_CHAT_PROVIDER_ERROR', 'provider_error', {event});
     if (value.type === 'ping') { fields(value, ['type']); continue; }
     if (value.type === 'message_start') {

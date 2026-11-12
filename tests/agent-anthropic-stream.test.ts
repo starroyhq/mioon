@@ -29,6 +29,8 @@ const toolBody = (argumentsJson = '{"projectId":"p"}', reason = 'tool_use') => s
 test('Messages distinguishes unsupported items, argument limits and terminal stop mismatches without payload data', async () => {
   for (const [source, patch, code, diagnostic] of [
     [start() + block(0, {type:'server_tool_use',input:'Synthetic private input'}), {}, 'AGENT_CHAT_TOOLS_UNSUPPORTED', {kind:'protocol',reason:'unsupported_item',event:'content_block_start',item:'server_tool_use'}],
+    [start() + block(0, {type:'future_content_block',input:'Synthetic private input'}), {}, 'AGENT_CHAT_TOOLS_UNSUPPORTED', {kind:'protocol',reason:'unsupported_item',event:'content_block_start',item:'future_content_block'}],
+    [start() + block(0, {type:'text',text:'',future_content_revision:'Synthetic private input'}), {}, 'AGENT_CHAT_PROTOCOL_ERROR', {kind:'protocol',reason:'invalid_field',field:'future_content_revision'}],
     [toolBody('{"input":"Synthetic private input"}'), {maxArgumentBytes:8}, 'AGENT_CHAT_LIMIT', {kind:'limit',limit:'argument_bytes'}],
     [toolBody('{"input":"Synthetic private input"}', 'end_turn'), {}, 'AGENT_CHAT_PROTOCOL_ERROR', {kind:'protocol',reason:'terminal_mismatch',event:'message_stop',field:'stop_reason'}],
   ] as const) {
@@ -36,6 +38,24 @@ test('Messages distinguishes unsupported items, argument limits and terminal sto
       assert.deepEqual(agentChatDiagnostic(error),diagnostic);
       assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)),/Synthetic private input/u);
       return errorCode(error)===code;
+    });
+  }
+});
+
+test('Messages retains bounded new event names in diagnostics', async () => {
+  for (const [name, expected] of [
+    ['future_content_event', 'future_content_event'],
+    ['a'.repeat(41), 'a'.repeat(41)],
+    ['a'.repeat(42), 'unrecognized'],
+    ['response.future_content_event', 'unrecognized'],
+    ['future content event', 'unrecognized'],
+    ['future:content_event', 'unrecognized'],
+    ['Future_content_event', 'unrecognized'],
+    ['sk-synthetic-noncredential', 'unrecognized'],
+  ] as const) {
+    await assert.rejects(collect(start() + event(name, {content:'Synthetic private input'})), error => {
+      assert.deepEqual(agentChatDiagnostic(error), {kind:'protocol',reason:'unknown_event',event:expected});
+      return errorCode(error) === 'AGENT_CHAT_PROTOCOL_ERROR';
     });
   }
 });

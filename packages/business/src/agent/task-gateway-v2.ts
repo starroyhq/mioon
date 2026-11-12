@@ -186,13 +186,15 @@ const reasoningEvents=new Set(['response.reasoning_summary_part.added','response
 const responsesItemEvents=new Set(['response.output_item.added','response.output_item.done','response.output_text.delta','response.output_text.done','response.function_call_arguments.delta','response.function_call_arguments.done','response.content_part.added','response.content_part.done',...reasoningEvents]);
 const responsesItemFields=['type','id','status','role','content','summary','encrypted_content','phase','call_id','name','arguments'] as const;
 function terminalMismatchField(terminal:Record<string,unknown>,streamed:Record<string,unknown>):string {
-  return responsesItemFields.find(field=>Object.hasOwn(terminal,field)!==Object.hasOwn(streamed,field)||!isDeepStrictEqual(terminal[field],streamed[field]))??'unknown_field';
+  const differs=(field:string)=>Object.hasOwn(terminal,field)!==Object.hasOwn(streamed,field)||!isDeepStrictEqual(terminal[field],streamed[field]);
+  return responsesItemFields.find(differs)??[...new Set([...Object.keys(terminal),...Object.keys(streamed)])].sort().find(differs)??'unknown_field';
 }
 /** A thinking request keeps the provider's Responses reasoning item exactly,
  * including encrypted reasoning, for this round's continuation only. */
 function reasoningItem(item:Record<string,unknown>,requireEncrypted=false,event?:string):void {
   const diagnostic={item:'reasoning',event};
-  if(Object.keys(item).some(key=>!['id','type','summary','content','encrypted_content','status'].includes(key)))protocolFailure('invalid_field',{...diagnostic,field:'unknown_field'});
+  const extraField=Object.keys(item).find(key=>!['id','type','summary','content','encrypted_content','status'].includes(key));
+  if(extraField!==undefined)protocolFailure('invalid_field',{...diagnostic,field:extraField});
   if(!Array.isArray(item.summary))protocolFailure('invalid_field',{...diagnostic,field:'summary'});
   if(item.content!==undefined&&!Array.isArray(item.content))protocolFailure('invalid_field',{...diagnostic,field:'content'});
   if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_item_bytes');
@@ -201,7 +203,11 @@ function reasoningItem(item:Record<string,unknown>,requireEncrypted=false,event?
   if(requireEncrypted&&(item.encrypted_content==null||item.encrypted_content===''))protocolFailure('invalid_field',{...diagnostic,field:'encrypted_content'},'AGENT_CHAT_RESPONSES_INCOMPLETE');
   if(item.encrypted_content!=null)string(item.encrypted_content,TASK_MODEL_LIMITS.outputBytes,'encrypted_content','encrypted_content_bytes');
   for(const [parts,kind] of [[item.summary,'summary_text'],[item.content??[],'reasoning_text']] as const)for(const part of parts as unknown[]){
-    if(!object(part)||Object.keys(part).length!==2||part.type!==kind)protocolFailure('invalid_field',{...diagnostic,field:kind==='summary_text'?'summary':'content'});
+    const field=kind==='summary_text'?'summary':'content';
+    if(!object(part))protocolFailure('invalid_field',{...diagnostic,field});
+    const keys=Object.keys(part);
+    if(keys.length!==2)protocolFailure('invalid_field',{...diagnostic,field:keys.find(key=>key!=='type'&&key!=='text')??field});
+    if(part.type!==kind)protocolFailure('invalid_field',{...diagnostic,field});
     string(part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
   }
 }
@@ -394,11 +400,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         let terminal:Record<string,unknown>|null=null;
         const native=options.configuration.presetId==='openai',reasoning=thinking||agentResponsesReasoningCapable(options.configuration);
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal,includeEventName:true,...(native?{maxBytes:4*1024*1024,eventByteLimits:responsesEventByteLimits}:{})})) {
-          const event=frame.eventName??undefined;
-          if(completed)protocolFailure('invalid_event',{event,field:'done'});
-          let raw:unknown;try{raw=JSON.parse(frame.data);}catch{protocolFailure('invalid_event',{event,field:'json'});}
-          if(!object(raw)||typeof raw.type!=='string')protocolFailure('invalid_field',{event,field:'type'});
-          if(frame.eventName&&frame.eventName!==raw.type)protocolFailure('invalid_event',{event:frame.eventName,field:'event_name'});
+          const eventDetails={event:frame.eventName??undefined,eventProtocol:'responses' as const};
+          if(completed)protocolFailure('invalid_event',{...eventDetails,field:'done'});
+          let raw:unknown;try{raw=JSON.parse(frame.data);}catch{protocolFailure('invalid_event',{...eventDetails,field:'json'});}
+          if(!object(raw)||typeof raw.type!=='string')protocolFailure('invalid_field',{...eventDetails,field:'type'});
+          if(frame.eventName&&frame.eventName!==raw.type)protocolFailure('invalid_event',{...eventDetails,field:'event_name'});
           responsesFields(raw,native);
           const type=raw.type;
           if(type==='error'||type==='response.failed')protocolFailure('provider_error',{event:type},'AGENT_CHAT_PROVIDER_ERROR');
@@ -433,11 +439,14 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
               const comparable=native&&item.type==='reasoning'&&streamed.type==='reasoning'
                 ? {...item,encrypted_content:streamed.encrypted_content}
                 : item;
-              if(!isDeepStrictEqual(comparable,streamed))protocolFailure('terminal_mismatch',{event:type,item:streamed.type,field:terminalMismatchField(comparable,streamed)});
+              if(!isDeepStrictEqual(comparable,streamed)){
+                const field=terminalMismatchField(comparable,streamed);
+                protocolFailure('terminal_mismatch',{event:type,item:field==='type'&&item.type!==undefined?item.type:streamed.type,field});
+              }
             }
             usageCollector.observe(raw.response.usage);terminal=raw.response;completed=true;continue;
           }
-          if(!responsesItemEvents.has(type))protocolFailure('unknown_event',{event:type});
+          if(!responsesItemEvents.has(type))protocolFailure('unknown_event',{event:type,eventProtocol:'responses'});
           const index=raw.output_index;
           if(!Number.isSafeInteger(index)||(index as number)<0)protocolFailure('invalid_field',{event:type,field:'output_index'});
           if((index as number)>=64)throw agentChatLimitError('output_items','AGENT_CHAT_PROTOCOL_ERROR');
@@ -480,7 +489,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           }else if(type==='response.output_item.done'){
             if(!object(raw.item))protocolFailure('invalid_event',details);
             if(raw.item.id!==item.id)protocolFailure('terminal_mismatch',{...details,field:'id'});
-            if(raw.item.type!==item.type)protocolFailure('terminal_mismatch',{...details,field:'type'});
+            if(raw.item.type!==item.type)protocolFailure('terminal_mismatch',{...details,item:raw.item.type===undefined?item.type:raw.item.type,field:'type'});
             if(raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))protocolFailure('terminal_mismatch',{...details,field:'status'});
             // Item streaming can finish while its contents remain incomplete.
             // Only the response terminal classifies the truncation; these items

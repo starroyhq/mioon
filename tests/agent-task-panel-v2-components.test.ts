@@ -147,7 +147,7 @@ test('Mio failure details show a localized cause and a selectable, stable diagno
   }finally{h.unmount();}
 });
 
-test('Mio formats only validated HTTP and limit diagnostics',()=>{
+test('Mio formats validated HTTP, limit and protocol diagnostics',()=>{
   assert.deepEqual(agentTaskDiagnosticDetails({kind:'http',status:403,providerType:'permission_error',providerCode:'permission_denied'}),{
     key:'agent.panel.diagnostic.http',values:{status:403},code:'MIO/http/403/type=permission_error/code=permission_denied',
   });
@@ -155,7 +155,10 @@ test('Mio formats only validated HTTP and limit diagnostics',()=>{
     key:'agent.panel.diagnostic.limit',code:'MIO/limit/stream_event_bytes',
   });
   assert.equal(agentTaskDiagnosticDetails({kind:'http',status:403,providerType:'sk-synthetic-noncredential'}),undefined);
-  assert.equal(agentTaskDiagnosticDetails({kind:'protocol',reason:'unknown_event',event:'response.private_project_title'}),undefined);
+  assert.deepEqual(agentTaskDiagnosticDetails({kind:'protocol',reason:'unknown_event',event:'response.future_output.revision_done'}),{
+    key:'agent.panel.diagnostic.unknown_event',code:'MIO/protocol/unknown_event/event=response.future_output.revision_done',
+  });
+  assert.equal(agentTaskDiagnosticDetails({kind:'protocol',reason:'unknown_event',event:'response.future output'}),undefined);
 });
 
 test('an unknown paid step can be marked failed after checking the task center; other irreversible steps only check',()=>{

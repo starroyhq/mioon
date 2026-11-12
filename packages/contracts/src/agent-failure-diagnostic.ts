@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-// Every persisted string comes from a closed vocabulary. Even a value shaped
-// like a machine identifier can contain an account name or a credential.
+// Provider HTTP metadata is restricted to known codes.
 const providerLabels = z.enum([
   'api_error', 'authentication_error', 'billing_error', 'billing_hard_limit_reached',
   'billing_not_active', 'content_policy_violation', 'context_length_exceeded',
@@ -28,7 +27,7 @@ const protocolReason = z.enum([
 ]);
 export type AgentProtocolFailureReason = z.infer<typeof protocolReason>;
 
-const protocolEvent = z.enum([
+const knownProtocolEvent = z.enum([
   'message', 'error', 'ping', 'message_start', 'message_delta', 'message_stop',
   'content_block_start', 'content_block_delta', 'content_block_stop', 'response.created',
   'response.in_progress', 'response.completed', 'response.incomplete', 'response.failed',
@@ -58,7 +57,7 @@ const protocolEvent = z.enum([
   'response.steer.failed', 'response.steer.pending',
   'unrecognized',
 ]);
-const protocolItem = z.enum([
+const knownProtocolItem = z.enum([
   'message', 'function_call', 'reasoning', 'output_text', 'summary_text', 'reasoning_text',
   'text', 'thinking', 'redacted_thinking', 'tool_use', 'function', 'server_tool_use',
   'web_search_call', 'file_search_call', 'computer_call', 'image_generation_call',
@@ -66,7 +65,7 @@ const protocolItem = z.enum([
   'mcp_list_tools', 'mcp_approval_request', 'local_shell_call', 'shell_call', 'apply_patch_call',
   'tool_search_call', 'unrecognized',
 ]);
-const protocolField = z.enum([
+const knownProtocolField = z.enum([
   'sse_framing', 'utf8', 'chunk', 'json', 'content_type', 'content_encoding', 'done',
   'read', 'output', 'type', 'id', 'status', 'role', 'content', 'summary', 'encrypted_content',
   'phase', 'call_id', 'name', 'arguments', 'annotations', 'text', 'item_id', 'output_index',
@@ -77,10 +76,17 @@ const protocolField = z.enum([
   'diagnostics', 'citations', 'caller', 'toolset_name', 'data', 'body', 'sdk_response', 'upgrade',
   'unknown_field', 'unrecognized',
 ]);
+// The ASCII alphabet makes the Responses character bound a byte bound too.
+const responsesEventName = z.string().max(96).regex(/^response(\.[a-z][a-z0-9_]{0,40}){1,4}$/u);
+const protocolIdentifier = z.string().regex(/^[a-z][a-z0-9_]{0,40}$/u);
+const responsesProtocolEvent = knownProtocolEvent.or(responsesEventName);
+const anthropicProtocolEvent = knownProtocolEvent.or(protocolIdentifier);
+const protocolItem = knownProtocolItem.or(protocolIdentifier);
+const protocolField = knownProtocolField.or(protocolIdentifier);
 const agentProtocolFailureDiagnosticSchema = z.object({
   kind: z.literal('protocol'),
   reason: protocolReason,
-  event: protocolEvent.optional(),
+  event: responsesProtocolEvent.or(protocolIdentifier).optional(),
   item: protocolItem.optional(),
   field: protocolField.optional(),
 }).strict();
@@ -111,8 +117,15 @@ export function agentHttpFailureDiagnostic(status: unknown, type?: unknown, code
   };
 }
 
-export function agentProtocolFailureDiagnostic(reason: AgentProtocolFailureReason, details: { event?: unknown; item?: unknown; field?: unknown } = {}): z.infer<typeof agentProtocolFailureDiagnosticSchema> {
-  const event = protocolEvent.safeParse(details.event);
+export function agentProtocolFailureDiagnostic(reason: AgentProtocolFailureReason, details: {
+  event?: unknown;
+  eventProtocol?: 'responses' | 'anthropic_messages';
+  item?: unknown;
+  field?: unknown;
+} = {}): z.infer<typeof agentProtocolFailureDiagnosticSchema> {
+  const eventSchema = details.eventProtocol === 'responses' ? responsesProtocolEvent
+    : details.eventProtocol === 'anthropic_messages' ? anthropicProtocolEvent : knownProtocolEvent;
+  const event = eventSchema.safeParse(details.event);
   const item = protocolItem.safeParse(details.item);
   const field = protocolField.safeParse(details.field);
   return {
