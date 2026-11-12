@@ -63,11 +63,11 @@ const unsuccessfulTool=(step:AgentTaskStep):boolean=>step.kind==='tool'&&['rejec
 const settledTool=(step:AgentTaskStep):boolean=>step.kind==='tool'&&(step.status==='completed'||unsuccessfulTool(step));
 const toolStepIdentity=(sourceModelStepId:string,callId:string):string=>JSON.stringify([sourceModelStepId,callId]);
 
-function toolStepsByCall(steps:readonly AgentTaskStep[]):Map<string,AgentTaskStep> {
-  const result=new Map<string,AgentTaskStep>();
+function toolStepIds(steps:readonly AgentTaskStep[]):Map<string,string> {
+  const result=new Map<string,string>();
   for(const step of steps){
     if(step.kind!=='tool'||!step.toolCall||!record(step.data)||typeof step.data.sourceModelStepId!=='string')continue;
-    result.set(toolStepIdentity(step.data.sourceModelStepId,step.toolCall.id),step);
+    result.set(toolStepIdentity(step.data.sourceModelStepId,step.toolCall.id),step.id);
   }
   return result;
 }
@@ -622,8 +622,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       await checkExecutionWitness(runId,signal);
       modelRequests:for(;;){
         run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
-        const observedTools=toolStepsByCall(snapshot.steps);
-        let projectionCurrent=true;
+        const observedToolIds=toolStepIds(snapshot.steps);
         let repairSource=snapshot.steps.find(step=>step.kind==='model'&&goalRepairMessage(step)!==undefined)?.id;
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
@@ -643,7 +642,6 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
               retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:diagnosticResults});resumeModel=model;continue;
             }
             if(!run.diagnostic&&!repairSource&&journal.safetyWindow(runId).remaining>0&&latestAgentTaskGoals(snapshot.steps)?.conditions.length){
-              projectionCurrent=false;
               const checks=await readAgentTaskChecks(store,snapshot),gaps=checks.requirements?.filter(item=>item.status==='failed')??[];
               const current=fence(runId);
               // A note accepted while checks were reading has priority over a
@@ -662,16 +660,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           const results:{callId:string;result:AgentTaskJson}[]=[];
           for(const call of output.toolCalls){
-            // The executor owns new tool rows. Reuse the validated terminal
-            // history during synchronous replay. After yielding to worker or
-            // control, and before any pending effect, read the exact row.
-            const identity=toolStepIdentity(model.id,call.id),observed=observedTools.get(identity);
-            const saved=observed&&(!projectionCurrent||!settledTool(observed)?journal.step(observed.id):observed);
+            // The executor owns new tool rows. Read the exact receipt, and
+            // yield even for a completed tool so a queued note can be observed
+            // before we decide whether the saved final reply ends the run.
+            const identity=toolStepIdentity(model.id,call.id),savedId=observedToolIds.get(identity);
+            const saved=savedId===undefined?undefined:journal.step(savedId);
             if(saved&&(saved.runId!==runId||saved.toolCall?.id!==call.id||!record(saved.data)||saved.data.sourceModelStepId!==model.id))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
             const replaying=saved!==undefined&&settledTool(saved);
-            if(!replaying)projectionCurrent=false;
-            const finished=replaying?saved:await performTool(runId,model,call,signal,saved);if(!finished)return;
-            if(!replaying&&finished.id!==model.id)observedTools.set(identity,finished);
+            const finished=await (replaying?saved:performTool(runId,model,call,signal,saved));if(!finished)return;
+            if(!replaying&&finished.id!==model.id)observedToolIds.set(identity,finished.id);
             // An earlier receipt will be replayed while assembling every new
             // request. Only a newly settled real tool can cross this boundary.
             if(!replaying&&finished.id!==model.id&&unsuccessfulTool(finished)&&pauseForRepeatedToolFailure(runId,finished))return;

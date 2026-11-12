@@ -972,12 +972,17 @@ test('skipped-target instructions use the submitted locale in every model contin
 });
 test('a note accepted during replay of a completed tool is observed before completing the saved final reply',async t=>{
  const f=await fixture(t),enteredFinal=gate(),releaseFinal=gate();f.setScript(async function*(index){if(index===2){enteredFinal.resolve();await releaseFinal.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send();await enteredFinal.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');releaseFinal.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.steps.filter(step=>step.kind==='model'&&step.status==='completed').length,2);
- const original=f.runtime.journal.snapshot;let reads=0,injected:Promise<AgentTaskSnapshot>|undefined;
- f.runtime.journal.snapshot=(runId:string)=>{const snapshot=original(runId);
-  // On resume: public control snapshot, executor history snapshot, then the
-  // completed tool lookup. The note lands at that tool's awaited return.
-  if(snapshot.run.status==='running'&&snapshot.steps.filter(step=>step.kind==='model'&&step.status==='completed').length===2&&++reads===3)queueMicrotask(()=>{injected=f.action(f.runtime.get(f.projectId,runId),'note',{text:'NOTE_AT_COMPLETED_TOOL_YIELD'});});
-  return snapshot;
+ const completedTool=paused.steps.find(step=>step.kind==='tool'&&step.status==='completed');assert.ok(completedTool);
+ const original=f.runtime.journal.step;let scheduled=false,injected:Promise<AgentTaskSnapshot>|undefined;
+ f.runtime.journal.step=(id:string)=>{
+  const step=original(id);
+  // Queue the note at the replay's durable read of the completed tool, before
+  // the executor handles the already saved final model reply.
+  if(id===completedTool.id&&!scheduled){
+   scheduled=true;
+   queueMicrotask(()=>{injected=f.action(f.runtime.get(f.projectId,step.runId),'note',{text:'NOTE_AT_COMPLETED_TOOL_YIELD'});});
+  }
+  return step;
  };
  await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.ok(injected,'The completed-tool replay yielded to the queued note');await injected;assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,3);assert.match(f.requests[2]!.body,/NOTE_AT_COMPLETED_TOOL_YIELD/);
 });
