@@ -144,6 +144,19 @@ test('closed-project backup operations agree over HTTP CLI and MCP; recovery ret
   assert.equal(restored.project.projectFile, restoration.projectFile);
   assert.deepEqual(await cli('project.backup.restore', restoration), restored);
   assert.deepEqual(await tool('project.backup.restore', restoration), restored);
+  const recoveredId = restored.project.projectId, windowId = randomUUID();
+  const opened = await server.projectEntries.acquire({projectId: recoveredId, windowId,
+    expectedProjectFile: restoration.projectFile, deferRecent: true});
+  try {
+    assert.equal(opened.project.projectId, recoveredId);
+    assert.equal(opened.project.projectFile, restoration.projectFile);
+    const client = createClient({env});
+    const data = await client.rpc<{project: {id: string; name: string}}>('project.get', {projectId: recoveredId});
+    assert.equal(data.project.id, recoveredId);
+    assert.equal(data.project.name, inspection.projectName);
+  } finally {
+    server.projectEntries.release({windowId});
+  }
   await rpc('project.rename', {projectId: restored.project.projectId, requestId: randomUUID(), expectedRevision: original.revision, name: 'Renamed after recovery'});
   assert.deepEqual(await rpc('project.backup.restore', restoration), restored, 'later registry edits cannot change the original recovery receipt');
   const changed = await fetch(server.url + '/api/rpc', {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: 'project.backup.restore', input: {...restoration, projectFile: path.join(target, 'different.mioon')}})});

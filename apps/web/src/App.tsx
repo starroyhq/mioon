@@ -804,7 +804,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setRulesAdmission({scope:admission.scope,key: admission.key, isCurrent: () => admission.isCurrent() && projectSessionReady() && dataRef.current?.project?.id === project.id});
     setRulesOpen(true);
   }
-  useEditorWindowStatus(nativeWindow, projectOpening.projectId, projectOpening.phase, workbenchReady, projectOpening.failure);
+  const backupRecoveryAdmission = nativeBackup && backupFailure?.admission && projectOpening.phase === 'error' &&
+    projectOpening.projectId === backupFailure.projectId ? backupFailure.admission : null;
+  const nativeEditorReady = workbenchReady || (auth === true && backupRecoveryAdmission?.isCurrent() === true);
+  // The recovery view can own the editor window before project contents are usable.
+  useEditorWindowStatus(nativeWindow, projectOpening.projectId, projectOpening.phase, nativeEditorReady, projectOpening.failure);
   const panelSurface = useRef<HTMLDivElement | null>(null), panelIntent = useRef(0), taskWorkspaceState = useRef<{visible: boolean; connected: boolean} | null>(null), taskShotAttempt = useRef(0);
   const [panelChange, setPanelChange] = useState(0);
   const panelScope = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${panelChange}`;
@@ -1170,8 +1174,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } catch (e) {
       if (!importSession.current.leaseRevoked && importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && editorSession.current === attempt.workspaceScope) {
         openedProject.current = null; viewReady.current = false;
-        setBackupFailure(canOfferBackupRecovery(e) ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
-        setProjectOpening({ phase: 'error', projectId: id, error: canOfferBackupRecovery(e) ? t('projectFile.open.invalid.body') : readableError(e),
+        const canRecover = canOfferBackupRecovery(e);
+        setBackupFailure(canRecover ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
+        setProjectOpening({ phase: 'error', projectId: id, error: canRecover ? t('projectFile.open.invalid.body') : readableError(e),
           failure: nativeWindow ? projectWindowOpenFailure(e, id) : undefined });
         const kind = projectOpenFailureKind(e);
         if (kind === 'auth') setAuth(false);
@@ -3125,10 +3130,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       admission={historyView.admission} interactionBlocked={!historyView.admission.isCurrent()} nativeBackup={nativeBackup}
       onClose={() => {if (historyView.admission.isCurrent()) setHistoryView(null);}} onRestored={id => {if (historyView.admission.isCurrent() && currentProject.current === id) void refresh(id);}}
       onOpenProject={id => {if (!historyView.admission.isCurrent()) return; setHistoryView(null); if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id);}} />;
-  const backupRecovery = nativeBackup && backupFailure?.admission && projectOpening.phase === 'error' && projectOpening.projectId === backupFailure.projectId
-    ? <ProjectBackupRecovery key={backupFailure.projectId} projectId={backupFailure.projectId} admission={backupFailure.admission} interactionBlocked={!backupFailure.admission.isCurrent()} onRestore={() => {
-      if (!backupFailure.admission?.isCurrent()) return;
-      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', backupsOnly: true, admission: backupFailure.admission});
+  const backupRecovery = backupFailure && backupRecoveryAdmission
+    ? <ProjectBackupRecovery key={backupFailure.projectId} projectId={backupFailure.projectId} admission={backupRecoveryAdmission} interactionBlocked={!backupRecoveryAdmission.isCurrent()} onRestore={() => {
+      if (!backupRecoveryAdmission.isCurrent()) return;
+      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', backupsOnly: true, admission: backupRecoveryAdmission});
     }} /> : null;
   if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login onLogin={boot} />;
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
