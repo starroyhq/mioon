@@ -58,7 +58,7 @@ test('actual project guard rejects new typing and replacement controller during 
 function renderHarness(f: ReturnType<typeof nameFixture>,{pending=false,submit,run,canPrepare=true}:{pending?:boolean;submit?:(...args:unknown[])=>unknown;run?:(...args:unknown[])=>unknown;canPrepare?:boolean}={}){
  const calls: unknown[][]=[],dataRef:{current:{project?:{id:string};timeline:{id:string;revision:number;clips:{id:string}[]}}}={current:{timeline:{id:'timeline',revision:7,clips:[{id:'clip'}]}}};
  const binding={projectId:id,expectedRevision:7,preflightSnapshotHash:'a'.repeat(64),deliveryName:'版本 A'};
- const environment={msg,panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},dataRef,currentProject:{current:id},
+ const environment={msg,locale:'ja' as const,panelIntent:{current:0},openExportHistory:()=>calls.push(['history',true]),deliveryNameRef:{current:{controller:f.controller}},dataRef,currentProject:{current:id},
   exportCheckContext:()=>({scope:f.live.scope,projectId:id}),exportPreflight:{controller:{setContext(){},takeExportBinding(value: { projectId: string; expectedRevision: number; preflightSnapshotHash: string; deliveryName: string; }){return value===binding?binding:null;},takeUncheckedExportIntent(){return null;}}},
   isBusy:()=>false,pendingForProject:()=>pending?[{key:'timeline:render:export'}]:[],notify:(...args: unknown[])=>calls.push(['notify',...args]),openTasks:(canReveal=()=>true)=>{if(canReveal())calls.push(['jobs',true]);},
   localDeliveryRef:{current:{controller:{canPrepare:()=>canPrepare,submit:async(...args: Parameters<ReturnType<typeof createLocalDeliveryController>["submit"]>)=>{calls.push(['submit',...args]);return submit?.(...args);}}}},
@@ -89,7 +89,7 @@ async function coordinatedRenderHarness(t: test.TestContext,{preparation,executi
  const client={
   async get(projectId: Parameters<LocalDeliveryClient['get']>[0]){record('get',projectId);return structuredClone(stored);},
   async put(input: Parameters<LocalDeliveryClient['put']>[0]){record('put',input);stored={...stored,draftRevision:stored.draftRevision+1,draft:{draftId:input.draftId,timelineId:input.timelineId,baseRevision:input.baseRevision,raw:structuredClone(input.raw),updatedAt:stamp},draftTargetStatus:'matching'};return structuredClone(stored);},
-  async prepare(input: Parameters<LocalDeliveryClient['prepare']>[0]){record('prepare',input);stored={...stored,intentRevision:stored.intentRevision+1,intent:{intentId:input.intentId,timelineId:input.timelineId,baseRevision:input.baseRevision,draft:structuredClone(input.draft),input:structuredClone(input.input),createdAt:stamp,outcome:{status:'pending'}},intentTargetStatus:'matching'};if(preparation)await preparation.promise;return structuredClone(stored);},
+  async prepare(input: Parameters<LocalDeliveryClient['prepare']>[0]){record('prepare',input);stored={...stored,intentRevision:stored.intentRevision+1,intent:{intentId:input.intentId,timelineId:input.timelineId,baseRevision:input.baseRevision,draft:structuredClone(input.draft),input:structuredClone(input.input),...(input.outputLocale?{outputLocale:input.outputLocale}:{}),createdAt:stamp,outcome:{status:'pending'}},intentTargetStatus:'matching'};if(preparation)await preparation.promise;return structuredClone(stored);},
   async execute(input: Parameters<LocalDeliveryClient['execute']>[0]){record('execute',input);if(execution)await execution.promise;const response=exportReceipt(stored.intent!.input);assert.equal(isTimelineMutationResponse('timeline.render',stored.intent!.input,response),true);
    stored={...stored,intentRevision:stored.intentRevision+1,intent:{...stored.intent!,outcome:{status:'accepted',exportId:response.id,responseSha256:'d'.repeat(64),resolvedAt:stamp}},draftRevision:stored.draftRevision+1,draft:null,draftTargetStatus:'unset'};return {envelope:structuredClone(stored),response};},
   async discard(){assert.fail('Export acknowledgement must not discard through the draft API');},
@@ -118,6 +118,8 @@ test('actual App options and real coordinator preserve the exact original render
  assert.deepEqual(h.calls.find(row=>row[0]==='submit')![1],exact);
  assert.deepEqual(h.transportCalls.map(call=>call.method),['get','put','prepare','execute']);
  assert.deepEqual(h.transportCalls.find(call=>call.method==='prepare')!.input.input,exact);
+ assert.equal(h.transportCalls.find(call=>call.method==='prepare')!.input.outputLocale,'ja');
+ assert.equal(h.local.controller.getState().intent!.outputLocale,'ja');
  assert.deepEqual(h.refreshes,[id]);assert.equal(h.calls.some(row=>row[0]==='run'),false);
  assert.equal(h.local.controller.getState().intent!.outcome.status,'accepted');assert.equal(h.f.controller.hasUnsaved(),false);
  assert.equal(h.f.controller.getName(h.f.live.scope),'版本 A');assert.deepEqual(h.calls.filter(row=>row[0]==='deliveryAttempt'),[['deliveryAttempt',{projectId:id,id:fixtureId(2)}]]);

@@ -199,7 +199,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
     if(request.action==='instantiateTemplate')return await mutate(request.token,owner,request,async ticket=>{
      if(ticket.kind!=='storage'||ticket.purpose!=='template'||!ticket.template||ticket.template.id!==request.templateId||ticket.template.version!==request.templateVersion||ticket.template.name!==request.name)throw unavailable();
      await location(owner,ticket.template.parentDir,'template',true);check(owner);
-     const copy=projectCopyResponseSchema.parse(await options.backend.instantiateTemplate({templateId:request.templateId,templateVersion:request.templateVersion,parentDir:ticket.template.parentDir,name:ticket.template.name,requestId:request.requestId}));
+     const copy=projectCopyResponseSchema.parse(await options.backend.instantiateTemplate({templateId:request.templateId,templateVersion:request.templateVersion,parentDir:ticket.template.parentDir,name:ticket.template.name,...(request.locale?{locale:request.locale}:{}),requestId:request.requestId}));
      mutationResult(owner);
      if(copy.requestId!==request.requestId||copy.project.projectFile!==ticket.file||copy.project.name!==ticket.template.name)throw unavailable('PROJECT_ENTRY_OUTCOME_UNKNOWN');
      return copy;

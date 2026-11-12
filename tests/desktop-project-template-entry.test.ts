@@ -196,7 +196,8 @@ test('real main save-panel wiring creates and sealed-opens the shipped example f
    assert.equal(f.panelCalls.length,1);assert.equal(f.panelCalls[0]!.parent,f.source);assert.equal(f.panelCalls[0]!.defaultPath,path.join(f.documents,name+'.mioon'));assert.equal(f.panelCalls[0]!.message,message);
    assert.deepEqual(f.order,['documents','save','probe','cloud-warning']);assert.equal(f.dialogs.size,0);assert.equal(f.windowHost.canHideToTray(),true);
    assert.equal(selection.displayPath,path.join(f.documents,name,name+'.mioon'));
-   const response=await f.desktop.instantiateTemplate!(f.input(selection));
+   const response=await f.desktop.instantiateTemplate!({...f.input(selection),locale:'zh-Hant'});
+   assert.equal(f.inputs[0]?.locale,'zh-Hant');
    assert.equal(response.project.projectFile,selection.displayPath);assert.equal(response.project.name,name);
    assert.equal(await f.entry.openNativeResult(response.project.projectId,grant),true);
    assert.equal(f.consumed.length,1,'Opening consumes the real entry controller seal exactly once');

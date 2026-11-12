@@ -210,14 +210,15 @@ export function createProjectCopyActions({manager, library, directories, assertP
     const stageDirectory = createProjectCopyStagingDirectory(parent, '.project-copy-');
     intent = save({...intent, stageDirectory, stageDirectoryIdentity: copyIdentity(stageDirectory)}); await boundary('staging', intent);
     const template = intent.operation === 'project.template.instantiate' ? catalog.prepareAssets(intent.input.templateId, intent.input.templateVersion,
-      {directory: stageDirectory, targetDirectory: intent.targetDirectory!, assertMutationAllowed: assertAllowed}) : null;
+      {directory: stageDirectory, targetDirectory: intent.targetDirectory!, locale: intent.input.locale, assertMutationAllowed: assertAllowed}) : null;
     const source = openProjectBackup(sourceFile);
     let copied: Awaited<ReturnType<typeof copyProjectToNewFile>>;
     try {
       copied = await copyProjectToNewFile(source, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
         targetProjectDir: path.dirname(intent.targetFile), projectId: intent.projectId, contentToken: intent.contentToken,
         expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
-        ...('name' in intent.input ? {projectName: intent.input.name} : {}), ...(template ? {referenceTargets: template.referenceTargets} : {}),
+        ...('name' in intent.input ? {projectName: intent.input.name} : {}),
+        ...(template ? {referenceTargets: template.referenceTargets, templatePresentation: template.presentation} : {}),
         publish: (from, to) => publishProjectCopyFile(from, to)});
     } finally {source.close();}
     assertAllowed();

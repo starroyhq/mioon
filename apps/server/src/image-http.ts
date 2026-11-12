@@ -10,6 +10,8 @@ import {safeImageReviewError} from '@mioon/business/images/reviews';
 import {safeImageServiceError} from '@mioon/business/images';
 import {rejectProjectMismatch} from './project-host/request.ts';
 import type {ProjectAddress} from './project-host/request.ts';
+import {readOutputLocale} from './output-locale-http.ts';
+import type {OutputLocale} from '../../../packages/contracts/src/output-locale.ts';
 
 type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
@@ -17,7 +19,7 @@ interface SafeImageError {code: string; message: string; status: number; details
 export interface ImageHttpOptions {
   settings?: ImageSettings;
   customSettings?: CustomImageSettings;
-  generationServices?: (operation: string, input: unknown) => unknown;
+  generationServices?: (operation: string, input: unknown, outputLocale?: OutputLocale) => unknown;
   approve: (input: unknown) => unknown;
   reject: (input: unknown) => unknown;
   signal?: AbortSignal;
@@ -69,7 +71,7 @@ export function createImageHttp({settings,customSettings,generationServices,appr
      const parsed=generationImageServiceSchemas[operation].safeParse(envelope.input);if(!parsed.success)throw invalid();
      const payload=parsed.data,named='projectId'in payload?payload:payload.input;
      if(rejectProjectMismatch(res,address,named))return true;
-     result=await generationServices!(operation,payload);
+     result=await generationServices!(operation,payload,readOutputLocale(req,operation));
     } else result=approval?await approve(input):await reject(input);
    }
    json(res,200,{ok:true,data:result});

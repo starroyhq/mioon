@@ -1,3 +1,4 @@
+import {recordOutputLocale} from './output-asset-names.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {registeredProjectStoreForDatabase} from './project-media-storage.ts';
 import {prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
@@ -353,7 +354,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   }
   return frozen;
  }
- function render(input: TimelineMutationInput,admission?: RenderAdmission): unknown{
+ function render(input: TimelineMutationInput,admission?: RenderAdmission,outputLocale?: unknown): unknown{
   return transaction('timeline.render',input,({boundary,requestHash,write})=>{
    const frozen=renderSnapshot(input,boundary,write,admission?.timelineId);
    if(admission&&hash(frozen)!==admission.snapshotHash)
@@ -362,6 +363,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
    write();put('exports',result);
+   recordOutputLocale(db,result.id,requestHash,outputLocale);
    bindAgentTaskJobInside(db,'export',result.id);
    const response=saveResponse('timeline.render',input,requestHash,result,boundary);
 
@@ -482,12 +484,13 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   },
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
    assertProjectStore(store);
-   const invoke=()=>{assertProjectStore(store);beforeEffect?.();return input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{
+   const outputLocale = (options as {outputLocale?: unknown} | null)?.outputLocale;
+   const invoke=()=>{assertProjectStore(store);beforeEffect?.();return input.exportSettings===undefined?render(input,undefined,outputLocale):exportAdmission.render(input,options,{
    prepare:()=>{
     const result=transaction<{snapshot: unknown;mode?: string;replayed?: boolean;response?: unknown}>('timeline.render',input,({boundary,write})=>({snapshot:renderSnapshot(input,boundary,write)}));
     return result.mode==='timeline'?{replayed:true,response:result}:result;
    },
-   accept:(admission: RenderAdmission)=>render(input,admission),
+   accept:(admission: RenderAdmission)=>render(input,admission,outputLocale),
   });};
    // Exact accepted requests retain their original immutable ACK even after a
    // source disappears. The existing transaction verifies hash/scope/response.

@@ -17,6 +17,7 @@ import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/g
 import type {CustomImageConfigurationV2, CustomImageConnectionV2} from '../packages/contracts/src/generation-image-settings.ts';
 import {canonicalImageInput as canonical, imageSchemas, isImageTaskResponse} from '../packages/contracts/src/images.ts';
 import {isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
+import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';
 
 type Settings = Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
 type Generation = ReturnType<typeof imageSchemas['image.generate']['parse']>;
@@ -95,7 +96,7 @@ async function fixture(t: test.TestContext, {withB = true, autoRun = true, bound
       try {await Promise.race([barrier.entered.promise, new Promise<never>((_, reject) => {timeout = setTimeout(() => reject(new Error('Synthetic dispatch boundary was not reached')), 10000);})]);}
       finally {clearTimeout(timeout);}
     },
-    prepare: async (connectionId: string, generation: Generation = input(), revision = item(connectionId).configurationRevision) => serviceReview(await services.generationImageServices('image.service.review.prepare', {input: generation, connectionId, configurationRevision: revision})),
+    prepare: async (connectionId: string, generation: Generation = input(), revision = item(connectionId).configurationRevision, outputLocale?: OutputLocale) => serviceReview(await services.generationImageServices('image.service.review.prepare', {input: generation, connectionId, configurationRevision: revision}, outputLocale)),
     legacyPrepare: async (generation: Generation) => serviceReview(await services.call('image.review.prepare', {input: generation, settingsRevision: 1})),
     approve: async (review: Parameters<typeof approval>[0]) => taskResponse(await services.imageApproval(approval(review))),
     async update(id: string, patch: Partial<CustomImageConfigurationV2>) {const current = item(id); return settings.put({expectedRevision: (await settings.get()).revision, connectionId: id, expectedConfigurationRevision: current.configurationRevision, name: current.name, configuration: {...current.configuration, ...patch}, secret: {action: 'keep'}});},
@@ -125,12 +126,15 @@ function assertFrozen(f: Awaited<ReturnType<typeof fixture>>, review: Awaited<Re
 }
 
 test('explicit A keeps its own frozen review and paid key after adding and editing same-model B', async t => {
-  const f = await fixture(t, {withB: false}), input = f.input(), review = await f.prepare(f.a, input); assertFrozen(f, review, input);
+  const f = await fixture(t, {withB: false}), input = f.input(), review = await f.prepare(f.a, input, 1, 'ja'); assertFrozen(f, review, input);
+  assert.deepEqual(await f.prepare(f.a, input, 1, 'en'), review);
   const stored = String(f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent);
   await f.add(f.b, KEY_B); assert.equal(f.item(f.a).configurationRevision, f.item(f.b).configurationRevision);
   await f.update(f.b, {model: 'updated-B-only'}); assert.equal(f.item(f.a).configurationRevision, 1);
   const accepted = await f.approve(review), completed = await f.settled(accepted.id, 'succeeded');
   assert.equal(completed.dispatched, true); assert.equal(f.net.posts.length, 1); assert.equal(f.net.posts[0]!.authorization, `Bearer ${KEY_A}`);
+  const asset = f.store.db.prepare("SELECT json_extract(assets.data,'$.name') AS name FROM image_versions JOIN assets ON assets.id=image_versions.assetId WHERE image_versions.id=?").get(completed.versionId);
+  assert.equal(asset?.name, 'Exact service output · 画像 1.png');
   assert.deepEqual(f.net.posts[0]!.body, expectedBody(input)); assert.doesNotMatch(JSON.stringify(f.net.posts[0]!.body), /connectionId|configurationRevision|settingsRevision/);
   assert.deepEqual(f.acquisitions, [{connectionId: f.a, configurationRevision: 1, configuration: configuration()}]);
   assert.equal(String(f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent), stored);

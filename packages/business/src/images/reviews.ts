@@ -15,6 +15,8 @@ import {ownsStoreLock} from '../store-runtime.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {COMFY_IMAGE_POLICY, COMFY_IMAGE_PROFILE_ID, COMFY_IMAGE_VERSION, comfyImageConfigurationSchema, isCompleteComfyImageConfiguration, getComfyImageDestination} from '../../../contracts/src/comfy-images.ts';
 import {buildComfyWorkflow, hashComfyWorkflow, validateComfyExecution} from '../comfy/workflow.ts';
+import {outputLocaleFor, recordOutputLocale} from '../output-asset-names.ts';
+import type {OutputLocale} from '../../../contracts/src/output-locale.ts';
 
 export type ImageGenerationInput = ReturnType<(typeof imageSchemas)['image.generate']['parse']>;
 export type ImageReviewIntent = ReturnType<typeof imageReviewIntentSchema.parse>;
@@ -230,15 +232,16 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
       if (Number((db.prepare(`SELECT count(*) AS n FROM (SELECT 1 FROM image_reviews${where} LIMIT ?)`).get(...args, cap + 1) as {n: number}).n) >= cap) fail('IMAGE_REVIEW_CAPACITY', 507);
     }
   }
-  function prepare(raw: unknown): ImageReviewDto | Promise<ImageReviewDto> {
+  function prepare(raw: unknown, context?: {outputLocale?: OutputLocale}): ImageReviewDto | Promise<ImageReviewDto> {
     const input = parse(imageReviewSchemas['image.review.prepare'], raw);
-    if (purposeOf(input.input) !== 'edit') return prepareVerified(input);
+    const outputLocale = context?.outputLocale;
+    if (purposeOf(input.input) !== 'edit') return prepareVerified(input, undefined, outputLocale);
     const replay = prepareReplay(input); if (replay) return replay;
-    return editSources.verify(input.input).then(verified => {editSources.assertCurrent(input.input, verified); return prepareVerified(input, verified);});
+    return editSources.verify(input.input).then(verified => {editSources.assertCurrent(input.input, verified); return prepareVerified(input, verified, outputLocale);});
   }
-  function prepareService(raw: unknown): ImageReviewDto {
+  function prepareService(raw: unknown, outputLocale?: OutputLocale): ImageReviewDto {
     const input = parse(generationImageServiceSchemas['image.service.review.prepare'], raw);
-    return prepareVerified({input: input.input, settingsRevision: input.configurationRevision, connectionId: input.connectionId});
+    return prepareVerified({input: input.input, settingsRevision: input.configurationRevision, connectionId: input.connectionId}, undefined, outputLocale);
   }
   interface PreparedReviewInput {input: ImageGenerationInput; settingsRevision: number; connectionId?: string}
   function replayMatches(original: ReturnType<typeof decodeReviewRow>, input: PreparedReviewInput): void {
@@ -252,7 +255,7 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
     if (previous.projectId !== input.input.projectId || previous.canonicalInput !== canonical(input.input)) fail('IMAGE_REVIEW_CONFLICT');
     const original = decode(previous); replayMatches(original, input); return original.dto;
   }
-  function prepareVerified(input: PreparedReviewInput, verified?: {descriptor: unknown; bytes: Buffer}): ImageReviewDto {
+  function prepareVerified(input: PreparedReviewInput, verified?: {descriptor: unknown; bytes: Buffer}, outputLocale?: OutputLocale): ImageReviewDto {
     const generation = input.input;
     const canonicalInput = canonical(generation);
     if (Buffer.byteLength(canonicalInput) > IMAGE_LIMITS.inputBytes) fail('IMAGE_REVIEW_CAPACITY', 507);
@@ -282,8 +285,10 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
       if (!imageReviewIntentSchema.safeParse(intent).success) invalid();
       const canonicalIntent = canonical(intent);
       if (Buffer.byteLength(canonicalIntent) > IMAGE_REVIEW_LIMITS.intentBytes) fail('IMAGE_REVIEW_CAPACITY', 507);
+      const inputHash = digest(canonicalInput);
       db.prepare(`INSERT INTO image_reviews(id,projectId,requestId,inputHash,canonicalInput,intentHash,canonicalIntent,state,revision,taskId,postAttempts,createdAt,updatedAt,approvedAt,rejectedAt,dispatchedAt)
-        VALUES(?,?,?,?,?,?,?,'pending',1,NULL,0,?,?,NULL,NULL,NULL)`).run(id, generation.projectId, generation.requestId, digest(canonicalInput), canonicalInput, digest(canonicalIntent), canonicalIntent, timestamp, timestamp);
+        VALUES(?,?,?,?,?,?,?,'pending',1,NULL,0,?,?,NULL,NULL,NULL)`).run(id, generation.projectId, generation.requestId, inputHash, canonicalInput, digest(canonicalIntent), canonicalIntent, timestamp, timestamp);
+      recordOutputLocale(db, id, inputHash, outputLocale);
       synchronous(fault, 'after_review_prepare', {reviewId: id});
       return review(generation.projectId, id).dto;
     });
@@ -326,6 +331,7 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
     const result = db.prepare("UPDATE image_reviews SET state='approved',revision=2,taskId=?,approvedAt=?,updatedAt=? WHERE id=? AND projectId=? AND revision=1 AND state='pending'")
       .run(taskId, timestamp, timestamp, value.row.id, value.row.projectId);
     if (result.changes !== 1) fail('IMAGE_REVIEW_REVISION_CONFLICT');
+    recordOutputLocale(db, taskId, value.row.inputHash, outputLocaleFor(db, value.row.id));
     synchronous(fault, 'after_review_reservation', {reviewId: value.row.id, taskId});
     return true;
   }

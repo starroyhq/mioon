@@ -218,7 +218,7 @@ export function createProjectHomeNativeActionsController(options: {
         return await execute({kind:'trash',authority:value,project:target,input});
       }catch {if(current(value)&&call===serial)emit({kind:'trash-blocked',reason:'facts'});else retireRead(value,call);return false;}
     },
-    async startExample(message:string,suggestedName:string,permit:()=>boolean=()=>true,nativePermit?:()=>boolean):Promise<boolean> {
+    async startExample(message:string,suggestedName:string,permit:()=>boolean=()=>true,nativePermit?:()=>boolean,locale?:ExampleInput['locale']):Promise<boolean> {
       const port=options.ports()?.example;if(!port?.bridge.instantiateTemplate||!port.templates.some(template=>template.id==='timeline-basics'&&template.version===1)){controller.rejectPreparation(true,'unavailable');return false;}
       const value=capture(permit,nativePermit);if(!value){controller.rejectPreparation(true,'facts');return false;}authority=value;knownExample=null;const call=++serial;emit({kind:'choosing-example',exampleName:suggestedName,exampleReceipt:null,notice:null});
       try {await directory(value);if(!current(value)||call!==serial){retireRead(value,call,true);return false;}
@@ -228,7 +228,7 @@ export function createProjectHomeNativeActionsController(options: {
         const selection=projectDesktopSelectionSchema.parse(raw),template=selection.template;
         if(!template||!port.templates.some(item=>item.id===template.id&&item.version===template.version))throw Error('Invalid template selection');
         await directory(value);if(!current(value)||call!==serial){retireRead(value,call,true);return false;}
-        const input=Object.freeze({token:selection.token,templateId:template.id,templateVersion:template.version,name:template.name,requestId:requestId()});
+        const input=Object.freeze({token:selection.token,templateId:template.id,templateVersion:template.version,name:template.name,...(locale?{locale}:{}),requestId:requestId()});
         emit({exampleName:template.name});
         const operation:Pending={kind:'example',authority:value,input,displayPath:selection.displayPath,project:null};
         return await execute(operation);

@@ -1,5 +1,5 @@
-import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
-import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import { isLocale, message as localizedMessage } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage, Locale } from '../../../packages/i18n/src/index.ts';
 import { pendingStorageKey, samePendingIntent, removeExactPending } from './pending-request.ts';
 import { migratePendingStorage } from './storage-migration.ts';
 import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
@@ -19,6 +19,7 @@ export interface PendingEntry extends Record<string, unknown> {
   key: string;
   operation: string;
   input: PendingInput;
+  outputLocale?: Locale;
   subjectRetry?: unknown;
   expectedSubjectReference?: unknown;
   expectedRetrySnapshot?: unknown;
@@ -44,7 +45,7 @@ export function readPending(projectId: string,key: string): PendingEntry | null 
   const raw = sessionStorage.getItem(storageKey(projectId, key));
   if (!raw) return null;
   const entry: unknown = JSON.parse(raw);
-  if (!isRecord(entry) || !isRecord(entry.input) || !entry.input.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(String(entry.operation)) || includesString(TIMELINE_MUTATION_OPERATIONS,entry.operation)) || entry.projectId !== projectId || entry.key !== key) throw pendingError('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。', localizedMessage('tasks.localError.pendingCorrupt'));
+  if (!isRecord(entry) || !isRecord(entry.input) || !entry.input.requestId || !(isMutationOperation(entry.operation) || ['generation.submit', 'job.retry', 'export.create', 'reference.attach', 'reference.detach'].includes(String(entry.operation)) || includesString(TIMELINE_MUTATION_OPERATIONS,entry.operation)) || entry.projectId !== projectId || entry.key !== key || entry.outputLocale !== undefined && !isLocale(entry.outputLocale)) throw pendingError('待确认请求记录损坏。为防止重复提交，请先核实服务器任务。', localizedMessage('tasks.localError.pendingCorrupt'));
   return entry as unknown as PendingEntry;
 }
 export function writePending(entry: PendingEntry): void {

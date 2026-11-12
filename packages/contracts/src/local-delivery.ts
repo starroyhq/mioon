@@ -1,6 +1,7 @@
 import type {TimelineExportRange} from './timeline-export-range.ts';
 import type {TimelineExportSettings} from './timeline-export-float.ts';
 import {z} from 'zod';
+import {outputLocaleSchema} from './output-locale.ts';
 
 // Private, local export-title recovery only. Nothing in this companion format
 // adds an operation, changes timeline.render, or grants dispatch authority.
@@ -89,11 +90,11 @@ export function createLocalDeliverySchemas(isRenderInput:LocalDeliveryInputValid
   const input=z.custom<LocalDeliveryRenderInput>((value:unknown)=>exactRenderInput(value,isRenderInput));
   const intent=z.object({
     intentId:id,timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),
-    input,createdAt:stamp,outcome:localDeliveryOutcomeSchema,
+    input,outputLocale:outputLocaleSchema.optional(),createdAt:stamp,outcome:localDeliveryOutcomeSchema,
   }).strict();
   const prepare=z.object({
     ...authority,projectId:id,expectedIntentRevision:revision,expectedIntentId:id.nullable(),intentId:id,
-    timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),input,
+    timelineId:id,baseRevision:revision.min(1),draft:localDeliveryDraftCaptureSchema.nullable(),input,outputLocale:outputLocaleSchema.optional(),
   }).strict().superRefine((value,context)=>{
     if((value.expectedIntentRevision===0)!==(value.expectedIntentId===null))issue(context,'Prior intent identity must match its CAS revision');
     if(value.expectedIntentId===value.intentId)issue(context,'A new preparation must have a new intent identity');

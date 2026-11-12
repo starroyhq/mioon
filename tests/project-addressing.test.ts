@@ -184,9 +184,9 @@ test('project addresses on the workspace server: registration, project checks, e
   t.after(() => rmSync(dataDir, {recursive: true, force: true}));
   const server = await startServer({dataDir, port: 0, token: TOKEN});
   t.after(() => server.close());
-  const send = async (route: string, init: {method?: string; body?: unknown; auth?: boolean} = {}): Promise<Reply> => {
+  const send = async (route: string, init: {method?: string; body?: unknown; auth?: boolean; headers?: Record<string,string>} = {}): Promise<Reply> => {
     const response = await fetch(server.url + route, {method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
-      headers: {...(init.auth === false ? {} : {authorization: `Bearer ${TOKEN}`}), ...(init.body === undefined ? {} : {'content-type': 'application/json'})},
+      headers: {...(init.auth === false ? {} : {authorization: `Bearer ${TOKEN}`}), ...(init.body === undefined ? {} : {'content-type': 'application/json'}), ...init.headers},
       ...(init.body === undefined ? {} : {body: JSON.stringify(init.body)})});
     const text = await response.text();
     let body: Reply['body'];
@@ -204,6 +204,11 @@ test('project addresses on the workspace server: registration, project checks, e
   const shot = data<{id: string; revision: number}>(await rpc(projectRpcPath(first), 'shot.create', {projectId: first, title: 'K2 shot'}));
   const asset = data<{id: string}>(await rpc(projectRpcPath(first), 'asset.import', {projectId: first, name: 'k2.png', mimeType: 'image/png', dataBase64: PNG}));
   const unknown = randomUUID();
+  const exportInput = {projectId:first,requestId:randomUUID()};
+  const exportRequest = {operation:'export.create',input:exportInput};
+  failure(await send(projectRpcPath(first),{body:exportRequest,headers:{'X-Mioon-Output-Locale':'en-US'}}),400,'VALIDATION_ERROR');
+  failure(await send(projectRpcPath(first),{body:exportRequest,headers:{'X-Mioon-Output-Locale':'ja'}}),400,'MISSING_SELECTION');
+  failure(await rpc(projectRpcPath(first),'export.create',{...exportInput,outputLocale:'ja'}),400,'VALIDATION_ERROR');
 
   // Authentication comes before the registry; an unknown project is PROJECT_NOT_FOUND.
   failure(await send(projectRpcPath(unknown), {body: {operation: 'project.get', input: {projectId: unknown}}, auth: false}), 401, 'UNAUTHORIZED');

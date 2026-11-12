@@ -7,6 +7,8 @@ import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc
 import { isTimelineMixLoudnessResponse } from '@mioon/contracts/timeline-mix-loudness';
 import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
 import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.ts';
+import { OUTPUT_LOCALE_HEADER } from '../../../packages/contracts/src/output-locale.ts';
+import type { Locale } from '../../../packages/i18n/src/types.ts';
 
 export type RpcFetcher = typeof fetch;
 export interface RpcOptions {
@@ -14,6 +16,7 @@ export interface RpcOptions {
   readonly fetcher?: RpcFetcher;
   /** Addresses the entity-addressed operations, whose input names no project. */
   readonly projectId?: string | null;
+  readonly outputLocale?: Locale;
 }
 interface RpcErrorBody {
   readonly code?: unknown;
@@ -43,12 +46,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), projectId }: RpcOptions = {}): Promise<T> {
+export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), projectId, outputLocale }: RpcOptions = {}): Promise<T> {
   let path: string;
   try { path = rpcPathFor(operation, input, projectId ?? undefined); }
   catch { throw new ApiError('The request has no valid project address.', 'VALIDATION_ERROR', {}, true); }
   const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, { operation, input }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
-  const response = mix?.response ?? await fetcher(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input }), ...(signal ? { signal } : {}) });
+  const response = mix?.response ?? await fetcher(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(outputLocale ? { [OUTPUT_LOCALE_HEADER]: outputLocale } : {}) }, body: JSON.stringify({ operation, input }), ...(signal ? { signal } : {}) });
   let body: unknown;
   try { body = mix ? mix.body : await response.json(); } catch { throw protocolError(); }
   if (!isRecord(body) || typeof body.ok !== 'boolean' ||

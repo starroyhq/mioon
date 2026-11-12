@@ -1,5 +1,5 @@
-import { message as localizedMessage, renderMessage } from '../../../packages/i18n/src/index.ts';
-import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import { isLocale, message as localizedMessage, renderMessage } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage, Locale } from '../../../packages/i18n/src/index.ts';
 import { ApiError, rpc, requestId as newRequestId } from './api.ts';
 import { createImageRejectionCloseLatch } from './native-close-sources.ts';
 import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, IMAGE_EDIT_SOURCE_MIME_TYPES, imageEditOutputSize, imageEditProfile, parseImageSize, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
@@ -63,6 +63,7 @@ export interface ImagePending {
   version: number;
   operation: string;
   input: ImageMutationInput;
+  outputLocale?: Locale;
   reviewId?: string | null;
   approvalAttempted?: boolean;
   sourceIssue?: string;
@@ -122,7 +123,7 @@ export interface ImageReviewClient {
   approve: (review: ImageReviewResponse) => Promise<unknown>;
   reject: (review: ImageReviewResponse) => Promise<unknown>;
 }
-export interface ImageApi { (operation: string, input: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<unknown> }
+export interface ImageApi { (operation: string, input: Record<string, unknown>, options?: { signal?: AbortSignal; outputLocale?: Locale }): Promise<unknown> }
 export interface ImageGenerationSessionOptions {
   projectId: string;
   api?: ImageApi;
@@ -134,6 +135,7 @@ export interface ImageGenerationSessionOptions {
   comfyAvailability?: unknown; comfyAvailabilityReader?: () => Promise<unknown>;
   storage?: Storage;
   requestId?: () => string;
+  getOutputLocale?: () => Locale;
   onChange?: (state: ImageGenerationState) => void;
   onGenerated?: (projectId: string, task: ImageTaskView) => void;
   setTimer?: (handler: () => void, milliseconds: number) => number;
@@ -276,6 +278,7 @@ const imageOperationSchema = (operation: string): (typeof imageSchemas)[keyof ty
 const fixedIntent = (projectId: string, value: unknown): boolean => {
   const fixed = record(value) ? value : null, input = fixed && record(fixed.input) ? fixed.input : null;
   if (!fixed || !input || !imageOperationSchema(typeof fixed.operation === 'string' ? fixed.operation : '')?.safeParse(input).success || input.projectId !== projectId || !['image.generate', 'image.task.cancelQueued', 'image.task.recoverResult'].includes(typeof fixed.operation === 'string' ? fixed.operation : '')) return false;
+  if (fixed.outputLocale !== undefined && (fixed.operation !== 'image.generate' || !isLocale(fixed.outputLocale))) return false;
   if (fixed.sourceIssue !== undefined && (fixed.sourceIssue !== 'IMAGE_SOURCE_INVALID' || fixed.operation !== 'image.generate' || input.providerId !== 'mock' || input.purpose !== 'edit')) return false;
   if (fixed.sourceImage !== undefined && (input.purpose !== 'edit' || !imageEditSourceSchema.safeParse(fixed.sourceImage).success || !record(fixed.sourceImage) || !record(input.inputImage) || fixed.sourceImage.assetId !== input.inputImage.assetId || fixed.sourceImage.sha256 !== input.inputImage.sha256)) return false;
   if (fixed.operation !== 'image.generate' || input.providerId === 'mock') return fixed.version === 1;
@@ -310,17 +313,21 @@ async function notAccepted(error: unknown, operation: string, input: ImageMutati
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, generationServices, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
+export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, generationServices, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, getOutputLocale, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
   let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0, focusedTaskId: string | null = null;
   if (settings) state.settings = safeImageSettings(settings) as ImageSettingsView;
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom') as ImageSettingsView;
   if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings) as unknown as ImageSettingsView;
   if (comfyAvailability) { try { state.comfyAvailability = safeComfyConnectorAvailability(comfyAvailability); state.comfyAvailabilityPhase = 'ready'; } catch { state.comfyAvailabilityPhase = 'error'; } }
   const announced = new Set<string>(), tracked = new Map<string, ImageTaskView>(), calls = new Set<AbortController>();
-  async function call(operation: string, input: Record<string, unknown>): Promise<unknown> {
+  const captureOutputLocale = () => {
+    const outputLocale = getOutputLocale?.();
+    return outputLocale ? {outputLocale} : {};
+  };
+  async function call(operation: string, input: Record<string, unknown>, outputLocale?: Locale): Promise<unknown> {
     const controller = new AbortController(); calls.add(controller); let deadline: ReturnType<typeof setTimeout> | undefined;
     const expired = new Promise<never>((_, reject) => { deadline = setTimeout(() => { controller.abort(); reject(problem('NETWORK')); }, timeoutMs); });
-    try { return await Promise.race([Promise.resolve().then(() => api(operation, input, { signal: controller.signal })), expired]); }
+    try { return await Promise.race([Promise.resolve().then(() => api(operation, input, { signal: controller.signal, ...(outputLocale ? {outputLocale} : {}) })), expired]); }
     finally { clearTimeout(deadline); calls.delete(controller); }
   }
   async function serviceCall<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -544,11 +551,11 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
   }
   async function dispatch(operation: string, input: ImageMutationInput): Promise<boolean> {
     if (disposed || !visible || state.pending || state.storageBlocked || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId) return false;
-    const pending: ImagePending = { version: 1, operation, input: copy(input) };
+    const pending: ImagePending = { version: 1, operation, input: copy(input), ...(operation === 'image.generate' ? captureOutputLocale() : {}) };
     try { savePending(pending); } catch { emit({ message: '无法保存本地请求凭据，本次尚未发送。请恢复页面存储后再试。', displayMessage: localizedMessage('image.state.receiptSaveFailed') }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null, actionTaskId: input.taskId || null });
     try {
-      const result = await call(operation, copy(input));
+      const result = await call(operation, copy(input), pending.outputLocale);
       if (disposed || state.pending !== pending) return false;
       if (!isImageMutationResponse(operation, input, result)) throw problem('INVALID_RESPONSE');
       const task = safeTask(result, projectId);
@@ -604,12 +611,12 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     if (!selected) return false;
     const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: requestOptions(state, selected.configuration.model ?? ''), requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageOperationSchema('image.generate')?.safeParse(input).success) return false;
-    const pending: ImagePending = { version: custom && typeof selected.connectionId === 'string' ? 4 : custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, ...(custom && typeof selected.connectionId === 'string' ? {connectionId: selected.connectionId, configurationRevision: selected.revision} : {}), reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
+    const pending: ImagePending = { version: custom && typeof selected.connectionId === 'string' ? 4 : custom ? 2 : 1, operation: 'image.generate', input, ...captureOutputLocale(), settingsRevision: selected.revision, ...(custom && typeof selected.connectionId === 'string' ? {connectionId: selected.connectionId, configurationRevision: selected.revision} : {}), reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
     try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。', displayMessage: localizedMessage('image.state.paidRequestSaveFailed') }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null });
     const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
     try {
-      const prepared = custom && pending.version === 4 && generationServices ? await serviceCall(signal => generationServices.prepare({input, connectionId: pending.connectionId!, configurationRevision: pending.configurationRevision!} as CustomImageServicePreparation, signal)) : await call('image.review.prepare', prepareInput);
+      const prepared = custom && pending.version === 4 && generationServices ? await serviceCall(signal => generationServices.prepare({input, connectionId: pending.connectionId!, configurationRevision: pending.configurationRevision!} as CustomImageServicePreparation, signal, pending.outputLocale)) : await call('image.review.prepare', prepareInput, pending.outputLocale);
       if (disposed || state.pending !== pending) return false;
       if (!(pending.version === 4 ? isImageReviewResponse(prepared) && prepared.projectId === projectId && canonicalImageInput(prepared.input) === canonicalImageInput(input) : isImageReviewPreparationResponse(prepareInput, prepared)) || !isImageReviewResponse(prepared) || !pendingMatchesReview(pending, reviewViewOf(prepared)) || prepared.state !== 'pending') throw problem('INVALID_RESPONSE');
       const review = mergeReview(prepared);
@@ -631,12 +638,12 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     if (!selected) return false;
     const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'comfy-local', model: selected.configuration.model, options: { ...COMFY_IMAGE_OPTIONS }, requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageOperationSchema('image.generate')?.safeParse(input).success) return false;
-    const pending: ImagePending = { version: 3, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getComfyImageDestination(selected.configuration.baseUrl), execution: null };
+    const pending: ImagePending = { version: 3, operation: 'image.generate', input, ...captureOutputLocale(), settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getComfyImageDestination(selected.configuration.baseUrl), execution: null };
     try { savePending(pending); } catch { emit({ message: '无法保存本地运行请求凭据，没有准备或发送生成。', displayMessage: localizedMessage('image.state.comfyReceiptSaveFailed') }); return false; }
     stopTimer(); readEpoch++; reading = false; emit({ pending, phase: 'submitting', message: '', displayMessage: null });
     try {
       const prepareInput = { input: copy(input), settingsRevision: pending.settingsRevision };
-      const prepared = await call('image.review.prepare', prepareInput);
+      const prepared = await call('image.review.prepare', prepareInput, pending.outputLocale);
       if (disposed || state.pending !== pending) return false;
       if (!isImageReviewPreparationResponse(prepareInput, prepared) || !isImageReviewResponse(prepared) || !pendingMatchesReview(pending, reviewViewOf(prepared)) || prepared.state !== 'pending') throw problem('INVALID_RESPONSE');
       const review = mergeReview(prepared);

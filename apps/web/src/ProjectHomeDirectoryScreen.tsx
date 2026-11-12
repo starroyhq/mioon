@@ -59,7 +59,7 @@ const verifiedScope = (value: string | undefined): string | null => value && /^[
 /** The trusted server channel determines directory scope: web's configured
  * root or desktop's complete recent registrations. Navigation keeps its owner. */
 export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectoryScreenProps): ReactElement {
-  const {t} = useI18n(), preferences = useUiPreferences(), confirm = useConfirmation();
+  const {t, locale} = useI18n(), preferences = useUiPreferences(), confirm = useConfirmation();
   const [, rerender] = useState(0), [query, setQuery] = useState(''), [createIntent, setCreateIntent] = useState(0);
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const current = useRef(props), mounted = useRef(false), visibility = useRef(visible), lifetime = useRef(0), reads = useRef(0);
@@ -202,7 +202,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       const permit = (): boolean => active() && owner === lifetime.current && form.current.version === formVersion && !form.current.busy && current.current.phase !== 'opening' && parentPermit();
       if (!permit()) {rejectPreparation('changed'); return;}
       if (action === 'trash' && projectId) await native.prepareTrash(projectId, permit);
-      else if (action === 'example') await native.startExample(t('projectHomeNative.example.storage'), t('projectHomeNative.example.name'), permit, prepare ? parentPermit : undefined);
+      else if (action === 'example') await native.startExample(t('projectHomeNative.example.storage'), t('projectHomeNative.example.name'), permit, prepare ? parentPermit : undefined, locale);
       else if (recheck) await native.recheck(permit);
     } catch {
       if (active() && owner === lifetime.current) native.rejectPreparation(action === 'example');

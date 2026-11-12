@@ -53,7 +53,7 @@ async function harness(t: test.TestContext, hooks: AppTaskHooks = {}) {
   const dataRef = { current: { project: { id: projectId }, timeline: { ...timeline(), revision: 1 }, timelineHistory: { revision: 1 } } };
   const identity = projectEntryOwnerFixture(() => projectEntryFixture([{id: projectId}]));
   assert.ok(await identity.discover());
-  const scope = { projectEntryIdentityRef: {current: identity}, timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
+  const scope = { locale: 'ja', projectEntryIdentityRef: {current: identity}, timelineLoudnessApplyRef: { current: null }, captureTaskWorkspaceIntent,
     msg: (key: string, ...args: unknown[]) => renderMessage('zh-Hans', (messageKey as (key: string, ...args: unknown[]) => DisplayMessage)(key, ...args)),
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }), subtitlesRef: { current: { controller: { recovered: (task: AppFixtureTask) => { (state.recoveredSubtitleTasks ||= []).push(structuredClone(task)); } } } }, timelineFormatRef: { current: { controller: { recovered: (task: AppFixtureTask) => state.recoveredTasks.push(structuredClone(task)) } } }, ...submissions, isMutationOperation, isDurableEditOperation, taskInputKey, tasksRef: { current: controller }, currentProject, dataRef,
     context: () => ({ projectId: currentProject.current, epoch: state.epoch }), isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === currentProject.current && captured.epoch === state.epoch,
@@ -76,6 +76,9 @@ test('actual App routes only the twenty explicit writes into Task prepare/execut
   for (const op of ['shot.update', 'asset.range.set', 'asset.disposition.set', 'timeline.render', 'generation.submit', 'job.retry', 'export.create']) await h.run('other', op, {});
   for (const op of DURABLE_EDIT_OPERATIONS) await h.run('legacy', op, input, undefined, { replay: true });
   assert.equal(h.state.calls.filter((call: [string, unknown]) => call[0] === 'session').length, 7 + DURABLE_EDIT_OPERATIONS.length);
+  const sessionCalls = h.state.calls.filter(call => call[0] === 'session').map(call => call[1] as unknown[]);
+  const namedOutput = new Set(['timeline.render', 'generation.submit', 'job.retry', 'export.create']);
+  for (const args of sessionCalls) assert.equal((args[4] as {outputLocale?: string}).outputLocale, namedOutput.has(String(args[1])) ? 'ja' : undefined);
   assert.equal(h.busy.size, 0);
   assert.doesNotMatch(actual('  async function runDurable(', '  async function recoverTask('), /await rpc\(|prepareSubmission\(|sessionStorage/);
 });

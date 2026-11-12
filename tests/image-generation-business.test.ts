@@ -107,7 +107,28 @@ test('stable generation keys return the original ACK before CAS and reject chang
   assert.equal(rows(f.store.db), before); assert.equal(f.calls, 0); privateFree(receipt);
 });
 
+test('mock image output names use the first request locale and distinguish same-name assets', async t => {
+  const f = await fixture(t, {autoRun: true});
+  const complete = async (input: Record<string, unknown>, locale?: 'en') => {
+    const accepted = await f.services.call('image.generate', input, {outputLocale: locale});
+    assert.deepEqual(await f.services.call('image.generate', input, {outputLocale: 'ja'}), accepted);
+    const completed = await settled(f, accepted.id);
+    const row = f.store.db.prepare("SELECT json_extract(assets.data,'$.name') AS name FROM image_versions JOIN assets ON assets.id=image_versions.assetId WHERE image_versions.id=?")
+      .get(String(completed.versionId));
+    const stored = f.row(accepted.id);
+    assert.equal(stored?.input, canonicalImageInput(input));
+    assert.equal(stored?.inputHash, digest(canonicalImageInput(input)));
+    return row?.name;
+  };
+  assert.equal(await complete(f.input(), 'en'), 'Frozen image name · Image 1.png');
+  assert.equal(await complete(f.input(), 'en'), 'Frozen image name · Image 1 (2).png');
+  assert.equal(await complete(f.input()), 'Frozen image name · 图像 1.png');
+  assert.equal(f.calls, 3);
+});
+
 test('V1 and V2 retain their original receipt and name without rewriting project, existing assets or video/history records', async t => {
+  const previousUmask = process.umask(0o022);
+  t.after(() => {process.umask(previousUmask);});
   const f = await fixture(t, {autoRun: true});
   await f.call('project.get', {projectId: f.project.id});
   await f.call('shot.create', {projectId: f.project.id, title: 'Existing video shot'});
@@ -156,7 +177,7 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   for (const version of versions.items) {
     const generated = f.store.get('assets', version.assetId) as unknown as GeneratedAssetView, file = mediaFixturePath(f.root, generated), bytes = readFileSync(file);
     assert.equal(digest(bytes), version.sha256); assert.equal(bytes.length, version.byteLength);
-    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(statSync(file).mode & 0o777, 0o644);
     assert.deepEqual(await validatePng(bytes), {mimeType: 'image/png', width: 1024, height: 1024, byteLength: bytes.length, sha256: digest(bytes)});
     assert.equal(generated.provenance, 'synthetic-mock'); privateFree(version);
   }
