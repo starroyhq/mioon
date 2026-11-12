@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
 import { createI18nTestContext, translate } from './helpers/i18n.ts';
-import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
+import { agentTaskDiagnosticDetails, agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
 import * as presentation from '../apps/web/src/agent-task-presentation.ts';
 import * as requirements from '../apps/web/src/agent-task-requirements.ts';
 import { message } from '../packages/i18n/src/index.ts';
@@ -61,7 +61,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
     if(id==='./mio-usage-client.ts')return usageModule;if(id==='./mio-usage-state.ts')return usageState;if(id==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
     if(id==='./project-rules-client.ts')return rulesModule;if(id==='./project-rules-proposal.ts')return rulesProposal;
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
@@ -113,6 +113,52 @@ test('a read-only load error keeps its reload action visible and cannot send wit
 });
 test('a saved step failure is localized by code beside its unknown-result controls',()=>{
   const h=harness();try{const step=h.state.snapshot!.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans','agent.panel.failureReason',{reason:translate('zh-Hans',agentTaskErrorKey(step.error.code))})]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
+});
+
+test('Mio failure details show a localized cause and a selectable, stable diagnostic code',()=>{
+  const h=harness({status:'failed'});
+  try{
+    const step=h.state.snapshot!.steps[0];
+    step.kind='model';
+    step.status='failed';
+    const error={
+      code:'AGENT_CHAT_PROTOCOL_ERROR',
+      message:'Synthetic private project text',
+      diagnostic:{kind:'protocol',reason:'terminal_mismatch',event:'response.completed',item:'reasoning',field:'summary'},
+    };
+    step.error=error;
+    for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+      h.setLocale(locale);
+      const details=h.render().find(node=>node.type==='details'&&node.props.className==='mio-safe-details')!;
+      assert.ok(renderedText(details).includes(translate(locale,'agent.panel.diagnostic.terminal_mismatch')));
+      assert.ok(!renderedText(details).includes(error.message));
+      const input=h.find(`agent-task-diagnostic-${stepId}`)!;
+      assert.equal(input.props.value,'MIO/protocol/terminal_mismatch/event=response.completed/item=reasoning/field=summary');
+      assert.equal(input.props['aria-label'],translate(locale,'agent.panel.diagnostic.code'));
+      assert.equal(input.props.readOnly,true);
+      assert.equal(input.props['data-text-selectable'],'true');
+      const select = test.mock.fn();
+      (input.props.onFocus as (event: {currentTarget: {select(): void}}) => void)({currentTarget:{select}});
+      assert.equal(select.mock.callCount(),1);
+    }
+    step.error={code:error.code,message:error.message};
+    h.render();
+    assert.equal(h.find(`agent-task-diagnostic-${stepId}`),undefined);
+  }finally{h.unmount();}
+});
+
+test('Mio formats validated HTTP, limit and protocol diagnostics',()=>{
+  assert.deepEqual(agentTaskDiagnosticDetails({kind:'http',status:403,providerType:'permission_error',providerCode:'permission_denied'}),{
+    key:'agent.panel.diagnostic.http',values:{status:403},code:'MIO/http/403/type=permission_error/code=permission_denied',
+  });
+  assert.deepEqual(agentTaskDiagnosticDetails({kind:'limit',limit:'stream_event_bytes'}),{
+    key:'agent.panel.diagnostic.limit',code:'MIO/limit/stream_event_bytes',
+  });
+  assert.equal(agentTaskDiagnosticDetails({kind:'http',status:403,providerType:'sk-synthetic-noncredential'}),undefined);
+  assert.deepEqual(agentTaskDiagnosticDetails({kind:'protocol',reason:'unknown_event',event:'response.future_output.revision_done'}),{
+    key:'agent.panel.diagnostic.unknown_event',code:'MIO/protocol/unknown_event/event=response.future_output.revision_done',
+  });
+  assert.equal(agentTaskDiagnosticDetails({kind:'protocol',reason:'unknown_event',event:'response.future output'}),undefined);
 });
 
 test('an unknown paid step can be marked failed after checking the task center; other irreversible steps only check',()=>{

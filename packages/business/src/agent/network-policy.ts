@@ -7,11 +7,12 @@ import {request as httpRequestDefault, type ClientRequest, type IncomingMessage,
 import {checkServerIdentity, type TLSSocket} from 'node:tls';
 import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
-import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, errorCode} from './chat-errors.ts';
+import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, agentChatProtocolError, agentChatStreamError, errorCode} from './chat-errors.ts';
 import type {AgentChatFailure} from './chat-errors.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 
 export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, readTimeoutMs: 20000, totalTimeoutMs: 120000, maxHeaderBytes: 16384, maxDnsAnswers: 64});
+const HTTP_ERROR_DIAGNOSTIC_TIMEOUT_MS = 1000;
 type NetworkLimits = Record<'connectTimeoutMs' | 'readTimeoutMs' | 'totalTimeoutMs' | 'maxHeaderBytes' | 'maxDnsAnswers', number>;
 type NodeLookup = NonNullable<ClientRequestArgs['lookup']>;
 export interface AgentTransportDependencies {
@@ -150,7 +151,7 @@ function limitsFor(overrides: Record<string, number> = {}): NetworkLimits {
 }
 /** Retain at most the diagnostic limit; incomplete/failed streams have no hints.
  * The caller owns cancellation and all existing network deadlines. */
-async function readHttp400Diagnostic(incoming: IncomingMessage): Promise<Uint8Array | undefined> {
+async function readHttpErrorDiagnostic(incoming: IncomingMessage): Promise<Uint8Array | undefined> {
   const chunks: Buffer[] = [];
   let size = 0;
   try {
@@ -159,7 +160,7 @@ async function readHttp400Diagnostic(incoming: IncomingMessage): Promise<Uint8Ar
       size += chunk.byteLength;
       chunks.push(Buffer.from(chunk));
     }
-    return size ? Buffer.concat(chunks, size) : undefined;
+    return size && incoming.complete !== false ? Buffer.concat(chunks, size) : undefined;
   } catch { return undefined; }
 }
 /** Dependency injection is a trusted-code construction boundary, not an HTTP
@@ -169,10 +170,12 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
   const limits = limitsFor(overrides);
   return async function openAgentStream({configuration, apiKey, body, signal, selfPort, beforeSubmit}: AgentTransportRequest): Promise<AgentTransportStream> {
     const controller = new AbortController();
-    let request: ClientRequest | undefined, response: IncomingMessage | undefined, failed: AgentChatFailure | null = null, rejectPending: ((reason: AgentChatFailure) => void) | undefined, closed = false, mayHaveSent = false, readingHttp400 = false;
-    function fail(code: string, httpStatus?: number, diagnosticBody?: Uint8Array): void {
+    let request: ClientRequest | undefined, response: IncomingMessage | undefined, failed: AgentChatFailure | null = null, rejectPending: ((reason: AgentChatFailure) => void) | undefined, closed = false, mayHaveSent = false;
+    let httpDiagnosticStatus: number | undefined;
+    let httpDiagnosticTimer: ReturnType<typeof setTimeout> | undefined;
+    function fail(code: string | AgentChatFailure, httpStatus?: number, diagnosticBody?: Uint8Array): void {
       if (closed || failed) return;
-      failed = code === 'AGENT_CHAT_HTTP_ERROR' ? agentChatHttpError(httpStatus, diagnosticBody) : agentChatError(code);
+      failed = typeof code !== 'string' ? code : code === 'AGENT_CHAT_HTTP_ERROR' ? agentChatHttpError(httpStatus, diagnosticBody) : agentChatError(code);
       controller.abort(failed);
       request?.destroy(); response?.destroy();
       rejectPending?.(failed);
@@ -180,12 +183,16 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
     const externalAbort = () => fail('AGENT_CHAT_ABORTED');
     signal?.addEventListener('abort', externalAbort, {once: true});
     if (signal?.aborted) externalAbort();
-    const totalTimer = setTimeout(() => fail('AGENT_CHAT_TIMEOUT'), limits.totalTimeoutMs);
+    // Once a rejection status is known, a stalled optional body must not hide
+    // it. Keep the original timeout semantics of HTTP 400 parameter diagnosis.
+    const timeOut = () => httpDiagnosticStatus !== undefined && httpDiagnosticStatus !== 400
+      ? fail('AGENT_CHAT_HTTP_ERROR', httpDiagnosticStatus) : fail('AGENT_CHAT_TIMEOUT');
+    const totalTimer = setTimeout(timeOut, limits.totalTimeoutMs);
     const connectTimer = setTimeout(() => fail('AGENT_CHAT_TIMEOUT'), limits.connectTimeoutMs);
     const close = () => {
       if (closed) return;
       closed = true;
-      clearTimeout(totalTimer); clearTimeout(connectTimer);
+      clearTimeout(totalTimer); clearTimeout(connectTimer); clearTimeout(httpDiagnosticTimer);
       signal?.removeEventListener('abort', externalAbort);
       request?.destroy(); response?.destroy();
     };
@@ -227,24 +234,31 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
         rejectPending = reject;
         request = requestFn(requestOptions as HttpsRequestOptions, incoming => {
           if (failed) { incoming.destroy(); return; }
-          if (incoming.statusCode === 400) {
-            readingHttp400 = true;
+          const status = incoming.statusCode;
+          if (typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599) {
+            httpDiagnosticStatus = status;
             // Track the response before awaiting bytes so abort/timeout destroys
             // it and settles the pending open, even if the body never completes.
             response = incoming;
-            void readHttp400Diagnostic(incoming).then(bytes => fail('AGENT_CHAT_HTTP_ERROR', 400, bytes), () => fail('AGENT_CHAT_HTTP_ERROR', 400));
+            if (status !== 400) httpDiagnosticTimer = setTimeout(() => fail('AGENT_CHAT_HTTP_ERROR', status), HTTP_ERROR_DIAGNOSTIC_TIMEOUT_MS);
+            void readHttpErrorDiagnostic(incoming).then(bytes => fail('AGENT_CHAT_HTTP_ERROR', status, bytes));
             return;
           }
-          if (incoming.statusCode !== 200) { fail('AGENT_CHAT_HTTP_ERROR', incoming.statusCode); return; }
+          if (status !== 200) { fail('AGENT_CHAT_HTTP_ERROR', status); return; }
           const contentType = incoming.headers['content-type'];
           const encoding = incoming.headers['content-encoding'];
-          if (typeof contentType !== 'string' || !/^text\/event-stream(?:\s*;\s*charset\s*=\s*utf-8)?\s*$/i.test(contentType) || (encoding && encoding !== 'identity')) { fail('AGENT_CHAT_PROTOCOL_ERROR'); return; }
-          incoming.on('error', () => { if (!closed && !failed) failed = agentChatError('AGENT_CHAT_TRUNCATED'); });
+          if (typeof contentType !== 'string' || !/^text\/event-stream(?:\s*;\s*charset\s*=\s*utf-8)?\s*$/i.test(contentType)) {
+            fail(agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'content_type'})); return;
+          }
+          if (encoding && encoding !== 'identity') {
+            fail(agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'content_encoding'})); return;
+          }
+          incoming.on('error', () => { if (!closed && !failed) failed = agentChatStreamError('read_failed'); });
           resolve(incoming);
         });
-        request.on('error', () => readingHttp400 ? fail('AGENT_CHAT_HTTP_ERROR', 400) : fail('AGENT_CHAT_CONNECT_FAILED'));
-        request.on('upgrade', (_res, socket) => { socket.destroy(); fail('AGENT_CHAT_PROTOCOL_ERROR'); });
-        request.setTimeout(limits.readTimeoutMs, () => fail('AGENT_CHAT_TIMEOUT'));
+        request.on('error', () => httpDiagnosticStatus !== undefined ? fail('AGENT_CHAT_HTTP_ERROR', httpDiagnosticStatus) : fail('AGENT_CHAT_CONNECT_FAILED'));
+        request.on('upgrade', (_res, socket) => { socket.destroy(); fail(agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'upgrade'})); });
+        request.setTimeout(limits.readTimeoutMs, timeOut);
         request.once('socket', socket => {
           (socket as TLSSocket).once(destination.secure ? 'secureConnect' : 'connect', () => {
             if (failed || controller.signal.aborted || closed) { socket.destroy(); return; }

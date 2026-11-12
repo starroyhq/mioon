@@ -1,3 +1,6 @@
+import {agentHttpFailureDiagnostic, agentProtocolFailureDiagnostic} from '../../../contracts/src/agent-failure-diagnostic.ts';
+import type {AgentFailureDiagnostic, AgentFailureLimit, AgentProtocolFailureReason} from '../../../contracts/src/agent-failure-diagnostic.ts';
+
 // Never reflect provider bodies, headers, URLs, keys, socket errors or causes.
 const errors = Object.freeze({
   AGENT_CHAT_CONTEXT_CHANGED: [409, '所选片段的已保存内容或归属已改变，本轮没有继续发送模型请求。此前已发送的请求仍可能计费。'],
@@ -43,6 +46,20 @@ export interface AgentStreamState {
   outputBytes?: number;
 }
 const streamEvidence = new WeakMap<object, {reason: AgentStreamReason; state: Readonly<AgentStreamState>}>();
+const diagnostics = new WeakMap<object, AgentFailureDiagnostic>();
+export function agentChatDiagnostic(error: unknown): AgentFailureDiagnostic | undefined {
+  return error !== null && typeof error === 'object' ? diagnostics.get(error) : undefined;
+}
+export function agentChatProtocolError(code: AgentChatErrorCode, reason: AgentProtocolFailureReason, details?: Parameters<typeof agentProtocolFailureDiagnostic>[1]): AgentChatFailure {
+  const failure = agentChatError(code);
+  diagnostics.set(failure, Object.freeze(agentProtocolFailureDiagnostic(reason, details)));
+  return failure;
+}
+export function agentChatLimitError(limit: AgentFailureLimit, code: AgentChatErrorCode = 'AGENT_CHAT_LIMIT'): AgentChatFailure {
+  const failure = agentChatError(code);
+  diagnostics.set(failure, Object.freeze({kind: 'limit', limit}));
+  return failure;
+}
 function safeStreamState(state: AgentStreamState): Readonly<AgentStreamState> {
   const safe: AgentStreamState = {};
   if (state.finishReason === null || typeof state.finishReason === 'string' && ['stop','tool_calls','length','content_filter'].includes(state.finishReason)) safe.finishReason = state.finishReason;
@@ -55,8 +72,10 @@ function safeStreamState(state: AgentStreamState): Readonly<AgentStreamState> {
 }
 /** Only locally classified stream failures carry hints. Provider properties,
  * copied errors and causes cannot forge them; no response content is retained. */
-export function agentChatStreamError(reason: AgentStreamReason, state: AgentStreamState = {}): AgentChatFailure {
-  const failure = agentChatError('AGENT_CHAT_TRUNCATED');
+export function agentChatStreamError(reason: AgentStreamReason, state: AgentStreamState = {}, limit: AgentFailureLimit = 'max_output_tokens'): AgentChatFailure {
+  const failure = reason === 'output_limit' ? agentChatLimitError(limit, 'AGENT_CHAT_TRUNCATED')
+    : reason === 'unframed_sse' ? agentChatProtocolError('AGENT_CHAT_TRUNCATED', 'invalid_event', {field: 'sse_framing'})
+    : agentChatProtocolError('AGENT_CHAT_TRUNCATED', 'incomplete_stream', {field: reason === 'missing_finish' ? 'finish_reason' : reason === 'read_failed' ? 'read' : 'done'});
   if (streamReasons.includes(reason)) streamEvidence.set(failure, {reason, state: safeStreamState(state)});
   return failure;
 }
@@ -70,31 +89,32 @@ export function annotateAgentChatStreamError(error: unknown, state: AgentStreamS
 }
 /** Hints are untrusted provider suggestions, never permission or retry evidence.
  * Only closed enums and bounded indices survive this in-memory classification. */
-function httpParameterHints(bytes: Uint8Array | undefined): HttpParameterHints | undefined {
+function httpErrorFields(bytes: Uint8Array | undefined): Record<string, unknown> | undefined {
   if (!bytes?.byteLength || bytes.byteLength > AGENT_HTTP_DIAGNOSTIC_MAX_BYTES) return undefined;
   try {
     const value: unknown = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes));
     if (value === null || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, 'error')) return undefined;
     const error: unknown = (value as {error:unknown}).error;
-    if (error === null || typeof error !== 'object' || Array.isArray(error)) return undefined;
-    const entries = error as Record<string,unknown>;
-    const text = ['message','param','code','type'].map(field => typeof entries[field] === 'string' ? entries[field] : '').join('\n');
-    const categories: (keyof typeof parameterCategories)[] = [];
-    if (entries.code === 'invalid_request_error' || entries.type === 'invalid_request_error') categories.push('invalid_request');
-    if (/\binvalid (?:json |function )?schema\b|\bschema (?:validation|error)\b/iu.test(text)) categories.push('schema');
-    if (/\bunsupported (?:parameter|field|type|keyword)\b|\bnot (?:supported|allowed|permitted)\b/iu.test(text)) categories.push('unsupported');
-    if (/\bmissing required\b|\brequired (?:field|property|parameter)\b|\bis required\b/iu.test(text)) categories.push('required');
-    if (/\binvalid type\b|\btype mismatch\b/iu.test(text)) categories.push('type');
-    if (/\binvalid (?:parameter|value)\b/iu.test(text)) categories.push('value');
-    if (!categories.length) return undefined;
-    const fields = parameterFields.filter(field => new RegExp(`(?:^|[^A-Za-z0-9_$])${field.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?:$|[^A-Za-z0-9_$])`, 'u').test(text));
-    const toolIndices: number[] = [];
-    for (const match of text.matchAll(/\btools(?:\[(0|[1-9]\d{0,2})\]|\.(0|[1-9]\d{0,2}))(?=$|[.\s:])/gu)) {
-      const index = Number(match[1] ?? match[2]);
-      if (index < 128 && !toolIndices.includes(index) && toolIndices.length < 4) toolIndices.push(index);
-    }
-    return Object.freeze({fields:Object.freeze(fields),categories:Object.freeze(categories),toolIndices:Object.freeze(toolIndices)});
+    return error !== null && typeof error === 'object' && !Array.isArray(error) ? error as Record<string, unknown> : undefined;
   } catch { return undefined; }
+}
+function httpParameterHints(entries: Record<string, unknown>): HttpParameterHints | undefined {
+  const text = ['message','param','code','type'].map(field => typeof entries[field] === 'string' ? entries[field] : '').join('\n');
+  const categories: (keyof typeof parameterCategories)[] = [];
+  if (entries.code === 'invalid_request_error' || entries.type === 'invalid_request_error') categories.push('invalid_request');
+  if (/\binvalid (?:json |function )?schema\b|\bschema (?:validation|error)\b/iu.test(text)) categories.push('schema');
+  if (/\bunsupported (?:parameter|field|type|keyword)\b|\bnot (?:supported|allowed|permitted)\b/iu.test(text)) categories.push('unsupported');
+  if (/\bmissing required\b|\brequired (?:field|property|parameter)\b|\bis required\b/iu.test(text)) categories.push('required');
+  if (/\binvalid type\b|\btype mismatch\b/iu.test(text)) categories.push('type');
+  if (/\binvalid (?:parameter|value)\b/iu.test(text)) categories.push('value');
+  if (!categories.length) return undefined;
+  const fields = parameterFields.filter(field => new RegExp(`(?:^|[^A-Za-z0-9_$])${field.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?:$|[^A-Za-z0-9_$])`, 'u').test(text));
+  const toolIndices: number[] = [];
+  for (const match of text.matchAll(/\btools(?:\[(0|[1-9]\d{0,2})\]|\.(0|[1-9]\d{0,2}))(?=$|[.\s:])/gu)) {
+    const index = Number(match[1] ?? match[2]);
+    if (index < 128 && !toolIndices.includes(index) && toolIndices.length < 4) toolIndices.push(index);
+  }
+  return Object.freeze({fields:Object.freeze(fields),categories:Object.freeze(categories),toolIndices:Object.freeze(toolIndices)});
 }
 /** Narrow structural access to an arbitrary thrown value's `code`. */
 export function errorCode(error: unknown): string | undefined {
@@ -111,8 +131,11 @@ export function agentChatError(code: string = 'AGENT_CHAT_CONNECT_FAILED'): Agen
 export function agentChatHttpError(statusCode: unknown, diagnosticBody?: Uint8Array): AgentChatFailure {
   const failure = agentChatError('AGENT_CHAT_HTTP_ERROR');
   if (typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599 && (statusCode < 200 || statusCode >= 300)) {
-    const hints = statusCode === 400 ? httpParameterHints(diagnosticBody) : undefined;
+    const fields = httpErrorFields(diagnosticBody);
+    const hints = statusCode === 400 && fields ? httpParameterHints(fields) : undefined;
     httpEvidence.set(failure, {status:statusCode,...(hints ? {hints} : {})});
+    const diagnostic = agentHttpFailureDiagnostic(statusCode, fields?.type, fields?.code);
+    if (diagnostic) diagnostics.set(failure, Object.freeze(diagnostic));
   }
   return failure;
 }

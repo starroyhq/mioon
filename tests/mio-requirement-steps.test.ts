@@ -17,7 +17,7 @@ import * as usageState from '../apps/web/src/mio-usage-state.ts';
 import {usageFixture} from './helpers/mio-usage-fixture.ts';
 import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
 import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
-import {agentTaskErrorKey} from '../apps/web/src/agent-task-errors.ts';
+import {agentTaskDiagnosticDetails,agentTaskErrorKey} from '../apps/web/src/agent-task-errors.ts';
 import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
 
@@ -167,7 +167,7 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
     if(name==='./agent-task-requirements.ts')return requirements;
     if(name==='./agent-task-reviews.ts')return reviews;
     if(name==='./agent-task-questions.ts')return questions;
-    if(name==='./agent-task-errors.ts')return{agentTaskErrorKey};
+    if(name==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};
     if(name.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(locale)};
     if(name.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};
     if(name.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};

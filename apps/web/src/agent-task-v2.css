@@ -59,6 +59,7 @@
 .mio-settings-link.wb-button{justify-content:flex-start;height:auto;white-space:normal;text-align:left;padding-inline:0;color:var(--wb-soft)}
 .mio-error-card{margin-left:var(--wb-space-6)}
 .mio-safe-details>p{font-size:var(--wb-text-caption);line-height:1.5}
+.mio-safe-details .mio-diagnostic-code{width:100%;min-width:0;font-family:var(--wb-font-mono);font-size:var(--wb-text-caption)}
 .mio-unknown-step{padding:var(--wb-space-2);border:1px solid var(--wb-warning);border-radius:var(--wb-radius-control);display:flex;flex-direction:column;gap:var(--wb-space-2)}
 /* Check and mark-failed share a row when both labels fit; longer labels wrap onto their own full-width rows. */
 .mio-unknown-actions{display:flex;flex-wrap:wrap;gap:var(--wb-space-2)}

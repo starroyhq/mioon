@@ -26,7 +26,7 @@ import AgentTaskContinuityReport from './AgentTaskContinuityReport.tsx';
 import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from './agent-task-reviews.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
 import Icon from './icons.tsx';
-import { agentTaskErrorKey } from './agent-task-errors.ts';
+import { agentTaskDiagnosticDetails, agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import {ProjectRulesNotice, ProjectRulesChangeCard} from './project-file/ProjectRules.tsx';
@@ -254,7 +254,21 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const markedConflicts = steps.filter(step => step.display?.conflict === true);
   const conflictSteps = markedConflicts.length ? markedConflicts : [steps.filter(step => step.kind === 'tool' && ['intent', 'awaiting_approval'].includes(step.status)).at(-1)].filter((step): step is AgentTaskStep => step !== undefined);
   const parameters = (step: AgentTaskStep) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale,formatOptions).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
-  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => <details className="mio-safe-details"><summary>{t('agent.panel.details')}</summary><p>{taskStepTitle(step,locale,firstRepairs)}</p>{parameters(step)}<p>{t('agent.panel.detailsPrivacy')}</p></details>;
+  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => {
+    const diagnostic = step.kind === 'model' ? agentTaskDiagnosticDetails(step.error?.diagnostic) : undefined;
+    return <details className="mio-safe-details">
+      <summary>{t('agent.panel.details')}</summary>
+      <p>{taskStepTitle(step,locale,firstRepairs)}</p>
+      {parameters(step)}
+      {diagnostic && <>
+        <p>{diagnostic.key === 'agent.panel.diagnostic.http' ? t(diagnostic.key, diagnostic.values) : t(diagnostic.key)}</p>
+        <Input className="mio-diagnostic-code" aria-label={t('agent.panel.diagnostic.code')}
+          data-testid={`agent-task-diagnostic-${step.id}`} data-text-selectable="true"
+          readOnly value={diagnostic.code} onFocus={event => event.currentTarget.select()} />
+      </>}
+      <p>{t('agent.panel.detailsPrivacy')}</p>
+    </details>;
+  };
   function recoveryFor(snapshot:AgentTaskSnapshot){
     const run=snapshot.run,unknown=snapshot.steps.filter(step=>step.status==='unknown'),interrupted=run.status==='interrupted',firstRepairs=taskFirstGoalRepairStepIds(snapshot.steps);
     const act=(action:Parameters<NonNullable<typeof session.current>['action']>[0],extras?:Parameters<NonNullable<typeof session.current>['action']>[1])=>session.current?.action(action,extras,run.id);

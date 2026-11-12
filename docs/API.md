@@ -15,11 +15,15 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
-| `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或严格五字段摘要；不打开关闭的项目 |
+| `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或连接测试摘要；不打开关闭的项目 |
 | `POST /api/agent/models/list` | X6b 应用级只读模型发现：仅列表网络请求，可写独立的无密钥缓存；不打开项目或运行推理 |
 | `POST /api/agent/models/cache` | X6b 单服务缓存读取：无网络、无密钥读取、无文件创建；坏缓存视为未命中 |
 
-首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。诊断摘要仅有 `completedAt`、`status`、`protocol`、`model`、`errorCode`，由项目诊断完成时更新，没有对话内容、请求原文或密钥。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
+首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。连接测试摘要由项目诊断完成时更新，含 `completedAt`、`status`、`protocol`、`model`、`errorCode` 和可选的设置绑定。遇到上游 HTTP 失败时，摘要可另含 `diagnostic:{kind:'http',status,providerType?,providerCode?}`。服务商类型和错误码仅保留已知机器标签或状态式数字码。旧摘要可省略 `diagnostic`。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
+
+模型列表使用 `outcome` 和 `reason` 返回失败分类。上游 401、403、404、429 和 5xx 分别对应
+`rejected`、`permission_denied`、`not_found`、`rate_limited` 和 `server_error`。
+连接错误和超时分别用 `connection_failed` 和 `timeout` 表示。
 
 真实 HTTP 可达的 B1 错误为：
 
@@ -133,6 +137,13 @@ input。其余项目级操作继续保留原有 `input.projectId`，
 Agent 项目任务原 `/api/agent/tasks/v2/{projectId}/…` 对应
 `/api/projects/{projectId}/agent/tasks/v2/…`；全局 `policy` 和 `diagnostics`
 不移入项目路径。请求中已有的项目字段仍须与地址一致。
+
+Mio 模型步骤失败的 `error` 保留原有 `code` 和 `message`，可另含
+`diagnostic`。HTTP 诊断与连接测试同形，协议诊断含原因、事件、输出类型或字段名，
+上限诊断含触发的上限标签。新 Responses 事件名须以 `response.` 开头，包含一至四段标识符，总长最多 96 字节。
+Anthropic 事件、输出类型和字段的新名称使用单个标识符。标识符以 ASCII 小写字母开头，后续可用小写字母、数字和下划线，最多 41 字符。
+不符合格式的名称用 `unrecognized` 表示。诊断没有服务商错误原文、模型文本、
+工具参数、密文、请求体或密钥，随步骤一起保存。旧步骤可省略该字段。
 
 K2 曾保留的旧项目地址已在 P4 退役：把项目操作发到应用 `/api/rpc` 返回 400
 `VALIDATION_ERROR`；认证后的旧项目 REST 和 `/media/{assetId}` 返回 404

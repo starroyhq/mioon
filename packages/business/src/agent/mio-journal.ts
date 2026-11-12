@@ -8,7 +8,7 @@ import type {MioRequest, MioEntry} from '../../../contracts/src/mio-records.ts';
 import {mioEntrySchema} from '../../../contracts/src/mio-records.ts';
 import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput} from './task-journal-v2.ts';
 import type {AgentTaskRun, AgentTaskStep, AgentTaskJson, AgentTaskPolicy, AgentTaskEvent, AgentTaskSnapshot, AgentTaskNote, AgentTaskSkippedTarget, AgentTaskTarget, AgentTaskChange, AgentTaskReceipt, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskStatus, AgentTaskStepStatus, AgentTaskClaim, AgentTaskEditingInput, AgentTaskPolicyModes, AgentTaskConversationPolicy, AgentTaskConversationPolicySetInput} from '../../../contracts/src/agent-tasks-v2.ts';
-import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema, agentTaskStepErrorSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {TaskContextHistoryRun, TaskContextHistoryInput} from './task-context-v2.ts';
 import type {TaskRunRecordTarget, TaskRunRecordBackground, TaskRunRecordChange} from './task-run-record-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
@@ -180,6 +180,8 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function step(id: string): AgentTaskStep {
     const value = records.step(id), meta = object(value.data) ? value.data : {};
     const controls = object(meta.controls) ? meta.controls : {};
+    const error = controls.error === undefined ? undefined : agentTaskStepErrorSchema.safeParse(controls.error);
+    if (error?.success === false) return fail('AGENT_TASK_STORAGE_CORRUPT');
     const result = value.resultEntryId === null ? controls.resolution : value.kind === 'model' ? output(value.resultEntryId) : payload(records.entry(value.resultEntryId));
     let call: AgentTaskStep['toolCall'];
     if (value.sourceEntryId !== null && value.sourceCallIndex !== null) {
@@ -196,7 +198,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       ...(value.tier === null ? {} : {tier: value.tier}), ...(call ? {toolCall: call} : {}), ...(result === undefined ? {} : {result}),
       ...(value.currentRequestId === null ? {} : {request: requestProjection(records.request(value.currentRequestId))}),
       ...(meta.request === undefined ? {} : {request: meta.request}), ...(meta.data === undefined && meta.baselineBlobHash === undefined ? {} : {data: typeof meta.baselineBlobHash === 'string' ? {...(object(meta.data) ? meta.data : {}), baseline: decode<AgentTaskJson>(blob(meta.baselineBlobHash))} : meta.data}),
-      ...(controls.targets === undefined ? {} : {targets: controls.targets as unknown as AgentTaskTarget[]}), ...(controls.error === undefined ? {} : {error: controls.error as unknown as AgentTaskStep['error']}), ...(controls.cost === undefined ? {} : {cost: controls.cost as AgentTaskStep['cost']}),
+      ...(controls.targets === undefined ? {} : {targets: controls.targets as unknown as AgentTaskTarget[]}), ...(error ? {error: error.data} : {}), ...(controls.cost === undefined ? {} : {cost: controls.cost as AgentTaskStep['cost']}),
       ...(text === undefined ? {} : {text})};
   }
   const allRuns = (): AgentTaskRun[] => db.prepare('SELECT id FROM mio_runs WHERE projectId=? ORDER BY rowid').all(projectId).map(row => run(String(row.id)));
@@ -454,7 +456,12 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       const next = metadata({data: patch.data}, at); if (!object(next)) return fail('AGENT_TASK_STORAGE_CORRUPT');
       meta.data = next.data ?? null; if (next.baselineBlobHash !== undefined) meta.baselineBlobHash = next.baselineBlobHash; else delete meta.baselineBlobHash;
     }
-    for (const key of ['error', 'cost', 'targets'] as const) if (patch[key] !== undefined) controls[key] = json(patch[key]);
+    for (const key of ['cost', 'targets'] as const) if (patch[key] !== undefined) controls[key] = json(patch[key]);
+    if (patch.error !== undefined) {
+      const error = agentTaskStepErrorSchema.safeParse(patch.error);
+      if (!error.success) return fail('AGENT_TASK_INVALID');
+      controls.error = json(error.data);
+    }
     if (saved.kind !== 'model' && patch.request !== undefined) meta.request = patch.request;
     let resultEntryId = saved.resultEntryId;
     if (patch.result !== undefined && !isDeepStrictEqual(patch.result, current.result)) {

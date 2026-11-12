@@ -115,6 +115,66 @@ export const mioPanelMessages = {
     "en": "Only safe operation information is shown",
     "ja": "安全に表示できる操作情報のみ表示します"
   },
+  "agent.panel.diagnostic.code": {
+    "zh-Hans": "诊断码（可复制）",
+    "zh-Hant": "診斷碼（可複製）",
+    "en": "Diagnostic code (copyable)",
+    "ja": "診断コード（コピー可能）"
+  },
+  "agent.panel.diagnostic.http": {
+    "zh-Hans": "模型服务返回了 HTTP {status} 错误。",
+    "zh-Hant": "模型服務傳回了 HTTP {status} 錯誤。",
+    "en": "The model service returned HTTP error {status}.",
+    "ja": "モデルサービスが HTTP エラー {status} を返しました。"
+  },
+  "agent.panel.diagnostic.terminal_mismatch": {
+    "zh-Hans": "模型在回复结束时返回的数据与之前收到的内容不一致。",
+    "zh-Hant": "模型在回覆結束時傳回的資料與先前收到的內容不一致。",
+    "en": "The model’s final response did not match what it streamed earlier.",
+    "ja": "モデルの最終応答が、それまでに受信したストリームの内容と一致しません。"
+  },
+  "agent.panel.diagnostic.unknown_event": {
+    "zh-Hans": "模型回复中有一种事件无法识别。",
+    "zh-Hant": "模型回覆中有一種事件無法辨識。",
+    "en": "The model response contained an unrecognized event.",
+    "ja": "モデルの応答に認識できないイベントが含まれています。"
+  },
+  "agent.panel.diagnostic.unsupported_item": {
+    "zh-Hans": "模型回复中有一种内容目前不受支持。",
+    "zh-Hant": "模型回覆中有一種內容目前不受支援。",
+    "en": "The model response contained an unsupported type of content.",
+    "ja": "モデルの応答に未対応の種類の内容が含まれています。"
+  },
+  "agent.panel.diagnostic.invalid_event": {
+    "zh-Hans": "模型回复的格式或事件顺序无效。",
+    "zh-Hant": "模型回覆的格式或事件順序無效。",
+    "en": "The model response had an invalid format or event order.",
+    "ja": "モデルの応答形式またはイベントの順序が無効です。"
+  },
+  "agent.panel.diagnostic.invalid_field": {
+    "zh-Hans": "模型回复中的一个字段缺失或格式不正确。",
+    "zh-Hant": "模型回覆中的一個欄位遺失或格式不正確。",
+    "en": "A field in the model response was missing or invalid.",
+    "ja": "モデルの応答に欠落または無効なフィールドがあります。"
+  },
+  "agent.panel.diagnostic.incomplete_stream": {
+    "zh-Hans": "模型回复结束时，还有内容没有传完。",
+    "zh-Hant": "模型回覆結束時，還有內容未傳完。",
+    "en": "The model response ended before all content arrived.",
+    "ja": "すべての内容を受信する前にモデルの応答が終了しました。"
+  },
+  "agent.panel.diagnostic.provider_error": {
+    "zh-Hans": "模型服务在回复过程中报告了错误。",
+    "zh-Hant": "模型服務在回覆過程中回報了錯誤。",
+    "en": "The model service reported an error while responding.",
+    "ja": "応答中にモデルサービスがエラーを報告しました。"
+  },
+  "agent.panel.diagnostic.limit": {
+    "zh-Hans": "模型请求或回复超出了应用可以处理的上限。",
+    "zh-Hant": "模型請求或回覆超出了應用程式可以處理的上限。",
+    "en": "The model request or response exceeded a limit the app can handle.",
+    "ja": "モデルへのリクエストまたは応答がアプリの処理上限を超えました。"
+  },
   "agent.panel.try": {
     "zh-Hans": "试试这样说",
     "zh-Hant": "試試這樣說",
