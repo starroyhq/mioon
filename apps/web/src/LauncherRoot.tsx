@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {createProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import ProjectEntryIdentityStatus from './ProjectEntryIdentityStatus.tsx';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
@@ -10,12 +10,14 @@ import ProjectEntry from './ProjectEntry.tsx';
 import {createDesktopMenuController, readDesktopMenuBridge, launcherMenuView, nativeMenuTextFocus} from './desktop-menu-client.ts';
 import type {MenuHelpControl} from './desktop-menu-client.ts';
 import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
+import { claimLauncherDocumentTitle } from './document-title.ts';
 export type { SettingsRenderProps as LauncherSettingsProps } from './SettingsRoot.tsx';
 export interface LauncherRootProps { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge; readonly rpc: LauncherRpc; readonly contractChecks: LauncherContractChecks }
 type LauncherWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
 /** Always-mounted project entry and its read-only directory identity. Global
  * connection forms live only in SettingsRoot, never in the hidden launcher. */
 export default function LauncherRoot({ context, bridge, rpc, contractChecks }: LauncherRootProps) {
+  useLayoutEffect(() => claimLauncherDocumentTitle(document), []);
   const mounted = useRef(false);
   const menuSession = useRef<ReturnType<typeof createDesktopMenuController> | null>(null), menuHelp = useRef<MenuHelpControl | null>(null), composing = useRef(false);
   const [menuBridge] = useState(() => {try {return typeof window === 'undefined' ? null : readDesktopMenuBridge(window);} catch {return null;}});

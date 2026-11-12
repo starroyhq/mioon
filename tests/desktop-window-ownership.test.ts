@@ -33,9 +33,10 @@ import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-h
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { createDesktopStartup } from '../apps/desktop/src/startup.ts';
@@ -52,6 +53,7 @@ import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { createLauncherWindowState, type WindowBounds } from '../apps/desktop/src/launcher-window-state.ts';
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 import { createDesktopTray } from '../apps/desktop/src/tray-host.ts';
 import { desktopTrayHarness } from './helpers/desktop-tray-harness.ts';
@@ -74,6 +76,9 @@ async function until(predicate: () => unknown) {
 // Deferred gates expose causality; they do not claim native event timing.
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
   const nativeTray = desktopTrayHarness();
+  const launcherStateRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-launcher-owner-'));
+  t.after(() => rm(launcherStateRoot, {recursive: true, force: true}));
+  const trackedLaunchers: Window[] = [];
   const r: Omit<DesktopHarnessRecords<Window, string>, 'settings' | 'starts'> = { scopes: [], validations: [], backends: [], children: [], sessions: [], windows: [],
     connections: [], connectionWrites: [], dialogs: [], dialogParents: [], syncDialogs: [], nativeChecks: [], drains: 0, removals: 0,
     quits: 0, finished: 0, exits: [], settingsCloses: 0, lutStoreCalls: [] };
@@ -262,6 +267,12 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       }
     },
     BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'), settingsWindowOptions,
+    screen: {getAllDisplays: () => [{workArea: {x: 0, y: 0, width: 1920, height: 1080}}]},
+    createLauncherWindowState: (userData: string, workAreas: () => readonly WindowBounds[]) => {
+      assert.equal(userData, '/synthetic/userData');
+      return {options: createLauncherWindowState(launcherStateRoot, workAreas).options,
+        track: (window: Window) => {trackedLaunchers.push(window);}};
+    },
     session: { fromPartition() {
       const index = r.sessions.length;
       const value: DesktopHarnessSession = Object.assign(new EventEmitter(), {
@@ -315,7 +326,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   });
   await until(() => menu);
   return {
-    r, app, get, nativeTray, initial: () => initial, menu: (id: string) => menu.getMenuItemById(id)!,
+    r, app, get, nativeTray, trackedLaunchers, initial: () => initial, menu: (id: string) => menu.getMenuItemById(id)!,
     restart: () => menu.getMenuItemById('app-restart')!.click!(),
     newProject: () => menu.getMenuItemById('app-new-project')!.click!(),
     reload: () => {
@@ -765,6 +776,33 @@ async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>) {
     { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
   return { launcher, editor };
 }
+
+test('actual main centers and titles the launcher with its own window state', async t => {
+  const f = await harness(t); await f.initial();
+  const {launcher, editor} = await openOwnedEditor(f);
+  const windowOptions = ({width, height, minWidth, minHeight, center, title}: DesktopHarnessWindowConfig) =>
+    ({width, height, minWidth, minHeight, center, title});
+  assert.deepEqual(windowOptions(launcher.config), {
+    width: 1000, height: 680, minWidth: 820, minHeight: 560, center: true, title: 'Mioon',
+  });
+  assert.equal(Object.hasOwn(launcher.config, 'x'), false);
+  assert.equal(Object.hasOwn(launcher.config, 'y'), false);
+  assert.deepEqual(windowOptions(editor.config), {
+    width: 1500, height: 960, minWidth: 1050, minHeight: 680, center: undefined, title: 'Synthetic',
+  });
+  const allowsPageTitle = (window: DesktopHarnessWindow, title: string) => {
+    let prevented = false;
+    window.emit('page-title-updated', {preventDefault() { prevented = true; }}, title);
+    return !prevented;
+  };
+  assert.equal(allowsPageTitle(launcher, 'Localized bootstrap title'), false);
+  assert.equal(allowsPageTitle(launcher, 'Mioon'), true);
+  assert.equal(allowsPageTitle(editor, 'Synthetic Project · Mioon'), true);
+  const host = f.get('windowHost');
+  assert.equal(host.showSettings('agent', editor), true);
+  assert.equal(f.r.windows.length, 3);
+  assert.deepEqual(f.trackedLaunchers.map(window => window.index), [launcher.index]);
+});
 
 function publishMenuState(f: Awaited<ReturnType<typeof harness>>, window: (typeof f.r.windows)[number], patch: Partial<MenuCommandState> = {}) {
   const state: MenuCommandState = {version: 1, reportVersion: 1, editingContext: 'timeline', workspaceMode: 'editing',
