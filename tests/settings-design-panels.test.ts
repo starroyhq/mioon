@@ -13,7 +13,7 @@ import * as fileFormat from '../apps/web/src/project-file/format.ts';
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
 const flush = () => new Promise(setImmediate);
-function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}) {
+function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}, locale: Parameters<typeof i18nTestModule>[0] = 'zh-Hans') {
   const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: string|number|boolean|RootNode|RootTree[]|null|undefined, props: Record<string,unknown> = { active: true, ...initialProps };
   const react = {
     createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
@@ -27,13 +27,14 @@ function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages
   const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
   Function('require', 'module', 'exports', transformSync(source, { loader: 'tsx', format: 'cjs' }).code)((name: string) => {
     if (name === 'react') return react;
-    if (name === './i18n/I18nProvider.tsx') return i18nTestModule('zh-Hans');
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule(locale);
     if (name === './settings-navigation-state.ts') return navigation;
     if (name === './project-file/format.ts') return fileFormat;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
     if (name === './LocalRecordsPanel.tsx') return {__esModule:true,default:'LocalRecordsPanel'};
     if (name === './GenerationLiveGateNotice.tsx') return {notifyGenerationLiveGateChanged() {}};
     if (Object.hasOwn(imports, name)) return imports[name];
+    if (name === './workspace-native-client.ts') return {workspaceNativeBridge: () => undefined};
     if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
     assert.fail(`Unexpected setting dependency ${name}`);
   }, module, module.exports);
@@ -96,6 +97,66 @@ test('video tool cards expose actual versions and missing capabilities after one
   h.unmount();
 });
 
+for (const [locale, savedText, restartText] of [
+  ['zh-Hans', '路径已保存，重启本地服务后生效', '重启本地服务'],
+  ['zh-Hant', '路徑已儲存，重新啟動本機服務後生效', '重新啟動本機服務'],
+  ['en', 'Paths saved. Restart the local service to apply them', 'Restart local service'],
+  ['ja', 'パスを保存しました。ローカルサービスの再起動後に適用されます', 'ローカルサービスを再起動'],
+] as const) test(`video tool paths and the provided version share a local service restart action (${locale})`, async t => {
+  const selected = {ffmpeg: '/tools/bin/ffmpeg', ffprobe: '/tools/bin/ffprobe'};
+  const provided = {ffmpeg: '/tools/provided/ffmpeg', ffprobe: '/tools/provided/ffprobe'};
+  const diagnostics = (paths: typeof selected) => ({ffmpeg: {path: paths.ffmpeg, available: true, version: 'ffmpeg version synthetic'},
+    ffprobe: {path: paths.ffprobe, available: true, version: 'ffprobe version synthetic'}, capabilities: {libx264: true, aac: true, drawtext: true, subtitles: true}});
+  const saves: typeof selected[] = [];
+  let restarts = 0, installs = 0;
+  const native = {
+    read: async () => selected, check: async (paths: typeof selected) => diagnostics(paths),
+    save: async (paths: typeof selected) => {saves.push(paths); return diagnostics(paths);},
+    mediaToolsStatus: async () => ({offer: {version: '7.1.5-1', ffmpegVersion: '7.1.5', arch: 'arm64', downloadBytes: 31_457_280,
+      sourceUrl: 'https://example.invalid/media-tools', license: 'GPL-2.0-or-later'}, installed: provided,
+      progress: {phase: 'idle', receivedBytes: 0, totalBytes: 0, code: null}}),
+    installMediaTools: async () => {installs++; return {ok: true, paths: provided, diagnostics: diagnostics(provided)};},
+  };
+  const restartBridge = {'./workspace-native-client.ts': {workspaceNativeBridge: () => ({restart: async () => {restarts++;}})}};
+  const h = harness('SettingsVideoTools.tsx', 'default', {...restartBridge,
+    './SettingsMediaToolsDownload.tsx': {default: () => null},
+    './workspace-info-client.ts': {workspaceToolsBridge: () => native}}, {}, locale);
+  t.after(() => h.unmount());
+  const {t: translate} = i18nTestModule(locale).useI18n();
+  const action = () => {
+    const alerts = nodes(h.tree).filter(node => node.type === 'WorkbenchAlert' && text(node) === savedText);
+    assert.equal(alerts.length, 1, 'one saved-path notice explains restarting the local service');
+    const button = alerts[0].props.actions;
+    assert.ok(button, 'the saved-path notice offers the restart action');
+    assert.equal(text(button), restartText);
+    assert.equal(Boolean(button.props.disabled), false);
+    return button;
+  };
+  h.render(); await flush(); h.render(); await flush(); h.render();
+  const ffmpeg = nodes(h.tree).find(node => node.type === 'input' && node.props.id === 'tool-ffmpeg');
+  assert.ok(ffmpeg);
+  const edited = {...selected, ffmpeg: '/tools/custom/ffmpeg'};
+  ffmpeg.props.onChange({target: {value: edited.ffmpeg}}); h.render();
+  const save = nodes(h.tree).find(node => node.type === 'WorkbenchButton' && text(node) === translate('workspace.tools.save'));
+  assert.ok(save); save.props.onClick(); await flush(); h.render();
+  assert.deepEqual(saves, [edited]); assert.equal(restarts, 0);
+  action().props.onClick(); await flush(); assert.equal(restarts, 1);
+
+  const download = nodes(h.tree).find(node => typeof node.props.onInstalled === 'function');
+  assert.ok(download);
+  const card = harness('SettingsMediaToolsDownload.tsx', 'default', restartBridge, download.props, locale);
+  t.after(() => card.unmount());
+  card.render(); await flush(); card.render();
+  const useVersion = card.find('workspace-tools-download-install');
+  assert.ok(useVersion); assert.equal(text(useVersion), translate('workspace.tools.download.use'));
+  useVersion.props.onClick(); await flush(); card.render(); h.render();
+  assert.equal(installs, 1); assert.equal(restarts, 1);
+  assert.equal(nodes(card.tree).filter(node => node.type === 'WorkbenchAlert' && node.props.actions).length, 0);
+  const restart = action();
+  restart.props.onClick(); await flush(); assert.equal(restarts, 2);
+  h.render({active: false}); restart.props.onClick(); await flush(); assert.equal(restarts, 2);
+});
+
 test('Mioon media tools card downloads through the native bridge, reports progress and failures, and marks the saved copy in use', async () => {
   const offer = { version: '7.1.5-1', ffmpegVersion: '7.1.5', arch: 'arm64', downloadBytes: 31_457_280, license: 'GPL-2.0-or-later', sourceUrl: 'https://github.com/starroyhq/mioon/releases/tag/media-tools-7.1.5-1' };
   const installedPaths = { ffmpeg: '/private/media-tools/7.1.5-1/ffmpeg', ffprobe: '/private/media-tools/7.1.5-1/ffprobe' };
@@ -121,7 +182,7 @@ test('Mioon media tools card downloads through the native bridge, reports progre
   finish({ ok: true, paths: installedPaths, diagnostics }); status = { ...status, installed: installedPaths, progress: { phase: 'completed', receivedBytes: 31_457_280, totalBytes: 31_457_280, code: null } };
   await flush(); h.render(); await flush(); h.render();
   assert.deepEqual(installedCalls, [[installedPaths, diagnostics]]);
-  assert.match(text(h.tree), /已安装并保存路径/u);
+  assert.equal(h.find('workspace-tools-download-failure'), undefined);
   h.render({ saved: installedPaths });
   assert.match(text(h.tree), /正在使用/u);
   assert.equal(h.find('workspace-tools-download-install'), undefined, 'the copy in use offers no install button');

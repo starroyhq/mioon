@@ -1,7 +1,6 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {WorkbenchAlert,WorkbenchBadge,WorkbenchButton,WorkbenchProgress} from '@mioon/ui/components/workbench-controls';
 import {useI18n} from './i18n/I18nProvider.tsx';
-import {workspaceNativeBridge} from './workspace-native-client.ts';
 import type {MediaToolDiagnostics,MediaToolsStatus,ToolPaths,WorkspaceToolsBridge} from '../../../packages/contracts/src/workspace-info.ts';
 
 const ACTIVE=new Set(['downloading','verifying','checking','installing']);
@@ -18,7 +17,7 @@ export function mediaToolsFailureKey(code:string){
 /** Mioon's pinned FFmpeg build: download, verify, install and save its paths through the fixed native bridge. */
 export default function SettingsMediaToolsDownload({native,active,saved,onInstalled,onBusyChange}:{native:WorkspaceToolsBridge;active:boolean;saved:ToolPaths|null;
  onInstalled:(paths:ToolPaths,diagnostics:MediaToolDiagnostics)=>void;onBusyChange?:(busy:boolean)=>void}){
- const {t}=useI18n(),[status,setStatus]=useState<MediaToolsStatus|null>(null),[failure,setFailure]=useState<string|null>(null),[done,setDone]=useState(false),[running,setRunning]=useState(false);
+ const {t}=useI18n(),[status,setStatus]=useState<MediaToolsStatus|null>(null),[failure,setFailure]=useState<string|null>(null),[running,setRunning]=useState(false);
  const mounted=useRef(true),runningRef=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const refresh=useCallback(async()=>{try{const value=await native.mediaToolsStatus();if(mounted.current)setStatus(value);}catch{/* The offer stays hidden without a status. */}},[native]);
@@ -28,10 +27,10 @@ export default function SettingsMediaToolsDownload({native,active,saved,onInstal
  // Progress is polled only while an installation runs, including one started before this page opened.
  useEffect(()=>{if(!installing)return;const timer=setInterval(()=>{void refresh();},400);return()=>clearInterval(timer);},[installing,refresh]);
  if(!status?.offer)return null;
- const {offer,progress}=status,inUse=same(status.installed,saved),restart=workspaceNativeBridge()?.restart;
+ const {offer,progress}=status,inUse=same(status.installed,saved);
  const install=async()=>{
-  if(runningRef.current||!active)return;runningRef.current=true;setRunning(true);setFailure(null);setDone(false);
-  try{const result=await native.installMediaTools();if(!mounted.current)return;if(result.ok){onInstalled(result.paths,result.diagnostics);setDone(true);}else setFailure(result.code);}
+  if(runningRef.current||!active)return;runningRef.current=true;setRunning(true);setFailure(null);
+  try{const result=await native.installMediaTools();if(!mounted.current)return;if(result.ok)onInstalled(result.paths,result.diagnostics);else setFailure(result.code);}
   catch{if(mounted.current)setFailure('MEDIA_TOOLS_INSTALL_FAILED');}
   finally{runningRef.current=false;if(mounted.current){setRunning(false);void refresh();}}
  };
@@ -45,7 +44,6 @@ export default function SettingsMediaToolsDownload({native,active,saved,onInstal
   <p>{t('workspace.tools.download.help')}<span data-text-selectable>{offer.sourceUrl}</span></p>
   {installing&&<div className="workspace-tool-download-progress" data-testid="workspace-tools-download-progress"><WorkbenchProgress value={percent} label={phase}/><span aria-live="polite">{phase}</span></div>}
   {failure&&!installing&&<WorkbenchAlert tone={failure==='MEDIA_TOOLS_CANCELLED'?'neutral':'warning'} data-testid="workspace-tools-download-failure">{t(mediaToolsFailureKey(failure))}</WorkbenchAlert>}
-  {done&&!installing&&<WorkbenchAlert tone="success" actions={restart&&<WorkbenchButton onClick={()=>{void restart().catch(()=>{});}}>{t('workspace.tools.download.restart')}</WorkbenchButton>}>{t('workspace.tools.download.done')}</WorkbenchAlert>}
   <div className="workspace-tool-actions">{installing
    ?<WorkbenchButton data-testid="workspace-tools-download-cancel" disabled={progress.phase==='installing'} onClick={()=>{void native.cancelMediaToolsInstall().catch(()=>{});}}>{t('workspace.tools.download.cancel')}</WorkbenchButton>
    :!inUse&&<WorkbenchButton variant="primary" data-testid="workspace-tools-download-install" disabled={!active} onClick={()=>void install()}>{t(status.installed?'workspace.tools.download.use':'workspace.tools.download.install')}</WorkbenchButton>}</div>

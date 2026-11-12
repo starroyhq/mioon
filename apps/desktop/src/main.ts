@@ -161,6 +161,8 @@ const rendererDiagnostics = !startupStorageError && typeof createRendererDiagnos
     })()
   : null;
 let win: BrowserWindow | null = null, backend: BackendSupervisor | null = null, activeSession: Session | null = null, ready: BackendReady | null = null, restarting = false, quitting = false;
+type RestartProject = {projectId: string; name: string};
+let restartProjects: readonly RestartProject[] | undefined;
 // Native trash can outlive its utility; retain its project fence across hosts.
 const projectActionReservations = new Map<string, object>();
 let agentSettings: DesktopAgentSettings | null = null;
@@ -290,6 +292,11 @@ async function presentForReload(window: BrowserWindow, context: DesktopWindowCon
   finally { finishNativePresentation(window, host, owner.contextId); refreshApplicationMenu(); }
 }
 const projectFileFailureText=(code:string,reason?:'read-only')=>reason==='read-only'?'native.openProjectFileReadOnly':code==='PROJECT_FORMAT_NEWER'?'native.openProjectFileNewer':code==='PROJECT_ACCESS_DENIED'?'native.openProjectFileAccessDenied':code==='PROJECT_INVALID'?'native.openProjectFileDamaged':code==='PROJECT_MISSING'?'native.openProjectFileMissing':'native.openProjectFileUnavailable';
+async function showProjectFileFailure(context: DesktopWindowContext, name: string, code: string, reason?: 'read-only') {
+  const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
+  if (ownsWindow(parent, context)) await showOwnedDialog(parent, context, {type: 'warning', message: nt('native.openProjectFileFailed'),
+    detail: nt(projectFileFailureText(code, reason), {name}), buttons: [nt('native.acknowledge')]});
+}
 // Cold and hot OS intents use one sequential queue, attached only after a trusted backend is ready.
 const projectFiles=createProjectFileOpener({
   opened:()=>{if(quitCoordinator.state==='idle'&&!restarting)trayIntent++;},
@@ -298,8 +305,7 @@ const projectFiles=createProjectFileOpener({
     if(!context||!ownsWindowContext(context)||restarting||!quitRouter.allowsWindows)return;
     return (async()=>{
       await openWindow(context);
-      const parent=windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
-      if(parent&&ownsWindow(parent,context))await showOwnedDialog(parent,context,{type:'warning',message:nt('native.openProjectFileFailed'),detail:nt(projectFileFailureText(code,reason),{name:path.basename(file)}),buttons:[nt('native.acknowledge')]});
+      await showProjectFileFailure(context,path.basename(file),code,reason);
     })().catch(fatal);
   },
 });
@@ -404,7 +410,7 @@ async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
       if (outcome.ok) {
         const configuration = await validateTools(outcome.paths, { signal: startup.signal });
         startup.checkpoint();
-        await saveToolConfig(paths.configFile, configuration);
+        await saveToolConfig(paths.configFile, configuration.selected);
         return configuration;
       }
       code = outcome.code;
@@ -424,7 +430,7 @@ async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
   };
   const configuration = await validateTools({ ffmpeg: await choose('ffmpeg'), ffprobe: await choose('ffprobe') }, { signal: startup.signal });
   startup.checkpoint();
-  await saveToolConfig(paths.configFile, configuration);
+  await saveToolConfig(paths.configFile, configuration.selected);
   return configuration;
 }
 
@@ -439,7 +445,7 @@ function isCancelledStartup(error: unknown): boolean {
   return error !== null && typeof error === 'object' && cancelledStartupErrors.has(error as Error);
 }
 
-async function start(): Promise<DesktopStartReport> {
+async function start(projectsToRestore?: readonly RestartProject[]): Promise<DesktopStartReport> {
   if (quitting) throw cancelledStartupError();
   const startup = startupOperation = createDesktopStartup();
   let closingCancelledSettings = false;
@@ -500,8 +506,11 @@ async function start(): Promise<DesktopStartReport> {
       isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     let ownedRelinkHost:typeof assetRelinkHost=null;
+    let restorationNoticesPending = false;
     windowHost = createProjectWindowHost<BrowserWindow>({
       projectActionReservations,
+      autoOpenLauncher: projectsToRestore === undefined,
+      rendererPaused: () => projectsToRestore !== undefined && (restarting || restorationNoticesPending),
       backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
@@ -515,9 +524,8 @@ async function start(): Promise<DesktopStartReport> {
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
       admitProject:async(owner,projectId)=>{
-        nativeBackendCurrent();const project=await ownedBackend.projectEntries.prepareAcquire({projectId});nativeBackendCurrent();
+        const project=await prepareRegisteredProject(projectId);
         if(!owner.isCurrent())throw new Error('Project admission owner unavailable');
-        if(!project)throw new Error('Project admission unavailable');
         const facts=await probeDesktopProjectLocation({path:project.projectFile,purpose:'open',isDirectory:false});nativeBackendCurrent();
         const selected=nativeOwner(owner.window);if(!selected||!owner.isCurrent()||!await admit(selected,facts))throw new Error('Project location rejected');
         nativeBackendCurrent();if(!owner.isCurrent())throw new Error('Project admission owner unavailable');
@@ -576,6 +584,13 @@ async function start(): Promise<DesktopStartReport> {
     });
 
     const nativeBackendCurrent=()=>{if(!ownsWindowContext(context)||backend!==ownedBackend||ownedBackend.state!=='running'||!quitRouter.allowsWindows||context.incident.failed||backendExitObserved)throw new Error('Native workspace action is unavailable.');};
+    const prepareRegisteredProject=async(projectId:string)=>{
+      nativeBackendCurrent();
+      const project=await ownedBackend.projectEntries.prepareAcquire({projectId});
+      nativeBackendCurrent();
+      if(project?.projectId!==projectId)throw Object.assign(new Error('Registered project is unavailable'),{code:'PROJECT_MISSING'});
+      return project;
+    };
     const nativeRead=(resource:string,input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
     assetImportHost=createAssetImportHost<IpcMainInvokeEvent>({
       ownerForEvent:event=>{
@@ -612,10 +627,10 @@ async function start(): Promise<DesktopStartReport> {
       fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},
     });
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
-    const nativeOwner=(window:BrowserWindow):ProjectEntryDesktopOwner<BrowserWindow>|null=>{
+    const nativeOwner=(window:BrowserWindow,allowRestart=false):ProjectEntryDesktopOwner<BrowserWindow>|null=>{
       const owner=windowHost?.ownerForContents(window.webContents);
       if(!owner||owner.role==='settings'||!owner.isCurrent()||!ownsWindow(window,context))return null;
-      return {window,windowId:owner.windowId,backendId:owner.backendId,contextId:owner.contextId,...(owner.projectId?{projectId:owner.projectId}:{}),isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&!windowAdmissions.get(window)?.pending&&!windowHost?.settingsForParent(window);}catch{return false;}}};
+      return {window,windowId:owner.windowId,backendId:owner.backendId,contextId:owner.contextId,...(owner.projectId?{projectId:owner.projectId}:{}),isCurrent:()=>{try{nativeBackendCurrent();return (!restarting||allowRestart&&restartCoordinator.state==='starting')&&owner.isCurrent()&&ownsWindow(window,context)&&!windowAdmissions.get(window)?.pending&&!windowHost?.settingsForParent(window);}catch{return false;}}};
     };
     const ownedPanel=async<T>(owner:ProjectEntryDesktopOwner<BrowserWindow>,show:()=>Promise<T>):Promise<T>=>{
       const host=windowHost;
@@ -698,9 +713,54 @@ async function start(): Promise<DesktopStartReport> {
     const hadFiles=projectFiles.pending.length>0;
     const openedFiles=projectFiles.attach(openSelected);context.startup.signal.addEventListener('abort',()=>{projectFiles.detach(openSelected);entries.close();if(projectEntryHost===entries)projectEntryHost=null;},{once:true});
     await openedFiles;startup.checkpoint();
-    if(!hadFiles)await openWindow(context);
+    if(!hadFiles||projectsToRestore?.length)await openWindow(context);
     startup.checkpoint();incident.assertAlive();
     if(!ownsWindowContext(context))throw cancelledStartupError();
+    const failures: {name: string; code: string; reason?: 'read-only'}[] = [];
+    for (const saved of projectsToRestore ?? []) {
+      if (!quitRouter.allowsWindows) break;
+      let name = saved.name;
+      try {
+        const project = await prepareRegisteredProject(saved.projectId);
+        name = project.name;
+        const facts = await probeDesktopProjectLocation({path: project.projectFile, purpose: 'open', isDirectory: false});
+        nativeBackendCurrent();
+        if (!facts.isLocal || facts.volumeReadOnly) {
+          failures.push({name, code: 'PROJECT_LOCATION_REJECTED', ...(facts.volumeReadOnly ? {reason: 'read-only'} : {})});
+          continue;
+        }
+        const parent = ownedWindowHost.ensureLauncher();
+        const owner = parent ? nativeOwner(parent, true) : null;
+        if (!owner || !await admit(owner, facts)) throw new Error('Project location rejected');
+        nativeBackendCurrent();
+        const restored = await ownedWindowHost.restoreProject(saved.projectId, project.projectFile);
+        nativeBackendCurrent();
+        if (!restored.ok) throw new Error('Project window restoration unavailable');
+      } catch (error) {
+        startup.checkpoint(); incident.assertAlive();
+        if (!quitRouter.allowsWindows || !ownsWindowContext(context)) break;
+        const failure = codedFailure(error), underlying = failure.details?.reason;
+        const code = failure.code === 'PROJECT_UNAVAILABLE' && typeof underlying === 'string' ? underlying :
+          failure.code === 'EACCES' || failure.code === 'EPERM' ? 'PROJECT_ACCESS_DENIED' : failure.code ?? 'UNAVAILABLE';
+        const readOnly = code === 'PROJECT_INVALID' && (underlying === 'read-only' || failure.details?.invalidReason === 'read-only');
+        failures.push({name, code, ...(readOnly ? {reason: 'read-only'} : {})});
+      }
+    }
+    // Finish all reacquisitions before a project-specific warning can own a
+    // native sheet. A later Quit or restart must not inherit these notices.
+    if (failures.length) {
+      restorationNoticesPending = true;
+      void (async () => {
+        for (const {name, code, reason} of failures) {
+          if (!ownsWindowContext(context) || !quitRouter.allowsWindows || incident.failed) break;
+          try { await showProjectFileFailure(context, name, code, reason); }
+          catch { console.warn('Unable to present project restoration failure.'); }
+        }
+      })().finally(() => {
+        restorationNoticesPending = false;
+        ownedWindowHost.refresh();
+      });
+    }
     return { identity, runtime: started.runtime, tools: tools.versions };
   } catch (error) {
     if(windowContext?.startup===startup)windowContext.appearance?.dispose();
@@ -831,7 +891,19 @@ async function cleanupStoppedBackend() {
 }
 
 async function restart(): Promise<boolean> {
-  return restartCoordinator.request();
+  if (restartCoordinator.state !== 'idle') return restartCoordinator.request();
+  const host = windowHost;
+  const snapshot = (host?.windows() ?? []).flatMap(window => {
+    const projectId = host?.contextFor(window)?.editorProjectId;
+    if (!projectId) return [];
+    let name = '';
+    try { name = window.getTitle().replace(/[\u0000-\u001f]/gu, ' ').trim().slice(0, 160); }
+    catch { /* A closing native window may no longer expose its title. */ }
+    return [{projectId, name: name || `${nt('native.menuProjectWindow')} ${projectId.slice(0, 8)}`}];
+  });
+  restartProjects = snapshot;
+  try { return await restartCoordinator.request(); }
+  finally { if (restartProjects === snapshot) restartProjects = undefined; }
 }
 
 async function confirmServiceRestart(): Promise<boolean> {
@@ -1035,7 +1107,7 @@ const restartCoordinator: MultiWindowRestartCoordinator<BrowserWindow> = new Mul
   getWindows: () => windowHost?.closeOrder() || [],
   canRequest: () => quitCoordinator.state === 'idle' && !quitting && !quitRouter.isPending,
   onStateChange: state => { restarting = state !== 'idle'; trayIntent++; windowHost?.refresh(); trayHost?.refresh(); refreshApplicationMenu(); },
-  stop, start,
+  stop, start: () => start(restartProjects),
 });
 const quitRouter: ProjectWindowQuitRouter<BrowserWindow> = createProjectWindowQuitRouter<BrowserWindow>({ quit: quitCoordinator, restart: restartCoordinator,
   onPendingChange: () => { trayIntent++; windowHost?.refresh(); trayHost?.refresh(); refreshApplicationMenu(); } });

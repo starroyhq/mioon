@@ -85,9 +85,10 @@ test('actual sandbox preload bundle requires only Electron and exposes no arbitr
 });
 test('restart confirmation cannot act on replaced startup/backend or a newly requested Quit', async () => {
   let owner: Record<string, unknown> = {}, available=true, calls=0; const deferred=Promise.withResolvers<boolean>();
-  const work=confirmOwnedWindowRestart({getOwner:()=>owner,canRequest:()=>available,confirm:()=>deferred.promise,restart:async()=>calls++});
+  const restart=async()=>{calls++;return true;};
+  const work=confirmOwnedWindowRestart({getOwner:()=>owner,canRequest:()=>available,confirm:()=>deferred.promise,restart});
   owner={}; deferred.resolve(true); assert.equal(await work,false); assert.equal(calls,0);
-  const next=Promise.withResolvers<boolean>(); const second=confirmOwnedWindowRestart({getOwner:()=>owner,canRequest:()=>available,confirm:()=>next.promise,restart:async()=>calls++});
+  const next=Promise.withResolvers<boolean>(); const second=confirmOwnedWindowRestart({getOwner:()=>owner,canRequest:()=>available,confirm:()=>next.promise,restart});
   available=false; next.resolve(true); assert.equal(await second,false); assert.equal(calls,0);
 });
 

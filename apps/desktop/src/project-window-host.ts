@@ -42,6 +42,9 @@ export interface ProjectWindowDocumentOwner<W extends ProjectNativeWindow> exten
 }
 export interface ProjectWindowHostOptions<W extends ProjectNativeWindow> {
   readonly backendId: string; readonly launcherUrl: string; readonly settingsUrl?: string;
+  readonly autoOpenLauncher?: boolean;
+  /** Trusted main may reopen windows before the new renderers admit actions. */
+  rendererPaused?(): boolean;
   editorUrl(projectId: string): string;
   isCurrent(): boolean; canInteract(): boolean;
   createWindow(context: ProjectWindowCreation<W>): W;
@@ -157,7 +160,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       selectionProjectId: record.role === 'launcher' ? selectedProject() : null,
       selectionVersion: record.role === 'launcher' ? selectionVersion : 0,
       locatorStatus: launcher && locatorContextId === launcher.contextId && trustedDocument(launcher) ? locatorStatus : null,
-      locatorIntent: record.role === 'launcher' && locatorContextId === record.contextId ? locatorIntent : null, quitting: !permitted() };
+      locatorIntent: record.role === 'launcher' && locatorContextId === record.contextId ? locatorIntent : null,
+      quitting: !permitted() || options.rendererPaused?.() === true };
   }
   function refresh() {
     permitted();
@@ -228,7 +232,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     let url:string;
     try{url=role==='editor'?options.editorUrl(projectId!):role==='settings'?options.settingsUrl??options.launcherUrl:options.launcherUrl;}
     catch(error){if(projectId)reservations.delete(projectId);throw error;}
-    const windowId = lease?.windowId??randomUUID(), contextId = randomUUID(), autoOpen = role === 'launcher' && !launcherCreated;
+    const windowId = lease?.windowId??randomUUID(), contextId = randomUUID();
+    const autoOpen = role === 'launcher' && !launcherCreated && options.autoOpenLauncher !== false;
     let window: W, contents: ProjectWindowWebContents;
     try {
       window = options.createWindow({ role, windowId, contextId, backendId: options.backendId, projectId, autoOpen, url, ...(parent ? {parent: parent.window} : {}) });
@@ -474,19 +479,30 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     leases.set(windowId,lease);
     return acceptPrepared(parsed.data,lease,++intent,true,true);
   }
-  async function openPath(projectFile:string):Promise<ProjectWindowOpenResult>{
+  async function acquireNativeWindow(
+    prepare: (port: NonNullable<typeof projectEntries>, windowId: string) => Promise<ProjectEntryWindow>,
+    projectId: string | null = null, expectedProjectFile?: string,
+  ): Promise<ProjectWindowOpenResult> {
     if(!nativeOpenAllowed())return refused('busy');
     const port=projectEntries;if(!port)return refused('unavailable');
-    const lease=candidate(),capturedFence=fence,revealIntent=++intent,presentationEpoch=trayHideEpoch;
+    const lease=candidate(projectId,expectedProjectFile),capturedFence=fence,revealIntent=++intent,presentationEpoch=trayHideEpoch;
     try{
-      // Paths are checked by the real manager before consulting the UUID window
-      // map, so a copy cannot focus an editor merely by carrying its UUID.
-      const prepared=await port.openPath({projectFile,windowId:lease.windowId});
+      const prepared=await prepare(port,lease.windowId);
       if(!nativeOpenAllowed()||fence!==capturedFence)return refused('busy');
       return acceptPrepared(prepared,lease,revealIntent,presentationEpoch===trayHideEpoch,true);
     }finally{
       if(![...records.values()].some(record=>record.lease===lease&&!record.closed))releaseLease(lease);
     }
+  }
+  function openPath(projectFile:string):Promise<ProjectWindowOpenResult>{
+    // Check the path before consulting the UUID window map. A copied file
+    // cannot focus an editor merely by carrying the original project's UUID.
+    return acquireNativeWindow((port,windowId)=>port.openPath({projectFile,windowId}));
+  }
+  // Main supplies the ID from the previous host and the path verified by the
+  // new backend. The utility fences acquisition against a subsequent move.
+  function restoreProject(projectId:string,expectedProjectFile:string):Promise<ProjectWindowOpenResult>{
+    return acquireNativeWindow((port,windowId)=>port.acquire({projectId,windowId,expectedProjectFile}),projectId,expectedProjectFile);
   }
   function openProject(record: WindowRecord<W>, projectId: string, remember: boolean, entryToken: string): Promise<ProjectWindowOpenResult> {
     if (record.role === 'settings') return Promise.resolve(refused('unavailable'));
@@ -714,7 +730,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     });}catch{projectEntries=null;}
   }
   return {
-    ensureLauncher, activate, requestProjectEntry, openPath, adoptPrepared, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
+    ensureLauncher, activate, requestProjectEntry, openPath, restoreProject, adoptPrepared, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
     dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor, reserveClosedProjectAction,
     settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },

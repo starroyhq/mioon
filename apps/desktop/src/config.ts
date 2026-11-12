@@ -30,7 +30,11 @@ export interface DesktopPaths {
   readonly configFile: string;
 }
 export interface ToolPaths { readonly ffmpeg: string; readonly ffprobe: string }
-export interface ToolValidation { readonly ffmpeg: string; readonly ffprobe: string; readonly versions: ToolPaths }
+export interface ToolValidation extends ToolPaths {
+  /** Persist these paths. The top-level pair names the files checked for execution. */
+  readonly selected: ToolPaths;
+  readonly versions: ToolPaths;
+}
 interface StorageFailureDialog extends MessageBoxOptions {
   readonly type: 'error'; readonly title: string; readonly message: string; readonly detail: string;
   readonly buttons: string[]; readonly defaultId: number; readonly cancelId: number;
@@ -238,14 +242,15 @@ export async function validateTools(config: ToolPaths, { execute = runMedia, sig
   execute?: typeof runMedia; signal?: AbortSignal;
 } = {}): Promise<ToolValidation> {
   const options = { execute, signal };
-  const [ffmpeg, ffprobe] = await Promise.all([validateTool(config.ffmpeg, 'ffmpeg', options), validateTool(config.ffprobe, 'ffprobe', options)]);
+  const selected = { ffmpeg: config.ffmpeg, ffprobe: config.ffprobe };
+  const [ffmpeg, ffprobe] = await Promise.all([validateTool(selected.ffmpeg, 'ffmpeg', options), validateTool(selected.ffprobe, 'ffprobe', options)]);
   // Export depends on these encoders; fail before accepting editing work if unavailable.
   throwIfMediaAborted(signal);
   const stdout = await execute(ffmpeg.path, ['-hide_banner', '-encoders'], { timeout: 10000, ...(signal ? { signal } : {}),
     maxStdoutBytes: 4 * 1024 * 1024, maxStderrBytes: 1024 * 1024 });
   throwIfMediaAborted(signal);
   if (!/\blibx264\b/.test(stdout) || !/\baac\b/.test(stdout)) throw new Error('FFmpeg 必须包含 libx264 和 AAC 编码器');
-  return { ffmpeg: ffmpeg.path, ffprobe: ffprobe.path, versions: { ffmpeg: ffmpeg.version, ffprobe: ffprobe.version } };
+  return { ffmpeg: ffmpeg.path, ffprobe: ffprobe.path, selected, versions: { ffmpeg: ffmpeg.version, ffprobe: ffprobe.version } };
 }
 
 export async function saveToolConfig(file: string, config: ToolPaths): Promise<void> {
