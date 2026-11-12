@@ -52,6 +52,19 @@ test('Mio repository writes require the kernel transaction and reads never write
   assert.equal(f.store.db.prepare('SELECT total_changes() AS count').get()?.count, before);
 });
 
+test('Mio repository preserves physical counters past a retained budget and keeps wait positions separate', t => {
+  const f = setup(t);
+  f.store.tx(() => {
+    f.store.db.prepare('UPDATE mio_runs SET stepLimit=1,budget=1 WHERE id=?').run(f.runId);
+    for (const kind of ['model', 'wait', 'model'] as const) f.records.createStep({id: randomUUID(), runId: f.runId, kind, createdAt: at});
+  });
+  assert.deepEqual(f.records.steps(f.runId).map(step => [step.position, step.kind]), [[1, 'model'], [2, 'wait'], [3, 'model']]);
+  const run = f.records.run(f.runId);
+  assert.equal(run.stepsUsed, 2);
+  assert.equal(run.stepLimit, 1);
+  assert.equal(run.budget, 2);
+});
+
 test('blob dedup uses original UTF-8 bytes, verifies stored hashes and preserves escaped JSON strings', t => {
   const f = setup(t), body = JSON.stringify({text: '你好\r\n', isolatedSurrogate: '\ud800'});
   const rowsBefore = Number(f.store.db.prepare('SELECT count(*) AS count FROM mio_blobs').get()?.count);

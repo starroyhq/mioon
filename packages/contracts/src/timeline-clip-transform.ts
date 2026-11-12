@@ -105,11 +105,11 @@ export function clipTransformAt(clip: ClipTransformClip, frame: number): ClipTra
   return value ? interpolate(value.keyframes, frame) : IDENTITY_CLIP_TRANSFORM_VALUE;
 }
 /** True when every frame renders exactly like a clip without a transform. */
-export function isIdentityClipTransform(value: ClipTransform | null | undefined): boolean {
+export function isIdentityClipTransform(value: Omit<ClipTransform, 'profileId'> | null | undefined): boolean {
   return !value || value.rotation === 0 && Object.values(value.crop).every(edge => edge === 0) &&
     value.keyframes.every(point => point.x === 0 && point.y === 0 && point.scale === 1);
 }
-export function isAnimatedClipTransform(value: ClipTransform | null | undefined): boolean {
+export function isAnimatedClipTransform(value: Omit<ClipTransform, 'profileId'> | null | undefined): boolean {
   return !!value && value.keyframes.some(point => point.x !== value.keyframes[0]!.x || point.y !== value.keyframes[0]!.y || point.scale !== value.keyframes[0]!.scale);
 }
 
@@ -165,10 +165,19 @@ export interface ClipTransformGeometry {
  * whole pixels; this is the exact model the editor shows. */
 export function clipTransformGeometry(clip: ClipTransformClip & {readonly rect: ClipTransformRect}, source: {readonly width: number; readonly height: number}, frame: number): ClipTransformGeometry {
   const descriptor = field(clip), value = (descriptor?.value as ClipTransform | null | undefined) ?? null;
+  return projectedClipGeometry(clip.rect, value, {width: source?.width, height: source?.height}, frame);
+}
+
+/** Sample a placement already projected into the current frame. A source's
+ * sample aspect ratio converts its cropped width to square-pixel units. */
+export function projectedClipGeometry(rect: ClipTransformRect, value: Omit<ClipTransform, 'profileId'> | null,
+  source: {readonly width: number; readonly height: number; readonly sampleAspectRatio?: number}, frame: number): ClipTransformGeometry {
   if (!finite(source?.width, 1, Number.MAX_SAFE_INTEGER) || !finite(source?.height, 1, Number.MAX_SAFE_INTEGER)) fail('Invalid source size.');
+  const sar = source.sampleAspectRatio ?? 1;
+  if (!Number.isFinite(sar) || sar <= 0 || !Number.isFinite(frame)) fail('Invalid display aspect ratio or frame.');
   const crop = value?.crop ?? {left: 0, top: 0, right: 0, bottom: 0};
-  const croppedWidth = source.width * (1 - crop.left - crop.right), croppedHeight = source.height * (1 - crop.top - crop.bottom);
-  const fit = Math.min(clip.rect.width / croppedWidth, clip.rect.height / croppedHeight), at = clipTransformAt(clip, frame);
-  return {centerX: clip.rect.x + clip.rect.width / 2 + at.x, centerY: clip.rect.y + clip.rect.height / 2 + at.y,
+  const croppedWidth = source.width * (1 - crop.left - crop.right) * sar, croppedHeight = source.height * (1 - crop.top - crop.bottom);
+  const fit = Math.min(rect.width / croppedWidth, rect.height / croppedHeight), at = value ? interpolate(value.keyframes, frame) : IDENTITY_CLIP_TRANSFORM_VALUE;
+  return {centerX: rect.x + rect.width / 2 + at.x, centerY: rect.y + rect.height / 2 + at.y,
     width: croppedWidth * fit * at.scale, height: croppedHeight * fit * at.scale, rotation: value?.rotation ?? 0};
 }

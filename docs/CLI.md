@@ -18,7 +18,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
 | `agent diagnose latest` | `{}`；只读返回全工作区最近一次文本诊断（设置页的测试连接）的状态、时间、协议、地址、模型和失败代码；不发送模型请求，不返回测试文字、回复或密钥 |
-| `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
+| `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
 | `agent conversation policy get/set` | get 为 `{projectId, conversationId}`，返回 `override`、`global` 和 `effective`；set 为 `{projectId, conversationId, requestId, expectedRevision, modes, acknowledgePaid?}`，`modes` 为 `null` 时回到全局。付费改为直接执行时需要 `acknowledgePaid:true`；已经等待确认的步骤不会因放宽而免于确认 |
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
@@ -59,7 +59,7 @@ X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停�
 
 补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
 
-`agent task retry` 仅用于 failed 轮次，最后一步必须是 failed，并且没有 unknown / dispatch_started 步骤。若传 stepId，必须精确匹配最后失败步骤；本项目已有其他未结束轮次时拒绝重试。模型请求未发出，或运行中观察到的模型失败（非 200 响应、超时、连接中断、流截断等），都记为 failed，可以重试并重新发出下一次模型请求；进程在请求途中退出等没有记录结果的情况仍为 unknown，须先明确处置。工具失败会停止这一轮；重试把失败结果交回模型并废弃同批后续旧参数，不重放原工具。原 Run、步数已用值和预算保留；预算耗尽时进入 budget 暂停，只有后续明确 resume 才扩额。重试仍经过发送授权、执行前复查、付费确认、跳过名单及网络策略。retry 响应丢失只查 action-lookup，不自动重发。
+`agent task retry` 仅用于 failed 轮次，最后一步必须是 failed，并且没有 unknown / dispatch_started 步骤。若传 stepId，必须精确匹配最后失败步骤；本项目已有其他未结束轮次时拒绝重试。模型请求未发出，或运行中观察到的模型失败（非 200 响应、超时、连接中断、流截断等），都记为 failed，可以重试并重新发出下一次模型请求；进程在请求途中退出等没有记录结果的情况仍为 unknown，须先明确处置。工具失败会停止这一轮；重试把失败结果交回模型并废弃同批后续旧参数，不重放原工具。重试保留原 Run、已用步数和执行窗口。达到安全上限会以 `safety_limit` 暂停，明确执行 `resume` 可继续。重试仍经过发送授权、执行前复查、付费确认、跳过名单及网络策略。retry 响应丢失只查 action-lookup，不自动重发。
 
 公开 Change 的 `modifiedAfter` 按当前目标修订与原 revisionAfter 比较；`undoDisposition` 为服务端逆序预判的 `undo` / `retain` / `blocked`。后者考虑本轮连续撤销链和已保存的回退进度；它不是操作授权，实际撤销仍逐项复查。单条变化之后被修改时拒绝单撤；整体撤销只把严格证明被后续改动、且无草稿的单目标变化标为 superseded 并保留，再处理其他变化。复合变化、ABA、草稿及缺少证明仍停止，前面已完成的撤销保留。确认后发送可选 `undoChangeIds`（唯一 Change ID 数组），服务端先比较当前可撤销集合；集合改变时拒绝并保存原请求回执，零补偿。每条实际补偿还必须位于该集合。旧调用方省略时保留原行为。两个展示字段不写库或进入备份。
 
@@ -82,7 +82,7 @@ mioon agent settings secret set --input-file ./metadata.json --key-stdin --stora
 
 `--key-stdin` 消费原始密钥，不能与 `--input -` 共用 stdin。`--key-file` 必须是私有目录内的当前用户独占普通文件，遵循共享私有存储策略；不会自动修权限。Windows 独立 Node 入口需要显式构建并验证完整原生私有存储 helper，缺失时拒绝，不将 chmod 或环境开关当作 ACL 证明。持久密钥属于所选 headless/desktop 服务的独立配置，不读取或复制另一实例的密钥。
 
-诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具（不含提问工具 `mioon_ask`，诊断没有可以作答的对话）；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和步数预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
+诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具（不含提问工具 `mioon_ask`，诊断没有可以作答的对话）；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和执行保护，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
 
 每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、集合元数据是否匹配及各条 configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
 

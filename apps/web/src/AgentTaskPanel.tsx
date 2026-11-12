@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { Input } from '@mioon/ui/components/input';
 import { Dialog } from '@mioon/ui/components/dialog';
+import { Switch } from '@mioon/ui/components/switch';
 import { WorkbenchAlert, WorkbenchButton as Button, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import { WorkbenchPopover, WorkbenchPopoverContent, WorkbenchPopoverTrigger } from '@mioon/ui/components/workbench-popover';
@@ -21,7 +22,7 @@ import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
 import { agentTaskAnswerTextValid, taskQuestionOf } from './agent-task-questions.ts';
 import AgentTaskChecks from './AgentTaskChecks.tsx';
-import { isTaskGoalRepairActive } from './agent-task-requirements.ts';
+import { isTaskGoalRepairActive, isTaskGoalSafetyPaused } from './agent-task-requirements.ts';
 import AgentTaskContinuityReport from './AgentTaskContinuityReport.tsx';
 import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from './agent-task-reviews.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
@@ -37,9 +38,16 @@ import {MioUsageRow, MioUsageDetails} from './MioUsage.tsx';
 import {createWebProjectRulesClient, subscribeProjectRulesChanges} from './project-rules-client.ts';
 import {rulesProposalOf, projectRulesProposalChange, rulesStepApplied} from './project-rules-proposal.ts';
 import type {ProjectRulesSnapshot} from '../../../packages/contracts/src/mio-rules.ts';
+import { useUiPreferences } from './UiPreferencesProvider.tsx';
+import { createMioFollowTracker, mioFollowColor, mioFollowTargetsByStep } from './mio-follow.ts';
+import type { MioFollowFocus, MioFollowTarget, MioFollowTargetExists } from './mio-follow.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { isAdmissionAllowed?: () => boolean; projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown; onReviewProjectRules?: () => void }
+export interface AgentTaskPanelProps { isAdmissionAllowed?: () => boolean; projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown; onReviewProjectRules?: () => void;
+  onMioFollowFocus?: (projectId: string, focus: MioFollowFocus | null) => void;
+  onMioFollowLocate?: (target: MioFollowTarget) => unknown;
+  mioFollowTargetExists?: MioFollowTargetExists;
+}
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const settingsChangedCodes=new Set(['AGENT_SETTINGS_CONFLICT','AGENT_TASK_SETTINGS_CHANGED']);
 /** The failed round's own error code when it differs from the last step error. */
@@ -69,8 +77,14 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
     {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules }: AgentTaskPanelProps) {
+export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules, onMioFollowFocus, onMioFollowLocate, mioFollowTargetExists }: AgentTaskPanelProps) {
   const { t, locale } = useI18n(), workspaceVisible = useWorkspaceVisibility();
+  const preferences = useUiPreferences();
+  const [mioFocus, setMioFocus] = useState<MioFollowFocus | null>(null);
+  const [savingFollow, setSavingFollow] = useState(false), [followError, setFollowError] = useState(false), followFlight = useRef(false);
+  const mio = useRef({ enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber });
+  mio.current = { enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber };
+  const observeMio = useRef<(next: AgentTaskSessionState) => void>(() => {});
   const admission=useRef(isAdmissionAllowed);admission.current=isAdmissionAllowed;
   const canInteract=()=>{try{return admission.current?.()!==false;}catch{return false;}};
   const visible=workspaceVisible&&canInteract();
@@ -104,18 +118,29 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const log = useRef<HTMLDivElement | null>(null), follow = useRef(true), historyButton = useRef<HTMLButtonElement | null>(null), input = useRef<HTMLTextAreaElement | null>(null), file = useRef<HTMLInputElement | null>(null), sendButton = useRef<HTMLButtonElement | null>(null), authorizeButton = useRef<HTMLButtonElement | null>(null), sendFlight = useRef(false);
   useLayoutEffect(() => {
     let mounted = true;
+    const mioTracker = createMioFollowTracker();
+    setMioFocus(null);
+    const observeFollow = (next: AgentTaskSessionState) => {
+      if (!mio.current.onFocus) return;
+      const enabled = mio.current.enabled && visibility.current && canInteract() && !historyVisible.current && document.visibilityState !== 'hidden' && next.phase !== 'loading' && next.phase !== 'refreshing';
+      const focus = mioTracker.observe(next.snapshot, { locale: language.current, shotNumber: mio.current.shotNumber }, enabled,
+        next.pending?.action === 'send' ? next.pending.requestId : undefined);
+      if (focus !== undefined) { setMioFocus(focus); mio.current.onFocus(projectId, focus); }
+    };
+    observeMio.current = observeFollow;
     checksNavigation.current++;setChecksAttached(true);
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
     const reader=createMioUsageController({client:createMioUsageClient(),isAdmissionAllowed:canInteract,onChange:next=>{if(mounted)setUsage(next);}});
     usageReader.current=reader;setUsage(EMPTY_MIO_USAGE_STATE);usageTriggers.current.clear();
     const syncUsage=(next:AgentTaskSessionState)=>reader.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visibility.current&&canInteract()&&!historyVisible.current&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
-    const current = createAgentTaskSession({ projectId, isAdmissionAllowed:canInteract, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; syncUsage(next); close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onUsageObservation:observation=>reader.observe(observation), onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
+    const current = createAgentTaskSession({ projectId, isAdmissionAllowed:canInteract, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; syncUsage(next); close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); observeFollow(next); }, onUsageObservation:observation=>reader.observe(observation), onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
-    const changed = () => {current.setVisible(visibility.current && document.visibilityState !== 'hidden');syncUsage(current.getState());};
+    const changed = () => {current.setVisible(visibility.current && document.visibilityState !== 'hidden');const next=current.getState();syncUsage(next);observeFollow(next);};
     document.addEventListener('visibilitychange', changed); void current.load();
-    return () => { mounted = false; reader.dispose();if(usageReader.current===reader)usageReader.current=null;current.dispose(); close.release(); callbacks.current.onDraftChange(false); document.removeEventListener('visibilitychange', changed); if (session.current === current) session.current = null; };
+    return () => { mounted = false; observeMio.current = () => {}; if (mioTracker.observe(null, { locale: language.current }, false) === null) mio.current.onFocus?.(projectId, null); reader.dispose();if(usageReader.current===reader)usageReader.current=null;current.dispose(); close.release(); callbacks.current.onDraftChange(false); document.removeEventListener('visibilitychange', changed); if (session.current === current) session.current = null; };
   }, [projectId, workspaceScope, nativeCloseRegistry]);
   useLayoutEffect(() => { session.current?.setVisible(visible && document.visibilityState !== 'hidden'); if (!visible) { setReview(null); setUndoPreview(null); setModelMenuOpen(false); setHistoryOpen(false); } }, [visible]);
+  useLayoutEffect(() => { if (session.current) observeMio.current(session.current.getState()); }, [visible, historyOpen, preferences.preferences.mioFollow]);
   useLayoutEffect(()=>{
     const current=session.current;if(!current)return;
     const next=current.getState();
@@ -127,6 +152,21 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   }
   const run = state.snapshot?.run, steps = state.snapshot?.steps ?? [], changes = state.snapshot?.changes ?? [], project = state.project;
   const readOnly = project?.readOnly === true, busy = agentTaskSessionBusy(state), blocked = !visible || busy || Boolean(state.pending) || readOnly || !project;
+  const followRetry = preferences.mioFollowRetry;
+  const followDisabled = !visible || savingFollow || !preferences.saved?.writable || preferences.phase === 'loading' || preferences.phase === 'saving' || preferences.pending && followRetry === undefined;
+  async function saveFollow(enabled: boolean): Promise<void> {
+    if (followDisabled || followFlight.current || !visibility.current || !canInteract()) return;
+    followFlight.current = true; setSavingFollow(true); setFollowError(false);
+    try { setFollowError(!await preferences.setMioFollow(followRetry ?? enabled)); }
+    catch { setFollowError(true); }
+    finally { followFlight.current = false; setSavingFollow(false); }
+  }
+  async function reloadFollow(): Promise<void> {
+    if (followFlight.current || !visibility.current || !canInteract()) return;
+    followFlight.current = true; setSavingFollow(true);
+    try { setFollowError(!await preferences.reload()); }
+    finally { followFlight.current = false; setSavingFollow(false); }
+  }
   // Only the last round owns the existing SSE stream. Older nonterminal
   // rounds need bounded canonical reads; finished history never polls.
   const earlierActive=state.rounds.slice(0,-1).filter(item=>!(['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true)).map(item=>item.run.id).join(',');
@@ -300,8 +340,29 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   </> : null;
   }
   const interrupted=run?.status==='interrupted',recovery=state.snapshot?recoveryFor(state.snapshot):null;
+  function pauseMessage(reason: string | undefined, steps: readonly AgentTaskStep[]) {
+    switch (reason) {
+      case 'conflict':
+      case 'editing':
+        return {title:t('agent.panel.conflictTitle'),body:t('agent.panel.conflictBody')};
+      case 'repeated_tool_failure': {
+        const failed=steps.filter(step=>step.kind==='tool'&&['failed','rejected','denied'].includes(step.status)).at(-1);
+        const operation=taskOperationTitle(failed?.display?.operation??failed?.toolCall?.name??'',locale);
+        return {title:t('agent.panel.stalledTitle'),body:t('agent.panel.repeatedFailureBody',{operation}),supplement:true};
+      }
+      case 'no_tool_progress':
+        return {title:t('agent.panel.stalledTitle'),body:t('agent.panel.noToolProgressBody'),supplement:true};
+      case 'safety_limit':
+        return {title:t('agent.panel.neutralPauseTitle'),body:t('agent.panel.safetyPauseBody'),supplement:true};
+      case 'budget':
+        return {title:t('agent.panel.neutralPauseTitle'),body:t('agent.panel.pauseBody'),supplement:true};
+      default:
+        return {title:t('agent.panel.pauseTitle'),body:t(reason==='user'?'agent.panel.pauseBody':agentTaskErrorKey(reason))};
+    }
+  }
   function renderRound(snapshot:AgentTaskSnapshot){
     const run=snapshot.run,steps=snapshot.steps,changes=snapshot.changes,skipped=run.skippedTargets??[],notes=run.notes??[],unknown=steps.filter(step=>step.status==='unknown');
+    const followTargets = onMioFollowLocate ? mioFollowTargetsByStep(snapshot, { locale, lookup: targetName, shotNumber }, mioFollowTargetExists) : undefined;
     // A retry can end the round before a new step exists, e.g. when the model
     // settings changed. Show that round reason instead of only the older step error.
     const runFailure=agentTaskRunFailure(run,steps),settingsChanged=runFailure!==null&&settingsChangedCodes.has(runFailure);
@@ -309,6 +370,8 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskRunDurationSeconds(snapshot),canUndo=['completed','failed','stopped'].includes(run.status)&&unknown.length===0&&!snapshot.backgroundPending,backgroundPending=snapshot.backgroundPending===true;
     const approval=steps.filter(step=>(step.status==='awaiting_approval'||step.approvalRequired===true)&&step.toolCall?.name!=='mioon_project_rules_set'),marked=steps.filter(step=>step.display?.conflict===true);
     const conflictSteps=marked.length?marked:[steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1)].filter((step):step is AgentTaskStep=>step!==undefined);
+    const conflictPaused=run.pauseReason==='conflict'||run.pauseReason==='editing';
+    const pause=run.status==='paused'&&unknown.length===0?pauseMessage(run.pauseReason,steps):null;
     // Answered questions sit before the reply that followed them; the waiting
     // or stopped one follows the reply that asked it.
     const asks=steps.flatMap(step=>{const question=taskQuestionOf(step);return question?[{step,question}]:[];});
@@ -323,7 +386,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const afterReply=notes.filter(note=>!beforeReply.includes(note));
     const noteMessages=(items:typeof notes)=>items.map(note=><div key={note.requestId} className="agent-chat-message is-user mio-user mio-user-note" data-testid="agent-task-note"><span className="mio-note-label">{t('agent.panel.note')}</span><p>{note.text}</p></div>);
     return <article className="mio-round" key={run.id} data-testid="agent-task-round" data-run-id={run.id}>
-        <div className="agent-task-status mio-run-status" data-testid="agent-task-status" role="status"><span className="mio-run-tag" data-status={run.status}>{['accepted', 'running'].includes(run.status) ? <span className="wb-spinner" aria-hidden="true" /> : <Icon name={run.status === 'completed' ? 'check' : run.status === 'failed' ? 'close' : run.status === 'reverted' ? 'undo' : run.status === 'stopped' ? 'stop' : run.status === 'paused' ? 'pause' : run.status === 'awaiting_answer' ? 'question' : 'clock'} />}<strong>{t(`agent.task.status.${run.status}`)}</strong>{!['accepted', 'reverted'].includes(run.status) && <span> · {run.status === 'completed' ? t('agent.panel.usedSteps', { count: run.stepsUsed }) : t('agent.task.budget', { used: run.stepsUsed, limit: run.budget })}</span>}</span>
+        <div className="agent-task-status mio-run-status" data-testid="agent-task-status" role="status"><span className="mio-run-tag" data-status={run.status}>{['accepted', 'running'].includes(run.status) ? <span className="wb-spinner" aria-hidden="true" /> : <Icon name={run.status === 'completed' ? 'check' : run.status === 'failed' ? 'close' : run.status === 'reverted' ? 'undo' : run.status === 'stopped' ? 'stop' : run.status === 'paused' ? 'pause' : run.status === 'awaiting_answer' ? 'question' : 'clock'} />}<strong>{t(`agent.task.status.${run.status}`)}</strong>{!['accepted', 'reverted'].includes(run.status) && <span> · {t('agent.panel.usedSteps', { count: run.stepsUsed })}</span>}</span>
           {run.status === 'running' && <Button variant="ghost" size="compact" data-testid="agent-task-pause" disabled={blocked} onClick={() => { void act('pause'); }}>{t('agent.task.pause')}</Button>}
           {run.status === 'awaiting_answer' && <Button variant="ghost" size="compact" className="mio-run-stop" data-testid="agent-task-stop-question" disabled={blocked} onClick={() => { void act('stop'); }}><Icon name="stop" />{t('agent.task.stop')}</Button>}
           {finished(run.status) && elapsed !== undefined && <span className="mio-secondary">{t('agent.panel.elapsed', { seconds: elapsed })}</span>}
@@ -335,12 +398,18 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
         {latest && <p className="agent-task-text mio-reply" data-testid="agent-task-reply">{modelText(latest)}</p>}
         {noteMessages(afterReply)}
         {reviewCards(reportedAfter)}
-        {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step" data-read={readIcon(step) ? 'true' : undefined}>
+        {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => {
+          const targets = followTargets?.get(step.id) ?? [], canvas = targets.find(target => target.kind === 'shot' || target.kind === 'node'), timeline = targets.find(target => target.kind === 'timeline_clip' || target.kind === 'timeline_subtitle');
+          const focused = preferences.preferences.mioFollow && mioFocus?.runId === run.id && mioFocus.stepId === step.id;
+          return <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step" data-read={readIcon(step) ? 'true' : undefined} data-mio-follow={focused ? 'true' : undefined} style={focused ? { '--mio-follow-color': mioFollowColor(run.id) } as React.CSSProperties : undefined}>
           <div className="mio-step-line"><StepIcon step={step} read={readIcon(step)} /><span>{taskStepTitle(step, locale,firstRepairs)}{['awaiting_approval', 'unknown', 'awaiting_answer'].includes(step.status) && <> · {t(taskStepStatusKey(step.status))}</>}{step.status === 'completed' && step.toolCall?.name === 'mioon_ask' && <> · {t('agent.panel.question.answered')}</>}</span>{taskStepBadge(step,updatedGoals,firstRepairs)&&<span className="mio-step-badge" data-testid="agent-task-step-badge" data-badge={taskStepBadge(step,updatedGoals,firstRepairs)}>{t(taskStepBadge(step,updatedGoals,firstRepairs)==='repair'?'agent.panel.goal.repairBadge':'agent.panel.goal.updatedBadge')}</span>}<span className="mio-step-time">{['intent', 'dispatch_started'].includes(step.status) ? '…' : taskDurationSeconds(step.createdAt, step.updatedAt) !== undefined ? t('agent.panel.stepElapsed', { seconds: taskDurationSeconds(step.createdAt, step.updatedAt)! }) : ''}</span></div>
           {step.kind === 'model' && step !== latest && modelText(step) && <p className="agent-task-text mio-previous-reply">{modelText(step)}</p>}
+          {(canvas || timeline) && <div className="mio-follow-links">{([['canvas', canvas], ['timeline', timeline]] as const).map(([mode, target]) => target && <Button key={mode} variant="ghost" size="compact" className="mio-follow-link" data-testid={`mio-follow-${mode}-${step.id}`} disabled={!visible} onClick={() => {
+            if (visibility.current && canInteract() && mioFollowTargetExists?.(target) !== false) onMioFollowLocate?.(target);
+          }}><Icon name="locate" size={12} />{t(`agent.follow.${mode}`)}<Icon name="arrow" size={12} /></Button>)}</div>}
           {step.cost && <p data-testid={`agent-task-cost-${step.id}`} className="mio-secondary">{t(`agent.task.cost.${step.cost}`)}</p>}
           {step.error && <div className="mio-error-card"><p role="alert" data-testid={`agent-task-step-error-${step.id}`}>{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(step.error.code))})}</p><div className="mio-failure-actions">{run.status==='failed'&&!settingsChanged&&step.status==='failed'&&step===steps.at(-1)&&unknown.length===0&&!steps.some(item=>item.status==='dispatch_started')&&<Button size="compact" data-testid={`agent-task-retry-${step.id}`} disabled={blocked||backgroundPending} onClick={()=>{void act('retry',{stepId:step.id});}}><Icon name="undo" />{t('agent.panel.retry')}</Button>}{detail(step,firstRepairs)}</div>{errorSettings(step.error.code) && <Button variant="ghost" className="mio-settings-link" data-testid={`agent-task-error-settings-${step.id}`} onClick={() => { if (visibility.current) onSettings(errorSettings(step.error!.code)); }} disabled={!visible}>{t(`agent.panel.errorSettings.${errorSettings(step.error.code)!}`)} <Icon name="arrow" /></Button>}</div>}
-        </article>)}</div></details>}
+        </article>;})}</div></details>}
         {askedAfter.map(item=>item.step.status==='completed'?<AgentTaskAnswerRow key={item.step.id} step={item.step} question={item.question} />:item.step.status==='awaiting_answer'?<AgentTaskQuestionCard key={item.step.id} step={item.step} question={item.question} state={finished(run.status)?'stopped':'waiting'} disabled={blocked||run.status!=='awaiting_answer'} onAnswer={(choices,text)=>session.current?.answer(item.step.id,choices,text,run.id)} />:null)}
         {(changes.length > 0||skipped.length>0) && <section className="mio-changes" aria-live="polite"><header><h4>{t(finished(run.status) ? 'agent.panel.roundChanges' : 'agent.panel.changes', { count: changes.length })}</h4><Button variant="ghost" size="compact" data-testid="agent-task-undo-all" disabled={blocked || undoLoading || !canUndo || !changes.length} onClick={event=>{void undoAll(snapshot,event.currentTarget);}}>{t('agent.task.undoAll')}</Button></header>{changes.map(change => <article key={change.id} className="agent-task-change mio-change" data-change-id={change.id} data-status={change.status}>
           <Button variant="ghost" className="mio-change-locate" aria-label={t('agent.task.locate')} disabled={!visible} onClick={() => { if (visibility.current) onLocate?.(change); }}><Icon name={change.targets.some(target => target.kind === 'timeline_subtitle') ? 'text' : change.display?.fields.some(field => field.property === 'gainDb') ? 'volume' : 'film'} /><span><span className="mio-change-title">{taskChangeSummary(change.display, locale,formatOptions) || taskOperationTitle(change.operation, locale)}</span><span className="mio-secondary">{change.display ? taskDisplayTargets(change.display, locale, targetName) : t('agent.display.target.unknown')}</span></span></Button>
@@ -358,7 +427,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           return <article key={`${entry.stepId}:${entry.target.kind}:${entry.target.id}:${index}`} className="mio-skipped" data-testid="agent-task-skipped"><Icon name="play" /><div><p>{t('agent.panel.skippedOperation',{operation})}</p><p className="mio-secondary">{taskTargetTitle(entry.target.kind,entry.target.id,locale,targetName,target?.name)}</p>{current.length>0&&<p className="mio-secondary">{t('agent.panel.retainedValue',{value:current.map(value=>`${value.label} ${value.value}`).join(' · ')})}</p>}</div></article>;
         })}</section>}
         {answered&&approval.some(step=>step.tier==='paid')&&<p className="mio-answer-not-approval" data-testid="agent-task-answer-not-approval"><Icon name="info" />{t('agent.panel.question.notApproval')}</p>}
-        {((run.status === 'completed'&&latest)||isTaskGoalRepairActive(snapshot)) && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached} visible={visible&&!historyOpen} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
+        {((run.status === 'completed'&&latest)||isTaskGoalRepairActive(snapshot)||snapshot===state.snapshot&&isTaskGoalSafetyPaused(snapshot)) && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached} visible={visible&&!historyOpen} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
         {steps.filter(step => step.kind === 'tool' && step.toolCall?.name === 'mioon_project_rules_set').map(step => {
           const proposal = rulesProposalOf(step), pending = state.pending?.runId === run.id && (state.pending.action === 'approve' || state.pending.action === 'deny') ? state.pending : null;
           const rejected = step.status === 'denied' || step.status === 'rejected' && step.result && typeof step.result === 'object' && !Array.isArray(step.result) && step.result.error && typeof step.result.error === 'object' && !Array.isArray(step.result.error) && step.result.error.code === 'USER_REJECTED';
@@ -366,9 +435,9 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal && canInteract() && visibility.current) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal && canInteract() && visibility.current) void act('deny', {stepId: step.id});}} /></div>;
         })}
         {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
-        {run.status === 'paused' && unknown.length === 0 && <section className="mio-card" data-testid="agent-task-paused">
-          <strong>{t(run.pauseReason === 'budget' ? 'agent.panel.budgetTitle' : ['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictTitle' : 'agent.panel.pauseTitle')}</strong>
-          {['conflict', 'editing'].includes(run.pauseReason ?? '') && conflictSteps.map(step => {
+        {pause && <section className="mio-card" data-testid="agent-task-paused">
+          <strong>{pause.title}</strong>
+          {conflictPaused && conflictSteps.map(step => {
             const current = taskCurrentEntries(step.display, locale,formatOptions), planned = taskDisplayEntries(step.display, locale,formatOptions);
             return <dl key={step.id} className="mio-conflict-values" data-testid="agent-task-conflict-values">
               <div><dt>{t('agent.panel.conflictTarget')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)}</dd></div>
@@ -376,8 +445,9 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
               {planned.length > 0 && <div><dt>{t('agent.panel.originalPlan')}</dt><dd>{planned.map((entry, index) => <p key={index}>{entry.label} {entry.value}</p>)}</dd></div>}
             </dl>;
           })}
-          <p>{run.pauseReason === 'budget' ? t('agent.panel.budgetBody', { count: run.stepsUsed }) : t(['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictBody' : run.pauseReason === 'user' ? 'agent.panel.pauseBody' : agentTaskErrorKey(run.pauseReason))}</p>
-          <div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act(['conflict','editing'].includes(run.pauseReason??'')?'skip':'resume'); }}>{['conflict','editing'].includes(run.pauseReason??'')?t('agent.panel.skipContinue'):run.pauseReason === 'budget' ? t('agent.task.nextRound', { count: run.stepLimit }) : t('agent.task.resume')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>
+          <p>{pause.body}</p>
+          {pause.supplement&&snapshot===state.snapshot&&!readOnly&&<p className="mio-secondary">{t('agent.panel.pauseSupplement')}</p>}
+          <div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act(conflictPaused?'skip':'resume'); }}>{t(conflictPaused?'agent.panel.skipContinue':'agent.task.resume')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>
         </section>}
         {run.status === 'failed' && runFailure && <p className="mio-error" role="alert" data-testid="agent-task-run-failure">{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(runFailure))})}</p>}
         {run.status === 'failed' && <p className="mio-error" role="alert" data-testid="agent-task-run-error">{t(settingsChanged?'agent.panel.settingsChangedTail':'agent.panel.failedTail')}</p>}
@@ -388,10 +458,12 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   return <section className="agent-panel agent-task-panel mio-panel" data-testid="agent-task-panel" data-phase={state.phase} aria-label={t('agent.task.title')}>
     <MioUsageDetails open={visible&&!historyOpen&&usage.detailRunId!==null} runId={usage.detailRunId} view={usage.detailRunId?usage.rounds[usage.detailRunId]:undefined} onClose={closeUsage} onRetry={()=>{if(usage.detailRunId)usageReader.current?.refresh(usage.detailRunId);}} />
     <header className="agent-task-heading mio-heading"><h3 title={state.conversation?.title}>{state.conversation?.title || t('agent.panel.newConversation')}</h3><div>
+      {onMioFollowFocus && <label className="mio-follow-control" style={mioFocus ? { '--mio-follow-color': mioFollowColor(mioFocus.runId) } as React.CSSProperties : undefined}><Icon name="locate" size={12} /><span>{t('agent.follow.toggle')}</span><Switch size="sm" data-testid="mio-follow-toggle" aria-label={t('agent.follow.toggle')} checked={preferences.preferences.mioFollow} disabled={followDisabled} onCheckedChange={enabled => { void saveFollow(enabled); }} /></label>}
       <WorkbenchTooltip content={composing?t('agent.conversation.blocked.composing'):newBlocked?t(`agent.conversation.blocked.${newBlocked}`):t('agent.panel.newConversation')}><Button variant="icon" aria-label={t('agent.panel.newConversation')} data-testid="agent-task-new-conversation" disabled={!visible||composing||Boolean(newBlocked)} aria-describedby={newBlocked||composing?'mio-new-conversation-blocked':undefined} onClick={newConversation}><Icon name="plus" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.panel.history')}><Button variant="icon" aria-label={t('agent.panel.history')} ref={historyButton} data-testid="agent-task-history-open" aria-expanded={historyOpen} disabled={!visible || busy} onClick={() => { if (visibility.current) setHistoryOpen(value => !value); }}><Icon name="clock" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.task.settings')}><Button variant="icon" aria-label={t('agent.task.settings')} data-testid="agent-task-settings" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}><Icon name="settings" /></Button></WorkbenchTooltip>
     </div></header>
+    {onMioFollowFocus && (followError || followRetry !== undefined) && <div className="mio-follow-save-error"><p role="alert" data-testid="mio-follow-save-error">{t(preferences.phase === 'conflict' ? 'appearance.conflict' : 'agent.follow.saveError')}</p>{preferences.phase === 'conflict' && <Button variant="ghost" size="compact" disabled={!visible || savingFollow} onClick={() => { void reloadFollow(); }}>{t('appearance.reload')}</Button>}</div>}
     {(newBlocked||composing)&&<span id="mio-new-conversation-blocked" className="sr-only">{t(composing?'agent.conversation.blocked.composing':`agent.conversation.blocked.${newBlocked!}`)}</span>}
     <div className="mio-message-area">
     <div hidden={historyOpen} inert={historyOpen} aria-hidden={historyOpen||undefined} ref={log} className="agent-task-activity mio-log" role="log" aria-label={t('agent.task.title')} aria-live="polite" aria-relevant="additions text" data-testid="agent-task-activity" onScroll={event => { const node = event.currentTarget; follow.current = node.scrollHeight - node.clientHeight - node.scrollTop < 24; setFollowing(follow.current); }}>

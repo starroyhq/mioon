@@ -1,0 +1,151 @@
+/* Match getBoundingClientRect() coordinates even when the application applies CSS zoom. */
+.mio-follow-layer {
+  position: fixed;
+  inset: 0;
+  zoom: calc(1 / var(--mioon-ui-scale, 1));
+  z-index: 31;
+  overflow: hidden;
+  pointer-events: none;
+  --mio-follow-border: var(--mio-follow-color);
+}
+
+.mio-follow-cursor,
+.mio-follow-locator {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mio-follow-layer [data-placed="false"] { visibility: hidden; }
+
+.mio-follow-cursor {
+  width: 20px;
+  height: 21px;
+  pointer-events: none;
+  transition: transform 180ms ease-out;
+}
+
+.mio-follow-pointer {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(.5px 1.5px 3px var(--wb-mio-follow-pointer-shadow));
+}
+.mio-follow-cursor[data-side="left"] .mio-follow-pointer { transform: scaleX(-1); }
+.mio-follow-pointer-light { stop-color: color-mix(in srgb, var(--mio-follow-color) 42%, white); }
+.mio-follow-pointer-middle { stop-color: color-mix(in srgb, var(--mio-follow-color) 80%, white); }
+.mio-follow-pointer-dark { stop-color: color-mix(in srgb, var(--mio-follow-color) 78%, var(--wb-mio-follow-gradient-dark)); }
+
+.mio-follow-cursor-label {
+  position: absolute;
+  top: 21px;
+  left: 12px;
+  display: flex;
+  width: max-content;
+  max-width: 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-family: var(--wb-font-sans);
+}
+.mio-follow-cursor[data-side="left"] .mio-follow-cursor-label { left: auto; right: 12px; align-items: flex-end; }
+.mio-follow-cursor[data-label="above"] .mio-follow-cursor-label { top: auto; bottom: 24px; }
+
+.mio-follow-name {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 6px;
+  border-radius: 10px;
+  background: var(--mio-follow-color);
+  color: var(--wb-mio-follow-ink);
+  box-shadow: 0 2px 8px var(--wb-shadow-color);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mio-follow-bubble {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--mio-follow-border) 50%, transparent);
+  border-radius: 8px;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  box-shadow: 0 4px 16px var(--wb-shadow-color);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.mio-follow-locator.wb-button {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  max-width: min(240px, calc(100vw - 24px));
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--mio-follow-border);
+  border-radius: 14px;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  box-shadow: 0 4px 16px var(--wb-shadow-color);
+  font: 500 12px var(--wb-font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: none;
+  translate: none;
+}
+.mio-follow-locator[data-placed="true"] { pointer-events: auto; }
+.mio-follow-locator.wb-button:focus-visible { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
+.mio-follow-locator > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mio-follow-locator-mark {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--mio-follow-color);
+  color: var(--wb-mio-follow-ink);
+}
+.mio-follow-locator .mio-follow-locator-mark svg { width: 10px; height: 10px; stroke-width: 1.65; }
+.mio-follow-locator svg.mio-follow-locator-arrow { width: 14px; height: 14px; stroke-width: 1.65; flex: none; color: var(--wb-soft); }
+.mio-follow-locator[data-side="left"] .mio-follow-locator-arrow { transform: rotate(180deg); }
+.mio-follow-locator[data-side="top"] .mio-follow-locator-arrow { transform: rotate(-90deg); }
+.mio-follow-locator[data-side="bottom"] .mio-follow-locator-arrow { transform: rotate(90deg); }
+
+[data-mio-follow-highlight],
+[data-mio-follow-highlight][data-mio-mark] {
+  --mio-follow-border: var(--mio-follow-color);
+  --mio-follow-ring-width: 2px;
+  --mio-follow-glow-radius: 18px;
+  box-shadow: var(--mio-mark-selection, 0 0 0 0 transparent),
+    0 0 0 var(--mio-follow-ring-width) var(--mio-follow-border),
+    0 0 var(--mio-follow-glow-radius) color-mix(in srgb, var(--mio-follow-color) 35%, transparent) !important;
+  animation: none;
+  transition: none;
+}
+[data-mio-follow-highlight="editing"],
+[data-mio-follow-highlight="editing"][data-mio-mark] {
+  --mio-follow-ring-width: 1.5px;
+  --mio-follow-glow-radius: 14px;
+}
+.timeline-clip[data-mio-follow-highlight]:not(.selected) { z-index: 3; }
+
+:root.light :is(.mio-follow-layer, [data-mio-follow-highlight]) {
+  --mio-follow-border: color-mix(in srgb, var(--mio-follow-color) 60%, var(--wb-mio-follow-light-outline));
+}
+:root.light .mio-follow-bubble { border-color: var(--mio-follow-border); }
+:root.light .mio-follow-pointer {
+  filter: drop-shadow(0 0 1px var(--wb-mio-follow-light-pointer-shadow)) drop-shadow(.5px 1.5px 3px var(--wb-mio-follow-pointer-shadow));
+}
+
+.mio-follow-layer[data-reduced-motion="true"] .mio-follow-cursor { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mio-follow-cursor, [data-mio-follow-highlight] { transition: none; animation: none; }
+}

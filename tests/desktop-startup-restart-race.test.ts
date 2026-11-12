@@ -223,6 +223,11 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       }
     },
     BrowserWindow: Window, settingsWindowOptions,
+    screen: {getAllDisplays: () => []},
+    createLauncherWindowState: () => ({
+      options: () => ({width: 1000, height: 680, minWidth: 820, minHeight: 560, center: true}),
+      track() {},
+    }),
     session: { fromPartition() {
       const index = records.sessions.length;
       const value: Pick<DesktopHarnessSession, 'clears' | 'cookies' | 'clearStorageData'> & {webRequest: {onBeforeSendHeaders(fn: DesktopHarnessSession['beforeSendHeaders']): void}; cookie?: DesktopHarnessSession['cookie']; beforeSendHeaders?: DesktopHarnessSession['beforeSendHeaders']} = { cookies: { set: async (cookie: DesktopHarnessSession['cookie']) => { value.cookie = cookie; await options.cookie?.(index); } }, clears: 0,

@@ -193,3 +193,14 @@ test('frozen rate descriptors use stable settings without changing legacy projec
   assert.equal(namedTimelineDeliveryHistory(unknown, projection)!.output!.rateMessage, undefined);
   assert.equal(namedTimelineDeliveryHistory(unknown, { ...projection, rate: 'unrecognized' })!.output, null);
 });
+
+test('named delivery retains its literal name and shows the frozen 21:9 output dimensions', () => {
+  const row = { id: id(7), projectId, assetId: id(8), mode: 'timeline', purpose: 'export', status: 'succeeded', timelineRevision: 4, createdAt: '2026-10-12T06:00:00.000Z',
+    snapshot: { timeline: { ...timeline, width: 1680, height: 720 }, deliveryName: 'Wide cut', delivery: { exportSettings: settings } } };
+  const projection = { width: 2520, height: 1080, fps: 30, rate: '标准 · CRF 23' };
+  const history = namedTimelineDeliveryHistory(row, projection)!;
+  assert.equal(history.name, 'Wide cut');
+  assert.equal(history.output?.dimensions, '2520 × 1080');
+  assert.equal(history.output?.upscale, true);
+  assert.equal(namedTimelineDeliveryHistory(row, { ...projection, width: 2518 })?.output, null);
+});

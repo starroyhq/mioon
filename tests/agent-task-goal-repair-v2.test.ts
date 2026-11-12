@@ -16,8 +16,8 @@ import type {AgentConfiguration} from '../packages/business/src/agent/config.ts'
 import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 const record=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 const markers=(steps:AgentTaskStep[])=>steps.filter(step=>step.data&&record(step.data).goalRepair!==undefined);
-async function fixture(t:TestContext,protocol:GoalProtocol){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-goal-repair-')),f=await openGoalRepairFixture(root,protocol);
+async function fixture(t:TestContext,protocol:GoalProtocol,safetyStepLimit?:number){
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-goal-repair-')),f=await openGoalRepairFixture(root,protocol,undefined,safetyStepLimit);
  t.after(async()=>{await f.close();rmSync(root,{recursive:true,force:true});});return f;
 }
 for(const protocol of GOAL_PROTOCOLS){
@@ -70,8 +70,8 @@ for(const protocol of GOAL_PROTOCOLS){
   const rejected=done.steps.find(step=>step.status==='rejected');assert.equal(rejected?.error?.code,'VALIDATION_ERROR');
   assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,1);assert.match(f.bodies[1]!,/VALIDATION_ERROR/u);
  });
- test(`${protocol}: budget exhaustion and a new conversation round cannot start a repair`,async t=>{
-  const f=await fixture(t,protocol);f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:3,modes:f.runtime.policy().modes});
+ test(`${protocol}: the safety limit and a new conversation round cannot start a repair`,async t=>{
+  const f=await fixture(t,protocol,3);
   f.plan(index=>index===1?[setCountGoal(2)]:[]);const done=await f.send();assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,3);assert.equal(f.bodies.length,2);assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,0);
   const next=await f.send({conversationId:done.run.conversationId});assert.equal(next.run.status,'completed');assert.equal(next.run.stepsUsed,1);assert.equal(f.bodies.length,3);assert.equal(markers(f.runtime.journal.snapshot(next.run.id).steps).length,0);
  });

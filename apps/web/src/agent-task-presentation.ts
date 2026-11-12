@@ -284,6 +284,15 @@ export function taskStepBadge(step:AgentTaskStep,updatedGoals:ReadonlySet<string
   if(step.kind==='model'&&step.repair&&(firstRepairs===undefined||firstRepairs.has(step.id)))return 'repair';
   if(step.kind==='tool'&&updatedGoals.has(step.id))return 'updated';
 }
+/** Tool explanations are untrusted prose. Invalid legacy content uses the
+ * caller's localized fallback. */
+export function taskToolStepExplanation(step:AgentTaskStep):string|undefined {
+  if(step.kind!=='tool')return;
+  const text=safeText(step.text,40);
+  if(text&&typeof step.text==='string'&&Array.from(step.text.trim()).length<=40&&!/[{}\[\]`]/u.test(text)&&!knownOperation(text)&&
+    !/\bmioon_[a-z0-9_]+\b|\b(?:projectId|requestId|expectedRevision|_mio_step)\b/iu.test(text)&&
+    !AGENT_TASK_STEP_STATUSES.some(status=>status===text)&&(!step.toolCall?.name||!text.includes(step.toolCall.name)))return text;
+}
 export function taskStepTitle(step:AgentTaskStep,locale:Locale,firstRepairs?:ReadonlySet<string>):string {
   if(step.kind==='model')return translate(locale,step.repair&&(firstRepairs===undefined||firstRepairs.has(step.id))?'agent.panel.goal.repairTitle':'agent.display.model');
   if(step.kind==='wait')return translate(locale,'agent.display.wait');
@@ -294,12 +303,8 @@ export function taskStepTitle(step:AgentTaskStep,locale:Locale,firstRepairs?:Rea
   // A method read names the built-in method from its saved arguments (C6), never the model's explanation.
   const skill=taskSkillReadOf(step);
   if(skill)return translate(locale,'agent.skill.read',{title:translate(locale,taskSkillTitleKey(skill) as MessageKey)});
-  // Tool explanations are untrusted prose. Invalid legacy content falls back to
-  // a fixed operation label and the server's safe target projection.
-  const text=safeText(step.text,40);
-  if(text&&typeof step.text==='string'&&Array.from(step.text.trim()).length<=40&&!/[{}\[\]`]/u.test(text)&&!knownOperation(text)&&
-    !/\bmioon_[a-z0-9_]+\b|\b(?:projectId|requestId|expectedRevision|_mio_step)\b/iu.test(text)&&
-    !AGENT_TASK_STEP_STATUSES.some(status=>status===text)&&(!step.toolCall?.name||!text.includes(step.toolCall.name)))return text;
+  const text=taskToolStepExplanation(step);
+  if(text)return text;
   const operation=step.display?.operation??step.toolCall?.name??'';
   const title=taskOperationTitle(operation,locale);
   return step.display?.targets.length?`${title} · ${taskDisplayTargets(step.display,locale)}`:title;

@@ -49,6 +49,13 @@ async function seed(root: string): Promise<void> {
       store.put('versions',{...version,sha256:published.sha256});
     });
     await markProjectOutputRegistered(store,published.publication);
+    // Inserting this video makes it the project cover. Seed its cache so the
+    // independent cover refresh never tries to decode the header-only source.
+    const {writeProjectCover} = await import('../../apps/server/src/project-host/covers.ts');
+    const {mediaFingerprintToken} = await import('../../packages/business/src/project-asset-references.ts');
+    const {pillowJfifFixture} = await import('./timeline-jpeg-fixtures.ts');
+    writeProjectCover({cacheDir: store.cacheDir, source: {assetId: IDS.asset, mimeType: 'video/mp4',
+      sourceFingerprint: mediaFingerprintToken(published.reference)}, jpeg: pillowJfifFixture()});
     store.put('assets', asset(RANGE_IDS.audio, {mimeType: 'audio/wav', duration: 2.019, hasVideo: false, hasAudio: true}));
     store.put('assets', asset(RANGE_IDS.long, {duration: 1200}));
     store.put('assets', asset(RANGE_IDS.boundary, {duration: (61 - 1e-10) / 30}));

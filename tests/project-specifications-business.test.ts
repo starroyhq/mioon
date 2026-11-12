@@ -9,7 +9,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {TIMELINE_OUTPUT_PRESETS,hasRequestNotAppliedProof} from '@mioon/contracts';
+import {hasRequestNotAppliedProof} from '@mioon/contracts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
 import type { FixtureProject, FixtureTimeline } from './helpers/strict-timeline-core-types.ts';
 import {schemaObjects} from './helpers/project-database.ts';
 async function fixture(t: test.TestContext){
@@ -88,7 +89,7 @@ test('history including redo at cursor zero and an isolated cursor row blocks fo
  assert.deepEqual((await g.call('timeline.format.get',{projectId:g.project.id})).blockedReasons,['HISTORY_PRESENT']);await rejected(g,g.spec('square_720',timeline.revision),'TIMELINE_FORMAT_LOCKED');
 });
 test('every supported format initializes clip rectangles against its own output pair',async t=>{
- for(const preset of TIMELINE_OUTPUT_PRESETS){const f=await fixture(t),timeline=await f.call('timeline.format.set',f.spec(preset.id)),added=await addClip(f,timeline);
+ for(const preset of TIMELINE_FORMAT_WRITE_PRESETS){const f=await fixture(t),timeline=await f.call('timeline.format.set',f.spec(preset.id)),added=await addClip(f,timeline);
   assert.deepEqual(added.clips[0].rect,{x:0,y:0,width:preset.width,height:preset.height});
   const invalid={projectId:f.project.id,expectedRevision:added.revision,requestId:randomUUID(),clipId:added.clips[0].id,patch:{rect:{x:2,y:0,width:preset.width,height:preset.height}}};const before=f.capture();
   await assert.rejects(f.call('timeline.clip.update',invalid));assert.deepEqual(f.capture(),before);
@@ -96,7 +97,7 @@ test('every supported format initializes clip rectangles against its own output 
  }
 });
 test('submitted rectangles retain VALIDATION_ERROR against all six saved pairs without database writes or proof',async t=>{
- for(const preset of TIMELINE_OUTPUT_PRESETS){
+ for(const preset of TIMELINE_FORMAT_WRITE_PRESETS){
   const f=await fixture(t),timeline=await f.call('timeline.format.set',f.spec(preset.id)),asset=f.asset();
   const overflow=preset.width>preset.height?{x:0,y:preset.height-98,width:100,height:100}:{x:preset.width-98,y:0,width:100,height:100};
   const base={projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30};
@@ -124,7 +125,7 @@ test('submitted rectangles retain VALIDATION_ERROR against all six saved pairs w
 });
 
 test('seed uses each saved output pair without changing shot generation aspect ratios',async t=>{
- for(const preset of TIMELINE_OUTPUT_PRESETS){const f=await fixture(t);let timeline=await f.call('timeline.format.set',f.spec(preset.id));
+ for(const preset of TIMELINE_FORMAT_WRITE_PRESETS){const f=await fixture(t);let timeline=await f.call('timeline.format.set',f.spec(preset.id));
   const id=randomUUID(),asset=f.store.put('assets',{id,projectId:f.project.id,name:'Seed video',mimeType:'video/mp4',duration:1,width:720,height:1280,hasAudio:false,createdAt:new Date().toISOString(),...writeStubMediaFixture(f.root,id,'video/mp4')});
   const shot=await f.call('shot.create',{projectId:f.project.id,title:'Seed fixture'}),jobId=randomUUID(),versionId=randomUUID();
   f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),submissionCount:1,versionId});

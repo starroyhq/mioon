@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {TIMELINE_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
+import {TIMELINE_FORMAT_WRITE_PRESETS,TIMELINE_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
 export {TIMELINE_OUTPUT_PRESETS,TIMELINE_CURRENT_OUTPUT_PRESETS,TIMELINE_LEGACY_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
 // Closed timeline-output presets. Source/generation and the editing timebase
 // remain independent; this module does not normalize stored legacy records.
@@ -9,7 +9,7 @@ export const timelineFormatSchemas = Object.freeze({
   'timeline.format.get':z.object({projectId:z.string().uuid()}).strict(),
   'timeline.format.set':z.object({projectId:z.string().uuid(),expectedProjectRevision:revision,
     expectedRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),requestId:z.string().min(8).max(200),
-    presetId:z.enum(TIMELINE_OUTPUT_PRESETS.map(item=>item.id) as [string, ...string[]])}).strict(),
+    presetId:z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item=>item.id) as [string, ...string[]])}).strict(),
 });
 export const timelineFormatResponseSchema=z.object({projectId:z.string().uuid(),projectRevision:revision,
   timelineId:z.string().uuid().nullable(),timelineRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),

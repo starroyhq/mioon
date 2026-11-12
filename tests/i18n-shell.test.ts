@@ -128,12 +128,28 @@ interface TitleDocumentFixture {
 }
 interface TitleModule {
   claimProjectDocumentTitle?: (document: TitleDocumentFixture, projectName: string) => () => void;
+  claimLauncherDocumentTitle?: (document: TitleDocumentFixture) => () => void;
 }
 let documentTitleAuthority: TitleModule | undefined;
 function titleSourceModule<T>(source: string, values: Record<string, unknown>, resolve: (id: string) => unknown = id => { throw new Error(`Unexpected title source import: ${id}`); }): T {
   const module: { exports: unknown } = { exports: {} };
   Function('module', 'exports', 'require', ...Object.keys(values), stripSourceTypes(source, { loader: 'tsx' }))(module, module.exports, resolve, ...Object.values(values));
   return module.exports as T;
+}
+function readTitleEffect(file: string, hook: string, matches: (source: string) => boolean): string {
+  const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8');
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const effects: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(ast) === hook && node.arguments[0] && ts.isArrowFunction(node.arguments[0])) {
+      const source = node.arguments[0].getText(ast);
+      if (matches(source)) effects.push(source);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  assert.equal(effects.length, 1, `Select the actual ${file} title effect unambiguously`);
+  return effects[0]!;
 }
 function createDocumentTitleHarness(systemLanguages: string[]) {
   const writes: string[] = [];
@@ -167,28 +183,27 @@ function createDocumentTitleHarness(systemLanguages: string[]) {
       if (id === '../document-title.ts') return authority;
       throw new Error(`Unexpected provider import: ${id}`);
     });
-  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  const ast = ts.createSourceFile('App.tsx', app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const effects: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.expression.getText(ast) === 'useEffect' && node.arguments[0] && ts.isArrowFunction(node.arguments[0])) {
-      const source = node.arguments[0].getText(ast);
-      if (source.includes('data.project.name') && (source.includes('document.title') || source.includes('claimProjectDocumentTitle'))) effects.push(source);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(ast); assert.equal(effects.length, 1, 'Select the actual App title effect unambiguously');
+  const projectEffect = readTitleEffect('App.tsx', 'useEffect', source =>
+    source.includes('data.project.name') && (source.includes('document.title') || source.includes('claimProjectDocumentTitle')));
   const renderProvider = () => { layoutEffects = []; provider.I18nProvider({ children: null, store }); for (const effect of layoutEffects) effect(); };
   const mountProject = (project: { id: string; name: string } | null, options: { native?: boolean; currentProjectId?: string } = {}) => {
-    const { effect } = titleSourceModule<{ effect: () => (() => void) | undefined }>(`export const effect = ${effects[0]};`, {
+    const { effect } = titleSourceModule<{ effect: () => (() => void) | undefined }>(`export const effect = ${projectEffect};`, {
       document, data: { project }, currentProject: { current: options.currentProjectId ?? project?.id ?? null },
       nativeWindow: options.native === false ? null : { context: { contextId: 'project-window' } },
       claimProjectDocumentTitle: authority.claimProjectDocumentTitle,
     });
     return effect();
   };
+  const mountLauncher = () => {
+    const launcherEffect = readTitleEffect('LauncherRoot.tsx', 'useLayoutEffect', source =>
+      source.includes('document.title') || source.includes('claimLauncherDocumentTitle'));
+    const { effect } = titleSourceModule<{ effect: () => () => void }>(`export const effect = ${launcherEffect};`, {
+      document, claimLauncherDocumentTitle: authority.claimLauncherDocumentTitle,
+    });
+    return effect();
+  };
   renderProvider();
-  return { document, writes, store, renderProvider, mountProject, description: () => description };
+  return { document, writes, store, renderProvider, mountProject, mountLauncher, description: () => description };
 }
 
 test('project document title survives real language-store changes without transient generic writes and releases to the current locale', async () => {
@@ -245,4 +260,27 @@ test('stale App title cleanup cannot release a newer same-name owner or affect a
   assert.equal(second.document.title, translate('zh-Hant', 'app.title'));
   assert.equal(first.document.title, translate('ja', 'app.title'));
   first.store.dispose(); second.store.dispose();
+});
+
+test('native launcher owns the plain Mioon title across locale changes and remounts', async t => {
+  const host = createDocumentTitleHarness(['en-US']);
+  t.after(() => host.store.dispose());
+  assert.equal(host.document.title, translate('en', 'app.title'));
+  const release = host.mountLauncher();
+  assert.equal(host.document.title, 'Mioon');
+  host.writes.length = 0;
+  for (const locale of LOCALES) {
+    await host.store.setPreference(locale);
+    host.renderProvider();
+    assert.equal(host.document.title, 'Mioon');
+    assert.equal(host.document.documentElement.lang, locale);
+  }
+  const releaseCurrent = host.mountLauncher();
+  release();
+  assert.equal(host.document.title, 'Mioon');
+  assert.deepEqual(host.writes, []);
+  releaseCurrent();
+  const fallback = translate(host.store.getSnapshot().locale, 'app.title');
+  assert.equal(host.document.title, fallback);
+  assert.deepEqual(host.writes, [fallback]);
 });

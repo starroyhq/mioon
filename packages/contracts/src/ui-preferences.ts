@@ -3,18 +3,21 @@ import {z} from 'zod';
 export const uiPreferencesSchema=z.object({
   theme:z.enum(['dark','light','system']),scalePercent:z.number().int().min(90).max(125),
   density:z.enum(['standard','compact']),timecodeFormat:z.enum(['timecode','seconds']),
-  reduceMotion:z.boolean(),homeSort:z.enum(['recent','updated','name']),homeView:z.enum(['grid','list']),
+  reduceMotion:z.boolean(),homeSort:z.enum(['recent','updated','name']),homeView:z.enum(['grid','list']),mioFollow:z.boolean(),
 }).strict();
 export type UiPreferences=z.infer<typeof uiPreferencesSchema>;
 export const DEFAULT_UI_PREFERENCES:Readonly<UiPreferences>=Object.freeze({
-  theme:'dark',scalePercent:100,density:'standard',timecodeFormat:'timecode',reduceMotion:false,homeSort:'recent',homeView:'grid',
+  theme:'dark',scalePercent:100,density:'standard',timecodeFormat:'timecode',reduceMotion:false,homeSort:'recent',homeView:'grid',mioFollow:true,
 });
 export const UI_PREFERENCES_LIMITS=Object.freeze({fileBytes:1024*1024,recentProjects:8192});
 const revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 export const uiPreferencesProjectIdSchema=z.string().uuid();
 export const uiPreferencesOpenedAtSchema=z.string().datetime();
+export const uiPreferencesReadSchema=uiPreferencesSchema.extend({mioFollow:uiPreferencesSchema.shape.mioFollow.default(DEFAULT_UI_PREFERENCES.mioFollow)});
 export const uiPreferencesPutSchema=z.object({expectedRevision:revision,requestId:z.string().min(8).max(200),preferences:uiPreferencesSchema}).strict();
-export const uiPreferencesResponseSchema=z.object({revision,preferences:uiPreferencesSchema,
+// An older request must retain its original shape for exact receipt replay.
+export const uiPreferencesCompatiblePutSchema=uiPreferencesPutSchema.extend({preferences:uiPreferencesSchema.partial({mioFollow:true})});
+export const uiPreferencesResponseSchema=z.object({revision,preferences:uiPreferencesReadSchema,
   recentOpened:z.record(z.string().uuid(),z.string().datetime()).refine(value=>Object.keys(value).length<=UI_PREFERENCES_LIMITS.recentProjects),
   recoveredDefaults:z.boolean(),writable:z.boolean(),
 }).strict();

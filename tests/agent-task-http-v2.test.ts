@@ -15,7 +15,7 @@ import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {startServer} from '../apps/server/src/index.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {AGENT_CREDENTIAL_ACQUIRE,createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -73,10 +73,18 @@ async function cliSnapshot(url:string,token:string,projectId:string,runId:string
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI status timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI status failed'));});});
  assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return command==='history'?agentTaskHistoryPageSchema.parse(value.data):command==='conversation'?agentTaskConversationPageSchema.parse(value.data):agentTaskSnapshotSchema.parse(value.data);
 }
-async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas']){
+async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas'],beforeCredential?:(count:number)=>Promise<void>){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
  await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
+ if(beforeCredential){
+  const acquire=settings[AGENT_CREDENTIAL_ACQUIRE];
+  let credentials=0;
+  settings[AGENT_CREDENTIAL_ACQUIRE]=async(...args)=>{
+   await beforeCredential(++credentials);
+   return acquire(...args);
+  };
+ }
  let models=0,loadRequests=0;
  const gateway:TaskGateway=async function*(request){const body=JSON.parse(request.body) as {messages?:{role?:string;tool_call_id?:string}[];input?:{type?:string;call_id?:string}[]};
   const answered=body.messages?.some(item=>item.role==='tool'&&item.tool_call_id==='call_http')||body.input?.some(item=>item.type==='function_call_output'&&item.call_id==='call_http');
@@ -362,6 +370,9 @@ for(const via of ['http','cli'] as const)test(`X4 follow-up: a foreground approv
  const inspected=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'Manual save before approval');
 });
 test('X4 follow-up: a conflict the worker finds for a queued paid job pauses the run, HTTP resume asks for a choice and a CLI skip replans without sending the job',async t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ let enterCredential=()=>{},releaseCredential=()=>{};
+ const acquiring=new Promise<void>(resolve=>{enterCredential=resolve;}),credentialReleased=new Promise<void>(resolve=>{releaseCredential=resolve;});
  let shotId='',revision=0,models=0,enter=()=>{},release=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){
   models++;request.beforeSubmit?.();
@@ -370,22 +381,29 @@ test('X4 follow-up: a conflict the worker finds for a queued paid job pauses the
   if(models===2){enter();await released;}
   yield finalReply(models===2?'Generation queued':'Replanned after the skip');
  };
- const f=await fixture(t,'chat_completions',gateway,['video']);
+ const f=await fixture(t,'chat_completions',gateway,['video'],async count=>{
+  // Hold the first model intent after the load and submit, before dispatch.
+  if(count===3){enterCredential();await credentialReleased;}
+ });
  try{
-  // Four steps: loading (2) and the submit (2). The run then stops at the budget,
-  // so the worker first meets the queued job while the run is paused.
   const before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;
-  assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{...policy,requestId:randomUUID(),expectedRevision:policy.revision,stepLimit:4,modes:{...policy.modes,paid:'direct'},acknowledgePaid:true})).status,200);
+  assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{requestId:randomUUID(),expectedRevision:policy.revision,modes:{...policy.modes,paid:'direct'},acknowledgePaid:true})).status,200);
   const created=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Background conflict target',duration:2,aspectRatio:'9:16',prompt:'Saved original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();
   const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up background conflict',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});assert.equal(sent.status,200);const runId=agentTaskSnapshotSchema.parse(sent.data).run.id;
-  const budget=await f.settle(runId);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');
+  await Promise.race([acquiring,new Promise<never>((_,reject)=>{setTimeout(()=>reject(Error('Synthetic continuation intent was not reached')),10000).unref();})]);
+  const ready=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${runId}`)).data);
+  assert.equal(ready.steps.at(-1)?.status,'intent');
+  const pause=await f.request(`${f.prefix}/${runId}/actions`,'POST',{requestId:randomUUID(),expectedRevision:ready.run.revision,action:'pause'});
+  assert.equal(pause.status,200);assert.equal(agentTaskSnapshotSchema.parse(pause.data).run.pauseReason,'user');
   const jobs=async()=>{const listed=await f.request(projectRpcPath(f.projectId),'POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(listed.status,200);assert.ok(Array.isArray(listed.data));return listed.data.map(item=>{assert.ok(object(item));return item;});};
-  // Guard: the job was accepted and nothing sent it before the budget pause.
+  // Guard: the job was accepted and nothing sent it before the explicit pause.
   const accepted=await jobs();assert.equal(accepted.length,1);assert.equal(accepted[0]!.status,'queued');
   assert.equal((await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'manual after acceptance'}}})).status,200);
   const current=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${runId}`)).data);
   assert.equal((await f.request(`${f.prefix}/${runId}/actions`,'POST',{requestId:randomUUID(),expectedRevision:current.run.revision,action:'resume'})).status,200);
+  releaseCredential();
   await Promise.race([entered,new Promise<never>((_,reject)=>{setTimeout(()=>reject(Error('Synthetic second model request did not start')),10000).unref();})]);
+  t.mock.timers.tick(200);
   const paused=await f.settle(runId,['paused','completed','failed']);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');
   assert.equal((await jobs())[0]!.status,'queued');assert.equal(paused.steps.find(step=>step.toolCall?.name==='mioon_generation_submit')?.display?.conflict,true);
   const resumed=await f.request(`${f.prefix}/${runId}/actions`,'POST',{requestId:randomUUID(),expectedRevision:paused.run.revision,action:'resume'});assert.equal(resumed.status,409);assert.ok(object(resumed.error));assert.equal(resumed.error.code,'AGENT_TASK_SKIP_REQUIRED');
@@ -399,6 +417,6 @@ test('X4 follow-up: a conflict the worker finds for a queued paid job pauses the
   const inspected=await f.request(projectRpcPath(f.projectId),'POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'manual after acceptance');
   const lookup=await f.request(`${f.prefix}/${runId}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.equal(lookup.data.receipt.action,'skip');assert.deepEqual(lookup.data.receipt.result,{state:'completed',skippedTargets:[{kind:'shot',id:shotId}]});
   const cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,runId);assert.equal(cli.run.status,done.run.status);assert.deepEqual(cli.run.skippedTargets,done.run.skippedTargets);
- }finally{release();}
+ }finally{releaseCredential();release();}
 });
 

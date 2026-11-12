@@ -49,9 +49,11 @@ test('font reader rejects absent, symlink, nonregular, oversized and same-size c
 });
 
 test('frozen profile permits no optional metadata on old snapshots and never exposes paths',()=>{
+ const timeline={subtitles:{profileId:TIMELINE_SUBTITLE_PROFILE_ID,cues:[{}]}};
  assert.equal(validateSubtitleSnapshotProfile({timeline:{}}),false);
- assert.equal(validateSubtitleSnapshotProfile({timeline:{subtitles:{cues:[{}]}},subtitleProfile:profile}),true);
- for(const value of [undefined,{}, {...profile,fontSha256:'0'.repeat(64)},{...profile,fontPath:'/private/font'}])assert.throws(()=>validateSubtitleSnapshotProfile({timeline:{subtitles:{cues:[{}]}},subtitleProfile:value}),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ assert.equal(validateSubtitleSnapshotProfile({timeline,subtitleProfile:profile}),true);
+ for(const value of [undefined,{}, {...profile,fontSha256:'0'.repeat(64)},{...profile,fontPath:'/private/font'}])assert.throws(()=>validateSubtitleSnapshotProfile({timeline,subtitleProfile:value}),{code:'INVALID_TIMELINE_SNAPSHOT'});
+ assert.throws(()=>validateSubtitleSnapshotProfile({timeline:{subtitles:{cues:[{}]}},subtitleProfile:profile}),{code:'INVALID_TIMELINE_SNAPSHOT'});
  assert.throws(()=>validateSubtitleSnapshotProfile({timeline:{},subtitleProfile:profile}),{code:'INVALID_TIMELINE_SNAPSHOT'});
 });
 

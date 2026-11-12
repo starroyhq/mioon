@@ -8,6 +8,10 @@ import type { ResolvedAppearance } from './ui-appearance.ts';
 import { createUiPreferencesSync } from './ui-preferences-sync.ts';
 
 type Phase = 'loading' | 'ready' | 'saving' | 'error' | 'conflict';
+interface PreferenceWrite {
+  readonly input: UiPreferencesPut;
+  readonly followOnly: boolean;
+}
 interface UiPreferencesContextValue {
   readonly preferences: Readonly<UiPreferences>;
   readonly resolvedTheme: ResolvedAppearance;
@@ -18,6 +22,8 @@ interface UiPreferencesContextValue {
   readonly recentError: boolean;
   readonly edit: (patch: Partial<UiPreferences>) => void;
   readonly save: () => Promise<boolean>;
+  readonly setMioFollow: (enabled: boolean) => Promise<boolean>;
+  readonly mioFollowRetry: boolean | undefined;
   readonly discard: () => void;
   readonly reload: () => Promise<boolean>;
   readonly markOpened: (projectId: string) => Promise<void>;
@@ -25,7 +31,7 @@ interface UiPreferencesContextValue {
 }
 const unavailable = async () => false;
 const Context = createContext<UiPreferencesContextValue>({ preferences: DEFAULT_UI_PREFERENCES, resolvedTheme: 'dark', saved: null, phase: 'loading', dirty: false, pending: false, recentError: false,
-  edit: () => {}, save: unavailable, discard: () => {}, reload: unavailable, markOpened: async () => {}, pauseObservation: () => {} });
+  edit: () => {}, save: unavailable, setMioFollow: unavailable, mioFollowRetry: undefined, discard: () => {}, reload: unavailable, markOpened: async () => {}, pauseObservation: () => {} });
 const same = (left: Readonly<UiPreferences>, right: Readonly<UiPreferences>) => Object.keys(DEFAULT_UI_PREFERENCES).every(key => left[key as keyof UiPreferences] === right[key as keyof UiPreferences]);
 
 /** Global display preferences are separate from project view state and language.
@@ -39,7 +45,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
   const [pending, setPending] = useState(false);
   const [recentError, setRecentError] = useState(false);
   const live = useRef(true), serial = useRef(0), busy = useRef(false), reading = useRef(false), editVersion = useRef(0);
-  const frozen = useRef<UiPreferencesPut | null>(null);
+  const frozen = useRef<PreferenceWrite | null>(null);
   const sync = useRef<ReturnType<typeof createUiPreferencesSync> | null>(null);
   const observationPaused = useRef(false);
   const current = useRef({ saved, preferences }); current.current = { saved, preferences };
@@ -59,7 +65,12 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
       const next = await client.get();
       if (!live.current || request !== serial.current) return false;
       const accepted = publish(next);
-      if (accepted && !hadDraft && version === editVersion.current) { current.current.preferences = next.preferences; setPreferences(next.preferences); }
+      if (accepted) {
+        const applied = hadDraft || version !== editVersion.current
+          ? { ...current.current.preferences, mioFollow: next.preferences.mioFollow }
+          : next.preferences;
+        current.current.preferences = applied; setPreferences(applied);
+      }
       frozen.current = null; setPending(false); setPhase('ready'); return true;
     } catch {
       if (live.current && request === serial.current) setPhase('error');
@@ -114,22 +125,47 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     editVersion.current++; current.current.preferences = next.data; setPreferences(next.data);
   }, []);
 
-  const save = useCallback(async () => {
-    const value = current.current;
-    if (busy.current || reading.current || !value.saved?.writable) return false;
-    const input = frozen.current ?? { expectedRevision: value.saved.revision, requestId: crypto.randomUUID(), preferences: { ...value.preferences } };
-    if (!frozen.current && same(input.preferences, value.saved.preferences)) return true;
-    frozen.current = input; busy.current = true; setPending(true); setPhase('saving');
+  const write = useCallback(async (mutation: PreferenceWrite) => {
+    frozen.current = mutation; busy.current = true; setPending(true); setPhase('saving');
     const request = ++serial.current;
     try {
-      const next = await client.put(input);
+      const next = await client.put(mutation.input);
       if (!live.current || request !== serial.current) return false;
-      frozen.current = null; setPending(false); if (publish(next)) { current.current.preferences = next.preferences; setPreferences(next.preferences); sync.current?.announce(next.revision); } setPhase('ready'); return true;
+      frozen.current = null; setPending(false);
+      if (publish(next)) {
+        const applied = mutation.followOnly
+          ? { ...current.current.preferences, mioFollow: next.preferences.mioFollow }
+          : next.preferences;
+        current.current.preferences = applied; setPreferences(applied);
+        sync.current?.announce(next.revision);
+      }
+      setPhase('ready'); return true;
     } catch (error) {
       if (live.current && request === serial.current) setPhase(error instanceof UiPreferencesRequestError && error.code.includes('CONFLICT') ? 'conflict' : 'error');
       return false;
     } finally { busy.current = false; sync.current?.drain(); }
   }, [client]);
+
+  const save = useCallback(async () => {
+    const value = current.current;
+    if (busy.current || reading.current || !value.saved?.writable) return false;
+    if (frozen.current) return write(frozen.current);
+    if (same(value.preferences, value.saved.preferences)) return true;
+    return write({ input: { expectedRevision: value.saved.revision, requestId: crypto.randomUUID(), preferences: { ...value.preferences } }, followOnly: false });
+  }, [write]);
+
+  const setMioFollow = useCallback(async (enabled: boolean) => {
+    const saved = current.current.saved;
+    if (!live.current || busy.current || reading.current || !saved?.writable) return false;
+    const pendingWrite = frozen.current;
+    if (pendingWrite) return pendingWrite.followOnly && pendingWrite.input.preferences.mioFollow === enabled
+      ? write(pendingWrite)
+      : false;
+    if (saved.preferences.mioFollow === enabled) return true;
+    // A follow toggle starts from the saved snapshot. An appearance draft
+    // stays in the editor and needs its own explicit save.
+    return write({ input: { expectedRevision: saved.revision, requestId: crypto.randomUUID(), preferences: { ...saved.preferences, mioFollow: enabled } }, followOnly: true });
+  }, [write]);
 
   const discard = useCallback(() => {
     if (busy.current || frozen.current || !current.current.saved) return;
@@ -160,7 +196,9 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     return () => { if (target.__mioonUiPreferences === owner) delete target.__mioonUiPreferences; };
   }, [reload, markOpened]);
 
-  return <Context.Provider value={{ preferences, resolvedTheme, saved, phase, dirty, pending, recentError, edit, save, discard, reload, markOpened, pauseObservation }}>{children}</Context.Provider>;
+  const mioFollowRetry = phase === 'error' && frozen.current?.followOnly
+    ? frozen.current.input.preferences.mioFollow : undefined;
+  return <Context.Provider value={{ preferences, resolvedTheme, saved, phase, dirty, pending, recentError, edit, save, setMioFollow, mioFollowRetry, discard, reload, markOpened, pauseObservation }}>{children}</Context.Provider>;
 }
 
 export const useUiPreferences = (): UiPreferencesContextValue => useContext(Context);

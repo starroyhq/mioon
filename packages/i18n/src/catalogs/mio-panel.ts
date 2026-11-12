@@ -1,6 +1,12 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const mioPanelMessages = {
+  "agent.follow.toggle": {"zh-Hans": "跟随 Mio", "zh-Hant": "跟隨 Mio", "en": "Follow Mio", "ja": "Mio を追う"},
+  "agent.follow.canvas": {"zh-Hans": "在画布中查看", "zh-Hant": "在畫布中查看", "en": "View on canvas", "ja": "キャンバスで表示"},
+  "agent.follow.timeline": {"zh-Hans": "在时间线中查看", "zh-Hant": "在時間軸中查看", "en": "View on timeline", "ja": "タイムラインで表示"},
+  "agent.follow.locator": {"zh-Hans": "Mio 在 {target}", "zh-Hant": "Mio 在 {target}", "en": "Mio is at {target}", "ja": "Mio は {target} にいます"},
+  "agent.follow.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
+  "agent.follow.saveError": {"zh-Hans": "跟随设置未保存，请重试。", "zh-Hant": "跟隨設定未儲存，請重試。", "en": "The follow setting could not be saved. Try again.", "ja": "追跡設定を保存できませんでした。もう一度お試しください。"},
   "agent.panel.goal.title": {"zh-Hans": "整理要求", "zh-Hant": "整理要求", "en": "Set requirements", "ja": "要件を整理"},
   "agent.panel.goal.titleCount": {"zh-Hans": "整理要求 · {count} 项", "zh-Hant": "整理要求 · {count} 項", "en": "Set requirements · {count}", "ja": "要件を整理 · {count} 件"},
   "agent.panel.goal.repairTitle": {"zh-Hans": "按未达成的要求补做", "zh-Hant": "按未達成的要求補做", "en": "Repair unmet requirements", "ja": "未達成の要件を補完"},
@@ -229,17 +235,41 @@ export const mioPanelMessages = {
     "en": "Change in Settings…",
     "ja": "設定で変更…"
   },
-  "agent.panel.budgetTitle": {
-    "zh-Hans": "已暂停 · 达到每轮步数上限",
-    "zh-Hant": "已暫停 · 達到每輪步數上限",
-    "en": "Paused · Step limit reached",
-    "ja": "一時停止 · ステップ上限に到達"
+  "agent.panel.stalledTitle": {
+    "zh-Hans": "Mio 好像卡住了",
+    "zh-Hant": "Mio 好像卡住了",
+    "en": "Mio seems to be stuck",
+    "ja": "Mio の処理が進んでいません"
   },
-  "agent.panel.budgetBody": {
-    "zh-Hans": "这一轮已执行 {count} 步，检查变化记录后可以继续执行下一轮",
-    "zh-Hant": "本輪已執行 {count} 步，檢查變化紀錄後可以繼續執行下一輪",
-    "en": "This round has used {count} steps. Review the changes before continuing with another round",
-    "ja": "このラウンドは {count} ステップ実行しました。変更を確認してから次のラウンドを続行できます"
+  "agent.panel.repeatedFailureBody": {
+    "zh-Hans": "连续三次未能完成「{operation}」",
+    "zh-Hant": "連續三次未能完成「{operation}」",
+    "en": "Three consecutive attempts to complete “{operation}” were unsuccessful",
+    "ja": "「{operation}」を 3 回続けて完了できませんでした"
+  },
+  "agent.panel.noToolProgressBody": {
+    "zh-Hans": "连续多次请求模型后，仍未完成新的操作",
+    "zh-Hant": "連續多次請求模型後，仍未完成新的操作",
+    "en": "Several model calls in a row passed without completing a new operation",
+    "ja": "モデルを繰り返し呼び出しましたが、新しい操作を完了できませんでした"
+  },
+  "agent.panel.neutralPauseTitle": {
+    "zh-Hans": "已暂停",
+    "zh-Hant": "已暫停",
+    "en": "Paused",
+    "ja": "一時停止"
+  },
+  "agent.panel.safetyPauseBody": {
+    "zh-Hans": "这次执行已达到安全上限，已完成的变化会保留",
+    "zh-Hant": "這次執行已達到安全上限，已完成的變更會保留",
+    "en": "This run reached its safety limit. Completed changes are retained",
+    "ja": "この実行は安全のため一時停止しました。完了した変更は保持されます"
+  },
+  "agent.panel.pauseSupplement": {
+    "zh-Hans": "可以直接继续，也可以在输入框先补充说明",
+    "zh-Hant": "可以直接繼續，也可以在輸入框先補充說明",
+    "en": "You can continue now or send Mio a note first",
+    "ja": "そのまま続行するか、入力欄から先に補足を送信できます"
   },
   "agent.panel.pauseTitle": {
     "zh-Hans": "已暂停 · 你暂停了这一轮",

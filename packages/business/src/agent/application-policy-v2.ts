@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
-import {agentTaskPolicySchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskPolicy} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskPolicySchema, agentTaskPolicyUpdateSchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskPolicy, AgentTaskPolicyUpdate} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {agentTaskFailure} from './task-runtime-v2.ts';
 
@@ -12,7 +12,8 @@ export function createApplicationPolicy(store: AgentPolicyStore) {
     const found = store.readRequest(requestId);
     return found ? agentTaskPolicySchema.parse(found.policy) : null;
   };
-  function updatePolicy(input: AgentTaskPolicy, requestId?: string): AgentTaskPolicy {
+  function updatePolicy(input: AgentTaskPolicyUpdate, requestId?: string): AgentTaskPolicy {
+    // Old receipts bind the exact input, including a legacy stepLimit when sent.
     const digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const replay = (): AgentTaskPolicy | null => {
       const saved = requestId ? store.readRequest(requestId) : null;
@@ -22,11 +23,11 @@ export function createApplicationPolicy(store: AgentPolicyStore) {
     };
     const previous = replay();
     if (previous) return previous;
-    const next = agentTaskPolicySchema.parse(input), old = policy();
-    if (next.revision !== old.revision) throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
-    if (next.revision >= Number.MAX_SAFE_INTEGER) throw agentTaskFailure('AGENT_TASK_REVISION_LIMIT');
-    next.revision++;
-    try { store.write(next, requestId ? {requestId, digest} : undefined, input.revision); }
+    const update = agentTaskPolicyUpdateSchema.parse(input), old = policy();
+    if (update.revision !== old.revision) throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
+    if (update.revision >= Number.MAX_SAFE_INTEGER) throw agentTaskFailure('AGENT_TASK_REVISION_LIMIT');
+    const next: AgentTaskPolicy = {revision: update.revision + 1, stepLimit: old.stepLimit, modes: update.modes};
+    try { store.write(next, requestId ? {requestId, digest} : undefined, update.revision); }
     catch (error) {
       if ((error as {code?: unknown})?.code !== 'AGENT_POLICY_REQUEST_EXISTS') throw error;
       const saved = replay();

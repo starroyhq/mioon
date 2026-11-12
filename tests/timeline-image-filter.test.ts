@@ -152,6 +152,20 @@ test('owned static layer derives once, binds exact look identity and decodes byt
  }finally{assert.equal(stage.cleanup(),true);}
  assert.equal((await readdir(f.root)).some(name=>name.startsWith('.timeline-render-')),false);
 });
+test('the 21:9 1080 static layer fits its output budget without relaxing source admission',{timeout:30000},async t=>{
+ const f=await fixture(t),{input}=await layerInput(f);
+ const wide={...input,width:2520,height:1080};
+ const stage=await prepareTimelineImageLayers([wide],path.join(f.root,'wide.mp4'),{},layerRuntime);
+ try{
+  assert.equal(stage.totalPixels,2520*1080);
+  const bytes=await readFile(stage.path(input.clipId)!);
+  assert.deepEqual([bytes.readUInt32BE(16),bytes.readUInt32BE(20)],[2520,1080]);
+  stage.verifyBytes();
+ }finally{assert.equal(stage.cleanup(),true);}
+ for(const invalid of [{...wide,width:2522},{...wide,sourceWidth:2520,sourceHeight:1080}]){
+  await assert.rejects(prepareTimelineImageLayers([invalid],path.join(f.root,'invalid.mp4'),{},layerRuntime),{code:'TIMELINE_COLOUR_RESOURCE_CHANGED'});
+ }
+});
 test('owned layer rejects hash tampering and preserves unknown replacement files',{timeout:30000},async t=>{
  const f=await fixture(t),{input}=await layerInput(f),stage=await prepareTimelineImageLayers([input],path.join(f.root,'result.mp4'),{},layerRuntime),file=stage.path(input.clipId),original=await readFile(((file) as unknown as Parameters<NonNullable<typeof readFile>>[0]));
  await writeFile(((file) as unknown as Parameters<typeof writeFile>[0]),Buffer.alloc(original.length,32));assert.throws(()=>stage.verifyBytes(),{code:'TIMELINE_COLOUR_RESOURCE_CHANGED'});await writeFile(((file) as unknown as Parameters<typeof writeFile>[0]),original);stage.verifyBytes();
@@ -160,7 +174,7 @@ test('owned layer rejects hash tampering and preserves unknown replacement files
 });
 test('layer admission binds source hash, look identity and source/output budgets before derivation',async t=>{
  const f=await fixture(t),{input}=await layerInput(f);let children=0;const runtime={...layerRuntime,run:async()=>{children++;throw Error('unexpected child');}};
- for(const patch of ([{assetSha256:'0'.repeat(64)},{sourceWidth:1920,sourceHeight:1081},{width:1920,height:1081},{lookCacheKey:null},{creativeLutPath:undefined},{sourcePath:'relative.png'}] as const))await assert.rejects(prepareTimelineImageLayers([{...input,...patch}],path.join(f.root,'out.mp4'),{},runtime));
+ for(const patch of ([{assetSha256:'0'.repeat(64)},{sourceWidth:1920,sourceHeight:1081},{width:2520,height:1081},{lookCacheKey:null},{creativeLutPath:undefined},{sourcePath:'relative.png'}] as const))await assert.rejects(prepareTimelineImageLayers([{...input,...patch}],path.join(f.root,'out.mp4'),{},runtime));
  await assert.rejects(prepareTimelineImageLayers(Array.from({length:101},(_,i)=>({...input,clipId:`clip-${i}`})),path.join(f.root,'out.mp4'),{},runtime),{code:'TIMELINE_COLOUR_LUT_BUDGET'});
  assert.equal(TIMELINE_IMAGE_LAYER_LIMITS.sourcePixels,2073600);assert.equal(children,0);assert.equal((await readdir(f.root)).some(name=>name.startsWith('.timeline-render-')),false);
 });

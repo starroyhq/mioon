@@ -3,7 +3,7 @@ import {open,lstat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,isTimelineSubtitleSnapshotProfile} from '@mioon/contracts';
 import {throwIfMediaAborted} from './media-processes.ts';
 import {checkMediaEffect,isMediaEffectRestriction} from './media-runtime.ts';
 import type {Stats} from 'node:fs';
@@ -27,14 +27,8 @@ export function initializeSubtitleResources(directory: unknown): void{
  resourceDirectory=path.resolve(directory);initialized=true;
 }
 export function validateSubtitleSnapshotProfile(snapshot: {timeline?: {subtitles?: {cues?: unknown[]}};subtitleProfile?: unknown}|null|undefined): boolean{
- const cues=snapshot?.timeline?.subtitles?.cues;
- const nonempty=Array.isArray(cues)&&cues.length>0,profile=snapshot?.subtitleProfile;
- if(nonempty){
-  const profileRecord=profile as {profileId?: unknown;fontSha256?: unknown}|null|undefined;
-  if(!profileRecord||typeof profileRecord!=='object'||Array.isArray(profileRecord)||Object.keys(profileRecord).length!==2||profileRecord.profileId!==TIMELINE_SUBTITLE_PROFILE_ID||profileRecord.fontSha256!==TIMELINE_SUBTITLE_FONT_SHA256)
-   throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle rendering profile is invalid.');
- }else if(snapshot&&Object.hasOwn(snapshot,'subtitleProfile'))throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle rendering profile is invalid.');
- return nonempty;
+ if(!isTimelineSubtitleSnapshotProfile(snapshot))throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle rendering profile is invalid.');
+ return Array.isArray(snapshot?.timeline?.subtitles?.cues)&&snapshot.timeline.subtitles.cues.length>0;
 }
 
 // Bounded regular-file hashing; there is no whole-font stdout or ASAR read.

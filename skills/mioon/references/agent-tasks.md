@@ -15,7 +15,7 @@ node apps/cli/src/index.ts agent task send --help
 
 `agent doctor` contacts the local service and reads safe configuration, credential availability, authorization scopes and structural tool-schema checks. It does not call a model. A valid catalog is not proof that the selected provider accepts its schema.
 
-`agent diagnose --live` explicitly sends a diagnostic task under the normal gateway, authorization, journal and step budget. Profiles are `text`, `read_only` and `catalog`; only catalog accepts a host-selected `toolNames` subset, and catalog probes never execute returned tools. Diagnostic profiles persist on the Run. Shrinking the catalog or succeeding without tools is not acceptance of ordinary full-catalog tasks. Ordinary `agent task send` cannot select a diagnostic profile.
+`agent diagnose --live` explicitly sends a diagnostic task under the normal gateway, authorization, journal and execution safeguards. Profiles are `text`, `read_only` and `catalog`; only catalog accepts a host-selected `toolNames` subset, and catalog probes never execute returned tools. Diagnostic profiles persist on the Run. Shrinking the catalog or succeeding without tools is not acceptance of ordinary full-catalog tasks. Ordinary `agent task send` cannot select a diagnostic profile.
 
 ## Send, observe and recover
 
@@ -39,7 +39,7 @@ For lost send/upload/policy/control responses, retain the exact request and use 
 
 Use `pause`, `resume`, `stop`, `approve`, `deny`, `undo-change`, `undo-all` and `resolve-unknown` only within the user's delegated task. Every control requires its own retained request ID and the current Run revision. Approval also identifies the exact pending step; it cannot approve different parameters or a changed target. Inspect its tier, arguments and cost evidence first. Unknown model results and generation submissions have different recovery paths; do not resubmit generation as recovery.
 
-The default round is 30 steps. Continuing adds a round to the same Run; it does not replay completed steps. Watch never automatically approves, extends budgets, resumes or disposes of unknown results. Undo retains irreversible products and fee evidence and must stop at external edits rather than overwrite them.
+A Run pauses after three consecutive failures or refusals for the same tool and arguments, ten consecutive model requests without a successful tool call, or 200 counted steps in an execution window. Explicitly continuing starts a fresh window in the same Run and preserves completed steps. Watch never automatically approves, resumes or disposes of unknown results. Undo retains irreversible products and fee evidence and must stop at external edits rather than overwrite them.
 
 ## Configuration and credentials
 

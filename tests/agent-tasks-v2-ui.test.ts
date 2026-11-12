@@ -29,7 +29,7 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
   const client: AgentTaskClient = {
     history: async()=>({conversations:[],nextCursor:null}), conversation:async(_,id)=>{const run={...snapshot().run,id,conversationId:id};return{conversation:conversation(run),runs:[run],nextCursor:null};}, list: async () => project(), read: async () => snapshot(), send: async (_, input) => { sent.push(input); return snapshot('running'); }, action: async (_, input) => { actions.push(input); return snapshot('paused', 2); }, lookup: async () => ({ found: false }), authorize: async () => {},
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
-    policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), conversationPolicy: async (projectId, conversationId) => ({policy:{projectId,conversationId,revision:0,override:null,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), setConversationPolicy: async (projectId, conversationId, input) => ({policy:{projectId,conversationId,revision:input.expectedRevision+1,override:input.modes,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(input.modes??DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
+    policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:{...DEFAULT_AGENT_TASK_POLICY,revision:value.expectedRevision+1,modes:value.modes},readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), conversationPolicy: async (projectId, conversationId) => ({policy:{projectId,conversationId,revision:0,override:null,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), setConversationPolicy: async (projectId, conversationId, input) => ({policy:{projectId,conversationId,revision:input.expectedRevision+1,override:input.modes,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(input.modes??DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
   const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied,isAdmissionAllowed:options.isAdmissionAllowed,...(options.getLocale?{getLocale:options.getLocale}:{}) }); return { session, receipts, client, sent, actions, streams };
 }
@@ -538,14 +538,18 @@ test('a saved conversation changes its modes under the read revision and never r
   failNext=true;const before=puts.length;assert.equal(await f.session.choosePolicy({...STEP}),false);
   assert.equal(puts.length,before+1,'a lost change is never resent');assert.equal(f.session.getState().error,'NETWORK');assert.equal(f.session.getState().policy.phase,'ready');assert.equal(f.session.getState().policy.value?.revision,3,'the saved modes are read back');
 });
-test('making the modes global keeps the step limit, acknowledges paid direct work and recovers a lost acknowledgement by receipt',async t=>{
+test('making the modes global omits the legacy limit, acknowledges paid direct work and recovers a lost acknowledgement by receipt',async t=>{
   const saved={...snapshot('completed'),run:{...snapshot('completed').run,conversationId:runId}},saves:unknown[]=[];let lost=false;
   const f=fixture({list:async()=>({...project(),runs:[saved.run]}),read:async()=>saved,conversationPolicy:async(_,id)=>({policy:conversationPolicy(id,1,FULL),readOnly:false}),
-    savePolicy:async value=>{saves.push(value);if(lost)throw Object.assign(new Error('lost'),{code:'NETWORK'});return{policy:{revision:value.revision+1,stepLimit:value.stepLimit,modes:value.modes},readOnly:false};},
+    savePolicy:async value=>{saves.push(value);if(lost)throw Object.assign(new Error('lost'),{code:'NETWORK'});return{policy:{revision:value.expectedRevision+1,stepLimit:30,modes:value.modes},readOnly:false};},
     lookupPolicy:async()=>({found:true,policy:{revision:2,stepLimit:30,modes:{...STEP}},readOnly:false})});
   t.after(()=>f.session.dispose());await f.session.load();await flush();
-  assert.equal(await f.session.setGlobalPolicy({...FULL}),true);assert.equal((saves[0] as {acknowledgePaid?:boolean}).acknowledgePaid,true);assert.equal((saves[0] as {stepLimit:number}).stepLimit,30);assert.deepEqual(f.session.getState().project?.policy.modes,FULL);
-  lost=true;assert.equal(await f.session.setGlobalPolicy({...STEP}),true);assert.equal(saves.length,2,'the receipt answers a lost acknowledgement');assert.deepEqual(f.session.getState().project?.policy.modes,STEP);
+  assert.equal(await f.session.setGlobalPolicy({...FULL}),true);
+  assert.deepEqual(saves[0],{requestId:(saves[0] as {requestId:string}).requestId,expectedRevision:0,modes:FULL,acknowledgePaid:true});
+  assert.deepEqual(f.session.getState().project?.policy,{revision:1,stepLimit:30,modes:FULL});
+  lost=true;assert.equal(await f.session.setGlobalPolicy({...STEP}),true);assert.equal(saves.length,2,'the receipt answers a lost acknowledgement');
+  assert.deepEqual(saves[1],{requestId:(saves[1] as {requestId:string}).requestId,expectedRevision:1,modes:STEP});
+  assert.deepEqual(f.session.getState().project?.policy,{revision:2,stepLimit:30,modes:STEP});
 });
 test('the composer menu confirms before paid work becomes direct, and the current preset or global modes change nothing',()=>{
   const DEFAULT={...DEFAULT_AGENT_TASK_POLICY.modes},custom={...FULL,paid:'confirm' as const},paidDirect={...STEP,paid:'direct' as const};

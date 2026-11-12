@@ -44,7 +44,7 @@ function fixture(t:TestContext,initial:AgentTaskSnapshot[]=[],patch:Partial<Agen
     authorize:async()=>{authorized=true;},
     stream:async(_,__,___,signal)=>{if(signal.aborted)return;await new Promise<void>(resolve=>signal.addEventListener('abort',()=>resolve(),{once:true}));},
     policy:async()=>({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}),
-    savePolicy:async input=>({policy:{revision:input.revision,stepLimit:input.stepLimit,modes:input.modes},readOnly:false}),
+    savePolicy:async input=>({policy:{...DEFAULT_AGENT_TASK_POLICY,revision:input.expectedRevision+1,modes:input.modes},readOnly:false}),
     lookupPolicy:async()=>({found:false,readOnly:false}),
     conversationPolicy: async (projectId, conversationId) => ({policy:{projectId,conversationId,revision:0,override:null,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), setConversationPolicy: async (projectId, conversationId, input) => ({policy:{projectId,conversationId,revision:input.expectedRevision+1,override:input.modes,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(input.modes??DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}),
   };

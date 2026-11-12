@@ -239,7 +239,6 @@ export function createMioRecords(store: ProjectStore) {
   }
   function createStep(input: MioCreateStep): MioStep { return write(() => {
     const owner = run(input.runId);
-    if (owner.stepsUsed >= owner.budget) fail('AGENT_TASK_BUDGET_EXHAUSTED');
     if (input.kind === 'tool') {
       if (input.sourceEntryId === undefined || input.sourceCallIndex === undefined) fail('AGENT_TASK_INVALID');
       const source = entry(input.sourceEntryId);
@@ -247,14 +246,16 @@ export function createMioRecords(store: ProjectStore) {
       sourceCall(source.id, input.sourceCallIndex);
       if (db.prepare("SELECT 1 FROM mio_steps WHERE runId=? AND kind='tool' AND sourceEntryId=? AND sourceCallIndex=?").get(owner.id, source.id, input.sourceCallIndex)) fail('AGENT_TASK_REQUEST_CONFLICT');
     } else if (input.sourceEntryId !== undefined || input.sourceCallIndex !== undefined) fail('AGENT_TASK_INVALID');
+    const position = Number(db.prepare('SELECT coalesce(max(position),0) AS value FROM mio_steps WHERE runId=?').get(owner.id)!.value) + 1;
+    if (!Number.isSafeInteger(position) || input.kind !== 'wait' && owner.stepsUsed === Number.MAX_SAFE_INTEGER) fail('AGENT_TASK_BUDGET_LIMIT');
     const value = validated(mioStepSchema, {
-      id: input.id, projectId, runId: owner.id, position: owner.stepsUsed + 1, kind: input.kind, status: 'intent', tier: input.tier ?? null,
+      id: input.id, projectId, runId: owner.id, position, kind: input.kind, status: 'intent', tier: input.tier ?? null,
       createdAt: input.createdAt, updatedAt: input.createdAt, currentRequestId: null, sourceEntryId: input.sourceEntryId ?? null,
       sourceCallIndex: input.sourceCallIndex ?? null, resultEntryId: null, partialText: null, data: input.data ?? {},
     });
     db.prepare('INSERT INTO mio_steps(id,runId,projectId,position,kind,status,tier,createdAt,updatedAt,currentRequestId,sourceEntryId,sourceCallIndex,resultEntryId,partialText,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
       value.id, value.runId, projectId, value.position, value.kind, value.status, value.tier, value.createdAt, value.updatedAt, null, value.sourceEntryId, value.sourceCallIndex, null, null, encoded(value.data));
-    db.prepare('UPDATE mio_runs SET stepsUsed=stepsUsed+1 WHERE id=?').run(owner.id);
+    if (input.kind !== 'wait') db.prepare('UPDATE mio_runs SET stepsUsed=stepsUsed+1,budget=max(budget,stepsUsed+1) WHERE id=?').run(owner.id);
     touch(owner.id, value.createdAt);
     emit(owner.id, value.createdAt); return value;
   }); }

@@ -222,6 +222,79 @@ test('saving a light draft retains the same CAS request after an unknown result 
   assert.equal((f.state.saved)!.preferences.theme, 'light'); assert.equal(f.state.dirty, false); assert.equal(f.state.pending, false);
 });
 
+test('Mio Follow starts on and saves without submitting the appearance draft', async () => {
+  const f = fixture();
+  await f.ready();
+  assert.equal(f.state.preferences.mioFollow, true);
+  assert.equal(await f.state.setMioFollow(true), true);
+  assert.equal(f.writes.length, 0);
+
+  f.state.edit({ theme: 'light', density: 'compact' }); f.render();
+  assert.equal(await f.state.setMioFollow(false), true); f.render();
+  assert.equal(f.writes.length, 1);
+  assert.deepEqual(f.writes[0].preferences, { ...contracts.DEFAULT_UI_PREFERENCES, mioFollow: false });
+  assert.equal(f.writes[0].expectedRevision, 4);
+  assert.equal(f.state.saved?.preferences.theme, 'dark');
+  assert.equal(f.state.preferences.theme, 'light');
+  assert.equal(f.state.preferences.density, 'compact');
+  assert.equal(f.state.preferences.mioFollow, false);
+  assert.equal(f.state.dirty, true);
+
+  assert.equal(await f.state.save(), true); f.render();
+  assert.equal(f.writes[1].expectedRevision, 5);
+  assert.equal(f.writes[1].preferences.mioFollow, false);
+  assert.equal(f.state.saved?.preferences.theme, 'light');
+  assert.equal(f.state.dirty, false);
+});
+
+test('a Mio Follow retry keeps the same request and an uncertain follow save cannot submit the appearance draft', async () => {
+  const failed = deferred();
+  const f = fixture({ write: (input, count) => count === 1 ? failed.promise : { ...snapshot(), revision: input.expectedRevision + 1, preferences: copy(input.preferences) } });
+  await f.ready();
+  f.state.edit({ density: 'compact' }); f.render();
+  const switching = f.state.setMioFollow(false); f.render();
+  assert.equal(f.state.pending, true);
+  failed.reject!(new Error('unknown local acknowledgement'));
+  assert.equal(await switching, false); f.render();
+  assert.equal(f.state.phase, 'error');
+  assert.equal(f.state.mioFollowRetry, false);
+  assert.equal(f.state.preferences.mioFollow, true);
+  assert.equal(await f.state.setMioFollow(true), false);
+  assert.equal(f.writes.length, 1);
+
+  assert.equal(await f.state.setMioFollow(false), true); f.render();
+  assert.deepEqual(f.writes[1], f.writes[0]);
+  assert.equal(f.state.preferences.mioFollow, false);
+  assert.equal(f.state.preferences.density, 'compact');
+  assert.equal(f.state.saved?.preferences.density, 'standard');
+  assert.equal(f.state.pending, false);
+  assert.equal(f.state.mioFollowRetry, undefined);
+  assert.equal(f.state.dirty, true);
+});
+
+test('a Mio Follow conflict can reload the authoritative switch while preserving the appearance draft', async () => {
+  const f = fixture({
+    read: count => count === 1 ? snapshot() : snapshot('dark', {
+      revision: 5, preferences: { ...contracts.DEFAULT_UI_PREFERENCES, mioFollow: false },
+    }),
+    write: () => { throw new UiPreferencesRequestError('UI_PREFERENCES_CONFLICT'); },
+  });
+  await f.ready();
+  f.state.edit({ theme: 'light' }); f.render();
+  assert.equal(await f.state.setMioFollow(false), false); f.render();
+  assert.equal(f.state.phase, 'conflict');
+  assert.equal(f.state.mioFollowRetry, undefined);
+  assert.equal(f.state.preferences.mioFollow, true);
+
+  assert.equal(await f.state.reload(), true); f.render();
+  assert.equal(f.state.preferences.mioFollow, false);
+  assert.equal(f.state.preferences.theme, 'light');
+  assert.equal(f.state.saved?.preferences.theme, 'dark');
+  assert.equal(f.state.dirty, true);
+  assert.equal(f.state.pending, false);
+  assert.equal(f.writes.length, 1);
+});
+
 test('readonly preferences cannot be edited or saved but system still follows the OS', async () => {
   const f = fixture({ saved: snapshot('system', { writable: false }) }); await f.ready();
   f.state.edit({ theme: 'light' }); assert.equal(await f.state.save(), false); f.render();

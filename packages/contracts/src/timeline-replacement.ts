@@ -4,6 +4,7 @@ import {isTimelineClipColour} from './timeline-colour.ts';
 import {isTimelineSubtitles} from './timeline-subtitles.ts';
 import {timelineOutputPreset} from './timeline-format.ts';
 import {isClipTransform} from './timeline-clip-transform.ts';
+import {isClipLayoutRect, type ClipLayout} from './timeline-clip-layout.ts';
 import {isClipTransition} from './timeline-clip-transition.ts';
 // Saved timeline acknowledgements are complete records, never patches. These
 // guards do not normalize records or claim a historical response is current.
@@ -13,7 +14,7 @@ export interface TimelineTrackRecord {id: string; name: string; kind: 'video' | 
 export interface TimelineClipRecord {
   id: string; trackId: string; assetId: string; name: string;
   startFrame: number; durationFrames: number; sourceInFrame: number;
-  rect: TimelineRect; gain: number;
+  rect: TimelineRect; gain: number; layout?: ClipLayout;
   fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown; transform?: unknown; transitionIn?: unknown;
   versionId?: string; shotId?: string; jobId?: string;
   [key: string]: unknown;
@@ -50,7 +51,6 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
       !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
       !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > 12 ||
       !Array.isArray(value.clips) || value.clips.length > 100) return false;
-  const width = value.width as number, height = value.height as number;
   const tracks = new Map<string, TimelineClipRecord[]>(), trackKinds = new Map<string, 'video' | 'audio'>(), ids = new Set<string>();
   for (const track of value.tracks as unknown[]) {
     if (!fields(track, trackFields) || !uuid(track.id) || tracks.has(track.id) || !text(track.name, 150) ||
@@ -60,7 +60,7 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
   }
   let duration = 0;
   for (const clip of value.clips as unknown[]) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn']) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'layout']) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
@@ -72,10 +72,7 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
         Object.hasOwn(clip, 'transitionIn') && (clip.transitionIn === null || !isClipTransition(clip.transitionIn) || trackKinds.get(clip.trackId) !== 'video') ||
         provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
         Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video')) return false;
-    const rect = clip.rect as Record<string, unknown>;
-    if (!fields(rect, ['x', 'y', 'width', 'height']) || !integer(rect.x, 0, width-2) || !integer(rect.y, 0, height-2) ||
-        !integer(rect.width, 2, width) || !integer(rect.height, 2, height) ||
-        [rect.x, rect.y, rect.width, rect.height].some(item => (item as number) % 2) || rect.x + rect.width > width || rect.y + rect.height > height) return false;
+    if (!isClipLayoutRect(clip, value)) return false;
     for (const field of ['fadeInFrames', 'fadeOutFrames']) if (Object.hasOwn(clip, field) && !integer(clip[field], 0, clip.durationFrames)) return false;
     if ((clip.fadeInFrames as number | undefined ?? 0) + (clip.fadeOutFrames as number | undefined ?? 0) > clip.durationFrames) return false;
     ids.add(clip.id); tracks.get(clip.trackId)!.push(clip as TimelineClipRecord);

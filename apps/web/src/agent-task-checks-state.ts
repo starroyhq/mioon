@@ -7,6 +7,7 @@ export interface AgentTaskChecksRound {
   runRevision: number;
   completed: boolean;
   repairing?: boolean;
+  safetyPaused?: boolean;
   goalStepId?: string;
   latest: boolean;
   backgroundPending: boolean;
@@ -127,7 +128,7 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
   let fullFlight = false, automaticAttempt: { key: string; token: symbol } | null = null;
   let refreshAfterFull: string | null = null;
   const publish = (patch: Partial<AgentTaskChecksViewState>) => { state = { ...state, ...patch }; if (!disposed) onChange(state); };
-  const attached = () => !disposed && !!round && (round.completed || round.repairing === true) && round.attached !== false;
+  const attached = () => !disposed && !!round && (round.completed || round.repairing === true || round.safetyPaused === true && round.latest && Boolean(round.goalStepId)) && round.attached !== false;
   const readable = () => attached() && round?.visible === true;
   function cancel() {
     epoch++; controller?.abort(); controller = null;
@@ -150,7 +151,7 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
     if (token) void load(true, false, { key, token });
   }
   async function load(full: boolean, manual = false, attempt?: { key: string; token: symbol }) {
-    if (!readable() || !round || fullFlight) {
+    if (!readable() || !round || fullFlight || full && round.safetyPaused) {
       if (attempt) cache.finishAutomatic(attempt.key, attempt.token, false);
       return;
     }
@@ -188,7 +189,7 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
     update(next: AgentTaskChecksRound) {
       if (disposed) return;
       const previous = round;
-      const changed = previous?.runId !== next.runId || previous.runRevision !== next.runRevision || previous.backgroundPending !== next.backgroundPending || previous.completed !== next.completed || previous.repairing !== next.repairing || previous.goalStepId !== next.goalStepId || previous.attached !== next.attached;
+      const changed = previous?.runId !== next.runId || previous.runRevision !== next.runRevision || previous.backgroundPending !== next.backgroundPending || previous.completed !== next.completed || previous.repairing !== next.repairing || previous.safetyPaused !== next.safetyPaused || previous.goalStepId !== next.goalStepId || previous.attached !== next.attached;
       round = next;
       if (!attached() || previous && previous.runId !== next.runId) {
         refreshAfterFull = null;
@@ -196,6 +197,7 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
         if (previous && previous.runId !== next.runId) publish({ report: null, error: false, justChecked: false });
         if (!attached()) return;
       }
+      if (next.safetyPaused && fullFlight) cancel();
       // A full local preflight has an explicit lifetime. Ignore intermediate
       // lightweight refreshes until it settles, including background completion
       // and viewport/window visibility changes. Detachment above still cancels.

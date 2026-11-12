@@ -31,6 +31,7 @@ import {createAgentSettingsBroker,createAgentSettingsClient} from '../apps/deskt
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import type {PreparedAgentTaskTool,AgentTaskToolContext} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {withAgentTaskJobOrigin,allowAgentTaskJobTargetMutation,setAgentTaskEffectGate,setAgentTaskJobResumer,assertAgentTaskJobEffect,isAgentTaskEffectBlocked} from '../packages/business/src/agent/task-effects-v2.ts';
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
@@ -75,7 +76,7 @@ function syntheticDeniedTransport(address:string,statusCode=401,errorBody='',rea
  }} as unknown as AgentTransportDependencies;
  return {counts,gateway:createTaskGateway(dependencies)};
 }
-async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='responses',providers:ReadonlyMap<string,Provider>=new Map(),{desktopBridge=false,withVideoSettings=false}:{desktopBridge?:boolean;withVideoSettings?:boolean}={}){
+async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='responses',providers:ReadonlyMap<string,Provider>=new Map(),{desktopBridge=false,withVideoSettings=false,safetyStepLimit}:{desktopBridge?:boolean;withVideoSettings?:boolean;safetyStepLimit?:number}={}){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=openStore(root);
  const videoSettings=withVideoSettings?await createVideoSettingsV2({directory:join(root,'video-settings'),privateRoot:root}):undefined;
  const services=createServices(store,providers,videoSettings?{videoSettings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async()=>assert.fail('Offline runtime fixture unexpectedly contacted a video provider')}:{});
@@ -94,7 +95,8 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   if(missing.length&&visible.includes(AGENT_TASK_TOOLS_LOAD_NAME)){loadingRequests++;yield {type:'done' as const,output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:missing.flatMap(group=>agentTaskToolNamesForGroup(group))})])};return;}
   scriptRequestIndexes.push(requests.length-1);yield*script(scriptRequestIndexes.length,request);
  };
- let runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});
+ const openRuntime=()=>createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318,...(safetyStepLimit===undefined?{}:{journal:createAgentTaskJournal(store,{safetyStepLimit})})});
+ let runtime=openRuntime();
  t.after(async()=>{runtime.close();baseTools.dispose();bridge?.close();await settings.close();await videoSettings?.close();store.close();rmSync(root,{recursive:true,force:true});});
  return {root,store,services,settings,videoSettings,bridge,authorizations,projectId,first,other,requests,effects,tools,
   get runtime(){return runtime;},get loadingRequests(){return loadingRequests;},get loadingEffects(){return [...effects.values()].filter(operation=>operation==='tools.load').length;},
@@ -106,7 +108,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
   async wait(runId:string,statuses:AgentTaskStatus[]){const deadline=Date.now()+10000;for(;;){const snapshot=runtime.get(projectId,runId);if(statuses.includes(snapshot.run.status))return snapshot;if(Date.now()>deadline)throw Error(`Unexpected task state ${JSON.stringify(snapshot.run)}`);await delay(5);}},
   action(snapshot:AgentTaskSnapshot,action:AgentTaskControlAction,extra:Record<string,unknown>={}){return runtime.action(projectId,snapshot.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action,...extra});},
-  restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});},
+  restart(){runtime.close();runtime=openRuntime();},
  };
 }
 type RuntimeFixture=Awaited<ReturnType<typeof fixture>>;
@@ -188,13 +190,13 @@ for(const [failure,status] of [['AGENT_CHAT_OUTPUT_LIMIT',413],['AGENT_CHAT_RESP
   assert.equal(retried.steps.some(step=>step.status==='unknown'),false);assert.equal(f.effects.size,0);assert.equal(retried.changes.length,0);
   assert.deepEqual([f.store.get('shots',f.first.id),f.store.get('shots',f.other.id)],before);
 });
-for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, budget continuation and restart`,async t=>{
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, safety-limit continuation and restart`,async t=>{
   const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};
   for(const locale of AGENT_TASK_LOCALES){
-    const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+    const f=await fixture(t,protocol,new Map(),{safetyStepLimit:2});
     f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
     const input={requestId:randomUUID(),text:'Use French; Mioon host response language v1: en.',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,locale};
-    const sent=await f.runtime.send(f.projectId,input),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
+    const sent=await f.runtime.send(f.projectId,input),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');
     assert.equal(taskResponseLocale(f.runtime.journal.run(sent.run.id).context),locale);assert.equal(sent.run.context,undefined);
     f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
     await f.action(interrupted,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);
@@ -340,26 +342,26 @@ for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: revocation after first done prevents every tool and continuation`,async t=>{const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:output(protocol,[call('mioon_project_inspect')])};await f.revoke();});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_TASK_CONSENT_REQUIRED');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);});
  test(`${protocol}: revocation after durable tool intent prevents actual read and continuation`,async t=>{const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:output(protocol,[call('mioon_project_inspect')])};});f.beforeTool(async()=>{const intent=f.store.db.prepare("SELECT status FROM mio_steps WHERE kind='tool'").get();assert.equal(intent?.status,'dispatch_started');await f.revoke();});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_TASK_CONSENT_REQUIRED');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);assert.ok(done.steps.some(step=>step.kind==='tool'));});
 }
-test('small step budget pauses and resumes with a fresh round; completed tools stay completed',async t=>{const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.stepsUsed,2);assert.equal(f.effects.size,1);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,4);assert.equal(done.run.stepsUsed,3);assert.equal(f.effects.size,1);assert.equal(f.requests.length,2);});
-for(const protocol of ['chat_completions','responses'] as const)for(const action of ['approve','deny'] as const)test(`${protocol}: ${action} at the budget boundary cannot grant another round`,async t=>{
- const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2,modes:{...f.runtime.policy().modes,read_only:'confirm'}});
+test('a small safety window pauses and resumes; completed tools stay completed',async t=>{const f=await fixture(t,'responses',new Map(),{safetyStepLimit:2});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(paused.run.stepsUsed,2);assert.equal(f.effects.size,1);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:2,afterPosition:2,remaining:1});assert.equal(done.run.stepsUsed,3);assert.equal(f.effects.size,1);assert.equal(f.requests.length,2);});
+for(const protocol of ['chat_completions','responses'] as const)for(const action of ['approve','deny'] as const)test(`${protocol}: ${action} at the safety boundary cannot start a new window`,async t=>{
+ const f=await fixture(t,protocol,new Map(),{safetyStepLimit:2});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,read_only:'confirm'}});
  let toolExecutions=0;f.beforeTool(async()=>{toolExecutions++;});
  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
  const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval');assert.ok(step);
- assert.equal(waiting.run.stepsUsed,2);assert.equal(waiting.run.budget,2);assert.equal(f.effects.size,0);assert.equal(toolExecutions,0);assert.equal(f.requests.length,1);
+ assert.equal(waiting.run.stepsUsed,2);assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);assert.equal(f.effects.size,0);assert.equal(toolExecutions,0);assert.equal(f.requests.length,1);
  const approval={requestId:randomUUID(),expectedRevision:waiting.run.revision,action,stepId:step.id};
  await f.runtime.action(f.projectId,sent.run.id,approval);const paused=await f.settle(sent.run.id);
- assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.budget,2);assert.equal(paused.run.stepsUsed,2);
+ assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);assert.equal(paused.run.stepsUsed,2);
  assert.equal(f.effects.size,action==='approve'?1:0);assert.equal(toolExecutions,action==='approve'?1:0);assert.equal(f.requests.length,1);assert.equal(paused.steps.find(item=>item.id===step.id)?.status,action==='approve'?'completed':'rejected');
  const beforeReplay=f.runtime.journal.snapshot(sent.run.id);await f.runtime.action(f.projectId,sent.run.id,approval);await f.runtime.drain();assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),beforeReplay);
- await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...approval,requestId:randomUUID()}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.equal(f.runtime.journal.run(sent.run.id).budget,2);
+ await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...approval,requestId:randomUUID()}),{code:'AGENT_TASK_REVISION_CONFLICT'});assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);
  const continuation={requestId:randomUUID(),expectedRevision:paused.run.revision,action:'resume'};
  await f.runtime.action(f.projectId,sent.run.id,continuation);await f.runtime.action(f.projectId,sent.run.id,continuation);const done=await f.settle(sent.run.id);
- assert.equal(done.run.id,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,4);assert.equal(done.run.stepsUsed,3);assert.equal(f.effects.size,action==='approve'?1:0);assert.equal(toolExecutions,action==='approve'?1:0);assert.equal(f.requests.length,2);
- await f.runtime.action(f.projectId,sent.run.id,continuation);await f.runtime.action(f.projectId,sent.run.id,approval);await f.runtime.drain();assert.equal(f.runtime.journal.run(sent.run.id).budget,4);assert.equal(f.requests.length,2);assert.equal(f.effects.size,action==='approve'?1:0);assert.equal(toolExecutions,action==='approve'?1:0);
+ assert.equal(done.run.id,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:2,afterPosition:2,remaining:1});assert.equal(done.run.stepsUsed,3);assert.equal(f.effects.size,action==='approve'?1:0);assert.equal(toolExecutions,action==='approve'?1:0);assert.equal(f.requests.length,2);
+ await f.runtime.action(f.projectId,sent.run.id,continuation);await f.runtime.action(f.projectId,sent.run.id,approval);await f.runtime.drain();assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:2,afterPosition:2,remaining:1});assert.equal(f.requests.length,2);assert.equal(f.effects.size,action==='approve'?1:0);assert.equal(toolExecutions,action==='approve'?1:0);
 });
 for(const action of ['approve','deny'] as const)test(`${action} receipt failure rolls back exhausted approval and state together`,async t=>{
- const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2,modes:{...f.runtime.policy().modes,read_only:'confirm'}});
+ const f=await fixture(t,'responses',new Map(),{safetyStepLimit:2});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,read_only:'confirm'}});
  f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_project_inspect')])};});
  const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval');assert.ok(step);
  const request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action,stepId:step.id},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
@@ -413,12 +415,12 @@ for(const protocol of ['chat_completions','responses'] as const)for(const kind o
  const interrupted=f.runtime.get(f.projectId,sent.run.id),before=f.runtime.journal.snapshot(sent.run.id);await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);
  const disposed=await f.action(interrupted,'resolve_unknown',{stepId:uncertain.id,resolution:'discard'}),selected=await f.action(disposed,'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);
 });
-for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: interrupted conflict recovery preserves an exhausted budget until separate continuation`,async t=>{
- const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:4});
- const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},protocol,ownerId:'budget-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'no budget for old parameters'}})]});assert.equal(paused.run.pauseReason,'editing');assert.equal(paused.run.stepsUsed,2+f.loadingSteps(paused));assert.equal(paused.run.budget,4);f.runtime.journal.releaseClaims(f.projectId,'budget-conflict');f.restart();
- const selected=await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(selected.run.budget,4);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
- await f.action(selected,'skip');const budget=await f.settle(sent.run.id);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');assert.equal(budget.run.budget,4);assert.equal(budget.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
- await f.action(budget,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,8);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: interrupted conflict recovery preserves an exhausted safety window until separate continuation`,async t=>{
+ const f=await fixture(t,protocol,new Map(),{safetyStepLimit:4});
+ const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},protocol,ownerId:'budget-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'no budget for old parameters'}})]});assert.equal(paused.run.pauseReason,'editing');assert.equal(paused.run.stepsUsed,2+f.loadingSteps(paused));assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);f.runtime.journal.releaseClaims(f.projectId,'budget-conflict');f.restart();
+ const selected=await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
+ await f.action(selected,'skip');const budget=await f.settle(sent.run.id);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'safety_limit');assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);assert.equal(budget.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
+ await f.action(budget,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:4,afterPosition:4,remaining:3});assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
 });
 test('interrupted conflict recovery and its control receipt roll back together on storage failure',async t=>{
  const f=await fixture(t),{sent}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},ownerId:'atomic-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never commits'}})]});
@@ -435,10 +437,10 @@ test('a handed-back conflict leaves the rest of its batch unexecuted, including 
  assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.match(f.scriptRequest(2)!.body,/TARGET_EDITING/);assert.match(f.scriptRequest(2)!.body,/TARGET_CHANGED/);assert.match(f.scriptRequest(2)!.body,/此批旧工具参数已失效/u);
 });
 test('budget pauses retain pending tool calls without invalidating or repeating the batch',async t=>{
- const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+ const f=await fixture(t,'responses',new Map(),{safetyStepLimit:2});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?Array.from({length:3},()=>call('mioon_project_inspect')):[])};});
- const sent=await f.send();let paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(f.effects.size,1);await f.action(paused,'resume');paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(f.effects.size,3);assert.equal(f.requests.length,1);
- await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,5);assert.equal(done.run.budget,6);assert.equal(f.effects.size,3);assert.equal(f.requests.length,2);
+ const sent=await f.send();let paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.effects.size,1);await f.action(paused,'resume');paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.effects.size,3);assert.equal(f.requests.length,1);
+ await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,5);assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:4,afterPosition:4,remaining:1});assert.equal(f.effects.size,3);assert.equal(f.requests.length,2);
 });
 test('pause and stop during model wait block subsequent tools and requests',async t=>{for(const action of ['pause','stop'] as const){const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses',[call('mioon_project_inspect')])};});const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),action);release.resolve();const done=await f.settle(sent.run.id);assert.equal(done.run.status,action==='pause'?'paused':'stopped');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);}});
 test('restart retains a model unknown result without dispatching until explicit disposition',async t=>{const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;f.restart();const restored=f.runtime.get(f.projectId,sent.run.id);assert.equal(restored.run.status,'interrupted');assert.equal(restored.steps[0]?.status,'unknown');assert.equal(f.requests.length,1);await assert.rejects(f.action(restored,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});release.resolve();const disposed=await f.action(restored,'resolve_unknown',{stepId:restored.steps[0]?.id,resolution:'discard'});await f.action(disposed,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(done.steps[0]?.status,'failed');});
@@ -506,18 +508,133 @@ test('retention survives an unknown control finish without repeating metadata or
  const worker=startWorker(f.store,f.services,providers);try{await worker.tick();await worker.tick();assert.equal(posts,0);assert.equal(f.requests.length,(4)+f.loadingRequests);assert.equal(f.runtime.get(f.projectId,sent.run.id).run.status,'reverted');assert.equal(f.store.list('versions',f.projectId).length,0);assert.equal(f.store.list('assets',f.projectId).length,0);}finally{await worker.stop();}
 });
 
-test('default budget is thirty steps and continuation adds exactly another thirty',async t=>{const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?Array.from({length:29},()=>call('mioon_project_inspect')):[])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.stepLimit,30);assert.equal(paused.run.stepsUsed,30);assert.equal(f.effects.size,29);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.budget,60);assert.equal(done.run.stepsUsed,31);assert.equal(f.effects.size,29);assert.equal(f.requests.length,2);});
-for(const reason of ['budget','revocation','audit_failure'] as const)test(reason==='audit_failure'?'an agent audit write failure still stops the worker before unrelated exports':`a queued agent export blocked by ${reason} cannot starve a manual export in the same project`,async t=>{
- const f=await fixture(t),source=png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]});
+test('a legacy 30-step policy permits 109 real offline steps while compacting model requests', {timeout:900000}, async t=>{
+ const f=await fixture(t),before=f.store.list('shots',f.projectId),longRounds=2,shortRounds=4,toolsPerShortRound=25;
+ assert.equal(f.runtime.policy().stepLimit,30);
+ f.setScript(async function*(index){
+  // Keep the large replies at the end. The run still compacts its own
+  // history, without rehydrating the long text for every earlier tool read.
+  const long=index>shortRounds&&index<=shortRounds+longRounds;
+  const toolCount=long?1:index<=shortRounds?toolsPerShortRound:0;
+  const calls=Array.from({length:toolCount},()=>call('mioon_project_inspect'));
+  const text=long?`OFFLINE_LONG_ROUND_${index}:`+'m'.repeat(64*1024):`Offline round ${index} completed.`;
+  yield {type:'done',output:longReadOutput('responses',text,calls)};
+ });
+ const sent=await f.send('Retain the original request across compaction.'),done=await f.settle(sent.run.id);
+ assert.equal(sent.run.stepLimit,30);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,109);
+ assert.equal(f.requests.length,longRounds+shortRounds+1);assert.equal(f.effects.size,longRounds+shortRounds*toolsPerShortRound);
+ assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:0,afterPosition:0,remaining:91});
+ const historySizes=f.requests.map(request=>{
+  assert.ok(Buffer.byteLength(request.body)<=TASK_MODEL_LIMITS.requestBytes);
+  const history=object(JSON.parse(request.body)).input;assert.ok(Array.isArray(history));
+  const bytes=Buffer.byteLength(JSON.stringify(history));assert.ok(bytes<=TASK_MODEL_LIMITS.historyBytes);return bytes;
+ });
+ const firstLongMarker=`OFFLINE_LONG_ROUND_${shortRounds+1}:`;
+ const lastLongMarker=`OFFLINE_LONG_ROUND_${shortRounds+2}:`;
+ const finalBody=f.requests.at(-1)!.body;
+ assert.match(f.requests.at(-2)!.body,new RegExp(firstLongMarker,'u'));
+ assert.doesNotMatch(finalBody,new RegExp(firstLongMarker,'u'));
+ assert.match(finalBody,new RegExp(lastLongMarker,'u'));
+ const readSteps=done.steps.filter(step=>step.kind==='tool');
+ const outputs=(body:string)=>{
+  const history=object(JSON.parse(body)).input;assert.ok(Array.isArray(history));
+  return history.filter(item=>object(item).type==='function_call_output').map(item=>object(item).call_id);
+ };
+ const lastShortBatch=readSteps.slice(-toolsPerShortRound-longRounds,-longRounds);
+ assert.deepEqual(outputs(f.requests[shortRounds]!.body).slice(-toolsPerShortRound),lastShortBatch.map(step=>step.toolCall?.id));
+ assert.equal(outputs(finalBody).at(-1),readSteps.at(-1)?.toolCall?.id);
+ assert.equal(done.changes.length,0);assert.deepEqual(f.store.list('shots',f.projectId),before);
+ t.diagnostic(`Largest offline request: ${Math.max(...f.requests.map(request=>Buffer.byteLength(request.body)))} bytes. Largest history: ${Math.max(...historySizes)} bytes.`);
+});
+
+test('the same provider call ID in separate model replies keeps each tool receipt bound to its own reply',async t=>{
+ const f=await fixture(t),shared=call('mioon_project_inspect',{},'reused_provider_call_id');
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index<=2?[shared]:[])};});
+ const sent=await f.send(),done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,3);assert.equal(f.effects.size,2);
+ const saved=f.runtime.journal.snapshot(sent.run.id).steps.filter(step=>step.toolCall?.id===shared.id);
+ assert.deepEqual(saved.map(step=>step.status),['completed','completed']);
+ assert.equal(new Set(saved.map(step=>object(step.data).sourceModelStepId)).size,2);
+});
+
+test('three same-batch rejections ignore caption changes and fence a later mutation before and after restart',async t=>{
+ const f=await fixture(t),rejections=[1,2,3].map(index=>call(AGENT_TASK_TOOLS_LOAD_NAME,{names:['mioon_unsupported'],_mio_step:`Try ${index}`}));
+ const suffix=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'The old batch must stay unexecuted'}});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[...rejections,suffix]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),paused=await f.settle(sent.run.id);
+ assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'repeated_tool_failure');
+ assert.deepEqual(paused.steps.filter(step=>step.toolCall&&rejections.some(call=>call.id===step.toolCall?.id)).map(step=>step.status),['rejected','rejected','rejected']);
+ assert.equal(paused.steps.some(step=>step.toolCall?.id===suffix.id),false);assert.equal(f.effects.size,f.loadingEffects);
+ assert.equal(f.requests.length,1+f.loadingRequests);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+ const window=f.runtime.journal.safetyWindow(sent.run.id);f.restart();assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),window);
+ const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
+ await f.action(interrupted,'resume');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.effects.size,f.loadingEffects);assert.equal(done.changes.length,0);
+ const input=object(JSON.parse(f.scriptRequest(2).body)).input;assert.ok(Array.isArray(input));
+ const results=input.filter(item=>object(item).type==='function_call_output').map(object);
+ for(const rejected of rejections)assert.ok(results.some(item=>item.call_id===rejected.id&&String(item.output).includes('VALIDATION_ERROR')));
+ assert.ok(results.some(item=>item.call_id===suffix.id&&String(item.output).includes('AGENT_TASK_REPEATED_TOOL_FAILURE')));
+ assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+});
+
+test('three identical failed tools across explicit retries pause and can replan on resume',async t=>{
+ const f=await fixture(t);let attempts=0;
+ f.beforeTool(async prepared=>{if(prepared.operation==='project.inspect'){attempts++;throw new Error('Synthetic read failed');}});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index<=3?[call('mioon_project_inspect')]:[])};});
+ const sent=await f.send();let current=await f.settle(sent.run.id);
+ for(let index=1;index<=2;index++){
+  assert.equal(current.run.status,'failed');assert.equal(attempts,index);
+  await f.action(current,'retry');current=await f.settle(sent.run.id);
+ }
+ assert.equal(current.run.status,'paused');assert.equal(current.run.pauseReason,'repeated_tool_failure');assert.equal(attempts,3);
+ await f.action(current,'resume');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,4);assert.equal(attempts,3);
+ assert.equal(done.steps.filter(step=>step.kind==='tool'&&step.status==='failed').length,3);
+});
+
+test('three explicit denials pause without consuming a fourth approval or retrying the tool',async t=>{
+ const f=await fixture(t);
+ f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,read_only:'confirm'}});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index<=3?[call('mioon_project_inspect')]:[])};});
+ const sent=await f.send();let current=await f.settle(sent.run.id);
+ for(let index=1;index<=3;index++){
+  assert.equal(current.run.status,'awaiting_approval');assert.equal(f.requests.length,index);
+  const waiting=current.steps.at(-1);assert.equal(waiting?.status,'awaiting_approval');
+  await f.action(current,'deny',{stepId:waiting!.id});current=await f.settle(sent.run.id);
+ }
+ assert.equal(current.run.status,'paused');assert.equal(current.run.pauseReason,'repeated_tool_failure');
+ assert.equal(f.requests.length,3);assert.equal(f.effects.size,0);
+ await f.action(current,'resume');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,4);assert.equal(f.effects.size,0);
+});
+
+for(const progress of [false,true])test(`ten model calls with ${progress?'a successful last-batch tool continue':'no successful tools pause and retain a note'}`,async t=>{
+ const f=await fixture(t);
+ f.setScript(async function*(index){
+  const calls=index<=10?[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:[`mioon_invalid_${index}`]}),...(progress&&index===10?[call('mioon_project_inspect')]:[])]:[];
+  yield {type:'done',output:output('responses',calls)};
+ });
+ const sent=await f.send(),current=await f.settle(sent.run.id);
+ assert.equal(current.steps.filter(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME&&step.status==='rejected').length,10);
+ if(progress){assert.equal(current.run.status,'completed');assert.equal(f.requests.length,11);assert.equal(f.effects.size,1);return;}
+ assert.equal(current.run.status,'paused');assert.equal(current.run.pauseReason,'no_tool_progress');assert.equal(f.requests.length,10);assert.equal(f.effects.size,0);
+ const note='Read the project summary before trying another operation.';
+ const noted=await f.action(current,'note',{text:note});assert.equal(noted.run.notes?.[0]?.modelStepId,undefined);assert.equal(f.requests.length,10);
+ await f.action(noted,'resume');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,11);assert.match(f.requests[10]!.body,/Read the project summary/);
+ assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.runtime.journal.safetyWindow(sent.run.id).startStepsUsed,20);
+});
+for(const reason of ['safety_limit','revocation','audit_failure'] as const)test(reason==='audit_failure'?'an agent audit write failure still stops the worker before unrelated exports':`a queued agent export blocked by ${reason} cannot starve a manual export in the same project`,async t=>{
+ const f=await fixture(t,'responses',new Map(),{safetyStepLimit:4}),source=png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]});
  async function prepareTimeline(projectId:string){
   const asset=object(await f.services.call('asset.import',{projectId,name:'Synthetic source.png',mimeType:'image/png',dataBase64:source.toString('base64')}));
   const timeline=object(await f.services.call('timeline.get',{projectId}));assert.ok(Array.isArray(timeline.tracks));
   await f.services.call('timeline.clip.add',{projectId,requestId:randomUUID(),expectedRevision:timeline.revision,assetId:asset.id,trackId:object(timeline.tracks[0]).id,startFrame:0,durationFrames:6});
  }
  await prepareTimeline(f.projectId);
- f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:4,modes:{...f.runtime.policy().modes,local_irreversible:'direct'}});
+ f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,modes:{...f.runtime.policy().modes,local_irreversible:'direct'}});
  f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_timeline_render',{expectedRevision:2,purpose:'export'})])};},{loadGroups:['exports']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.backgroundPending,true);
+ const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(paused.backgroundPending,true);
  const blocked=object(f.store.list('exports',f.projectId)[0]);assert.equal(blocked.status,'queued');
  // A store holds one project, so the manual export is queued in the same project, behind the blocked Mio export.
  const accepted=object(await f.services.call('timeline.render',{projectId:f.projectId,expectedRevision:2,requestId:randomUUID(),purpose:'export'}));
@@ -576,8 +693,9 @@ for(const paid of ['direct','confirm'] as const)test(`${paid}: disabled live vid
  const target=shot(await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{duration:4,aspectRatio:'9:16'}}));
  const input={shotId:target.id,expectedRevision:target.revision,providerId:'minimax',model:connection.models[0]!.modelId,connectionId:connection.id,configurationRevision:1,modelEntryId:connection.models[0]!.id};
  f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid},acknowledgePaid:paid==='direct'});
+ const firstBatch=['first-video','same-batch-video','third-in-batch-video'];
  f.setScript(async function*(index){
-  const attempts=index===1?[call('mioon_generation_submit',input,'first-video'),call('mioon_generation_submit',input,'same-batch-video')]:index===2?[call('mioon_generation_submit',input,'later-video')]:[];
+  const attempts=index===1?firstBatch.map(id=>call('mioon_generation_submit',input,id)):index===2?[call('mioon_generation_submit',input,'later-video')]:[];
   yield {type:'done',output:output('responses',attempts)};
  },{loadGroups:['video']});
  const sent=await f.send();
@@ -587,10 +705,10 @@ for(const paid of ['direct','confirm'] as const)test(`${paid}: disabled live vid
  }
  const failed=await f.settle(sent.run.id),attempts=failed.steps.filter(step=>step.toolCall?.name==='mioon_generation_submit');
  assert.equal(attempts[0]?.error?.code,'LIVE_GENERATION_DISABLED');
- assert.deepEqual(attempts.map(step=>step.status),['rejected','rejected','failed']);
+ assert.deepEqual(attempts.map(step=>step.status),['rejected','rejected','rejected','failed']);
  assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'LIVE_GENERATION_DISABLED');
  const body=JSON.parse(f.scriptRequest(2).body) as {input:Array<{type?:string;call_id?:string;output?:string}>};
- for(const callId of ['first-video','same-batch-video']){
+ for(const callId of firstBatch){
   const result=body.input.find(item=>item.type==='function_call_output'&&item.call_id===callId);
   assert.ok(result?.output);const error=object(object(JSON.parse(result.output)).error);
   assert.equal(error.code,'LIVE_GENERATION_DISABLED');assert.equal(error.mutationOutcome,'not_applied');
@@ -605,7 +723,7 @@ for(const paid of ['direct','confirm'] as const)test(`${paid}: disabled live vid
 
  f.services.configuration.set({expectedRevision:f.services.configuration.get().revision,liveGeneration:true});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===3?[call('mioon_generation_submit',input,'user-retry-video')]:[])};},{loadGroups:['video']});
- await f.action(failed,'retry',{stepId:attempts[2]!.id});
+ await f.action(failed,'retry',{stepId:attempts[3]!.id});
  if(paid==='confirm'){
   const waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');
   assert.equal(waiting.steps.at(-1)?.toolCall?.id,'user-retry-video');
@@ -649,18 +767,18 @@ for(const recordedDispatch of [false,true])test(recordedDispatch
  await f.action(marked,'resume');const done=await f.settle(sent.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.requests.length,(2)+f.loadingRequests);assert.match(f.scriptRequest(2)!.body,/UNKNOWN_NOT_APPLIED/);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(f.effects.size,(1)+f.loadingEffects);
 });
-for(const stepLimit of [5,30])for(const action of ['approve','deny'] as const)test(`paid direct disabled after acceptance supports one-time ${action} of the original queued job at budget ${stepLimit}`,async t=>{
+for(const safetyStepLimit of [5,30])for(const action of ['approve','deny'] as const)test(`paid direct disabled after acceptance supports one-time ${action} of the original queued job with safety window ${safetyStepLimit}`,async t=>{
  let posts=0;const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
   async submit(_snapshot,context){context.beforeSubmit?.();posts++;return {providerJobId:'synthetic-approved-once'};},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No output requested');}};
- const providers=new Map([['mock',provider]]),f=await fixture(t,'responses',providers);f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ const providers=new Map([['mock',provider]]),f=await fixture(t,'responses',providers,{safetyStepLimit});f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:[])};},{loadGroups:['video']});
- const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,3+f.loadingSteps(done));assert.equal(done.run.budget,stepLimit);const job=object(f.store.list('jobs',f.projectId)[0]),jobId=String(job.id),originalStep=done.steps.find(step=>step.toolCall?.name==='mioon_generation_submit');assert.ok(originalStep);
+ const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,3+f.loadingSteps(done));const window=f.runtime.journal.safetyWindow(sent.run.id);assert.equal(window.remaining,safetyStepLimit-done.run.stepsUsed);const job=object(f.store.list('jobs',f.projectId)[0]),jobId=String(job.id),originalStep=done.steps.find(step=>step.toolCall?.name==='mioon_generation_submit');assert.ok(originalStep);
  f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'confirm'}});
  const worker=startWorker(f.store,f.services,providers);try{
   await worker.tick();const waiting=f.runtime.get(f.projectId,sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(waiting.steps.find(step=>step.id===originalStep.id)?.approvalRequired,true);assert.equal(posts,0);assert.equal(f.store.list('jobs',f.projectId).length,1);
   const request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action,stepId:originalStep.id};await f.runtime.action(f.projectId,sent.run.id,request);await f.runtime.action(f.projectId,sent.run.id,request);await f.runtime.drain();await worker.tick();await worker.tick();
   assert.equal(posts,action==='approve'?1:0);assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(String(object(f.store.list('jobs',f.projectId)[0]).id),jobId);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.runtime.policy().modes.paid,'confirm');assert.equal(Boolean(f.runtime.get(f.projectId,sent.run.id).steps.find(step=>step.id===originalStep.id)?.approvalRequired),false);if(action==='deny')assert.equal(object(f.store.get('jobs',jobId)).status,'cancelled');
-  const controlled=f.runtime.get(f.projectId,sent.run.id);assert.equal(controlled.run.status,'completed');assert.equal(controlled.run.stepsUsed,3+f.loadingSteps(controlled));assert.equal(controlled.run.stepLimit,stepLimit);assert.equal(controlled.run.budget,stepLimit);assert.deepEqual(controlled.steps.map(step=>step.id),done.steps.map(step=>step.id));
+  const controlled=f.runtime.get(f.projectId,sent.run.id);assert.equal(controlled.run.status,'completed');assert.equal(controlled.run.stepsUsed,3+f.loadingSteps(controlled));assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),window);assert.deepEqual(controlled.steps.map(step=>step.id),done.steps.map(step=>step.id));
  }finally{await worker.stop();}
 });
 for(const protocol of ['chat_completions','responses'] as const)for(const recovery of ['none','preserved','legacy'] as const)test(`${protocol}: ${recovery} background conflict recovery cannot cross an ABA before submit; skip cancels the old job and replans once`,async t=>{
@@ -823,10 +941,10 @@ test('queued notes have a five-item limit, durable rejected receipts, exact repl
  await f.runtime.action(f.projectId,sent.run.id,rejected);assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,5);await assert.rejects(f.action(current,'note',{text:' '.repeat(10)}),{code:'AGENT_TASK_INVALID'});await assert.rejects(f.action(current,'note',{text:'汉'.repeat(11000)}),{code:'AGENT_TASK_INVALID'});
  const stopped=await f.action(current,'stop');assert.deepEqual(stopped.run.skippedTargets,[]);await assert.rejects(f.action(stopped,'note',{text:'after stop'}),{code:'AGENT_TASK_STATE_CONFLICT'});release.resolve();await f.settle(sent.run.id);assert.equal(f.requests.length,1);
 });
-test('a final response note at exhausted budget stays pending until explicit continuation of the same run',async t=>{
- const f=await fixture(t),entered=gate(),release=gate();f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:1});f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses')};});
- const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'pending across budget'});release.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.notes?.[0]?.modelStepId,undefined);assert.equal(f.requests.length,1);
- await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,2);assert.equal(done.run.stepsUsed,2);assert.match(f.requests[1]!.body,/pending across budget/);assert.ok(done.run.notes?.[0]?.modelStepId);
+test('a final response note at the safety limit stays pending until explicit continuation of the same run',async t=>{
+ const f=await fixture(t,'responses',new Map(),{safetyStepLimit:1}),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses')};});
+ const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'pending across budget'});release.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(paused.run.notes?.[0]?.modelStepId,undefined);assert.equal(f.requests.length,1);
+ await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:1,afterPosition:1,remaining:0});assert.equal(done.run.stepsUsed,2);assert.match(f.requests[1]!.body,/pending across budget/);assert.ok(done.run.notes?.[0]?.modelStepId);
 });
 test('failed model intent rolls back note binding and cannot submit its request',async t=>{
  const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'must remain queued'});
@@ -854,12 +972,17 @@ test('skipped-target instructions use the submitted locale in every model contin
 });
 test('a note accepted during replay of a completed tool is observed before completing the saved final reply',async t=>{
  const f=await fixture(t),enteredFinal=gate(),releaseFinal=gate();f.setScript(async function*(index){if(index===2){enteredFinal.resolve();await releaseFinal.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send();await enteredFinal.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');releaseFinal.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.steps.filter(step=>step.kind==='model'&&step.status==='completed').length,2);
- const original=f.runtime.journal.snapshot;let reads=0,injected:Promise<AgentTaskSnapshot>|undefined;
- f.runtime.journal.snapshot=(runId:string)=>{const snapshot=original(runId);
-  // On resume: public control snapshot, executor history snapshot, then the
-  // completed tool lookup. The note lands at that tool's awaited return.
-  if(snapshot.run.status==='running'&&snapshot.steps.filter(step=>step.kind==='model'&&step.status==='completed').length===2&&++reads===3)queueMicrotask(()=>{injected=f.action(f.runtime.get(f.projectId,runId),'note',{text:'NOTE_AT_COMPLETED_TOOL_YIELD'});});
-  return snapshot;
+ const completedTool=paused.steps.find(step=>step.kind==='tool'&&step.status==='completed');assert.ok(completedTool);
+ const original=f.runtime.journal.step;let scheduled=false,injected:Promise<AgentTaskSnapshot>|undefined;
+ f.runtime.journal.step=(id:string)=>{
+  const step=original(id);
+  // Queue the note at the replay's durable read of the completed tool, before
+  // the executor handles the already saved final model reply.
+  if(id===completedTool.id&&!scheduled){
+   scheduled=true;
+   queueMicrotask(()=>{injected=f.action(f.runtime.get(f.projectId,step.runId),'note',{text:'NOTE_AT_COMPLETED_TOOL_YIELD'});});
+  }
+  return step;
  };
  await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.ok(injected,'The completed-tool replay yielded to the queued note');await injected;assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,3);assert.match(f.requests[2]!.body,/NOTE_AT_COMPLETED_TOOL_YIELD/);
 });
@@ -986,11 +1109,11 @@ function longReadOutput(protocol:'chat_completions'|'responses',text:string,call
  return reply;
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity counts the execution fallback for a retained terminal null result`,async t=>{
- const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+ const f=await fixture(t,protocol,new Map(),{safetyStepLimit:2});
  const execute=f.tools.execute;f.tools.execute=async(prepared,context)=>({...await execute(prepared,context),result:null});
  const prepare=f.tools.prepare;let preparations=0;f.tools.prepare=input=>{preparations++;return prepare(input);};
  f.setScript(async function*(index){yield {type:'done',output:longReadOutput(protocol,index===1?'r'.repeat(97000):'Complete.',index===1?[call('mioon_project_inspect')]:[])};});
- const sent=await f.send('u'.repeat(32000)),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(preparations,1);
+ const sent=await f.send('u'.repeat(32000)),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(preparations,1);
  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model'),tool=before.steps.find(step=>step.kind==='tool');assert.ok(model&&tool?.toolCall);assert.equal(tool.status,'completed');assert.equal(tool.result,null);
  const retained=object(model.result) as unknown as TaskModelOutput,history=taskBaseModelHistory(before.run.context??[]),withoutFallback=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:null}]);
  const emptyNote={role:'user',content:''},length=TASK_MODEL_LIMITS.historyBytes-Buffer.byteLength(JSON.stringify([...history,...withoutFallback,emptyNote]));assert.ok(length>0&&length<=32*1024);
@@ -1171,8 +1294,8 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'New manual baseline'}});
  await f.action(failed,'retry',{stepId:failed.steps.at(-1)!.id});const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,7);assert.equal(done.run.budget,30);assert.equal(f.effects.size,2);assert.equal(f.loadingEffects,1);assert.equal(f.requests.length,4);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'Fresh retry plan');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(done.steps.filter(step=>step.toolCall?.id===invalid.id).length,1);assert.equal(done.steps.some(step=>step.toolCall?.id===stale.id),false);
 });
-for(const scenario of ['unknown','last_completed','revoked','busy','budget','receipt_failure'] as const)test(`retry gate preserves safety for ${scenario}`,async t=>{
- const f=await fixture(t),transport=syntheticDeniedTransport(scenario==='unknown'?'93.184.216.34':'198.18.10.207');if(scenario==='budget')f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:1});
+for(const scenario of ['unknown','last_completed','revoked','busy','safety_limit','receipt_failure'] as const)test(`retry gate preserves safety for ${scenario}`,async t=>{
+ const f=await fixture(t,'responses',new Map(),{safetyStepLimit:scenario==='safety_limit'?1:undefined}),transport=syntheticDeniedTransport(scenario==='unknown'?'93.184.216.34':'198.18.10.207');
  // An observed HTTP error is now a plain failure; an unclassified exception
  // during the request is what still leaves an unknown model result.
  f.setScript(async function*(index,request){if(scenario==='last_completed'){yield {type:'done',output:output('responses')};await f.revoke();return;}if(index===1){if(scenario==='unknown')throw new Error('unclassified gateway failure');yield*transport.gateway(request);return;}yield {type:'done',output:output('responses')};});const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');
@@ -1180,8 +1303,8 @@ for(const scenario of ['unknown','last_completed','revoked','busy','budget','rec
  if(scenario==='busy'){const entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const other=await f.send('New active run');await entered.promise;t.after(()=>release.resolve());assert.equal(f.runtime.get(f.projectId,other.run.id).run.status,'running');}
  const request={requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:failed.steps.at(-1)!.id},before=f.runtime.journal.snapshot(sent.run.id),requests=f.requests.length;
  if(scenario==='receipt_failure')f.store.db.exec(`CREATE TEMP TRIGGER fail_retry_receipt BEFORE INSERT ON mio_controls WHEN NEW.requestId='${request.requestId}' BEGIN SELECT RAISE(ABORT,'synthetic retry receipt failure');END;`);
- if(scenario==='budget'){
-  const paused=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.budget,1);assert.equal(paused.run.stepsUsed,1);assert.equal(f.requests.length,1);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,2);assert.equal(f.requests.length,2);
+ if(scenario==='safety_limit'){
+  const paused=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.runtime.journal.safetyWindow(sent.run.id).remaining,0);assert.equal(paused.run.stepsUsed,1);assert.equal(f.requests.length,1);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(f.runtime.journal.safetyWindow(sent.run.id),{startStepsUsed:1,afterPosition:1,remaining:0});assert.equal(f.requests.length,2);
  }else{
   const codes={unknown:'AGENT_TASK_UNKNOWN_RESULT',last_completed:'AGENT_TASK_STATE_CONFLICT',revoked:'AGENT_TASK_CONSENT_REQUIRED',busy:'AGENT_TASK_BUSY',receipt_failure:'AGENT_TASK_STORAGE_UNAVAILABLE'};
   await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:codes[scenario]});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(f.requests.length,requests);if(scenario==='receipt_failure')assert.equal(f.runtime.journal.lookupControl(request.requestId),null);
@@ -1369,13 +1492,13 @@ test('X4 follow-up: the stale revision instruction uses the run locale',async t=
   assert.ok(f.scriptRequest(2).body.includes(staleRevisionMessages[locale]),`${locale}: stale revision`);
  }
 });
-test('X4 follow-up: repeated stale revisions stop at the step budget without a change',async t=>{
- const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:6});
+test('X4 follow-up: three identical stale revision rejections pause without a change',async t=>{
+ const f=await fixture(t);
  f.setScript(async function*(){yield {type:'done',output:output('responses',[staleShotUpdate(f)])};},{loadGroups:['canvas']});
  const sent=await f.send(),done=await f.settle(sent.run.id),updates=done.steps.filter(step=>step.toolCall?.name==='mioon_shot_update');
- assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'budget');assert.equal(done.run.budget,6);assert.equal(done.run.stepsUsed,done.run.budget);
+ assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'repeated_tool_failure');assert.equal(updates.length,3);
  // Every model request and every rejected retry counts one step.
- assert.equal(updates.length*2+f.loadingSteps(done),done.run.budget);assert.ok(updates.every(step=>step.status==='rejected'&&step.error?.code==='REVISION_CONFLICT'));
+ assert.equal(updates.length*2+f.loadingSteps(done),done.run.stepsUsed);assert.ok(updates.every(step=>step.status==='rejected'&&step.error?.code==='REVISION_CONFLICT'));
  assert.equal(done.changes.length,0);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');
 });
 test('X4 follow-up: a reorder that meets a changed shot set hands back an empty current and asks Mio to reread the project',async t=>{

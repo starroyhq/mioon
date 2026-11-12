@@ -42,18 +42,19 @@ async function fixture(t: test.TestContext){
   assets.set(name,{...asset,path:path.join(root,name)});
  }
  const videoTracks=()=>timeline.tracks.filter((track: Rec)=>track.kind==='video');
- async function render(label: string){
+ async function render(label: string,composition=timeline){
   const file=path.join(root,`${label}.mp4`);
-  await renderTimeline({timeline} as never,new Map([...assets.values()].map(asset=>[asset.id,asset])) as never,file);
+  await renderTimeline({timeline:composition} as never,new Map([...assets.values()].map(asset=>[asset.id,asset])) as never,file);
   const {stdout}=await exec('ffmpeg',['-v','error','-i',file,'-fps_mode','passthrough','-vf','format=gray','-f','rawvideo','-'],{encoding:'buffer',maxBuffer:256*1024*1024,timeout:120_000});
+  const {width,height}=composition;
   return (frame: number)=>{
-   const offset=frame*SIZE*SIZE;let x0=SIZE,y0=SIZE,x1=-1,y1=-1;
-   assert.ok(offset+SIZE*SIZE<=stdout.length,`${label} has frame ${frame}`);
-   for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++)if(stdout[offset+y*SIZE+x]!>128){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}
+   const offset=frame*width*height;let x0=width,y0=height,x1=-1,y1=-1;
+   assert.ok(offset+width*height<=stdout.length,`${label} has frame ${frame}`);
+   for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(stdout[offset+y*width+x]!>128){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}
    return x1<0?null:{x0,y0,x1:x1+1,y1:y1+1};
   };
  }
- return {project,assets,videoTracks,call,render,get timeline(){return timeline;}};
+ return {root,services,ffmpeg,project,assets,videoTracks,call,render,get timeline(){return timeline;}};
 }
 /** The model's axis-aligned box of a clip's content at a timeline frame. */
 function modelBox(clip: Rec,frame: number){
@@ -103,4 +104,30 @@ test('transformed clips render where the model puts them through splits, trims, 
  const g=clipTransformGeometry(turned,{width:160,height:90},0);
  assert.deepEqual([Math.round(g.width),Math.round(g.height)],[320,360]);
  for(const frame of [80,119])near(rotated(frame),turned,frame,'rotated',6);
+});
+
+test('relative picture-in-picture renders anamorphic content and an unbounded projected position without changing the legacy picture',{timeout:120_000},async t=>{
+ const f=await fixture(t),[bottom,top]=f.videoTracks();
+ const source=path.join(f.root,'anamorphic.mp4');
+ await f.ffmpeg(['-f','lavfi','-i','color=c=white:s=160x90:r=30:d=1,setsar=2','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-threads','1',source]);
+ const asset=await f.services.call('asset.import',{projectId:f.project.id,name:'Anamorphic',mimeType:'video/mp4',dataBase64:readFileSync(source).toString('base64')});
+ f.assets.set('anamorphic',{...asset,path:source});
+ if(!top)await f.call('timeline.track.add',{kind:'video'});
+ await f.call('timeline.clip.add',{trackId:bottom.id,assetId:f.assets.get('dark.png')!.id,name:'Lower picture',startFrame:0,durationFrames:8});
+ await f.call('timeline.clip.add',{trackId:f.videoTracks()[1].id,assetId:asset.id,name:'Inset',startFrame:0,durationFrames:8,rect:{x:180,y:180,width:360,height:360}});
+ const inset=clipNamed(f.timeline,'Inset');
+ const legacy=await f.render('legacy-sample-aspect');
+ const legacyBox=legacy(6)!;
+ assert.ok(Math.abs(legacyBox.y1-legacyBox.y0-202)<=4,'legacy interpretation fits the coded 160×90, even for a non-square pixel source');
+
+ const relative={...inset,rect:{x:180,y:320,width:360,height:640},layout:{profileId:'mioon-clip-layout-v2',basisPresetId:'portrait_720'},
+  transform:transform([{frame:0,x:8192,y:0,scale:1},{frame:6,x:0,y:0,scale:1}])};
+ const projection={...f.timeline,width:2520,height:1080,clips:f.timeline.clips.map((clip: Rec)=>clip.id===inset.id?relative:clip)};
+ const rendered=await f.render('relative-sample-aspect',projection);
+ assert.equal(rendered(0),null,'the unbounded projected inset is outside the picture');
+ const {stdout:lower}=await exec('ffmpeg',['-v','error','-i',path.join(f.root,'relative-sample-aspect.mp4'),'-vf','crop=2:2:360:360,format=gray','-frames:v','1','-f','rawvideo','-'],{encoding:'buffer',timeout:30000});
+ assert.ok(lower[0]!>5&&lower[0]!<128,'the lower track remains visible under the offscreen inset');
+ const box=rendered(6)!;
+ const expected={x0:630,y0:363,x1:1890,y1:717};
+ for(const edge of ['x0','y0','x1','y1'] as const)assert.ok(Math.abs(box[edge]-expected[edge])<=4,`${edge}: ${box[edge]} vs ${expected[edge]}`);
 });

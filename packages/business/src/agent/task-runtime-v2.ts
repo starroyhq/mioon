@@ -54,6 +54,63 @@ const liveGenerationDisabledMessages:Record<AgentTaskLocale,string>={
   en:'Live generation is off. This generation was not submitted and incurred no generation charges. Stop retrying and tell the user to turn on Live generation under Settings › Generation services › General and save before continuing.',
   ja:'実サービス生成がオフです。今回の生成は送信されず、生成料金も発生していません。再試行を止め、設定 › 生成サービス › 一般で実サービス生成をオンにして保存してから続けるよう伝えてください。',
 };
+const isLiveGenerationDenial=(step:AgentTaskStep):boolean=>step.error?.code===liveGenerationDisabled&&
+  record(step.result)&&record(step.result.error)&&step.result.error.mutationOutcome==='not_applied';
+const MAX_CONSECUTIVE_TOOL_FAILURES=3;
+const MAX_MODEL_CALLS_WITHOUT_TOOL_SUCCESS=10;
+
+const unsuccessfulTool=(step:AgentTaskStep):boolean=>step.kind==='tool'&&['rejected','denied','failed'].includes(step.status);
+const settledTool=(step:AgentTaskStep):boolean=>step.kind==='tool'&&(step.status==='completed'||unsuccessfulTool(step));
+const toolStepIdentity=(sourceModelStepId:string,callId:string):string=>JSON.stringify([sourceModelStepId,callId]);
+
+function toolStepIds(steps:readonly AgentTaskStep[]):Map<string,string> {
+  const result=new Map<string,string>();
+  for(const step of steps){
+    if(step.kind!=='tool'||!step.toolCall||!record(step.data)||typeof step.data.sourceModelStepId!=='string')continue;
+    result.set(toolStepIdentity(step.data.sourceModelStepId,step.toolCall.id),step.id);
+  }
+  return result;
+}
+
+function businessToolArguments(value:AgentTaskJson):AgentTaskJson {
+  if(!record(value)||!Object.hasOwn(value,'_mio_step'))return value;
+  const {_mio_step,...args}=value;
+  return args;
+}
+
+function repeatedToolFailure(steps:readonly AgentTaskStep[],afterPosition:number,lastStepId:string):boolean {
+  let latest:AgentTaskStep['toolCall'],count=0;
+  for(let index=steps.length-1;index>=0;index--){
+    const step=steps[index]!;
+    if(step.position<=afterPosition)break;
+    if(step.kind!=='tool')continue;
+    if(!unsuccessfulTool(step)||isLiveGenerationDenial(step)||!step.toolCall)return false;
+    if(!latest){if(step.id!==lastStepId)return false;latest=step.toolCall;}
+    if(step.toolCall.name!==latest.name||!isDeepStrictEqual(businessToolArguments(step.toolCall.arguments),businessToolArguments(latest.arguments)))return false;
+    if(++count===MAX_CONSECUTIVE_TOOL_FAILURES)return true;
+  }
+  return false;
+}
+
+function noToolProgress(steps:readonly AgentTaskStep[],afterPosition:number):boolean {
+  const successfulModels=new Set<string>();
+  for(const step of steps){
+    if(step.position<=afterPosition||step.kind!=='tool'||step.status!=='completed')continue;
+    const sourceId=record(step.data)?step.data.sourceModelStepId:undefined;
+    if(typeof sourceId==='string')successfulModels.add(sourceId);
+  }
+  let count=0;
+  for(let index=steps.length-1;index>=0;index--){
+    const step=steps[index]!;
+    if(step.position<=afterPosition)break;
+    if(step.kind!=='model')continue;
+    const failedAttempt=step.status==='failed'&&!(record(step.data)&&step.data.dispatchPrevented===true);
+    if(step.status!=='completed'&&!failedAttempt)continue;
+    if(successfulModels.has(step.id))return false;
+    if(++count===MAX_MODEL_CALLS_WITHOUT_TOOL_SUCCESS)return true;
+  }
+  return false;
+}
 // Failures this process observed from the model exchange itself. No tool runs
 // before a model step completes, so the project is unchanged and the user may
 // explicitly retry. Interrupted dispatches (no recorded outcome), storage
@@ -101,6 +158,12 @@ const userInvalidatedBatchInstructions:Record<'user_rejected'|'user_answered',Re
     en:'The user answered the question. Remaining calls planned before that answer did not run. Replan from the answer instead of replaying old arguments.',
     ja:'ユーザーが質問に回答したため、その回答を知る前に計画した残りの呼び出しは実行されませんでした。回答に基づいて計画し直し、古い引数を再利用しないでください。',
   },
+};
+const loopInvalidatedBatchInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'同一工具和参数连续失败或被拒，宿主已暂停执行。本批剩余调用没有执行。请按用户说明和当前状态重新规划。',
+  'zh-Hant':'同一工具和參數連續失敗或被拒，宿主已暫停執行。本批其餘呼叫沒有執行。請按使用者說明和目前狀態重新規劃。',
+  en:'The host paused after repeated failures or rejections for the same tool and arguments. The remaining calls in that batch did not run. Replan using the current state and any user instructions.',
+  ja:'同じツールと引数で失敗または拒否が続いたため、ホストが一時停止しました。残りの呼び出しは実行されていません。現在の状態とユーザーの指示をもとに再計画してください。',
 };
 // X4 follow-up: a changed target set (a shot.reorder after a shot was added or
 // deleted) can leave no saved value to hand back. Mio must reread the project.
@@ -276,6 +339,22 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const calls=modelOutput(source.result).toolCalls,position=calls.findIndex(item=>item.id===step.toolCall?.id);
     if(position>=0&&position<calls.length-1&&(!record(source.data)||source.data.toolsInvalidated!==true))journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true,...(reason?{toolsInvalidatedReason:reason}:{})}});
   }
+  function pauseForRepeatedToolFailure(runId:string,step:AgentTaskStep):boolean {
+    // The live-generation guard returns the current batch's non-submission
+    // receipts to Mio before stopping a later attempt while still disabled.
+    if(isLiveGenerationDenial(step))return false;
+    if(!repeatedToolFailure(journal.snapshot(runId).steps,journal.safetyWindow(runId).afterPosition,step.id))return false;
+    const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
+    if(!sourceId)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+    const apply=()=>{
+      const source=journal.step(sourceId);
+      if(source.runId!==runId||source.kind!=='model')throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+      journal.updateStep(runId,sourceId,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true,toolsInvalidatedReason:'repeated_tool_failure'}});
+      pause(runId,'repeated_tool_failure');
+    };
+    if(store.db.isTransaction)apply();else store.tx(apply);
+    return true;
+  }
   /** X4: a foreground step that meets a conflict before it runs is rejected
    * with the saved values of its conflicting targets, and the run continues.
    * The step, its result and the batch flag commit in one transaction. */
@@ -363,10 +442,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const error={code:liveGenerationDisabled,message:liveGenerationDisabledMessages[taskResponseLocale(run.context)]};
     return journal.updateStep(run.id,stepId,{status,error,result:{error:{...error,mutationOutcome:'not_applied',submitted:false,generationCharged:false,settingsAction:'enable_live_generation'}}});
   }
-  async function performTool(runId:string,source:AgentTaskStep,call:TaskModelOutput['toolCalls'][number],signal:AbortSignal):Promise<AgentTaskStep|null>{
-    const steps=journal.snapshot(runId).steps;
-    let step=steps.find(item=>record(item.data)&&item.data.sourceModelStepId===source.id&&item.toolCall?.id===call.id);
-    if(step&&['completed','rejected','denied','failed'].includes(step.status))return step;
+  async function performTool(runId:string,source:AgentTaskStep,call:TaskModelOutput['toolCalls'][number],signal:AbortSignal,observed?:AgentTaskStep):Promise<AgentTaskStep|null>{
+    let step=observed;
+    if(step&&settledTool(step))return step;
     if(step&&['unknown','dispatch_started'].includes(step.status))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
     // A background approval can interrupt an awaited tool while this executor
     // still holds its earlier source snapshot. Read the saved batch decision
@@ -378,6 +456,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // target preparation. The durable source flag survives a restart; earlier
     // terminal steps were returned above and never execute again.
     const invalidatedReason=record(source.data)&&source.data.toolsInvalidated===true?source.data.toolsInvalidatedReason:undefined;
+    if(invalidatedReason==='repeated_tool_failure'){
+      const result={error:{code:'AGENT_TASK_REPEATED_TOOL_FAILURE',message:loopInvalidatedBatchInstructions[taskResponseLocale(run.context)]}};
+      return step?journal.updateStep(runId,step.id,{status:'rejected',result}):{...source,kind:'tool',status:'rejected',toolCall:call,result};
+    }
     if(invalidatedReason==='user_rejected'||invalidatedReason==='user_answered'){
       const message=userInvalidatedBatchInstructions[invalidatedReason][taskResponseLocale(run.context)];
       const result={error:{code:invalidatedReason==='user_rejected'?'USER_REJECTED':'USER_ANSWERED',message}};
@@ -435,7 +517,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       if(prepared.operation==='generation.submit'&&prepared.input.providerId!=='mock'){
-        const firstDenial=steps.find(item=>item.toolCall?.name===call.name&&item.status==='rejected'&&item.error?.code===liveGenerationDisabled&&record(item.result)&&record(item.result.error)&&item.result.error.mutationOutcome==='not_applied');
+        const firstDenial=journal.snapshot(runId).steps.find(item=>item.toolCall?.name===call.name&&item.status==='rejected'&&isLiveGenerationDenial(item));
         if(firstDenial&&!toolset().liveGenerationEnabled()){
           // Answer every call in the original batch, then stop if the next
           // model request ignores the host's instructions while still disabled.
@@ -505,7 +587,6 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:failure,...feedback}},error:{code:failure,message:feedback.message}});
         }
       }
-      // X4 follow-up: the step budget bounds Mio's rereads and retries.
       if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')return rejectStaleRevision(runId,step.id);
       const uncertain=current.status==='dispatch_started'&&(!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
@@ -541,6 +622,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       await checkExecutionWitness(runId,signal);
       modelRequests:for(;;){
         run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
+        const observedToolIds=toolStepIds(snapshot.steps);
         let repairSource=snapshot.steps.find(step=>step.kind==='model'&&goalRepairMessage(step)!==undefined)?.id;
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
@@ -559,13 +641,13 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
               const diagnosticResults=output.toolCalls.map(call=>({callId:call.id,result:{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}}));
               retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:diagnosticResults});resumeModel=model;continue;
             }
-            if(!run.diagnostic&&!repairSource&&run.stepsUsed<run.budget&&latestAgentTaskGoals(snapshot.steps)?.conditions.length){
+            if(!run.diagnostic&&!repairSource&&journal.safetyWindow(runId).remaining>0&&latestAgentTaskGoals(snapshot.steps)?.conditions.length){
               const checks=await readAgentTaskChecks(store,snapshot),gaps=checks.requirements?.filter(item=>item.status==='failed')??[];
               const current=fence(runId);
               // A note accepted while checks were reading has priority over a
               // host repair. Rebuild normally so it binds to the next intent.
               if((current.notes??[]).some(note=>note.modelStepId===undefined))continue modelRequests;
-              if(gaps.length&&current.stepsUsed<current.budget){
+              if(gaps.length&&journal.safetyWindow(runId).remaining>0){
                 const message=`${goalRepairInstructions[taskResponseLocale(run.context)]}\n${JSON.stringify({kind:'mio.goal.repair',requirements:gaps})}`;
                 // Persist the exact observation before constructing an intent.
                 // Recovery replays it, rather than rechecking a changed project.
@@ -578,7 +660,18 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           const results:{callId:string;result:AgentTaskJson}[]=[];
           for(const call of output.toolCalls){
-            const finished=await performTool(runId,model,call,signal);if(!finished)return;
+            // The executor owns new tool rows. Read the exact receipt, and
+            // yield even for a completed tool so a queued note can be observed
+            // before we decide whether the saved final reply ends the run.
+            const identity=toolStepIdentity(model.id,call.id),savedId=observedToolIds.get(identity);
+            const saved=savedId===undefined?undefined:journal.step(savedId);
+            if(saved&&(saved.runId!==runId||saved.toolCall?.id!==call.id||!record(saved.data)||saved.data.sourceModelStepId!==model.id))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+            const replaying=saved!==undefined&&settledTool(saved);
+            const finished=await (replaying?saved:performTool(runId,model,call,signal,saved));if(!finished)return;
+            if(!replaying&&finished.id!==model.id)observedToolIds.set(identity,finished.id);
+            // An earlier receipt will be replayed while assembling every new
+            // request. Only a newly settled real tool can cross this boundary.
+            if(!replaying&&finished.id!==model.id&&unsuccessfulTool(finished)&&pauseForRepeatedToolFailure(runId,finished))return;
             if(finished.status==='failed'&&(!record(model.data)||model.data.toolsInvalidated!==true)){
               changeStatus(runId,'failed',finished.error?.code??'AGENT_TASK_FAILED');return;
             }
@@ -603,7 +696,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }else{
           // Capture once: the hint and the immutable request must describe the
           // very same revision boundary, including across later replay.
-          const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run);
+          const current=journal.snapshot(runId);
+          if(!pendingModel){
+            const {afterPosition,remaining}=journal.safetyWindow(runId);
+            // All calls from a completed model reply have been handled. A pause
+            // here leaves the current tool batch and any approval receipts intact.
+            if(noToolProgress(current.steps,afterPosition)){pause(runId,'no_tool_progress');return;}
+            if(!remaining){pause(runId,'safety_limit');return;}
+          }
+          const baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run);
           // History is budgeted against this request's own tool catalog.
           const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic});
           const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});
@@ -674,7 +775,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
       const run=journal.run(runId);if(terminal(run)||run.status==='paused'||run.status==='awaiting_approval'||run.status==='awaiting_answer')return;
       const failure=code(error);
-      if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
+      if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'safety_limit');return;}
       const message=agentChatHttpStatus(error)===undefined&&agentChatStreamReason(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
       const diagnostic=agentChatDiagnostic(error),stepError={code:failure,message,...(diagnostic?{diagnostic}:{})};
       if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='intent')journal.updateStep(runId,step.id,{status:'failed',error:stepError});
@@ -823,7 +924,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(step.runId!==runId||step.kind!=='tool'||step.status!=='awaiting_answer'||step.toolCall?.name!==AGENT_TASK_ASK_TOOL)throw agentTaskFailure('AGENT_TASK_INVALID');
         journal.updateStep(runId,step.id,{status:'completed',result:answerResult(step,request)});
         invalidateRestOfBatch(runId,journal.step(step.id),'user_answered');
-        journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
+        journal.resume(runId,journal.run(runId).revision);
         return {state:'completed',stepId:step.id};
       }
       if(request.action==='retry'){
@@ -839,7 +940,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});
         }
         changeStatus(runId,'running');
-        if(run.stepsUsed>=run.budget)changeStatus(runId,'paused','budget');
+        if(!journal.safetyWindow(runId).remaining)changeStatus(runId,'paused','safety_limit');
         return {state:'completed',stepId:last.id};
       }
       if(request.action==='pause'){if(run.status==='running'||run.status==='awaiting_approval'||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused','user');}
@@ -849,8 +950,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(request.action==='approve'){authorize(run);assertNotSkipped(run,referencedTargets(step));journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
         else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step),...(isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set'?{rulesApprovalReceiptId:request.requestId}:{})}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
-        if(request.action==='deny')invalidateRestOfBatch(runId,journal.step(step.id),'user_rejected');
-        journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
+        if(request.action==='deny'){
+          const denied=journal.step(step.id);
+          if(!background&&pauseForRepeatedToolFailure(runId,denied))return null;
+          invalidateRestOfBatch(runId,denied,'user_rejected');
+        }
+        journal.resume(runId,journal.run(runId).revision);
         if(request.action==='approve'&&isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set')return {state:'completed',approvedRules:{stepId:step.id,proposalDigest:approvalDigest(step)}};
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
@@ -891,7 +996,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         // Recovery acknowledges interruption, never the old conflict's plan.
         // Older runtimes saved only restart, so also inspect unresolved evidence.
         if(request.action==='resume'&&run.status==='interrupted'&&(conflict||journal.snapshot(runId).steps.some(unresolvedConflict))){
-          journal.resume(runId,run.revision,{extendBudget:false});
+          journal.resume(runId,run.revision);
           changeStatus(runId,'paused',conflict?run.pauseReason:'conflict');return null;
         }
         if(request.action==='resume'&&conflict)throw agentTaskFailure('AGENT_TASK_SKIP_REQUIRED');
@@ -914,7 +1019,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
             journal.updateStep(runId,step.id,{status:kept?'denied':'rejected',result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(run):'目标已变化，请按当前保存状态重新规划。'}}});
           }
         }
-        journal.resume(runId,journal.run(runId).revision,{extendBudget:request.action==='resume'});
+        journal.resume(runId,journal.run(runId).revision,{resetSafetyWindow:request.action==='resume'});
         if(request.action==='skip')return {state:'completed',skippedTargets:skipped.map(target=>({kind:target.kind,id:target.id}))};
       }
       return null;
@@ -931,7 +1036,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         // X4: a foreground approval that meets a conflict is still rejected. The
         // step is handed back and the run continues; a new plan needs a new approval.
         if(step?.status==='awaiting_approval'&&journal.run(runId).status==='awaiting_approval'){
-          const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step)));journal.resume(runId,journal.run(runId).revision,{extendBudget:false});};
+          const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step)));journal.resume(runId,journal.run(runId).revision);};
           if(store.db.isTransaction)handBack();else store.tx(handBack);handedBack=true;
         }else{
           // Background approvals may pause; an undo of a terminal run stays terminal.
@@ -975,7 +1080,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     policy:()=>hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),lookupPolicy:(id:string)=>({found:hasTables&&!!journal.lookupPolicy(id),...(hasTables&&journal.lookupPolicy(id)?{policy:journal.lookupPolicy(id)}:{})}),updatePolicy:(input:unknown)=>{
       mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','expectedRevision','revision','stepLimit','modes','acknowledgePaid'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||!record(input.modes))throw agentTaskFailure('AGENT_TASK_INVALID');
       const old=journal.policy();if(old.modes.paid!=='direct'&&input.modes.paid==='direct'&&input.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
-      return journal.updatePolicy({revision:input.expectedRevision??input.revision,stepLimit:input.stepLimit,modes:input.modes} as Parameters<AgentTaskJournal['updatePolicy']>[0],input.requestId);
+      return journal.updatePolicy({revision:input.expectedRevision??input.revision,...(input.stepLimit===undefined?{}:{stepLimit:input.stepLimit}),modes:input.modes} as Parameters<AgentTaskJournal['updatePolicy']>[0],input.requestId);
     },
     close(){if(closed)return;closed=true;removeGate();for(const entry of active.values())entry.controller.abort();},
     async drain(){while(active.size)await Promise.allSettled([...active.values()].map(entry=>entry.promise));},

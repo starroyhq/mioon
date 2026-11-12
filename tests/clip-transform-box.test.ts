@@ -60,6 +60,20 @@ test('an unsaved drag previews the keyframe it would set, between keyframes too'
   assert.equal(transformIssue(clip(full), 30, boxFields(boxValues(clip(full), 30))), 'clip.transform.full', 'a full clip only moves existing keyframes');
 });
 
+test('a relative-layout box uses the source display aspect and translates drags back to the saved basis', () => {
+  const frame = {width:1920,height:1080}, source = {width:160,height:90,sampleAspectRatio:2};
+  const clip = {startFrame:0,durationFrames:60,rect:{x:0,y:0,width:720,height:1280},
+    layout:{profileId:'mioon-clip-layout-v2',basisPresetId:'portrait_720'}};
+  const picture = {left:0,top:0,width:960,height:540};
+  const view = transformBoxView(clip, source, frame, picture, 0)!;
+  near(view.width, 960); near(view.height, 270);
+  const moved = movedBoxValues({x:0,y:0,scale:1}, {x:96,y:-54}, view.factor, view.basisScaleX, view.basisScaleY);
+  assert.deepEqual(moved, {x:72,y:-128,scale:1});
+  const shifted = transformBoxView(clip, source, frame, picture, 0, moved)!;
+  near(shifted.center.x-view.center.x,96);
+  near(shifted.center.y-view.center.y,-54);
+});
+
 test('the box renders in percent of the layer, with handles only when editable', () => {
   const fixture = `
     import * as React from 'react';

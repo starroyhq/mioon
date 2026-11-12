@@ -12,7 +12,7 @@ import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme, net } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme, net, screen } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {createMediaToolsInstaller} from './media-tools.ts';
@@ -55,6 +55,7 @@ import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindo
 import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
 import type { RendererHealthContents } from './renderer-diagnostics.ts';
 import { windowChromeOptions } from './window-chrome.ts';
+import { createLauncherWindowState } from './launcher-window-state.ts';
 import { settingsWindowOptions } from './settings-window.ts';
 import { createDesktopTray } from './tray-host.ts';
 import type { TrayAction } from './tray-host.ts';
@@ -506,6 +507,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       isCurrent:()=>ownsWindowContext(context),getWindows:()=>windowHost?.windows()||[],ownsWindow:window=>ownsWindow(window,context)});
     await context.appearance.ready();startup.checkpoint();incident.assertAlive();
     let ownedRelinkHost:typeof assetRelinkHost=null;
+    const launcherWindowState = createLauncherWindowState(paths.userData, () => screen.getAllDisplays().map(display => display.workArea));
     let restorationNoticesPending = false;
     windowHost = createProjectWindowHost<BrowserWindow>({
       projectActionReservations,
@@ -515,12 +517,26 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       canRestoreParentFocus: () => BrowserWindow.getFocusedWindow() !== null,
-      createWindow: creation => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
-        icon: path.join(app.getAppPath(), 'icons/icon.png'),
-        minWidth: 1050, minHeight: 680, backgroundColor: context.appearance.backgroundColor(), show: false,
-        autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
-        ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
-        webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
+      createWindow: creation => {
+        const launcher = creation.role === 'launcher';
+        const title = launcher ? 'Mioon' : identity.productName;
+        const window = new BrowserWindow({
+          title,
+          ...(launcher ? launcherWindowState.options() : {width: 1500, height: 960, minWidth: 1050, minHeight: 680}),
+          icon: path.join(app.getAppPath(), 'icons/icon.png'),
+          backgroundColor: context.appearance.backgroundColor(), show: false,
+          autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
+          ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
+          webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') },
+        });
+        if (launcher) {
+          window.on('page-title-updated', (event, pageTitle) => {
+            if (pageTitle !== title) event.preventDefault();
+          });
+          launcherWindowState.track(window);
+        }
+        return window;
+      },
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
       admitProject:async(owner,projectId)=>{

@@ -210,10 +210,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-settings-locked > svg { flex: none; }
 .mio-settings-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-warning); font-size: var(--wb-text-caption); line-height: 1.6; }
 .mio-settings-notice[role="status"] { color: var(--wb-soft); }
-.mio-settings-steps { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--wb-space-4); }
-.mio-settings-number { display: flex; align-items: center; flex: none; width: 112px; height: var(--wb-control); padding-inline-end: var(--wb-space-2); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-input); }
-.mio-settings-number > input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; box-shadow: none; font-size: var(--wb-text-label); font-family: var(--wb-font-mono); }
-.mio-settings-number > span { color: var(--wb-muted); font-size: var(--wb-text-caption); }
 .mio-settings-grants { display: flex; flex-direction: column; }
 .mio-settings-grant { display: flex; align-items: center; gap: var(--wb-space-3); padding: var(--wb-space-2) var(--wb-space-3); }
 .mio-settings-grant + .mio-settings-grant { border-top: 1px solid var(--wb-line-subtle); }

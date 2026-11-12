@@ -137,6 +137,12 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
 }
 const ready=async(h:ReturnType<typeof uiHarness>)=>{h.render();await flush();h.render();};
 
+test('the Mio execution policy has confirmation controls without a step-limit field',()=>{
+ const policySource=readFileSync(new URL('../apps/web/src/AgentTaskPolicy.tsx',import.meta.url),'utf8');
+ assert.match(policySource,/agent-policy-preset/u);
+ assert.doesNotMatch(policySource,/agent-policy-steps|mio\.settings\.steps|stepLimit/u);
+});
+
 function renderedWorkbenchButton(node:Element):Element{
  const source=readFileSync(new URL('../packages/ui/src/components/workbench-controls.tsx',import.meta.url),'utf8');
  const start=source.indexOf('export function WorkbenchButton('),end=source.indexOf('\nexport interface WorkbenchTabOption',start);assert.ok(start>=0&&end>start);
