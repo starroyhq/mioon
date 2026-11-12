@@ -1,6 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {deriveAgentEndpoint} from '@mioon/contracts';
+import {AppError,deriveAgentEndpoint} from '@mioon/contracts';
 import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type { Store } from '../store-contract.ts';
@@ -47,6 +47,15 @@ const code=(value:unknown):string=>record(value)&&typeof value.code==='string'?v
 const storageError=(value:unknown):boolean=>/^(?:ERR_SQLITE|SQLITE_|AGENT_TASK_STORAGE_)/u.test(code(value));
 const storageFailure=(value:unknown):string=>code(value)==='AGENT_TASK_STORAGE_LIMIT'||code(value)==='ERR_SQLITE_ERROR'&&record(value)&&value.message==='AGENT_TASK_STORAGE_LIMIT'?'AGENT_TASK_STORAGE_LIMIT':'AGENT_TASK_STORAGE_UNAVAILABLE';
 const terminal=(run:AgentTaskRun):boolean=>['completed','failed','stopped','reverted'].includes(run.status);
+const liveGenerationDisabled='LIVE_GENERATION_DISABLED';
+const liveGenerationDisabledMessages:Record<AgentTaskLocale,string>={
+  'zh-Hans':'真实生成未开启。这次生成没有提交，也没有产生生成费用。请停止重试，告诉用户在设置 › 生成服务 › 常规打开真实生成并保存，再继续。',
+  'zh-Hant':'真實生成尚未開啟。這次生成沒有提交，也沒有產生生成費用。請停止重試，告知使用者在設定 › 生成服務 › 一般開啟真實生成並儲存，再繼續。',
+  en:'Live generation is off. This generation was not submitted and incurred no generation charges. Stop retrying and tell the user to turn on Live generation under Settings › Generation services › General and save before continuing.',
+  ja:'実サービス生成がオフです。今回の生成は送信されず、生成料金も発生していません。再試行を止め、設定 › 生成サービス › 一般で実サービス生成をオンにして保存してから続けるよう伝えてください。',
+};
+const isLiveGenerationDenial=(step:AgentTaskStep):boolean=>step.error?.code===liveGenerationDisabled&&
+  record(step.result)&&record(step.result.error)&&step.result.error.mutationOutcome==='not_applied';
 const MAX_CONSECUTIVE_TOOL_FAILURES=3;
 const MAX_MODEL_CALLS_WITHOUT_TOOL_SUCCESS=10;
 
@@ -75,7 +84,7 @@ function repeatedToolFailure(steps:readonly AgentTaskStep[],afterPosition:number
     const step=steps[index]!;
     if(step.position<=afterPosition)break;
     if(step.kind!=='tool')continue;
-    if(!unsuccessfulTool(step)||!step.toolCall)return false;
+    if(!unsuccessfulTool(step)||isLiveGenerationDenial(step)||!step.toolCall)return false;
     if(!latest){if(step.id!==lastStepId)return false;latest=step.toolCall;}
     if(step.toolCall.name!==latest.name||!isDeepStrictEqual(businessToolArguments(step.toolCall.arguments),businessToolArguments(latest.arguments)))return false;
     if(++count===MAX_CONSECUTIVE_TOOL_FAILURES)return true;
@@ -331,6 +340,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(position>=0&&position<calls.length-1&&(!record(source.data)||source.data.toolsInvalidated!==true))journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true,...(reason?{toolsInvalidatedReason:reason}:{})}});
   }
   function pauseForRepeatedToolFailure(runId:string,step:AgentTaskStep):boolean {
+    // The live-generation guard returns the current batch's non-submission
+    // receipts to Mio before stopping a later attempt while still disabled.
+    if(isLiveGenerationDenial(step))return false;
     if(!repeatedToolFailure(journal.snapshot(runId).steps,journal.safetyWindow(runId).afterPosition,step.id))return false;
     const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
     if(!sourceId)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
@@ -426,6 +438,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     return [fallback,...([{names:core,label:labels.core},{names:unknown,label:labels.unknown},{names:unlisted,label:labels.unlisted}]
       .filter(item=>item.names.length).map(item=>`${item.label} ${item.names.map(name=>JSON.stringify(name)).join(', ')}.`))].join(' ');
   }
+  function recordLiveGenerationDenial(run:AgentTaskRun,stepId:string,status:'rejected'|'failed'):AgentTaskStep {
+    const error={code:liveGenerationDisabled,message:liveGenerationDisabledMessages[taskResponseLocale(run.context)]};
+    return journal.updateStep(run.id,stepId,{status,error,result:{error:{...error,mutationOutcome:'not_applied',submitted:false,generationCharged:false,settingsAction:'enable_live_generation'}}});
+  }
   async function performTool(runId:string,source:AgentTaskStep,call:TaskModelOutput['toolCalls'][number],signal:AbortSignal,observed?:AgentTaskStep):Promise<AgentTaskStep|null>{
     let step=observed;
     if(step&&settledTool(step))return step;
@@ -500,6 +516,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)})}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
+      if(prepared.operation==='generation.submit'&&prepared.input.providerId!=='mock'){
+        const firstDenial=journal.snapshot(runId).steps.find(item=>item.toolCall?.name===call.name&&item.status==='rejected'&&isLiveGenerationDenial(item));
+        if(firstDenial&&!toolset().liveGenerationEnabled()){
+          // Answer every call in the original batch, then stop if the next
+          // model request ignores the host's instructions while still disabled.
+          const sameBatch=record(firstDenial.data)&&firstDenial.data.sourceModelStepId===source.id;
+          return recordLiveGenerationDenial(run,step.id,sameBatch?'rejected':'failed');
+        }
+      }
       // C3: a question waits for the user's answer; nothing is dispatched.
       if(prepared.operation===AGENT_TASK_ASK_OPERATION){journal.updateStep(runId,step.id,{status:'awaiting_answer'});changeStatus(runId,'awaiting_answer');return null;}
       // Loosening the modes later never approves a confirmation already shown.
@@ -546,6 +571,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       }
       if(failure==='AGENT_TASK_CONSENT_REQUIRED'||failure==='AGENT_TASK_STORAGE_UNAVAILABLE')throw error;
       const current=journal.step(step.id);if(current.status==='completed')throw error;
+      if(failure===liveGenerationDisabled&&error instanceof AppError&&record(error.details)&&error.details.mutationOutcome==='not_applied'){
+        if(current.status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
+        return recordLiveGenerationDenial(run,step.id,'rejected');
+      }
       if(current.status==='intent'&&failure==='VALIDATION_ERROR'){
         let feedback;
         try{feedback=await toolset().parameterFeedback({projectId:run.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});}

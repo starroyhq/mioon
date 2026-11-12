@@ -282,6 +282,7 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 - 提供 `mioon_skill_read` 时，系统指令按本轮语言附上方法名称和简介，不附正文。
 - 宿主工具 `mioon_skill_read {name, section?}`（核心组，只读，计一步）：不带 `section` 返回 `{name, version, title, sections, text}`，`sections` 是章节标题；带 `section` 返回 `{name, version, title, section, text}`。结果不超过 12 KiB，低于 16 KiB 的结果视图上限。未知方法或章节按参数纠错返回可读的章节，这一轮不失败。
 - 拆镜头方法要求先按确切名称加载 `mioon_provider_list`，再用 `provider.list` 读所用模型的 `durations`，不写死任何模型。其他方法同样按实际使用的工具名加载，不再让新请求使用 groups 参数。
+- Mio 的 `mioon_provider_list` 在每条服务能力中提供 `liveGenerationEnabled`，表示工作区当前是否允许真实生成。提交时由宿主重新检查开关。因开关关闭而拒绝的提交会反馈本次生成没有发送或产生生成费用，并指向「设置 › 生成服务 › 常规 › 真实生成」。
 - 镜头提示词方法第 2 版加了“参考素材的指代”和“声音标记”两节，同样不写模型名：模型能力里有 `promptReferences` 时，参考图和参考音频按提交顺序从 1 编号（`@图片1`、`@音频1`），先写每份素材提供什么、不采用什么；有 `soundMarks` 时，音乐、音效、台词、字幕用它给出的符号。现在只有 Seedance 2.5 的精确行带这两个字段（`seedanceCapabilities`），取自方舟的提示词规则。编号要在提交前写进镜头，系统不改写提示词。
 - 后加的三份只用现有工具，付费生成照常确认，真实模型下的效果还没有验证：
   - 脚本改动同步：用 `node.inspect` 读文字节点里的脚本，`shot.inspect` 读全部镜头，先列出受影响的镜头（超过 5 个或拿不准时用 `mioon_ask` 确认），再用 `shot.update` 逐个改；提示词被截断（`promptTruncated`）的镜头不整段改写；不提交生成。

@@ -1,5 +1,6 @@
 import type {TaskPanelChange,TaskPanelSnapshot,TaskPanelState,TaskPanelOptions,TaskPanelStep,ElementProps} from './helpers/strict-agent-ui-types.ts';
 import type {Locale} from '../packages/i18n/src/types.ts';
+import type {AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +28,7 @@ const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
 const trustedRules=(owner:string):ProjectRulesSnapshot=>projectRulesSnapshotSchema.parse({projectId:owner,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
-function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules,usageRunId='run'}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>;usageRunId?:string}={}){
+function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules,usageRunId='run',openRequests=false}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>;usageRunId?:string;openRequests?:boolean}={}){
   let currentLocale=locale,currentProjectId=projectId,refreshResult: Promise<unknown>|null=null,currentVisible=true;
   let currentAdmission=true;
   const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0,hookWrites=0;const calls: unknown[][]=[];
@@ -64,7 +65,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
     if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
-  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
+  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onOpenRequests:openRequests?(selectedId:unknown)=>calls.push(['requests',selectedId]):undefined,onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
   let disposed=false;
   return{render,calls,state,usageReads,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
@@ -170,6 +171,78 @@ test('an unknown paid step can be marked failed after checking the task center; 
     (mark.props.onClick as ()=>void)();assert.deepEqual(h.calls.at(-1),['resolve_unknown',{stepId,resolution:'discard'},'run']);
     step.tier='local_irreversible';h.render();
     assert.equal(h.find(`agent-task-mark-failed-${stepId}`),undefined);assert.ok(renderedText(h.find(`agent-task-unknown-${stepId}`)!).includes(translate('zh-Hans','agent.task.waitReconcile')));
+  }finally{h.unmount();}
+});
+
+test('a paid video submission blocked by live generation can be marked failed without provider reconciliation',()=>{
+  for(const [locale,notSubmitted] of [
+    ['zh-Hans','请求未提交'],
+    ['zh-Hant','請求未送出'],
+    ['en','request was not submitted'],
+    ['ja','リクエストは送信されていません'],
+  ] as const){
+    const h=harness({status:'interrupted',locale,openRequests:true});
+    try{
+      const step:TaskPanelStep & Pick<AgentTaskStep,'cost'>={
+        ...h.state.snapshot!.steps[0],status:'unknown',cost:locale==='en'?'pending':undefined,
+        error:{code:'LIVE_GENERATION_DISABLED',message:'UNTRUSTED_DIAGNOSTIC'},
+      };
+      h.state.snapshot!.steps[0]=step;
+      const panelText=renderedText(h.render()[0]),card=renderedText(h.find(`agent-task-unknown-${stepId}`));
+      assert.ok(card.includes(notSubmitted),locale);
+      assert.ok(!card.includes('UNTRUSTED_DIAGNOSTIC'),locale);
+      assert.ok(!card.includes(translate(locale,'agent.task.paidReconcile')),locale);
+      assert.ok(!card.includes(translate(locale,'agent.panel.checkProvider')),locale);
+      assert.ok(!panelText.includes(translate(locale,'agent.panel.recoveryBody')),locale);
+      const mark=h.find(`agent-task-mark-failed-${stepId}`);
+      assert.ok(mark,locale);
+      assert.equal(mark.props.disabled,false,locale);
+      assert.equal(h.find('agent-task-resume')!.props.disabled,true,locale);
+      mark.props.onClick();
+      assert.deepEqual(h.calls,[['resolve_unknown',{stepId,resolution:'discard'},'run']],locale);
+      step.status='failed';
+      h.state.snapshot!.run.status='failed';
+      h.render();
+      const failure=renderedText(h.find(`agent-task-step-error-${stepId}`));
+      for(const key of ['redesign.settings.models','generation.services.general','redesign.settings.liveGeneration','generation.services.save'] as const){
+        assert.ok(failure.includes(translate(locale,key)),locale);
+      }
+      assert.ok(!failure.includes('UNTRUSTED_DIAGNOSTIC'),locale);
+    }finally{h.unmount();}
+  }
+});
+
+test('recovery still requests reconciliation for a different error, cost evidence, or a wait step',()=>{
+  const h=harness({status:'interrupted',openRequests:true});
+  try{
+    for(const [name,code,cost] of [
+      ['mioon_generation_submit','AGENT_TASK_UNKNOWN_RESULT',undefined],
+      ['mioon_generation_submit','LIVE_GENERATION_DISABLED','unknown'],
+      ['mioon_generation_submit','LIVE_GENERATION_DISABLED','submitted'],
+      ['mioon_generation_submit','LIVE_GENERATION_DISABLED','charged'],
+      ['mioon_task_wait','LIVE_GENERATION_DISABLED','pending'],
+    ] as const){
+      const step:TaskPanelStep & Pick<AgentTaskStep,'cost'>={
+        ...h.state.snapshot!.steps[0],status:'unknown',cost,toolCall:{name,arguments:{}},error:{code,message:'synthetic'},
+      };
+      h.state.snapshot!.steps[0]=step;
+      const panelText=renderedText(h.render()[0]),card=h.find(`agent-task-unknown-${stepId}`);
+      assert.ok(panelText.includes(translate('zh-Hans','agent.panel.recoveryBody')));
+      assert.ok(renderedText(card).includes(translate('zh-Hans','agent.task.paidReconcile')));
+      const key=name==='mioon_generation_submit'?'agent.panel.checkProvider':'agent.panel.checkOriginal';
+      const check=nodes(card).find(node=>node.type==='button'&&renderedText(node)===translate('zh-Hans',key));
+      assert.ok(check);
+      check.props.onClick();
+      assert.deepEqual(h.calls.at(-1),['requests',undefined]);
+    }
+    const blockedStepId='33333333-3333-4333-8333-333333333333';
+    h.state.snapshot!.steps.push({
+      id:blockedStepId,kind:'tool',tier:'paid',status:'unknown',toolCall:{name:'mioon_generation_submit',arguments:{}},
+      error:{code:'LIVE_GENERATION_DISABLED',message:'synthetic'},
+    });
+    assert.ok(renderedText(h.render()[0]).includes(translate('zh-Hans','agent.panel.recoveryBody')));
+    assert.ok(renderedText(h.find(`agent-task-unknown-${stepId}`)).includes(translate('zh-Hans','agent.task.paidReconcile')));
+    assert.ok(!renderedText(h.find(`agent-task-unknown-${blockedStepId}`)).includes(translate('zh-Hans','agent.task.paidReconcile')));
   }finally{h.unmount();}
 });
 
@@ -311,7 +384,7 @@ test('Mio explains each execution safeguard and offers an ordinary resume after 
 });
 
 test('failure settings links route by stable error code and unknown diagnostics add no misleading destination',()=>{
-  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['AGENT_SETTINGS_CONFLICT','agent'],['PROVIDER_DISABLED','models'],['PREFLIGHT_STALE',undefined],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]] as const){
+  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['AGENT_SETTINGS_CONFLICT','agent'],['PROVIDER_DISABLED','models'],['LIVE_GENERATION_DISABLED','models'],['PREFLIGHT_STALE',undefined],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]] as const){
     const h=harness({status:'failed'});try{h.state.snapshot!.steps[0].error={code,message:'UNTRUSTED_DIAGNOSTIC'};h.render();const link=h.find(`agent-task-error-settings-${stepId}`);if(page){assert.ok(link);link.props.onClick();assert.deepEqual(h.calls,[['settings',page]]);}else assert.equal(link,undefined);}finally{h.unmount();}
   }
 });

@@ -311,7 +311,18 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   validateSubjectGenerationOwnership(db,job);
   return job;
  }
- const prepareJobDraft=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null)=>{
+ // Use only while checking a new request before any job or receipt writes.
+ // Preserve structured errors without modifying a shared settings error object.
+ const rejectGenerationAdmission=(error: unknown): never=>{
+  if(!(error instanceof Error))throw error;
+  const code=property(error,'code'),status=property(error,'status'),details=property(error,'details');
+  if(typeof code!=='string'||typeof status!=='number'||details!==undefined&&!isRecord(details)||property(details,'mutationOutcome')!==undefined)throw error;
+  throw new AppError(code,error.message,status,{...details,mutationOutcome:'not_applied'});
+ };
+ const checkGenerationAdmission=<T>(check: ()=>T): T=>{
+  try{return check();}catch(error){return rejectGenerationAdmission(error);}
+ };
+ const prepareJobDraft=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null)=>checkGenerationAdmission(()=>{
   const shot=required('shots',input.shotId) as ShotRecord;
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
   if(!retrySnapshot)check(shot,input.expectedRevision);
@@ -345,12 +356,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(wanCapability&&executionBinding)parameters=retrySnapshot?property(retrySnapshot,'parameters'):resolveWanGenerationParameters(executionBinding.model,wanCapability.defaults,{aspectRatio:shot.aspectRatio,parameters});
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
   return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters};
- };
+ });
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
   assertApplicationMutationAllowed();assertMutationAllowed?.();
   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');
   if(prior){const priorJob=prior as JobRecord;return input.subjectVersionId!==undefined||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,input,retryOfJobId):priorJob;}
-  if(referenceBasis)for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
+  if(referenceBasis)checkGenerationAdmission(()=>{
+   for(const [id,raw] of referenceBasis)if(JSON.stringify(required('assets',id))!==raw)throw new AppError('REFERENCE_CHANGED','确认后的素材引用已改变，请重新确认',409);
+  });
   assertSubjectGenerationRequestVacant(db,input);
   const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters}=prepareJobDraft(input,retrySnapshot);
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
@@ -520,21 +533,30 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(!kernelProjectId)return createJob(input,null,null,null,outputLocale);
    // Exact replay needs no fresh filesystem admission and never creates a
    // second provider job after an acknowledgement was lost.
-   const prior=dedupe('generation',input.requestId,hash(input),'jobs');if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior as JobRecord,input):prior;
+   const requestHash=hash(input),prior=dedupe('generation',input.requestId,requestHash,'jobs');if(prior)return input.subjectVersionId!==undefined||hasSubjectGeneration(prior.snapshot)?replaySubjectJob(prior as JobRecord,input):prior;
    // Preserve existing pure metadata/ownership/profile error precedence before
    // observing disk state. The same rules are rechecked inside the short tx.
    const draft=prepareJobDraft(input),shot=draft.shot,ids=(draft.assets as GenerationAsset[]).map(asset=>asset.id);
    for(const audio of arrayValue(property(draft.inputFields,'referenceAudios'))){const id=stringValue(property(audio,'id'));if(id)ids.push(id);}
    const references=registeredProjectAssetReferences(root);if(!references)throw new TypeError('Reference admission requires the exact project owner');
    const basis=new Map<string,string>(),confirmed=[];
-   for(const id of ids){
-    const asset=required('assets',id);if(asset.projectId!==shot.projectId||typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(asset.sha256))throw new AppError('REFERENCE_CHANGED','参考素材缺少已登记的完整哈希',409);
-    const state=await references.inspect(id,{signal:ownerSignal});checkpoint(ownerSignal);
-    if(state.status!=='online'||!state.readable){const code=state.status==='missing'?'MEDIA_MISSING':!state.readable?'MEDIA_OUTSIDE_NOT_CONFIRMED':'MEDIA_CHANGED';throw mediaUnavailableError(code,id,code==='MEDIA_OUTSIDE_NOT_CONFIRMED'?null:state.status==='missing'?'not-found':'content');}
-    await references.resolve(id,{signal:ownerSignal,expectedReferenceRevision:Number(asset.referenceRevision)});checkpoint(ownerSignal);
-    basis.set(id,JSON.stringify(asset));confirmed.push({assetId:id,referenceRevision:asset.referenceRevision,sha256:asset.sha256});
+   try{
+    for(const id of ids){
+     const asset=required('assets',id);if(asset.projectId!==shot.projectId||typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/u.test(asset.sha256))throw new AppError('REFERENCE_CHANGED','参考素材缺少已登记的完整哈希',409);
+     const state=await references.inspect(id,{signal:ownerSignal});checkpoint(ownerSignal);
+     if(state.status!=='online'||!state.readable){const code=state.status==='missing'?'MEDIA_MISSING':!state.readable?'MEDIA_OUTSIDE_NOT_CONFIRMED':'MEDIA_CHANGED';throw mediaUnavailableError(code,id,code==='MEDIA_OUTSIDE_NOT_CONFIRMED'?null:state.status==='missing'?'not-found':'content');}
+     await references.resolve(id,{signal:ownerSignal,expectedReferenceRevision:Number(asset.referenceRevision)});checkpoint(ownerSignal);
+     basis.set(id,JSON.stringify(asset));confirmed.push({assetId:id,referenceRevision:asset.referenceRevision,sha256:asset.sha256});
+    }
+    if(input.referenceRevisions&&canonical(input.referenceRevisions)!==canonical(confirmed))throw new AppError('REFERENCE_CHANGED','确认中的素材引用修订已改变，请重新确认',409);
+   }catch(error){
+    // An overlapping invocation could have committed the same request while
+    // filesystem checks were awaiting. Keep its outcome uncertain here.
+    let accepted: ServiceRow|null;
+    try{accepted=dedupe('generation',input.requestId,requestHash,'jobs');}catch{throw error;}
+    if(accepted)throw error;
+    rejectGenerationAdmission(error);
    }
-   if(input.referenceRevisions&&canonical(input.referenceRevisions)!==canonical(confirmed))throw new AppError('REFERENCE_CHANGED','确认中的素材引用修订已改变，请重新确认',409);
    return createJob(input,null,null,basis,outputLocale);
   },
   'job.get':(input: ServiceRow)=>subjectDisclosure('jobs',required('jobs',stringValue(input.jobId) as string)),
