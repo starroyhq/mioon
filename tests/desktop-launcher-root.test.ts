@@ -71,6 +71,44 @@ test('host busy presentation alone does not republish local create metadata', ()
   h.render({ busy: false, createDisabledReason: '' });
   assert.equal(h.reports.length, 1); assert.equal(h.reports.at(-1), initial);
 });
+test('launcher pages retain the directory and dispatch only visible permitted actions', () => {
+  const calls: string[] = [];
+  const directory = {type: 'section', props: {'data-testid': 'synthetic-directory'}};
+  const h = homeHarness({
+    launcher: {version: '0.1.1', service: 'ready', empty: false},
+    totalProjects: 1,
+    renderCatalog: () => directory,
+    onOpenFile: () => calls.push('file'),
+    onStartExample: () => calls.push('example'),
+    onRefresh: () => calls.push('refresh'),
+    onPage: (page: string) => calls.push(page),
+  });
+  const projects = h.render();
+  assert.ok(find(projects, 'synthetic-directory'));
+  assert.equal(find(projects, 'launcher-version').props.children, '0.1.1');
+  const openFile = find(projects, 'project-home-open-file').props.onClick!;
+  openFile();
+  find(projects, 'launcher-nav-examples').props.onClick!();
+  const examples = h.render();
+  assert.ok(find(examples, 'synthetic-directory'));
+  openFile();
+  const startExample = find(examples, 'launcher-example-start').props.onClick!;
+  startExample();
+  find(examples, 'launcher-nav-help').props.onClick!();
+  const help = h.render();
+  startExample();
+  const refresh = find(help, 'launcher-help-refresh').props.onClick!;
+  refresh();
+  h.render({busy: true});
+  refresh();
+  find(help, 'project-home-page-settings').props.onClick!();
+  find(help, 'launcher-nav-projects').props.onClick!();
+  assert.ok(find(h.render({busy: false}), 'launcher-help'));
+  find(h.render(), 'launcher-nav-projects').props.onClick!();
+  assert.ok(find(h.render(), 'project-home-open-file'));
+  refresh();
+  assert.deepEqual(calls, ['file', 'example', 'refresh']);
+});
 test('typed launcher dependency graph never imports App, editor controllers or legacy settings forms', () => {
   const result = buildSync({ entryPoints: [join(root, 'apps/web/src/LauncherRoot.tsx')], bundle: true, platform: 'browser', write: false, metafile: true, loader: { '.css': 'empty' } });
   const paths = Object.keys(result.metafile.inputs);
@@ -87,7 +125,7 @@ test('root mounts all three verified native roles without project-role URL autho
   assert.match(source('NativeEditorRoot.tsx'), /renderEditor\(context, bridge, entry\)/);
 });
 
-test('empty native home moves only a verified directory summary into Help and retains every read failure', () => {
+test('native home moves verified directory summaries into Help and retains every read failure', () => {
   function render(entryPatch: Record<string, unknown> = {}, identityPatch: Record<string, unknown> = {}): FakeNode {
     const entry = {projects: [], catalogReady: true, listBusy: false, listError: '', phase: 'home', ...entryPatch};
     const identityState = {phase: 'ready', identityBlocked: false, ...identityPatch};
@@ -108,6 +146,7 @@ test('empty native home moves only a verified directory summary into Help and re
       './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
       './desktop-menu-client.ts': desktopMenu,
       './document-title.ts': documentTitle,
+      './workspace-info-client.ts': {readWorkspaceInfo: async () => ({version: '0.1.1'})},
       './workbench-modal-state.ts': modalState,
     };
     Function('require', 'module', 'exports', transformSync(source('LauncherRoot.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
@@ -115,11 +154,12 @@ test('empty native home moves only a verified directory summary into Help and re
     }, module, module.exports);
     return module.exports.default!({context: {}, bridge: {}, rpc() {}, contractChecks: {}});
   }
-  for (const phase of ['ready']) {
-    const tree = render({}, {phase}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
+  for (const projects of [[], [{id: 'project'}]]) {
+    const tree = render({projects}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
+    assert.deepEqual(tree.props.launcher, {service: 'connecting'});
   }
   const retained = [
-    render({projects: [{id: 'project'}]}), render({catalogReady: false}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
+    render({catalogReady: false}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
     ...['idle', 'loading', 'error', 'blocked'].map(phase => render({}, {phase})), render({}, {identityBlocked: true}),
   ];
   for (const tree of retained) {assert.ok(tree.props.status); assert.equal(tree.props.status, tree.props.help);}

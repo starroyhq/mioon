@@ -794,6 +794,11 @@ test('actual main centers and titles the launcher with its own window state', as
   assert.deepEqual(windowOptions(editor.config), {
     width: 1500, height: 960, minWidth: 1050, minHeight: 680, center: undefined, title: 'Synthetic',
   });
+  for (const projectWindow of [launcher, editor]) {
+    const args = projectWindow.config.webPreferences.additionalArguments;
+    assert.ok(Array.isArray(args));
+    assert.deepEqual(Array.from(args), ['--mioon-home-directory=/synthetic']);
+  }
   const allowsPageTitle = (window: DesktopHarnessWindow, title: string) => {
     let prevented = false;
     window.emit('page-title-updated', {preventDefault() { prevented = true; }}, title);
@@ -805,6 +810,7 @@ test('actual main centers and titles the launcher with its own window state', as
   const host = f.get('windowHost');
   assert.equal(host.showSettings('agent', editor), true);
   assert.equal(f.r.windows.length, 3);
+  assert.equal(f.r.windows[2]?.config.webPreferences.additionalArguments, undefined);
   assert.deepEqual(f.trackedLaunchers.map(window => window.index), [launcher.index]);
 });
 

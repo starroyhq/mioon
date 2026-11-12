@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
 import type {MenuHelpControl} from '../apps/web/src/desktop-menu-client.ts';
 import {mediaUrl} from '../apps/web/src/api.ts';
+import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceFile = join(root, 'apps/web/src/ProjectHome.tsx');
@@ -106,6 +107,7 @@ function harness(patch:Record<string,unknown> = {}) {
     if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement('section', {role:'dialog'}, children) };
     if (name.endsWith('.css')) return {};
     if (name === './api.ts') return { mediaUrl };
+    if (name === './workbench-modal-state.ts') return { hasOpenWorkbenchModal };
     const key = ({ '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label':'Label'} as Record<string,string>)[name];
     if (key) return { [key]: actual[key] };
     assert.fail(`Unexpected presentation dependency: ${name}`);

@@ -109,6 +109,13 @@
   --wb-subtitle: #33295C;
   --wb-subtitle-edge: #9C8CFF;
   --wb-media-text: #FFFFFF;
+  --wb-media-matte: #090A0C;
+  --wb-launcher-create-gradient: radial-gradient(ellipse at 6% 130%, #A44B38, transparent 63%),
+    radial-gradient(ellipse at 54% 115%, #972D78, transparent 62%),
+    radial-gradient(ellipse at 96% 5%, #392681, #1A131E 78%);
+  --wb-launcher-create-gradient-hover: radial-gradient(ellipse at 6% 130%, #B5503B, transparent 63%),
+    radial-gradient(ellipse at 54% 115%, #A63487, transparent 62%),
+    radial-gradient(ellipse at 96% 5%, #482F99, #1A131E 78%);
   --wb-overlay: rgb(0 0 0 / 64%);
   --wb-media-overlay: rgb(0 0 0 / 64%);
   --wb-shadow-color: rgb(0 0 0 / 45%);
