@@ -23,8 +23,12 @@ export interface TimelineImageLayerInput {
  /** Exact canonical creative binding identity, including strength and profile. */
  readonly lookCacheKey?:string|null;
 }
+const LEGACY_IMAGE_LAYER_PIXELS=1920*1080;
+const LEGACY_IMAGE_LAYER_BYTES=9*1024*1024;
+// An ultrawide 1080 canvas needs room for its own RGBA layer. Source and
+// aggregate admission budgets are independent of the output canvas.
 export const TIMELINE_IMAGE_LAYER_LIMITS=Object.freeze({layers:100,sourceBytes:32*1024*1024,sourcePixels:2073600,
- outputPixels:2073600,totalOutputPixels:32_000_000,fileBytes:9*1024*1024,totalBytes:128*1024*1024,deriveTimeoutMs:20000});
+ outputPixels:2520*1080,totalOutputPixels:32_000_000,fileBytes:12*1024*1024,totalBytes:128*1024*1024,deriveTimeoutMs:20000});
 const fault=(budget=false)=>Object.assign(new Error(budget?'The static image layers exceed the bounded render staging budget.':'The image display transform or derived static layer staging cannot be verified.'),{code:budget?'TIMELINE_COLOUR_LUT_BUDGET':'TIMELINE_COLOUR_RESOURCE_CHANGED'});
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 interface Identity {readonly dev:number;readonly ino:number;readonly bytes:number;readonly sha256:string}
@@ -110,16 +114,17 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    const key=digest(JSON.stringify(jpegIdentity?[...jpegIdentity,...jpegDecodeIdentity(item.jpegEvidence!)]:identity));
    let file=files.get(key);
    if(file===undefined){
-    const pixels=item.width*item.height;if(pixels>TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels-totalPixels||totalBytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-TIMELINE_IMAGE_LAYER_LIMITS.fileBytes)throw fault(true);
+    const pixels=item.width*item.height,maximum=pixels>LEGACY_IMAGE_LAYER_PIXELS?TIMELINE_IMAGE_LAYER_LIMITS.fileBytes:LEGACY_IMAGE_LAYER_BYTES;
+    if(pixels>TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels-totalPixels||totalBytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-maximum)throw fault(true);
     file=path.join(owned.work,`image-${String(files.size).padStart(3,'0')}-${key}.png`);owned.reserve(file);verifyBytes();
     const filters=timelineImageFilterGraph({input:item.jpegEvidence?'jpeg_rgb':'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,...(item.crop?{crop:item.crop}:{}),displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
     if(item.jpegEvidence)filters.unshift(`[0:v:0]${JFIF_RGB24_FILTER}[jpeg_rgb]`);
     await runtime.run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',...(item.jpegEvidence?JFIF_INPUT_ARGS:[]),'-noautorotate','-i',item.sourcePath,
      '-filter_complex',filters.join(';'),'-map','[layer]','-frames:v','1','-an','-threads','1','-c:v','png','-pix_fmt','rgba','-compression_level','1','-map_metadata','-1',
-     '-fs',String(TIMELINE_IMAGE_LAYER_LIMITS.fileBytes),'-f','image2','-update','1',file],{timeout:TIMELINE_IMAGE_LAYER_LIMITS.deriveTimeoutMs,maxStdoutBytes:0,maxStderrBytes:65536,signal:options.signal,beforeEffect:verifyBytes});
-    verifyBytes();const recorded=inspect(file,TIMELINE_IMAGE_LAYER_LIMITS.fileBytes,undefined,{width:item.width,height:item.height});
+     '-fs',String(maximum),'-f','image2','-update','1',file],{timeout:TIMELINE_IMAGE_LAYER_LIMITS.deriveTimeoutMs,maxStdoutBytes:0,maxStderrBytes:65536,signal:options.signal,beforeEffect:verifyBytes});
+    verifyBytes();const recorded=inspect(file,maximum,undefined,{width:item.width,height:item.height});
     if(recorded.bytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-totalBytes)throw fault(true);
-    verified.push({file,maximum:TIMELINE_IMAGE_LAYER_LIMITS.fileBytes,...recorded});files.set(key,file);totalBytes+=recorded.bytes;totalPixels+=pixels;verifyBytes();
+    verified.push({file,maximum,...recorded});files.set(key,file);totalBytes+=recorded.bytes;totalPixels+=pixels;verifyBytes();
    }
    byClip.set(item.clipId,file);activeSource=undefined;activeLook=undefined;verifyBytes();
   }

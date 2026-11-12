@@ -17,6 +17,10 @@ import type {ProjectOutputPublicationProof} from '../packages/business/src/proje
 import {outputArtifactSchema} from '../packages/contracts/src/output-artifact.ts';
 import {writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
 import {isTimelineExportAudioOutcome} from '../packages/contracts/src/timeline-export-float.ts';
+import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
+import {timelineDeliveryContentDisposition} from '../packages/contracts/src/timeline-delivery.ts';
+import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
+import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 
 const row=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 async function sourceFile(root:string):Promise<string>{const file=path.join(root,'source.mp4');await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=144x256:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',file],{timeout:30000});return file;}
@@ -90,6 +94,34 @@ test('export registers the verified artifact after a ctime-only change before re
   assert.equal(output.assetId, proof.assetId);
   assert.ok(isPublishedProjectOutput(store.get('assets', proof.assetId), proof));
   assert.deepEqual(await readdir(path.join(root, '导出')), [path.basename(proof.relativePath)]);
+});
+
+test('ultrawide output uses the frozen 21:9 asset name and preserves a literal delivery name', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-wide-output-'));
+  const store = openStore(root), providers = new Map<string, Provider>();
+  const services = createServices(store, providers);
+  let worker: ReturnType<typeof startWorker> | undefined;
+  t.after(async () => {await worker?.stop();await services.drain();store.close();await rm(root, {recursive:true,force:true});});
+  const source = await sourceFile(root), project = row(await services.call('project.create', {name:'Wide output'})), projectId = String(project.id);
+  const asset = row(await services.call('asset.import', {projectId,name:'source.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')}));
+  const timeline = row(await services.call('timeline.get', {projectId})), track = row((timeline.tracks as unknown[])[0]);
+  // The public format setter is still closed to new frame presets in G.
+  store.put('timelines', {...timeline,width:2520,height:1080});
+  const edited = row(await services.call('timeline.clip.add', {projectId,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:6}));
+  const deliveryName = 'Wide cut', input = {projectId,expectedRevision:edited.revision,requestId:randomUUID(),purpose:'export',deliveryName};
+  const accepted = row(await services.call('timeline.render', input, {outputLocale:'en'})), exportId = String(accepted.id);
+  worker = startWorker(store, services, providers);
+  await worker.tick();
+  await worker.stop();
+  worker = undefined;
+  const completed = row(store.get('exports', exportId));
+  assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));
+  const assetId = String(completed.assetId), output = row(store.get('assets',assetId));
+  assert.deepEqual([output.width,output.height,output.name],[2520,1080,'Timeline export · 21x9.mp4']);
+  assert.deepEqual(await services.call('timeline.render', input),accepted);
+  const url = new URL(`http://127.0.0.1/media/${assetId}?download=1&exportId=${exportId}`);
+  const download = readTimelineDeliveryDownload(store.db,url,{isTimelineRenderRecord,readOwnedAsset:(project,asset)=>readOwnedTimelineAsset(store.db,project,asset)});
+  assert.equal(download?.contentDisposition,timelineDeliveryContentDisposition(deliveryName,exportId)+`; mioon-export-id="${exportId}"; mioon-asset-id="${assetId}"`);
 });
 
 test('video generation registers the verified artifact after a ctime-only change before registration', async t => {

@@ -109,6 +109,8 @@ function restoredTimelineJson(db: DatabaseSync, raw: string, value: TimelineReco
   if(key==='subtitles'&&value.subtitles){
    let subtitle=String(db.prepare("SELECT COALESCE(json_extract(?,'$.subtitles'),'{}') value").get(raw)!.value);
    subtitle=set(subtitle,'$.profileId',value.subtitles.profileId);
+   if(value.subtitles.basisPresetId!==undefined)subtitle=set(subtitle,'$.basisPresetId',value.subtitles.basisPresetId);
+   else if(Object.hasOwn((current.subtitles??{}) as object,'basisPresetId'))subtitle=String(db.prepare("SELECT json_remove(?,'$.basisPresetId') value").get(subtitle)!.value);
    subtitle=String(db.prepare("SELECT json_set(?,'$.cues',json(?)) value").get(subtitle,array('$.subtitles.cues',value.subtitles.cues))!.value);
    raw=String(db.prepare("SELECT json_set(?,'$.subtitles',json(?)) value").get(raw,subtitle)!.value);continue;
   }
@@ -546,7 +548,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    if(target.before)retained.push(clone(target.before));
    if(field==='clips')timeline.clips=retained as TimelineClipRecord[];
    else if(field==='tracks')timeline.tracks=retained as TimelineTrackRecord[];
-   else timeline.subtitles={profileId:timeline.subtitles?.profileId??TIMELINE_SUBTITLE_PROFILE_ID,cues:retained as TimelineSubtitleCueRecord[]};
+   else timeline.subtitles={...(timeline.subtitles??{profileId:TIMELINE_SUBTITLE_PROFILE_ID}),cues:retained as TimelineSubtitleCueRecord[]};
   }
   boundary.validate(timeline);timeline.revision++;timeline.updatedAt=now();admitTimelineImageResponse(timeline);
   admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});

@@ -471,6 +471,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const checkCustomSources=(): void=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
+   const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
@@ -546,8 +547,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const {relativePath:_publishedPath,...locator}=published;
     await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
      tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
-     const output=e.mode==='timeline'?property(e.snapshot,'timeline') as Record<string,unknown>:storyboardOutputGeometry(e),width=numberValue(property(output,'width'))??0,height=numberValue(property(output,'height'))??0,ratio=width===height?'1x1':width>height?'16x9':'9x16';
-     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,ratio),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
+     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
      });
      publicationAccepted=true;
@@ -562,8 +562,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    await unlink(part);checkpoint(signal);beforeEffect?.();
    const projectOwner=registeredProjectStore(root),publishedReference=projectOwner?await referenceForPublishedMedia(projectOwner,file,{sha256:info.sha256,signal,beforeEffect}):null;
    tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();
-    const output=e.mode==='timeline'?property(e.snapshot,'timeline') as Record<string, unknown>:storyboardOutputGeometry(e);const width=numberValue(property(output,'width'))??0,height=numberValue(property(output,'height'))??0,ratio=width===height?'1x1':width>height?'16x9':'9x16';
-    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,ratio),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
+    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    if(publicationAccepted)return;

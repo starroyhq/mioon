@@ -4,8 +4,8 @@ import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRan
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExportDelivery} from './timeline-export-profile.ts';
 import {z} from 'zod';
-import {timelineOutputPreset} from './timeline-format.ts';
-import {TIMELINE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
+import {TIMELINE_OUTPUT_MAX_EDGE,timelineOutputPreset} from './timeline-output-geometry.ts';
+import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
 
 // Local source verification is bounded and never claims full media decoding.
 export const EXPORT_PREFLIGHT_LIMITS = Object.freeze({
@@ -44,8 +44,8 @@ export const exportPreflightResponseSchema = z.object({
     deliveryName: timelineDeliveryNameSchema.optional(),
     exportRange: timelineExportRangeSchema.optional(),
     fps: z.literal(30),
-    width: z.union([z.literal(720),z.literal(1280),z.literal(1080),z.literal(1920)]),
-    height: z.union([z.literal(720),z.literal(1280),z.literal(1080),z.literal(1920)]),
+    width: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
+    height: z.number().int().positive().max(TIMELINE_OUTPUT_MAX_EDGE),
     durationFrames: count(18000),
     trackCount: count(12),
     clipCount: count(100),
@@ -60,7 +60,7 @@ export const exportPreflightResponseSchema = z.object({
     checkedAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),
     bytesHashed: count(EXPORT_PREFLIGHT_LIMITS.totalBytes),
     fullDecode: z.literal(false),
-    subtitles:z.object({profileId:z.literal(TIMELINE_SUBTITLE_PROFILE_ID),fontVerified:z.boolean(),inkMeasured:z.literal(false)}).strict().optional(),
+    subtitles:z.object({profileId:z.enum(TIMELINE_SUBTITLE_PROFILE_IDS),fontVerified:z.boolean(),inkMeasured:z.literal(false)}).strict().optional(),
   }).strict(),
   issues: z.array(z.object({
     code: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/),

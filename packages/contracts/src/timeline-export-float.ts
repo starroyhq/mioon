@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {timelineExportOutputFrames} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields} from './timeline-delivery.ts';
-import {timelineDeliveryGeometry,timelineOutputPreset} from './timeline-output-geometry.ts';
+import {TIMELINE_OUTPUT_MAX_EDGE,isTimelineDeliveryGeometry,timelineDeliveryGeometry,timelineOutputPreset} from './timeline-output-geometry.ts';
 import type {TimelineOutputResolution,TimelineOutputGeometry} from './timeline-output-geometry.ts';
 
 /** Opt-in export policy only. Neither this profile nor a within-limit report
@@ -37,7 +37,7 @@ export const timelineExportFloatSettingsSchema = z.object({
 
 export const timelineExportFloatEffectiveSchema = z.object({
   profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),container:z.literal('mp4'),
-  width:z.number().int().min(2).max(1920).multipleOf(2),height:z.number().int().min(2).max(1920).multipleOf(2),fps:z.literal(30),
+  width:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),fps:z.literal(30),
   videoCodec:z.literal('libx264'),pixelFormat:z.literal('yuv420p'),preset:z.literal('veryfast'),
   rateControl:z.discriminatedUnion('mode',[
     z.object({mode:z.literal('crf'),crf:z.union([z.literal(28),z.literal(23),z.literal(18)])}).strict(),
@@ -47,7 +47,7 @@ export const timelineExportFloatEffectiveSchema = z.object({
   audioCodec:z.literal('aac'),audioKbps:z.literal(128),audioSampleRate:z.literal(48000),audioChannels:z.literal(2),movflags:z.literal('faststart'),
   intermediateAudio:z.object({container:z.literal('mov'),codec:z.literal('pcm_f32le'),sampleFormat:z.literal('flt'),sampleRate:z.literal(48000),channels:z.literal(2)}).strict(),
   preencodeAudioPolicy:z.object({policyId:z.literal(TIMELINE_EXPORT_FLOAT_POLICY_ID),maxPeakLinear:z.literal(1),overRange:z.literal('reject')}).strict(),
-}).strict();
+}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'});
 export type TimelineExportEffectiveV2 = z.infer<typeof timelineExportFloatEffectiveSchema>;
 export type TimelineExportEffectiveV1 = Omit<TimelineExportEffectiveV2,'profileId'|'intermediateAudio'|'preencodeAudioPolicy'> & {profileId:'mp4_h264_v1'};
 export const timelineExportFloatDeliverySchema = z.object({

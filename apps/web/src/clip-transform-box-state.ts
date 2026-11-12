@@ -1,4 +1,6 @@
 import { CLIP_TRANSFORM_LIMITS, clipTransformGeometry } from '@mioon/contracts';
+import { isClipLayoutRect, projectClipLayout } from '../../../packages/contracts/src/timeline-clip-layout.ts';
+import { projectedClipGeometry } from '../../../packages/contracts/src/timeline-clip-transform.ts';
 import { savedClipTransform, transformFields, withKeyframe, type TransformFields } from './clip-transform-state.ts';
 
 // The transform box over the rendered timeline preview. Everything here is in
@@ -8,10 +10,12 @@ export interface BoxRect { readonly left: number; readonly top: number; readonly
 export interface BoxPoint { readonly x: number; readonly y: number }
 export interface BoxClip {
   readonly startFrame: number; readonly durationFrames: number; readonly transform?: unknown;
+  readonly layout?: unknown;
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
 export interface BoxValues { readonly x: number; readonly y: number; readonly scale: number }
-export interface BoxView { readonly center: BoxPoint; readonly width: number; readonly height: number; readonly rotation: number; readonly factor: number }
+export interface BoxView { readonly center: BoxPoint; readonly width: number; readonly height: number; readonly rotation: number; readonly factor: number;
+  readonly basisScaleX?: number; readonly basisScaleY?: number }
 
 /** Pointer travel below this many client pixels is a click, not a drag. */
 export const BOX_DRAG_THRESHOLD = 3;
@@ -42,22 +46,30 @@ export function sameBoxValues(a: BoxValues, b: BoxValues): boolean {
 }
 /** Where the content sits on the picture at a frame; `values` previews a
  * keyframe at that frame before it is saved. */
-export function transformBoxView(clip: BoxClip, source: { readonly width?: unknown; readonly height?: unknown } | null | undefined,
+export function transformBoxView(clip: BoxClip, source: { readonly width?: unknown; readonly height?: unknown; readonly sampleAspectRatio?: number } | null | undefined,
   timeline: { readonly width: number; readonly height: number }, picture: BoxRect, frame: number, values?: BoxValues | null): BoxView | null {
   if (!source || !positive(source.width) || !positive(source.height) || !positive(timeline.width) || !positive(timeline.height)) return null;
   const factor = picture.width / timeline.width;
   // A picture of another shape was rendered before a format change.
   if (Math.abs(picture.height / timeline.height - factor) > factor * 0.01) return null;
   const transform = (values ? withKeyframe(clip, frame, boxFields(values)) : null) ?? savedClipTransform(clip);
-  const geometry = clipTransformGeometry({ durationFrames: clip.durationFrames, rect: clip.rect, ...(transform ? { transform } : {}) }, { width: source.width, height: source.height }, frame);
+  const currentFrame = { fps: 30, width: timeline.width, height: timeline.height };
+  const v2 = Object.hasOwn(clip, 'layout');
+  if (v2 && !isClipLayoutRect(clip, currentFrame)) return null;
+  const placement = v2 ? projectClipLayout({...clip, transform}, currentFrame) : null;
+  const geometry = placement
+    ? projectedClipGeometry(placement.rect, placement.transform, {width: source.width, height: source.height, sampleAspectRatio: source.sampleAspectRatio}, frame)
+    : clipTransformGeometry({durationFrames: clip.durationFrames, rect: clip.rect, transform}, {width: source.width, height: source.height}, frame);
   return { center: { x: picture.left + geometry.centerX * factor, y: picture.top + geometry.centerY * factor },
-    width: geometry.width * factor, height: geometry.height * factor, rotation: geometry.rotation, factor };
+    width: geometry.width * factor, height: geometry.height * factor, rotation: geometry.rotation, factor,
+    ...(placement ? {basisScaleX: placement.basisScaleX, basisScaleY: placement.basisScaleY} : {}) };
 }
-/** Dragging the body moves the offset by the pointer travel in timeline pixels. */
-export function movedBoxValues(start: BoxValues, travel: BoxPoint, factor: number): BoxValues {
+/** Convert pointer travel to the saved basis before applying the edit limit. */
+export function movedBoxValues(start: BoxValues, travel: BoxPoint, factor: number, basisScaleX = 1, basisScaleY = 1): BoxValues {
   const limit = CLIP_TRANSFORM_LIMITS.offset;
   // `+ 0` turns a rounded negative zero into zero.
-  return { ...start, x: clamp(Math.round(start.x + travel.x / factor), -limit, limit) + 0, y: clamp(Math.round(start.y + travel.y / factor), -limit, limit) + 0 };
+  return { ...start, x: clamp(Math.round(start.x + travel.x / (factor * basisScaleX)), -limit, limit) + 0,
+    y: clamp(Math.round(start.y + travel.y / (factor * basisScaleY)), -limit, limit) + 0 };
 }
 /** Dragging a corner scales about the content centre by the ratio of the
  * pointer's distances from it, in whole percent. */
