@@ -115,8 +115,10 @@ test('both desktop channels package brand assets without dropping preload or iso
 
 test('actual shared window factory adds the local icon while retaining the secure preload and owned session', async () => {
   const source = await text('apps/desktop/src/main.ts');
-  const factory = source.match(/createWindow: (creation => new BrowserWindow\(\{[\s\S]+?\}\)),\n\s+prepareWindow:/)?.[1];
-  assert.ok(factory);
+  const factoryStart = source.indexOf('createWindow: ');
+  const factoryEnd = source.indexOf(',\n      prepareWindow:', factoryStart);
+  assert.ok(factoryStart >= 0 && factoryEnd > factoryStart);
+  const factory = source.slice(factoryStart + 'createWindow: '.length, factoryEnd);
   for (const platform of ['darwin', 'linux', 'win32']) {
     const session = {}, appRoot = '/synthetic/mioon-stage';
     const makeWindow: (creation: {role: string}) => {config: {icon: string; backgroundColor: string; webPreferences: ReturnType<typeof secureWebPreferences>}} = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'settingsWindowOptions', 'secureWebPreferences', 'context', `return (${factory});`)(
