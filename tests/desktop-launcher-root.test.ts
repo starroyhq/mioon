@@ -1,6 +1,7 @@
 import { i18nTestModule, renderMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
 import * as desktopMenu from '../apps/web/src/desktop-menu-client.ts';
+import * as documentTitle from '../apps/web/src/document-title.ts';
 import * as modalState from '../apps/web/src/workbench-modal-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -94,7 +95,7 @@ test('empty native home moves only a verified directory summary into Help and re
     const react = {
       createElement: (type: unknown, props: FakeProps | null, ...children: unknown[]): FakeNode => ({type, props: {...props, children}}),
       useState: (value: unknown): [unknown, () => void] => [typeof value === 'function' ? (value as () => unknown)() : value, () => {}],
-      useRef: (value: unknown): {current: unknown} => ({current: value}), useEffect() {},
+      useRef: (value: unknown): {current: unknown} => ({current: value}), useEffect() {}, useLayoutEffect() {},
     };
     const module: {exports: {default?: (props: unknown) => FakeNode}} = {exports: {}};
     const dependencies: Record<string, unknown> = {
@@ -106,6 +107,7 @@ test('empty native home moves only a verified directory summary into Help and re
       './native-project-entry.ts': {useNativeProjectEntry: () => controller},
       './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
       './desktop-menu-client.ts': desktopMenu,
+      './document-title.ts': documentTitle,
       './workbench-modal-state.ts': modalState,
     };
     Function('require', 'module', 'exports', transformSync(source('LauncherRoot.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {

@@ -41,7 +41,9 @@ test('login, loading, header and browser title display Mioon rather than prior b
   assert.doesNotMatch(app, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.doesNotMatch(login, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.match(html, /<title>Mioon<\/title>/);
-  assert.match(await read('apps/desktop/src/main.ts'), /title: identity\.productName/);
+  const desktop = await read('apps/desktop/src/main.ts');
+  assert.match(desktop, /const title = launcher \? 'Mioon' : identity\.productName;/);
+  assert.match(desktop, /new BrowserWindow\(\{\s+title,/);
 });
 
 test('old connection environment names do not act as aliases; current names resolve explicitly', async () => {
