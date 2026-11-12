@@ -5,7 +5,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
-import {EXCLUSIVE_TEST_FILES, parseShardArguments, parseTestTimings, partitionFullTests, shardCommand, shardCommands, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {EXCLUSIVE_TEST_FILES, parseShardArguments, parseTestTimings, partitionFullTests, shardFileTimeoutMs, shardPhases, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {runShardFiles} from '../.github/scripts/test-shard-runner.ts';
 import {mergeTestTimings} from '../.github/scripts/test-timings.ts';
 
 const sourceSha = 'a'.repeat(40);
@@ -155,12 +156,11 @@ test('report rejects invalid indexes and source identities', () => {
   for (const index of [-1, 4, 1.5, NaN]) assert.throws(() => shardReport(files, {index, count: 4}, sourceSha), /INVALID_SHARD_INDEX/);
   for (const sha of ['', 'main', 'b'.repeat(39), 'z'.repeat(40), 'a'.repeat(40) + '\n']) assert.throws(() => shardReport(files, {index: 0, count: 4}, sha), /INVALID_SOURCE_SHA/);
 });
-test('test launcher preserves the full lane and process isolation, with bounded concurrency and timings', () => {
-  const root = path.resolve('synthetic root'), executable = path.resolve('synthetic-node');
-  const selected = ['tests/b.test.ts', 'tests/a.test.mjs'];
-  assert.deepEqual(shardCommand(root, selected, executable), {command: executable, cwd: root, args: [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', '--concurrency=1', '--reporter=tap', '--file=a.test.mjs', '--file=b.test.ts']});
-  assert.deepEqual(shardCommand(root, selected, executable, {concurrency: 3, timings: 'artifacts/checks-linux-2/timings.json'}).args,
-    [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', '--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-2/timings.json', '--file=a.test.mjs', '--file=b.test.ts']);
+test('shard deadlines leave room for slow files and the shard environment disables external effects', () => {
+  assert.equal(shardFileTimeoutMs(39.04), 300_000);
+  assert.equal(shardFileTimeoutMs(933.12), 2_099_520);
+  assert.equal(shardFileTimeoutMs(3600), 2_100_000);
+  assert.equal(shardFileTimeoutMs(undefined), 2_100_000);
   const environment = toolingEnvironment({PATH: '/usr/bin', HOME: '/owned', NODE_OPTIONS: '--import=private-loader', NODE_PATH: '/private-modules', GH_TOKEN: 'private-gh-token', APPLE_API_KEY: 'private-key', MIOON_FFMPEG_PATH: '/owned/ffmpeg', MIOON_FFPROBE_PATH: '/owned/ffprobe'}, {mediaPaths: true});
   assert.equal(environment.NODE_OPTIONS, undefined); assert.equal(environment.NODE_PATH, undefined); assert.equal(environment.GH_TOKEN, undefined); assert.equal(environment.APPLE_API_KEY, undefined);
   assert.equal(environment.MIOON_FFMPEG_PATH, '/owned/ffmpeg'); assert.equal(environment.MIOON_FFPROBE_PATH, '/owned/ffprobe'); assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER, '0');
@@ -219,12 +219,72 @@ test('exclusive files run alone before the shared ones and weigh their full time
   assert.deepEqual(partitionFullTests(full, 2, timings, 3), [[alone!].sort(), ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.ts']]);
   const report = shardReport(full, {index: 0, count: 2, concurrency: 3}, sourceSha, timings, 'recorded');
   assert.deepEqual(report.exclusiveFiles, [alone!]); assert.equal(report.estimatedSeconds, 30);
-  const root = path.resolve('synthetic root'), executable = path.resolve('synthetic-node');
-  const commands = shardCommands(root, {shardIndex: 4, files: [alone!, 'tests/a.test.ts'].sort(), exclusiveFiles: [alone!]}, 3, executable);
-  assert.deepEqual(commands.map(command => command.args.slice(3)), [
-    ['--concurrency=1', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings-alone.json', `--file=${alone!.slice('tests/'.length)}`],
-    ['--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings.json', '--file=a.test.ts'],
+  const phases = shardPhases({files: [alone!, 'tests/a.test.ts'].sort(), exclusiveFiles: [alone!]}, 3);
+  assert.deepEqual(phases, [
+    {files: [alone], concurrency: 1, timings: 'timings-alone.json'},
+    {files: ['tests/a.test.ts'], concurrency: 3, timings: 'timings.json'},
   ]);
-  assert.equal(shardCommands(root, {shardIndex: 0, files: ['tests/a.test.ts'], exclusiveFiles: []}, 3, executable).length, 1);
+  assert.equal(shardPhases({files: ['tests/a.test.ts'], exclusiveFiles: []}, 3).length, 1);
   assert.deepEqual([...EXCLUSIVE_TEST_FILES], [...new Set(EXCLUSIVE_TEST_FILES)].sort());
+});
+
+test('a shard times out a file with an inherited pipe, kills its descendant and runs the next file', {
+  skip: process.platform === 'win32' ? 'the full shard uses POSIX process groups' : false,
+  timeout: 15_000,
+}, async t => {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-shard-deadline-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await mkdir(path.join(root, 'tests'));
+  const stuck = 'tests/a-stuck.test.mjs', next = 'tests/b-next.test.mjs';
+  const descendant = `
+    const {writeFileSync} = require('node:fs');
+    const server = require('node:net').createServer(socket => socket.destroy());
+    server.listen('descendant.sock', () => {
+      writeFileSync('descendant-ready', 'ready');
+      process.stderr.write('挂起前的最后输出 🎬\\n');
+    });
+    setTimeout(() => {
+      writeFileSync('descendant-expired', 'expired');
+      server.close();
+    }, 10_000);
+  `;
+  // The test file itself can exit. Its descendant keeps Node's reporter pipe open.
+  await writeFile(path.join(root, stuck), `
+    import {spawn} from 'node:child_process';
+    const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio: 'inherit'});
+    child.unref();
+  `);
+  await writeFile(path.join(root, next), `
+    import assert from 'node:assert/strict';
+    import {existsSync, writeFileSync} from 'node:fs';
+    import {connect} from 'node:net';
+    import test from 'node:test';
+    test('the next file runs after the listening descendant has stopped', async () => {
+      assert.ok(existsSync('descendant-ready'));
+      const outcome = await new Promise(resolve => {
+        const socket = connect('descendant.sock');
+        socket.once('error', error => resolve(error.code));
+        socket.once('connect', () => {socket.destroy(); resolve('connected');});
+      });
+      assert.ok(outcome === 'ECONNREFUSED' || outcome === 'ENOENT');
+      writeFileSync('next-ran', 'ok');
+    });
+  `);
+
+  const output: string[] = [];
+  const result = await runShardFiles(root, [stuck, next], {
+    concurrency: 1,
+    env: toolingEnvironment(),
+    timeoutFor: file => file === stuck ? 3_000 : 5_000,
+    write: text => output.push(text),
+    signal: t.signal,
+  });
+  assert.equal(result.code, 1);
+  const diagnostics = output.join('');
+  const notice = /TEST_FILE_TIMEOUT tests\/a-stuck\.test\.mjs \((\d+(?:\.\d+)?)s\)/u.exec(diagnostics);
+  assert.ok(notice && Number(notice[1]) >= 2.9, 'the timeout names the file and reports elapsed seconds');
+  assert.ok(diagnostics.slice(notice.index).includes('挂起前的最后输出 🎬'), 'the timeout includes the captured tail');
+  assert.equal(await readFile(path.join(root, 'next-ran'), 'utf8'), 'ok');
+  await assert.rejects(readFile(path.join(root, 'descendant-expired')), {code: 'ENOENT'});
+  assert.deepEqual(Object.keys(result.timings), [next]);
 });
