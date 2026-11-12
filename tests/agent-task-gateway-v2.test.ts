@@ -720,6 +720,160 @@ for(const model of ['gpt-5.4-mini','gpt-6.1-sol','future-text-orbit-2030'])test(
   assert.equal(first.network.calls,1);assert.equal(second.network.calls,1);assert.equal(first.network.requests[0]!.body,body);assert.equal(second.network.requests[0]!.body,next);
 });
 
+const q15Carriers = {
+  added: 'gAAAAA_SYNTHETIC_ADDED_CARRIER',
+  done: 'gAAAAA_SYNTHETIC_ITEM_DONE_CARRIER',
+  completed: 'gAAAAA_SYNTHETIC_RESPONSE_COMPLETED_CARRIER',
+};
+
+function q15ResponseEvents(body: string, options: {phase?: 'commentary' | 'final_answer'; toolCall?: boolean; visibleText: string}): Array<Record<string, unknown>> {
+  const events = q11ResponseEvents(body, {...options, reasoning: true});
+  const carrier = (item: Record<string, unknown>, encrypted_content: string) => ({...item, summary: [], content: [], encrypted_content});
+  return events.filter(event => !String(event.type).startsWith('response.reasoning_summary_')).map((event, sequence_number) => {
+    const frame = {...event, sequence_number};
+    if (event.output_index === 0 && (event.type === 'response.output_item.added' || event.type === 'response.output_item.done')) {
+      const encryptedContent = event.type === 'response.output_item.added' ? q15Carriers.added : q15Carriers.done;
+      return {...frame, item: carrier(event.item as Record<string, unknown>, encryptedContent)};
+    }
+    if (event.type === 'response.completed') {
+      const response = event.response as {output: Array<Record<string, unknown>>};
+      const output = response.output.map(item => item.type === 'reasoning' ? carrier(item, q15Carriers.completed) : structuredClone(item));
+      return {...frame, response: {...response, output}};
+    }
+    return frame;
+  });
+}
+
+function q15CompletedOutput(events: readonly Record<string, unknown>[]): Array<Record<string, unknown>> {
+  return (events.at(-1)!.response as {output: Array<Record<string, unknown>>}).output;
+}
+
+test('Q15 Responses replays the terminal encrypted carrier through a commentary tool round and the next request', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const history = [{role: 'user', content: 'Save one offline test shot'}];
+  const body = buildTaskModelRequest(configuration, history, definitions, 4318);
+  const firstEvents = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+  const evidence = q15CompletedOutput(firstEvents);
+  const first = q11Stream(configuration, body, q11ResponseWire(firstEvents));
+  const visible: string[] = [];
+  let planned: TaskModelOutput | undefined;
+  for await (const event of first.stream) {
+    if (event.type === 'done') planned = event.output;
+    else visible.push(event.text);
+  }
+  assert.ok(planned);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(planned.text, visible.join(''));
+  assert.deepEqual(planned.providerOutput, evidence);
+  assert.deepEqual(evidence[0], {id: 'rs_q11_offline', type: 'reasoning', summary: [], content: [], encrypted_content: q15Carriers.completed});
+  assert.equal(evidence[1]!.phase, 'commentary');
+  assert.deepEqual(planned.toolCalls, [{id: 'call_q11_offline', name: 'mioon_shot_create', arguments: {title: 'Offline saved shot'}}]);
+
+  const continuation = taskContinuation('responses', planned, [{callId: 'call_q11_offline', result: {saved: true}}]);
+  const toolResult = {type: 'function_call_output', call_id: 'call_q11_offline', output: '{"saved":true}'};
+  assert.deepEqual(continuation, [...evidence, toolResult]);
+  const nextBody = buildTaskModelRequest(configuration, [...history, ...continuation], definitions, 4318);
+  const next = JSON.parse(nextBody) as Record<string, unknown>;
+  assert.deepEqual(next.input, [...history, ...evidence, toolResult]);
+  assert.deepEqual(next.reasoning, {effort: 'low'});
+  assert.deepEqual(next.include, ['reasoning.encrypted_content']);
+  assert.equal(next.store, false);
+  assert.doesNotMatch(nextBody, /SYNTHETIC_ADDED_CARRIER|SYNTHETIC_ITEM_DONE_CARRIER/u);
+
+  const secondEvents = q15ResponseEvents(nextBody, {phase: 'final_answer', visibleText: 'The offline shot is saved.'});
+  const second = q11Stream(configuration, nextBody, q11ResponseWire(secondEvents));
+  let finished: TaskModelOutput | undefined;
+  for await (const event of second.stream) {
+    if (event.type === 'done') finished = event.output;
+  }
+  assert.ok(finished);
+  assert.equal(finished.text, 'The offline shot is saved.');
+  assert.deepEqual(finished.providerOutput, q15CompletedOutput(secondEvents));
+  assert.deepEqual(finished.toolCalls, []);
+  for (const [exchange, wire] of [[first, body], [second, nextBody]] as const) {
+    assert.equal(exchange.network.calls, 1);
+    assert.equal(exchange.network.ends, 1);
+    assert.equal(exchange.network.requests[0]!.body, wire);
+  }
+});
+
+test('Q15 Responses still rejects terminal differences outside the reasoning ciphertext', async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal comparison'}], definitions, 4318);
+  for (const [index, field, value] of [
+    [0, 'id', 'rs_q15_other'],
+    [0, 'summary', [{type: 'summary_text', text: 'Changed summary'}]],
+    [0, 'content', [{type: 'reasoning_text', text: 'Changed reasoning'}]],
+    [0, 'status', 'completed'],
+    [0, 'unexpected', true],
+    [1, 'phase', 'final_answer'],
+    [2, 'arguments', '{"title":"Changed arguments"}'],
+  ] as const) {
+    const events = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+    const output = q15CompletedOutput(events);
+    output[index] = {...output[index]!, [field]: value};
+    const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+    const visible: string[] = [];
+    let completed = 0;
+    await assert.rejects(async () => {
+      for await (const event of exchange.stream) {
+        if (event.type === 'done') completed++;
+        else visible.push(event.text);
+      }
+    }, {code: 'AGENT_CHAT_PROTOCOL_ERROR'}, `output ${index} ${field}`);
+    assert.equal(completed, 0);
+    assert.equal(visible.join(''), 'I will save a shot.');
+    assert.equal(exchange.network.calls, 1);
+  }
+});
+
+for (const [kind, encrypted_content, code] of [
+  ['missing', undefined, 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['null', null, 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['empty', '', 'AGENT_CHAT_RESPONSES_INCOMPLETE'],
+  ['nonstring', 17, 'AGENT_CHAT_PROTOCOL_ERROR'],
+  ['unpaired surrogate', '\ud800', 'AGENT_CHAT_PROTOCOL_ERROR'],
+  ['oversized', 'A'.repeat(TASK_MODEL_LIMITS.outputBytes), 'AGENT_CHAT_LIMIT'],
+] as const) test(`Q15 Responses rejects an invalid terminal encrypted carrier (${kind}) after a valid item done`, async () => {
+  const configuration = q11OpenAi('gpt-6-astra');
+  const body = buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline terminal carrier validation'}], definitions, 4318);
+  const events = q15ResponseEvents(body, {phase: 'commentary', toolCall: true, visibleText: 'I will save a shot.'});
+  const item = q15CompletedOutput(events)[0]!;
+  if (encrypted_content === undefined) delete item.encrypted_content;
+  else item.encrypted_content = encrypted_content;
+  const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+  const visible: string[] = [];
+  let completed = 0;
+  await assert.rejects(async () => {
+    for await (const event of exchange.stream) {
+      if (event.type === 'done') completed++;
+      else visible.push(event.text);
+    }
+  }, {code});
+  assert.equal(completed, 0);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(exchange.network.calls, 1);
+});
+
+test('Q15 Responses keeps ciphertext equality for a non-OpenAI thinking stream', async () => {
+  const configuration: AgentConfiguration = {presetId: 'deepseek', platformId: 'global', protocol: 'responses', model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com'};
+  const request = JSON.parse(buildTaskModelRequest(configuration, [{role: 'user', content: 'Offline compatibility boundary'}], definitions, 4318)) as Record<string, unknown>;
+  const body = JSON.stringify({...request, reasoning: {effort: 'low'}});
+  const events = q15ResponseEvents(body, {toolCall: true, visibleText: 'I will save a shot.'});
+  const exchange = q11Stream(configuration, body, q11ResponseWire(events));
+  const visible: string[] = [];
+  let completed = 0;
+  await assert.rejects(async () => {
+    for await (const event of exchange.stream) {
+      if (event.type === 'done') completed++;
+      else visible.push(event.text);
+    }
+  }, {code: 'AGENT_CHAT_PROTOCOL_ERROR'});
+  assert.equal(completed, 0);
+  assert.equal(visible.join(''), 'I will save a shot.');
+  assert.equal(exchange.network.calls, 1);
+});
+
 test('the current OpenAI default uses Responses with a documented minimum and a bounded reasoning reserve',()=>{
   assert.equal(AGENT_DEFAULT_OPENAI_MODEL,'gpt-6.1-terra');
   assert.equal(DEFAULT_AGENT_CONFIGURATION.model,AGENT_DEFAULT_OPENAI_MODEL);assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol,'responses');

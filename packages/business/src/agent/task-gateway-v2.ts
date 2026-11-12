@@ -375,12 +375,21 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           if(type==='response.completed'){
             if(!object(raw.response)||raw.response.status!=='completed'||!Array.isArray(raw.response.output)||responseId&&raw.response.id!==responseId)fail();
             responsesFields(raw.response,native);
-            for(const item of raw.response.output)if(object(item)){
-              if(native&&item.status==='incomplete')fail();
-              if(item.type==='reasoning'&&!reasoning)fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
-              if(item.type!=='reasoning')responsesFields(item,native);
+            if(raw.response.output.length!==done.size)fail();
+            for(const [index,item] of raw.response.output.entries()){
+              const streamed=done.get(index);
+              if(!object(item)||!streamed||native&&item.status==='incomplete')fail();
+              if(item.type==='reasoning'){
+                if(!reasoning)fail(native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
+                reasoningItem(item,native);
+              }else responsesFields(item,native);
+              // OpenAI can re-encrypt an already validated reasoning item at
+              // completion. Compare the rest and replay the original terminal item.
+              const comparable=native&&item.type==='reasoning'&&streamed.type==='reasoning'
+                ? {...item,encrypted_content:streamed.encrypted_content}
+                : item;
+              if(!isDeepStrictEqual(comparable,streamed))fail();
             }
-            if(raw.response.output.length!==done.size||raw.response.output.some((item,index)=>!isDeepStrictEqual(item,done.get(index))))fail();
             usageCollector.observe(raw.response.usage);terminal=raw.response;completed=true;continue;
           }
           const index=raw.output_index;if(!Number.isSafeInteger(index)||(index as number)<0||(index as number)>=64)fail();const position=index as number;
