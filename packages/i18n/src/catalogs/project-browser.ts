@@ -1,5 +1,18 @@
 import type { MessageCatalog } from '../types.ts';
 export const projectBrowserMessages = {
+  'launcher.projects': { 'zh-Hans': '项目', 'zh-Hant': '專案', en: 'Projects', ja: 'プロジェクト' },
+  'launcher.examples': { 'zh-Hans': '示例', 'zh-Hant': '範例', en: 'Examples', ja: 'サンプル' },
+  'launcher.help': { 'zh-Hans': '入门与帮助', 'zh-Hant': '入門與說明', en: 'Getting started & help', ja: '入門とヘルプ' },
+  'launcher.open': { 'zh-Hans': '打开…', 'zh-Hant': '開啟…', en: 'Open…', ja: '開く…' },
+  'launcher.openFile': { 'zh-Hans': '打开项目文件…', 'zh-Hant': '開啟專案檔案…', en: 'Open project file…', ja: 'プロジェクトファイルを開く…' },
+  'launcher.examplesUnavailable': { 'zh-Hans': '随附示例暂不可用。', 'zh-Hant': '隨附範例暫時無法使用。', en: 'Bundled examples are currently unavailable.', ja: '同梱サンプルは現在利用できません。' },
+  'launcher.service.connecting': { 'zh-Hans': '正在连接本机服务', 'zh-Hant': '正在連線至本機服務', en: 'Connecting to local service', ja: 'ローカルサービスに接続中' },
+  'launcher.service.ready': { 'zh-Hans': '本机服务正常', 'zh-Hant': '本機服務正常', en: 'Local service ready', ja: 'ローカルサービス稼働中' },
+  'launcher.service.unavailable': { 'zh-Hans': '本机服务暂不可用', 'zh-Hant': '本機服務暫時無法使用', en: 'Local service unavailable', ja: 'ローカルサービスを利用できません' },
+  'launcher.empty.title': { 'zh-Hans': '开始一个新项目', 'zh-Hant': '開始一個新專案', en: 'Start a new project', ja: '新しいプロジェクトを始める' },
+  'launcher.empty.description': { 'zh-Hans': '项目保存在 .mioon 文件中，源素材留在原来的位置。', 'zh-Hant': '專案儲存在 .mioon 檔案中，來源素材留在原本的位置。', en: 'The project is saved as a .mioon file. Source media stays in place.', ja: 'プロジェクトは .mioon ファイルに保存されます。元の素材は移動されません。' },
+  'launcher.empty.createHint': { 'zh-Hans': '起个名字，选好保存位置，就能开始剪辑。', 'zh-Hant': '輸入名稱，選好儲存位置，即可開始剪輯。', en: 'Name your project and choose where to save it.', ja: 'プロジェクト名を入力し、保存先を選びます。' },
+  'launcher.empty.openHint': { 'zh-Hans': '选择已有的 .mioon 文件。', 'zh-Hant': '選取現有的 .mioon 檔案。', en: 'Choose an existing .mioon file.', ja: '既存の .mioon ファイルを選びます。' },
  'redesign.projects.searchShortcut':{'zh-Hans':'⌘F','zh-Hant':'⌘F',en:'⌘F',ja:'⌘F'},
   'redesign.projects.versionBadge': { 'zh-Hans': 'V{number}', 'zh-Hant': 'V{number}', en: 'V{number}', ja: 'V{number}' },
   'redesign.login.tagline': { 'zh-Hans': '内置视频 Agent 的创作工作台', 'zh-Hant': '內建影片 Agent 的創作工作台', en: 'The video workspace with a built-in agent', ja: '動画エージェント搭載の制作ワークスペース' },

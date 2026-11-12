@@ -25,8 +25,9 @@ async function fixture(t: test.TestContext){
 test('workspace preferences are noncreating reads, strictly persisted and independent of project opens',async t=>{
   const f=await fixture(t),before=await readdir(f.root),initial=f.service.get();
   assert.ok(uiPreferencesResponseSchema.safeParse(initial).success);assert.deepEqual(initial.preferences,DEFAULT_UI_PREFERENCES);
+  assert.equal(initial.preferences.homeView,'list');
   assert.deepEqual(await readdir(f.root),before);
-  const input={expectedRevision:0,requestId:randomUUID(),preferences:{...initial.preferences,theme:'system',scalePercent:125,density:'compact',timecodeFormat:'seconds',reduceMotion:true,homeSort:'name',homeView:'list'}};
+  const input={expectedRevision:0,requestId:randomUUID(),preferences:{...initial.preferences,theme:'system',scalePercent:125,density:'compact',timecodeFormat:'seconds',reduceMotion:true,homeSort:'name',homeView:'grid'}};
   const saved=f.service.put(input);assert.equal(saved.revision,1);assert.deepEqual(saved.preferences,input.preferences);
   const bytes=await readFile(f.file);assert.deepEqual(f.service.put(input),saved);assert.deepEqual(await readFile(f.file),bytes);
   f.service.markOpened(f.projectId);assert.equal(f.service.get().revision,1,'navigation does not invalidate an appearance draft');

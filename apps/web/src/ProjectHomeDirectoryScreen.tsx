@@ -19,7 +19,7 @@ import {useUiPreferences} from './UiPreferencesProvider.tsx';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import './project-home-redesign.css';
 
-export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 'onOpen' | 'onRetry' | 'onRefresh'> {
+export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 'onOpen' | 'onRetry' | 'onRefresh' | 'launcher'> {
   readonly summaryEnabled?: boolean;
   readonly summaryScope?: string;
   readonly openingProjectId?: string | null;
@@ -35,7 +35,9 @@ export interface ProjectHomeDirectoryScreenProps extends Omit<ProjectHomeProps, 
   readonly onRetry: () => void | Promise<boolean>;
   readonly onRefresh: () => void | Promise<unknown>;
   readonly onUnauthorized?: () => void;
-  readonly onOpenFile?: () => void;
+  readonly launcher?: Omit<NonNullable<ProjectHomeProps['launcher']>, 'empty'>;
+  readonly nativeLayout?: boolean;
+  readonly homeDirectory?: string;
   readonly onHelpAccess?: () => void;
   readonly onCopy?: (projectId: string) => void;
   readonly onReveal?: (projectId: string) => void;
@@ -266,7 +268,16 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   };
   const presentation = props.presentation ?? 'page';
   const exampleAvailable = props.nativeActions?.example?.bridge.instantiateTemplate && props.nativeActions.example.templates.some(template => template.id === 'timeline-basics' && template.version === 1);
+  const openFile = !closedExampleUnknown && props.onOpenFile ? () => {if (canAct()) current.current.onOpenFile?.();} : undefined;
+  const locate = props.nativeLayout && openFile ? (projectId: string) => {
+    const missing = ready()?.snapshot?.registered.some(item => item.project.projectId === projectId && item.availability.state === 'missing');
+    const waitingForFile = waiting.kind === 'ready' && waiting.value.some(item =>
+      item.projectId === projectId && (item.reason === 'missing' || item.reason === 'missing-volume'));
+    if (missing || waitingForFile) openFile();
+  } : undefined;
   return <div className={`project-home-screen project-home-${presentation}`} data-presentation={presentation} data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
+    launcher={props.launcher ? {...props.launcher, empty: view.kind === 'ready' && view.value.length === 0} : undefined}
+    onOpenFile={openFile}
     notice={preparingNative.current && nativeState.kind === 'idle' ? t('projectHomeNative.preparing') : closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.notice}
     busy={busy} query={query} onQuery={value => {if (canAct()) setQuery(value);}}
     onOpen={projectId => {void open(projectId);}}
@@ -277,11 +288,12 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     onStartExampleBlocked={() => rejectNativeStart(true)}
     createIntentVersion={createIntent}
     createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
-    catalog={<RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled}
+    renderCatalog={emptyContent => <RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled}
+      nativeLayout={props.nativeLayout} homeDirectory={props.homeDirectory} emptyContent={emptyContent}
       sort={preferences.preferences.homeSort} view={preferences.preferences.homeView} now={new Date()}
       onSortChange={sort => choose({homeSort: sort})} onViewChange={homeView => choose({homeView})}
       onOpen={projectId => {void open(projectId);}} onRetry={() => {void reload(true);}}
-      onOpenFile={!closedExampleUnknown && props.onOpenFile ? () => {if (canAct()) current.current.onOpenFile?.();} : undefined}
+      onOpenFile={openFile} onLocate={locate}
       onAccessHelp={!closedExampleUnknown && props.onHelpAccess ? () => {if (canAct()) current.current.onHelpAccess?.();} : undefined}
       onCopy={!closedExampleUnknown && props.onCopy ? projectId => {if (canAct()) current.current.onCopy?.(projectId);} : undefined}
       onReveal={!closedExampleUnknown && props.onReveal ? projectId => {if (canAct()) current.current.onReveal?.(projectId);} : undefined}

@@ -7,7 +7,7 @@ export const uiPreferencesSchema=z.object({
 }).strict();
 export type UiPreferences=z.infer<typeof uiPreferencesSchema>;
 export const DEFAULT_UI_PREFERENCES:Readonly<UiPreferences>=Object.freeze({
-  theme:'dark',scalePercent:100,density:'standard',timecodeFormat:'timecode',reduceMotion:false,homeSort:'recent',homeView:'grid',
+  theme:'dark',scalePercent:100,density:'standard',timecodeFormat:'timecode',reduceMotion:false,homeSort:'recent',homeView:'list',
 });
 export const UI_PREFERENCES_LIMITS=Object.freeze({fileBytes:1024*1024,recentProjects:8192});
 const revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
