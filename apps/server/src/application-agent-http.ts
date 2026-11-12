@@ -37,7 +37,9 @@ export function createApplicationAgentHttp(library: AppLibrary, signal: AbortSig
         const old = policy.policy();
         if (old.modes.paid !== 'direct' && input.modes.paid === 'direct' && input.acknowledgePaid !== true) throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
         let result: ReturnType<typeof policy.updatePolicy>;
-        try {result = policy.updatePolicy({revision: input.expectedRevision ?? input.revision, stepLimit: input.stepLimit, modes: input.modes} as Parameters<typeof policy.updatePolicy>[0], input.requestId);}
+        // Keep the legacy key order for exact replay of old policy receipts.
+        const update = {revision: input.expectedRevision ?? input.revision, ...(Object.hasOwn(input, 'stepLimit') ? {stepLimit: input.stepLimit} : {}), modes: input.modes};
+        try {result = policy.updatePolicy(update as Parameters<typeof policy.updatePolicy>[0], input.requestId);}
         catch (error) {
           if (object(error) && typeof error.code === 'string' && error.code.startsWith('APP_LIBRARY_')) throw error;
           throw agentTaskFailure(object(error) && typeof error.code === 'string' ? error.code : 'AGENT_TASK_FAILED');

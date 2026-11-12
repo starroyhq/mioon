@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTargetMarks, markLabelPosition, markableTargets, MARK_ATTRIBUTE, MARK_FADE_MS, MARK_RELEASE_MS, MARK_SHOWN_MS } from '../apps/web/src/target-marks.ts';
-import { createAgentChangeMarks, locateAgentTaskChange, revealAgentTaskChangeRow } from '../apps/web/src/agent-task-location.ts';
+import { createAgentChangeMarks, locateAgentTaskChange, revealAgentTaskChangeRow, revealMioFollowTimeline } from '../apps/web/src/agent-task-location.ts';
 import { createAgentTaskSession } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskClient, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskChange, AgentTaskEvent, AgentTaskSnapshot } from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -18,7 +18,7 @@ class FakeElement {
   z = 0;
   scrolls: unknown[] = [];
   focused: unknown[] = [];
-  scrollTop = 0; scrollHeight = 0; clientHeight = 0;
+  scrollTop = 0; scrollLeft = 0; scrollHeight = 0; clientHeight = 0; clientWidth = 0; offsetWidth = 0;
   readonly owner: FakeDocument;
   constructor(owner: FakeDocument, attributes: Record<string, string> = {}) { this.owner = owner; for (const [name, value] of Object.entries(attributes)) this.attributes.set(name, value); }
   get ownerDocument(): FakeDocument { return this.owner; }
@@ -35,6 +35,7 @@ class FakeElement {
   contains(other: FakeElement | null): boolean { for (let node = other; node; node = node.parent) if (node === this) return true; return false; }
   getBoundingClientRect() { const { left, top, width, height } = this.rect; return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top }; }
   scrollIntoView(options?: unknown): void { this.scrolls.push(options); }
+  scrollTo(options: ScrollToOptions): void { this.scrolls.push(options); }
   focus(options?: unknown): void { this.focused.push(options); }
   querySelectorAll(selector: string): FakeElement[] { return descendants(this).filter(element => element.matches(selector)); }
   querySelector(selector: string): FakeElement | null { return this.querySelectorAll(selector)[0] ?? null; }
@@ -100,7 +101,7 @@ function timelineScene() {
   const a = clip('a', 400, 290), b = clip('b', 700, 300), c = clip('c', 1010, 260), under = clip('under', 60, 150);
   scroll.append(doc.element({ class: 'timeline-ruler-row' }, rect(0, 596, 1440, 24), 7), doc.element({ class: 'timeline-track video', 'data-testid': 'timeline-track-t1' }, rect(0, 620, 1440, 52)).append(header, lane));
   doc.root.append(doc.element({ 'data-testid': 'timeline-panel' }, rect(0, 560, 1440, 340)).append(scroll));
-  return { doc, header, a, b, c, under };
+  return { doc, scroll, header, lane, a, b, c, under };
 }
 
 const projectId = '11111111-1111-4111-8111-111111111111', runId = '22222222-2222-4222-8222-222222222222', stepId = '33333333-3333-4333-8333-333333333333', time = '2026-10-24T00:00:00.000Z';
@@ -291,6 +292,28 @@ test('locating a change marks it right away; only timeline targets are scrolled,
   assert.deepEqual(timeline.c.scrolls.at(-1), { behavior: 'auto', block: 'nearest', inline: 'center' });
   assert.equal(marks.marks.list().length, 1, 'locating twice keeps one mark');
   canvasMarks.dispose(); marks.dispose();
+});
+
+test('following timeline changes only scrolls the clip or cue viewport, accounting for interface scaling', () => {
+  const { doc, scroll, lane, a } = timelineScene();
+  // DOM rectangles are at 1.2× UI scale. Scroll offsets use unscaled CSS pixels.
+  scroll.offsetWidth = scroll.clientWidth = 1200;
+  scroll.clientHeight = 230;
+  scroll.scrollLeft = 250;
+  scroll.scrollTop = 40;
+  assert.equal(revealMioFollowTimeline({ kind: 'timeline_clip', id: 'a', name: 'Clip' }, 'smooth', doc.dom), true);
+  assert.deepEqual(scroll.scrolls, [], 'an already visible clip leaves the viewport alone');
+  a.rect = rect(1660, 624, 120, 44);
+  assert.equal(revealMioFollowTimeline({ kind: 'timeline_clip', id: 'a', name: 'Clip' }, 'smooth', doc.dom), true);
+  assert.deepEqual(scroll.scrolls, [{ left: 250 + (1720 - 800) / 1.2, top: 40, behavior: 'smooth' }]);
+  assert.deepEqual(a.scrolls, [], 'the clip does not scroll its ancestors');
+  const cue = doc.element({ 'data-testid': 'subtitle-cue-subtitle' }, rect(400, 900, 100, 40));
+  lane.append(cue);
+  assert.equal(revealMioFollowTimeline({ kind: 'timeline_subtitle', id: 'subtitle', name: 'Cue' }, 'auto', doc.dom), true);
+  assert.deepEqual(scroll.scrolls.at(-1), { left: 250, top: 40 + (920 - 746) / 1.2, behavior: 'auto' });
+  scroll.setAttribute('inert', '');
+  assert.equal(revealMioFollowTimeline({ kind: 'timeline_subtitle', id: 'subtitle', name: 'Cue' }, 'auto', doc.dom), false);
+  assert.equal(scroll.scrolls.length, 2);
 });
 
 test('a clicked label opens its change row: scrolled into view, focused and highlighted briefly', t => {

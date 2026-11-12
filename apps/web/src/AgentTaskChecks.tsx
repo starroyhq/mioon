@@ -8,7 +8,7 @@ import { createAgentTaskChecksView, visibleAgentTaskChecks } from './agent-task-
 import type { AgentTaskChecksViewState } from './agent-task-checks-state.ts';
 import { taskCheckExplanation, taskCheckLocation, taskCheckMetadata, taskCheckTargetTitle } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
-import { isTaskGoalRepairActive, taskCurrentGoalStepId, visibleTaskRequirements, taskRequirementStatus, taskRequirementNote, taskRequirementTitle, taskRequirementCurrent } from './agent-task-requirements.ts';
+import { isTaskGoalRepairActive, isTaskGoalSafetyPaused, taskCurrentGoalStepId, visibleTaskRequirements, taskRequirementStatus, taskRequirementNote, taskRequirementTitle, taskRequirementCurrent } from './agent-task-requirements.ts';
 import Icon from './icons.tsx';
 
 interface Props {
@@ -68,7 +68,8 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
   const [state, setState] = useState(initial), [inView, setInView] = useState(false), [documentVisible, setDocumentVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const [expanded, setExpanded] = useState<boolean | undefined>();
   const root = useRef<HTMLElement | null>(null), view = useRef<ReturnType<typeof createAgentTaskChecksView> | null>(null);
-  const { run } = snapshot, repairing = isTaskGoalRepairActive(snapshot), completed = run.status === 'completed' && !run.diagnostic, eligible = completed || repairing, goalStepId = taskCurrentGoalStepId(snapshot);
+  const { run } = snapshot, repairing = isTaskGoalRepairActive(snapshot), completed = run.status === 'completed' && !run.diagnostic;
+  const safetyPaused = latest && isTaskGoalSafetyPaused(snapshot), eligible = completed || repairing || safetyPaused, goalStepId = taskCurrentGoalStepId(snapshot);
   useEffect(() => {
     const changed = () => setDocumentVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', changed); changed();
@@ -90,7 +91,7 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
     return () => { current.dispose(); if (view.current === current) view.current = null; };
   }, [scope, run.projectId, run.id]);
   const active = eligible && visible && inView && documentVisible;
-  useEffect(() => { view.current?.update({ runId: run.id, runRevision: run.revision, completed, repairing, goalStepId, attached, latest, backgroundPending: snapshot.backgroundPending === true, visible: active }); }, [run.id, run.revision, completed, repairing, goalStepId, attached, latest, snapshot.backgroundPending, active]);
+  useEffect(() => { view.current?.update({ runId: run.id, runRevision: run.revision, completed, repairing, safetyPaused, goalStepId, attached, latest, backgroundPending: snapshot.backgroundPending === true, visible: active }); }, [run.id, run.revision, completed, repairing, safetyPaused, goalStepId, attached, latest, snapshot.backgroundPending, active]);
   const groups = visibleAgentTaskChecks(state.report, state.preflighting), items = groups.flatMap(group => group.items);
   const requirements = visibleTaskRequirements(state.report,snapshot), note = taskRequirementNote(requirements,snapshot);
   const hostFailed = items.filter(item => item.status === 'failed' && !(state.preflighting && item.type === 'timeline_preflight')).length;
@@ -113,9 +114,9 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
         {summary && <><span className="mio-check-separator" aria-hidden="true"> · </span><span className="mio-check-summary" data-tone={failed ? 'danger' : pending || repairingCount ? 'pending' : requirements.length ? 'success' : undefined} data-testid="agent-task-check-summary">{summary}</span></>}
         {state.justChecked && <span className="mio-check-fresh" role="status">{t('agent.checks.justChecked')}</span>}
       </Button>
-      <WorkbenchTooltip content={t('agent.checks.recheckTooltip')}><Button variant="icon" className="mio-check-refresh" aria-label={t('agent.checks.recheck')} loading={state.preflighting} disabled={!active} onClick={() => { void view.current?.recheck(); }}>
+      {!safetyPaused && <WorkbenchTooltip content={t('agent.checks.recheckTooltip')}><Button variant="icon" className="mio-check-refresh" aria-label={t('agent.checks.recheck')} loading={state.preflighting} disabled={!active} onClick={() => { void view.current?.recheck(); }}>
         {!state.preflighting && <Icon name="refresh" />}
-      </Button></WorkbenchTooltip>
+      </Button></WorkbenchTooltip>}
     </header>
     {state.error && <p className="mio-error" role="alert">{t('agent.checks.readFailed')}</p>}
     <div id={contentId} hidden={!open}>

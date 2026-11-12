@@ -1,5 +1,6 @@
 import {readProjectBackupNativeActions} from '../apps/web/src/project-backup-native.ts';
 import type {ProjectFeatureAdmission} from '../apps/web/src/project-feature-admission.ts';
+import type {MioFollowFocus} from '../apps/web/src/mio-follow.ts';
 type HomeSnapshot=Omit<ReturnType<typeof snapshot>,'project'>&{project:ReturnType<typeof snapshot>['project']|null};
 interface HomeOptions {nativeWindow?:ReturnType<typeof nativeEditor>|null;confirm?:()=>unknown;guard?:(current:()=>unknown)=>unknown;preferences?:(...args:unknown[])=>unknown;preferenceStatus?:{phase:string;error?:Error};directory?:()=>unknown;videoDirectory?:()=>unknown;rpc?:(operation:string,input:{projectId:string})=>unknown;get?:(projectId:string)=>unknown;create?:(...args:unknown[])=>unknown}
 interface HomeEnvironment extends Record<string,unknown> {auth:boolean|'error'|null;bootGuard:{current:ReturnType<typeof createProjectBootGuard>};busy:Record<string,unknown>;currentProject:{current:string|null};data:HomeSnapshot;dataRef:{current:HomeSnapshot};homePage:string;importSession:{current:{active:boolean;selection:number}};loading:boolean;nativeWindow:ReturnType<typeof nativeEditor>|null;navigationEpoch:{current:number};openedProject:{current:opening.ProjectOpenAttempt|null};projectCreateFlight:{current:unknown};projectEpoch:{current:number};projectListStatus:{busy:boolean;error:string|i18nCore.DisplayMessage};projectOpening:{phase:string;projectId:string|null;error:string};requestCounter:{current:number};toast:unknown;videoDirectoryUnavailable:boolean;viewReady:{current:boolean};viewRef:{current:ReturnType<typeof defaultWorkspaceState>};webSettingsRequest:{page:string;resolve?:(accepted:boolean)=>void}|null;window:{location:{href:string;search:string;pathname:string};history:{pushState:(...args:unknown[])=>number;replaceState:(...args:unknown[])=>number}};editorSession: {current: string}, workspaceRef:{current:{}};projectEntryIdentityRef:{current:ProjectEntryIdentityOwner}}
@@ -81,6 +82,8 @@ function environment(options:HomeOptions = {}) {
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, current: () => unknown) => options.guard ? options.guard(current) : current(),
     pendingForProject: () => [], reconcileWorkspaceState: (state: unknown) => state,
     reconcilePending: (...args: unknown[]) => calls.push(['reconcile', ...args]),
+    // Home navigation starts without a live Mio step; refresh still reads the shared candidate.
+    mioFollowCandidate: { current: null }, mioFollow: null,
     // This fixture owns no editing claims; match the empty-owner refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     updateView: (...args: unknown[]) => calls.push(['updateView', ...args]), migrateBrowserStorage() {}, isBusy: () => false,
@@ -107,7 +110,7 @@ function environment(options:HomeOptions = {}) {
   } as unknown as HomeEnvironment;
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
-    'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
+    'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm', 'MioFollow',
     'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable', 'BackupFailure', 'HistoryView']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = (value:unknown|((old:unknown)=>unknown)) => { env[key] = typeof value === 'function' ? (value as (old:unknown)=>unknown)(env[key]) : value; calls.push([`set${name}`, env[key]]); };
@@ -193,6 +196,25 @@ test('causal regression: actual refresh cannot publish a response after renderer
   const pending = h.refresh(id(1), false, { opening: true }); await tick(); h.env.importSession.current.active = false;
   const count = h.calls.length; held.resolve!(snapshot(id(1))); assert.equal(await pending, null);
   assert.equal(h.calls.length, count); assert.deepEqual((callsOf(h, 'reconcile') as unknown), []);
+});
+
+test('a Mio focus waits for refreshed project data and skips a change superseded during the read', async () => {
+  const held = deferred(); let reads = 0;
+  const h = refreshHarness({ get: projectId => ++reads === 1 ? held.promise : snapshot(projectId) });
+  const first: MioFollowFocus = { runId: id(3), stepId: id(4), text: 'First change', changeId: id(5) };
+  const latest: MioFollowFocus = { ...first, stepId: id(6), text: 'Latest change', changeId: id(7) };
+  const follow = { current: { projectId: id(1), focus: first } };
+  h.env.mioFollowCandidate = follow;
+  const old = h.refresh(id(1), false, { opening: true }); await tick();
+  follow.current = { projectId: id(1), focus: latest };
+  held.resolve(snapshot(id(1)));
+  assert.deepEqual(await old, snapshot(id(1)));
+  assert.deepEqual(callsOf(h, 'setMioFollow'), []);
+  const start = h.calls.length;
+  assert.deepEqual(await h.refresh(id(1), false, { opening: true }), snapshot(id(1)));
+  assert.deepEqual(h.calls.slice(start).filter(([name]) => name === 'setData' || name === 'setMioFollow')
+    .map(([name]) => name), ['setData', 'setMioFollow']);
+  assert.deepEqual(callsOf(h, 'setMioFollow'), [['setMioFollow', follow.current]]);
 });
 
 test('actual selection keeps home visible after preferences resolve until validated project data settles', async () => {

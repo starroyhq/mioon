@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import path from 'node:path';
 import {calculateWorkspaceScope} from '../../contracts/src/workspace-scope.ts';
-import {DEFAULT_UI_PREFERENCES,UI_PREFERENCES_LIMITS,uiPreferencesPutSchema,uiPreferencesDiskSchema,normalizeUiPreferences,uiPreferencesSchema,uiPreferencesProjectIdSchema,uiPreferencesOpenedAtSchema} from '../../contracts/src/ui-preferences.ts';
+import {DEFAULT_UI_PREFERENCES,UI_PREFERENCES_LIMITS,uiPreferencesCompatiblePutSchema,uiPreferencesDiskSchema,normalizeUiPreferences,uiPreferencesReadSchema,uiPreferencesProjectIdSchema,uiPreferencesOpenedAtSchema} from '../../contracts/src/ui-preferences.ts';
 import type {UiPreferences,UiPreferencesResponse} from '../../contracts/src/ui-preferences.ts';
 import type {LocalDraftStorage} from './local-drafts.ts';
 import type {AppDocumentStore} from './app-db/stores.ts';
@@ -75,7 +75,7 @@ export function createUiPreferences({root,channel='web',storage,guards,signal,no
       const entries=Object.entries(raw);if(entries.length>UI_PREFERENCES_LIMITS.recentProjects)fail('UI_PREFERENCES_LIMIT');
       for(const [id,date] of entries)if(uiPreferencesProjectIdSchema.safeParse(id).success&&uiPreferencesOpenedAtSchema.safeParse(date).success)recentOpened[id]=date as string;
     }
-    return {...parsed.data,preferences,recentOpened,recoveredDefaults:!uiPreferencesSchema.safeParse(parsed.data.preferences).success};
+    return {...parsed.data,preferences,recentOpened,recoveredDefaults:!uiPreferencesReadSchema.safeParse(parsed.data.preferences).success};
   }
   function response(disk:Disk):UiPreferencesResponse{return {revision:disk.revision,preferences:{...disk.preferences},recentOpened:{...disk.recentOpened},recoveredDefaults:disk.recoveredDefaults,writable:!guards.isReadOnly()};}
   function persist(disk:Disk):void{
@@ -89,12 +89,13 @@ export function createUiPreferences({root,channel='web',storage,guards,signal,no
   return {
     get():UiPreferencesResponse{return safe(()=>response(read()));},
     put(value:unknown):UiPreferencesResponse{return safe(()=>{
-      plain(value);const input=uiPreferencesPutSchema.safeParse(value);if(!input.success)fail('UI_PREFERENCES_VALIDATION');
+      plain(value);const input=uiPreferencesCompatiblePutSchema.safeParse(value);if(!input.success)fail('UI_PREFERENCES_VALIDATION');
       if(guards.isReadOnly())fail('UI_PREFERENCES_READ_ONLY');
       const disk=read(),digest=createHash('sha256').update(canonical(input.data)).digest('hex');
       if(disk.lastWrite?.requestId===input.data.requestId){if(disk.lastWrite.digest!==digest)fail('UI_PREFERENCES_CONFLICT');return response(disk);}
       if(input.data.expectedRevision!==disk.revision||disk.revision===Number.MAX_SAFE_INTEGER)fail('UI_PREFERENCES_CONFLICT');
-      const next:Disk={...disk,revision:disk.revision+1,preferences:input.data.preferences,recoveredDefaults:false,lastWrite:{requestId:input.data.requestId,digest}};
+      const preferences={...input.data.preferences,mioFollow:input.data.preferences.mioFollow??disk.preferences.mioFollow};
+      const next:Disk={...disk,revision:disk.revision+1,preferences,recoveredDefaults:false,lastWrite:{requestId:input.data.requestId,digest}};
       persist(next);return response(next);
     });},
     markOpened(projectId:unknown):void{safe(()=>{

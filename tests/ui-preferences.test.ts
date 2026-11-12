@@ -3,7 +3,7 @@ import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -26,8 +26,9 @@ test('workspace preferences are noncreating reads, strictly persisted and indepe
   const f=await fixture(t),before=await readdir(f.root),initial=f.service.get();
   assert.ok(uiPreferencesResponseSchema.safeParse(initial).success);assert.deepEqual(initial.preferences,DEFAULT_UI_PREFERENCES);
   assert.equal(initial.preferences.homeView,'list');
+  assert.equal(initial.preferences.mioFollow,true);
   assert.deepEqual(await readdir(f.root),before);
-  const input={expectedRevision:0,requestId:randomUUID(),preferences:{...initial.preferences,theme:'system',scalePercent:125,density:'compact',timecodeFormat:'seconds',reduceMotion:true,homeSort:'name',homeView:'grid'}};
+  const input={expectedRevision:0,requestId:randomUUID(),preferences:{...initial.preferences,theme:'system',scalePercent:125,density:'compact',timecodeFormat:'seconds',reduceMotion:true,homeSort:'name',homeView:'grid',mioFollow:false}};
   const saved=f.service.put(input);assert.equal(saved.revision,1);assert.deepEqual(saved.preferences,input.preferences);
   const bytes=await readFile(f.file);assert.deepEqual(f.service.put(input),saved);assert.deepEqual(await readFile(f.file),bytes);
   f.service.markOpened(f.projectId);assert.equal(f.service.get().revision,1,'navigation does not invalidate an appearance draft');
@@ -39,19 +40,49 @@ test('workspace preferences are noncreating reads, strictly persisted and indepe
   restarted.removeProject(f.projectId);assert.deepEqual(restarted.get().recentOpened,{});
   assert.deepEqual(restarted.get().preferences,input.preferences);assert.equal(restarted.get().revision,1);
 });
+test('Mio Follow defaults on for a legacy document, replays its old receipt and survives legacy writes', async t => {
+  const f=await fixture(t);
+  const initial=f.service.get();
+  assert.equal(initial.preferences.mioFollow,true);
+  f.service.put({expectedRevision:0,requestId:randomUUID(),preferences:initial.preferences});
+
+  const disk=JSON.parse(await readFile(f.file,'utf8'));
+  const legacyPreferences={density:'compact',homeSort:'name',homeView:'list',reduceMotion:true,scalePercent:110,theme:'light',timecodeFormat:'seconds'};
+  // This ordering is the pre-feature canonical payload used for the digest.
+  const legacy={expectedRevision:0,preferences:legacyPreferences,requestId:randomUUID()};
+  disk.preferences=legacyPreferences;
+  disk.lastWrite={requestId:legacy.requestId,digest:createHash('sha256').update(JSON.stringify(legacy)).digest('hex')};
+  writePrivateFileAtomic(f.file,JSON.stringify(disk),{root:f.root,maxBytes:1024*1024});
+  const bytes=await readFile(f.file),restarted=createUiPreferences(f.options);
+  const read=restarted.get();
+  assert.equal(read.revision,1);assert.equal(read.recoveredDefaults,false);
+  assert.deepEqual(read.preferences,{...legacyPreferences,mioFollow:true});
+  assert.deepEqual(restarted.put(legacy),read);
+  assert.throws(()=>restarted.put({...legacy,preferences:{...legacyPreferences,mioFollow:true}}),{code:'UI_PREFERENCES_CONFLICT'});
+  assert.deepEqual(await readFile(f.file),bytes);
+
+  const disabled=restarted.put({expectedRevision:1,requestId:randomUUID(),preferences:{...read.preferences,mioFollow:false}});
+  assert.equal(disabled.revision,2);
+  assert.deepEqual(createUiPreferences(f.options).get(),disabled);
+  const olderUpdate={expectedRevision:2,requestId:randomUUID(),preferences:{...legacyPreferences,theme:'system'}};
+  const updated=restarted.put(olderUpdate);
+  assert.deepEqual(updated.preferences,{...olderUpdate.preferences,mioFollow:false});
+  assert.deepEqual(restarted.put(olderUpdate),updated);
+  assert.deepEqual(createUiPreferences(f.options).get(),updated);
+});
 test('invalid stored fields fall back independently without rewriting old preferences',async t=>{
   const f=await fixture(t);f.service.put({expectedRevision:0,requestId:randomUUID(),preferences:{...DEFAULT_UI_PREFERENCES}});
   const disk=JSON.parse(await readFile(f.file,'utf8'));
-  disk.preferences={...disk.preferences,scalePercent:999,density:'compact',theme:'contrast',homeSort:'updated'};
+  disk.preferences={...disk.preferences,scalePercent:999,density:'compact',theme:'contrast',homeSort:'updated',mioFollow:'false'};
   writePrivateFileAtomic(f.file,JSON.stringify(disk),{root:f.root,maxBytes:1024*1024});const before=await readFile(f.file);
   const result=f.service.get();assert.equal(result.recoveredDefaults,true);assert.equal(result.preferences.scalePercent,100);assert.equal(result.preferences.theme,'dark');
-  assert.equal(result.preferences.density,'compact');assert.equal(result.preferences.homeSort,'updated');assert.deepEqual(await readFile(f.file),before);
+  assert.equal(result.preferences.density,'compact');assert.equal(result.preferences.homeSort,'updated');assert.equal(result.preferences.mioFollow,true);assert.deepEqual(await readFile(f.file),before);
   disk.version=2;writePrivateFileAtomic(f.file,JSON.stringify(disk),{root:f.root,maxBytes:1024*1024});
   assert.throws(()=>f.service.get(),e=>(e as RootFailure).code==='UI_PREFERENCES_UNAVAILABLE');
 });
 test('invalid writes, getters, foreign scope and read-only workspaces cannot mutate the companion',async t=>{
   const f=await fixture(t),good={expectedRevision:0,requestId:randomUUID(),preferences:{...DEFAULT_UI_PREFERENCES}};
-  for(const preferences of [{...DEFAULT_UI_PREFERENCES,scalePercent:89},{...DEFAULT_UI_PREFERENCES,scalePercent:125.5},{...DEFAULT_UI_PREFERENCES,theme:'contrast'},{...DEFAULT_UI_PREFERENCES,unknown:true},{...DEFAULT_UI_PREFERENCES,reduceMotion:'false'}])
+  for(const preferences of [{...DEFAULT_UI_PREFERENCES,scalePercent:89},{...DEFAULT_UI_PREFERENCES,scalePercent:125.5},{...DEFAULT_UI_PREFERENCES,theme:'contrast'},{...DEFAULT_UI_PREFERENCES,unknown:true},{...DEFAULT_UI_PREFERENCES,reduceMotion:'false'},{...DEFAULT_UI_PREFERENCES,mioFollow:'false'},{...DEFAULT_UI_PREFERENCES,mioFollow:null}])
     assert.throws(()=>f.service.put({...good,preferences}),e=>(e as RootFailure).code==='UI_PREFERENCES_VALIDATION');
   let invoked=false;const malicious={...good};Object.defineProperty(malicious,'preferences',{enumerable:true,get(){invoked=true;return good.preferences;}});
   assert.throws(()=>f.service.put(malicious),e=>(e as RootFailure).code==='UI_PREFERENCES_VALIDATION');assert.equal(invoked,false);

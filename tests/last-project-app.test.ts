@@ -78,6 +78,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
   application:null,reconcileWorkspaceState,reconcilePending(){},useCallback:<T>(fn: T): T =>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
+  mioFollowCandidate:{current:null},setMioFollow(){},
   // This fixture owns no editing claims; match the empty-owner refresh wait.
   refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},

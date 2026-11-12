@@ -158,6 +158,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
 
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },
     useCallback: <T>(fn: T): T => fn, reconcileWorkspaceState, readGenerationProviderDirectory, reconcilePending() {},
+    mioFollowCandidate: { current: null }, setMioFollow() {},
     // No editing owner is mounted on the project home; preserve its refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,

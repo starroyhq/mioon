@@ -11,6 +11,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools,listAgentTaskTools,listDiagnosticAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
@@ -35,7 +36,7 @@ function output(protocol:AgentProtocol,calls:AgentTaskToolCall[]=[]):TaskModelOu
   return {text,toolCalls:calls,providerOutput};
 }
 type Script=(index:number,request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
-async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{withoutPort?:boolean;invalidResult?:boolean;forgedLoad?:boolean;unknownLoad?:boolean}={}){
+async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:{safetyStepLimit?:number;withoutPort?:boolean;invalidResult?:boolean;forgedLoad?:boolean;unknownLoad?:boolean}={}){
   const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-project-media-tools-')),store=openStore(root),services=createServices(store,new Map());
   const project=object(await services.call('project.create',{name:'Mio directory tool test'})),projectId=String(project.id);
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
@@ -55,10 +56,10 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses',options:
   }};
   let script:Script=async function*(){yield {type:'done',output:output(protocol)};};
   const gateway=async function*(request:TaskModelRequest){request.beforeSubmit?.();requests.push(request);yield*script(requests.length,request);};
-  let runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318}),closed=false;
+  let runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318,...(options.safetyStepLimit===undefined?{}:{journal:createAgentTaskJournal(store,{safetyStepLimit:options.safetyStepLimit})})}),closed=false;
   async function close(){if(closed)return;closed=true;runtime.close();base.dispose();await settings.close();store.close();}
   t.after(async()=>{await close();rmSync(root,{recursive:true,force:true});});
-  function restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});}
+  function restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318,...(options.safetyStepLimit===undefined?{}:{journal:createAgentTaskJournal(store,{safetyStepLimit:options.safetyStepLimit})})});}
   return {root,store,projectId,base,tools,calls,prepared,executed,requests,get runtime(){return runtime;},close,restart,
     script(value:Script){script=value;},
     async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'List the project media directory.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
@@ -124,9 +125,9 @@ for(const protocol of protocols)test(protocol+': loading and listing in one repl
 });
 
 for(const protocol of protocols)test(protocol+': legacy assets group receipts survive restart without discovering or authorizing directory reads',async t=>{
-  const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+  const f=await fixture(t,protocol,{safetyStepLimit:2});
   f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['assets']})]:index===2?[call(MIO_PROJECT_MEDIA_LIST_TOOL)]:[])};});
-  const {sent,original}=await f.frozen('groups'),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(f.requests[0]?.body,original);
+  const {sent,original}=await f.frozen('groups'),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'safety_limit');assert.equal(f.requests[0]?.body,original);
   const load=paused.steps.find(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(load);assert.equal(load.status,'completed');
   const receipt=object(load.result);assert.deepEqual(receipt.groups,['assets']);assert.ok(Array.isArray(receipt.tools));assert.ok(!receipt.tools.includes(MIO_PROJECT_MEDIA_LIST_TOOL));
   f.restart();await f.resume(sent.run.id);const done=await f.settle(sent.run.id);

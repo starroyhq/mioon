@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash, randomBytes} from 'node:crypto';
 import {
-  appendFileSync, chmodSync, closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync,
+  appendFileSync, chmodSync, closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync,
   symlinkSync, truncateSync, utimesSync, writeFileSync, writeSync,
 } from 'node:fs';
 import type {BigIntStats} from 'node:fs';
@@ -241,10 +241,14 @@ function writeMp4(file: string, size = 8192): Buffer {
   writeFileSync(file, content);
   return content;
 }
-function writeByte(file: string, position: number): void {
+function flipByte(file: string, position: number): void {
   const fd = openSync(file, 'r+');
   try {
-    writeSync(fd, Buffer.from([0x5a]), 0, 1, position);
+    const byte = Buffer.alloc(1);
+    assert.equal(readSync(fd, byte, 0, 1, position), 1);
+    // The fixture is random, so assigning a fixed byte could leave it unchanged.
+    byte[0] = byte[0]! ^ 0xff;
+    assert.equal(writeSync(fd, byte, 0, 1, position), 1);
   } finally {
     closeSync(fd);
   }
@@ -347,13 +351,19 @@ test('checkMediaStatus gives every reason, and opens a file only when its modifi
   appendFileSync(file('longer.mp4'), 'x');
   assert.deepEqual(statusOf(await status('longer')), ['changed', 'size']);
   // One byte in the third range, and a new modification time.
-  writeByte(file('content.mp4'), sampleRanges(2 * MIB)[2].start + 10);
+  flipByte(file('content.mp4'), sampleRanges(2 * MIB)[2].start + 10);
   utimesSync(file('content.mp4'), LATER, LATER);
   assert.deepEqual(statusOf(await status('content')), ['changed', 'content']);
   // One byte outside the samples with the old modification time put back: still
   // online by its stats, until the full hash is compared.
-  writeByte(file('unsampled.mp4'), 100_000);
-  utimesSync(file('unsampled.mp4'), EARLIER, EARLIER);
+  const unsampled = file('unsampled.mp4'), position = 100_000;
+  const before = lstatSync(unsampled, {bigint: true});
+  assert.ok(sampleRanges(Number(before.size)).every(({start, length}) => position < start || position >= start + length));
+  flipByte(unsampled, position);
+  utimesSync(unsampled, EARLIER, EARLIER);
+  const after = lstatSync(unsampled, {bigint: true});
+  assert.equal(after.size, before.size);
+  assert.equal(after.mtimeNs, before.mtimeNs);
   assert.deepEqual(statusOf(await status('unsampled')), ['online', 'same-stats']);
   rmSync(file('deleted.mp4'));
   assert.deepEqual(await status('deleted'), {status: 'missing', reason: 'not-found', file: null, outside: false, readable: false,

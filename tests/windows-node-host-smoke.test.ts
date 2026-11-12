@@ -46,7 +46,7 @@ test('native Windows headless backend and separate CLI share private storage, di
  const project=await cli(['project','create'],{name:'Windows isolated native CLI smoke'});assert.match(project.id,/^[a-f0-9-]{36}$/u);
  const listed=await cli(['project','list']);assert.deepEqual(listed.map((value: {id: string})=>value.id),[project.id]);
  const doctor=await cli(['agent','doctor'],{projectId:project.id});assert.equal(doctor.verification,'not_tested');assert.equal(doctor.catalog.valid,true);assert.ok(doctor.catalog.count>0);
- const {policy}=await cli(['agent','policy','get']);assert.equal(policy.stepLimit,30);assert.equal(policy.modes.paid,'confirm');
+ const {policy}=await cli(['agent','policy','get']);assert.equal(Object.hasOwn(policy,'stepLimit'),false);assert.equal(policy.modes.paid,'confirm');
  assert.ok(validateManagedFile(path.join(root,'app-library.db'),{root,private:true}));assert.ok(validateManagedFile(service.tokenFile,{root:path.dirname(service.tokenFile),private:true}));assert.equal(modelCalls,0);
  // Only this constructor-injected synthetic generator can answer. This is
  // actual v2 CLI/SQLite/tool execution, never a real vendor/model acceptance.

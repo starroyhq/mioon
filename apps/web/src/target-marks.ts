@@ -7,7 +7,7 @@ import { coveredInsets, measuredOverlays } from './canvas-fit.ts';
 export interface MarkTarget { kind: string; id: string }
 export type MarkPhase = 'shown' | 'fading';
 export interface TargetMark { key: string; target: MarkTarget; owner: string; label: boolean; phase: MarkPhase; held: boolean }
-export interface MarkEntry { owner: string; targets: readonly MarkTarget[] }
+export interface MarkEntry { owner: string; targets: readonly MarkTarget[]; color?: string }
 export interface MarkSize { width: number; height: number }
 export interface MarkPlacement { key: string; x: number; y: number; visible: boolean }
 export interface MarkBox { left: number; top: number; right: number; bottom: number; width: number; height: number }
@@ -166,7 +166,7 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
   const clearTimer = options.clearTimer ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   const shownMs = options.shownMs ?? MARK_SHOWN_MS, fadeMs = options.fadeMs ?? MARK_FADE_MS, releaseMs = options.releaseMs ?? MARK_RELEASE_MS;
   const placement = options.placement ?? 'above', labelKinds = options.labelKinds;
-  interface Entry extends TargetMark { timer: unknown; elements: Element[] }
+  interface Entry extends TargetMark { timer: unknown; elements: Element[]; color?: string }
   const marks = new Map<string, Entry>(), listeners = new Set<() => void>();
   let snapshot: readonly TargetMark[] = [], disposed = false;
 
@@ -174,8 +174,20 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
     snapshot = [...marks.values()].map(({ key, target, owner, label, phase, held }) => ({ key, target, owner, label, phase, held }));
     for (const listener of [...listeners]) listener();
   };
-  const paint = (entry: Entry) => { for (const element of entry.elements) if (element.getAttribute(MARK_ATTRIBUTE) !== entry.phase) element.setAttribute(MARK_ATTRIBUTE, entry.phase); };
-  const unpaint = (entry: Entry) => { for (const element of entry.elements) if (element.hasAttribute(MARK_ATTRIBUTE)) element.removeAttribute(MARK_ATTRIBUTE); };
+  const paint = (entry: Entry) => {
+    for (const element of entry.elements) {
+      if (element.getAttribute(MARK_ATTRIBUTE) !== entry.phase) element.setAttribute(MARK_ATTRIBUTE, entry.phase);
+      const style = (element as HTMLElement).style;
+      if (entry.color && style && style.getPropertyValue('--mio-mark-color') !== entry.color) style.setProperty('--mio-mark-color', entry.color);
+    }
+  };
+  const unpaint = (entry: Entry) => {
+    for (const element of entry.elements) {
+      if (element.hasAttribute(MARK_ATTRIBUTE)) element.removeAttribute(MARK_ATTRIBUTE);
+      const style = (element as HTMLElement).style;
+      if (entry.color && style?.getPropertyValue('--mio-mark-color') === entry.color) style.removeProperty('--mio-mark-color');
+    }
+  };
   const stop = (entry: Entry) => { if (entry.timer !== undefined) clearTimer(entry.timer); entry.timer = undefined; };
   const remove = (entry: Entry) => { stop(entry); unpaint(entry); marks.delete(entry.key); };
   function fadeAfter(entry: Entry, delay: number) {
@@ -191,7 +203,7 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
     mark(entries, { requireVisible = true } = {}) {
       if (disposed) return [];
       const marked: string[] = [];
-      for (const { owner, targets } of entries) {
+      for (const { owner, targets, color } of entries) {
         let first = true;
         for (const target of markableTargets(targets)) {
           const elements = markTargetElements(target, document).filter(element => !requireVisible || markTargetVisible(element, document));
@@ -199,7 +211,7 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
           const key = `${target.kind}:${target.id}`, previous = marks.get(key), labelled = !labelKinds || labelKinds.has(target.kind);
           // The same target changed again: restart its timer and keep a single label, now pointing at the latest owner.
           if (previous) { stop(previous); unpaint(previous); }
-          const entry: Entry = { key, target: { kind: target.kind, id: target.id }, owner, label: Boolean(previous?.label) || first && labelled, phase: 'shown', held: previous?.held ?? false, timer: undefined, elements };
+          const entry: Entry = { key, target: { kind: target.kind, id: target.id }, owner, label: Boolean(previous?.label) || first && labelled, phase: 'shown', held: previous?.held ?? false, timer: undefined, elements, color };
           marks.set(key, entry); paint(entry);
           if (!entry.held) fadeAfter(entry, shownMs);
           if (labelled) first = false;

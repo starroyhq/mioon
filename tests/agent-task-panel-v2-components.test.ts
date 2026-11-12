@@ -23,14 +23,19 @@ import * as rulesProposal from '../apps/web/src/project-rules-proposal.ts';
 import {projectRulesSnapshotSchema} from '../packages/contracts/src/mio-rules.ts';
 import type {ProjectRulesSnapshot} from '../packages/contracts/src/mio-rules.ts';
 import {adapterSettings,ADAPTER_CONFIGURATION} from './helpers/agent-adapter-fixture.ts';
+import * as mioFollow from '../apps/web/src/mio-follow.ts';
+import type { MioFollowFocus, MioFollowTarget, MioFollowTargetExists } from '../apps/web/src/mio-follow.ts';
 type PanelOptions=TaskPanelOptions & {onUsageObservation?:(value:import('../apps/web/src/agent-tasks-v2.ts').AgentTaskUsageObservation)=>void};
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
 const trustedRules=(owner:string):ProjectRulesSnapshot=>projectRulesSnapshotSchema.parse({projectId:owner,file:'AGENTS.md',exists:true,text:'Synthetic project rules',hash:createHash('sha256').update('Synthetic project rules').digest('hex'),trust:'trusted',maxBytes:8192,readError:null,pendingWrites:false});
-function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules,usageRunId='run',openRequests=false}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>;usageRunId?:string;openRequests?:boolean}={}){
+function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans',readRules,usageRunId='run',openRequests=false,followMio=false}: {backgroundPending?: boolean;readOnly?: boolean;status?: string;changes?: TaskPanelChange[];locale?: Locale;readRules?:(owner:string,signal:AbortSignal)=>Promise<ProjectRulesSnapshot>;usageRunId?:string;openRequests?:boolean;followMio?:boolean}={}){
   let currentLocale=locale,currentProjectId=projectId,refreshResult: Promise<unknown>|null=null,currentVisible=true;
   let currentAdmission=true;
+  const focused: Array<{projectId:string;focus:MioFollowFocus|null}> = [], located: MioFollowTarget[] = [], followWrites: boolean[] = [];
+  const followPreferences = { preferences: { mioFollow: true }, saved: { writable: true }, phase: 'ready', pending: false, mioFollowRetry: undefined as boolean | undefined };
+  let targetExists: MioFollowTargetExists = () => true, saveFollow = async (_enabled: boolean) => true;
   const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0,hookWrites=0;const calls: unknown[][]=[];
   const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hookWrites++;hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
   const snapshot: TaskPanelSnapshot={run:{id:usageRunId,projectId,revision:1,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
@@ -60,15 +65,109 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   Object.defineProperty(globalThis,'window',{configurable:true,writable:true,value:new EventTarget()});
   const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
+    if(id==='./mio-follow.ts')return mioFollow;
+    if(id==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({...followPreferences,setMioFollow:async(enabled:boolean)=>{followWrites.push(enabled);if(!await saveFollow(enabled))return false;followPreferences.preferences.mioFollow=enabled;return true;}})};
+    if(id==='@mioon/ui/components/switch')return{Switch:'switch'};
     if(id==='./mio-usage-client.ts')return usageModule;if(id==='./mio-usage-state.ts')return usageState;if(id==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
     if(id==='./project-rules-client.ts')return rulesModule;if(id==='./project-rules-proposal.ts')return rulesProposal;
     if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
-  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onOpenRequests:openRequests?(selectedId:unknown)=>calls.push(['requests',selectedId]):undefined,onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
+  const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onOpenRequests:openRequests?(selectedId:unknown)=>calls.push(['requests',selectedId]):undefined,onClose(){},...(followMio?{onMioFollowFocus:(projectId:string,focus:MioFollowFocus|null)=>focused.push({projectId,focus}),onMioFollowLocate:(target:MioFollowTarget)=>located.push(target),mioFollowTargetExists:(target:Parameters<MioFollowTargetExists>[0])=>targetExists(target),shotNumber:()=>3}:{})});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
   let disposed=false;
-  return{render,calls,state,usageReads,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
+  return{render,calls,state,focused,located,followPreferences,followWrites,setFollowSave(value:typeof saveFollow){saveFollow=value;},setFollowTargetExists(value:MioFollowTargetExists){targetExists=value;},usageReads,setAdmissionAllowed(value:boolean){currentAdmission=value;},rulesReads,rulesResponses,get hookWrites(){return hookWrites;},setLocale(value: Locale){currentLocale=value;},setProject(value: string){currentProjectId=value;},setVisible(value: boolean){currentVisible=value;},setRefresh(value: Promise<unknown>|null){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:(id: unknown)=>nodes(tree).find((node)=>node.props?.['data-testid']===id),unmount(){if(disposed)return;disposed=true;for(const hook of hooks)hook.cleanup?.();restoreGlobals();}};
 }
+
+const followShot = '33333333-3333-4333-8333-333333333333', followClip = '44444444-4444-4444-8444-444444444444';
+const followChange = (id:string,stepId:string,kind:string,target:string,operation:string,runId='run') => ({
+  id, stepId, runId, projectId, operation, status:'applied', reversible:true, targets:[{kind,id:target,revision:1,revisionBefore:0,revisionAfter:1}],
+});
+
+test('Mio follows the latest saved target, keeps history passive and moves to the panel for a wait',()=>{
+  const h=harness({status:'running',followMio:true,changes:[followChange('historical',stepId,'shot',followShot,'shot.create')]});
+  try{
+    const initial=h.state.snapshot!;
+    const publish=(next:TaskPanelSnapshot)=>{h.state.snapshot=next;h.state.rounds=[next];h.options.onChange(h.state);h.render();};
+    assert.equal(h.focused.length,0);
+    publish(structuredClone(initial));
+    assert.equal(h.focused.length,0,'refreshing a historical snapshot does not replay its cursor');
+    const saved:TaskPanelSnapshot={...initial,run:{...initial.run,revision:2},steps:[...initial.steps,
+      {id:'clip-step',kind:'tool',status:'completed',position:2,tier:'local_reversible',text:'Trim the selected clip',toolCall:{name:'mioon_timeline_clip_add',arguments:{}}},
+      {id:'approval',kind:'tool',status:'awaiting_approval',position:3,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}},
+    ],changes:[...initial.changes,followChange('new-shot',stepId,'shot',followShot,'shot.update'),followChange('new-clip','clip-step','timeline_clip',followClip,'timeline.clip.add')]};
+    publish(saved);
+    const target={kind:'timeline_clip',id:followClip,name:translate('zh-Hans','agent.display.target.timeline_clip')};
+    assert.deepEqual(h.focused,[{projectId,focus:{runId:'run',stepId:'clip-step',text:'Trim the selected clip',target,changeId:'new-clip'}}]);
+    const row=h.render().find(node=>node.props['data-step-id']==='clip-step');
+    assert.equal(row?.props['data-mio-follow'],'true');
+    assert.equal(row?.props.style['--mio-follow-color'],mioFollow.mioFollowColor('run'));
+    assert.equal(h.render().find(node=>node.props['data-step-id']===stepId)?.props['data-mio-follow'],undefined);
+    h.find(`mio-follow-canvas-${stepId}`)?.props.onClick();
+    h.find('mio-follow-timeline-clip-step')?.props.onClick();
+    assert.deepEqual(h.located,[{kind:'shot',id:followShot,name:'镜头 03'},target]);
+
+    const anotherClip='55555555-5555-4555-8555-555555555555';
+    const updated={...saved,run:{...saved.run,revision:3},changes:[...saved.changes,followChange('later-clip','clip-step','timeline_clip',anotherClip,'timeline.clip.add')]};
+    publish(updated);
+    assert.equal(h.focused.at(-1)?.focus?.stepId,'clip-step');
+    assert.equal(h.focused.at(-1)?.focus?.target?.id,anotherClip,'the next durable change for the same step can move its cursor');
+    h.setFollowTargetExists(({kind})=>kind!=='timeline_clip');h.render();
+    assert.equal(h.find('mio-follow-timeline-clip-step'),undefined);
+
+    const goal:TaskPanelStep={id:'goal-step',kind:'tool',status:'completed',position:4,tier:'read_only',text:'Check the requested subtitles',toolCall:{name:'mioon_goal_set',arguments:{}}};
+    const read={...updated,run:{...updated.run,revision:4},steps:[...updated.steps,goal]};
+    publish(read);
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'goal-step',text:'Check the requested subtitles'}});
+    assert.ok(renderedText(h.render().find(node=>node.props['data-step-id']==='goal-step')!).includes(translate('zh-Hans','agent.panel.goal.title')));
+    publish({...read,run:{...read.run,revision:5},steps:[...read.steps,{id:'wait-step',kind:'tool',status:'dispatch_started',position:5,text:'Wait for the submitted job',toolCall:{name:'mioon_task_wait',arguments:{id:followShot}}}]});
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'wait-step',text:'Wait for the submitted job'}});
+    assert.equal(h.find('mio-follow-canvas-wait-step'),undefined);
+    h.setVisible(false);h.render();
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:null});
+  }finally{h.unmount();}
+});
+
+test('a matching fast Mio send focuses its first already-committed snapshot',()=>{
+  const h=harness({status:'completed',followMio:true});
+  try{
+    const runId='just-sent',requestId='send-receipt';
+    const current=h.state.snapshot!;
+    h.state.snapshot={...current,run:{...current.run,...{id:runId,requestId}},steps:[{id:stepId,kind:'tool',status:'completed',tier:'local_reversible',toolCall:{name:'mioon_shot_create',arguments:{}}}],changes:[followChange('created',stepId,'shot',followShot,'shot.create',runId)]};
+    h.state.pending={action:'send',requestId};h.state.rounds=[h.state.snapshot];h.options.onChange(h.state);h.render();
+    assert.deepEqual(h.focused.at(-1)?.focus?.target,{kind:'shot',id:followShot,name:'镜头 03'});
+    assert.equal(h.focused.at(-1)?.focus?.changeId,'created');
+    assert.equal(h.focused.at(-1)?.focus?.text,translate('zh-Hans','agent.display.operation.shot.create'));
+  }finally{h.unmount();}
+});
+
+test('Mio follow is on by default and saves only the requested setting with an exact retry',async()=>{
+  const h=harness({status:'completed',followMio:true});
+  try{
+    const toggle=h.find('mio-follow-toggle')!;
+    assert.equal(toggle.props.checked,true);
+    assert.equal(toggle.props['aria-label'],'跟随 Mio');
+    assert.equal(toggle.props.disabled,false);
+    const change=toggle.props.onCheckedChange as (value:boolean)=>void;
+    let complete!: (success:boolean)=>void;
+    h.setFollowSave(()=>new Promise(resolve=>{complete=resolve;}));
+    change(false);change(false);h.render();
+    assert.equal(h.find('mio-follow-toggle')!.props.disabled,true);
+    assert.deepEqual(h.followWrites,[false]);
+    complete(false);await new Promise(setImmediate);
+    Object.assign(h.followPreferences,{pending:true,phase:'error',mioFollowRetry:false});
+    h.setFollowSave(async()=>true);h.render();
+    assert.equal(h.find('mio-follow-save-error')?.props.role,'alert');
+    assert.equal(h.find('mio-follow-toggle')!.props.checked,true);
+    (h.find('mio-follow-toggle')!.props.onCheckedChange as (value:boolean)=>void)(true);
+    await new Promise(setImmediate);
+    Object.assign(h.followPreferences,{pending:false,phase:'ready',mioFollowRetry:undefined});h.render();
+    assert.deepEqual(h.followWrites,[false,false]);
+    assert.equal(h.find('mio-follow-toggle')!.props.checked,false);
+    assert.equal(h.find('mio-follow-save-error'),undefined);
+    assert.equal(h.find('agent-task-draft')!.props.value,'next task');
+    assert.deepEqual(h.calls,[]);
+  }finally{h.unmount();}
+});
 test('a completed-conversation refresh keeps real panel inputs and write controls disabled until it settles',async()=>{
   const h=harness({status:'completed'});try{
     h.state.phase='refreshing';const tree=h.render();
@@ -267,7 +366,7 @@ test('preparing has no step budget and a locale change retains the panel session
   try{
     h.render();const options: TaskPanelOptions=h.options;const loads=h.loads;
     assert.equal(options.getLocale(),'zh-Hans');
-    assert.equal(JSON.stringify(h.find('agent-task-status')).includes(translate('zh-Hans','agent.task.budget',{used:2,limit:30})),false);
+    assert.ok(!renderedText(h.find('agent-task-status')).includes(translate('zh-Hans','agent.panel.usedSteps',{count:2})));
     h.setLocale('ja');h.render();
     assert.equal(h.options,options);assert.equal(h.loads,loads);
     assert.equal(options.getLocale(),'ja');assert.equal(h.state.draft,'next task');
@@ -338,6 +437,49 @@ test('the header opens the conversation overlay and selects a conversation throu
 });
 test('only target conflicts show the conflict pause explanation and unknown results use recovery',()=>{
   const h=harness({status:'paused'});try{for(const reason of ['conflict','editing','user','AGENT_TASK_CONSENT_REQUIRED'] as const){h.state.snapshot!.run.pauseReason=reason;h.render();const text=renderedText(h.find('agent-task-paused'));assert.equal(text.includes(translate('zh-Hans','agent.panel.conflictBody')),['conflict','editing'].includes(reason));}h.state.snapshot!.steps[0].status='unknown';h.render();assert.equal(h.find('agent-task-paused'),undefined);assert.ok(h.find(`agent-task-unknown-${stepId}`));assert.equal(h.find('agent-task-resume')!.props.disabled,true);}finally{h.unmount();}
+});
+
+test('running and paused rounds show steps used without displaying their legacy budget',()=>{
+  for(const status of ['running','paused','awaiting_approval','completed'] as const){
+    const h=harness({status});
+    try{
+      h.render();
+      const text=renderedText(h.find('agent-task-status'));
+      assert.doesNotMatch(text,/2\s*\/\s*30/u,status);
+      assert.ok(text.includes(translate('zh-Hans','agent.panel.usedSteps',{count:2})),status);
+    }finally{h.unmount();}
+  }
+});
+
+test('Mio explains each execution safeguard and offers an ordinary resume after a supplement',async()=>{
+  const h=harness({status:'paused'});
+  try{
+    const step=h.state.snapshot!.steps[0];
+    step.status='failed';
+    step.error={code:'SYNTHETIC_FAILURE',message:'UNTRUSTED_DIAGNOSTIC'};
+    step.text='UNTRUSTED_TOOL_EXPLANATION';
+    step.toolCall!.arguments={prompt:'UNTRUSTED_ARGUMENT'};
+    for(const [reason,expected] of [
+      ['repeated_tool_failure',/卡住了.*连续三次/u],
+      ['no_tool_progress',/卡住了.*连续多次请求模型/u],
+      ['safety_limit',/安全上限/u],
+      ['budget',/已暂停/u],
+    ] as const){
+      h.state.snapshot!.run.pauseReason=reason;
+      const tree=h.render(),card=h.find('agent-task-paused'),text=renderedText(card);
+      assert.match(text,expected,reason);
+      assert.doesNotMatch(text,/UNTRUSTED_|每轮步数上限|你暂停了|继续执行\s*30\s*步/u,reason);
+      if(reason==='repeated_tool_failure')assert.ok(text.includes(presentation.taskOperationTitle('generation.submit','zh-Hans')));
+      assert.ok(text.includes('先补充说明'),reason);
+      assert.equal(h.find('agent-task-send')!.props.disabled,false,reason);
+      tree.find(node=>node.type==='form')!.props.onSubmit({preventDefault(){}});
+      await new Promise(resolve=>setImmediate(resolve));
+      const resume=h.find('agent-task-resume')!;
+      assert.equal(renderedText(resume),translate('zh-Hans','agent.task.resume'),reason);
+      resume.props.onClick();
+      assert.deepEqual(h.calls.slice(-2),[['note'],['resume',undefined,'run']],reason);
+    }
+  }finally{h.unmount();}
 });
 
 test('failure settings links route by stable error code and unknown diagnostics add no misleading destination',()=>{

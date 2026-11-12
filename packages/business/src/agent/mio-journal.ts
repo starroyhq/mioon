@@ -8,7 +8,7 @@ import type {MioRequest, MioEntry} from '../../../contracts/src/mio-records.ts';
 import {mioEntrySchema} from '../../../contracts/src/mio-records.ts';
 import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput} from './task-journal-v2.ts';
 import type {AgentTaskRun, AgentTaskStep, AgentTaskJson, AgentTaskPolicy, AgentTaskEvent, AgentTaskSnapshot, AgentTaskNote, AgentTaskSkippedTarget, AgentTaskTarget, AgentTaskChange, AgentTaskReceipt, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskStatus, AgentTaskStepStatus, AgentTaskClaim, AgentTaskEditingInput, AgentTaskPolicyModes, AgentTaskConversationPolicy, AgentTaskConversationPolicySetInput} from '../../../contracts/src/agent-tasks-v2.ts';
-import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema, agentTaskStepErrorSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema, agentTaskStepErrorSchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {TaskContextHistoryRun, TaskContextHistoryInput} from './task-context-v2.ts';
 import type {TaskRunRecordTarget, TaskRunRecordBackground, TaskRunRecordChange} from './task-run-record-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
@@ -19,6 +19,8 @@ import {createMioAssembly} from './mio-assembly.ts';
 import {updateMioRunUsageSummary} from './mio-run-usage.ts';
 
 type ModelInput = Omit<AgentTaskStepInput, 'kind'>;
+type SafetyWindowStart = {startStepsUsed: number; afterPosition: number};
+export const MIO_SAFETY_STEP_LIMIT = 200;
 export interface MioJournalAssembly {
   /** The caller is inside the intent transaction; inputs refer to durable entries. */
   freeze(runId: string, stepId: string, input: ModelInput, noteRequestIds: string[]): MioBeginRequest;
@@ -33,6 +35,7 @@ export interface MioJournalOptions {
   readonly updatePolicy?: AgentTaskJournal['updatePolicy'];
   readonly lookupPolicy?: AgentTaskJournal['lookupPolicy'];
   readonly assembly?: MioJournalAssembly;
+  readonly safetyStepLimit?: number;
 }
 const object = (value: unknown): value is Record<string, AgentTaskJson> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fail(code: string): never { throw Object.assign(new Error(code), {code}); }
@@ -47,6 +50,8 @@ const decode = <T>(value: unknown): T => JSON.parse(String(value)) as T;
  * separate journal until its host switches to the project kernel. */
 export function createMioJournal(store: ProjectStore, options: MioJournalOptions): AgentTaskJournal {
   const {db, projectId} = store, records = createMioRecords(store);
+  const safetyStepLimit = options.safetyStepLimit ?? MIO_SAFETY_STEP_LIMIT;
+  if (!Number.isSafeInteger(safetyStepLimit) || safetyStepLimit < 1 || safetyStepLimit > MIO_SAFETY_STEP_LIMIT) fail('AGENT_TASK_INVALID');
   const assembly = options.assembly ?? createMioAssembly(records);
   const contextAssembly = createMioAssembly(records);
   interface ProjectionCache {
@@ -233,9 +238,10 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     const timestamp = Math.max(Date.now(), latest + 1); if (!Number.isFinite(timestamp) || timestamp > 253402300799999) fail('AGENT_TASK_STORAGE_LIMIT');
     const at = new Date(timestamp).toISOString();
     if (!input.conversationId) records.createConversation({id: conversationId, createdAt: at, updatedAt: at});
-    const configurationBlobHash = records.putBlob(encode(input.configuration), at), selected = input.policy ?? options.policy(), id = randomUUID();
+    const configurationBlobHash = records.putBlob(encode(input.configuration), at), id = randomUUID();
     const rulesSnapshotHash = input.rulesSnapshot ? records.putBlob(encode(input.rulesSnapshot), at) : null;
-    records.createRun({id, conversationId, requestId: input.requestId, digest, stepLimit: selected.stepLimit, budget: selected.stepLimit, locale: taskResponseLocale(input.context ?? []), configurationBlobHash, settingsRevision: input.settingsRevision ?? null, rulesSnapshotHash, createdAt: at, updatedAt: at});
+    const legacyStepLimit = DEFAULT_AGENT_TASK_POLICY.stepLimit;
+    records.createRun({id, conversationId, requestId: input.requestId, digest, stepLimit: legacyStepLimit, budget: legacyStepLimit, locale: taskResponseLocale(input.context ?? []), configurationBlobHash, settingsRevision: input.settingsRevision ?? null, rulesSnapshotHash, createdAt: at, updatedAt: at});
     append(id, 'user_message', {text: input.text}, at);
     if (rulesSnapshotHash) records.appendEntry({id: randomUUID(), runId: id, kind: 'rules_snapshot', createdAt: at, payload: {blobHash: rulesSnapshotHash}});
     const sourceEntryIds = db.prepare('SELECT id FROM mio_entries WHERE conversationId=? AND projectId=? ORDER BY rowid').all(conversationId, projectId).map(row => String(row.id));
@@ -377,10 +383,21 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     });
   }
   const allowedRun: Record<AgentTaskStatus, AgentTaskStatus[]> = {accepted: ['running', 'stopped', 'failed', 'interrupted'], running: ['paused', 'awaiting_approval', 'awaiting_answer', 'completed', 'failed', 'stopped', 'interrupted'], paused: ['running', 'stopped', 'failed', 'interrupted'], awaiting_approval: ['running', 'paused', 'stopped', 'failed', 'interrupted'], awaiting_answer: ['running', 'stopped', 'failed', 'interrupted'], interrupted: ['running', 'stopped', 'failed'], completed: ['reverted'], failed: ['running', 'reverted'], stopped: ['reverted'], reverted: []};
-  function transition(runId: string, expectedRevision: number, status: AgentTaskStatus, reason?: string): AgentTaskRun { return transact(() => {
+  const lastStepPosition = (runId: string): number => Number(db.prepare('SELECT coalesce(max(position),0) AS value FROM mio_steps WHERE runId=?').get(runId)!.value);
+  function safetyWindow(runId: string): ReturnType<AgentTaskJournal['safetyWindow']> {
+    const {stepsUsed} = records.run(runId);
+    const start = content(runId, 'host_state').filter(({value}) => value.type === 'run_state' && Object.hasOwn(value, 'safetyWindowStart')).at(-1)?.value.safetyWindowStart;
+    if (start === undefined) return {startStepsUsed: 0, afterPosition: 0, remaining: Math.max(0, safetyStepLimit - stepsUsed)};
+    if (!object(start)) return fail('AGENT_TASK_STORAGE_CORRUPT');
+    const {startStepsUsed, afterPosition} = start;
+    if (typeof startStepsUsed !== 'number' || !Number.isSafeInteger(startStepsUsed) || startStepsUsed < 0 || startStepsUsed > stepsUsed ||
+      typeof afterPosition !== 'number' || !Number.isSafeInteger(afterPosition) || afterPosition < startStepsUsed || afterPosition > lastStepPosition(runId)) return fail('AGENT_TASK_STORAGE_CORRUPT');
+    return {startStepsUsed, afterPosition, remaining: Math.max(0, safetyStepLimit - (stepsUsed - startStepsUsed))};
+  }
+  function transition(runId: string, expectedRevision: number, status: AgentTaskStatus, reason?: string, safetyWindowStart?: SafetyWindowStart): AgentTaskRun { return transact(() => {
     const value = run(runId); if (value.revision !== expectedRevision) fail('AGENT_TASK_REVISION_CONFLICT');
     if (value.status !== status && !allowedRun[value.status].includes(status) && !(value.status === 'completed' && ['paused', 'awaiting_approval', 'stopped', 'interrupted'].includes(status) && hasPendingBackground(runId))) fail('AGENT_TASK_STATE_CONFLICT');
-    const at = date(), updatedAt = new Date(Math.max(Date.parse(at), Date.parse(value.createdAt), Date.parse(value.updatedAt))).toISOString(); db.prepare('UPDATE mio_runs SET status=? WHERE id=?').run(status, runId); append(runId, 'host_state', {type: 'run_state', status, updatedAt, ...(reason ? {reason} : {})}, at); return run(runId);
+    const at = date(), updatedAt = new Date(Math.max(Date.parse(at), Date.parse(value.createdAt), Date.parse(value.updatedAt))).toISOString(); db.prepare('UPDATE mio_runs SET status=? WHERE id=?').run(status, runId); append(runId, 'host_state', {type: 'run_state', status, updatedAt, ...(reason ? {reason} : {}), ...(safetyWindowStart ? {safetyWindowStart} : {})}, at); return run(runId);
   }); }
   function metadata(input: ModelInput, at: string): AgentTaskJson {
     const data = object(input.data) ? {...input.data} : input.data;
@@ -390,7 +407,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   }
   function beginStep(runId: string, input: AgentTaskStepInput): AgentTaskStep { return transact(() => {
     const value = run(runId); if (value.status !== 'running') fail('AGENT_TASK_STATE_CONFLICT');
-    if (input.kind !== 'wait' && value.stepsUsed >= value.budget) fail('AGENT_TASK_BUDGET_EXHAUSTED');
+    if (input.kind !== 'wait' && safetyWindow(runId).remaining === 0) fail('AGENT_TASK_BUDGET_EXHAUSTED');
     const at = date(), id = randomUUID(); let sourceEntryId: string | undefined, sourceCallIndex: number | undefined;
     if (input.kind === 'tool') {
       const sourceId = object(input.data) && typeof input.data.sourceModelStepId === 'string' ? input.data.sourceModelStepId : undefined;
@@ -400,14 +417,15 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       const model = output(sourceEntryId); if (!object(model) || !Array.isArray(model.toolCalls)) return fail('AGENT_TASK_STORAGE_CORRUPT');
       sourceCallIndex = model.toolCalls.findIndex(item => isDeepStrictEqual(item, input.toolCall)); if (sourceCallIndex < 0) fail('AGENT_TASK_INVALID');
     }
-    // position counts wait records too; a wait must not consume model/tool budget.
-    const position = Number(db.prepare('SELECT coalesce(max(position),0)+1 AS value FROM mio_steps WHERE runId=?').get(runId)!.value);
+    // Waits have a position but do not count toward model and tool steps.
+    const position = lastStepPosition(runId) + 1;
+    if (!Number.isSafeInteger(position) || input.kind !== 'wait' && value.stepsUsed === Number.MAX_SAFE_INTEGER) fail('AGENT_TASK_BUDGET_LIMIT');
     if (sourceEntryId !== undefined && sourceCallIndex !== undefined) {
       records.sourceCall(sourceEntryId, sourceCallIndex);
       if (db.prepare("SELECT 1 FROM mio_steps WHERE runId=? AND kind='tool' AND sourceEntryId=? AND sourceCallIndex=?").get(runId, sourceEntryId, sourceCallIndex)) fail('AGENT_TASK_REQUEST_CONFLICT');
     }
     db.prepare("INSERT INTO mio_steps(id,runId,projectId,position,kind,status,tier,createdAt,updatedAt,currentRequestId,sourceEntryId,sourceCallIndex,resultEntryId,partialText,data) VALUES(?,?,?,?,?,'intent',?,?,?,NULL,?,?,NULL,NULL,?)").run(id, runId, projectId, position, input.kind, input.tier ?? null, at, at, sourceEntryId ?? null, sourceCallIndex ?? null, encode(metadata({...input, request: input.kind === 'model' ? undefined : input.request}, at)));
-    if (input.kind !== 'wait') db.prepare('UPDATE mio_runs SET stepsUsed=stepsUsed+1 WHERE id=?').run(runId);
+    if (input.kind !== 'wait') db.prepare('UPDATE mio_runs SET stepsUsed=stepsUsed+1,budget=max(budget,stepsUsed+1) WHERE id=?').run(runId);
     touch(runId, at); notify(runId, at); return step(id);
   }); }
   function beginModelStep(runId: string, input: ModelInput, noteRequestIds: string[]): AgentTaskStep { return transact(() => {
@@ -559,11 +577,14 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function finishControl(requestId: string, result: AgentTaskJson): AgentTaskReceipt { return transact(() => {
     const saved = lookupControl(requestId); if (!saved) fail('AGENT_TASK_NOT_FOUND'); const value = {...saved, revision: records.run(saved.runId).revision, result}; records.setControlState(requestId, json(value), date()); return value;
   }); }
-  function resume(runId: string, expectedRevision: number, {extendBudget = false}: {extendBudget?: boolean} = {}): AgentTaskRun { return transact(() => {
+  function resume(runId: string, expectedRevision: number, {resetSafetyWindow = false}: {resetSafetyWindow?: boolean} = {}): AgentTaskRun { return transact(() => {
     const value = records.run(runId); if (value.revision !== expectedRevision) fail('AGENT_TASK_REVISION_CONFLICT'); if (!['paused', 'awaiting_approval', 'awaiting_answer', 'interrupted'].includes(value.status)) fail('AGENT_TASK_STATE_CONFLICT');
     if (records.steps(runId).some(item => item.status === 'dispatch_started' || item.status === 'unknown')) fail('AGENT_TASK_UNKNOWN_RESULT');
-    let budget = value.budget; if (extendBudget && value.stepsUsed >= budget) { budget += value.stepLimit; if (!Number.isSafeInteger(budget)) fail('AGENT_TASK_BUDGET_LIMIT'); }
-    db.prepare('UPDATE mio_runs SET budget=? WHERE id=?').run(budget, runId); return transition(runId, expectedRevision, 'running');
+    if (!resetSafetyWindow) return transition(runId, expectedRevision, 'running');
+    const afterPosition = lastStepPosition(runId);
+    if (value.stepsUsed === Number.MAX_SAFE_INTEGER || afterPosition === Number.MAX_SAFE_INTEGER) fail('AGENT_TASK_BUDGET_LIMIT');
+    if (afterPosition < value.stepsUsed) fail('AGENT_TASK_STORAGE_CORRUPT');
+    return transition(runId, expectedRevision, 'running', undefined, {startStepsUsed: value.stepsUsed, afterPosition});
   }); }
   function recover(): number { return transact(() => {
     let count = 0;
@@ -656,7 +677,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     latestDiagnostic: profile => project(() => { const value = allRuns().filter(item => item.diagnostic?.profile === profile).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0); return value ? snapshot(value.id) : null; })(),
     list: (id, {excludeDiagnostics = false} = {}) => project(() => { own(id); return allRuns().filter(item => !excludeDiagnostics || !item.diagnostic).reverse().slice(0, 100); })(),
     events, eventSequence: (runId, after = 0) => records.events(runId, after).at(-1)?.sequence ?? after,
-    run: project(run), step: project(step), transition, beginStep, beginModelStep, prepareModelStep, appendNoteInside, skipTargetsInside, updateStep, dispatchPrevented, markDispatch, completeStepInside, appendChangesInside,
+    run: project(run), safetyWindow: project(safetyWindow), step: project(step), transition, beginStep, beginModelStep, prepareModelStep, appendNoteInside, skipTargetsInside, updateStep, dispatchPrevented, markDispatch, completeStepInside, appendChangesInside,
     completeStep: (runId, stepId, input) => transact(() => completeStepInside(runId, stepId, input)), appendText, appendEvent,
     control, performControl, rejectControl, beginControl, finishControl, lookupControl, resume, recover, policy,
     updatePolicy: (input, requestId) => { invalidateProjection(); try { return options.updatePolicy ? options.updatePolicy(input, requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'); } finally { invalidateProjection(); } }, lookupPolicy: requestId => options.lookupPolicy ? options.lookupPolicy(requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'),

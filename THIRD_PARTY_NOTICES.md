@@ -9,8 +9,41 @@ Mioon 原创代码与文档采用根目录 [Apache License 2.0](LICENSE)。以�
 | shadcn/ui 衍生组件 | MIT，Copyright (c) 2023 shadcn | [LICENSE.shadcn.md](packages/ui/src/LICENSE.shadcn.md)；组件来源见 [UI-COMPONENTS.md](docs/UI-COMPONENTS.md) |
 | 供应商 SVG 图标 | LobeHub Lobe Icons，MIT；固定版本与提交见原声明。供应商名称和商标归各自权利人 | [LICENSE](apps/web/public/provider-icons/LICENSE)、[NOTICE.txt](apps/web/public/provider-icons/NOTICE.txt) |
 | 内置字幕字体 | Noto Sans CJK SC 2.004，SIL Open Font License 1.1 | [OFL-1.1.txt](packages/business/resources/subtitles/OFL-1.1.txt)、[SOURCE-COPYRIGHT.txt](packages/business/resources/subtitles/SOURCE-COPYRIGHT.txt)、[提取与来源说明](packages/business/resources/subtitles/README.md) |
+| Mio 光标轮廓 | Cua Driver 0.38.0，MIT。轮廓取自 Computer Use | [来源和许可原文](#mio-光标轮廓) |
 
 字体来源文件中的 Debian 包装许可说明不改变字体本身的 OFL 许可。项目的 Apache-2.0 声明也不改变供应商商标的使用条件。
+
+### Mio 光标轮廓
+
+Mio 光标使用 Computer Use 应用图标的 `#cursor` 路径。该路径改编自 Cua Driver 0.38.0 的默认指针。 [Computer Use 图标](https://github.com/starroyhq/computer-use/blob/96ae09378425ffaf44d499cd22f057e01394439c/assets/app-icon.svg#L25) · [Cua Driver 0.38.0](https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.38.0)
+
+Computer Use 的原始内容采用 MIT 许可，版权为 Copyright (c) 2026 Starroy。 [Computer Use 许可](https://github.com/starroyhq/computer-use/blob/96ae09378425ffaf44d499cd22f057e01394439c/LICENSE)
+
+以下是 Computer Use 随指针轮廓保留的 Cua Driver MIT 许可原文。 [指针许可](https://github.com/starroyhq/computer-use/blob/96ae09378425ffaf44d499cd22f057e01394439c/assets/CUA-CURSOR-LICENSE.txt)
+
+```text
+MIT License
+
+Copyright (c) 2025 Cua AI, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## 依赖与桌面产物
 

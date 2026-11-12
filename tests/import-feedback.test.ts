@@ -88,6 +88,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
     notify: (message?: (string&{ detail?: unknown; })|(i18nCore.DisplayMessage&{ detail?: unknown; })|null|undefined, type: string = 'success') => notifications.push({ message: feedback.renderImportFeedback('zh-Hans', message), descriptor: message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation: string, input: ImportInput, options: Parameters<typeof realRpc>[2]) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
     useCallback: <T>(fn: T) => fn, reconcilePending() {}, readGenerationProviderDirectory, emptyData: {}, setData: (value: unknown) => stateWrites.push(['data', value]), setProviders: (value: unknown) => stateWrites.push(['providers', value]),
+    mioFollowCandidate: { current: null }, setMioFollow() {},
     // This fixture owns no editing claims; match the empty-owner refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); }, clipDraftRef: { current: null },
     setVideoDirectoryUnavailable: (value: unknown) => stateWrites.push(['videoDirectoryUnavailable', value]),
