@@ -111,18 +111,14 @@
   white-space: normal;
 }
 .launcher-home-create-tile.wb-button[data-variant="primary"]:not(:disabled):not([data-disabled]) {
-  background: radial-gradient(ellipse at 6% 130%, var(--launcher-create-orange, #a44b38), transparent 63%),
-    radial-gradient(ellipse at 54% 115%, var(--launcher-create-pink, #972d78), transparent 62%),
-    radial-gradient(ellipse at 96% 5%, var(--launcher-create-violet, #392681), #1a131e 78%);
+  background: var(--wb-launcher-create-gradient);
   color: var(--wb-media-text);
 }
-.launcher-home-create-tile.wb-button:is(:hover, :active) {
-  --launcher-create-orange: #b5503b;
-  --launcher-create-pink: #a63487;
-  --launcher-create-violet: #482f99;
+.launcher-home-create-tile.wb-button[data-variant="primary"]:not(:disabled):not([data-disabled]):is(:hover, :active) {
+  background: var(--wb-launcher-create-gradient-hover);
 }
 .launcher-home-create-title { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: var(--wb-text-title); font-weight: 650; }
-.launcher-home-create-title > span { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: #f2f3f5; color: #0b0c0e; }
+.launcher-home-create-title > span { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wb-media-text); color: var(--wb-media-matte); }
 .launcher-home-create-description { font-size: var(--wb-text-body); font-weight: 400; }
 
 .launcher-home-empty-actions { display: flex; gap: 16px; margin-top: 22px; }

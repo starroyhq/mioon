@@ -80,7 +80,7 @@
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-card-cover { grid-row: span 2; }
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-skeleton-line { align-self: end; margin: 0; }
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-skeleton-line:last-child { align-self: start; }
-.pf-home[data-native-layout] .pf-card-cover { border-color: var(--wb-line-subtle); background: #090a0c; }
+.pf-home[data-native-layout] .pf-card-cover { border-color: var(--wb-line-subtle); background: var(--wb-media-matte); }
 .pf-home[data-native-layout] .pf-card-open:is(:hover, :focus-visible) .pf-card-cover { border-color: var(--wb-line-strong); }
 .pf-home[data-native-layout] .pf-card-body { gap: 2px; }
 .pf-home[data-native-layout] .pf-card-meta { color: var(--wb-muted); font-weight: 400; }
