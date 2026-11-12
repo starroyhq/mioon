@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { timelineDeliveryNameSchema, timelineDeliveryNameFields, isTimelineDeliveryNameSnapshot } from '@mioon/contracts/timeline-delivery';
 import type { TimelineDeliveryNameInput } from '@mioon/contracts/timeline-delivery';
 import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
+import { isTimelineDeliveryGeometry } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const DELIVERY_NAME_PLACEHOLDER = '留空使用默认文件名';
@@ -147,7 +148,7 @@ function frozenDeliveryDescription(value: unknown, snapshot: Record<string, unkn
   const timeline = snapshot.timeline;
   if (!object(timeline) || !positiveInteger(timeline.width) || !positiveInteger(timeline.height) || timeline.fps !== 30) return null;
   if (!Object.hasOwn(snapshot, 'delivery')) return { dimensions: `${timeline.width} × ${timeline.height}`, fps: timeline.fps, rate: '原有编码设置', rateMessage: message('export.history.legacyRate'), upscale: false };
-  if (!object(value) || !positiveInteger(value.width) || !positiveInteger(value.height) || value.width > 1920 || value.height > 1920 || value.fps !== 30 || typeof value.rate !== 'string' ||
+  if (!object(value) || !isTimelineDeliveryGeometry(value) || typeof value.rate !== 'string' ||
       !['紧凑 · CRF 28', '标准 · CRF 23', '高画质 · CRF 18', '平均目标 2 Mb/s', '平均目标 4 Mb/s', '平均目标 8 Mb/s'].includes(value.rate)) return null;
   const rateMessage = frozenRateMessage(snapshot.delivery);
   return { dimensions: `${value.width} × ${value.height}`, fps: value.fps, rate: value.rate, ...(rateMessage ? { rateMessage } : {}), upscale: value.width > timeline.width || value.height > timeline.height };

@@ -1,6 +1,7 @@
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { MessageDescriptor, MessageKey } from '../../../packages/i18n/src/index.ts';
-import { TIMELINE_OUTPUT_PRESETS, timelineOutputPreset, isTimelineMutationResponse, isTimelineFormatReadResponse } from '@mioon/contracts';
+import { timelineOutputPreset, isTimelineMutationResponse, isTimelineFormatReadResponse } from '@mioon/contracts';
+import { TIMELINE_FORMAT_WRITE_PRESETS as TIMELINE_OUTPUT_PRESETS } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import type { TimelineOutputPreset } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 
 export { TIMELINE_OUTPUT_PRESETS };
@@ -164,7 +165,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
     choose(presetId: string, expectedScope: string | null = state.scope): boolean {
       sync();
       const saved = state.saved;
-      if (expectedScope !== state.scope || !visible || !timelineOutputPreset(presetId) || !saved || !state.connected || !saved.eligible) return false;
+      if (expectedScope !== state.scope || !visible || !TIMELINE_OUTPUT_PRESETS.some(preset => preset.id === presetId) || !saved || !state.connected || !saved.eligible) return false;
       serial++;
       emit({ draftPresetId: presetId, dirty: presetId !== saved.presetId || state.submitting || Boolean(state.uncertain), base: state.base || saved });
       return true;

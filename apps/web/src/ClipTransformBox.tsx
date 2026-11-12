@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ClipTransform } from '@mioon/contracts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
+import { assetUrl } from './api.ts';
+import { useProjectMediaReadGate } from './project-media-read-gate.tsx';
 import { transformIssue, withKeyframe } from './clip-transform-state.ts';
 import { BOX_DRAG_THRESHOLD, boxFields, boxFrame, boxValues, containedPicture, movedBoxValues, sameBoxValues, scaledBoxValues, transformBoxView,
   type BoxClip, type BoxPoint, type BoxRect, type BoxValues, type BoxView } from './clip-transform-box-state.ts';
@@ -10,7 +12,8 @@ import './clip-transform.css';
 /** What the preview needs to draw and edit the selected clip's transform box. */
 export interface PreviewTransformBox {
   readonly clip: BoxClip & { readonly id: string };
-  readonly source: { readonly width?: unknown; readonly height?: unknown } | null;
+  readonly source: { readonly width?: unknown; readonly height?: unknown; readonly mimeType?: string; readonly sha256?: string | null;
+    readonly id?: string; readonly projectId?: string; readonly referenceRevision?: number } | null;
   /** Why the transform cannot change now; the box is then only outlined. */
   readonly disabledReason?: DisplayMessage | null;
   /** A timeline edit is in flight: the box keeps its look but ignores drags. */
@@ -18,7 +21,7 @@ export interface PreviewTransformBox {
   readonly onSetTransform: (clipId: string, transform: ClipTransform) => unknown;
 }
 export interface BoxLayout { readonly width: number; readonly height: number; readonly picture: BoxRect }
-interface Drag { readonly pointerId: number; readonly mode: 'move' | 'scale'; readonly frame: number; readonly origin: BoxPoint; readonly center: BoxPoint; readonly start: BoxValues; readonly factor: number; values: BoxValues | null }
+interface Drag { readonly pointerId: number; readonly mode: 'move' | 'scale'; readonly frame: number; readonly origin: BoxPoint; readonly center: BoxPoint; readonly start: BoxValues; readonly view: BoxView; values: BoxValues | null }
 type Mode = Drag['mode'];
 const CORNERS = ['nw', 'ne', 'se', 'sw'] as const;
 const percent = (value: number, total: number): string => `${value / total * 100}%`;
@@ -54,6 +57,18 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
   const layer = useRef<HTMLDivElement | null>(null), drag = useRef<Drag | null>(null);
   const [layout, setLayout] = useState<BoxLayout | null>(null);
   const [live, setLive] = useState<BoxValues | null>(null), [pending, setPending] = useState<BoxValues | null>(null);
+  const [displaySize, setDisplaySize] = useState<{key: string; width: number; height: number} | null>(null);
+  const gate = useProjectMediaReadGate();
+  const source = box.source;
+  const needsDisplaySize = Object.hasOwn(box.clip, 'layout') && source?.mimeType?.startsWith('video/');
+  const sourceUrl = needsDisplaySize && (!gate || gate.canRead(source)) ? assetUrl(source) : '';
+  const sourceKey = sourceUrl ? JSON.stringify([sourceUrl, source?.sha256, source?.referenceRevision]) : '';
+  const display = sourceKey && displaySize?.key === sourceKey ? displaySize : null;
+  const clipSource = needsDisplaySize
+    ? display && typeof source?.width === 'number' && source.width > 0 && typeof source.height === 'number' && source.height > 0
+      ? {...source, sampleAspectRatio: display.width / display.height / (source.width / source.height)}
+      : null
+    : source;
   const frame = boxFrame(box.clip, playhead);
   useLayoutEffect(() => {
     const element = media.current as HTMLVideoElement | null, host = layer.current;
@@ -74,7 +89,7 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
   }, [media, mediaKey, timeline.width, timeline.height]);
   const cancel = (): void => { if (drag.current) { drag.current = null; setLive(null); } };
   // A drag belongs to the frame and clip it started on.
-  useEffect(() => { cancel(); }, [frame, box.clip.id]);
+  useEffect(() => { cancel(); }, [frame, box.clip.id, timeline.width, timeline.height, sourceKey]);
   const dragging = Boolean(live);
   useEffect(() => {
     if (!dragging) return;
@@ -83,7 +98,7 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
     return () => window.removeEventListener('keydown', escape);
   }, [dragging]);
   const shown = live ?? pending;
-  const view = layout && frame !== null ? transformBoxView(box.clip, box.source, timeline, layout.picture, frame, shown) : null;
+  const view = layout && frame !== null ? transformBoxView(box.clip, clipSource, timeline, layout.picture, frame, shown) : null;
   const issue = frame === null ? '' : transformIssue(box.clip, frame, boxFields(boxValues(box.clip, frame)));
   const reason = box.disabledReason ? renderMessage(box.disabledReason) : issue ? t(issue) : '';
   const editable = !reason, interactive = editable && !box.busy && !pending;
@@ -93,14 +108,16 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
     const outer = layer.current.getBoundingClientRect();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { pointerId: event.pointerId, mode, frame, origin: { x: event.clientX, y: event.clientY }, center: { x: outer.left + view.center.x, y: outer.top + view.center.y },
-      start: boxValues(box.clip, frame), factor: view.factor, values: null };
+      start: boxValues(box.clip, frame), view, values: null };
   };
   const move = (event: React.PointerEvent<HTMLElement>): void => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
     const travel = { x: event.clientX - current.origin.x, y: event.clientY - current.origin.y };
     if (!current.values && Math.hypot(travel.x, travel.y) < BOX_DRAG_THRESHOLD) return;
-    current.values = current.mode === 'move' ? movedBoxValues(current.start, travel, current.factor) : scaledBoxValues(current.start, current.center, current.origin, { x: event.clientX, y: event.clientY });
+    current.values = current.mode === 'move'
+      ? movedBoxValues(current.start, travel, current.view.factor, current.view.basisScaleX, current.view.basisScaleY)
+      : scaledBoxValues(current.start, current.center, current.origin, { x: event.clientX, y: event.clientY });
     setLive(current.values);
   };
   const end = (event: React.PointerEvent<HTMLElement>): void => {
@@ -113,6 +130,10 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
     void Promise.resolve(box.onSetTransform(box.clip.id, next)).finally(() => setPending(null));
   };
   return <div ref={layer} className="clip-transform-box-layer" data-testid="clip-transform-box-layer">
+    {sourceUrl && <video key={sourceKey} src={sourceUrl} preload="metadata" hidden onLoadedMetadata={event => {
+      const {videoWidth, videoHeight} = event.currentTarget;
+      if (videoWidth > 0 && videoHeight > 0) setDisplaySize({key: sourceKey, width: videoWidth, height: videoHeight});
+    }} />}
     {layout && view && <ClipTransformBoxFrame layout={layout} view={view} editable={editable} label={t('clip.transform.box')} hint={reason || t('clip.transform.box')}
       readout={live ? t('clip.transform.box.readout', { x: number(live.x), y: number(live.y), scale: number(live.scale * 100) }) : undefined}
       onBegin={begin} onMove={move} onEnd={end} onCancel={cancel} />}

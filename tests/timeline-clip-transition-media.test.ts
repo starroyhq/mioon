@@ -47,9 +47,9 @@ async function fixture(t: test.TestContext){
   assets.set(name,{...asset,path:path.join(root,name)});
  }
  const [bottom,top]=timeline.tracks.filter((track: Rec)=>track.kind==='video').sort((a: Rec,b: Rec)=>a.orderIndex-b.orderIndex);
- async function render(label: string){
+ async function render(label: string,composition=timeline){
   const file=path.join(root,`${label}.mp4`);
-  await renderTimeline({timeline} as never,new Map([...assets.values()].map(asset=>[asset.id,asset])) as never,file);
+  await renderTimeline({timeline:composition} as never,new Map([...assets.values()].map(asset=>[asset.id,asset])) as never,file);
   const {stdout:video}=await exec('ffmpeg',['-v','error','-i',file,'-fps_mode','passthrough','-vf',`scale=${SIDE}:${SIDE}:flags=area`,'-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:'buffer',maxBuffer:256*1024*1024,timeout:120_000});
   const {stdout:sound}=await exec('ffmpeg',['-v','error','-i',file,'-f','s16le','-ac','1','-ar','48000','-'],{encoding:'buffer',maxBuffer:256*1024*1024,timeout:120_000});
   const pixel=(frame: number,x: number,y: number)=>{
@@ -119,8 +119,17 @@ test('a push moves transformed content with its transform',{timeout:600_000},asy
  await f.call('timeline.clip.setTransform',{clipId:b.id,transform:{profileId:CLIP_TRANSFORM_PROFILE,keyframes:[{frame:0,x:90,y:0,scale:0.5}],rotation:0,crop:{left:0,top:0,right:0,bottom:0}}});
  await f.call('timeline.clip.setTransition',{clipId:b.id,transition:transition('pushLeft')});
  const {pixel}=await f.render('push-transform'),GREEN=pixel(10,50,50),RED=pixel(20,360,360),BLUE=pixel(70,450,360);
+ const relative={...f.timeline,clips:f.timeline.clips.map((clip: Rec)=>clip.id===b.id?{
+  ...clip,rect:{x:320,y:180,width:640,height:360},layout:{profileId:'mioon-clip-layout-v2',basisPresetId:'landscape_720'},
+  transform:{...clip.transform,keyframes:[{frame:0,x:160,y:0,scale:0.5}]},
+ }:clip)};
+ const {pixel:relativePixel}=await f.render('push-relative-transform',relative);
  for(const k of [0,6,12,18]){
   const frame=30+k,p=k/D,left=SIZE*(1-p)+360+90-90;
-  for(const x of [300,420,500])close(pixel(frame,x,360),x>=left+6&&x<left+180-6?BLUE:x>=rect.x-SIZE*p+6&&x<rect.x+rect.width-SIZE*p-6?RED:GREEN,14,`k=${k} x=${x}`);
+  for(const x of [300,420,500]){
+   const expected=x>=left+6&&x<left+180-6?BLUE:x>=rect.x-SIZE*p+6&&x<rect.x+rect.width-SIZE*p-6?RED:GREEN;
+   close(pixel(frame,x,360),expected,14,`k=${k} x=${x}`);
+   close(relativePixel(frame,x,360),expected,14,`relative k=${k} x=${x}`);
+  }
  }
 });

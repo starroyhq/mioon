@@ -1,6 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {isLocale, LOCALES, translate} from '../../i18n/src/index.ts';
 import type {OutputLocale} from '../../contracts/src/output-locale.ts';
+import {timelineOutputRatio} from '../../contracts/src/timeline-output-geometry.ts';
 
 const scopePrefix = 'output-locale:';
 const scopes = LOCALES.map(locale => scopePrefix + locale);
@@ -39,7 +40,10 @@ function outputTitle(title: string): string {
   return title.length <= 160 ? title : title.slice(0, 159).replace(/[\uD800-\uDBFF]$/u, '') + '…';
 }
 
-export function exportAssetName(db: DatabaseSync, output: {id: string; projectId: string; mode?: unknown; purpose?: unknown}, ratio: string): string {
+export function exportAssetName(db: DatabaseSync, output: {id: string; projectId: string; mode?: unknown; purpose?: unknown}, geometry: unknown): string {
+  const aspect = timelineOutputRatio(geometry);
+  if (!aspect) throw Object.assign(new Error('Export name requires a frozen timeline or storyboard geometry.'), {code:'INVALID_TIMELINE_SNAPSHOT'});
+  const ratio = aspect.replace(':', 'x');
   const locale = outputLocaleFor(db, output.id);
   if (!locale) return output.mode === 'timeline' ? `多轨时间线-${output.purpose === 'preview' ? '预览' : '导出'}-${ratio}.mp4` : `分镜拼接-${ratio}.mp4`;
   const key = output.mode === 'timeline' ? (output.purpose === 'preview' ? 'outputAsset.timelinePreview' : 'outputAsset.timelineExport') : 'outputAsset.storyboard';

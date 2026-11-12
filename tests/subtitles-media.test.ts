@@ -9,6 +9,7 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256,getTimelineSubtitleTextIssue} from '@mioon/contracts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {prepareTimelineSubtitles,timelineSubtitleFilters,createSubtitleInkScanner,subtitleFilterPath} from '../packages/business/src/subtitle-media.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {initializeSubtitleResources} from '../packages/business/src/subtitle-resources.ts';
@@ -64,6 +65,30 @@ test('caption filters preserve half-open global frames across media edges withou
  const prepared=await prepareTimelineSubtitles(snapshot,root),first=timelineSubtitleFilters(prepared,0,30,'layer0'),second=timelineSubtitleFilters(prepared,30,60,'layer0');
  assert.match(first.filters[0],/gte\(n,25\)\*lt\(n,30\)/);assert.match(second.filters[0],/gte\(n,0\)\*lt\(n,5\)/);assert.equal(timelineSubtitleFilters(prepared,35,60,'base').filters.length,0);
  assert.doesNotMatch(first.filters.join(';'),/amix|atrim|asetpts|apad/);assert.throws(()=>timelineSubtitleFilters(prepared,NaN,60,'base'));
+});
+
+test('relative profile applies the same scaled font during measurement and composition',async t=>{
+ const root=await temp(t),legacy=snap(['相对字幕\nRelative caption'],1920,1080);
+ const subtitles={...legacy.timeline.subtitles,profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,basisPresetId:'portrait_720'};
+ const snapshot={timeline:{...legacy.timeline,subtitles},subtitleProfile:{...profile,profileId:subtitles.profileId}};
+ const prepared=await prepareTimelineSubtitles(snapshot,root);
+ assert.ok(prepared);
+ const entry=prepared.entries.get(subtitles.cues[0].text)!;
+ assert.equal(entry.box.top+entry.box.height,1039);
+ assert.ok(Math.abs(entry.box.left+entry.box.width/2-960)<=.5);
+ const measurement=await readFile(path.join(root,'subtitle-measure.filter'),'utf8');
+ assert.match(measurement,/:fontsize=42:borderw=3:line_spacing=12:/u);
+ const composed=timelineSubtitleFilters(prepared,0,2,'base').filters.join(';');
+ assert.match(composed,/:fontsize=42:borderw=3:line_spacing=12:/u);
+ assert.ok(composed.includes(`drawbox=x=${entry.box.left}:y=${entry.box.top}:w=${entry.box.width}:h=${entry.box.height}:`));
+ const video=await exec('ffmpeg',['-v','error','-f','lavfi','-i','color=c=white:s=1920x1080:r=30',
+  '-filter_complex','[0:v]null[base];'+composed,'-map','[caption0]','-frames:v','1','-an','-threads','1','-pix_fmt','gray','-f','rawvideo','pipe:1'],
+  {encoding:'buffer',maxBuffer:3*1024*1024,timeout:30_000});
+ const pixel=(x:number,y:number)=>video.stdout[y*1920+x];
+ assert.equal(video.stdout.length,1920*1080);
+ assert.ok(pixel(entry.box.left+4,entry.box.top+4)<150,'padded box starts at projected position');
+ assert.ok(pixel(entry.box.left+4,entry.box.top-4)>245,'background above the box stays intact');
+ assert.ok(pixel(entry.box.left+4,1043)>245,'bottom inset is left clear');
 });
 
 function wav(){const frames=96000,bytes=Buffer.alloc(44+frames*2);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(96000,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(frames*2,40);for(let n=0;n<frames;n++)bytes.writeInt16LE(Math.round(9000*Math.sin(2*Math.PI*440*n/48000)),44+n*2);return bytes;}

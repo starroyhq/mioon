@@ -11,6 +11,7 @@ import {inspectTimelineExportCapability,timelineExportVideoArgs,TIMELINE_EXPORT_
 import {onMediaProcess,terminateMediaProcesses,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import type {TimelineExportDelivery} from '@mioon/contracts';
 import type {MediaProcessEvent} from '../packages/business/src/media-processes.ts';
+import {timelineOutputPresetForRatio} from '../packages/contracts/src/timeline-output-geometry.ts';
 
 interface TestRateControl {mode: string; quality?: string; targetKbps?: number}
 const settings=(resolution='native',rateControl: TestRateControl={mode:'crf',quality:'standard'}): {profileId: string; resolution: string; rateControl: TestRateControl} => ({profileId:'mp4_h264_v1',resolution,rateControl});
@@ -62,6 +63,16 @@ test('actual installed FFmpeg proves selected CRF and bitrate profiles with boun
   assert.equal(events.filter(event=>event.type==='exited').length,4);
   assert.deepEqual(await readdir(root),before);
  }finally{off();}
+});
+
+test('both encoding profiles prove the exact 2520×1080 output',async t=>{
+ const root=await sandbox(t),frame=timelineOutputPresetForRatio('21:9',1080)!;
+ for(const profileId of ['mp4_h264_v1','mp4_h264_float_checked_v2']){
+  const delivery=resolveTimelineExportDelivery(frame,{...settings(),profileId});
+  assert.deepEqual([delivery.effective.width,delivery.effective.height],[2520,1080]);
+  expected(await inspectTimelineExportCapability(delivery,{capabilityWorkRoot:root}),'available','EXPORT_CAPABILITY_AVAILABLE');
+  assert.deepEqual(await readdir(root),[]);
+ }
 });
 
 for(const [name,body,status,code] of [

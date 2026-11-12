@@ -17,6 +17,7 @@ import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownersh
 import {createSubjectOwnershipReader} from './subject-ownership.ts';
 import {createSceneKeyframeOwnershipReader} from './scene-keyframe-ownership.ts';
 import {isClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
+import {isClipLayoutRect,projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
 import {isClipTransition,type ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
@@ -410,20 +411,27 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         object(clip); const clipId = id(clip.id); if (clipIds.has(clipId) || !trackIds.has(clip.trackId)) unavailable(); clipIds.add(clipId);
         const asset = clipSource(clip);
         object(clip.rect);
-        const timelineWidth=number(timeline.width,0,100000),timelineHeight=number(timeline.height,0,100000);
-        const rect = {x: number(clip.rect.x, 0, timelineWidth-2, true), y: number(clip.rect.y, 0, timelineHeight-2, true), width: number(clip.rect.width, 2, timelineWidth, true), height: number(clip.rect.height, 2, timelineHeight, true)};
-        if (Object.values(rect).some(value => value % 2 !== 0) || rect.x + rect.width > timelineWidth || rect.y + rect.height > timelineHeight) unavailable();
+        const frame = {fps: 30, width: number(timeline.width, 0, 100000), height: number(timeline.height, 0, 100000)};
+        const relative = Object.hasOwn(clip, 'layout');
+        const storedRect = relative ? clip.rect as unknown as {x: number; y: number; width: number; height: number}
+          : {x: number(clip.rect.x, 0, frame.width-2, true), y: number(clip.rect.y, 0, frame.height-2, true),
+             width: number(clip.rect.width, 2, frame.width, true), height: number(clip.rect.height, 2, frame.height, true)};
+        if (!isClipLayoutRect(relative ? clip : {rect: storedRect}, frame)) unavailable();
         const startFrame = number(clip.startFrame, 0, 18000, true), durationFrames = number(clip.durationFrames, 1, 18000, true);
         if (startFrame + durationFrames > 18000) unavailable();
         // Mio reads a clip's transform (position and scale keyframes, rotation, crop) but cannot change it.
         const transform = Object.hasOwn(clip, 'transform') ? clip.transform as ClipTransform | null : undefined;
         if (transform !== undefined && (transform === null || !isClipTransform(transform, durationFrames))) unavailable();
+        const placement = relative
+          ? projectClipLayout({durationFrames, rect: storedRect, layout: clip.layout, transform}, frame) : null;
+        const rect = placement?.rect ?? storedRect;
+        const displayTransform = placement ? placement.transform : transform;
         // Mio reads the transition at the cut before a clip (kind and frames) but cannot change it.
         const transition = Object.hasOwn(clip, 'transitionIn') ? clip.transitionIn as ClipTransition | null : undefined;
         if (transition !== undefined && (transition === null || !isClipTransition(transition))) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
           sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2),
-          ...(transform ? {transform: {keyframes: transform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: transform.rotation, crop: {...transform.crop}}} : {}),
+          ...(displayTransform ? {transform: {keyframes: displayTransform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: displayTransform.rotation, crop: {...displayTransform.crop}}} : {}),
           ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
       return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,

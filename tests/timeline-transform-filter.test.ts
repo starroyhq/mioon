@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CLIP_TRANSFORM_PROFILE,clipTransformAt,type ClipTransform,type ClipTransformKeyframe} from '../packages/contracts/src/timeline-clip-transform.ts';
-import {clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop,clipTransformRenderPlan,keyframeExpression} from '../packages/business/src/timeline-transform-filter.ts';
+import {clipRenderPlacement,clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop,clipTransformRenderPlan,keyframeExpression} from '../packages/business/src/timeline-transform-filter.ts';
+import {CLIP_LAYOUT_PROFILE} from '../packages/contracts/src/timeline-clip-layout.ts';
 
 const make=(keyframes: ClipTransformKeyframe[],patch: Partial<ClipTransform>={}): ClipTransform=>({profileId:CLIP_TRANSFORM_PROFILE,keyframes,rotation:0,crop:{left:0,top:0,right:0,bottom:0},...patch});
 const square={x:0,y:0,width:720,height:720};
@@ -20,6 +21,16 @@ test('only a non-identity transform plans a layer; zoom-in renders it larger wit
  const capped=clipTransformRenderPlan({durationFrames:60,rect:{x:0,y:0,width:1920,height:1080},transform:make([{frame:0,x:40,y:0,scale:8}])})!;
  assert.deepEqual([capped.layerWidth,capped.layerHeight,capped.animated],[4096,2304,false]);
  assert.deepEqual([clipTransformRenderPlan({durationFrames:60,rect:square,transform:make([{frame:0,x:0,y:0,scale:0.5}])})!.layerWidth],[720],'zoom-out needs no larger layer');
+});
+
+test('rasterizing a subpixel inset does not shrink the other axis',()=>{
+ const {rect,transform}=clipRenderPlacement({durationFrames:30,rect:{x:0,y:0,width:2,height:180},
+  layout:{profileId:CLIP_LAYOUT_PROFILE,basisPresetId:'ultrawide_1080'},
+  transform:make([{frame:0,x:0,y:0,scale:2}])},{fps:30,width:720,height:720});
+ assert.ok(rect.width<1);
+ assert.equal(rect.height,120);
+ assert.ok(transform);
+ assert.deepEqual([transform.layerWidth,transform.layerHeight,transform.factor],[2,240,2]);
 });
 
 test('keyframe expressions match the model at every segment frame',()=>{

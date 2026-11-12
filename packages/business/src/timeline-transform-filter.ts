@@ -1,4 +1,5 @@
-import {isAnimatedClipTransform,isIdentityClipTransform,validateClipTransform,type ClipTransform,type ClipTransformKeyframe} from '../../contracts/src/timeline-clip-transform.ts';
+import {isAnimatedClipTransform,isIdentityClipTransform,validateClipTransform,type ClipTransform,type ClipTransformKeyframe,type ClipTransformRect} from '../../contracts/src/timeline-clip-transform.ts';
+import {projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
 
 // FFmpeg graph pieces for clip transforms, shared by preview and export. A clip
 // without a transform, or with the identity, keeps the historical chain exactly.
@@ -10,27 +11,50 @@ import {isAnimatedClipTransform,isIdentityClipTransform,validateClipTransform,ty
 // Zooming in renders the fitted layer larger first so it keeps source detail;
 // the layer never exceeds 4096 pixels on either edge.
 const LAYER_EDGE=4096;
+type ProjectedTransform=Omit<ClipTransform,'profileId'>;
 export interface ClipTransformRenderPlan {
- readonly transform: ClipTransform;
+ readonly transform: ProjectedTransform;
  /** The layer size: the rectangle times the intermediate factor, even. */
  readonly layerWidth: number;readonly layerHeight: number;
- /** Layer pixels per rectangle pixel, horizontally (the layer keeps the rectangle's ratio). */
+ /** Sampling scale to remove after the layer has been built. */
  readonly factor: number;
  readonly animated: boolean;
 }
-interface PlanClip {readonly durationFrames: number;readonly rect: {x: number;y: number;width: number;height: number};readonly transform?: unknown}
+interface PlanClip {readonly durationFrames: number;readonly rect: ClipTransformRect;readonly transform?: unknown;readonly layout?: unknown}
 const even=(value: number): number=>Math.max(2,2*Math.round(value/2));
 
 /** maxFactor 1 keeps the layer at the rectangle size: managed image layers
  * stay within their existing pixel budget, so they sample at that size. */
 export function clipTransformRenderPlan(clip: PlanClip,{maxFactor=Infinity}: {maxFactor?: number}={}): ClipTransformRenderPlan|null {
  if(!Object.hasOwn(clip,'transform'))return null;
- const transform=validateClipTransform(clip.transform,clip.durationFrames);
- if(isIdentityClipTransform(transform))return null;
- const most=Math.max(1,...transform!.keyframes.map(point=>point.scale));
- const factor=Math.min(most,maxFactor,LAYER_EDGE/clip.rect.width,LAYER_EDGE/clip.rect.height);
- const layerWidth=Math.min(even(clip.rect.width*Math.max(1,factor)),LAYER_EDGE),layerHeight=Math.min(even(clip.rect.height*Math.max(1,factor)),LAYER_EDGE);
- return Object.freeze({transform:transform!,layerWidth,layerHeight,factor:layerWidth/clip.rect.width,animated:isAnimatedClipTransform(transform)});
+ return projectedTransformPlan(clip.rect,validateClipTransform(clip.transform,clip.durationFrames),maxFactor);
+}
+
+function projectedTransformPlan(rect: ClipTransformRect,transform: ProjectedTransform|null,maxFactor: number,relative=false): ClipTransformRenderPlan|null {
+ if(!transform||isIdentityClipTransform(transform))return null;
+ const most=Math.max(1,...transform.keyframes.map(point=>point.scale));
+ const factor=Math.max(1,Math.min(most,maxFactor,LAYER_EDGE/rect.width,LAYER_EDGE/rect.height));
+ const layerWidth=Math.min(even(rect.width*factor),LAYER_EDGE),layerHeight=Math.min(even(rect.height*factor),LAYER_EDGE);
+ // Rounding one narrow axis can multiply its apparent scale. Keep that
+ // rounding confined to the raster rather than shrinking the other axis.
+ return Object.freeze({transform,layerWidth,layerHeight,factor:relative?factor:layerWidth/rect.width,animated:isAnimatedClipTransform(transform)});
+}
+
+/** Raster dimensions are even, but the placement still uses the projected centre. */
+export function clipRenderPlacement(clip: PlanClip,frame: {fps: number;width: number;height: number},maxFactor=Infinity) {
+ const relative=Object.hasOwn(clip,'layout');
+ const projected=relative?projectClipLayout(clip,frame):null;
+ const rect=projected?.rect??clip.rect;
+ const transform=projected?projectedTransformPlan(rect,projected.transform,maxFactor,true):clipTransformRenderPlan(clip,{maxFactor});
+ const width=relative?even(rect.width):rect.width,height=relative?even(rect.height):rect.height;
+ const x=rect.x+(rect.width-width)/2,y=rect.y+(rect.height-height)/2;
+ return {rect,transform,width,height,x,y,relative};
+}
+
+/** Display aspect is read from the decoded, cropped input. The frozen asset's
+ * width and height describe coded pixels and need not describe its picture. */
+export function clipLayoutFitFilter(width: number,height: number): string {
+ return `scale=w='max(2,2*trunc(min(${width},${height}*dar)/2))':h='max(2,2*trunc(min(${height},${width}/dar)/2))'`;
 }
 
 /** A number as an FFmpeg expression literal; negative values are parenthesized. */
@@ -64,10 +88,10 @@ export function clipTransformPixelCrop(plan: ClipTransformRenderPlan|null,source
  return {x,y,width:Math.max(1,sourceWidth-x-Math.round(sourceWidth*crop.right)),height:Math.max(1,sourceHeight-y-Math.round(sourceHeight*crop.bottom))};
 }
 /** Crops the source before it is fitted; empty when nothing is cropped. */
-export function clipTransformCropFilter(plan: ClipTransformRenderPlan|null): string {
+export function clipTransformCropFilter(plan: ClipTransformRenderPlan|null,exact=false): string {
  const crop=plan?.transform.crop;
  if(!crop||crop.left===0&&crop.top===0&&crop.right===0&&crop.bottom===0)return '';
- return `crop=w=iw*${literal(1-crop.left-crop.right)}:h=ih*${literal(1-crop.top-crop.bottom)}:x=iw*${literal(crop.left)}:y=ih*${literal(crop.top)},`;
+ return `crop=w=iw*${literal(1-crop.left-crop.right)}:h=ih*${literal(1-crop.top-crop.bottom)}:x=iw*${literal(crop.left)}:y=ih*${literal(crop.top)}${exact?':exact=1':''},`;
 }
 
 /** Runs after the layer is trimmed and retimed to the segment's frames: a

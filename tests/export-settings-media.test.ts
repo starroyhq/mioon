@@ -9,6 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {TIMELINE_OUTPUT_PRESETS,resolveTimelineExportDelivery,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {TIMELINE_FORMAT_WRITE_PRESETS} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {probe} from '../packages/business/src/media.ts';
@@ -116,7 +117,7 @@ async function verifyOutput(file: string,width: number,height: number,frames=60)
 test('all three timeline aspects deliver native/360/1080 with post-caption scale, exact frame boundaries and identical audio', {timeout:240000},async t=>{
  const root=await sandbox(t),{audio,image,assets}=await assetsAt(root),sourceHashes=[hash(await readFile(audio.path)),hash(await readFile(image.path))];
  let audioReference: Buffer | undefined;
- for(const preset of TIMELINE_OUTPUT_PRESETS){
+ for(const preset of TIMELINE_FORMAT_WRITE_PRESETS){
   const saved=timeline(preset,audio,image),snapshot={timeline:saved,subtitleProfile:profile},frozen=structuredClone(snapshot),legacy=path.join(root,`${preset.id}-legacy.mp4`);
   let nativeFile: string | null = null;
   const events: MediaEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));
