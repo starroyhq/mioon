@@ -290,7 +290,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     onStartExampleBlocked={() => rejectNativeStart(true)}
     createIntentVersion={createIntent}
     createDisabledReason={closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.createDisabledReason || (!snapshot ? t('projects.listUnavailable') : '')}
-    renderCatalog={emptyContent => <RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled}
+    renderCatalog={(emptyContent, pendingOpen) => <RecentProjectsView state={view} query={query} waiting={waiting} busy={busy || !enabled} pendingOpen={pendingOpen}
       nativeLayout={props.nativeLayout} homeDirectory={props.homeDirectory} emptyContent={emptyContent}
       sort={preferences.preferences.homeSort} view={preferences.preferences.homeView} now={new Date()}
       onSortChange={sort => choose({homeSort: sort})} onViewChange={homeView => choose({homeView})}

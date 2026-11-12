@@ -470,6 +470,45 @@ test('window bindings share duplicate intent and a project runtime, reject retar
   assert.deepEqual(revoked, [], 'ordinary releases are not forced revocations');
 });
 
+test('provisional native opens update recent metadata once and only for a live ready window', async t => {
+  const f = await fixture(t, 'production'), control = f.server.projectEntries;
+  const cancelled = randomUUID(), ready = randomUUID(), contextId = randomUUID();
+  const lastOpenedAt = (projectId: string) => registry(f).find(entry => entry.projectId === projectId)!.lastOpenedAt;
+  const uiRecent = async () => {
+    const response = await f.json<{recentOpened: Record<string, string>}>('/api/ui-preferences');
+    assert.equal(response.status, 200);
+    return response.body.data!.recentOpened;
+  };
+  assert.equal(lastOpenedAt(f.a.projectId), null);
+  assert.equal(lastOpenedAt(f.b.projectId), null);
+
+  const first = await control.acquire({projectId: f.a.projectId, expectedProjectFile: f.a.projectFile,
+    windowId: cancelled, deferRecent: true});
+  assert.equal(first.project.lastOpenedAt, null);
+  assert.equal(lastOpenedAt(f.a.projectId), null);
+  control.release({windowId: cancelled});
+  await assert.rejects(async () => control.markOpened!({windowId: cancelled, contextId}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+
+  const second = await control.openPath({projectFile: f.b.projectFile, windowId: ready, deferRecent: true});
+  assert.equal(second.project.lastOpenedAt, null);
+  await assert.rejects(async () => control.markOpened!({windowId: randomUUID(), contextId}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  assert.equal(lastOpenedAt(f.a.projectId), null);
+  assert.equal(lastOpenedAt(f.b.projectId), null, 'no ready acknowledgement has been received');
+  assert.deepEqual(await uiRecent(), {});
+  assert.equal(await control.markOpened!({windowId: ready, contextId}), true);
+  assert.ok(lastOpenedAt(f.b.projectId));
+  assert.equal(lastOpenedAt(f.a.projectId), null);
+  assert.deepEqual(await uiRecent(), {[f.b.projectId]: lastOpenedAt(f.b.projectId)}, 'both records use the exact accepted open time');
+  const changes = f.application(db => db.prepare('SELECT total_changes() n').get()!.n);
+  assert.equal(await control.markOpened!({windowId: ready, contextId}), true);
+  assert.equal(f.application(db => db.prepare('SELECT total_changes() n').get()!.n), changes, 'repeated readiness performs no application write');
+  assert.equal(await control.markOpened!({windowId: ready, contextId: randomUUID()}), true);
+  assert.ok(Number(f.application(db => db.prepare('SELECT total_changes() n').get()!.n)) > Number(changes),
+    'a reloaded editor can record its new document readiness');
+  assert.deepEqual(await uiRecent(), {[f.b.projectId]: lastOpenedAt(f.b.projectId)});
+  control.release({windowId: ready});
+});
+
 test('releasing a pending native open rejects its late result and cannot leak or retire a replacement window', async t => {
   const f = await fixture(t), windowId = randomUUID();
   const pending = f.server.projectEntries.acquire({projectId: f.a.projectId, windowId});

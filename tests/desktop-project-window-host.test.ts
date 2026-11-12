@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { createProjectWindowHost, type ProjectWindowCreation, type ProjectWindowHostOptions, type ProjectWindowOwner, type ProjectWindowDocumentOwner, type ProjectWindowWebContents } from '../apps/desktop/src/project-window-host.ts';
+import { createProjectWindowHost, PROJECT_OPEN_PENDING_MS, type ProjectWindowCreation, type ProjectWindowHostOptions, type ProjectWindowOwner, type ProjectWindowDocumentOwner, type ProjectWindowWebContents } from '../apps/desktop/src/project-window-host.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowContext } from '../apps/desktop/src/project-window-protocol.ts';
@@ -93,21 +93,34 @@ interface HostSetup {
  consume?: HostOptions['consumeProjectEntry'];
  projectEntries?:HostOptions['projectEntries']|null;
  admit?:HostOptions['admitProject']|null;
+ manualCandidateReady?: boolean;
+ closeCandidate?: HostOptions['closeCandidate'];
+ rendererPaused?: HostOptions['rendererPaused'];
 }
 function fixture(t: test.TestContext, setup: HostSetup = {}) {
   const events: string[] = [], created: NativeWindow[] = [], owners = new Map<NativeWindow, ProjectWindowOwner<NativeWindow>>();
   let current = true, interactive = true;
   const leases=createProjectWindowLeaseFixture();
-  const host = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, editorUrl,
+  const host: ReturnType<typeof createProjectWindowHost<NativeWindow>> = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, editorUrl,
     projectActionReservations: setup.projectActions,
     projectEntries:setup.projectEntries===null?undefined:setup.projectEntries??leases.port,
     admitProject:setup.admit===null?undefined:setup.admit??(async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile),
     isCurrent: () => current, canInteract: () => interactive,
+    rendererPaused: setup.rendererPaused,
     createWindow: creation => {
       const window = new NativeWindow(creation, events);
       setup.create?.(window); created.push(window); return window;
     },
-    prepareWindow(window, owner) { owners.set(window, owner); setup.prepare?.(window, owner); },
+    prepareWindow(window, owner) {
+      owners.set(window, owner); setup.prepare?.(window, owner);
+      if (!setup.manualCandidateReady && owner.projectId) {
+        const projectId = owner.projectId;
+        window.once('ready-to-show', () => {
+          if (host.isCandidate(window)) ready(window, projectId);
+        });
+      }
+    },
+    closeCandidate: setup.closeCandidate,
     onLoadError: setup.onLoadError,
     canRestoreParentFocus: setup.restoreFocus,
     onDocumentInvalidated: setup.invalidated, onWebContentsDestroyed: setup.destroyed,
@@ -115,11 +128,13 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
   });
   t.after(() => host.dispose());
   const event = (window: NativeWindow) => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
-  type InvokeResult<A extends string> = A extends 'describe' ? ProjectWindowContext : A extends 'open' ? ProjectWindowOpenResult | Promise<ProjectWindowOpenResult> : boolean;
+  type InvokeResult<A extends string> = A extends 'describe' ? ProjectWindowContext : A extends 'open' ? Promise<ProjectWindowOpenResult> : boolean;
   const invoke = <const R extends {action: string}>(window: NativeWindow, request: R) => host.dispatch(event(window), request.action === 'describe' ? request :
     { contextId: (host.contextFor(window))!.contextId, ...request }) as InvokeResult<R['action']>;
   const open = (projectId: string, source: NativeWindow|undefined = created.find(window => window.creation.role === 'launcher')!, entryToken: string = randomUUID(), remember: boolean = true) =>
     invoke(source, { action: 'open', projectId, entryToken, remember });
+  const ready = (window: NativeWindow, projectId: string|undefined = projectA) => invoke(window, { action: 'editor-status', projectId, phase: 'ready' });
+  const restore = (projectId: string = projectA) => host.restoreProject(projectId, projectWindowLeaseValue(backendId,projectId).project.projectFile);
   return { host, events, created, owners, event, invoke, open,leases,
     setCurrent(value: boolean) { current = value; }, setInteractive(value: boolean) { interactive = value; host.refresh(); },
     async launcher() { const window = host.ensureLauncher()!; await host.loadFor(window); return window; },
@@ -127,7 +142,7 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
       assert.equal((await open(projectId)).reason, 'accepted');
       const window = created.at(-1)!; await host.loadFor(window); return window;
     },
-    ready(window: NativeWindow, projectId: string|undefined = projectA) { return invoke(window, { action: 'editor-status', projectId, phase: 'ready' }); },
+    ready, restore,
   };
 }
 
@@ -139,6 +154,365 @@ test('an editor obtains its real window lease before construction and releases o
   const editor=f.created.at(-1)!;await f.host.loadFor(editor);editor.hide();editor.emit('minimize');editor.navigate(editorUrl(projectA));f.ready(editor);assert.equal(f.host.showSettings('agent',editor),true);await tick();assert.deepEqual(leases.released,[]);
   editor.holdClose=true;editor.close();f.host.closeStateChanged(editor,'closing');assert.deepEqual(leases.released,[]);f.host.closeStateChanged(editor,'retained');assert.deepEqual(leases.released,[]);
   editor.finishClose();editor.emit('closed');assert.deepEqual(leases.released,[result.targetWindowId]);assert.equal(leases.acquired.length,0,'This fixture used its explicitly delayed real port');
+});
+
+test('first ready presents and marks its exact candidate without waiting for recency or remarking a duplicate', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const leases = createProjectWindowLeaseFixture(), mark = Promise.withResolvers<true>();
+  const marked: Array<{windowId: string; contextId: string}> = [];
+  const port = {...leases.port, markOpened: (owner: {windowId: string; contextId: string}) => {marked.push(owner); return mark.promise;}};
+  const f = fixture(t, {manualCandidateReady: true, projectEntries: port});
+  const launcher = await f.launcher(), token = randomUUID(), opening = f.open(projectA, launcher, token);
+  await tick();
+  const editor = f.created.at(-1)!, editorId = f.host.contextFor(editor)!.windowId;
+  const firstOwner = {windowId: editorId, contextId: f.host.contextFor(editor)!.contextId};
+  assert.equal(f.host.isCandidate(editor), true);
+  assert.deepEqual(leases.acquired, [{windowId: editorId, projectId: projectA,
+    expectedProjectFile: projectWindowLeaseValue(editorId, projectA).project.projectFile, deferRecent: true}]);
+  assert.equal(f.host.preferredWindow(editor), launcher);
+  assert.equal(f.host.prepareNativeDialog(editor), false);
+  assert.equal(f.host.showSettings('agent', editor), false);
+  assert.equal(f.ready(editor, projectB), false);
+  editor.visible = true; editor.emit('show'); editor.emit('ready-to-show');
+  assert.equal(editor.visible, false);
+  assert.equal(launcher.visible, true);
+  assert.deepEqual(marked, []);
+  assert.equal(f.host.contextFor(launcher)!.selectionProjectId, null);
+  assert.equal(f.host.contextFor(launcher)!.entryReceipt, null);
+  t.mock.timers.tick(PROJECT_OPEN_PENDING_MS + 60_000);
+  assert.equal(f.host.contextFor(launcher)!.entryPending?.entryToken, token);
+  assert.equal(editor.closeCalls, 0);
+  assert.equal(editor.visible, false);
+  assert.equal(f.ready(editor), true);
+  assert.deepEqual(marked, [firstOwner]);
+  const result = await opening;
+  assert.deepEqual(result, {ok: true, reason: 'accepted', targetWindowId: editorId, targetPhase: 'ready'});
+  assert.equal(f.host.isCandidate(editor), false);
+  assert.equal(editor.visible, true);
+  assert.equal(launcher.visible, false);
+  assert.deepEqual(f.host.contextFor(launcher)!.entryReceipt, {entryToken: token, result});
+  assert.equal(f.host.contextFor(launcher)!.selectionProjectId, projectA);
+  assert.equal(await f.open(projectA, launcher, token), result);
+  assert.equal((await f.open(projectA, launcher)).reason, 'already-open');
+  assert.equal(f.ready(editor), true);
+  assert.deepEqual(marked, [firstOwner]);
+  editor.navigate(editorUrl(projectA));
+  const reloadedOwner = {windowId: editorId, contextId: f.host.contextFor(editor)!.contextId};
+  assert.notEqual(firstOwner.contextId, reloadedOwner.contextId);
+  assert.equal(f.ready(editor), true);
+  assert.equal(f.ready(editor), true);
+  mark.reject(new Error('Recency storage unavailable'));
+  await tick();
+  assert.deepEqual(marked, [firstOwner, reloadedOwner]);
+  assert.equal(editor.visible, true);
+  assert.equal(leases.released.includes(editorId), false);
+});
+
+test('a slow candidate offers exact-owner cancellation without a deadline and settles only after closed', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const requests: string[] = [];
+  const f = fixture(t, {manualCandidateReady: true, closeCandidate(window, cause) {requests.push(cause); window.close();}});
+  const launcher = await f.launcher(), token = randomUUID(), opening = f.open(projectA, launcher, token);
+  let settled = false; void opening.then(() => {settled = true;});
+  await tick();
+  const editor = f.created.at(-1)!, editorId = f.host.contextFor(editor)!.windowId;
+  editor.holdClose = true;
+  t.mock.timers.tick(PROJECT_OPEN_PENDING_MS - 1);
+  assert.equal(f.host.contextFor(launcher)!.entryPending, undefined);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), false);
+  t.mock.timers.tick(1);
+  assert.deepEqual(f.host.contextFor(launcher)!.entryPending, {entryToken: token, projectId: projectA});
+  assert.equal(isProjectWindowContext(f.host.contextFor(launcher)), true);
+  t.mock.timers.tick(60_000);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: randomUUID()}), false);
+  assert.equal(f.invoke(editor, {action: 'cancel-open', entryToken: token}), false);
+  assert.throws(() => f.invoke(launcher, {action: 'cancel-open', contextId: randomUUID(), entryToken: token}), /Stale/);
+  assert.deepEqual(requests, []);
+  assert.equal(editor.visible, false);
+  assert.equal(launcher.visible, true);
+  assert.equal(settled, false);
+  assert.deepEqual(f.leases.released, []);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), true);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), false);
+  assert.equal(f.ready(editor), false);
+  editor.emit('ready-to-show');
+  assert.deepEqual(requests, ['cancel']);
+  assert.equal(editor.visible, false);
+  assert.equal(launcher.visible, true);
+  assert.equal(f.host.contextFor(launcher)!.entryReceipt, null);
+  assert.equal(f.host.reserveClosedProjectAction(projectA), null);
+  assert.deepEqual(f.leases.released, []);
+  assert.equal(f.host.closeStateChanged(editor, 'closing'), true);
+  assert.equal(f.host.closeStateChanged(editor, 'retained'), true);
+  assert.equal(f.ready(editor), false, 'a veto may permit a retry of the close, never a late reveal');
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), true);
+  assert.deepEqual(requests, ['cancel', 'cancel']);
+  editor.finishClose();
+  const result = await opening;
+  assert.deepEqual(result, {ok: false, reason: 'cancelled', targetWindowId: null, targetPhase: null});
+  assert.deepEqual(f.leases.released, [editorId]);
+  assert.equal(f.host.contextFor(launcher)!.entryPending, undefined);
+  assert.deepEqual(f.host.contextFor(launcher)!.entryReceipt, {entryToken: token, result});
+  assert.equal(f.host.contextFor(launcher)!.selectionProjectId, null);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), false);
+  assert.equal(await f.open(projectA, launcher, token), result);
+  assert.equal(f.created.length, 2);
+});
+
+test('a candidate ready during a retained close gets exactly one new guarded inspection and remains hidden', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  for (const readyFirst of [true, false]) {
+    const closeRequests: string[] = [];
+    const f = fixture(t, {manualCandidateReady: true, closeCandidate(window, cause) {
+      closeRequests.push(cause);
+      f.host.closeStateChanged(window, 'closing'); window.close();
+    }});
+    const launcher = await f.launcher(), token = randomUUID(), opening = f.open(projectA, launcher, token);
+    await tick();
+    const editor = f.created.at(-1)!, windowId = f.host.contextFor(editor)!.windowId;
+    editor.holdClose = true;
+    t.mock.timers.tick(PROJECT_OPEN_PENDING_MS);
+    assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: token}), true);
+    if (readyFirst) assert.equal(f.ready(editor), false);
+    await tick();
+    assert.deepEqual(closeRequests, ['cancel']);
+    assert.equal(f.host.closeStateChanged(editor, 'retained'), true);
+    if (!readyFirst) assert.equal(f.ready(editor), false);
+    await tick();
+    assert.deepEqual(closeRequests, ['cancel', 'cancel']);
+    assert.equal(f.host.closeStateChanged(editor, 'retained'), true);
+    assert.equal(f.ready(editor), false);
+    await tick();
+    assert.deepEqual(closeRequests, ['cancel', 'cancel']);
+    assert.equal(f.host.contextFor(launcher)!.entryReceipt, null);
+    assert.deepEqual(f.leases.released, []);
+    assert.equal(editor.visible, false);
+    assert.equal(launcher.visible, true);
+    editor.finishClose();
+    assert.equal((await opening).reason, 'cancelled');
+    assert.deepEqual(f.leases.released, [windowId]);
+  }
+});
+
+test('pre-acquire 12-03 errors retain exact path-free data for the live entry token', async t => {
+  const privatePath = '/private/project-file.mioon';
+  const errors = [
+    {raw: {code: 'PROJECT_UNAVAILABLE', details: {reason: 'PROJECT_MISSING', projectId: projectA, projectFile: privatePath}}, failure: {code: 'PROJECT_MISSING'}},
+    {raw: {code: 'PROJECT_LOCKED', details: {projectFile: privatePath}}, failure: {code: 'PROJECT_LOCKED'}},
+    {raw: {code: 'EACCES', path: privatePath}, failure: {code: 'PROJECT_ACCESS_DENIED'}},
+    {raw: {code: 'PROJECT_INVALID', details: {reason: 'corrupt', projectFile: privatePath}}, failure: {code: 'PROJECT_INVALID', reason: 'corrupt'}},
+    {raw: {code: 'PROJECT_FORMAT_NEWER', details: {database: 'history', formatVersion: 8, supportedFormatVersion: 7, projectFile: privatePath}},
+      failure: {code: 'PROJECT_FORMAT_NEWER', database: 'history', formatVersion: 8, supportedFormatVersion: 7}},
+    {raw: {code: 'PROJECT_FORMAT_NEWER', details: {database: 'history', projectFile: privatePath}}, failure: undefined},
+  ];
+  for (const {raw, failure} of errors) {
+    const leases = createProjectWindowLeaseFixture();
+    const f = fixture(t, {projectEntries: {...leases.port, acquire: async () => {throw Object.assign(new Error(privatePath), raw);}}});
+    const launcher = await f.launcher(), token = randomUUID(), result = await f.open(projectA, launcher, token);
+    assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, ...(failure ? {failure} : {})});
+    assert.deepEqual(f.host.contextFor(launcher)!.entryReceipt, {entryToken: token, result});
+    assert.equal(f.created.length, 1);
+    assert.equal(launcher.visible, true);
+    assert.equal(leases.released.length, 1);
+    assert.equal(JSON.stringify(f.host.contextFor(launcher)).includes(privatePath), false);
+  }
+});
+
+test('definite editor failure, initial load rejection and renderer exit close only their hidden candidate', async t => {
+  for (const cause of ['renderer', 'load', 'gone'] as const) {
+    const load = Promise.withResolvers<void>(), requests: Array<{window: NativeWindow; cause: string}> = [], errors: unknown[] = [];
+    const f = fixture(t, {manualCandidateReady: true,
+      create(window) {if (cause === 'load' && window.creation.role === 'editor') window.loading = load;},
+      closeCandidate(window, reason) {requests.push({window, cause: reason}); window.close();},
+      onLoadError(error) {errors.push(error);},
+    });
+    const launcher = await f.launcher(), token = randomUUID(), opening = f.open(projectA, launcher, token);
+    await tick();
+    const editor = f.created.at(-1)!, editorId = f.host.contextFor(editor)!.windowId;
+    editor.holdClose = true;
+    const failure = {code: 'PROJECT_FORMAT_NEWER', database: 'history', formatVersion: 8, supportedFormatVersion: 7};
+    if (cause === 'renderer') assert.equal(f.invoke(editor, {action: 'editor-status', phase: 'failed', projectId: projectA, failure}), true);
+    if (cause === 'load') {load.reject(new Error('Navigation failed')); await assert.rejects(f.host.loadFor(editor), /Navigation failed/);}
+    if (cause === 'gone') {assert.equal(f.host.rendererGone(editor), true); assert.equal(f.host.rendererGone(editor), true);}
+    assert.deepEqual(requests, [{window: editor, cause}]);
+    assert.deepEqual(errors, []);
+    assert.equal(f.ready(editor), false);
+    assert.equal(editor.visible, false);
+    assert.equal(launcher.visible, true);
+    assert.equal(f.host.contextFor(launcher)!.entryReceipt, null);
+    assert.deepEqual(f.leases.released, []);
+    editor.finishClose();
+    const result = await opening;
+    assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null,
+      ...(cause === 'renderer' ? {failure} : {})});
+    assert.deepEqual(f.leases.released, [editorId]);
+    assert.equal(f.host.contextFor(launcher)!.selectionProjectId, null);
+    assert.deepEqual(f.host.contextFor(launcher)!.entryReceipt, {entryToken: token, result});
+  }
+});
+
+test('an old entry source cannot show a candidate, overwrite a replacement receipt or release its lease', async t => {
+  for (const transition of ['source-reload', 'source-gone', 'source-close', 'candidate-reload', 'quit-fence', 'backend-dispose'] as const) {
+    const marks: string[] = [], leases = createProjectWindowLeaseFixture();
+    const f = fixture(t, {manualCandidateReady: true, projectEntries: {...leases.port,
+      markOpened: ({windowId}) => {marks.push(windowId); return true;},
+    }});
+    const launcher = await f.launcher(), oldContext = f.host.contextFor(launcher)!.contextId;
+    const token = randomUUID(), opening = f.open(projectA, launcher, token);
+    await tick();
+    const candidate = f.created.at(-1)!, windowId = f.host.contextFor(candidate)!.windowId;
+    candidate.holdClose = true;
+    if (transition === 'source-reload') launcher.navigate(`${origin}/`);
+    if (transition === 'source-gone') assert.equal(f.host.rendererGone(launcher), false);
+    if (transition === 'source-close') launcher.finishClose();
+    if (transition === 'candidate-reload') candidate.navigate(editorUrl(projectA));
+    if (transition === 'quit-fence') {
+      f.setInteractive(false); f.setInteractive(true);
+      assert.equal(f.ready(candidate), false);
+    }
+    if (transition === 'backend-dispose') f.host.dispose();
+    assert.equal(candidate.visible, false);
+    assert.deepEqual(marks, []);
+    if (transition === 'backend-dispose') {
+      assert.equal((await opening).reason, 'busy');
+      assert.deepEqual(leases.released, [windowId]);
+      assert.equal(f.host.windows().length, 0);
+      continue;
+    }
+    assert.equal(candidate.closeCalls, 1);
+    assert.equal(f.ready(candidate), false);
+    assert.deepEqual(leases.released, []);
+    if (transition === 'source-reload') {
+      assert.notEqual(f.host.contextFor(launcher)!.contextId, oldContext);
+      assert.throws(() => f.invoke(launcher, {action: 'cancel-open', contextId: oldContext, entryToken: token}), /Stale/);
+      const replacement = f.open(projectB, launcher);
+      await tick();
+      const target = f.created.at(-1)!, targetId = f.host.contextFor(target)!.windowId;
+      assert.equal(f.ready(target, projectB), true);
+      const current = await replacement, receipt = f.host.contextFor(launcher)!.entryReceipt;
+      candidate.finishClose();
+      assert.equal((await opening).reason, 'busy');
+      assert.equal(f.host.contextFor(launcher)!.entryReceipt, receipt);
+      assert.equal(receipt?.result, current);
+      assert.deepEqual(marks, [targetId]);
+      assert.equal(target.visible, true);
+    } else {
+      candidate.finishClose();
+      assert.equal((await opening).reason, 'busy');
+      if (transition === 'source-gone') assert.equal(f.host.contextFor(launcher)!.entryReceipt, null);
+      if (transition === 'source-close') assert.deepEqual(f.host.windows(), []);
+    }
+    assert.deepEqual(leases.released, [windowId]);
+  }
+});
+
+test('selected-file candidates honor their origin while native cold opens and restart restore keep separate paths', async t => {
+  const leases = createProjectWindowLeaseFixture(), marked: string[] = [];
+  const f = fixture(t, {manualCandidateReady: true, projectEntries: {...leases.port,
+    openPath: async input => {
+      assert.equal(input.deferRecent, true);
+      return projectWindowLeaseValue(input.windowId, projectA, input.projectFile);
+    },
+    markOpened: ({windowId}) => {marked.push(windowId); return true;},
+  }});
+  const launcher = await f.launcher(), owner = f.host.ownerForContents(launcher.webContents)!;
+  const selected = projectWindowLeaseValue(randomUUID(), projectA);
+  const opening = f.host.adoptPrepared(selected, true, owner);
+  await tick();
+  const obsolete = f.created.at(-1)!;
+  obsolete.holdClose = true;
+  assert.equal(f.host.isCandidate(obsolete), true);
+  assert.equal(launcher.visible, true);
+  launcher.navigate(`${origin}/`);
+  assert.equal(obsolete.closeCalls, 1);
+  assert.equal(f.ready(obsolete), false);
+  assert.equal(obsolete.visible, false);
+  obsolete.finishClose();
+  assert.equal((await opening).reason, 'busy');
+  assert.deepEqual(leases.released, [selected.windowId]);
+  assert.deepEqual(marked, []);
+  const stale = projectWindowLeaseValue(randomUUID(), projectA);
+  assert.equal((await f.host.adoptPrepared(stale, true, owner)).reason, 'busy');
+  assert.deepEqual(leases.released, [selected.windowId, stale.windowId]);
+  assert.equal(f.created.length, 2);
+  const native = f.host.openPath('/synthetic/project.mioon');
+  await tick();
+  const nativeEditor = f.created.at(-1)!, nativeId = f.host.contextFor(nativeEditor)!.windowId;
+  assert.equal(nativeEditor.visible, false);
+  assert.equal(launcher.visible, true);
+  assert.equal(f.ready(nativeEditor), true);
+  assert.equal((await native).targetPhase, 'ready');
+  assert.deepEqual(marked, [nativeId]);
+  const restored = await f.restore(projectB);
+  const restoredEditor = f.created.at(-1)!;
+  assert.equal(restored.targetPhase, 'opening');
+  await f.host.loadFor(restoredEditor);
+  assert.equal(f.host.isCandidate(restoredEditor), false);
+  assert.equal(restoredEditor.visible, true);
+  assert.deepEqual(marked, [nativeId]);
+  assert.equal(f.ready(restoredEditor, projectB), true);
+  assert.equal(f.ready(restoredEditor, projectB), true);
+  assert.deepEqual(marked, [nativeId, restored.targetWindowId]);
+});
+
+test('a selected-file candidate can be cancelled only with its own token on the source document', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const f = fixture(t, {manualCandidateReady: true}), launcher = await f.launcher();
+  const oldToken = randomUUID(), reservation = f.host.reserveClosedProjectAction(projectB)!;
+  const oldResult = await f.open(projectB, launcher, oldToken); reservation.release();
+  assert.equal(oldResult.reason, 'busy');
+  const origin = f.host.ownerForContents(launcher.webContents)!, prepared = projectWindowLeaseValue(randomUUID(), projectA);
+  const opening = f.host.adoptPrepared(prepared, true, origin);
+  await tick();
+  const editor = f.created.at(-1)!;
+  assert.equal(f.host.candidateSourceWindow(editor), launcher);
+  assert.equal(f.host.contextFor(launcher)!.entryPending, undefined);
+  t.mock.timers.tick(PROJECT_OPEN_PENDING_MS);
+  const context = f.host.contextFor(launcher)!;
+  assert.equal(isProjectWindowContext(context), true);
+  assert.deepEqual(context.entryReceipt, {entryToken: oldToken, result: oldResult});
+  const pending = context.entryPending!;
+  assert.equal(pending.kind, 'selected');
+  assert.equal(pending.projectId, projectA);
+  assert.notEqual(pending.entryToken, oldToken);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: oldToken}), false);
+  assert.equal(f.invoke(editor, {action: 'cancel-open', entryToken: pending.entryToken}), false);
+  assert.equal(f.invoke(launcher, {action: 'cancel-open', entryToken: pending.entryToken}), true);
+  assert.equal((await opening).reason, 'cancelled');
+  assert.equal(f.host.contextFor(launcher)!.entryPending, undefined);
+  assert.equal(f.host.contextFor(launcher)!.entryReceipt, context.entryReceipt);
+  assert.equal(f.host.candidateSourceWindow(editor), null);
+  assert.equal(editor.visible, false);
+  assert.equal(launcher.visible, true);
+  assert.equal(f.leases.released.filter(windowId => windowId === prepared.windowId).length, 1);
+});
+
+test('queued native open and adoption can complete before restart resumes renderer status', async t => {
+  const leases = createProjectWindowLeaseFixture(), marked: string[] = [];
+  let paused = true;
+  const f = fixture(t, {manualCandidateReady: true, rendererPaused: () => paused, projectEntries: {...leases.port,
+    openPath: async input => {
+      assert.equal(input.deferRecent, undefined);
+      return projectWindowLeaseValue(input.windowId, projectA, input.projectFile);
+    },
+    markOpened: ({windowId}) => {marked.push(windowId); return true;},
+  }});
+  const native = await f.host.openPath('/synthetic/queued.mioon'), queued = f.created.at(-1)!;
+  const prepared = projectWindowLeaseValue(randomUUID(), projectB);
+  const adopted = await f.host.adoptPrepared(prepared, true), second = f.created.at(-1)!;
+  assert.equal(native.targetPhase, 'opening');
+  assert.equal(adopted.targetPhase, 'opening');
+  await Promise.all([f.host.loadFor(queued), f.host.loadFor(second)]);
+  assert.equal(f.host.isCandidate(queued), false);
+  assert.equal(f.host.isCandidate(second), false);
+  assert.equal(f.host.contextFor(queued)!.quitting, true);
+  assert.equal(f.ready(queued), true);
+  assert.deepEqual(marked, []);
+  paused = false; f.host.refresh();
+  assert.equal(f.host.contextFor(queued)!.quitting, false);
+  assert.equal(f.ready(queued), true);
+  assert.equal(f.ready(second, projectB), true);
+  assert.deepEqual(marked, [native.targetWindowId, prepared.windowId]);
 });
 
 test('missing or failed acquire never creates a fake editable window; constructor failure retires its candidate',async t=>{
@@ -202,7 +576,7 @@ test('revoke before an acquire ACK or a prepared handoff cannot create an editab
 });
 
 test('a failed editor load retains its window lease until actual closure',async t=>{
-  const load=Promise.withResolvers<unknown>(),f=fixture(t,{create:window=>{if(window.creation.role==='editor')window.loading=load;}});await f.launcher();const result=await f.open(projectA),editor=f.created.at(-1)!;load.reject(Error('Load failed'));await assert.rejects(f.host.loadFor(editor));assert.equal(f.host.contextFor(editor)!.editorPhase,'failed');assert.deepEqual(f.leases.released,[]);editor.finishClose();assert.deepEqual(f.leases.released,[result.targetWindowId]);
+  const load=Promise.withResolvers<unknown>(),f=fixture(t,{create:window=>{if(window.creation.role==='editor')window.loading=load;}});await f.launcher();const result=await f.restore(),editor=f.created.at(-1)!;load.reject(Error('Load failed'));await assert.rejects(f.host.loadFor(editor));assert.equal(f.host.contextFor(editor)!.editorPhase,'failed');assert.deepEqual(f.leases.released,[]);editor.finishClose();assert.deepEqual(f.leases.released,[result.targetWindowId]);
 });
 
 test('native file opens and prepared handoffs share settings and system-dialog fences, including a dialog arriving during open',async t=>{
@@ -318,6 +692,7 @@ test('an assigned reload retires the previous document before its replacement co
 
 test('same project including uppercase UUID focuses its exact existing owner without another load', async t => {
   const f = fixture(t); await f.launcher(); const a = await f.editor();
+  a.navigate(editorUrl(projectA));
   const before = f.events.filter(event => event === 'editor:load').length;
   const result = await f.open(projectA.toUpperCase());
   assert.equal(result.reason, 'already-open'); assert.equal(result.targetWindowId, (f.host.contextFor(a))!.windowId);
@@ -428,9 +803,10 @@ for (const hiddenAtStart of [true, false]) test(`a project entry ${hiddenAtStart
 test('tray hiding suppresses a late editor load and queued renderer presentation without invalidating background status', async t => {
   const hold = Promise.withResolvers<void>();
   const f = fixture(t, {create(window) { if (window.creation.role === 'editor') window.loading = hold; }});
-  const launcher = await f.launcher(); assert.equal((await f.open(projectA)).reason, 'accepted');
+  const launcher = await f.launcher(), opening = f.open(projectA); await tick();
   const editor = f.created.at(-1)!; assert.equal(f.host.hideToTray(), true);
   hold.resolve(); await f.host.loadFor(editor);
+  assert.equal((await opening).reason, 'accepted');
   assert.equal(editor.visible, false); assert.equal(launcher.visible, false);
   assert.equal(f.ready(editor), true); assert.equal(editor.visible, false);
   for (const request of [{action: 'settings', slot: 'agent'}, {action: 'projects'}, {action: 'project-entry', mode: 'new'}]) {
@@ -809,7 +1185,7 @@ test('reload rotates exact document capture but never immutable project binding'
 test('failed editor owns a visible failure surface while launcher remains hidden', async t => {
   const errors = [], hold = (Promise.withResolvers() as Gate);
   const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = hold; }, onLoadError: error => errors.push(error) });
-  const launcher = await f.launcher(); await f.open(projectA); const a = f.created.at(-1)!, load = f.host.loadFor(a);
+  const launcher = await f.launcher(); await f.restore(); const a = f.created.at(-1)!, load = f.host.loadFor(a);
   await tick(); hold.reject(new Error('load failed')); await assert.rejects(load, /load failed/);
   assert.equal(errors.length, 1); assert.equal((f.host.contextFor(a))!.editorPhase, 'failed'); assert.equal((a)!.visible, true); assert.equal((launcher)!.visible, false);
   assert.equal((await f.open(projectA)).targetWindowId, (f.host.contextFor(a))!.windowId); assert.equal(f.created.length, 2);
@@ -818,17 +1194,22 @@ test('failed editor owns a visible failure surface while launcher remains hidden
 test('reload supersedes late initial load rejection without changing current ready state', async t => {
   const errors = [], hold = (Promise.withResolvers() as Gate);
   const f = fixture(t, { create(window) { if (window.creation.role === 'editor') window.loading = hold; }, onLoadError: error => errors.push(error) });
-  await f.launcher(); await f.open(projectA); const a = f.created.at(-1)!, original = f.host.loadFor(a);
+  await f.launcher(); await f.restore(); const a = f.created.at(-1)!, original = f.host.loadFor(a);
   await tick(); (a)!.navigate(editorUrl(projectA)); f.ready(a); hold.reject(new Error('old load')); await original;
   assert.equal((f.host.contextFor(a))!.editorPhase, 'ready'); assert.equal(errors.length, 0);
 });
 
 test('latest explicit ready selection alone reaches the launcher locator and closing/reload revoke it', async t => {
-  const f = fixture(t), launcher = await f.launcher(), a = await f.editor();
-  const first = (f.host.contextFor(launcher))!.selectionVersion; const b = await f.editor(projectB);
+  const f = fixture(t, {manualCandidateReady: true}), launcher = await f.launcher();
+  const projectC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  await f.restore(projectC);
+  const source = f.created.at(-1)!; await f.host.loadFor(source); f.ready(source, projectC);
+  const openingA = f.open(projectA, launcher); await tick(); const a = f.created.at(-1)!;
+  const first = (f.host.contextFor(launcher))!.selectionVersion;
+  const openingB = f.open(projectB, source); await tick(); const b = f.created.at(-1)!;
   assert.equal((f.host.contextFor(launcher))!.selectionVersion > first, true); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, null);
-  f.ready(a); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, null);
-  f.ready(b, projectB); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, projectB);
+  f.ready(a); await openingA; assert.equal((f.host.contextFor(launcher))!.selectionProjectId, null);
+  f.ready(b, projectB); await openingB; assert.equal((f.host.contextFor(launcher))!.selectionProjectId, projectB);
   f.host.closeStateChanged(b, 'closing'); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, null);
   f.host.closeStateChanged(b, 'retained'); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, null);
   await f.open(projectA); assert.equal((f.host.contextFor(launcher))!.selectionProjectId, projectA);
@@ -1219,7 +1600,7 @@ test('a pre-consume Quit refusal has an exact negative receipt even when invoke 
 test('security or P0 preparation failure retains failed owner without loading application code', async t => {
   const error = new Error('Synthetic policy installation failure');
   const f = fixture(t, { prepare(window: { creation: { role: string; }; }) { if (window.creation.role === 'editor') throw error; } });
-  const launcher = await f.launcher(); const result = await f.open(projectA), a = f.created.at(-1)!;
+  const launcher = await f.launcher(); const result = await f.restore(), a = f.created.at(-1)!;
   assert.equal(result.reason, 'accepted'); assert.equal(result.targetPhase, 'failed');
   await assert.rejects(f.host.loadFor(a), value => value === error);
   assert.equal(f.events.includes('editor:load'), false); assert.equal((launcher)!.visible, false);

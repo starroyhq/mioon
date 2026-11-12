@@ -392,6 +392,40 @@ test('custom launcher empty content appears only after an empty directory has lo
   assert.doesNotMatch(web, /data-native-layout|Custom empty content/u);
 });
 
+test('native waiting status and cancel stay with the candidate card or move above an unavailable catalog', () => {
+  const state = {kind: 'ready', value: entries()};
+  const base = {nativeLayout: true, busy: true, state, sort: 'recent', now: new Date(),
+    onSortChange: noAction, onViewChange: noAction, onRetry: noAction, onOpen: noAction};
+  const pendingOpen = {projectId: PROJECT_IDS.ui, onCancel: noAction};
+  const project = state.value.find(item => item.project.projectId === pendingOpen.projectId)!.project;
+  for (const locale of LOCALES) for (const view of ['list', 'grid'] as const) {
+    const before = controlled.render('recent', {...base, view}, locale);
+    assert.equal(tagOf(before, 'pf-open-pending'), null);
+    assert.equal(tagOf(before, 'pf-open-cancel'), null);
+
+    const page = controlled.render('recent', {...base, view, pendingOpen}, locale);
+    const card = page.slice(page.indexOf(`data-testid="pf-card-${project.projectId}"`)).split('</article>')[0]!;
+    assert.equal(count(page, /data-testid="pf-open-pending"/gu), 1);
+    assert.equal(disabled(tagOf(card, `pf-card-open-${project.projectId}`)), true);
+    assert.ok(tagOf(card, 'pf-open-cancel'));
+    assert.equal(disabled(tagOf(card, 'pf-open-cancel')), false);
+    assert.ok(card.indexOf('</button>') < card.indexOf('data-testid="pf-open-cancel"'));
+    assert.match(card, /role="status"><span class="wb-spinner" aria-hidden="true"><\/span>/u);
+    assert.ok(card.includes(escapeHtml(translate(locale, 'projects.opening'))));
+    assert.ok(card.includes(escapeHtml(translate(locale, 'shell.cancel'))));
+
+    for (const overrides of [{query: 'no matching project'}, {state: {kind: 'loading'}}, {state: {kind: 'ready', value: []}}]) {
+      const fallback = controlled.render('recent', {...base, view, pendingOpen, ...overrides}, locale);
+      assert.equal(tagOf(fallback, `pf-card-${project.projectId}`), null);
+      assert.equal(count(fallback, /data-testid="pf-open-pending"/gu), 1);
+      assert.ok(tagOf(fallback, 'pf-open-cancel'));
+      assert.equal(disabled(tagOf(fallback, 'pf-open-cancel')), false);
+      assert.ok(fallback.includes(escapeHtml(overrides.query
+        ? translate(locale, 'projects.openingNamed', {name: project.name}) : translate(locale, 'projects.opening'))));
+    }
+  }
+});
+
 test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
   const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
   const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'}, {state: 'invalid', reason: 'corrupt'}];

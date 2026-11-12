@@ -23,6 +23,11 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
 }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const state = controller.getState(), context = controller.getContext();
+  const pending = context.entryPending;
+  const pendingOpen = pending && pending.projectId === state.pendingOpenProjectId && state.shown && !context.quitting && !context.leaseRevoked
+    ? {projectId: pending.projectId, onCancel: () => {
+      if (controller.getContext().entryPending?.entryToken === pending.entryToken) void controller.cancelOpen();
+    }} : undefined;
   const identity = controller.identity;
   const desktop = controller.desktop ?? null, native = desktop?.getState(), capability = native?.capabilities;
   const homeDirectory = typeof window === 'undefined' ? undefined : (window as Window & {__mioonHomeDirectory?: unknown}).__mioonHomeDirectory;
@@ -46,6 +51,7 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
       onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'}
       launcher={launcher} nativeLayout homeDirectory={typeof homeDirectory === 'string' ? homeDirectory : undefined}
       active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+      deferOpeningFeedback pendingOpen={pendingOpen}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting || Boolean(native?.busy || native?.blocked || desktop?.readCloseSnapshot().unknown)} listBusy={state.listBusy} listError={state.listError}
       onRequestCreate={desktop ? () => {void controller.show('new');} : undefined}
       onOpenFile={capability?.ready && capability.open ? () => {void desktop?.openFile();} : undefined}

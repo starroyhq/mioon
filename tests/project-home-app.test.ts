@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
+import { isProjectWindowId, projectWindowOpenFailure } from '../apps/desktop/src/project-window-protocol.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard } from '../apps/web/src/last-project-navigation.ts';
@@ -54,7 +55,8 @@ function environment(options:HomeOptions = {}) {
   const identity = projectEntryOwnerFixture(() => options.directory ? options.directory() : projectEntryFixture(created ? [...directoryProjects, {id:id(3),name:'新项目'}].filter((project,index,all)=>all.findIndex(item=>item.id===project.id)===index) : directoryProjects), calls);
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, videoConnectionProviders, readGenerationProviderDirectory, canOfferBackupRecovery: homeUi().canOfferBackupRecovery,
-    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
+    editorInitialSelection, revealNativeProjects, isProjectWindowId, projectWindowOpenFailure,
+    nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, retainSettingsForIdentity: false, guardRetainedInputInteraction() {},
 
 
@@ -740,7 +742,7 @@ test('native pending/error render never mounts launcher home or settings in the 
     assert.equal(result.mounted.includes('AgentSettings'), false); assert.equal(result.mounted.includes('ImageSettings'), false);
     const report = callsOf(h, 'editorWindowStatus').at(-1);
     assert.deepEqual(report!.slice(0, 5), ['editorWindowStatus', h.env.nativeWindow, id(3), phase, false]);
-    assert.equal(report!.length, 5, 'native status has no renderer-local remember callback');
+    assert.deepEqual(report!.slice(5), [undefined], 'native status can carry a typed failure and has no renderer-local remember callback');
     assert.deepEqual((callsOf(h, 'remember') as unknown), [], 'opening/error cannot persist a locator');
   }
 });
@@ -750,7 +752,7 @@ test('native and Web accepted selection have no retired locator writer', async (
   const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
   assert.equal(await h.selectProject(id(3), true), true);
   render(h); const report = callsOf(h, 'editorWindowStatus').at(-1);
-  assert.equal(report!.length, 5); assert.equal(report![4], true);
+  assert.deepEqual(report!.slice(4), [true, undefined]);
   assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   assert.equal(await h.selectProject(id(3)), true); assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   const web = harness(); assert.equal(await web.selectProject(id(1)), true);

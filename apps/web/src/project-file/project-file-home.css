@@ -52,6 +52,11 @@
 .pf-card-skeleton .pf-skeleton-line:first-of-type { margin-top: 2px; }
 .pf-home-error { align-self: stretch; }
 .pf-home-empty { min-height: 420px; border: 1px dashed var(--wb-line); border-radius: var(--wb-radius-panel); }
+.pf-open-pending, .pf-open-pending > [role="status"] { display: flex; align-items: center; gap: var(--wb-space-2); }
+.pf-open-pending { flex-wrap: wrap; color: var(--wb-soft); font-size: var(--wb-text-label); }
+.pf-open-pending > [role="status"] { min-width: 0; overflow-wrap: anywhere; }
+.pf-open-pending .wb-spinner { flex: none; }
+.pf-home > .pf-open-pending, .project-home-main > .pf-open-pending { margin-block-end: var(--wb-space-3); }
 
 /* Section 15: the native launcher and the editor's project picker share these rows. */
 .pf-home[data-native-layout] { gap: 16px; padding: 0; }

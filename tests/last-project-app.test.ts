@@ -17,6 +17,7 @@ import {projectDirectoryProjects} from '../apps/web/src/project-directory-presen
 type DeclaredFields<T> = {[K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]};
 type SelectionEnvironment = Omit<DeclaredFields<LegacySelectionEnvironment>, 'lastProjectRef'> & Record<string,unknown> & {projectEntryIdentityRef:{current:ProjectEntryIdentityOwner}};
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
+import {isProjectWindowId,projectWindowOpenFailure} from '../apps/desktop/src/project-window-protocol.ts';
 import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
 import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
 
@@ -73,7 +74,7 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
 function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(projectId: string): unknown; confirm?: boolean; videoDirectory?(): unknown}={}){
  const calls: [string, ...unknown[]][]=[],currentProject={current:id(1) as string | null},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState(),identity=projectEntryOwnerFixture(()=>projectEntryFixture(projects),calls);
- const env={canOfferBackupRecovery,backupFailure:null,projects,nativeLeaseRevoked:{current:false},msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
+ const env={canOfferBackupRecovery,backupFailure:null,projects,nativeLeaseRevoked:{current:false},msg,...createI18nTestContext(),localizedError:(value?: string|DisplayMessage|null|undefined)=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,isProjectWindowId,projectWindowOpenFailure,notify:(...args: unknown[])=>calls.push(['notice',...args]),readableError:(e: Error)=>e.message,editorSession: {current: 'normal'}, workspaceRef:{current:{}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
@@ -153,6 +154,65 @@ function bootHarness({directory=()=>projectEntryFixture(projects),explicit=null,
  });
  return{env,epoch,calls,guard,boot:()=>compile(bootSource,'boot',env)()};
 }
+
+test('native App reports an early boot error and missing directory entry against its fixed project', async () => {
+ const projectId=id(2),nativeWindow={context:{role:'editor',initialProjectId:projectId}};
+ for (const directory of [()=>null,()=>projectEntryFixture([{id:id(1)}])]) {
+  const f=bootHarness({directory,explicit:id(1)});Object.assign(f.env,{nativeWindow});
+  await f.boot();
+  assert.equal(f.env.currentProject.current,null);
+  assert.equal(f.env.projectOpening.phase,'error');
+  assert.equal(f.env.projectOpening.projectId,projectId);
+  assert.equal(f.calls.some(([call])=>call==='markOpened'),false);
+ }
+ const gate=deferred(),stale=bootHarness({directory:()=>gate.promise});Object.assign(stale.env,{nativeWindow});
+ const pending=stale.boot();await new Promise(setImmediate);stale.guard.deactivate();gate.reject(Error('late'));
+ await pending;
+ assert.equal(stale.calls.some(([call])=>call==='setProjectOpening'),false);
+});
+
+test('native App reports safe read failures and leaves recency writes to the desktop host', async () => {
+ const projectId=id(2),nativeWindow={context:{role:'editor',initialProjectId:projectId}};
+ const f=selectionHarness({refresh:()=>{throw Object.assign(Error('Synthetic project read failure'),{code:'PROJECT_MISSING'});}});
+ Object.assign(f.env,{nativeWindow});
+ assert.equal(await f.select(projectId,true),false);
+ assert.deepEqual(f.env.projectOpening,{phase:'error',projectId,error:'Synthetic project read failure',failure:{code:'PROJECT_MISSING'}});
+ assert.equal(f.calls.some(([call])=>call==='markOpened'),false);
+
+ const preferences=selectionHarness();Object.assign(preferences.env,{nativeWindow});
+ preferences.env.preferencesRef.current.load=async()=>{throw Object.assign(Error('Synthetic preference read failure'),{code:'PROJECT_LOCKED'});};
+ assert.equal(await preferences.select(projectId,true),false);
+ assert.deepEqual(preferences.env.projectOpening,{phase:'error',projectId,error:'Synthetic preference read failure',failure:{code:'PROJECT_LOCKED'}});
+ assert.equal(preferences.calls.some(([call])=>call==='markOpened'),false);
+
+ const ready=selectionHarness();Object.assign(ready.env,{nativeWindow});
+ assert.equal(await ready.select(projectId,true),true);
+ assert.equal(ready.env.projectOpening.phase,'ready');
+ assert.equal(ready.calls.some(([call])=>call==='markOpened'),false);
+});
+
+test('native App reports failure when directory identity changes during the first project data read', async () => {
+ const gate=deferred(),projectId=id(2);
+ let directory=projectEntryFixture(projects);
+ const f=selectionHarness({refresh:()=>gate.promise});
+ f.env.projectEntryIdentityRef.current.dispose();
+ const identity=projectEntryOwnerFixture(()=>directory,f.calls);
+ f.env.projectEntryIdentityRef.current=identity;
+ Object.assign(f.env,{nativeWindow:{context:{role:'editor',initialProjectId:projectId}}});
+ const opening=f.select(projectId,true);
+ await new Promise(setImmediate);
+ assert.equal(f.env.projectOpening.phase,'opening');
+ directory=projectEntryFixture(projects,{instanceId:id(80)});
+ assert.equal(await identity.refresh(),null);
+ assert.equal(identity.getState().identityBlocked,true);
+ gate.resolve({project:{id:projectId},shots:[],nodes:[],edges:[],assets:[],versions:[],jobs:[],exports:[]});
+ assert.equal(await opening,false);
+ assert.equal(f.env.projectOpening.phase,'error');
+ assert.equal(f.env.projectOpening.projectId,projectId);
+ assert.equal(f.env.auth,'error');
+ assert.equal(f.env.projectSessionReady(),false);
+ assert.equal(f.calls.some(([call])=>call==='markOpened'),false);
+});
 test('actual App startup retains verified scope on home and only explicit URL opens without a remember write',async()=>{
  const f=bootHarness();await f.boot();assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[]);assert.equal(f.env.preferenceScope!.current,scope);assert.equal(f.env.projectSessionReady(),false);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
  const g=bootHarness({explicit:id(1)});await g.boot();assert.deepEqual(g.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);

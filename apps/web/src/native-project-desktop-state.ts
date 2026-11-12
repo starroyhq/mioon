@@ -1,7 +1,7 @@
 import type {ProjectEntriesDesktopBridge, ProjectDesktopCapabilities, ProjectDesktopOpenResult, ProjectDesktopSelection, ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryDesktopRequestSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
-import {projectOpenFailureSchema} from '../../../packages/contracts/src/project-file.ts';
+import {projectEntryOpenFailure, projectEntryOpenFailureSchema} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import {readProjectEntryIdentity} from './project-entry-identity.ts';
 import type {NewProjectFileValues, NewProjectFileState} from './project-file/NewProjectFileDialog.tsx';
@@ -99,18 +99,12 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   }
   function fail(error: unknown, context: 'open' | 'create' = 'open', projectId?: string) {
     if (!current()) return;
-    const details = object(error) && object(error.details) ? error.details : {};
     const registered = identity.getState().snapshot?.registered.find(row => row.project.projectId === projectId)?.project;
     const projectFile = registered?.projectFile ?? null;
-    let issue: ProjectOpenIssue = {code: 'OPEN_UNAVAILABLE', projectFile, projectId: projectId ?? null};
-    if (object(error) && error.code === 'PROJECT_ACCESS_DENIED') issue = {code: 'PROJECT_ACCESS_DENIED', projectFile, projectId: projectId ?? null, context};
-    else if (object(error)) {
-      const code = error.code === 'PROJECT_UNAVAILABLE' && typeof details.reason === 'string' ? details.reason : error.code;
-      const parsed = projectOpenFailureSchema.safeParse({code, projectFile, projectId: projectId ?? null,
-        ...(code === 'PROJECT_INVALID' ? {reason: details.invalidReason ?? details.reason} : {}),
-        ...(code === 'PROJECT_FORMAT_NEWER' ? {database: details.database, formatVersion: details.formatVersion, supportedFormatVersion: details.supportedFormatVersion} : {})});
-      if (parsed.success) issue = parsed.data;
-    }
+    const parsed = projectEntryOpenFailureSchema.safeParse(error);
+    const known = parsed.success ? parsed.data : projectEntryOpenFailure(error, projectId);
+    const issue: ProjectOpenIssue = {...(known ?? {code: 'OPEN_UNAVAILABLE'}), projectFile, projectId: projectId ?? null,
+      ...(known?.code === 'PROJECT_ACCESS_DENIED' ? {context} : {})};
     emit({failure: {issue, name: registered?.name ?? (context === 'create' ? state.values.name : null), ...(projectId ? {projectId} : {})}});
   }
   function result(value: ProjectDesktopOpenResult, serial = generation): boolean {
@@ -258,7 +252,19 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     flight.promise = Promise.resolve().then(() => initializeOwner(editor, flight.generation, owns)).finally(() => {if (initialization === flight) initialization = null;});
     initialization = flight; return flight.promise;
   }
-  async function openFile() {const serial = generation; if (!state.capabilities?.ready || !state.capabilities.open) return false; return run('retry', async () => result(await client.openSelectedFile(), serial));}
+  async function openFile() {
+    const serial = generation;
+    if (!state.capabilities?.ready || !state.capabilities.open) return false;
+    return run('retry', async () => {
+      // A retained failure dialog must not cover the selected project's
+      // pending open and its cancellation action.
+      const previous = state.failure;
+      if (previous) emit({failure: null});
+      const opened = await client.openSelectedFile();
+      if (opened.status === 'cancelled' && previous && current(serial)) emit({failure: previous});
+      return result(opened, serial);
+    });
+  }
   async function chooseLocation() {
     if (!editable() || !state.capabilities?.ready || !state.capabilities.create) return false;
     const serial = generation;

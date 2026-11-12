@@ -45,6 +45,32 @@ test('real utility control roundtrip opens the selected original, creates once a
  const source=await f.client.api.observeSource({projectFile:adoptedCopy});assert.equal(source.name,'Original');assert.equal(source.source.sourceFile,adoptedCopy);
 });
 
+test('cancelling an unacknowledged ready write never releases its displayed window lease', async t => {
+ const acknowledgement = Promise.withResolvers<() => void>(), released: string[] = [];
+ const f = await fixture(t, control => ({...control, release(input) {
+  released.push(input.windowId); control.release(input);
+ }}), (message, deliver) => {
+  if (message !== null && typeof message === 'object' && 'ok' in message && message.ok === true
+      && 'data' in message && message.data === true) acknowledgement.resolve(deliver);
+  else deliver();
+ });
+ const windowId = randomUUID(), input = {projectId: f.projectId, windowId, deferRecent: true as const};
+ const opened = await f.client.api.acquire(input);
+ const abort = new AbortController();
+ const pending = f.client.request({operation: 'markOpened', input: {windowId, contextId: randomUUID()}}, {signal: abort.signal});
+ const deliver = await acknowledgement.promise;
+ abort.abort();
+ await assert.rejects(pending, {code: 'PROJECT_ENTRY_OUTCOME_UNKNOWN'});
+ deliver();
+ assert.deepEqual(await f.client.api.acquire(input), opened);
+ assert.equal(isProjectFileHeld(opened.project.fileIdentity), true);
+ assert.deepEqual(released, []);
+ f.client.api.release({windowId});
+ await new Promise<void>(resolve => setImmediate(resolve));
+ assert.deepEqual(released, [windowId]);
+ assert.equal(isProjectFileHeld(opened.project.fileIdentity), false);
+});
+
 for(const kind of ['project','history','cache','application'] as const)test(`source observation refuses an alias of a held ${kind} before any descriptor can release its real write lock`,async t=>{
  const f=await fixture(t),store=openStore(path.join(f.root,'foreign-project')),library=openAppLibrary({dataDir:path.join(f.root,'foreign-app')});
  try{store.put('projects',{id:store.projectId,name:'Held source'});

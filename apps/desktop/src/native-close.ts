@@ -451,6 +451,18 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     /** Only the captured, already-allowed current URL is reloadable. Callers
      * cannot supply a destination or repurpose a close approval. */
     requestReload,
+    /** A never-shown editor may close after this exact renderer exits. A live
+     * document still needs the ordinary close handshake. */
+    closeConfirmedGone(): boolean {
+      const proof = goneProof;
+      if (!proof || active || !canAct('close') || !ownsWindow() ||
+          proof.document !== documentGeneration || proof.sourceUrl !== readUrl()) return false;
+      goneProof = null;
+      const allowance: GoneExitAllowance = {proof, serial, consumed: false};
+      goneExit = allowance;
+      try { win.close(); return allowance.consumed; }
+      finally { if (goneExit === allowance) goneExit = null; }
+    },
     /** Capture at the existing recovery dialog's creation. Reload and Exit share
      * one explicit decision, so neither can replay or consume a newer incident.
      * A dead renderer has no surviving owner to inspect/drain; a live or merely

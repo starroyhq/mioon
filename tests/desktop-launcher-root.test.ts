@@ -39,6 +39,7 @@ function homeHarness(patch: Record<string, unknown> = {}) {
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './LanguageControl.tsx') return { default: () => null };
+    if (name === './project-file/RecentProjects.tsx') return { PendingProjectOpenStatus: 'pending-project-open-status' };
     return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchButton', 'WorkbenchIcon', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
   const props: Record<string, unknown> = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null,
@@ -108,6 +109,29 @@ test('launcher pages retain the directory and dispatch only visible permitted ac
   assert.ok(find(h.render(), 'project-home-open-file'));
   refresh();
   assert.deepEqual(calls, ['file', 'example', 'refresh']);
+});
+test('a pending candidate remains cancellable when a launcher page hides the catalog', () => {
+  const projectId = '77000000-0000-4000-8000-000000000001';
+  const pendingOpen = {projectId, onCancel() {}};
+  let catalogPending: unknown;
+  const h = homeHarness({
+    projects: [{id: projectId, name: 'Sample', updatedAt: ''}],
+    launcher: {version: '0.1.1', service: 'ready', empty: false},
+    renderCatalog: (_empty: unknown, pending: unknown) => {
+      catalogPending = pending;
+      return {type: 'section', props: {'data-testid': 'synthetic-directory'}};
+    },
+  });
+  const catalog = h.render({pendingOpen, deferOpeningFeedback: true, phase: 'opening'});
+  assert.equal(catalogPending, pendingOpen);
+  assert.equal(nodes(catalog).some(node => node.props.pending === pendingOpen), false);
+  assert.equal(nodes(catalog).some(node => node.props['data-phase'] === 'opening' && node.props.role === 'status'), false);
+  find(h.render({pendingOpen: undefined, phase: 'home'}), 'launcher-nav-examples').props.onClick!();
+  const examples = h.render({pendingOpen, phase: 'opening'});
+  assert.equal(catalogPending, undefined);
+  assert.equal(nodes(examples).filter(node => node.props.pending === pendingOpen).length, 1);
+  assert.equal(nodes(examples).find(node => node.props.pending === pendingOpen)?.props.name, 'Sample');
+  assert.ok(find(examples, 'launcher-examples'));
 });
 test('typed launcher dependency graph never imports App, editor controllers or legacy settings forms', () => {
   const result = buildSync({ entryPoints: [join(root, 'apps/web/src/LauncherRoot.tsx')], bundle: true, platform: 'browser', write: false, metafile: true, loader: { '.css': 'empty' } });

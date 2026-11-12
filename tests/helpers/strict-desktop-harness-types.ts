@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import type {EventEmitter} from 'node:events';
 import type {BackendSupervisor} from '../../apps/desktop/src/supervisor.ts';
 import type {createDesktopStartup} from '../../apps/desktop/src/startup.ts';
@@ -94,6 +95,7 @@ export function createDesktopHarnessProjectEntries():ProjectEntryControlPort {
   prepareAcquire:async({projectId})=>registration(projectId),
   acquire:async({projectId,windowId})=>{leases.add(windowId);return {windowId,project:registration(projectId)};},
   openPath:async({windowId,projectFile})=>{leases.add(windowId);const project={...registration('22222222-2222-4222-8222-222222222222'),projectFile};registrations.set(project.projectId,project);return {windowId,project};},
+  markOpened:({windowId})=>{assert.equal(leases.has(windowId),true);return true as const;},
   release:({windowId})=>{leases.delete(windowId);},onWindowRevoked:()=>()=>{},
  };
 }

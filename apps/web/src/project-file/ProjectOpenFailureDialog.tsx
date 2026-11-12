@@ -73,9 +73,10 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   switch (failure.code) {
     case 'PROJECT_MISSING':
       title = t('projectFile.open.missing.title', { name });
-      body = Number.isSafeInteger(count) && count! > 0
-        ? <span data-testid="pf-open-waiting">{t('projectFile.open.missing.bodyWithTasks', { path: failure.projectFile, count: count! })}</span>
-        : t('projectFile.open.missing.body', { path: failure.projectFile });
+      body = !failure.projectFile ? t('projectFile.open.unavailable.body')
+        : Number.isSafeInteger(count) && count! > 0
+          ? <span data-testid="pf-open-waiting">{t('projectFile.open.missing.bodyWithTasks', { path: failure.projectFile, count: count! })}</span>
+          : t('projectFile.open.missing.body', { path: failure.projectFile });
       buttons = <>{close(t('common.close'), !props.onLocate)}{run('remove', t('projectFile.open.missing.remove'), props.onRemove)}{run('locate', t('projectFile.home.locate'), props.onLocate, true)}</>;
       break;
     case 'PROJECT_LOCKED':
@@ -94,7 +95,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       break;
     }
     case 'PROJECT_INVALID': {
-      title = t('projectFile.open.invalid.title', { file: fileNameOf(failure.projectFile) });
+      title = t('projectFile.open.invalid.title', { file: failure.projectFile ? fileNameOf(failure.projectFile) : name });
       if (failure.reason === 'read-only') {
         title = t('projectFile.open.readOnly.title', {name});
         body = t('projectFile.open.readOnly.body');

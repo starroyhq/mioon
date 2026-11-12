@@ -74,7 +74,9 @@ async function until(predicate: () => unknown) {
 // The real main, supervisor, security and lifecycle functions run in this VM.
 // Only OS boundaries are fake. No Electron, native vault, utility or media runs.
 // Deferred gates expose causality; they do not claim native event timing.
-async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
+async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & {
+  beforeCommit?(index: number): Promise<void> | undefined;
+} = {}) {
   const nativeTray = desktopTrayHarness();
   const launcherStateRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-launcher-owner-'));
   t.after(() => rm(launcherStateRoot, {recursive: true, force: true}));
@@ -229,6 +231,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     async loadURL(url: string) {
       this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
       this.urls.push(url);
+      const beforeCommit = options.beforeCommit?.(this.index);
+      if (beforeCommit) await beforeCommit;
+      if (this.destroyed) return;
       this.webContents.mainFrame = this.newFrame(url);
       this.webContents.emit('did-navigate', {}, url);
       await options.load?.(this.index, this.urls.length, url);
@@ -377,6 +382,20 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   };
 }
 
+async function signalEditorReady(f: Awaited<ReturnType<typeof harness>>, editor: DesktopHarnessWindow) {
+  const host = f.get('windowHost'); await host.loadFor(editor);
+  const context = host.contextFor(editor);
+  assert.equal(await f.r.bridge!({sender: editor.webContents, senderFrame: editor.webContents.mainFrame},
+    {action: 'editor-status', contextId: context.contextId, projectId: context.editorProjectId, phase: 'ready'}), true);
+}
+
+async function readyColdEditor(f: Awaited<ReturnType<typeof harness>>) {
+  await until(() => f.r.windows.some(window => window.urls.at(-1)?.includes('?project=')));
+  const editor = f.r.windows.find(window => window.urls.at(-1)?.includes('?project='))!;
+  await signalEditorReady(f, editor);
+  await f.initial();
+}
+
 test('real main cold Finder and hot second-instance opens share a leased editor without uploading or flashing a launcher',async t=>{
  const file='/synthetic/Movies/Film.mioon',leases=new Set<string>(),released:string[]=[];let constructions=0,opens=0;
  const f=await harness(t,{
@@ -384,7 +403,7 @@ test('real main cold Finder and hot second-instance opens share a leased editor 
   windowCreated:()=>{constructions++;if(constructions===1)assert.ok(leases.size>0,'the utility lease must exist before BrowserWindow construction');},
   projectControl:(_index,port)=>({...port,openPath:async input=>{assert.equal(input.projectFile,file);opens++;const result=await port.openPath(input);leases.add(input.windowId);return result;},release:input=>{released.push(input.windowId);leases.delete(input.windowId);port.release(input);}}),
  });
- await f.initial();assert.equal(constructions,1,JSON.stringify({opens,dialogs:f.r.dialogs}));assert.equal(f.r.windows.length,1,JSON.stringify({opens,leases:[...leases],dialogs:f.r.dialogs}));assert.ok(f.r.windows[0].urls[0].includes('?project='));assert.equal(opens,1);assert.equal(leases.size,1);
+ await readyColdEditor(f);assert.equal(constructions,1,JSON.stringify({opens,dialogs:f.r.dialogs}));assert.equal(f.r.windows.length,1,JSON.stringify({opens,leases:[...leases],dialogs:f.r.dialogs}));assert.ok(f.r.windows[0].urls[0].includes('?project='));assert.equal(opens,1);assert.equal(leases.size,1);
  f.app.emit('second-instance',{},['mioon',file],'/synthetic');try{await until(()=>opens===2&&released.length===1);}catch{assert.fail(JSON.stringify({opens,released,leases:[...leases],dialogs:f.r.dialogs}));}assert.equal(f.r.windows.length,1);assert.equal(leases.size,1);
  f.r.windows[0].destroy();await until(()=>released.length===2);assert.equal(new Set(released).size,2,'temporary duplicate lease and editor lease each release once');assert.equal(leases.size,0);
 });
@@ -398,6 +417,32 @@ test('real main discards an OS open whose location probe finishes after backend 
  assert.deepEqual(opened,[],'no old or replacement utility may acquire a lease for the stale OS intent');assert.equal(f.r.windows.filter(window=>!window.destroyed).length,1);assert.ok(f.r.windows.filter(window=>!window.destroyed).every(window=>!window.urls.at(-1)?.includes('?project=')));assert.equal(f.fatals().length,0);
 });
 
+test('OS files queued during restart do not wait for a paused renderer to admit its own ready status', async t => {
+  const file = '/synthetic/Movies/Restart.mioon', opens: Array<{backend: number; deferRecent?: true}> = [];
+  const f = await harness(t, {
+    child: index => ({ready: index === 0}),
+    projectControl: (backend, port) => ({...port, openPath(input) {
+      assert.equal(input.projectFile, file);
+      opens.push({backend, deferRecent: input.deferRecent});
+      return port.openPath(input);
+    }}),
+  });
+  await f.initial();
+  const restart = f.restart();
+  await until(() => f.r.children.length === 2);
+  f.app.emit('open-file', {preventDefault() {}}, file);
+  assert.deepEqual(Array.from(f.get('projectFiles.pending')), [file]);
+  f.r.children[1].ready();
+  await until(() => f.get('restarting') === false);
+  await restart;
+  assert.deepEqual(opens, [{backend: 1, deferRecent: undefined}]);
+  const editor = f.r.windows.find(window => !window.destroyed && window.urls.at(-1)?.includes('?project='));
+  assert.ok(editor);
+  await signalEditorReady(f, editor);
+  assert.equal(f.get('windowHost').contextFor(editor).editorPhase, 'ready');
+  assert.deepEqual(f.fatals(), []);
+});
+
 test('real main keeps a later valid OS file queued until the earlier failure sheet closes',async t=>{
  const bad='/synthetic/Movies/Bad.mioon',good='/synthetic/Movies/Good.mioon',sheet=Promise.withResolvers<{response:number}>(),probed:string[]=[],opened:string[]=[];let sheets=0;
  const f=await harness(t,{
@@ -407,7 +452,7 @@ test('real main keeps a later valid OS file queued until the earlier failure she
   dialog:()=>{sheets++;return sheet.promise;},release:()=>sheet.resolve({response:0}),
  });
  await until(()=>sheets===1);await tick();assert.deepEqual(probed,[bad]);assert.deepEqual(opened,[bad]);assert.deepEqual(Array.from(f.get('projectFiles.pending')),[good]);
- sheet.resolve({response:0});await f.initial();
+ sheet.resolve({response:0});await readyColdEditor(f);
  assert.deepEqual(opened,[bad,good]);assert.deepEqual(probed,[bad,good]);assert.equal(sheets,1);assert.equal(f.r.windows.filter(window=>window.urls.at(-1)?.includes('?project=')).length,1);assert.equal(f.fatals().length,0);
 });
 
@@ -499,7 +544,7 @@ test('real main retains relink document tickets across a temporary Settings admi
    discard:async()=>{},
   }}),
  });
- await f.initial();const editor=f.r.windows[0],host=f.get('windowHost'),handler=f.r.ipcHandlers!.get(NATIVE_ASSET_MEDIA_CHANNEL)!;
+ await readyColdEditor(f);const editor=f.r.windows[0],host=f.get('windowHost'),handler=f.r.ipcHandlers!.get(NATIVE_ASSET_MEDIA_CHANNEL)!;
  f.get('dialog').showOpenDialog=async()=>{picks++;return {canceled:false,filePaths:['/synthetic/Movies/image.png']};};
  const invoke=(input:unknown)=>handler({sender:editor.webContents,senderFrame:editor.webContents.mainFrame},input) as Promise<{ok:boolean;data:{previewToken:string;status?:string}}>;
  const choose={action:'choose',projectId,assetId,expectedReferenceRevision:1},first=await invoke(choose);assert.equal(first.ok,true);
@@ -772,14 +817,113 @@ async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>, projectId
   const launcher = f.r.windows[0];
   const host = f.get('windowHost');
   const entryToken = randomUUID(); source.entryTickets.set(entryToken, projectId);
-  const opened = await f.r.bridge!({ sender: source.webContents, senderFrame: source.webContents.mainFrame },
+  const count = f.r.windows.length;
+  const opening = f.r.bridge!({ sender: source.webContents, senderFrame: source.webContents.mainFrame },
     { action: 'open', contextId: host.contextFor(source).contextId, projectId, entryToken, remember: true });
-  assert.equal((opened as {ok: boolean}).ok, true);
-  const editor = f.r.windows.at(-1)!; await host.loadFor(editor);
-  assert.equal(f.r.bridge!({ sender: editor.webContents, senderFrame: editor.webContents.mainFrame },
-    { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
+  await until(() => f.r.windows.length === count + 1);
+  const editor = f.r.windows.at(-1)!; await signalEditorReady(f, editor);
+  assert.equal((await opening as {ok: boolean}).ok, true);
   return { launcher, editor };
 }
+
+test('a first renderer crash keeps the launcher visible and releases only the hidden candidate on closed', async t => {
+  const released: string[] = [], marked: string[] = [];
+  const f = await harness(t, {holdClosed: index => index === 1, projectControl: (_index, port) => ({...port,
+    markOpened(input) { marked.push(input.windowId); return port.markOpened!(input); },
+    release(input) { released.push(input.windowId); port.release(input); },
+  })});
+  await f.initial();
+  const launcher = f.r.windows[0], host = f.get('windowHost');
+  const contextId = host.contextFor(launcher).contextId;
+  const projectId = '79000000-0000-4000-8000-000000000001', entryToken = randomUUID();
+  launcher.emit('ready-to-show'); assert.equal(launcher.visible, true);
+  launcher.entryTickets.set(entryToken, projectId);
+  const opening = Promise.resolve(f.r.bridge!({sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame},
+    {action: 'open', contextId, projectId, entryToken, remember: true}));
+  let settled = false; void opening.then(() => { settled = true; });
+  await until(() => f.r.windows.length === 2);
+  const editor = f.r.windows[1]; await host.loadFor(editor);
+  const windowId = host.contextFor(editor).windowId;
+  editor.emit('ready-to-show');
+  editor.webContents.emit('unresponsive'); await tick();
+  assert.equal(editor.shows, 0); assert.equal(editor.destroyed, false); assert.equal(settled, false);
+  assert.equal(launcher.visible, true); assert.deepEqual(marked, []);
+  editor.webContents.emit('render-process-gone', {}, {reason: 'crashed', exitCode: 1});
+  await until(() => editor.destroyed);
+  assert.equal(editor.closedDelivered, false); assert.equal(settled, false);
+  assert.deepEqual(released, []);
+  editor.deliverClosed();
+  const result = await opening;
+  await until(() => released.length === 1);
+  assert.deepEqual(released, [windowId]);
+  assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null});
+  assert.deepEqual(host.contextFor(launcher).entryReceipt, {entryToken, result});
+  assert.equal(launcher.visible, true); assert.equal(editor.shows, 0);
+  assert.deepEqual(marked, []); assert.equal(f.r.quits, 0); assert.equal(f.r.drains, 0);
+  assert.deepEqual(f.rendererDialogs(), []);
+});
+
+test('an uncommitted editor navigation failure closes by the initial empty proof before replying', async t => {
+  const navigation = Promise.withResolvers<void>(), released: string[] = [];
+  const f = await harness(t, {
+    beforeCommit: index => index === 1 ? navigation.promise : undefined,
+    holdClosed: index => index === 1,
+    projectControl: (_index, port) => ({...port,
+      release(input) { released.push(input.windowId); port.release(input); },
+    }),
+  });
+  await f.initial();
+  const launcher = f.r.windows[0], host = f.get('windowHost');
+  launcher.emit('ready-to-show');
+  const projectId = '79000000-0000-4000-8000-000000000001', entryToken = randomUUID();
+  launcher.entryTickets.set(entryToken, projectId);
+  const opening = Promise.resolve(f.r.bridge!({sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame},
+    {action: 'open', contextId: host.contextFor(launcher).contextId, projectId, entryToken, remember: true}));
+  let settled = false; void opening.then(() => { settled = true; });
+  await until(() => f.r.windows[1]?.urls.length === 1);
+  const editor = f.r.windows[1], windowId = host.contextFor(editor).windowId;
+  assert.equal(editor.webContents.getURL(), 'about:blank');
+  navigation.reject(new Error('Synthetic pre-commit navigation failure'));
+  await until(() => editor.destroyed);
+  assert.deepEqual(f.r.nativeChecks, []);
+  assert.equal(launcher.visible, true); assert.equal(editor.shows, 0);
+  assert.equal(settled, false); assert.deepEqual(released, []);
+  editor.deliverClosed();
+  const result = await opening;
+  assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null});
+  assert.deepEqual(host.contextFor(launcher).entryReceipt, {entryToken, result});
+  await until(() => released.length === 1);
+  assert.deepEqual(released, [windowId]); assert.deepEqual(f.r.dialogs, []);
+});
+
+test('a blocked candidate close warns only its originating launcher and preserves the original result', async t => {
+  const f = await harness(t, {disposition: index => index === 1 ? 'blocked' : 'clean'});
+  await f.initial();
+  const launcher = f.r.windows[0], host = f.get('windowHost');
+  launcher.emit('ready-to-show');
+  const projectId = '79000000-0000-4000-8000-000000000001', entryToken = randomUUID();
+  launcher.entryTickets.set(entryToken, projectId);
+  const opening = Promise.resolve(f.r.bridge!({sender: launcher.webContents, senderFrame: launcher.webContents.mainFrame},
+    {action: 'open', contextId: host.contextFor(launcher).contextId, projectId, entryToken, remember: true}));
+  let settled = false; void opening.then(() => { settled = true; });
+  await until(() => f.r.windows.length === 2);
+  const candidate = f.r.windows[1]; await host.loadFor(candidate);
+  const sender = {sender: candidate.webContents, senderFrame: candidate.webContents.mainFrame};
+  const contextId = host.contextFor(candidate).contextId, failure = {code: 'PROJECT_MISSING'};
+  assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'failed', failure}), true);
+  await until(() => f.r.dialogs.some(item => item.title === '暂时无法安全离开'));
+  const notice = f.r.dialogs.findIndex(item => item.title === '暂时无法安全离开');
+  assert.equal(f.r.dialogParents[notice], launcher);
+  assert.equal(candidate.destroyed, false); assert.equal(candidate.shows, 0);
+  assert.equal(launcher.visible, true); assert.equal(settled, false);
+  candidate.disposition = 'clean';
+  assert.equal(f.r.bridge!(sender, {action: 'editor-status', contextId, projectId, phase: 'ready'}), false);
+  const result = await opening;
+  assert.equal(candidate.closedDelivered, true);
+  assert.deepEqual(result, {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure});
+  assert.deepEqual(host.contextFor(launcher).entryReceipt, {entryToken, result});
+  assert.equal(candidate.shows, 0); assert.equal(launcher.visible, true);
+});
 
 test('actual main centers and titles the launcher with its own window state', async t => {
   const f = await harness(t); await f.initial();
@@ -1226,10 +1370,7 @@ for (const kind of ['renderer-recovery', 'blocked-leave'] as const) test(`an act
   const f = await harness(t, {disposition: index => kind === 'blocked-leave' && index === 1 ? 'blocked' : 'clean',
     dialog: value => value.title === title ? response.promise : {response: 0}, release: () => response.resolve({response: 2})});
   await f.initial(); const {editor} = await openOwnedEditor(f), host = f.get('windowHost');
-  const projectB = '79000000-0000-4000-8000-000000000002', token = randomUUID(); editor.entryTickets.set(token, projectB);
-  await f.r.bridge!({sender: editor.webContents, senderFrame: editor.webContents.mainFrame},
-    {action: 'open', contextId: host.contextFor(editor).contextId, projectId: projectB, entryToken: token, remember: true});
-  const other = f.r.windows.at(-1)!; await host.loadFor(other);
+  const {editor: other} = await openOwnedEditor(f, '79000000-0000-4000-8000-000000000002', editor);
   const tray = f.nativeTray.trays[0], staleMenu = tray.menu;
   if (kind === 'renderer-recovery') editor.webContents.emit('unresponsive'); else editor.close();
   await until(() => f.r.dialogs.some(item => item.title === title));

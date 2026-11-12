@@ -16,11 +16,13 @@ import type {ProjectEntryControlPort} from '../packages/contracts/src/project-en
 import {projectEntryControlErrorSchema} from '../packages/contracts/src/project-entry-control.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
+import type {ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
 const pendingChannel='mioon:project-entries:pending-open:v1';
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
-async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort){
+async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,openRecent?:(
+ owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-desktop-')),dataDir=path.join(root,'app'),selected=path.join(root,'selected');mkdirSync(selected);
  const created=createServerProject(dataDir,{name:'Original'}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
  const server=await startServer({dataDir,port:0,token:'synthetic-desktop-entry-token'}),backendId=randomUUID();
@@ -30,23 +32,54 @@ async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort
  const nativeWindow={},windowId=randomUUID();let contextId=randomUUID(),active=true,ready=true,editor=false,settingsOpened=0;
  const owner=():ProjectEntryDesktopOwner=>{const captured=contextId;return{window:nativeWindow,windowId,backendId,contextId:captured,...(editor?{projectId}:{}),isCurrent:()=>active&&contextId===captured};};
  let directory:string|null=selected,openFile:string|null=file;
- const messages:string[]=[],adopted:string[]=[],probed:string[]=[],revealed:string[]=[],admitted:ProjectLocationFacts[]=[],locationFacts=new Map<string,ProjectLocationFacts>();
+ const messages:string[]=[],adopted:string[]=[],readyRequired:boolean[]=[],probed:string[]=[],revealed:string[]=[],admitted:ProjectLocationFacts[]=[],locationFacts=new Map<string,ProjectLocationFacts>();
  const notices:unknown[]=[],listeners=new Set<(event:unknown,value:unknown)=>void>();
  const host=createProjectEntryDesktopHost({ownerForEvent:(event:string)=>event==='owner'?owner():null,backend:client.api,isReady:()=>ready,
   chooseDirectory:async(_owner,input)=>{messages.push(input.message);return directory;},chooseOpenFile:async()=>openFile,
   chooseSaveFile:async(_owner,input)=>{messages.push(input.message);return path.join(selected,input.suggestedName+'.mioon');},
   probeLocation:async input=>{probed.push(input.path);return locationFacts.get(input.path)??facts;},admitLocation:async(_owner,value)=>{admitted.push(value);return true;},
-  adoptPrepared:async prepared=>{adopted.push(prepared.windowId);return {ok:true,targetWindowId:prepared.windowId,reason:'accepted'};},
-  openRecent:async()=>({ok:false,targetWindowId:null,reason:'unavailable'}),
+  adoptPrepared:async(prepared,waitForReady)=>{adopted.push(prepared.windowId);readyRequired.push(waitForReady===true);return {ok:true,targetWindowId:prepared.windowId,reason:'accepted'};},
+  openRecent:openRecent??(async()=>({ok:false,targetWindowId:null,reason:'unavailable'})),
   openPrivacySettings:async()=>{settingsOpened++;},revealVerifiedPath:async(_owner,file)=>{revealed.push(file);},
   notifyPendingOpen:(_owner,notice)=>{notices.push(notice);for(const listener of listeners)listener({notForRenderer:true},notice);},
  });
  const invoke=(channel:typeof PROJECT_ENTRY_DESKTOP_CHANNEL,input:unknown)=>{assert.equal(channel,PROJECT_ENTRY_DESKTOP_CHANNEL);return host.handle('owner',input);};
  const bridge=createProjectEntriesDesktopBridge(invoke,{on:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.add(listener);},removeListener:(channel,listener)=>{assert.equal(channel,pendingChannel);listeners.delete(listener);},context:async()=>owner()});
  t.after(async()=>{host.close();client.close();broker.close();await server.close();rmSync(root,{recursive:true,force:true});});
- return {root,selected,file,projectId,host,bridge,client,messages,adopted,probed,owner,revealed,admitted,notices,listeners,invoke,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
+ return {root,selected,file,projectId,host,bridge,client,messages,adopted,readyRequired,probed,owner,revealed,admitted,notices,listeners,invoke,get settingsOpened(){return settingsOpened;},asEditor(){editor=true;},setFacts(file:string,value:ProjectLocationFacts){locationFacts.set(file,value);},
   replaceDocument(){contextId=randomUUID();},disable(){ready=false;},cancel(){directory=null;openFile=null;},setOpen(file:string){openFile=file;},closeOwner(){active=false;}};
 }
+
+test('native recent ACK keeps cancellation, busy and verified failures distinct at both bridges',async t=>{
+ const refused:ProjectWindowOpenResult={ok:false,reason:'unavailable',targetWindowId:null,targetPhase:null};
+ let result:ProjectWindowOpenResult=refused;
+ const calls:unknown[]=[];
+ const f=await fixture(t,undefined,async(owner,projectId,entryToken,remember)=>{calls.push({contextId:owner.contextId,projectId,entryToken,remember});return result;});
+ const renderer=readProjectEntryDesktopClient({__mioonProjectEntries:f.bridge});assert.ok(renderer);
+ const input={projectId:f.projectId,entryToken:randomUUID(),remember:true};
+ const failure={code:'PROJECT_FORMAT_NEWER',database:'project',formatVersion:8,supportedFormatVersion:7} as const;
+ result={...refused,failure};
+ assert.deepEqual(await renderer.openRecent(input),{status:'failed',reason:'unavailable',failure});
+ assert.deepEqual(calls,[{contextId:f.owner().contextId,...input}]);
+ result={...refused,reason:'busy'};
+ assert.deepEqual(await renderer.openRecent({...input,entryToken:randomUUID()}),{status:'failed',reason:'busy'});
+ result={...refused,reason:'cancelled'};
+ assert.deepEqual(await renderer.openRecent({...input,entryToken:randomUUID()}),{status:'cancelled'});
+ const invalid=createProjectEntriesDesktopBridge(async()=>({ok:true,data:{status:'failed',reason:'unavailable',failure:{...failure,projectFile:'/private/raw.mioon'}}}));
+ await assert.rejects(invalid.openRecent(input));
+ f.disable();await assert.rejects(renderer.openRecent(input),{code:'PROJECT_ENTRY_UNAVAILABLE'});
+ assert.equal(calls.length,3,'the native host still authenticates and gates every request');
+});
+
+test('ordinary selected native opens defer recent bookkeeping and wait for their candidate',async t=>{
+ const inputs:Parameters<ProjectEntryControlPort['openPath']>[0][]=[];
+ const f=await fixture(t,port=>({...port,openPath:async input=>{inputs.push(input);return port.openPath(input);}}));
+ assert.equal((await f.bridge.openSelectedFile()).status,'opened');
+ assert.deepEqual(f.readyRequired,[true]);
+ assert.equal(inputs.length,1);
+ assert.deepEqual(inputs[0],{projectFile:f.file,windowId:f.adopted[0],deferRecent:true});
+ assert.equal((await f.client.api.listRecent()).registered[0].project.lastOpenedAt,null);
+});
 
 test('native picker tickets bind the exact owner; creation is once and returns created without bypassing sealed window open',async t=>{
  const f=await fixture(t),before=(await f.client.api.listRecent()).registered.length;
