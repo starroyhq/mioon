@@ -171,8 +171,12 @@ test('version documents keep legacy timeline bytes and admit the new geometry pr
     {...legacy, clips: [{...clip, layout: {profileId: 'mioon-clip-layout-v2', basisPresetId: 'portrait_720'}}]},
     {...legacy, subtitles: {profileId: 'bottom_cjk_relative_v2', basisPresetId: 'portrait_720', cues: []}},
   ]) {
-    assert.throws(() => decodeProjectDocument(encoded(replaceTimeline(released, change)), FORMAT4_PROJECT_SCHEMA_VERSION),
-      {code: 'PROJECT_VERSION_SNAPSHOT_INVALID', details: {reason: 'timeline-geometry'}});
+    for (const projectFormatVersion of [2, PROJECT_FILE_SCHEMA_VERSION] as const) {
+      const old = encoded({...replaceTimeline(released, change), projectFormatVersion});
+      assert.equal(decodeProjectDocument(old).tables.timelines[0]!.data, canonicalJson(change));
+      assert.throws(() => decodeProjectDocument(old, FORMAT4_PROJECT_SCHEMA_VERSION),
+        {code: 'PROJECT_VERSION_SNAPSHOT_INVALID', details: {reason: 'timeline-geometry'}});
+    }
     assert.equal(decodeProjectDocument(encoded(replaceTimeline(current, change))).tables.timelines[0]!.data, canonicalJson(change));
   }
   const malformed = {...legacy, clips: [{...clip, layout: {profileId: 'mioon-clip-layout-v2', basisPresetId: 'unknown'}}]};

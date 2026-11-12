@@ -9,7 +9,7 @@ import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/projec
 import {isProjectFileHeld} from './held-files.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {projectFileError} from './errors.ts';
-import {PROJECT_FILE_APPLICATION_ID, SCHEMA_VERSION_TABLE_SQL} from './schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {projectManifestForVersion} from './schema/format-manifests.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
@@ -81,7 +81,7 @@ export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: numbe
   const profile = (name: string) => pragma(db, qualifier + name);
   if (profile('application_id') !== applicationId || profile('encoding') !== 'UTF-8' || profile('journal_mode') !== 'delete') throw invalid('profile');
   const formatVersion = profile('user_version');
-  if (formatVersion !== 3 && formatVersion !== 4) throw invalid('format');
+  if (formatVersion !== PROJECT_FILE_SCHEMA_VERSION && formatVersion !== FORMAT4_PROJECT_SCHEMA_VERSION) throw invalid('format');
   const expected = projectManifestForVersion(formatVersion);
   if (!expected || db.prepare(`SELECT sql FROM ${schema}.sqlite_schema WHERE type='table' AND name='schema_version'`).get()?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid('format');
   const versions = db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
@@ -94,8 +94,12 @@ export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: numbe
   const projects = db.prepare(`SELECT id,data FROM ${schema}.projects LIMIT 2`).all();
   if (projects.length > 1 || projects.length === 1 && projects[0].id !== row.projectId) throw invalid('project-row');
   if (profile('quick_check') !== 'ok' || db.prepare(`PRAGMA ${qualifier}foreign_key_check`).get() !== undefined) throw invalid('integrity');
-  try { assertProjectTimelineGeometryProfile(db, schema, formatVersion); }
-  catch (error) { throw invalid('geometry', error); }
+  // Backups preserve released project rows even when a business reader would
+  // reject the timeline. Only the candidate format owns a geometry profile.
+  if (formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    try { assertProjectTimelineGeometryProfile(db, schema, formatVersion); }
+    catch (error) { throw invalid('geometry', error); }
+  }
   let name: string | null = null;
   if (projects.length) {
     try {

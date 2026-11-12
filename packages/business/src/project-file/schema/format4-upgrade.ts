@@ -1,7 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {
   FORMAT4_ARCHIVE_SEQUENCE_TRIGGERS, FORMAT4_ARCHIVE_UPDATE_TRIGGERS,
-  FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION,
+  FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION,
 } from './databases.ts';
 import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, canvasArchiveColumnDefinitions} from './domains/canvas.ts';
 
@@ -21,8 +21,8 @@ export function addFormat4ProjectStructureInside(db: DatabaseSync, schema: 'main
     for (const definition of canvasArchiveColumnDefinitions(table)) db.exec(`ALTER TABLE ${schema}.${table} ADD COLUMN ${definition}`);
     db.exec(`DROP TRIGGER ${schema}.agent_target_${table}_update_v2; DROP TRIGGER ${schema}.project_file_sequence_${table}_update`);
   }
-  // SQLite fires the sequence trigger before the revision update, as in a
-  // freshly built project. Both writes advance the current content stamp.
+  // Match the relative creation order of a fresh project's AFTER triggers.
+  // Each independently advances the current content stamp when it writes.
   for (const sql of [...CANVAS_ARCHIVE_INDEXES, ...FORMAT4_ARCHIVE_UPDATE_TRIGGERS, ...FORMAT4_ARCHIVE_SEQUENCE_TRIGGERS]) db.exec(qualify(schema, sql));
 }
 
@@ -38,12 +38,12 @@ export function upgradeProject3To4Inside(db: DatabaseSync, schema: 'main' | 'pro
   writeFormat4ProjectVersionInside(db, schema);
 }
 
-export function addFormat4HistoryStructureInside(db: DatabaseSync): void {
-  requireVersion(db, 'main', HISTORY_SCHEMA_VERSION);
+export function addFormat4HistoryStructureInside(db: DatabaseSync, sourceVersion: number): void {
+  requireVersion(db, 'main', sourceVersion);
   for (const sql of CANVAS_HISTORY_SCHEMA) db.exec(qualify('main', sql));
 }
 
-export function writeFormat4HistoryVersionInside(db: DatabaseSync): void {
-  requireVersion(db, 'main', HISTORY_SCHEMA_VERSION);
+export function writeFormat4HistoryVersionInside(db: DatabaseSync, sourceVersion: number): void {
+  requireVersion(db, 'main', sourceVersion);
   db.prepare('UPDATE main.schema_version SET version=?').run(FORMAT4_HISTORY_SCHEMA_VERSION);
 }

@@ -206,7 +206,7 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
           if (canonicalJson(parsed) !== value || column.name === 'data' && (!object(parsed) || (table !== 'projects' && parsed.projectId !== projectId)
             || Object.hasOwn(row, 'id') && object(parsed) && parsed.id !== row.id)) throw snapshotInvalid('json-owner');
         } catch {throw snapshotInvalid('json-column');}
-        if (table === 'timelines' && column.name === 'data' && format !== 1 && !isTimelineGeometryProfileAllowed(parsed, format)) {
+        if (table === 'timelines' && column.name === 'data' && format === FORMAT4_PROJECT_SCHEMA_VERSION && !isTimelineGeometryProfileAllowed(parsed, format)) {
           throw snapshotInvalid('timeline-geometry');
         }
       }
@@ -283,6 +283,12 @@ export function decodeSupportedProjectDocument(input: unknown, target?: ProjectF
   }
   const tables = {...source.tables};
   if (format === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    // Older named versions retain their original validation and bytes. A
+    // candidate adaptation must not give a new meaning to an older marker.
+    for (const row of source.tables.timelines) {
+      if (!isTimelineGeometryProfileAllowed(JSON.parse(String(row.data)), source.projectFormatVersion))
+        throw snapshotInvalid('timeline-geometry');
+    }
     const emptyArchive = Object.fromEntries(CANVAS_ARCHIVE_COLUMNS.map(column => [column, null]));
     for (const table of CANVAS_ARCHIVE_TABLES) {
       tables[table] = source.tables[table].map(row => ({...row, ...emptyArchive}));

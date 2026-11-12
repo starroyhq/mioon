@@ -11,7 +11,7 @@ import {inspectClosedProjectForTrash} from '../packages/business/src/project-fil
 import {inspectProjectFormatReadOnly, isProjectFileHeld, recoverProjectFile} from '../packages/business/src/project-file/connection.ts';
 import type {Format4Options, Format4UpgradeBoundary, Format4UpgradePreview} from '../packages/business/src/project-file/connection.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
-import {CACHE_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {CACHE_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {CANVAS_ARCHIVE_COLUMNS, CANVAS_ARCHIVE_TABLES} from '../packages/business/src/project-file/schema/domains/canvas.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -20,12 +20,14 @@ import {createProjectVersions} from '../packages/business/src/project-versions/s
 import {createTimelineRecoveryBoundary, readTimelineReceipt} from '../packages/business/src/timeline-recovery.ts';
 import {assertOldReleaseRejectsNewer, FORMAT4_RELEASES, prepareFormat4Release, readOldReleasePair, releaseProjectPaths} from './helpers/format4-release-fixture.ts';
 import type {Format4Release} from './helpers/format4-release-fixture.ts';
+import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
+import type {PreviousHistoryVersion} from './fixtures/kernel-history-previous-schema.ts';
 
 const RELEASES = Object.keys(FORMAT4_RELEASES) as Format4Release[];
 const CRASH_WORKER = fileURLToPath(new URL('./fixtures/format4-upgrade-crash-worker.ts', import.meta.url));
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
 const candidate = {project: FORMAT4_PROJECT_SCHEMA_VERSION, history: FORMAT4_HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
-const stable = {project: 3, history: 10, cache: 2};
+const stable = {project: PROJECT_FILE_SCHEMA_VERSION, history: HISTORY_SCHEMA_VERSION, cache: CACHE_SCHEMA_VERSION};
 type Sample = ReturnType<typeof prepareFormat4Release>;
 type Observed = Parameters<NonNullable<Format4Options['onUpgradeBoundary']>>[1];
 const samples = new Map<Format4Release, Sample>();
@@ -51,6 +53,7 @@ function fixture(release: Format4Release, label: string) {
 
 type Fixture = ReturnType<typeof fixture>;
 const approve = {approveUpgrade: () => true};
+const candidateRead = {};
 const readVersion = (db: DatabaseSync, statement: string): unknown => Object.values(db.prepare(statement).get()!)[0];
 const versions = (db: DatabaseSync) => ({
   project: readVersion(db, 'PRAGMA project.user_version'),
@@ -73,16 +76,16 @@ function removeLocalRecords(f: Fixture): void {
   for (const directory of Object.values(f.location)) rmSync(directory, {recursive: true});
 }
 
-function killUpgrade(f: Fixture, stopAt: Format4UpgradeBoundary): void {
+function killUpgrade(f: Fixture, stopAt: Format4UpgradeBoundary, sourceHistory: number = stable.history): void {
   const marker = path.join(f.root, 'kill-boundary.json');
   const result = spawnSync(process.execPath, [CRASH_WORKER, f.root, stopAt, marker], {
     stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8', timeout: 60_000,
   });
   assert.equal(result.signal, 'SIGKILL', result.stderr?.replaceAll(REPOSITORY, '<repo>/') || result.error?.message);
   assert.equal(result.status, null);
-  const expected = stopAt === 'before-version-write' ? stable : candidate;
+  const expected = stopAt === 'before-version-write' ? {...stable, history: sourceHistory} : candidate;
   assert.deepEqual(JSON.parse(readFileSync(marker, 'utf8')), {phase: stopAt, observed: {projectVersion: expected.project, historyVersion: expected.history}});
-  const recovery = recoverProjectFile(f.projectFile);
+  const recovery = recoverProjectFile(f.projectFile, candidateRead);
   assert.ok(recovery.state === 'clean' || recovery.state === 'recovered', `Unexpected recovery ${JSON.stringify(recovery)}`);
 }
 
@@ -95,7 +98,7 @@ function historyRows(db: DatabaseSync) {
     .map(table => db.prepare(`SELECT * FROM main.${table} ORDER BY rowid`).all());
 }
 
-function assertUpgradeBackup(f: Fixture, historyPresent: boolean): string {
+function assertUpgradeBackup(f: Fixture, historyPresent: boolean, historyVersion: number = stable.history): string {
   const backups = readdirSync(backupRoot(f));
   assert.equal(backups.length, 1);
   const directory = path.join(backupRoot(f), backups[0]!);
@@ -107,7 +110,7 @@ function assertUpgradeBackup(f: Fixture, historyPresent: boolean): string {
   });
   assert.deepEqual(JSON.parse(readFileSync(path.join(directory, 'manifest.json'), 'utf8')), {
     version: 1, projectId: f.evidence.projectId, ...f.evidence.stamp, historyPresent,
-    projectVersion: stable.project, historyVersion: historyPresent ? stable.history : null, files: entries,
+    projectVersion: stable.project, historyVersion: historyPresent ? historyVersion : null, files: entries,
   });
   return directory;
 }
@@ -176,6 +179,77 @@ test('format 4 is opt-in for fresh kernel creation', () => {
   }
 });
 
+function replaceHistoryWithFrozenProfile(f: Fixture, version: PreviousHistoryVersion): void {
+  rmSync(f.historyFile);
+  const db = new DatabaseSync(f.historyFile);
+  try {
+    db.exec('BEGIN');
+    buildPreviousHistoryDatabase(db, version);
+    db.exec('INSERT INTO mio_storage_counters VALUES(1,0,1)');
+    const {projectId, stamp: {contentSequence, contentToken}} = f.evidence;
+    if (version >= 8) db.prepare('INSERT INTO history_state VALUES(1,?,?,?)').run(projectId, contentSequence, contentToken);
+    else db.prepare('INSERT INTO history_state VALUES(1,?,?)').run(projectId, contentSequence);
+    db.exec("INSERT INTO idempotency VALUES('retained','request','digest','resource'); COMMIT");
+  } finally {db.close();}
+}
+
+for (const sourceVersion of [8, 9] as const) {
+  test(`matched frozen history ${sourceVersion} transitions through the current schema inside the format 4 transaction`, () => {
+    const f = fixture('v0.1.1', `legacy-history-${sourceVersion}`);
+    replaceHistoryWithFrozenProfile(f, sourceVersion);
+    const initial = files(f);
+    assert.throws(() => f.open(candidateRead).close(), {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED'});
+    assert.deepEqual(files(f), initial);
+    assert.equal(existsSync(backupRoot(f)), false);
+    const store = f.open({
+      approveUpgrade: preview => {
+        assert.equal(preview.historyVersion, sourceVersion);
+        return true;
+      },
+      onUpgradeBoundary: (phase, observed) => {
+        assert.deepEqual(observed, phase === 'before-version-write'
+          ? {projectVersion: stable.project, historyVersion: sourceVersion}
+          : {projectVersion: candidate.project, historyVersion: candidate.history});
+      },
+    });
+    try {
+      assert.deepEqual(versions(store.db), candidate);
+      assert.deepEqual(pair(store), f.evidence.stamp);
+      assert.equal(store.db.prepare("SELECT resourceId FROM idempotency WHERE scope='retained'").get()?.resourceId, 'resource');
+    } finally {store.close();}
+    const backup = assertUpgradeBackup(f, true, sourceVersion);
+    assert.deepEqual(readFileSync(path.join(backup, 'project.mioon')), initial[0]);
+    assert.deepEqual(readFileSync(path.join(backup, 'history.db')), initial[1]);
+    const reopened = f.open(candidateRead);
+    try {assert.deepEqual(versions(reopened.db), candidate);} finally {reopened.close();}
+  });
+}
+
+test('a killed format 4 transition leaves the original frozen history pair reopenable for approval', {skip: process.platform === 'win32'}, () => {
+  const f = fixture('v0.1.1', 'legacy-history-crash');
+  replaceHistoryWithFrozenProfile(f, 9);
+  const before = files(f);
+  killUpgrade(f, 'before-commit', 9);
+  assert.throws(() => f.open(candidateRead).close(), {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED'});
+  assert.deepEqual(files(f), before);
+  assertUpgradeBackup(f, true, 9);
+});
+
+test('a tokenless history uses ordinary admission and never approves a guessed pair', () => {
+  const f = fixture('v0.1.1', 'legacy-history-tokenless');
+  replaceHistoryWithFrozenProfile(f, 7);
+  const project = readFileSync(f.projectFile);
+  const store = f.open({approveUpgrade: () => assert.fail('Legacy tokenless evidence requires history resolution')});
+  try {
+    assert.deepEqual(versions(store.db), stable);
+    assert.equal(store.historyAdmission.state, 'diverged');
+    assert.equal(store.historyAdmission.reason, 'legacy-token-missing');
+    assert.equal(store.db.prepare("SELECT resourceId FROM idempotency WHERE scope='retained'").get()?.resourceId, 'resource');
+  } finally {store.close();}
+  assert.deepEqual(readFileSync(f.projectFile), project);
+  assert.equal(existsSync(backupRoot(f)), false);
+});
+
 for (const release of RELEASES) {
   test(`${release}: exact released pair requires consent, upgrades together, and reopens with original version receipts`, () => {
     const f = fixture(release, 'approved'), previous = state(f);
@@ -213,7 +287,8 @@ for (const release of RELEASES) {
     const reopened = f.open({approveUpgrade: () => assert.fail('A current file does not prompt again')});
     try {assertCandidate(reopened, f, previous);} finally {reopened.close();}
     assert.equal(assertUpgradeBackup(f, true), backup);
-    assert.deepEqual(inspectProjectFormatReadOnly(f.projectFile), {projectId: f.evidence.projectId, ...f.evidence.stamp, formatVersion: candidate.project});
+    assert.throws(() => inspectProjectFormatReadOnly(f.projectFile), {code: 'PROJECT_FORMAT_NEWER'});
+    assert.deepEqual(inspectProjectFormatReadOnly(f.projectFile, candidateRead), {projectId: f.evidence.projectId, ...f.evidence.stamp, formatVersion: candidate.project});
 
     const upgraded = files(f);
     for (const older of RELEASES) {
@@ -327,7 +402,7 @@ for (const release of RELEASES) {
     assert.ok(replacement);
     assert.equal(isProjectFileHeld(replacement), false);
     assert.equal(isProjectFileHeld(original), false);
-    assert.equal(inspectProjectFormatReadOnly(f.projectFile).formatVersion, candidate.project);
+    assert.equal(inspectProjectFormatReadOnly(f.projectFile, candidateRead).formatVersion, candidate.project);
     assert.deepEqual(readFileSync(f.historyFile), readFileSync(replacementSource));
     assert.throws(() => f.open({}).close(), {code: 'PROJECT_INVALID'});
     renameSync(held, f.historyFile);

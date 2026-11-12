@@ -334,9 +334,10 @@ const openProps = {open: true, projectName: '访谈剪辑样片', failure: OPEN_
 
 test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
   const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
-  const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'}, {state: 'invalid', reason: 'corrupt'}];
-  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid'] as const;
-  const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, 4).map((project, index) => ({project: {...project, name: `Status ${4 - index}`,
+  const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'},
+    {state: 'invalid', reason: 'corrupt'}, {state: 'invalid', reason: 'format-newer'}];
+  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid', 'projectFile.open.newer.title'] as const;
+  const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, states.length).map((project, index) => ({project: {...project, name: `Status ${states.length - index}`,
     projectFile: `${directory}/project-${index}.mioon`, lastOpenedAt: `2026-10-${20 + index}T00:00:00.000Z`,
     summary: project.summary ? {...project.summary, updatedAt: `2026-10-${20 + index}T00:00:00.000Z`} : null}, availability: states[index]!, coverUrl: null}));
   const original = structuredClone(projects);

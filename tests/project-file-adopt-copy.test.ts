@@ -147,6 +147,21 @@ test('even a cold rollback journal is refused unchanged before any preparation',
  assert.equal(existsSync(f.directory),false);assert.equal(inspectProjectFileReadOnly(f.selected).projectId,f.projectId);
 });
 
+test('default adoption refuses a real candidate pair before creating a snapshot',async t=>{
+ const f=fixture(t),format4={},projectFile=path.join(f.root,'candidate.mioon');
+ const location={localDir:path.join(f.root,'candidate-records'),cacheDir:path.join(f.root,'candidate-cache'),tempDir:path.join(f.root,'candidate-tmp')};
+ createProjectFile(projectFile,{format4});
+ openProjectStore({projectFile,locate:()=>location,format4}).close();
+ const historyFile=path.join(location.localDir,'history.db'),project=evidence(projectFile),history=evidence(historyFile);
+ const options={...f.options,projectFile,expectedIdentity:fileIdentity(projectFile),expectedSource:inspectCopiedProjectFile(projectFile),
+  onBoundary:()=>assert.fail('default admission must reject before taking the snapshot lock')};
+ await assert.rejects(withLockedProjectCopy(options,async()=>assert.fail('must not adopt')),{
+  code:'PROJECT_FORMAT_NEWER',details:{database:'project',reason:'format-newer',
+   formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ assert.equal(existsSync(f.directory),false);
+ unchanged(projectFile,project);unchanged(historyFile,history);
+});
+
 test('a same-path foreign file is never removed or replaced after selection changes',async t=>{
  const f=fixture(t),saved=path.join(f.root,'old-selected.mioon'),foreign=path.join(f.root,'foreign.mioon'),foreignId=createProjectFile(foreign),foreignBefore=evidence(foreign);
  await assert.rejects(withLockedProjectCopy(f.options,async copy=>{

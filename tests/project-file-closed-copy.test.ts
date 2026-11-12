@@ -126,12 +126,13 @@ for(const damage of ['unknown-object','wrong-project','future','forged-candidate
   if(damage==='unknown-object')db.exec('CREATE TABLE unreviewed_extra(value)');
   if(damage==='wrong-project'){db.exec('DROP TRIGGER history_state_guard_identity');db.prepare('UPDATE history_state SET projectId=?').run(randomUUID());}
   if(damage==='future'||damage==='forged-candidate'||damage==='old-unknown')db.prepare('UPDATE schema_version SET version=?')
-   .run(damage==='future'?FORMAT4_HISTORY_SCHEMA_VERSION+1:damage==='forged-candidate'?FORMAT4_HISTORY_SCHEMA_VERSION:1);
+   .run(damage==='future'?FORMAT4_HISTORY_SCHEMA_VERSION:damage==='forged-candidate'?FORMAT4_HISTORY_SCHEMA_VERSION:1);
  }finally{db.close();}
  if(damage==='malformed')writeFileSync(f.history,'not sqlite');
  if(damage==='switch-pending')writeFileSync(path.join(f.location.localDir,'history-switch-active.json'),'{}');
  const before=evidence(f.history),source=evidence(f.projectFile);
- await assert.rejects(captureClosedProjectSnapshot(f.options),code(damage==='future'?'PROJECT_FORMAT_NEWER':damage==='switch-pending'?'PROJECT_HISTORY_SWITCH_PENDING':'PROJECT_INVALID'));
+ await assert.rejects(captureClosedProjectSnapshot({...f.options,...(damage==='forged-candidate'?{format4:{}}:{})}),
+  code(damage==='future'?'PROJECT_FORMAT_NEWER':damage==='switch-pending'?'PROJECT_HISTORY_SWITCH_PENDING':'PROJECT_INVALID'));
  unchanged(f.history,before);unchanged(f.projectFile,source);assert.equal(existsSync(f.directory),false);
 });
 
@@ -145,7 +146,10 @@ test('closed capture reads both project and history pairs and leaves their forma
   initializeProjectCopyHistory(historyFile,copy.projectId,copy);
  } finally {reader.close();}
  const candidateFiles=[evidence(projectFile),evidence(historyFile)] as const;
- const candidate=await captureClosedProjectSnapshot({projectFile,historyFile:()=>historyFile,directory:path.join(f.root,'candidate-snapshot')});
+ const options={projectFile,historyFile:()=>historyFile,directory:path.join(f.root,'candidate-snapshot')};
+ await assert.rejects(captureClosedProjectSnapshot(options),code('PROJECT_FORMAT_NEWER'));
+ assert.equal(existsSync(options.directory),false);
+ const candidate=await captureClosedProjectSnapshot({...options,format4:{}});
  assert.equal(candidate.identity.formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
  const history=new DatabaseSync(candidate.historyFile!,{readOnly:true});
  try {

@@ -17,6 +17,8 @@ import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {CONTENT_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {TIMELINE_RESPONSE_BYTES, isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
+import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts';
 
 const referenceFixture=(root: string, relativePath: string, sha256: string, sizeBytes: number)=>({pathForm:'relative' as const,path:relativePath,volume:null,sizeBytes,
  mtimeMs:mediaMtimeMs(fs.statSync(path.join(root,relativePath),{bigint:true})),sampledSha256:sha256,fullSha256:sha256});
@@ -173,16 +175,32 @@ test('format 4 backup copies upgrade only the selected target and retain archive
   } finally {restored.close();}
 
   for (const targetFormat of [undefined, PROJECT_FILE_SCHEMA_VERSION] as const) {
-    const downgrade = destination(root, targetFormat === undefined ? 'default-downgrade' : 'explicit-downgrade');
+    const downgrade = path.join(root, targetFormat === undefined ? 'default-downgrade' : 'explicit-downgrade', 'project.mioon');
     await assert.rejects(copyProjectBackup({backupFile: candidateBackup, sourceProjectDir: path.dirname(upgraded.projectFile), projectFile: downgrade,
       targetFormat}), {code: 'PROJECT_FORMAT_NEWER', details: {database: 'project', reason: 'format-newer',
       formatVersion: FORMAT4_PROJECT_SCHEMA_VERSION, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION}});
-    assert.equal(existsSync(downgrade), false);
+    assert.equal(existsSync(path.dirname(downgrade)), false);
   }
 });
 
-test('a format 3 backup cannot smuggle a format 4 layout through the copy reader', async t => {
-  const {store, backupFile} = fixture(t), timelineId = randomUUID();
+test('a format 3 backup preserves an oversized raw timeline accepted by the released schema', async t => {
+  const {store, backupFile} = fixture(t);
+  const timeline = newTimelineRecord(store.projectId, {fps: 30, width: 720, height: 1280}, () => '2026-11-12T00:00:00.000Z');
+  assert.equal(isTimelineRecord(timeline), true);
+  store.put('timelines', timeline);
+  const data = JSON.stringify(timeline).padEnd(TIMELINE_RESPONSE_BYTES + 1);
+  store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(data, timeline.id);
+  assert.equal(Buffer.byteLength(data), TIMELINE_RESPONSE_BYTES + 1);
+  await createProjectBackup(store, backupFile);
+  const reader = openProjectBackup(backupFile);
+  try {
+    assert.equal(reader.identity.formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+    assert.equal(reader.db.prepare('SELECT data FROM timelines WHERE id=?').get(timeline.id)?.data, data);
+  } finally {reader.close();}
+});
+
+test('format 3 backup inspection preserves legacy bytes and the candidate copy rejects a smuggled layout', async t => {
+  const {root, store, backupFile} = fixture(t), timelineId = randomUUID();
   store.put('timelines', {id: timelineId, projectId: store.projectId, clips: [{id: randomUUID()}]});
   await createProjectBackup(store, backupFile);
   const before = readFileSync(backupFile);
@@ -193,7 +211,11 @@ test('a format 3 backup cannot smuggle a format 4 layout through the copy reader
   } finally {backup.close();}
   const forged = readFileSync(backupFile);
   assert.notDeepEqual(forged, before);
-  assert.throws(() => inspectProjectBackup(backupFile), {code: 'PROJECT_BACKUP_INVALID', details: {reason: 'geometry'}});
+  assert.equal(inspectProjectBackup(backupFile).formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const target = destination(root, 'candidate-copy');
+  await assert.rejects(copyProjectBackup({backupFile, projectFile: target, sourceProjectDir: store.projectDir,
+    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION}), {code: 'PROJECT_INVALID', details: {database: 'project', reason: 'metadata'}});
+  assert.equal(existsSync(target), false);
   assert.deepEqual(readFileSync(backupFile), forged);
 });
 

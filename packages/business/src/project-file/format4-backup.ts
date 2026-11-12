@@ -9,23 +9,22 @@ import {sameContentStamp, readProjectContentStamp} from './content-stamp.ts';
 import {HISTORY_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
 import {FORMAT3_RELEASE_MANIFEST} from './schema/format3-manifest.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
+import type {SchemaManifest} from './schema/manifest-check.ts';
 
 export const FORMAT_UPGRADE_BACKUP_DIRECTORY = 'format-upgrade-backups';
 
 interface BackupIdentity extends ContentStamp {
   readonly projectId: string;
-  readonly historyPresent: boolean;
 }
 
 const invalid = (): AppError => new AppError('PROJECT_FORMAT_BACKUP_FAILED', '无法保留已校验的旧格式备份。', 409);
 const value = (db: DatabaseSync, sql: string): unknown => Object.values(db.prepare(sql).get() ?? {})[0];
 
-function verify(file: string, kind: 'project' | 'history', expected: BackupIdentity): void {
+function verify(file: string, kind: 'project' | 'history', expected: BackupIdentity, manifest: SchemaManifest): void {
   validateManagedFile(file, {private: true});
   const db = new DatabaseSync(file, {readOnly: true, defensive: true, enableDoubleQuotedStringLiterals: false});
   try {
     db.exec('PRAGMA trusted_schema=OFF; PRAGMA cell_size_check=ON');
-    const manifest = FORMAT3_RELEASE_MANIFEST[kind];
     const applicationId = kind === 'project' ? PROJECT_FILE_APPLICATION_ID : HISTORY_APPLICATION_ID;
     const versions = db.prepare('SELECT version FROM schema_version LIMIT 2').all();
     const delta = compareManifest(readSchemaManifest(db, 'main'), manifest.entries);
@@ -83,7 +82,7 @@ function copyLockedFile(source: number, file: string) {
  * inodes. Byte copies preserve implicit rowids used by retained version
  * evidence. Publish the pair before either source enters the migration. */
 export function createFormat4UpgradeBackup(db: DatabaseSync, localDir: string, expected: BackupIdentity,
-  source: Readonly<{project: number; history?: number}>): void {
+  source: Readonly<{project: number; history?: number}>, historyManifest: SchemaManifest | undefined): void {
   if (db.isTransaction) throw new TypeError('An upgrade backup requires the locked opening connection outside a transaction');
   const root = path.join(localDir, FORMAT_UPGRADE_BACKUP_DIRECTORY);
   let pending: string | undefined;
@@ -92,15 +91,15 @@ export function createFormat4UpgradeBackup(db: DatabaseSync, localDir: string, e
     pending = createPrivateTemporaryDirectory(root, '.pending-');
     const project = path.join(pending, 'project.mioon'), history = path.join(pending, 'history.db');
     const files = [copyLockedFile(source.project, project)];
-    verify(project, 'project', expected);
-    if (expected.historyPresent) {
+    verify(project, 'project', expected, FORMAT3_RELEASE_MANIFEST.project);
+    if (historyManifest) {
       if (source.history === undefined) throw invalid();
       files.push(copyLockedFile(source.history, history));
-      verify(history, 'history', expected);
+      verify(history, 'history', expected, historyManifest);
     }
     const manifest = path.join(pending, 'manifest.json');
-    writeFileSync(manifest, JSON.stringify({version: 1, ...expected, projectVersion: 3, historyVersion: expected.historyPresent ? 10 : null,
-      files}, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+    writeFileSync(manifest, JSON.stringify({version: 1, ...expected, historyPresent: historyManifest !== undefined,
+      projectVersion: FORMAT3_RELEASE_MANIFEST.project.version, historyVersion: historyManifest?.version ?? null, files}, null, 2) + '\n', {flag: 'wx', mode: 0o600});
     syncFile(manifest);
     syncDirectory(pending);
     const destination = path.join(root, randomUUID());

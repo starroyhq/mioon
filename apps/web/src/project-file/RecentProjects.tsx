@@ -126,12 +126,14 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const current = useRef(props); current.current = props;
   const { project, availability, coverUrl } = item, summary = project.summary;
   const missing = availability.state === 'missing';
+  const invalidLabel = availability.state === 'invalid' && availability.reason === 'format-newer' ? 'projectFile.open.newer.title'
+    : availability.state === 'invalid' && availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid';
   const when = sort === 'updated' ? summary?.updatedAt ?? project.lastOpenedAt : project.lastOpenedAt ?? summary?.updatedAt;
   const folder = <span>{displayPath(folderOf(project.projectFile), homeDirectory)}</span>;
   const meta = missing
     ? <><span className="pf-card-status">{t('projectFile.home.missing')}</span><span>{t('projectFile.home.lastSeen', { place: lastSeenLabel(project.projectFile, homeDirectory) })}</span></>
     : availability.state === 'locked' ? <>{folder}<span className="pf-card-status" data-tone="warning">{t('projectFile.home.locked')}</span></>
-      : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid')}</span>{folder}</>
+      : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(invalidLabel)}</span>{folder}</>
         : <>{folder}{when && <span>{display.when(when, now)}</span>}</>;
   return <article className="pf-card" data-availability={availability.state} data-layout={layout} data-testid={`pf-card-${project.projectId}`}>
     <WorkbenchButton variant="ghost" className="pf-card-open" disabled={busy} data-testid={`pf-card-open-${project.projectId}`} aria-label={t('projectFile.home.openNamed', { name: project.name })} onClick={() => { if (!current.current.busy && current.current.item.project.projectId === project.projectId) current.current.onOpen(project.projectId); }}>

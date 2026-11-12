@@ -115,7 +115,7 @@ test('an explicitly admitted format 4 history switch resumes after commit with h
  assert.equal(killed.signal,'SIGKILL',killed.stderr);
  assert.equal(isHotJournal(`${projectFile}-journal`),true);
  const hot=snapshot(root);
- assert.throws(()=>recoverHistorySwitch(options),{code:'PROJECT_HISTORY_SWITCH_INVALID'});
+ assert.throws(()=>recoverHistorySwitch(options),{code:'PROJECT_FORMAT_NEWER'});
  assert.deepEqual(snapshot(root),hot);
  assert.throws(()=>recoverHistorySwitch({...candidate,onBoundary:point=>{if(point==='after-commit')throw Error('stop after format 4 commit');}}),/stop after format 4 commit/u);
  const result=recoverHistorySwitch(candidate);

@@ -134,7 +134,7 @@ for (const state of ['current', 'diverged'] as const) test(`copy-to reads all ${
   assert.deepEqual(f.sourceFiles(), before);
 });
 
-test('trusted copy-to stages a format 4 target with retained named versions and leaves format 3 sources unchanged', async t => {
+test('trusted copy-to stages format 4 with retained named versions from either source format', async t => {
   const f = await fixture(t);
   await f.server.close();
   const before = f.sourceFiles(), input = f.input();
@@ -155,6 +155,16 @@ test('trusted copy-to stages a format 4 target with retained named versions and 
       assert.deepEqual(createProjectVersions(store).list({projectId: copied.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
       assert.deepEqual(readProjectContentStamp(store.db), {contentSequence: copied.contentSequence, contentToken: copied.contentToken});
     } finally {store.close();}
+    const next = await copies.copyTo({sourceProjectId: copied.project.projectId, sourceFile: copied.project.projectFile,
+      sourceIdentity: copied.project.fileIdentity, sourceStamp: {contentSequence: copied.contentSequence, contentToken: copied.contentToken},
+      requestId: randomUUID(), projectFile: path.join(f.targets, 'Second copy.mioon')});
+    assert.equal(next.versions, f.versions.length);
+    const second = openProjectStore({projectFile: next.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    try {
+      assert.equal(second.historyState, 'current');
+      assert.equal(second.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(second.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    } finally {second.close();}
     assert.deepEqual(f.sourceFiles(), before);
   } finally {await copies.drain(); await manager.closeAll(); library.close();}
 });

@@ -16,6 +16,7 @@ import type {ProjectBackupIdentity, ProjectBackupReader} from './backup.ts';
 import {projectFileError} from './errors.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
+import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {upgradeProject3To4Inside} from './schema/format4-upgrade.ts';
 import {CONTENT_TABLES} from './schema/tables.ts';
 import {isProjectStore} from './store.ts';
@@ -64,6 +65,14 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
   if (projectId === oldId) throw new TypeError('A project copy requires a new ID');
   const target = path.resolve(options.projectFile), parent = path.dirname(target), sourceProjectDir = path.resolve(options.sourceProjectDir);
   if (lstatSync(target, {throwIfNoEntry: false})) throw projectFileError('PROJECT_FILE_EXISTS', {database: 'project', reason: 'exists'});
+  const targetFormat = options.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
+  const sourceFormat = live ? source.db.prepare('PRAGMA project.user_version').get()?.user_version : source.identity.formatVersion;
+  if ((targetFormat !== PROJECT_FILE_SCHEMA_VERSION && targetFormat !== FORMAT4_PROJECT_SCHEMA_VERSION)
+    || (sourceFormat !== PROJECT_FILE_SCHEMA_VERSION && sourceFormat !== FORMAT4_PROJECT_SCHEMA_VERSION)) throw failed('format');
+  if (targetFormat < sourceFormat) {
+    throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',
+      formatVersion: sourceFormat, supportedFormatVersion: targetFormat});
+  }
   // This validates ordinary portable project-folder ancestors (0755 is fine)
   // before creating our own private staging directory below the target.
   const temporaryDir = (options.publish ? createProjectCopyStagingDirectory : createPrivateTemporaryDirectory)(parent, 'project-copy-'), temporary = path.join(temporaryDir, 'project.mioon');
@@ -75,11 +84,9 @@ export async function copyProjectToNewFile(source: ProjectBackupReader | Project
     try {
       db.exec('PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL');
       const actual=readCopiedProjectIdentity(db,live?PROJECT_FILE_APPLICATION_ID:PROJECT_BACKUP_APPLICATION_ID,Number(lstatSync(temporary).size));
-      const targetFormat = options.targetFormat ?? PROJECT_FILE_SCHEMA_VERSION;
-      if (targetFormat !== 3 && targetFormat !== FORMAT4_PROJECT_SCHEMA_VERSION) throw failed('format');
-      if (targetFormat < actual.formatVersion) {
-        throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer',
-          formatVersion: actual.formatVersion, supportedFormatVersion: targetFormat});
+      if (actual.formatVersion !== sourceFormat) throw failed('source-changed');
+      if (targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION && actual.formatVersion === PROJECT_FILE_SCHEMA_VERSION) {
+        assertProjectTimelineGeometryProfile(db, 'main', actual.formatVersion);
       }
       if(actual.projectId!==oldId || actual.contentToken===contentToken)throw failed('metadata');
       if(options.expectedSource && (actual.projectId!==options.expectedSource.projectId || actual.contentSequence!==options.expectedSource.contentSequence || actual.contentToken!==options.expectedSource.contentToken))throw failed('source-changed');

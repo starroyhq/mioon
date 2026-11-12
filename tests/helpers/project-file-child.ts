@@ -43,7 +43,8 @@ function openOptions(): OpenProjectConnectionOptions {
   }
   const {PROJECT_FILE: projectFile, LOCAL_DIR: localDir, CACHE_DIR: cacheDir, TEMP_DIR: tempDir} = process.env;
   if (!projectFile || !localDir || !cacheDir || !tempDir) throw new Error('Set ROOT, or PROJECT_FILE, LOCAL_DIR, CACHE_DIR and TEMP_DIR');
-  return {projectFile, locate: () => ({localDir, cacheDir, tempDir})};
+  return {projectFile, locate: () => ({localDir, cacheDir, tempDir}),
+    ...(process.env.TEST_PROJECT_FORMAT4 === '1' ? {format4: {}} : {})};
 }
 
 if (mode === 'open-report') {

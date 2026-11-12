@@ -13,7 +13,7 @@ import {createProjectFile} from '../packages/business/src/project-file/connectio
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 
 function fixture(t:TestContext){
@@ -158,15 +158,29 @@ for(const sidecar of ['project-wal','history-wal','orphan-history-journal','hist
  assert.deepEqual(evidence(f.root),before);
 });
 
-test('unknown and newer history profiles are refused instead of treating a failed Mio query as empty',t=>{
+test('unknown history profiles are refused instead of treating a failed Mio query as empty',t=>{
  const f=fixture(t),db=new DatabaseSync(f.history);
  db.exec('CREATE INDEX foreign_profile ON mio_runs(projectId)');db.close();
- let before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_INVALID'});assert.deepEqual(evidence(f.root),before);
- const forged=new DatabaseSync(f.history);forged.exec('DROP INDEX foreign_profile');forged.prepare('UPDATE schema_version SET version=?').run(FORMAT4_HISTORY_SCHEMA_VERSION);forged.close();
- before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_INVALID'});assert.deepEqual(evidence(f.root),before);
- const newer=new DatabaseSync(f.history);newer.prepare('UPDATE schema_version SET version=?').run(FORMAT4_HISTORY_SCHEMA_VERSION+1);newer.close();
- before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_FORMAT_NEWER'});assert.deepEqual(evidence(f.root),before);
+ const before=evidence(f.root);assert.throws(()=>inspectClosedProjectForTrash(f.options),{code:'PROJECT_INVALID'});assert.deepEqual(evidence(f.root),before);
  const empty=new DatabaseSync(':memory:');try{assert.throws(()=>hasBlockingMioRun(empty,f.projectId),{code:'PROJECT_INVALID'});}finally{empty.close();}
+});
+
+test('default trash admission refuses real candidate project and history files without changing either',t=>{
+ const f=fixture(t),format4={},projectFile=path.join(f.projectDir,'candidate.mioon');
+ const location={localDir:path.join(f.root,'candidate-records'),cacheDir:path.join(f.root,'candidate-cache'),tempDir:path.join(f.root,'candidate-temp')};
+ createProjectFile(projectFile,{format4,projectId:f.projectId});
+ const store=openProjectStore({projectFile,locate:()=>location,format4});
+ try{store.put('projects',{id:f.projectId,name:'Candidate project',revision:1});}finally{store.close();}
+ const historyFile=()=>path.join(location.localDir,'history.db'),before=evidence(f.root);
+ const opts={projectFile,historyFile};
+ assert.throws(()=>inspectClosedProjectForTrash(opts),{code:'PROJECT_FORMAT_NEWER',
+  details:{database:'project',reason:'format-newer',formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ assert.throws(()=>inspectClosedProjectForTrash({projectFile:f.projectFile,historyFile}),{code:'PROJECT_FORMAT_NEWER',
+  details:{database:'history',reason:'format-newer',formatVersion:FORMAT4_HISTORY_SCHEMA_VERSION,supportedFormatVersion:HISTORY_SCHEMA_VERSION}});
+ const accepted=inspectClosedProjectForTrash({...opts,format4});
+ assert.equal(accepted.identity.formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(accepted.history?.formatVersion,FORMAT4_HISTORY_SCHEMA_VERSION);
+ assert.deepEqual(evidence(f.root),before);
 });
 
 test('symlinks and different history ownership cannot establish trash admission',t=>{
