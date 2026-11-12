@@ -268,7 +268,9 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   };
   const presentation = props.presentation ?? 'page';
   const exampleAvailable = props.nativeActions?.example?.bridge.instantiateTemplate && props.nativeActions.example.templates.some(template => template.id === 'timeline-basics' && template.version === 1);
-  const openFile = !closedExampleUnknown && props.onOpenFile ? () => {if (canAct()) current.current.onOpenFile?.();} : undefined;
+  const openFile = !closedExampleUnknown && props.onOpenFile ? () => {
+    if (native.getState().kind === 'idle' && canAct()) current.current.onOpenFile?.();
+  } : undefined;
   const locate = props.nativeLayout && openFile ? (projectId: string) => {
     const missing = ready()?.snapshot?.registered.some(item => item.project.projectId === projectId && item.availability.state === 'missing');
     const waitingForFile = waiting.kind === 'ready' && waiting.value.some(item =>
