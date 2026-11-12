@@ -14,6 +14,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {createWorkspaceToolsHost} from '../apps/desktop/src/workspace-tools-host.ts';
 import {createWorkspaceToolsBridge} from '../apps/desktop/src/workspace-tools-preload.ts';
+import {readToolConfig,saveToolConfig,utilityEnvironment,validateTools} from '../apps/desktop/src/config.ts';
 import {createProjectDeletionGate} from '../apps/server/src/project-deletion-gate.ts';
 test('tool diagnostics report actual missing filters and bounded fixed invocations',async()=>{
  const calls: { command: string; args: string[]; options: { timeout: number; maxStdoutBytes: number; maxStderrBytes: number; signal?: AbortSignal; }; }[]=[];const result=await inspectMediaTools({ffmpeg:'/local/ffmpeg',ffprobe:'/local/ffprobe'},{execute:async(command,args,options)=>{calls.push({command,args,options});if(args[0]==='-version')return `${command.endsWith('ffprobe')?'ffprobe':'ffmpeg'} version test\n`;return args.includes('-encoders')?' V..... libx264\n A..... aac\n':' T.. scale\n';}});
@@ -30,6 +31,66 @@ test('native tools reject untrusted, malformed and stale callers before a config
  const host=createWorkspaceToolsHost({isTrusted:()=>trusted,read:async()=>paths,select:async()=>null,check:async()=>{await new Promise(resolve=>{release=resolve;});return result;},save:async()=>{writes++;},revealWorkspace:async()=>true});
  const bridge=createWorkspaceToolsBridge((channel,request)=>{assert.equal(channel,'mioon:workspace-tools');return host.dispatch({},request);});assert.deepEqual(await bridge.read(),paths);
  await assert.rejects(host.dispatch({},{action:'revealWorkspace',path:'/arbitrary'}));const pending=bridge.save(paths);trusted=false;release!();await assert.rejects(pending);assert.equal(writes,0);await assert.rejects(bridge.read());
+});
+
+test('saved FFmpeg selections follow upgraded Homebrew-style links on the next validation', {
+ skip: process.platform === 'win32' ? 'Uses executable Unix symlinks' : false,
+}, async t => {
+ const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-011-tool-links-')));
+ t.after(() => rm(root, {recursive: true, force: true}));
+ const configFile = path.join(root, 'desktop-config.json');
+ const pair = (directory: string) => ({ffmpeg: path.join(directory, 'ffmpeg'), ffprobe: path.join(directory, 'ffprobe')});
+ const tools = ['ffmpeg', 'ffprobe'] as const;
+ const oldVersion = pair(path.join(root, 'Cellar', '1', 'bin'));
+ const newVersion = pair(path.join(root, 'Cellar', '2', 'bin'));
+ const selected = pair(path.join(root, 'bin'));
+ for (const files of [oldVersion, newVersion]) {
+  await mkdir(path.dirname(files.ffmpeg), {recursive: true});
+  for (const tool of tools) await writeFile(files[tool], 'inert validation fixture', {mode: 0o700});
+ }
+ await mkdir(path.dirname(selected.ffmpeg));
+ for (const tool of tools) await symlink(oldVersion[tool], selected[tool]);
+ const execute: NonNullable<NonNullable<Parameters<typeof validateTools>[1]>['execute']> = async (file, args) => {
+  assert.ok([...Object.values(oldVersion), ...Object.values(newVersion)].includes(file), 'validation executes the resolved file');
+  if (args[0] === '-version') return `${path.basename(file)} version ${file === newVersion.ffmpeg || file === newVersion.ffprobe ? '2' : '1'}\n`;
+  return args.includes('-encoders') ? 'libx264 aac\n' : 'drawtext subtitles\n';
+ };
+ const read = () => readToolConfig(configFile, {});
+ const host = createWorkspaceToolsHost({isTrusted: () => true, read, select: async () => null,
+  check: async paths => inspectMediaTools(await validateTools(paths, {execute}), {execute}),
+  save: paths => saveToolConfig(configFile, paths), revealWorkspace: async () => true});
+ const bridge = createWorkspaceToolsBridge((_channel, request) => host.dispatch({}, request));
+ const initial = await bridge.save(selected);
+ assert.equal(initial.ffmpeg.path, oldVersion.ffmpeg);
+ assert.equal(initial.ffprobe.path, oldVersion.ffprobe);
+ assert.deepEqual(await bridge.read(), selected, 'saving keeps the chosen links');
+ for (const tool of tools) {
+  await rm(selected[tool]);
+  await symlink(newVersion[tool], selected[tool]);
+ }
+ await rm(path.join(root, 'Cellar', '1'), {recursive: true});
+ const restarted = await validateTools(await read(), {execute});
+ assert.deepEqual(restarted.selected, selected, 'startup can save the selected paths independently of execution');
+ assert.equal(utilityEnvironment({}, restarted).MIOON_FFMPEG_PATH, newVersion.ffmpeg);
+ assert.equal(utilityEnvironment({}, restarted).MIOON_FFPROBE_PATH, newVersion.ffprobe);
+ const checked = await bridge.check(await read());
+ assert.equal(checked.ffmpeg.version, 'ffmpeg version 2');
+ assert.equal(checked.ffprobe.version, 'ffprobe version 2');
+ assert.deepEqual(await read(), selected);
+
+ await saveToolConfig(configFile, newVersion);
+ const legacyBytes = await readFile(configFile);
+ assert.equal((await validateTools(await read(), {execute})).ffmpeg, newVersion.ffmpeg);
+ assert.deepEqual(await readFile(configFile), legacyBytes, 'working legacy Cellar settings are not rewritten');
+ for (const tool of tools) {
+  await mkdir(path.dirname(oldVersion[tool]), {recursive: true});
+  await writeFile(oldVersion[tool], 'inert fallback fixture', {mode: 0o700});
+  await rm(selected[tool]);
+  await symlink(oldVersion[tool], selected[tool]);
+ }
+ await rm(path.join(root, 'Cellar', '2'), {recursive: true});
+ await assert.rejects(validateTools(await read(), {execute}), {code: 'ENOENT'});
+ assert.deepEqual(await readFile(configFile), legacyBytes, 'missing legacy paths stay untouched for the existing startup prompt');
 });
 test('delete admission blocks streams and media but permits its own response, with exact settlement',()=>{
  let observer,unsubscribed=false;const gate=createProjectDeletionGate({subscribeMedia:receive=>{observer=receive;return()=>{unsubscribed=true;};},busy:()=>{throw Error('busy');}}),response=new EventEmitter(),deleteResponse=new EventEmitter();

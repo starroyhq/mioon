@@ -17,7 +17,7 @@ import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-ent
 import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 
 const uuid = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
+const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; quitting?: boolean; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null,
   settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
 const project = (n: number) => ({ id: uuid(n), name: `Project ${n}`, description: '', revision: 1, createdAt: '2026-10-14T00:00:00.000Z', updatedAt: '2026-10-14T00:00:00.000Z' });
@@ -92,28 +92,33 @@ test('StrictMode effect replay fences the disposed boot continuation before nati
   assert.deepEqual(requests, [{action: 'capabilities'}, {action: 'takePendingOpen'}]); assert.deepEqual(f.opens, []);
   f.dispose();
 });
-test('actual native hook keeps a dispatched create unknown in its combined close snapshot after lease revocation', async () => {
-  const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [];
-  const created = directory([project(12)]).registered[0].project;
-  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
-    assert.ok(input !== null && typeof input === 'object' && 'action' in input); const request = input as Record<string, unknown>; requests.push(request);
-    if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
-    if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
-    if (request.action === 'createAtSelection') return {ok: true, data: await held.promise};
-    assert.fail('A retired create must never open another window');
+for (const retirement of ['lease revocation', 'quit cancellation']) {
+  test(`actual native hook keeps a dispatched create unknown in its combined close snapshot after ${retirement}`, async () => {
+    const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [];
+    const created = directory([project(12)]).registered[0].project;
+    const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+      assert.ok(input !== null && typeof input === 'object' && 'action' in input); const request = input as Record<string, unknown>; requests.push(request);
+      if (request.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+      if (request.action === 'chooseLocation') return {ok: true, data: {token: uuid(700), displayPath: '/verified/parent', facts: {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'}}};
+      if (request.action === 'createAtSelection') return {ok: true, data: await held.promise};
+      assert.fail('A retired create must never open another window');
+    });
+    const f = fixture({desktop, initialContext: context({role: 'editor', initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1})});
+    try {
+      await tick(); await tick(); assert.equal(f.controller.desktop?.showCreate(), true); f.controller.desktop?.change({name: 'Original input'}); await f.controller.desktop?.chooseLocation();
+      const pending = f.controller.desktop!.create(); await tick(); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+      if (retirement === 'lease revocation') f.receive({leaseRevoked: true, editorPhase: 'failed'});
+      else {f.receive({quitting: true}); f.receive({quitting: false}); await tick();}
+      assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().dirty, true);
+      assert.equal(f.controller.desktop?.getState().blocked, true);
+      held.resolve({status: 'created', project: created}); assert.equal(await pending, false);
+      assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().busy, false);
+      assert.equal(f.controller.desktop?.getState().values.name, 'Original input'); assert.deepEqual(f.opens, []);
+      if (retirement === 'lease revocation') f.receive({leaseRevoked: false});
+      assert.equal(await f.controller.desktop?.recheck(), false); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
+    } finally {held.resolve({status: 'created', project: created}); f.dispose();}
   });
-  const f = fixture({desktop, initialContext: context({role: 'editor', initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1})});
-  try {
-    await tick(); await tick(); assert.equal(f.controller.desktop?.showCreate(), true); f.controller.desktop?.change({name: 'Original input'}); await f.controller.desktop?.chooseLocation();
-    const pending = f.controller.desktop!.create(); await tick(); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
-    f.receive({leaseRevoked: true, editorPhase: 'failed'});
-    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().dirty, true);
-    held.resolve({status: 'created', project: created}); assert.equal(await pending, false);
-    assert.equal(f.controller.readCloseSnapshot().unknown, true); assert.equal(f.controller.readCloseSnapshot().busy, false);
-    assert.equal(f.controller.desktop?.getState().values.name, 'Original input'); assert.deepEqual(f.opens, []);
-    f.receive({leaseRevoked: false}); assert.equal(await f.controller.desktop?.recheck(), false); assert.equal(requests.filter(request => request.action === 'createAtSelection').length, 1);
-  } finally {held.resolve({status: 'created', project: created}); f.dispose();}
-});
+}
 test('an admitted native create survives hiding, defers its acknowledged open and resumes once on reveal', async () => {
   const held = Promise.withResolvers<unknown>(), requests: Record<string, unknown>[] = [], created = directory([project(12)]).registered[0].project;
   let f: ReturnType<typeof fixture>;
@@ -282,16 +287,139 @@ test('return refresh does not acknowledge an unknown open or consume its sealed 
 
 test('entering quit invalidates a pending catalog read even after quit cancellation and suppresses new reads', async () => {
   for (const cancel of [false, true]) {
-    const older = Promise.withResolvers(); let reads = 0;
-    const f = fixture({ list: () => ++reads === 1 ? directory([project(10)]) : reads === 2 ? older.promise : directory([project(12)]) }); await tick();
+    const older = Promise.withResolvers(), fresh = Promise.withResolvers(); let reads = 0;
+    const f = fixture({ list: () => ++reads === 1 ? directory([project(10)]) : reads === 2 ? older.promise : fresh.promise }); await tick();
     const pending = f.controller.refresh(); await tick();
     f.receive({ quitting: true });
     f.visibility(false); f.visibility(true); await tick(); assert.equal(reads, 2, 'Quitting must not start another read');
     if (cancel) f.receive({ quitting: false });
     older.resolve(directory([project(11)])); await pending;
     assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(10)], 'Pre-quit response no longer owns the catalog');
-    assert.equal(f.controller.getState().listBusy, false);
-    if (cancel) { f.visibility(false); f.visibility(true); await tick(); assert.deepEqual(f.controller.getState().projects.map((row: { id: unknown; }) => row.id), [uuid(12)]); }
+    assert.equal(f.controller.getState().listBusy, cancel);
+    if (cancel) {
+      assert.equal(reads, 3);
+      fresh.resolve(directory([project(12)])); await tick();
+      assert.deepEqual(f.controller.getState().projects.map(row => row.id), [uuid(12)]);
+      assert.equal(f.controller.getState().listBusy, false);
+    }
     assert.deepEqual((f.opens as unknown), []); f.dispose();
   }
+});
+
+test('cancelling quit refreshes the catalog and restores native entry without a visibility change', async t => {
+  for (const role of ['launcher', 'editor']) await t.test(role, async () => {
+    const older = Promise.withResolvers<unknown>();
+    let reads = 0, holdRead = false, projectNumber = 10;
+    const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+      assert.ok(input !== null && typeof input === 'object' && 'action' in input);
+      if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+      if (input.action === 'takePendingOpen') return {ok: true, data: null};
+      assert.fail('Cancelling quit must not dispatch a write');
+    });
+    const f = fixture({desktop, initialContext: role === 'editor'
+      ? context({role, initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1}) : context(),
+      list: () => { reads++; return holdRead ? older.promise : directory([project(projectNumber)]); }});
+    try {
+      await tick(); await tick();
+      if (role === 'editor') {assert.equal(await f.controller.show('open'), true); await tick();}
+      assert.equal(f.controller.getState().catalogReady, true);
+      const native = f.controller.desktop!;
+      assert.equal(native.getState().capabilities?.ready, true);
+      const before = reads;
+      holdRead = true;
+      const pending = f.controller.refresh();
+      await tick();
+      assert.equal(reads, before + 1);
+      f.receive({quitting: true});
+      assert.equal(native.getState().blocked, true);
+      assert.equal(native.showCreate(), false);
+      assert.equal(f.controller.canMutate(), false);
+      assert.equal(await f.controller.refresh(), false);
+      assert.equal(reads, before + 1);
+
+      holdRead = false;
+      projectNumber = 12;
+      f.receive({quitting: false});
+      await tick(); await tick();
+      // The launcher also verifies the directory before taking a pending OS open.
+      assert.equal(reads, before + (role === 'launcher' ? 3 : 2), 'Cancellation starts a fresh catalog read');
+      assert.equal(f.controller.getState().catalogReady, true);
+      assert.equal(native.getState().blocked, false);
+      assert.equal(native.getState().capabilities?.ready, true);
+      assert.equal(native.showCreate(), true);
+
+      older.resolve(directory([project(11)]));
+      assert.equal(await pending, false);
+      assert.deepEqual(f.controller.getState().projects.map(item => item.id), [uuid(12)]);
+      assert.deepEqual(f.opens, []);
+    } finally {
+      older.resolve(directory([project(11)]));
+      f.dispose();
+    }
+  });
+});
+
+test('a pre-quit picker reply cannot retire a write dispatched after quit cancellation', async () => {
+  const older = Promise.withResolvers<unknown>(), pending = Promise.withResolvers<unknown>();
+  const facts = {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'};
+  let picks = 0, submitted: unknown;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+    assert.ok(input !== null && typeof input === 'object' && 'action' in input);
+    if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (input.action === 'chooseLocation') return {ok: true, data: ++picks === 1 ? await older.promise : {token: uuid(702), displayPath: '/verified/new', facts}};
+    if (input.action === 'createAtSelection') {submitted = input; return pending.promise;}
+    assert.fail('Unexpected native action');
+  });
+  const f = fixture({desktop, initialContext: context({role: 'editor', initialProjectId: uuid(10), editorProjectId: uuid(10), editorPhase: 'ready', editorCount: 1})});
+  const native = f.controller.desktop!;
+  const refusal = {ok: false, error: {code: 'PROJECT_FILE_EXISTS', status: 409, details: {}}};
+  try {
+    await tick();
+    assert.equal(native.showCreate(), true);
+    native.change({name: 'Original input'});
+    const oldPicker = native.chooseLocation();
+    await tick();
+    assert.equal(picks, 1);
+    f.receive({quitting: true});
+    f.receive({quitting: false});
+    await tick();
+    assert.equal(native.getState().values.name, 'Original input');
+    assert.equal(await native.chooseLocation(), true);
+    const newWrite = native.create();
+    await tick();
+    assert.ok(submitted !== null && typeof submitted === 'object' && 'token' in submitted);
+    assert.equal(submitted.token, uuid(702));
+
+    older.resolve({token: uuid(701), displayPath: '/verified/old', facts});
+    assert.equal(await oldPicker, false);
+    assert.equal(native.getState().selection?.token, uuid(702));
+    assert.equal(f.controller.readCloseSnapshot().busy, true);
+    assert.equal(f.controller.readCloseSnapshot().unknown, false);
+    pending.resolve(refusal);
+    assert.equal(await newWrite, false);
+    assert.equal(native.getState().action.kind, 'error');
+    assert.equal(f.controller.readCloseSnapshot().unknown, false);
+  } finally {older.resolve(null); pending.resolve(refusal); f.dispose();}
+});
+
+test('the replacement launcher waits for restart to finish before reading native entry', async () => {
+  const requests: string[] = [];
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, input) => {
+    const {action} = input as {action: string}; requests.push(action);
+    if (action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (action === 'takePendingOpen') return {ok: true, data: null};
+    assert.fail('Restart completion must not dispatch a write');
+  });
+  const f = fixture({desktop, initialContext: context({quitting: true})});
+  try {
+    await tick();
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(requests, []);
+    f.receive({quitting: false});
+    await tick(); await tick();
+    assert.equal(f.controller.getState().catalogReady, true);
+    assert.equal(f.controller.desktop?.getState().capabilities?.ready, true);
+    assert.deepEqual(requests, ['capabilities', 'takePendingOpen']);
+    assert.deepEqual(f.opens, []);
+  } finally {f.dispose();}
 });

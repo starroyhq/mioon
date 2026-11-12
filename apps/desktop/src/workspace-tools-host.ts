@@ -24,13 +24,14 @@ export function createWorkspaceToolsHost<E>(options:Options<E>){
       // that lost its trusted document never writes the configuration.
       const diagnostics=await options.check(installed.paths);checkpoint();
       if(!usable(diagnostics))return {ok:false,code:'MEDIA_TOOLS_CHECK_FAILED'} satisfies MediaToolsInstallResult;
-      await options.save({ffmpeg:diagnostics.ffmpeg.path,ffprobe:diagnostics.ffprobe.path});checkpoint();
-      return {ok:true,paths:{ffmpeg:diagnostics.ffmpeg.path,ffprobe:diagnostics.ffprobe.path},diagnostics} satisfies MediaToolsInstallResult;
+      await options.save(installed.paths);checkpoint();
+      return {ok:true,paths:installed.paths,diagnostics} satisfies MediaToolsInstallResult;
     }
     const result=await options.check(request.paths);checkpoint();
     if(request.action==='save'){
       if(!usable(result))throw new Error('FFmpeg / ffprobe are unavailable or lack required encoders.');
-      await options.save({ffmpeg:result.ffmpeg.path,ffprobe:result.ffprobe.path});checkpoint();
+      // Persist the selection so that the next check resolves its current target.
+      await options.save(request.paths);checkpoint();
     }
     return result;
   }};
