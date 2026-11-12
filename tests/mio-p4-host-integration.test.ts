@@ -87,6 +87,7 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
   const input = {requestId, expectedRevision: beforePolicy.policy.revision, stepLimit: 12, modes: beforePolicy.policy.modes};
   const saved = await f.client.policySet(input);
   assert.equal(saved.policy.revision, beforePolicy.policy.revision + 1);
+  assert.equal(saved.policy.stepLimit, beforePolicy.policy.stepLimit, 'The retired policy field accepts legacy input and keeps its stored value');
   assert.deepEqual(await f.client.policySet(input), saved);
   assert.deepEqual(await f.client.policyLookup({requestId}), {found: true, policy: saved.policy, readOnly: false});
   const staleId = randomUUID(), stale = await f.request('/api/agent/tasks/v2/policy', {method: 'PUT', input: {...input, requestId: staleId}});
@@ -100,8 +101,7 @@ test('production P4 hosts run R1 canonical records and keep global CAS policy/re
   const projectId = await f.createProject(), settings = await f.client.settingsGet();
   const accepted = await f.client.send({projectId, requestId: randomUUID(), text: 'PRIVATE_P4_USER_PROMPT', expectedSettingsRevision: testAgentExecution(settings).revision, locale: 'en'});
   const done = agentTaskSnapshotSchema.parse(await f.settled(projectId, accepted.run.id));
-  assert.equal(done.run.stepLimit, saved.policy.stepLimit, 'The hosted R1 journal reads the real B1 policy port');
-  assert.equal(done.run.budget, saved.policy.stepLimit); assert.equal(f.calls, 1);
+  assert.equal(done.run.stepsUsed, 1); assert.equal(f.calls, 1);
   const records = f.project(projectId, db => {
     const databases = db.prepare('PRAGMA database_list').all();
     for (const database of databases) {

@@ -37,6 +37,24 @@ test('Agent help/schema are offline and management is not added to RPC schemas',
  const raw=await command(['rpc','agent.task.send','--input','{}']).result;assert.equal(raw.code,2);assert.equal(raw.body.error.code,'UNKNOWN_OPERATION');
 });
 
+test('agent policy hides the retired step setting and accepts the legacy input field',async t=>{
+ const f=await fixture(t,(req,res)=>reply(res,{policy,readOnly:false,...(req.url?.includes('/requests/')?{found:true}:{})}));
+ const input={requestId,expectedRevision:policy.revision,modes:policy.modes};
+ const schema=await command(['schema','agent.policy.set']).result;
+ assert.equal(schema.code,0);assert.doesNotMatch(schema.stdout,/stepLimit/u);
+ for(const args of [
+  ['get'],
+  ['set','--input',JSON.stringify(input)],
+  ['set','--input',JSON.stringify({...input,stepLimit:12})],
+  ['lookup','--input',JSON.stringify({requestId})],
+ ]){
+  const result=await command(['agent','policy',...args],{base:f.base}).result;
+  assert.equal(result.code,0);
+  assert.deepEqual((result.body.data as {policy:unknown}).policy,{revision:policy.revision,modes:policy.modes});
+ }
+ assert.deepEqual(f.calls.map(call=>call.method),['GET','PUT','PUT','GET']);
+});
+
 test('invalid key flags, metadata, origins and diagnosis consent fail before connecting',async()=>{
  const key='SYNTHETIC_KEY_MUST_NOT_APPEAR_123456';
  const variants=[['agent','secret','set',`--key=${key}`],['agent','secret','set',`--key-stdin=${key}`],['agent','secret','set','--key-stdin','--key-file','/synthetic/missing'],['agent','secret','set','--key-stdin','--input','-'],['agent','settings','get','--workspace-origin',randomUUID()],['agent','settings','get','--key-stdin'],['agent','settings','set','--input',JSON.stringify({expectedRevision:4,configuration,secret:{value:key}})],['agent','diagnose','--input','{}']];
@@ -102,7 +120,7 @@ test('targeted secret removal preserves other services and unknown keys or stale
 
 test('doctor performs only the public diagnostic GET; live diagnosis requires and forwards explicit profile',async t=>{
  const f=await fixture(t,(req,res)=>reply(res,req.method==='GET'?{version:1,settings,policy,authorization:{revision:0,scopes:[]},catalog:{count:89,valid:true,issues:[]},projectId,verification:'not_tested'}:snapshot()));
- const doctor=await command(['agent','doctor','--input',JSON.stringify({projectId})],{base:f.base}).result;assert.equal(doctor.code,0);assert.equal(f.calls[0].method,'GET');assert.equal(f.calls[0].url,`/api/agent/diagnostics?projectId=${projectId}`);
+ const doctor=await command(['agent','doctor','--input',JSON.stringify({projectId})],{base:f.base}).result;assert.equal(doctor.code,0);assert.doesNotMatch(doctor.stdout,/stepLimit/u);assert.equal(f.calls[0].method,'GET');assert.equal(f.calls[0].url,`/api/agent/diagnostics?projectId=${projectId}`);
  const diagnose=await command(['agent','diagnose','--live','--input',JSON.stringify({projectId,requestId,expectedSettingsRevision:4,text:'synthetic diagnostic',diagnostic:{profile:'catalog',toolNames:['mioon_project_inspect']}})],{base:f.base}).result;assert.equal(diagnose.code,0);assert.equal(f.calls[1].body.diagnostic.profile,'catalog');
 });
 

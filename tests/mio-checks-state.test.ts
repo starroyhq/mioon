@@ -38,6 +38,18 @@ test('only visible completed rounds can read checks or start a manual preflight'
  current.update(round());await microtasks();assert.equal(reader.calls.length,1);
 });
 
+test('visible safety-paused requirements can be read without starting full preflight',async t=>{
+ const reader=deferredReader(),current=view(t,{scope:'window',projectId,read:reader.read,cache:createAgentTaskChecksCache()});
+ current.update(round({completed:false,safetyPaused:true,latest:true,goalStepId:assetId}));await microtasks();
+ assert.equal(reader.calls.length,1);
+ assert.equal(reader.calls[0]!.options.preflight,false);
+ reader.calls[0]!.resolve(report({preflight:'not_requested'}));await microtasks();
+ await current.recheck();
+ assert.equal(reader.calls.length,1);
+ assert.equal(current.getState().report?.runId,runId);
+ assert.equal(current.getState().preflighting,false);
+});
+
 test('report cache separates scope, project, run and run revision and reuses an exact remount',async t=>{
  const cache=createAgentTaskChecksCache(),calls:Array<{projectId:string;runId:string}>=[];
  const read:AgentTaskChecksReader=async(projectId,id)=>{calls.push({projectId,runId:id});return {...report({id}),projectId};};

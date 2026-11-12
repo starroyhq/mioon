@@ -267,7 +267,7 @@ test('preparing has no step budget and a locale change retains the panel session
   try{
     h.render();const options: TaskPanelOptions=h.options;const loads=h.loads;
     assert.equal(options.getLocale(),'zh-Hans');
-    assert.equal(JSON.stringify(h.find('agent-task-status')).includes(translate('zh-Hans','agent.task.budget',{used:2,limit:30})),false);
+    assert.ok(!renderedText(h.find('agent-task-status')).includes(translate('zh-Hans','agent.panel.usedSteps',{count:2})));
     h.setLocale('ja');h.render();
     assert.equal(h.options,options);assert.equal(h.loads,loads);
     assert.equal(options.getLocale(),'ja');assert.equal(h.state.draft,'next task');
@@ -338,6 +338,49 @@ test('the header opens the conversation overlay and selects a conversation throu
 });
 test('only target conflicts show the conflict pause explanation and unknown results use recovery',()=>{
   const h=harness({status:'paused'});try{for(const reason of ['conflict','editing','user','AGENT_TASK_CONSENT_REQUIRED'] as const){h.state.snapshot!.run.pauseReason=reason;h.render();const text=renderedText(h.find('agent-task-paused'));assert.equal(text.includes(translate('zh-Hans','agent.panel.conflictBody')),['conflict','editing'].includes(reason));}h.state.snapshot!.steps[0].status='unknown';h.render();assert.equal(h.find('agent-task-paused'),undefined);assert.ok(h.find(`agent-task-unknown-${stepId}`));assert.equal(h.find('agent-task-resume')!.props.disabled,true);}finally{h.unmount();}
+});
+
+test('running and paused rounds show steps used without displaying their legacy budget',()=>{
+  for(const status of ['running','paused','awaiting_approval','completed'] as const){
+    const h=harness({status});
+    try{
+      h.render();
+      const text=renderedText(h.find('agent-task-status'));
+      assert.doesNotMatch(text,/2\s*\/\s*30/u,status);
+      assert.ok(text.includes(translate('zh-Hans','agent.panel.usedSteps',{count:2})),status);
+    }finally{h.unmount();}
+  }
+});
+
+test('Mio explains each execution safeguard and offers an ordinary resume after a supplement',async()=>{
+  const h=harness({status:'paused'});
+  try{
+    const step=h.state.snapshot!.steps[0];
+    step.status='failed';
+    step.error={code:'SYNTHETIC_FAILURE',message:'UNTRUSTED_DIAGNOSTIC'};
+    step.text='UNTRUSTED_TOOL_EXPLANATION';
+    step.toolCall!.arguments={prompt:'UNTRUSTED_ARGUMENT'};
+    for(const [reason,expected] of [
+      ['repeated_tool_failure',/卡住了.*连续三次/u],
+      ['no_tool_progress',/卡住了.*连续多次请求模型/u],
+      ['safety_limit',/安全上限/u],
+      ['budget',/已暂停/u],
+    ] as const){
+      h.state.snapshot!.run.pauseReason=reason;
+      const tree=h.render(),card=h.find('agent-task-paused'),text=renderedText(card);
+      assert.match(text,expected,reason);
+      assert.doesNotMatch(text,/UNTRUSTED_|每轮步数上限|你暂停了|继续执行\s*30\s*步/u,reason);
+      if(reason==='repeated_tool_failure')assert.ok(text.includes(presentation.taskOperationTitle('generation.submit','zh-Hans')));
+      assert.ok(text.includes('先补充说明'),reason);
+      assert.equal(h.find('agent-task-send')!.props.disabled,false,reason);
+      tree.find(node=>node.type==='form')!.props.onSubmit({preventDefault(){}});
+      await new Promise(resolve=>setImmediate(resolve));
+      const resume=h.find('agent-task-resume')!;
+      assert.equal(renderedText(resume),translate('zh-Hans','agent.task.resume'),reason);
+      resume.props.onClick();
+      assert.deepEqual(h.calls.slice(-2),[['note'],['resume',undefined,'run']],reason);
+    }
+  }finally{h.unmount();}
 });
 
 test('failure settings links route by stable error code and unknown diagnostics add no misleading destination',()=>{

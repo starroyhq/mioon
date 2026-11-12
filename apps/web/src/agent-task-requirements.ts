@@ -10,6 +10,9 @@ export function isTaskGoalRepairActive(snapshot:AgentTaskSnapshot):boolean {
   return !snapshot.run.diagnostic&&['running','awaiting_approval','awaiting_answer'].includes(snapshot.run.status)&&hasTaskGoalRepair(snapshot);
 }
 export const taskCurrentGoalStepId=(snapshot:AgentTaskSnapshot):string|undefined=>taskLatestGoalStep(snapshot.steps.filter(step=>step.runId===snapshot.run.id))?.id;
+export function isTaskGoalSafetyPaused(snapshot:AgentTaskSnapshot):boolean {
+  return !snapshot.run.diagnostic&&snapshot.run.status==='paused'&&snapshot.run.pauseReason==='safety_limit'&&taskCurrentGoalStepId(snapshot)!==undefined;
+}
 /** A cached report may precede the latest declaration or its clearing receipt.
  * Never show those older requirements while the replacement read is pending. */
 export function visibleTaskRequirements(report:AgentTaskChecks|null,snapshot:AgentTaskSnapshot):AgentTaskRequirement[] {
@@ -20,12 +23,12 @@ export function visibleTaskRequirements(report:AgentTaskChecks|null,snapshot:Age
 export function taskRequirementStatus(item:AgentTaskRequirement,snapshot:AgentTaskSnapshot):TaskRequirementStatus {
   return item.status==='failed'&&isTaskGoalRepairActive(snapshot)?'repairing':item.status==='passed'?'passed':item.status==='failed'?'failed':'pending';
 }
-export function taskRequirementNote(items:readonly AgentTaskRequirement[],snapshot:AgentTaskSnapshot):'once'|'waiting'|'budget'|undefined {
+export function taskRequirementNote(items:readonly AgentTaskRequirement[],snapshot:AgentTaskSnapshot):'once'|'waiting'|'safety'|undefined {
   if(!items.length||isTaskGoalRepairActive(snapshot))return;
   const failed=items.some(item=>item.status==='failed'),pending=items.some(item=>item.status==='pending'),repair=hasTaskGoalRepair(snapshot);
   if(repair&&failed)return 'once';
   if(!repair&&!failed&&pending)return 'waiting';
-  if(!repair&&failed&&snapshot.run.stepsUsed>=snapshot.run.budget)return 'budget';
+  if(!repair&&failed&&isTaskGoalSafetyPaused(snapshot))return 'safety';
 }
 const numeric=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value);
 const number=(locale:Locale,value:number)=>new Intl.NumberFormat(locale,{useGrouping:false,maximumFractionDigits:3}).format(value);

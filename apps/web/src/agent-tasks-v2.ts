@@ -38,7 +38,7 @@ export interface AgentTaskClient {
   authorize(snapshot: AgentTaskProjectSnapshot, requestId: string): Promise<void>;
   stream(projectId: string, runId: string, after: number, signal: AbortSignal, onEvent: (event: AgentTaskEvent) => void): Promise<void>;
   policy(): Promise<AgentTaskPolicyView>;
-  savePolicy(input: AgentTaskPolicy & {requestId: string; expectedRevision: number; acknowledgePaid?: boolean}): Promise<AgentTaskPolicyView>;
+  savePolicy(input: {modes: AgentTaskPolicyModes; requestId: string; expectedRevision: number; acknowledgePaid?: true}): Promise<AgentTaskPolicyView>;
   lookupPolicy(requestId: string): Promise<{found: boolean; policy?: AgentTaskPolicy; readOnly: boolean}>;
   conversationPolicy(projectId: string, conversationId: string): Promise<AgentTaskConversationPolicyView>;
   setConversationPolicy(projectId: string, conversationId: string, input: {requestId: string; expectedRevision: number; modes: AgentTaskPolicyModes | null; acknowledgePaid?: true}): Promise<AgentTaskConversationPolicyView>;
@@ -215,14 +215,14 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
       publish({error:errorCode(error)});await loadPolicy(id);return false;
     }
   }
-  /** Write these modes to the global policy, keeping its step limit. */
+  /** Write the conversation's modes to the global policy. */
   async function setGlobalPolicy(modes:AgentTaskPolicyModes):Promise<boolean>{
     if(policyLocked())return false;
     const saved=state.project!.policy,current=state.policy,epoch=++policyEpoch,request=requestId();
     publish({policy:{...current,phase:'saving'}});
     try{
       let view:{policy:AgentTaskPolicy};
-      try{view=await client.savePolicy({...saved,modes:structuredClone(modes),requestId:request,expectedRevision:saved.revision,...(modes.paid==='direct'&&saved.modes.paid!=='direct'?{acknowledgePaid:true}:{})});}
+      try{view=await client.savePolicy({modes:structuredClone(modes),requestId:request,expectedRevision:saved.revision,...(modes.paid==='direct'&&saved.modes.paid!=='direct'?{acknowledgePaid:true}:{})});}
       catch(error){const receipt=await client.lookupPolicy(request).catch(()=>null);if(!receipt?.found||!receipt.policy)throw error;view={policy:receipt.policy};}
       if(!active||epoch!==policyEpoch||!state.project)return false;
       publish({project:{...state.project,policy:view.policy},error:''});

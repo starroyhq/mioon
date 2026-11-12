@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -111,24 +111,32 @@ test('runtime factories share the real application policy CAS and receipts acros
   const first = createMioRuntime({store: a, policyStore: library.agentPolicy, agentSettings: settings, authorizations: createTestAuthorizations(a, settings), selfPort: () => 4318});
   const second = createMioRuntime({store: b, policyStore: library.agentPolicy, agentSettings: settings, authorizations: createTestAuthorizations(b, settings), selfPort: () => 4318});
   try {
-    const requestId = randomUUID(), input = {requestId, expectedRevision: 0, stepLimit: 12, modes: {...first.policy().modes}};
+    const legacyRequestId = randomUUID(), legacyInput = {revision: 0, stepLimit: 12, modes: {...first.policy().modes}};
+    const legacyPolicy = {...legacyInput, revision: 1};
+    const legacyDigest = createHash('sha256').update(JSON.stringify(legacyInput)).digest('hex');
+    library.agentPolicy.write(legacyPolicy, {requestId: legacyRequestId, digest: legacyDigest}, 0);
+    const legacyReplay = {requestId: legacyRequestId, expectedRevision: 0, stepLimit: 12, modes: legacyInput.modes};
+    assert.deepEqual(first.updatePolicy(legacyReplay), legacyPolicy);
+    assert.throws(() => second.updatePolicy({...legacyReplay, stepLimit: 13}), {code: 'AGENT_TASK_REQUEST_CONFLICT'});
+    assert.deepEqual(library.agentPolicy.readRequest(legacyRequestId), {digest: legacyDigest, policy: legacyPolicy});
+    const input = {requestId: randomUUID(), expectedRevision: 1, modes: {...legacyPolicy.modes, local_reversible: 'confirm'}};
     const saved = first.updatePolicy(input);
-    assert.equal(saved.revision, 1); assert.deepEqual(second.policy(), saved);
-    assert.deepEqual(second.updatePolicy(input), saved);
-    assert.equal(library.db.prepare('SELECT count(*) AS count FROM agent_task_policy_requests_v2').get()!.count, 1);
+    assert.deepEqual(saved, {revision: 2, stepLimit: 12, modes: input.modes});
+    assert.deepEqual(second.policy(), saved); assert.deepEqual(second.updatePolicy(input), saved);
+    assert.equal(library.db.prepare('SELECT count(*) AS count FROM agent_task_policy_requests_v2').get()!.count, 2);
     const staleId = randomUUID();
     assert.throws(() => second.updatePolicy({...input, requestId: staleId}), {code: 'AGENT_TASK_REVISION_CONFLICT'});
     assert.equal(library.agentPolicy.readRequest(staleId), null);
     assert.throws(() => a.tx(() => {
-      first.updatePolicy({...input, requestId: randomUUID(), expectedRevision: 1, stepLimit: 14});
+      first.updatePolicy({...input, requestId: randomUUID(), expectedRevision: 2, stepLimit: 14, modes: {...saved.modes, local_irreversible: 'direct'}});
       throw new Error('Rollback of a project transaction');
     }), /Rollback of a project transaction/u);
-    assert.equal(second.policy().stepLimit, 14); assert.equal(second.policy().revision, 2);
+    assert.equal(second.policy().stepLimit, 12); assert.equal(second.policy().revision, 3); assert.equal(second.policy().modes.local_irreversible, 'direct');
     for (const store of [a, b]) {
       assert.equal(store.db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='agent_task_policy_v2'").get(), undefined);
       assert.equal(store.db.prepare('PRAGMA database_list').all().some(row => row.file === library.databaseFile), false);
     }
-    const paid = {...input, requestId: randomUUID(), expectedRevision: 2, modes: {...saved.modes, paid: 'direct'}};
+    const paid = {...input, requestId: randomUUID(), expectedRevision: 3, modes: {...second.policy().modes, paid: 'direct'}};
     assert.throws(() => second.updatePolicy(paid), {code: 'AGENT_TASK_APPROVAL_REQUIRED'});
     assert.equal(library.agentPolicy.readRequest(paid.requestId), null);
     assert.equal(second.updatePolicy({...paid, acknowledgePaid: true}).modes.paid, 'direct');

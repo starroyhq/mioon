@@ -1,6 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import { Input } from '@mioon/ui/components/input';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchTabs } from '@mioon/ui/components/workbench-controls';
 import Icon from './icons.tsx';
@@ -40,7 +39,7 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
     mutation.current=true;setBusy(true);report.current({dirty:true,busy:true,unknown:false});const token=++serial.current;pending.current=crypto.randomUUID();let dispatched=false;
     try {
       writePolicyReceipt(pending.current);dispatched=true;
-      const response=await client.current.savePolicy({...draft,requestId:pending.current,expectedRevision:saved.revision,...(paidAcknowledged.current&&draft.modes.paid==='direct'?{acknowledgePaid:true}:{})});
+      const response=await client.current.savePolicy({modes:draft.modes,requestId:pending.current,expectedRevision:saved.revision,...(paidAcknowledged.current&&draft.modes.paid==='direct'?{acknowledgePaid:true}:{})});
       if(mounted.current&&token===serial.current){pending.current=null;writePolicyReceipt(null);paidAcknowledged.current=false;setReadOnly(response.readOnly);setSaved(response.policy);setDraft(response.policy);setNotice('saved');}
     } catch(error) {
       if(!mounted.current||token!==serial.current)return;
@@ -57,8 +56,7 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
   const preset = draft ? agentTaskPolicyPreset(draft.modes) : null, open = details ?? false;
   // Viewing is always direct by default; only a stored exception (for example set through the CLI) is shown as a choice.
   const tiers: readonly AgentTaskTier[] = draft && (draft.modes.read_only !== 'direct' || saved?.modes.read_only !== 'direct') ? ['read_only', 'local_reversible', 'local_irreversible', 'paid'] : ['local_reversible', 'local_irreversible', 'paid'];
-  return <>
-    <section className="mio-settings-section" data-testid="agent-task-policy" aria-busy={busy}>
+  return <section className="mio-settings-section" data-testid="agent-task-policy" aria-busy={busy}>
       <header className="mio-settings-section-head"><h2>{t('agent.task.policyTitle')}</h2><p>{t('mio.settings.policy.description')}</p></header>
       {draft && preset && <div className="mio-settings-tier mio-settings-preset" data-testid="agent-policy-preset">
         <div className="mio-settings-tier-main">
@@ -80,10 +78,5 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
       </div>}
       {draft && !tiers.includes('read_only') && <p className="mio-settings-locked" data-testid="agent-policy-locked"><Icon name="lock" size={12} />{t('mio.settings.policy.locked')}</p>}
       {notice && <div className="mio-settings-notice" role={notice === 'saved' ? 'status' : 'alert'}><span>{t(notice === 'saved' ? 'agent.task.policySaved' : notice === 'unknown' ? 'agent.task.unknown' : 'agent.task.error')}</span>{notice !== 'saved' && <WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-policy-reload" disabled={!visible || busy} onClick={() => { void load(); }}>{t('agent.task.reload')}</WorkbenchButton>}</div>}
-    </section>
-    <section className="mio-settings-section mio-settings-steps" data-testid="agent-task-steps">
-      <div className="mio-settings-section-head"><h2><label htmlFor="agent-policy-steps">{t('mio.settings.steps.title')}</label></h2><p>{t('mio.settings.steps.description')}</p></div>
-      {draft && <div className="mio-settings-number"><Input id="agent-policy-steps" data-testid="agent-policy-steps" type="number" min={1} max={Number.MAX_SAFE_INTEGER} value={draft.stepLimit} disabled={locked} onChange={event => { const value = Number(event.target.value); if (!visibility.current || readOnly || busy || pending.current) return; if (Number.isSafeInteger(value) && value > 0 && value <= Number.MAX_SAFE_INTEGER) { serial.current++; report.current({dirty:true,busy:false,unknown:false}); setDraft({ ...draft, stepLimit: value }); } }} /><span aria-hidden="true">{t('mio.settings.steps.unit')}</span></div>}
-    </section>
-  </>;
+  </section>;
 }
