@@ -11,6 +11,11 @@ export const timelineFormatSchemas = Object.freeze({
     expectedRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),requestId:z.string().min(8).max(200),
     presetId:z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item=>item.id) as [string, ...string[]])}).strict(),
 });
+// Ordinary callers can address the format-4 frame transaction. The core
+// model registry retains the original enum until Mio supports this edit.
+export const timelineFrameSetSchema=timelineFormatSchemas['timeline.format.set'].extend({
+  presetId:z.enum(TIMELINE_OUTPUT_PRESETS.map(item=>item.id) as [string, ...string[]]),
+});
 export const timelineFormatResponseSchema=z.object({projectId:z.string().uuid(),projectRevision:revision,
   timelineId:z.string().uuid().nullable(),timelineRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   presetId:z.enum(TIMELINE_OUTPUT_PRESETS.map(item=>item.id) as [string, ...string[]]),fps:z.literal(30),width:z.number(),height:z.number(),

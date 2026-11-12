@@ -104,6 +104,27 @@ test('restoring an empty version still removes an unreferenced lazy timeline and
  assert.equal(after.eligible,true);assert.deepEqual(after.blockedReasons,[]);assert.deepEqual(await f.format(),after);
 });
 
+test('restoring a saved timeline after its lazy owner was removed gives a readable undo baseline',async t=>{
+ const f=await fixture(t,{preset:false}),empty=await f.save(),original=await f.timeline(),saved=await f.save();
+ await f.restore(empty.version.id);
+ assert.equal((await f.format()).timelineId,null);
+ await f.restore(saved.version.id);
+ const restored=await f.timeline();
+ assert.deepEqual(restored.tracks,original.tracks);
+ const beforeBytes=()=>f.inspect()(f.projectId,db=>db.prepare("SELECT beforeSnapshot FROM main.timeline_history WHERE projectId=? AND operation='project.version.restore'").get(f.projectId)!.beforeSnapshot);
+ const retained=beforeBytes();assert.deepEqual(JSON.parse(String(retained)).tracks,[]);
+ const format=await f.format();
+ assert.equal(format.timelineId,restored.id);
+ assert.ok(format.blockedReasons.includes('HISTORY_PRESENT'));
+ const undone=await f.timeline('timeline.undo',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:restored.revision});
+ assert.deepEqual(undone.tracks,restored.tracks);
+ assert.deepEqual(undone.clips,[]);
+ const redone=await f.timeline('timeline.redo',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:undone.revision});
+ assert.deepEqual(redone.tracks,restored.tracks);
+ assert.equal((await f.format()).timelineRevision,redone.revision);
+ assert.equal(beforeBytes(),retained);
+});
+
 test('restoring an empty version keeps an owner with real edit history and keeps its format locked',async t=>{
  const f=await fixture(t,{preset:false}),saved=await f.save(),lazy=await f.timeline();
  const input={projectId:f.projectId,requestId:randomUUID(),expectedRevision:lazy.revision,kind:'audio'};
@@ -119,7 +140,7 @@ test('restoring an empty version keeps an owner with real edit history and keeps
 });
 
 test('the frozen history vocabulary is exact and does not expose system history writers as client mutations',()=>{
- const excluded=['timeline.render','timeline.format.set','timeline.undo','timeline.redo'];
+ const excluded=['timeline.render','timeline.undo','timeline.redo'];
  const expected=[...TIMELINE_MUTATION_OPERATIONS.filter(operation=>!excluded.includes(operation)),'agent.task.undo','project.version.restore'].sort();
  assert.equal(Object.isFrozen(TIMELINE_HISTORY_OPERATIONS),true);
  assert.deepEqual([...TIMELINE_HISTORY_OPERATIONS].sort(),expected);

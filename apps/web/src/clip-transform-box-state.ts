@@ -1,6 +1,6 @@
 import { CLIP_TRANSFORM_LIMITS, clipTransformGeometry } from '@mioon/contracts';
-import { isClipLayoutRect, projectClipLayout } from '../../../packages/contracts/src/timeline-clip-layout.ts';
-import { projectedClipGeometry } from '../../../packages/contracts/src/timeline-clip-transform.ts';
+import { isClipLayoutRect, projectClipLayout, rasterClipRect } from '../../../packages/contracts/src/timeline-clip-layout.ts';
+import { isIdentityClipTransform, projectedClipGeometry } from '../../../packages/contracts/src/timeline-clip-transform.ts';
 import { savedClipTransform, transformFields, withKeyframe, type TransformFields } from './clip-transform-state.ts';
 
 // The transform box over the rendered timeline preview. Everything here is in
@@ -58,7 +58,8 @@ export function transformBoxView(clip: BoxClip, source: { readonly width?: unkno
   if (v2 && !isClipLayoutRect(clip, currentFrame)) return null;
   const placement = v2 ? projectClipLayout({...clip, transform}, currentFrame) : null;
   const geometry = placement
-    ? projectedClipGeometry(placement.rect, placement.transform, {width: source.width, height: source.height, sampleAspectRatio: source.sampleAspectRatio}, frame)
+    ? projectedClipGeometry(isIdentityClipTransform(placement.transform) ? rasterClipRect(placement.rect) : placement.rect,
+      placement.transform, {width: source.width, height: source.height, sampleAspectRatio: source.sampleAspectRatio}, frame)
     : clipTransformGeometry({durationFrames: clip.durationFrames, rect: clip.rect, transform}, {width: source.width, height: source.height}, frame);
   return { center: { x: picture.left + geometry.centerX * factor, y: picture.top + geometry.centerY * factor },
     width: geometry.width * factor, height: geometry.height * factor, rotation: geometry.rotation, factor,

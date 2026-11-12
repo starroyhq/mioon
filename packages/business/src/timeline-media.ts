@@ -197,6 +197,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
       filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
+      // FFmpeg autorotates before the filters, so v2 fits the oriented DAR.
       const fit=relative?clipLayoutFitFilter(layerWidth,layerHeight):`scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
       filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan,relative)}${fit},setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }

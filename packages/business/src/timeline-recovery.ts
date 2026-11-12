@@ -52,7 +52,7 @@ export interface TimelineRecoveryBoundary {
  shots(): TimelineShotRecord[];
  validate(timeline: TimelineRecord): TimelineRecord;
  validateReadonly(timeline: TimelineRecord): TimelineRecord;
- restored(timeline: TimelineRecord,text: string): TimelineRecord;
+ restored(timeline: TimelineRecord,text: string,requireFormat?: boolean,versionRestoreAfter?: unknown): TimelineRecord;
  replay(operation: string,text: string): unknown;
  verify(operation: string,response: unknown,requestHash: string): void;
 }
@@ -77,7 +77,7 @@ export function admitTimelineImageResponse(timeline: TimelineRecord): void{
 // History owns only editable state. Reuse this projection for travel and
 // read-only eligibility inspection so an omitted historical subtitle field
 // removes current cues rather than leaking them into an earlier snapshot.
-export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: unknown): TimelineRecord{
+export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: unknown,requireFormat=false): TimelineRecord{
  const record=asRecord<{tracks: TimelineRecord['tracks'];clips: TimelineRecord['clips'];durationFrames: number;subtitles?: TimelineRecord['subtitles'];format?: {fps:number;width:number;height:number}}>(saved);
  if(!object(saved)||!['tracks','clips','durationFrames'].every(key=>Object.hasOwn(saved as object,key))||Object.keys(record).some(key=>!['tracks','clips','durationFrames','subtitles','format'].includes(key)))invalidTimeline();
  const result={...timeline,tracks:record.tracks,clips:record.clips,durationFrames:record.durationFrames};
@@ -85,17 +85,34 @@ export function restoreTimelineEditableSnapshot(timeline: TimelineRecord,saved: 
   const format=record.format;
   if(!format||!object(format)||Object.keys(format).length!==3||!timelineOutputPreset(format))invalidTimeline();
   Object.assign(result,format);
- }
+ }else if(requireFormat)invalidTimeline();
  delete result.subtitles;
  if(Object.hasOwn(record,'subtitles'))result.subtitles=record.subtitles;
  return result;
+}
+
+// A version restore can introduce the first timeline. Its beforeSnapshot
+// records that absence as an empty zero-track state in the restored frame.
+// Undo keeps the owner's identity and uses the same entry's tracks for its
+// editable empty baseline. Do not rewrite the historical sentinel.
+export function projectVersionRestoreBefore(saved: unknown,afterText: unknown): unknown{
+ const before=asRecord<Record<string,unknown>>(saved);
+ if(!object(saved)||Object.keys(before).length!==4||before.durationFrames!==0||
+  !Array.isArray(before.tracks)||before.tracks.length!==0||!Array.isArray(before.clips)||before.clips.length!==0||
+  !Object.hasOwn(before,'format'))return saved;
+ let decoded: unknown;try{decoded=JSON.parse(afterText as string);}catch{invalidTimeline();}
+ if(!object(decoded))invalidTimeline();
+ const after=asRecord<Record<string,unknown>>(decoded),preset=timelineOutputPreset(before.format);
+ if(!preset||!object(after.format)||Object.keys(after.format as object).length!==3||
+  timelineOutputPreset(after.format)?.id!==preset.id||!Array.isArray(after.tracks)||!after.tracks.length)invalidTimeline();
+ return {...before,tracks:after.tracks};
 }
 
 const bounded=(column: string,bytes: number): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=(column: string): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
 const definiteRejections=new Set<string>(['AUDIO_ROLE_CLIP_UNSUPPORTED','TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE','EXPORT_RANGE_BOUNDS','REVISION_CONFLICT','TIMELINE_REVISION_LIMIT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS',
  'SUBTITLE_LIMIT','SUBTITLE_BOUNDS','SUBTITLE_OVERLAP','SUBTITLE_NOT_FOUND','INVALID_FADE','FADE_AUDIO_UNSUPPORTED','AUDIO_HIDDEN_UNSUPPORTED','TIMELINE_LIMIT','CLIP_OVERLAP','SPLIT_BOUNDS','SPLIT_FADE_BOUNDS',
- 'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
+ 'TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_TIER_MISMATCH','TIMELINE_FORMAT_SNAPSHOT_LIMIT','CLIP_LAYOUT_RECT_READ_ONLY','TIMELINE_NOT_EMPTY','MISSING_SELECTION','NOTHING_TO_UNDO','NOTHING_TO_REDO','EMPTY_TIMELINE','PREFLIGHT_STALE',...TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES]);
 
 // A proof is attached only outside the transaction after its rollback. A fresh
 // receipt absence is necessary, but cannot make a post-write or scope failure
@@ -130,7 +147,7 @@ export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryI
   return;
  }
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
-  failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
+  failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||error.code==='CLIP_LAYOUT_RECT_READ_ONLY'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db: DatabaseSync,input: TimelineRecoveryInput,operation: string): TimelineReceiptRow|undefined{
@@ -220,9 +237,10 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(values.length>100)throw new AppError('TIMELINE_LIMIT','时间线最多支持100个片段',400);
   return values.sort((a,b)=>a.orderIndex-b.orderIndex);
  }
- function restored(timeline: TimelineRecord,text: string): TimelineRecord{
+ function restored(timeline: TimelineRecord,text: string,requireFormat=false,versionRestoreAfter?: unknown): TimelineRecord{
   let saved;try{saved=JSON.parse(text);}catch{invalidTimeline();}
-  const result=restoreTimelineEditableSnapshot(timeline,saved);
+  const snapshot=versionRestoreAfter===undefined?saved:projectVersionRestoreBefore(saved,versionRestoreAfter);
+  const result=restoreTimelineEditableSnapshot(timeline,snapshot,requireFormat);
   if(timelineImageResponseBudgetIssue(result,TIMELINE_RESPONSE_BYTES)||hasTimelineVolumeEnvelope(result)&&Buffer.byteLength(JSON.stringify(result))>TIMELINE_RESPONSE_BYTES){
    // History omits revision/timestamps. First check its strict structure and
    // source ownership in the smallest constructor envelope, then distinguish

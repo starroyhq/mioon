@@ -6,7 +6,7 @@ import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
 import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.ts';
 import {isProxy} from 'node:util/types';
-import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTask, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTask, hasRequestNotAppliedProof, timelineFrameSetSchema} from '@mioon/contracts';
 import {hash} from './services.ts';
 import {ownsStoreLock} from './store-runtime.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
@@ -134,7 +134,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const exact: Record<string, unknown>&{projectId?: unknown;requestId?: unknown}=plain(input,0,{nodes:0},envelopeArrayPath(operation)) as Record<string, unknown>;
   const text = JSON.stringify(exact);
   if (Buffer.byteLength(text) > bounds.inputBytes) fail('EDIT_TASK_LIMIT');
-  const schema=(schemas as Record<string,{safeParse(value: unknown):{success: boolean}}>)[operation];
+  const schema=operation==='timeline.format.set'?timelineFrameSetSchema:(schemas as Record<string,{safeParse(value: unknown):{success: boolean}}>)[operation];
   if (exact.projectId !== projectId || !schema.safeParse(exact).success) invalid();
   assertTimelineAudioRoleWorkspace(db,exact);assertTimelineVolumeEnvelopeWorkspace(db,exact);
   return {input:exact as Record<string,unknown>&{projectId:string;requestId:string},text,requestId:exact.requestId as string,digest:hash({operation,input:exact}),lane:editTaskLane(operation) as string};

@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {TIMELINE_RESPONSE_BYTES} from './timeline-replacement.ts';
+import type {ClipLayout} from './timeline-clip-layout.ts';
 
 type Rec = Record<string, unknown>;
 // Splits every clip of one reference video at the cuts of its current scene
@@ -67,19 +68,19 @@ export function hasTimelineSceneSplitNotAppliedProof(error: unknown, input: unkn
 export function createTimelineSceneSplitContracts({isTimelineRecord}: Readonly<{
   isTimelineRecord: (value: unknown, options?: Readonly<{projectId?: unknown}>) => boolean;
 }>) {
-  function isTimelineSceneSplitResponse(value: unknown, input: unknown): value is TimelineSceneSplitResponse {
+  interface ReceiptIdentity {projectId: string; requestId: string; expectedRevision: number; assetId: string}
+  function matchesReceipt(value: unknown, identity: ReceiptIdentity): value is TimelineSceneSplitResponse {
     try {
-      const parsed = timelineSceneSplitSchemas[TIMELINE_SCENE_SPLIT_OPERATION].safeParse(input);
-      if (!parsed.success || !object(value) || !bounded(value) || !exactKeys(value, ['operation', 'requestId', 'timeline', 'split', 'skipped']) ||
-        value.operation !== TIMELINE_SCENE_SPLIT_OPERATION || value.requestId !== parsed.data.requestId ||
+      if (!object(value) || !bounded(value) || !exactKeys(value, ['operation', 'requestId', 'timeline', 'split', 'skipped']) ||
+        value.operation !== TIMELINE_SCENE_SPLIT_OPERATION || value.requestId !== identity.requestId ||
         !Array.isArray(value.split) || !Array.isArray(value.skipped) || !value.split.length || value.split.length + value.skipped.length > 100 ||
-        parsed.data.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value.timeline, {projectId: parsed.data.projectId}) ||
-        !object(value.timeline) || value.timeline.revision !== parsed.data.expectedRevision + 1) return false;
+        !integer(identity.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1) || !isTimelineRecord(value.timeline, {projectId: identity.projectId}) ||
+        !object(value.timeline) || value.timeline.revision !== identity.expectedRevision + 1) return false;
       const clips = (value.timeline as {clips?: unknown}).clips;
       if (!Array.isArray(clips)) return false;
       const byId = new Map<string, Rec>();
       for (const clip of clips) if (object(clip) && typeof clip.id === 'string') byId.set(clip.id, clip);
-      const owned = new Set([...byId.values()].filter(clip => clip.assetId === parsed.data.assetId).map(clip => clip.id as string)), seen = new Set<string>();
+      const owned = new Set([...byId.values()].filter(clip => clip.assetId === identity.assetId).map(clip => clip.id as string)), seen = new Set<string>();
       const account = (clipId: unknown): boolean => uuid(clipId) && owned.has(clipId) && !seen.has(clipId) && Boolean(seen.add(clipId));
       for (const row of value.split as unknown[]) {
         if (!object(row) || !exactKeys(row, ['clipId', 'clipIds', 'cutFrames', 'fadeCutFrames']) || !increasing(row.cutFrames) || !increasing(row.fadeCutFrames) ||
@@ -88,7 +89,9 @@ export function createTimelineSceneSplitContracts({isTimelineRecord}: Readonly<{
         const pieces = row.clipIds.map(clipId => byId.get(clipId as string)!);
         for (let index = 1; index < pieces.length; index++) {
           const left = pieces[index - 1], right = pieces[index];
+          const leftLayout = left.layout as ClipLayout | undefined, rightLayout = right.layout as ClipLayout | undefined;
           if (right.trackId !== left.trackId || right.startFrame !== (left.startFrame as number) + (left.durationFrames as number) ||
+            leftLayout?.basisPresetId !== rightLayout?.basisPresetId ||
             right.sourceInFrame !== row.cutFrames[index - 1] || right.sourceInFrame !== (left.sourceInFrame as number) + (left.durationFrames as number)) return false;
         }
       }
@@ -100,5 +103,24 @@ export function createTimelineSceneSplitContracts({isTimelineRecord}: Readonly<{
       return seen.size === owned.size;
     } catch {return false;}
   }
-  return {isTimelineSceneSplitResponse};
+  function isTimelineSceneSplitResponse(value: unknown, input: unknown): value is TimelineSceneSplitResponse {
+    try {
+      const parsed = timelineSceneSplitSchemas[TIMELINE_SCENE_SPLIT_OPERATION].safeParse(input);
+      return parsed.success && matchesReceipt(value, parsed.data);
+    } catch {return false;}
+  }
+
+  // Old receipts omit the scene result ID. Validate the retained pieces
+  // against their own asset, without treating that as a replay credential.
+  function isRetainedTimelineSceneSplitResponse(value: unknown, owner: {projectId: string; requestId: string}): boolean {
+    if (!object(value) || !Array.isArray(value.split) || !object(value.split[0]) || !uuid(value.split[0].clipId) ||
+      !object(value.timeline) || !Array.isArray(value.timeline.clips) || !integer(value.timeline.revision, 2)) return false;
+    const clipId = value.split[0].clipId;
+    const first = value.timeline.clips.find(clip => object(clip) && clip.id === clipId);
+    return object(first) && uuid(first.assetId) && matchesReceipt(value, {
+      ...owner, assetId: first.assetId, expectedRevision: value.timeline.revision - 1,
+    });
+  }
+
+  return {isTimelineSceneSplitResponse, isRetainedTimelineSceneSplitResponse};
 }

@@ -1,8 +1,9 @@
 import {TIMELINE_HISTORY_OPERATIONS} from './timeline-history-operations.ts';
 import {timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
 import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
-import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot} from './timeline-recovery.ts';
+import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot,projectVersionRestoreBefore} from './timeline-recovery.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
+import {readWrappedTimelineReceipt} from './timeline-retained-receipts.ts';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {executingTimelineFormatTask} from './timeline-format-task-context.ts';
 import {createHash} from 'node:crypto';
@@ -17,7 +18,7 @@ export interface TimelineFormatResponse {
  presetId: string;fps: number;width: number;height: number;eligible: boolean;blockedReasons: string[];
 }
 export interface TimelineFormatStateResult {project: TimelineFormatProject;timeline: TimelineRecord|null;boundary: TimelineRecoveryBoundary;response: TimelineFormatResponse}
-interface TimelineFormatStateOptions {admission?: boolean;context?: TimelineFormatOwner;store?: {db: DatabaseSync;root?: string}}
+interface TimelineFormatStateOptions {admission?: boolean;frameTransaction?: boolean;context?: TimelineFormatOwner;store?: {db: DatabaseSync;root?: string}}
 
 const hash=(value: unknown): string=>createHash('sha256').update(canonicalFormatValue(value) as string).digest('hex');
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -46,21 +47,44 @@ export function readTimelineFormatOwner(db: DatabaseSync,input: TimelineRecovery
  if(project.id!==input.projectId||projectRow!.id!==project.id||!integer(project.revision,1))invalidTimeline();
  return {project,timeline,boundary};
 }
-export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecoveryInput,{admission=false,context=readTimelineFormatOwner(db,input),store}: TimelineFormatStateOptions={}): TimelineFormatStateResult{
+export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecoveryInput,{admission=false,frameTransaction=false,context=readTimelineFormatOwner(db,input),store}: TimelineFormatStateOptions={}): TimelineFormatStateResult{
  const {project,timeline,boundary}=context;
  const reasons: string[]=[];
- if(timeline&&(timeline.clips.length||timeline.durationFrames))reasons.push('CLIPS_PRESENT');
+ if(!frameTransaction&&timeline&&(timeline.clips.length||timeline.durationFrames))reasons.push('CLIPS_PRESENT');
  const history=rows(db,`SELECT id,projectId,position,operation,createdAt,${bounded('beforeSnapshot',TIMELINE_RESPONSE_BYTES)} AS beforeSnapshot,${bounded('afterSnapshot',TIMELINE_RESPONSE_BYTES)} AS afterSnapshot FROM timeline_history WHERE projectId=? ORDER BY position`,input.projectId);
  const cursor=db.prepare('SELECT projectId,position FROM timeline_history_cursors WHERE projectId=?').get(input.projectId);
  if(cursor&&(!timeline||cursor.projectId!==input.projectId||!integer(cursor.position)||(cursor.position as number)>history.length)||history.length&&!cursor)invalidTimeline();
  for(const [index,entry] of history.entries()){
   if(!timeline||!uuid(entry.id)||entry.projectId!==input.projectId||entry.position!==index+1||!(TIMELINE_HISTORY_OPERATIONS as readonly unknown[]).includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
-  for(const field of ['beforeSnapshot','afterSnapshot']){
-   const saved=parse((entry as Record<string, unknown>)[field]);
-   if(!isTimelineRecord(restoreTimelineEditableSnapshot(timeline!,saved),{projectId:input.projectId}))invalidTimeline();
+ }
+ if(timeline){
+  const restored=(frame: TimelineRecord,snapshot: unknown,requireFormat: boolean): TimelineRecord=>{
+   const saved=restoreTimelineEditableSnapshot(frame,snapshot,requireFormat);
+   if(!isTimelineRecord(saved,{projectId:input.projectId}))invalidTimeline();
+   return saved;
+  };
+  const before=(entry: Record<string,unknown>): unknown=>{
+   const snapshot=parse(entry.beforeSnapshot);
+   return entry.operation==='project.version.restore'?projectVersionRestoreBefore(snapshot,entry.afterSnapshot):snapshot;
+  };
+  // Walk out from the actual cursor in both directions. An explicit format
+  // starts a different frame epoch. A legacy snapshot inherits the frame on
+  // its side of that boundary, including old Mio entries with no saved format.
+  const position=Number(cursor?.position??0);
+  let frame=timeline;
+  for(let index=position-1;index>=0;index--){
+   const entry=history[index]!;
+   const requireFormat=entry.operation==='timeline.format.set';
+   frame=restored(restored(frame,parse(entry.afterSnapshot),requireFormat),before(entry),requireFormat);
+  }
+  frame=timeline;
+  for(let index=position;index<history.length;index++){
+   const entry=history[index]!;
+   const requireFormat=entry.operation==='timeline.format.set';
+   frame=restored(restored(frame,before(entry),requireFormat),parse(entry.afterSnapshot),requireFormat);
   }
  }
- if(history.length||cursor)reasons.push('HISTORY_PRESENT');
+ if(!frameTransaction&&(history.length||cursor))reasons.push('HISTORY_PRESENT');
  // Unscopable corrupt receipts cannot safely be declared unrelated to this project.
  for(const owner of rows(db,`SELECT DISTINCT (${TIMELINE_RECEIPT_PROJECT_EXPRESSION}) AS projectId FROM timeline_requests`)){
   if(!uuid(owner.projectId)||!db.prepare('SELECT 1 FROM projects WHERE id=?').get(owner.projectId))invalidTimeline();
@@ -83,15 +107,16 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
     if(!timeline||response.snapshot.timeline.id!==timeline.id||response.snapshot.timeline.revision>timeline.revision)invalidTimeline();
     boundary.sources(response.snapshot.timeline as TimelineRecord);
    }else{
-    if(!isTimelineRecord(response,{projectId:input.projectId})||!timeline||response.id!==timeline.id||response.revision>timeline.revision)invalidTimeline();
-    boundary.sources(response as TimelineRecord);
+    const saved=Object.hasOwn(response,'operation')?readWrappedTimelineReceipt(response,input.projectId,receipt.requestId):response;
+    if(!isTimelineRecord(saved,{projectId:input.projectId})||!timeline||saved.id!==timeline.id||saved.revision>timeline.revision)invalidTimeline();
+    boundary.sources(saved as TimelineRecord);
    }
    requestHistory=true;
   }
  }
  // Detect orphaned or cross-project provenance even if foreign keys were disabled.
  for(const row of rows(db,'SELECT requestId FROM timeline_format_requests WHERE projectId=? ORDER BY requestId',input.projectId))if(!receiptIds.has(row.requestId as string))invalidTimeline();
- if(requestHistory)reasons.push('REQUEST_HISTORY');
+ if(!frameTransaction&&requestHistory)reasons.push('REQUEST_HISTORY');
  let exportHistory=false;
  for(const row of rows(db,`SELECT id,projectId,${bounded('data',TIMELINE_RENDER_RESPONSE_BYTES)} AS data FROM exports WHERE projectId=? ORDER BY id`,input.projectId)){
   const value=parse(row.data);
@@ -101,7 +126,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    boundary.sources(value.snapshot.timeline as TimelineRecord);if(value.assetId!==null)boundary.asset(value.assetId as string);exportHistory=true;
   }else if(Object.hasOwn(value,'mode')||!Array.isArray(value.snapshot)||!Array.isArray(value.orderedVersionIds))invalidTimeline();
  }
- if(exportHistory)reasons.push('EXPORT_HISTORY');
+ if(!frameTransaction&&exportHistory)reasons.push('EXPORT_HISTORY');
  const tasks=rows(db,`SELECT position,revision,acknowledged,bytes,${''}${Object.entries({id:36,projectId:36,operation:80,input:8192,requestId:800,digest:64,lane:32,origin:32,status:32,claim:36,claimInstance:36,receiptDigest:64,errorCode:80,createdAt:40,updatedAt:40}).map(([column,bytes])=>bounded(column,bytes)+' AS '+column).join(',')} FROM edit_tasks WHERE projectId=? AND (lane='timeline:mutation' OR operation LIKE 'timeline.%') ORDER BY position`,input.projectId);
  let pendingCount=0;
  for(const row of tasks){
@@ -134,6 +159,8 @@ export function getTimelineFormat(db: DatabaseSync,input: TimelineRecoveryInput,
  if(db.isTransaction)return readTimelineFormatState(db,input,options).response;
  db.exec('BEGIN');try{const result=readTimelineFormatState(db,input,options).response;db.exec('COMMIT');return result;}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
 }
-export function assertTimelineFormatEligible(state: TimelineFormatStateResult): void{
- if(!state.response.eligible)throw new AppError('TIMELINE_FORMAT_LOCKED','只有尚未编辑、导出或保留其他编辑请求的空白时间线可以修改输出规格',409,{blockedReasons:state.response.blockedReasons});
+export function assertTimelineFormatEligible(state: TimelineFormatStateResult,frameTransaction=false): void{
+ if(!state.response.eligible)throw new AppError('TIMELINE_FORMAT_LOCKED',
+  frameTransaction?'请先确认待处理的时间线编辑，再修改输出规格':'只有尚未编辑、导出或保留其他编辑请求的空白时间线可以修改输出规格',
+  409,{blockedReasons:state.response.blockedReasons});
 }

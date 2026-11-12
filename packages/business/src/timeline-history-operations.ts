@@ -8,7 +8,7 @@ export const TIMELINE_HISTORY_OPERATIONS = Object.freeze([
   'timeline.clip.setTransform', 'timeline.clip.setTransition', 'timeline.clip.refreshSources',
   'timeline.seed', 'timeline.shots.append',
   'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove',
-  'timeline.loudness.apply', 'agent.task.undo', 'project.version.restore',
+  'timeline.loudness.apply', 'agent.task.undo', 'project.version.restore', 'timeline.format.set',
 ] as const);
 
 export type TimelineHistoryOperation = typeof TIMELINE_HISTORY_OPERATIONS[number];

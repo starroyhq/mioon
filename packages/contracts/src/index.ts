@@ -35,7 +35,7 @@ import {projectBackupSchemas,projectBackupDescriptions} from './project-backups.
 import {projectVersionSchemas,projectVersionDescriptions} from './project-version-operations.ts';
 import {timelineSubtitleSchemas} from './timeline-subtitles.ts';
 export * from './timeline-subtitles.ts';
-import {timelineFormatSchemas} from './timeline-format.ts';
+import {timelineFormatSchemas,timelineFrameSetSchema} from './timeline-format.ts';
 import {agentAuthorizationSchemas,agentAuthorizationDescriptions} from './agent-authorization.ts';
 import {projectLifecycleSchemas,projectLifecycleDescriptions} from './project-lifecycle.ts';
 export * from './project-lifecycle.ts';
@@ -346,7 +346,8 @@ export {AppError};
 const operationSchemas = schemas as Record<string, z.ZodTypeAny>;
 export function parse<K extends OperationName>(op: K, input: unknown): OperationInput<K> {
  if(!Object.hasOwn(schemas,op))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
- const r=operationSchemas[op].safeParse(input);
+ const schema=op==='timeline.format.set'?timelineFrameSetSchema:operationSchemas[op];
+ const r=schema.safeParse(input);
  if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});
  return r.data as OperationInput<K>;
 }

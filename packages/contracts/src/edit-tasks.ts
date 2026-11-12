@@ -11,6 +11,7 @@ import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './refe
 import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.ts';
 import {type z} from 'zod';
 import {schemas} from './index.ts';
+import {timelineFrameSetSchema} from './timeline-format.ts';
 
 // Local UI coordination only. These are not RPC/model-tool operations.
 // The edit_tasks table checks this exact list, so shot-sync bridges and the
@@ -55,7 +56,8 @@ export function isEditTask(value: unknown): value is EditTask {
     const task = value as Rec;
     if (!uuid(task.id) || !uuid(task.projectId) || typeof task.operation !== 'string' || !(DURABLE_EDIT_OPERATIONS as readonly string[]).includes(task.operation)) return false;
     const input = task.input as Rec | null | undefined;
-    if (!object(task.input) || !(schemas as Record<string, z.ZodTypeAny>)[task.operation].safeParse(task.input).success || input!.projectId !== task.projectId) return false;
+    const schema=task.operation==='timeline.format.set'?timelineFrameSetSchema:(schemas as Record<string, z.ZodTypeAny>)[task.operation];
+    if (!object(task.input) || !schema.safeParse(task.input).success || input!.projectId !== task.projectId) return false;
     if (task.requestId !== input!.requestId || typeof task.requestId !== 'string' || task.requestId.length < 8 || task.requestId.length > 200) return false;
     if (encoder.encode(JSON.stringify(task.input)).byteLength > EDIT_TASK_LIMITS.inputBytes || encoder.encode(JSON.stringify(value)).byteLength > EDIT_TASK_LIMITS.rowBytes) return false;
     if (!digest(task.digest) || task.lane !== editTaskLane(task.operation)) return false;
