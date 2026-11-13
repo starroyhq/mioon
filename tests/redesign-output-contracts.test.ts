@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {TIMELINE_OUTPUT_PRESETS,TIMELINE_CURRENT_OUTPUT_PRESETS,TIMELINE_LEGACY_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,parse,resolveTimelineExportDelivery,isTimelineExportDelivery,isTimelineExportCapabilitiesResponse,timelineExportDeliverySchema} from '@mioon/contracts';
+import {TIMELINE_OUTPUT_PRESETS,TIMELINE_CURRENT_OUTPUT_PRESETS,TIMELINE_LEGACY_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,parse,timelineFormatSchemas,resolveTimelineExportDelivery,isTimelineExportDelivery,isTimelineExportCapabilitiesResponse,timelineExportDeliverySchema} from '@mioon/contracts';
 import {TIMELINE_FORMAT_WRITE_PRESETS,timelineOutputPresetForRatio,timelineOutputRatio} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {freezeStoryboardOutputGeometry,storyboardOutputGeometry} from '../packages/business/src/storyboard-output.ts';
 
-test('new projects use three 1080 presets while every legacy geometry remains readable',()=>{
+test('project creation keeps three 1080 presets while the public frame setter accepts the closed twelve',()=>{
   assert.equal(DEFAULT_TIMELINE_OUTPUT_PRESET,'portrait_1080');
   assert.deepEqual(TIMELINE_CURRENT_OUTPUT_PRESETS.map(p=>[p.id,p.width,p.height]),[
     ['portrait_1080',1080,1920],['landscape_1080',1920,1080],['square_1080',1080,1080],
@@ -13,10 +13,12 @@ test('new projects use three 1080 presets while every legacy geometry remains re
   assert.equal(TIMELINE_LEGACY_OUTPUT_PRESETS.length,3);assert.equal(TIMELINE_OUTPUT_PRESETS.length,12);
   for(const preset of TIMELINE_OUTPUT_PRESETS){
     const input={projectId:randomUUID(),expectedProjectRevision:1,expectedRevision:0,requestId:randomUUID(),presetId:preset.id};
-    if(TIMELINE_FORMAT_WRITE_PRESETS.some(value=>value.id===preset.id))assert.deepEqual(parse('timeline.format.set',input),input);
-    else assert.throws(()=>parse('timeline.format.set',input),{code:'VALIDATION_ERROR'});
+    assert.deepEqual(parse('timeline.format.set',input),input);
+    assert.equal(timelineFormatSchemas['timeline.format.set'].safeParse(input).success,
+      TIMELINE_FORMAT_WRITE_PRESETS.some(value=>value.id===preset.id));
   }
   const input={projectId:randomUUID(),expectedRevision:1,requestId:randomUUID(),clipId:randomUUID(),patch:{rect:{x:0,y:0,width:1920,height:1080}}};
+  assert.throws(()=>parse('timeline.format.set',{projectId:input.projectId,expectedProjectRevision:1,expectedRevision:0,requestId:input.requestId,presetId:'arbitrary'}),{code:'VALIDATION_ERROR'});
   assert.deepEqual(parse('timeline.clip.update',input),input);
   assert.throws(()=>parse('timeline.clip.update',{...input,patch:{rect:{x:2,y:0,width:1920,height:1080}}}));
 });
