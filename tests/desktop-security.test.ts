@@ -8,6 +8,7 @@ import { trustedOrigin, isAllowedNavigation, isAllowedRequest, isAllowedDownload
 
 const origin = 'http://127.0.0.1:41923';
 const id = '12345678-1234-4234-8234-123456789abc';
+const settingsUrl = `${origin}/settings.html`;
 
 test('desktop accepts only an explicit IPv4 loopback HTTP backend', () => {
   assert.equal(trustedOrigin(origin), origin);
@@ -18,9 +19,16 @@ test('desktop accepts only an explicit IPv4 loopback HTTP backend', () => {
 test('desktop navigation supports only root and shared-UI project deep link', () => {
   assert.equal(isAllowedNavigation(`${origin}/`, origin), true);
   assert.equal(isAllowedNavigation(`${origin}/?project=${id}`, origin), true);
-  for (const url of [`${origin}/media/${id}`, `${origin}/?token=secret`, `${origin}/?project=${id}&x=y`,
+  for (const url of [settingsUrl, `${origin}/media/${id}`, `${origin}/?token=secret`, `${origin}/?project=${id}&x=y`,
     `${origin}/?project=${id}&project=${id}`, `${origin}/?project=bad`, `${origin}/#x`, 'javascript:alert(1)',
     'file:///etc/passwd', 'https://example.com', 'http://127.0.0.1:41924/']) assert.equal(isAllowedNavigation(url, origin), false, url);
+});
+
+test('the settings navigation allowance is limited to the fixed backend document', () => {
+  assert.equal(isAllowedNavigation(settingsUrl, origin, true), true);
+  for (const url of [`${settingsUrl}?project=${id}`, `${settingsUrl}#general`, `${settingsUrl}?`, `${settingsUrl}#`, `${settingsUrl}/`,
+    `${origin}/Settings.html`, `${origin}/assets/../settings.html`, 'http://localhost:41923/settings.html', 'http://127.0.0.1:41924/settings.html',
+    'http://user@127.0.0.1:41923/settings.html']) assert.equal(isAllowedNavigation(url, origin, true), false, url);
 });
 
 test('desktop request policy prevents credential leakage to any other origin', () => {
@@ -89,6 +97,40 @@ test('session rejects permissions, subframes, and external requests', () => {
   session.beforeRequest!({ url: `${origin}/api/rpc`, resourceType: 'xhr' }, (result: {cancel: boolean}) => assert.equal(result.cancel, false));
 });
 
+test('a warm settings renderer can request only its shell and startup scripts until promotion', () => {
+  const session = fakeSession(), warmId = 41, otherId = 42;
+  const warmContents = new Set([warmId]);
+  installSessionPolicy(session as unknown as SessionArg, origin, () => null, { downloadsPath: '/tmp/video.mp4' },
+    webContentsId => webContentsId !== undefined && warmContents.has(webContentsId));
+  const request = (url: string, resourceType: string, method = 'GET', webContentsId = warmId) => {
+    let cancel: boolean | undefined;
+    session.beforeRequest!({url, resourceType, method, webContentsId}, (result: {cancel: boolean}) => { cancel = result.cancel; });
+    return cancel;
+  };
+  const script = `${origin}/assets/settings-aBc12_de.js`, closeScript = `${origin}/assets/settings-boot-close-Bc2B5-G0.js`;
+  const media = `${origin}/api/projects/${id}/media/${id}`, rpc = `${origin}/api/rpc`;
+  assert.equal(request(settingsUrl, 'mainFrame'), false);
+  assert.equal(request(script, 'script'), false);
+  assert.equal(request(closeScript, 'script'), false);
+  assert.equal(request(settingsUrl, 'mainFrame', 'POST'), true);
+  assert.equal(request(settingsUrl, 'subFrame'), true);
+  assert.equal(request(`${settingsUrl}?page=agent`, 'mainFrame'), true);
+  assert.equal(request(`${origin}/`, 'mainFrame'), true);
+  assert.equal(request(script, 'xhr'), true);
+  assert.equal(request(closeScript, 'script', 'POST'), true);
+  assert.equal(request(`${origin}/assets/main-aBc12.js`, 'script'), true);
+  assert.equal(request('http://127.0.0.1:41924/assets/settings-aBc12.js', 'script'), true);
+  assert.equal(request('http://user@127.0.0.1:41923/settings.html', 'mainFrame'), true);
+  assert.equal(request(rpc, 'xhr', 'POST'), true);
+  assert.equal(request(media, 'media'), true);
+  assert.equal(request(rpc, 'xhr', 'POST', otherId), false);
+  assert.equal(request(media, 'media', 'GET', otherId), false);
+  assert.equal(request(settingsUrl, 'subFrame', 'GET', otherId), true);
+  warmContents.delete(warmId);
+  assert.equal(request(rpc, 'xhr', 'POST'), false);
+  assert.equal(request(media, 'media'), false);
+});
+
 test('native export permits project query but never assigns an automatic save path', () => {
   const session = fakeSession(), contents = { getURL: () => `${origin}/?project=${id}` };
   const win = { isDestroyed: () => false, webContents: contents };
@@ -106,6 +148,12 @@ test('native export permits project query but never assigns an automatic save pa
   item.getURL=()=>`${origin}/media/${id}`;item.getURLChain=()=>[item.getURL()];
   session.emit('will-download',{preventDefault:()=>{cancelled=true;}},item,contents);
   assert.equal(cancelled,true);assert.equal(options,undefined);
+  cancelled = false;
+  contents.getURL = () => settingsUrl;
+  item.getURL = () => `${origin}/api/projects/${id}/media/${id}`;
+  session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
+  assert.equal(cancelled, true);
+  assert.equal(options, undefined);
 });
 
 test('window blocks webviews, popups, subframes and navigations', () => {
@@ -120,6 +168,39 @@ test('window blocks webviews, popups, subframes and navigations', () => {
   contents.emit('will-attach-webview', { preventDefault: () => blocked++ });
   contents.emit('will-frame-navigate', { url: `${origin}/?project=${id}`, isMainFrame: true, preventDefault: () => assert.fail('valid main navigation blocked') });
   assert.equal(blocked, 3);
+});
+
+test('only the current settings window assignment admits settings navigation', () => {
+  let current = true;
+  const assigned = (url: string) => ({ url, isCurrent: () => current });
+  const windowPolicy = (assignment?: Parameters<typeof installWindowPolicy>[2]) => {
+    const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler() {} });
+    installWindowPolicy({ webContents: contents } as unknown as Parameters<typeof installWindowPolicy>[0], origin, assignment);
+    return (event: string, url: string, isMainFrame = true) => {
+      let blocked = false;
+      contents.emit(event, { url, isMainFrame, preventDefault: () => { blocked = true; } });
+      return !blocked;
+    };
+  };
+  const launcherUrl = `${origin}/`, editorUrl = `${origin}/?project=${id}`;
+  const ordinary = windowPolicy(), launcher = windowPolicy(assigned(launcherUrl));
+  const editor = windowPolicy(assigned(editorUrl)), settings = windowPolicy(assigned(settingsUrl));
+  const queriedSettings = windowPolicy(assigned(`${settingsUrl}?x=1`));
+  const navigationEvents = ['will-navigate', 'will-redirect', 'will-frame-navigate'];
+  for (const event of navigationEvents) {
+    assert.equal(launcher(event, launcherUrl), true, event);
+    assert.equal(editor(event, editorUrl), true, event);
+    assert.equal(ordinary(event, settingsUrl), false, event);
+    assert.equal(launcher(event, settingsUrl), false, event);
+    assert.equal(editor(event, settingsUrl), false, event);
+    assert.equal(settings(event, settingsUrl), true, event);
+    assert.equal(settings(event, launcherUrl), false, event);
+    assert.equal(settings(event, editorUrl), false, event);
+    assert.equal(queriedSettings(event, `${settingsUrl}?x=1`), false, event);
+  }
+  assert.equal(settings('will-frame-navigate', settingsUrl, false), false);
+  current = false;
+  for (const event of navigationEvents) assert.equal(settings(event, settingsUrl), false, event);
 });
 
 test('package configuration disables runtime injection and cannot publish by default', async () => {

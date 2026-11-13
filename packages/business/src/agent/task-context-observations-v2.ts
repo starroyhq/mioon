@@ -1,3 +1,4 @@
+import {canvasActiveCondition} from '../canvas-active.ts';
 import {hasStoreTable} from '../store-layout.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
 import type { Store } from '../store-contract.ts';
@@ -55,7 +56,7 @@ export function collectTaskProjectOverview(store:Pick<Store,'db'>,projectId:stri
     SELECT CASE WHEN json_type(p.data,'$.name')='text' THEN p.data -> '$.name' END name,json_extract(t.data,'$.width') width,json_extract(t.data,'$.height') height,
     json_extract(t.data,'$.fps') fps,json_extract(t.data,'$.durationFrames') durationFrames,json_array_length(t.data,'$.tracks') tracks,
     json_array_length(t.data,'$.clips') clips,json_array_length(t.data,'$.subtitles.cues') subtitles,
-    (SELECT count(*) FROM shots s WHERE s.projectId=p.id) shots,a.total assets,a.image,a.video,a.audio,(${background}) pendingBackground
+    (SELECT count(*) FROM shots s WHERE s.projectId=p.id AND ${canvasActiveCondition(store.db,'s')}) shots,a.total assets,a.image,a.video,a.audio,(${background}) pendingBackground
     FROM projects p LEFT JOIN timelines t ON t.projectId=p.id CROSS JOIN asset_counts a WHERE p.id=?`).get(projectId,projectId);
   if(!row)throw Object.assign(new Error('Project metadata is unavailable.'),{code:'AGENT_TASK_NOT_FOUND',status:404});
   // Preserve JSON string escapes across SQLite's UTF-8 boundary: extracting

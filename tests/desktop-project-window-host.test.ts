@@ -87,7 +87,10 @@ type HostOptions = ProjectWindowHostOptions<NativeWindow>;
 interface HostSetup {
  projectActions?: Map<string, object>;
  create?(window: NativeWindow): void;
+ settingsUrl?: HostOptions['settingsUrl'];
  prepare?: HostOptions['prepareWindow']; onLoadError?: HostOptions['onLoadError'];
+ prepareWarmSettings?: HostOptions['prepareWarmSettings'];
+ discardWarmSettings?: HostOptions['discardWarmSettings'];
  restoreFocus?: HostOptions['canRestoreParentFocus'];
  invalidated?: HostOptions['onDocumentInvalidated']; destroyed?: HostOptions['onWebContentsDestroyed'];
  consume?: HostOptions['consumeProjectEntry'];
@@ -102,6 +105,7 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
   let current = true, interactive = true;
   const leases=createProjectWindowLeaseFixture();
   const host: ReturnType<typeof createProjectWindowHost<NativeWindow>> = createProjectWindowHost({ backendId, launcherUrl: `${origin}/`, editorUrl,
+    settingsUrl: setup.settingsUrl,
     projectActionReservations: setup.projectActions,
     projectEntries:setup.projectEntries===null?undefined:setup.projectEntries??leases.port,
     admitProject:setup.admit===null?undefined:setup.admit??(async(_owner,projectId)=>projectWindowLeaseValue(backendId,projectId).project.projectFile),
@@ -120,6 +124,8 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
         });
       }
     },
+    prepareWarmSettings: setup.prepareWarmSettings,
+    discardWarmSettings: setup.discardWarmSettings,
     closeCandidate: setup.closeCandidate,
     onLoadError: setup.onLoadError,
     canRestoreParentFocus: setup.restoreFocus,
@@ -144,6 +150,23 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
     },
     ready, restore,
   };
+}
+
+function warmSettingsFixture(t: test.TestContext, setup: HostSetup = {}) {
+  const settingsUrl = `${origin}/settings.html`;
+  const prepared: NativeWindow[] = [], cleaned: NativeWindow[] = [], discarded: NativeWindow[] = [];
+  const f = fixture(t, {...setup, settingsUrl,
+    prepareWarmSettings(window, url) {
+      assert.equal(url, settingsUrl);
+      prepared.push(window);
+      return () => { cleaned.push(window); };
+    },
+    discardWarmSettings(window) {
+      discarded.push(window);
+      window.finishClose();
+    },
+  });
+  return {...f, settingsUrl, prepared, cleaned, discarded};
 }
 
 test('an editor obtains its real window lease before construction and releases only at actual closed',async t=>{
@@ -990,6 +1013,146 @@ test('settings binds its exact IPC opener and another editor never reparents or 
   assert.equal(f.host.requestProjectEntry('new', settings), false);
   assert.deepEqual(f.host.closeOrder(), [settings, launcher, a, b]);
   assert.deepEqual(f.host.windows(), [launcher, a, b, settings]);
+});
+
+test('a warm settings shell has no host authority before promotion and closes as a normal modal afterward', async t => {
+  const f = warmSettingsFixture(t), launcher = await f.launcher();
+  const parentFocuses = launcher.focuses;
+  f.host.prewarmSettings(launcher);
+  f.host.prewarmSettings(launcher);
+  await tick();
+  assert.equal(f.prepared.length, 1);
+  const shell = f.prepared[0]!;
+  assert.equal(shell.creation.parent, launcher);
+  assert.equal(shell.webContents.getURL(), f.settingsUrl);
+  assert.equal(shell.visible, false);
+  assert.equal(shell.focuses, 0);
+  assert.equal(launcher.focuses, parentFocuses);
+  assert.equal(f.owners.has(shell), false);
+  assert.equal(f.host.owns(shell), false);
+  assert.equal(f.host.contextFor(shell), null);
+  assert.equal(f.host.windowForContents(shell.webContents), null);
+  assert.equal(f.host.ownerForContents(shell.webContents), null);
+  assert.throws(() => f.invoke(shell, {action: 'describe'}), /sender/);
+  assert.deepEqual(shell.webContents.sent, []);
+  assert.deepEqual(f.host.windows(), [launcher]);
+  assert.deepEqual(f.host.closeOrder(), [launcher]);
+  assert.equal(f.host.settingsForParent(launcher), null);
+  assert.equal(f.host.contextFor(launcher)!.settingsModalOpen, false);
+  assert.equal(f.host.canHideToTray(), true);
+
+  assert.equal(f.invoke(launcher, {action: 'settings', slot: 'agent'}), true);
+  await f.host.loadFor(shell);
+  assert.deepEqual(f.created, [launcher, shell]);
+  assert.deepEqual(f.cleaned, [shell]);
+  assert.deepEqual(f.discarded, []);
+  assert.equal(f.owners.get(shell)?.isCurrent(), true);
+  assert.equal(f.host.ownerForContents(shell.webContents)?.role, 'settings');
+  assert.equal(f.invoke(shell, {action: 'describe'}).settingsSlot, 'agent');
+  assert.equal(f.host.settingsForParent(launcher), shell);
+  assert.equal(f.host.contextFor(launcher)!.settingsModalOpen, true);
+  assert.deepEqual(f.host.closeOrder(), [shell, launcher]);
+  assert.equal(shell.visible, true);
+  assert.equal(shell.shows, 1);
+  assert.equal(f.events.filter(value => value === 'settings:load').length, 1);
+
+  shell.holdClose = true;
+  assert.equal(f.invoke(shell, {action: 'settings-close'}), true);
+  assert.equal(shell.closeCalls, 1);
+  assert.equal(f.host.settingsForParent(launcher), shell);
+  shell.finishClose();
+  assert.equal(f.host.settingsForParent(launcher), null);
+  assert.equal(f.host.contextFor(launcher)!.settingsModalOpen, false);
+  assert.equal(f.invoke(launcher, {action: 'settings', slot: 'custom'}), true);
+  const reopened = f.created.at(-1)!;
+  await f.host.loadFor(reopened);
+  assert.notEqual(reopened, shell);
+  assert.notEqual(f.host.contextFor(reopened)!.windowId, f.owners.get(shell)!.windowId);
+  assert.equal(f.invoke(reopened, {action: 'describe'}).settingsSlot, 'custom');
+  assert.deepEqual(f.discarded, []);
+});
+
+test('settings prewarm is retired on parent navigation or tray hide and cannot reappear on late readiness', async t => {
+  for (const reason of ['reload', 'tray hide'] as const) {
+    await t.test(reason, async subtest => {
+      const f = warmSettingsFixture(subtest), launcher = await f.launcher();
+      f.host.prewarmSettings(launcher);
+      await tick();
+      const shell = f.prepared[0]!;
+      if (reason === 'reload') launcher.navigate(`${origin}/`);
+      else assert.equal(f.host.hideToTray(), true);
+      assert.deepEqual(f.discarded, [shell]);
+      assert.deepEqual(f.cleaned, [shell]);
+      assert.equal(shell.destroyed, true);
+      assert.equal(f.host.settingsForParent(launcher), null);
+      shell.emit('ready-to-show');
+      assert.equal(shell.shows, 0);
+      if (reason === 'tray hide') assert.equal(f.host.activate(launcher), true);
+      assert.equal(f.invoke(launcher, {action: 'settings', slot: 'agent'}), true);
+      const settings = f.created.at(-1)!;
+      await f.host.loadFor(settings);
+      assert.notEqual(settings, shell);
+      assert.equal(settings.creation.parent, launcher);
+      assert.equal(f.host.settingsForParent(launcher), settings);
+    });
+  }
+});
+
+test('a warm settings shell cannot be promoted for a different editor', async t => {
+  const f = warmSettingsFixture(t); await f.launcher();
+  const first = await f.editor(), second = await f.editor(projectB);
+  first.emit('focus');
+  f.host.prewarmSettings(first);
+  await tick();
+  const shell = f.prepared[0]!;
+  assert.equal(shell.creation.parent, first);
+  assert.equal(f.invoke(second, {action: 'settings', slot: 'shortcuts'}), true);
+  const settings = f.created.at(-1)!;
+  await f.host.loadFor(settings);
+  assert.deepEqual(f.discarded, [shell]);
+  assert.equal(shell.shows, 0);
+  assert.notEqual(settings, shell);
+  assert.equal(settings.creation.parent, second);
+  assert.equal(f.host.settingsForParent(first), null);
+  assert.equal(f.host.settingsForParent(second), settings);
+});
+
+test('an unready, failed or untrusted warm settings shell falls back to a fresh guarded window', async t => {
+  for (const reason of ['pending', 'load failure', 'renderer crash', 'foreign document'] as const) {
+    await t.test(reason, async subtest => {
+      const load = Promise.withResolvers<void>(), loadErrors: unknown[] = [];
+      let firstSettings = true;
+      const f = warmSettingsFixture(subtest, {
+        create(window) {
+          if (window.creation.role !== 'settings' || !firstSettings) return;
+          firstSettings = false;
+          if (reason === 'pending' || reason === 'load failure') window.loading = load;
+        },
+        onLoadError(error) { loadErrors.push(error); },
+      });
+      const launcher = await f.launcher();
+      f.host.prewarmSettings(launcher);
+      await tick();
+      const shell = f.prepared[0]!;
+      if (reason === 'load failure') load.reject(new Error('Synthetic settings shell load failure'));
+      if (reason === 'renderer crash') shell.webContents.emit('render-process-gone', {}, {reason: 'crashed'});
+      if (reason === 'foreign document') shell.navigate(`${origin}/`);
+      await tick();
+      assert.equal(f.invoke(launcher, {action: 'settings', slot: 'general'}), true);
+      const settings = f.created.at(-1)!;
+      await f.host.loadFor(settings);
+      if (reason === 'pending') load.resolve();
+      await tick();
+      assert.deepEqual(f.discarded, [shell]);
+      assert.deepEqual(f.cleaned, [shell]);
+      assert.deepEqual(loadErrors, []);
+      assert.equal(shell.shows, 0);
+      assert.notEqual(settings, shell);
+      assert.equal(settings.creation.parent, launcher);
+      assert.equal(f.host.settingsForParent(launcher), settings);
+      assert.equal(f.invoke(settings, {action: 'describe'}).settingsSlot, 'general');
+    });
+  }
 });
 
 test('settings close cancellation and renderer failure retain the parent lock until actual closed', async t => {

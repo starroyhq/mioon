@@ -4,7 +4,8 @@ import path from 'node:path';
 import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoOutputHosts,videoTemplate} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import type {Provider,ProviderContext as RegisteredContext} from '../provider-registry.ts';
-import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
+import {checkpoint} from '../operation-lifecycle.ts';
+import {acquireBoundVideoCredential} from './credential.ts';
 import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
 import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
@@ -74,15 +75,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const wan=frozen.providerId==='wan'?createWanSdkClient({binding:frozen,acquireCredential,fetchImpl}):null;
   const ensureHosts=()=>{if(!hosts.size)throw providerError('PROVIDER_CONFIGURATION','Configure independently reviewed exact output hosts before generation.');};
   const validate=(snapshot: unknown): true=>{ensureHosts();return validateVideoSnapshot(frozen,snapshot,{asOf:asOf()});};
-  async function credential(context: ProviderContext): Promise<string> {
-    if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    let value: unknown;
-    try{value=await awaitProvider(()=>acquireCredential(),context.signal);}
-    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});}
-    if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    if(typeof value!=='string'||!value||value!==value.trim()||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});
-    return value;
-  }
+  const credential = (context: ProviderContext) => acquireBoundVideoCredential(acquireCredential, context.signal);
   async function request(endpoint: string,{method='GET',body,raw,headers={},context={}}: {method?:string;body?:unknown;raw?:{bytes:Uint8Array;contentType:string};headers?:Record<string,string>;context?:ProviderContext}={}): Promise<Record<string,unknown>> {
     const secret=await credential(context);
     const authentication:Record<string,string>=frozen.providerId==='veo'?{'x-goog-api-key':secret}:{Authorization:`${frozen.providerId==='vidu'?'Token':'Bearer'} ${secret}`};

@@ -6,6 +6,7 @@ import {mediaFingerprintToken} from './project-asset-references.ts';
 import {validatedProjectAssetSource} from './project-media-storage.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
+import {assertCanvasTargetActive} from './canvas-active.ts';
 import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,previsThumbnailPublicSchemas,publicValue,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
 import {usesPrevisSchema} from './store-capabilities.ts';
@@ -171,6 +172,7 @@ export function createPrevisReaders(db: DatabaseSync) {
   const input=parse<ThumbnailGetInput>('previs.thumbnail.get',raw);
   const read=(): PrevisThumbnailGetResponse=>{
    const current=node(input.projectId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
    const response={projectId:input.projectId,nodeId:input.nodeId,...(input.framePresetId===undefined?{}:{framePresetId:input.framePresetId})};
    // Workspaces before schema64 hold no thumbnails.
    if(!usesPrevisSchema(db))return {...response,items:[]};
@@ -267,6 +269,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
    // Ownership is checked before any retained receipt is used.
    const current=readers.node(input.projectId,input.nodeId);
    if(prior)return replay(prior,'previs.scene.set',input.projectId,hash,requestId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
    if(current.sceneRevision!==input.expectedSceneRevision)throw failure('REVISION_CONFLICT',409,{entityId:current.id,
     expectedSceneRevision:input.expectedSceneRevision,currentSceneRevision:current.sceneRevision,current:publicValue(current)});
    if(current.revision>=Number.MAX_SAFE_INTEGER||current.sceneRevision>=Number.MAX_SAFE_INTEGER)throw failure('PREVIS_REVISION_LIMIT');
@@ -297,7 +300,9 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
      throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:node.sceneRevision,currentFramePresetId});
     return thumbnailDigest(thumbnailDependencies(db,node,fingerprinted,store.root),input.framePresetId);
    };
-   const current=readers.node(input.projectId,input.nodeId),sourceFingerprintDigest=dependencies(current);
+   const current=readers.node(input.projectId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
+   const sourceFingerprintDigest=dependencies(current);
    if(input.slot!==PREVIS_THUMBNAIL_CARD&&!current.scene.keyframes.some(keyframe=>keyframe.id===input.slot))throw failure('PREVIS_THUMBNAIL_SLOT',409,{slot:input.slot});
    const updatedAt=now(),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;
    const updated=db.prepare(`UPDATE previs_thumbnails SET sceneRevision=?,width=?,height=?,bytes=?,updatedAt=?${fingerprinted?',sourceFingerprintDigest=?':''} WHERE nodeId=? AND slot=?`).run(...values,...(fingerprinted?[sourceFingerprintDigest]:[]),input.nodeId,input.slot);

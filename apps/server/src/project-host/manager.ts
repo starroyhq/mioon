@@ -10,8 +10,8 @@ import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, openProjectStore, recoverProjectFile, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
-import type {OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, FORMAT4_PROJECT_SCHEMA_VERSION, openProjectStore, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
+import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
 import {
@@ -191,6 +191,9 @@ function nameFromFile(projectFile: string): string {
   return registryName(name === '' ? PROJECT_FOLDER_FALLBACK_NAME : name);
 }
 
+const projectCreationOptions: Pick<CreateProjectFileOptions, 'format4'> = Object.freeze({});
+export const newProjectFormatVersion = projectCreationOptions.format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
+
 /** Creates the folder (unless a `.mioon` is chosen) and the project file, and
  * registers it with lastOpenedAt null; does not open it. Reused by the test
  * helper createServerProject. Without projectFile the folder is claimed by
@@ -201,7 +204,7 @@ export function createProjectFiles(input: CreateProjectInput, {directories, regi
   if (typeof name !== 'string' || projectNameProblem(name) !== null) throw invalid('项目名称无效');
   if (projectId !== undefined && registry.get(projectId)) throw invalid('项目 ID 已登记');
   registry.assertCanRegister?.();
-  const create = (file: string): string => createProjectFile(file, projectId === undefined ? {} : {projectId});
+  const create = (file: string): string => createProjectFile(file, {...projectCreationOptions, projectId});
   let projectFile: string;
   let folder: string | null = null;
   let id: string;

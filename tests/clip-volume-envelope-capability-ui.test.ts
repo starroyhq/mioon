@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { VOLUME_ENVELOPE_PROFILE } from '../packages/contracts/src/timeline-volume-envelope.ts';
+import { CLIP_LAYOUT_PROFILE, type ClipLayout } from '../packages/contracts/src/timeline-clip-layout.ts';
+import * as formatState from '../apps/web/src/timeline-format-state.ts';
 import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 import {projectEntryFixture,projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
@@ -61,13 +63,13 @@ function inspector(locale: Locale='en', eligible=true, supported=true){
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
   if(name.endsWith('clip-audio-state.ts'))return {clipAudioIssue:()=>''};
-  if(name.endsWith('timeline-format-state.ts'))return {timelineRectIssue:()=>'',timelineRectMessage:()=>''};
+  if(name.endsWith('timeline-format-state.ts'))return formatState;
   if(name.endsWith('workspace-visibility.tsx'))return {useWorkspaceVisibility:()=>true};
   if(name.endsWith('.css'))return {};
   if(name.startsWith('@mioon/ui/'))return new Proxy({}, {get:(_,key)=>stub(key)});
   return {__esModule:true,default:stub(name)};
  },module,module.exports);
- const props: Record<string,unknown> & {clip:{id:string;assetId:string;volumeEnvelope?:RawVolumeEnvelope|null};timeline:Record<string,unknown>;asset:{mimeType:string;hasAudio:boolean};draftContext:{volumeEnvelopeEditable:boolean;volumeEnvelopeCapability:string};draftConnected?:boolean}={clip:{id:id(5),assetId:id(6),volumeEnvelope:undefined as RawVolumeEnvelope|null|undefined},timeline:{projectId:id(1),id:id(2),revision:1,width:720,height:1280,tracks:[]},asset:{mimeType:'audio/wav',hasAudio:eligible},draftContext:{volumeEnvelopeEditable:supported,volumeEnvelopeCapability:supported?'editable':'unsupported'},onSave:()=>{},onRemove:()=>calls.push('remove')};
+ const props: Record<string,unknown> & {clip:{id:string;assetId:string;layout?:ClipLayout;volumeEnvelope?:RawVolumeEnvelope|null};timeline:Record<string,unknown>;asset:{mimeType:string;hasAudio:boolean};draftContext:{volumeEnvelopeEditable:boolean;volumeEnvelopeCapability:string};draftConnected?:boolean}={clip:{id:id(5),assetId:id(6),volumeEnvelope:undefined as RawVolumeEnvelope|null|undefined},timeline:{projectId:id(1),id:id(2),revision:1,width:720,height:1280,tracks:[]},asset:{mimeType:'audio/wav',hasAudio:eligible},draftContext:{volumeEnvelopeEditable:supported,volumeEnvelopeCapability:supported?'editable':'unsupported'},onSave:()=>{},onRemove:()=>calls.push('remove')};
  const h={calls,state,controller,token,props,render(){cursor=0;tree=module.exports.default(props);return tree;},all:()=>nodes(tree),editor:()=>nodes(tree).find(n=>n.type===stubs['./ClipVolumeEnvelopeControls.tsx']),form:()=>nodes(tree).find(n=>n.type==='form'),button:(testid: string)=>nodes(tree).find(n=>n.props?.['data-testid']===testid)};h.render();return h;
 }
 function duckingKey(key='Enter',keyCode=13,isComposing=false,repeat=false){
@@ -77,6 +79,25 @@ function beginDucking(h: ReturnType<typeof inspector>,session: symbol){h.editor(
 function endDucking(h: ReturnType<typeof inspector>,session: symbol){h.editor()!.props.onCompositionChange({session,pending:false,dirty:false});h.render();}
 const submitDucking=(h: ReturnType<typeof inspector>)=>h.form()!.props.onSubmit({preventDefault(){}});
 const saves=(h: ReturnType<typeof inspector>)=>h.calls.filter(call=>call==='save').length;
+test('relative layout keeps the transform controls and allows nongeometry edits against a smaller current frame',async()=>{
+ const h=inspector();
+ h.props.asset.mimeType='video/mp4';
+ h.props.onSetTransform=()=>{};
+ h.props.timeline.height=720;
+ h.props.timeline.width=1280;
+ h.render();
+ assert.ok(h.button('clip-height'),'a legacy clip keeps its rectangle fields');
+ assert.equal(h.button('save-clip')!.props.disabled,true,'legacy rectangle bounds still guard Save');
+ const transform = h.all().find(node=>typeof node.props.onSetTransform==='function');
+ assert.ok(transform);
+ h.props.clip.layout={profileId:CLIP_LAYOUT_PROFILE,basisPresetId:'portrait_720'};
+ h.render();
+ for(const field of ['x','y','width','height'])assert.equal(h.button(`clip-${field}`),undefined);
+ assert.ok(h.all().some(node=>node.type===transform.type));
+ assert.equal(h.button('save-clip')!.props.disabled,false);
+ await submitDucking(h);
+ assert.equal(saves(h),1);
+});
 for(const [key,keyCode] of [['Enter',13],['Process',229]] as const)test(`actual Inspector ${key}/${keyCode} ducking IME confirmation survives compositionend and submit until keyup release`,async()=>{
  const h=inspector(),session=Symbol('duck-confirm');beginDucking(h,session);const event=duckingKey(key,keyCode,true);
  h.form()!.props.onKeyDownCapture(event);assert.equal(event.observed.prevented,0,'native IME default must not be cancelled');

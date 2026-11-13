@@ -1,9 +1,10 @@
 import {timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '../../contracts/src/timeline-output-geometry.ts';
 import {projectSummaryListSchema,projectSummaryCoverSchema} from '../../contracts/src/project-home.ts';
 import type {ProjectSummary} from '../../contracts/src/project-home.ts';
+import type {DatabaseSync} from 'node:sqlite';
+import {canvasActiveCondition,canvasActiveEdgeCondition} from './canvas-active.ts';
 
-interface ReadDatabase{prepare(sql:string):{all(...parameters:string[]):unknown[]}}
-interface Store{db:ReadDatabase}
+interface Store{db:DatabaseSync}
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function invalid():never{throw Object.assign(new Error('项目首页数据无法安全读取。'),{code:'PROJECT_SUMMARY_UNAVAILABLE',status:409});}
@@ -11,8 +12,10 @@ function date(value:unknown):value is string{return typeof value==='string'&&Num
 const visual=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/webm']);
 type Table='projects'|'shots'|'assets'|'versions'|'timelines'|'nodes'|'edges';
 
-function rows(db:ReadDatabase,table:Table,projectId?:string):Record<string,unknown>[] {
-    const found=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 2097152 THEN data END AS data FROM ${table}${projectId?` WHERE ${table==='projects'?'id':'projectId'}=?`:''} ORDER BY id LIMIT 4097`).all(...(projectId?[projectId]:[]));
+function rows(db:DatabaseSync,table:Table,projectId?:string):Record<string,unknown>[] {
+    const active=table==='edges'?canvasActiveEdgeCondition(db,'record'):table==='shots'||table==='nodes'?canvasActiveCondition(db,'record'):'1';
+    const scope=projectId?`${table==='projects'?'id':'projectId'}=? AND `:'';
+    const found=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 2097152 THEN data END AS data FROM ${table} record WHERE ${scope}${active} ORDER BY id LIMIT 4097`).all(...(projectId?[projectId]:[]));
     if(found.length>4096)invalid();let bytes=0;
     return found.map(row=>{
       if(!object(row)||!uuid(row.id)||typeof row.data!=='string'||(bytes+=Buffer.byteLength(row.data))>16*1024*1024)invalid();

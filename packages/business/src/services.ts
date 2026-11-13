@@ -18,6 +18,9 @@ import {freezeStoryboardOutputGeometry} from './storyboard-output.ts';
 import {AgentAuthorizationError} from './agent/authorizations.ts';
 import type {AgentAuthorizations} from './agent/authorizations.ts';
 import {createProjectHomeServices} from './project-home.ts';
+import {assertCanvasTargetActive,hasCanvasArchives,isCanvasEdgeHidden,listActiveCanvasRecords} from './canvas-active.ts';
+import {hasRetainedCanvasDependency} from './canvas-retained.ts';
+import type {CanvasArchiveTable} from './project-file/schema/domains/canvas.ts';
 import {createMutationReplay} from './mutation-replay.ts';
 import {createTimelineImageSourceServices} from './timeline-image-source.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
@@ -82,6 +85,10 @@ import {createSceneServices} from './scene-tasks.ts';
 import {createSubjectVariantServices} from './subject-variants.ts';
 import {createPrevisServices} from './previs.ts';
 import {createPrevisPublicationServices} from './previs-publication.ts';
+import {createCanvasEditing, isCanvasEditingWrite} from './canvas-editing.ts';
+import {isCanvasEditingOperation} from '../../contracts/src/canvas-editing.ts';
+import type {CanvasEditBase, CanvasTargetExpectation} from '../../contracts/src/canvas-editing.ts';
+import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {registerProjectOutputAdmission} from './project-output-owner.ts';
 import {isPrevisPublicationOperation,previsPublicationSchemas,previsPublicationEffects} from '../../contracts/src/previs-publication.ts';
 import {isSubjectVersionHidden} from './subject-variant-visibility.ts';
@@ -213,6 +220,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const applicationPorts=application;
  const active=new Set<Promise<unknown>>();let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
+ const canvasEditing = isProjectStore(store) ? createCanvasEditing(store) : undefined;
  const configuration=application.configuration;
  const assertApplicationMutationAllowed=()=>application.assertMutationAllowed();
  const configurationHandlers={
@@ -220,6 +228,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
  };
  const required=(t: string,id: string): ServiceRow=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v as ServiceRow;};
+ const liveCanvas=(table: CanvasArchiveTable,projectId: string)=>listActiveCanvasRecords(db,table,projectId,()=>list(table,projectId));
  const projectHome=createProjectHomeServices(store,{readRecentOpened});
  const luts=createLutResourceServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertProjectStore(store),assertImportAllowed:()=>assertProjectStore(store)}});
  const lookPacks=createLookPackInspectionServices(store,{signal:ownerSignal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertProjectStore(store)}});
@@ -325,8 +334,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const prepareJobDraft=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null)=>checkGenerationAdmission(()=>{
   const shot=required('shots',input.shotId) as ShotRecord;
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
+  const archiveAware=hasCanvasArchives(db);
+  if(archiveAware){assertGenerationShotOwnership(db,shot);assertCanvasTargetActive(db,'shots',shot.id);}
   if(!retrySnapshot)check(shot,input.expectedRevision);
-  if(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId)assertGenerationShotOwnership(db,shot);
+  if(!archiveAware&&(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId))assertGenerationShotOwnership(db,shot);
   let source: GenerationSource=retrySnapshot||shot as unknown as GenerationSource,subjectGraph: GenerationSubjectGraph|null=null;
   if(!retrySnapshot&&input.videoInput!==undefined)source={...source,videoInput:input.videoInput};
   const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
@@ -522,11 +533,54 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'agent.authorization.revoke':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.revoke(input);},
   'project.create':(input: ServiceRow)=>tx(()=>{if(kernelProjectId&&get('projects',kernelProjectId))throw new AppError('PROJECT_FILE_SINGLE_PROJECT','一个项目文件只能保存一个项目',409);const project=put('projects',{id:kernelProjectId??randomUUID(),name:input.name,description:input.description||'',revision:1,createdAt:now(),updatedAt:now()});if(input.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,stringValue(input.timelinePresetId) as never);return project;}),
   'project.list':()=>list('projects').map(currentProjectRecord).sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
-  'project.get':(input: ServiceRow)=>tx(()=>{const project=currentProjectRecord(required('projects',stringValue(input.projectId) as string));return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
+  'project.get':(input: ServiceRow)=>tx(()=>{
+   const projectId=stringValue(input.projectId) as string,project=currentProjectRecord(required('projects',projectId));
+   const currentTimeline=timeline.ensure(projectId),timelineHistory=timeline.history(projectId);
+   const contents=['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>{
+    if(t==='exports')return [t,exportValues(projectId).sort((a,b)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
+    const values=t==='shots'||t==='nodes'||t==='edges'?liveCanvas(t,projectId):list(t,projectId);
+    const disclosed=values.map(value=>subjectDisclosure(t,value as ServiceRow,projectId));
+    return [t,disclosed.sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
+   });
+   const values=Object.fromEntries(contents);
+   let canvasEditBase: CanvasEditBase|undefined;
+   if (hasCanvasArchives(db)) {
+    const ledger=new Map(db.prepare(`SELECT kind,targetId,revision FROM project.agent_task_target_revisions_v2
+      WHERE projectId=? AND kind IN ('shot','node','edge')`).all(projectId).map(entry=>[`${entry.kind}:${entry.targetId}`,entry.revision]));
+    const kinds={shots:'shot',nodes:'node',edges:'edge'} as const;
+    const targets=Object.entries(kinds).flatMap(([table,kind])=>(values[table] as ServiceRow[]).map(row=>{
+     const id=String(row.id),revision=ledger.get(`${kind}:${id}`);
+     if(typeof revision!=='number'||!Number.isSafeInteger(revision)||revision<1)
+      throw new AppError('CANVAS_EDIT_CONFLICT','画布对象的修订无法验证。',409,{id});
+     return {kind,id,revision} satisfies CanvasTargetExpectation;
+    }));
+    canvasEditBase={...readProjectContentStamp(db),targets};
+   }
+   return {project,timeline:currentTimeline,timelineHistory,...values,...(canvasEditBase?{canvasEditBase}:{})};
+  }),
   'asset.import':createManagedAssetImportHandler(inputStore,{required,now,signal:ownerSignal,outsidePaths:application.outsidePaths,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
-  'edge.create':(input: ServiceRow)=>tx(()=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});}),
-  'edge.delete':(input: ServiceRow)=>tx(()=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};}),
+  'edge.create':(input: ServiceRow)=>tx(()=>{
+   const projectId=stringValue(input.projectId) as string;
+   required('projects',projectId);
+   for(const id of [input.source,input.target]){
+    const targetId=String(id),shot=get('shots',targetId),table=shot?'shots':'nodes';
+    const target=(shot||get(table,targetId)) as ServiceRow|null;
+    if(!target||target.projectId!==projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');
+    assertCanvasTargetActive(db,table,targetId);
+   }
+   if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');
+   const existing=liveCanvas('edges',projectId).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;
+   return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});
+  }),
+  'edge.delete':(input: ServiceRow)=>tx(()=>{
+   const edgeId=stringValue(input.edgeId) as string,edge=required('edges',edgeId);
+   if(isCanvasEdgeHidden(db,edge))throw new AppError('CANVAS_TARGET_ARCHIVED','画布对象已删除，请先恢复。',409,{id:edgeId});
+   if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId});
+   if(hasRetainedCanvasDependency(db,kernelProjectId??String(edge.projectId),[{kind:'edge',id:edgeId}]))
+    throw new AppError('CANVAS_HISTORY_DEPENDENCY','画布历史仍引用这条连线，请通过画布删除。',409,{edgeId});
+   db.prepare('DELETE FROM edges WHERE id=?').run(edgeId);return {deleted:true};
+  }),
   'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
   'video.connection.list':()=>{return listVideoConnections(videoSettings,currentProfileDate());},
   'generation.submit':async(input: GenerationSubmitInput,{outputLocale}: ServiceHandlerContext={})=>{
@@ -602,7 +656,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
-  'export.create':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=list('shots',stringValue(input.projectId)).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));recordOutputLocale(db,e.id,h,outputLocale);return e;}),
+  'export.create':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=liveCanvas('shots',stringValue(input.projectId) as string).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));recordOutputLocale(db,e.id,h,outputLocale);return e;}),
   'export.get':(input: ServiceRow)=>subjectDisclosure('exports',required('exports',stringValue(input.exportId) as string),undefined,stringValue(input.exportId)),
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
@@ -628,6 +682,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const signal: AbortSignal|undefined=ownerSignal&&callSignal&&ownerSignal!==callSignal?AbortSignal.any([ownerSignal,callSignal]):(ownerSignal||callSignal)??undefined;
   checkpoint(signal);
   const operation: Promise<unknown>=(async()=>{
+   if (isCanvasEditingOperation(op)) {
+    if (!canvasEditing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
+    const authorize = (): void => { checkpoint(signal); assertApplicationMutationAllowed(); assertMutationAllowed?.(); };
+    return canvasEditing.call(op, input, isCanvasEditingWrite(op) ? authorize : undefined);
+   }
    if(isAssetMediaOperation(op)){
     const effect=assetMediaEffects[op];if(effect.databaseWrite||effect.fileWrite||effect.localProcess){assertApplicationMutationAllowed();assertMutationAllowed?.();}
     return createAssetMediaServices(store,{outsidePaths:applicationPorts.outsidePaths,signal,...(effect.databaseWrite||effect.fileWrite||effect.localProcess?{beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}:{})}).call(op,input);
@@ -684,6 +743,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Only queued/new provider dispatch uses lifecycle validation. Paid task
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job: JobRecord): unknown {
+  if(hasCanvasArchives(db)){assertGenerationJobOwnership(db,job);assertCanvasTargetActive(db,'shots',job.shotId);}
   if(kernelProjectId)for(const frozen of [...(Array.isArray(job.snapshot.referenceAssets)?job.snapshot.referenceAssets:[]),...(Array.isArray(job.snapshot.referenceAudios)?job.snapshot.referenceAudios:[])]){if(!isRecord(frozen))throw new AppError('REFERENCE_CHANGED','参考素材冻结无效',409);const asset=required('assets',String(frozen.id));if(asset.projectId!==job.projectId||asset.referenceRevision!==frozen.referenceRevision||asset.sha256!==frozen.sha256||canonical(asset.reference)!==canonical(frozen.reference))throw new AppError('REFERENCE_CHANGED','参考素材引用与冻结任务不一致',409);}
   assertAgentTaskJobEffect(db,'job',job.id);
   const binding=readVideoBinding(job.snapshot);

@@ -3,7 +3,7 @@ import {AxiosHeaders} from 'axios';
 import {parseVideoBinding} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
-import {awaitProvider,operationCancelled} from '../operation-lifecycle.ts';
+import {acquireBoundVideoCredential} from './credential.ts';
 import {createJsonRequest,imageDimensions,providerError} from '../providers/live-common.ts';
 import type {ProviderContext} from '../providers/live-common.ts';
 import {assertConfiguredTaskId,configuredSubmissionId,configuredTask} from './adapters.ts';
@@ -50,15 +50,7 @@ export function createWanSdkClient({binding,acquireCredential,fetchImpl=globalTh
   if(frozen.providerId!=='wan')throw providerError('VIDEO_BINDING_INVALID','The Wan SDK requires a bound Wan connection.');
   const wan30=isWan30Binding(frozen);
   const selection:VideoAdapterSelection={providerId:'wan',model:frozen.model.modelId,resolution:'',audio:frozen.model.audio};
-  async function credential(context: ProviderContext): Promise<string> {
-    if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    let secret:unknown;
-    try{secret=await awaitProvider(acquireCredential,context.signal);}
-    catch{if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});}
-    if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});
-    if(typeof secret!=='string'||!secret||secret!==secret.trim()||secret.length>8192||/[\u0000-\u0020\u007f]/.test(secret))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Re-entering a key only configures new tasks.',{beforeDispatch:true});
-    return secret;
-  }
+  const credential = (context: ProviderContext) => acquireBoundVideoCredential(acquireCredential, context.signal);
   function sdk(context: ProviderContext) {
     return new BoundVideoSynthesis(frozen,async options=>{
       const method=options.method?.toUpperCase()??'GET';

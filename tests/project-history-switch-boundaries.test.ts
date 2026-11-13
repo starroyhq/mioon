@@ -72,7 +72,7 @@ test('an available format 4 capability leaves a staged format 3 history switch o
  }finally{opened.release();}
 });
 
-test('an explicitly admitted format 4 history switch resumes after commit with history 11 and its archived version intact',t=>{
+test('an explicitly admitted format 4 history switch resumes after commit with the current candidate history and its archived version intact',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'history-switch-format4-')),projectFile=path.join(root,'project.mioon'),projectId=randomUUID();
  t.after(()=>rmSync(root,{recursive:true,force:true}));
  const location={localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')};

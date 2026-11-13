@@ -11,7 +11,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | 应用/项目接口 | 当前行为 |
 | --- | --- |
 | `GET /api/background-tasks` | S3-A应用级只读任务等待摘要：`limit`为1–100（默认50）、`after`为项目ID游标；返回`version:1`、`projects[{projectId,taskCount,reasonCodes}]`和`nextCursor`，最多256KiB。只列项目打不开且有未结束任务的项，不打开项目，不提供结果弃置；独立契约`@mioon/contracts/background-task-query` |
-| `GET /api/project-entries` | S6-A 新增：只读登记目录、availability、封面缓存地址和应用库/服务实例身份；网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项；不扫描、不 acquire 运行时 |
+| `GET /api/project-entries` | 只读登记目录、availability、封面缓存地址、应用库与服务实例身份，以及新建项目所用格式 `newProjectFormatVersion`（3 或 4，旧服务可省略）。网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项。不扫描目录，不 acquire 运行时 |
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
@@ -164,6 +164,17 @@ K2 曾保留的旧项目地址已在 P4 退役：把项目操作发到应用 `/a
 Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISION_CONFLICT","message":"...","details":{"currentRevision":2},"retryable":false}}`. HTTP 400 invalid input, 401 unauthenticated, 403 invalid origin/provider disabled, 404 missing record/operation, 409 stale revision or idempotency conflict. Do not blindly retry a generation with a new key when a response is lost; replay the original exact request.
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
+
+### 画布编辑（格式 4 候选）
+
+画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。只有以格式 4 候选入口打开的项目支持以下操作。默认桌面和 Web 宿主仍按格式 3 打开项目。
+
+- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
+- `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象，返回批次和当前目标修订。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
+- `canvas.apply` 原子提交删除、恢复、移动或整理。格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
+- `canvas.history.get` 返回画布游标、两边动作以及各自的 `undoConflict` 和 `redoConflict`。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。
+- 写入携带 `historyRevision`，并用 `createCanvasRequestId(requestEpoch, uuid, issuedAt)` 生成 `requestId`。从 `canvas.history.get` 取 `requestEpoch` 和 `requestAfter`。时间戳是大于 `requestAfter` 的 Unix 毫秒，最多比服务时钟快两分钟。成功写入后，该代际随本机记录保留。
+- 响应丢失时，七天窗口内用同一请求 ID 原样重试可取回原回执。写入时清理已过期的回执并推进持久截止时间。活跃窗口暂满时返回 `CANVAS_RECEIPT_WINDOW_FULL` 和最早可重试时间。回执过期或本机记录已更换且查不到原回执时，返回 `CANVAS_REQUEST_OUTCOME_UNKNOWN`，客户端须先重新读取画布核对结果。
 
 ### Private last-project locator（已退役）
 
@@ -724,8 +735,8 @@ and all authority fields for callers that bind scope outside the arguments;
 `inspectionSchemas` adds only the RPC project ID. Neither schemas nor inspection
 metadata grant access.
 
-Legacy `project.get` and `timeline.get` retain their existing responses and can
-create the default empty timeline on first access. They are not read-only. Use
+Legacy `project.get` and `timeline.get` can create the default empty timeline on
+first access. They are not read-only. Use
 the new `.inspect` operations when non-creating metadata inspection is required.
 
 ## Project workspace preferences (UI-only)
@@ -809,6 +820,9 @@ Model, MIME/dimension/ratio, budget and approved-media validation remain authori
 accept `{projectId}` and lazily create the same empty default timeline for
 legacy projects. Initial revision is 1; defaults are two video tracks and one
 audio track. No existing shot or selected version is automatically copied.
+On the project-addressed HTTP endpoint, `project.get` also returns
+`data.projectFormatVersion` from the open project file (3 or 4). The UI uses
+this field to determine which timeline format controls are available.
 
 All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 

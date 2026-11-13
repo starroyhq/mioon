@@ -1,5 +1,6 @@
 import type {ProjectEntriesDesktopBridge, ProjectDesktopCapabilities, ProjectDesktopOpenResult, ProjectDesktopSelection, ProjectLocationFacts} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryDesktopRequestSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import type {NewProjectFormatVersion} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryOpenFailure, projectEntryOpenFailureSchema} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
@@ -18,6 +19,7 @@ export function projectLocationRisks(facts: ProjectLocationFacts): readonly Proj
 interface Failure {readonly issue: ProjectOpenIssue; readonly name: string | null; readonly token?: string; readonly projectId?: string; readonly reselect?: 'duplicate' | 'open-file'; readonly entryExpired?: true}
 export interface NativeProjectDesktopState {
   readonly capabilities: ProjectDesktopCapabilities | null; readonly busy: boolean; readonly blocked: boolean;
+  readonly newProjectFormatVersion?: NewProjectFormatVersion;
   readonly createOpen: boolean; readonly values: NewProjectFileValues; readonly selection: ProjectDesktopSelection | null; readonly selectionInvalid: boolean; readonly createState: NewProjectFileState;
   readonly failure: Failure | null; readonly action: ProjectOpenFailureActionState;
   readonly risks: readonly OpenedProjectLocationRisk[];
@@ -229,11 +231,11 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   async function initializeOwner(editor: boolean, serial: number, owns: () => boolean) {
     if (!owns()) return;
     try {
-      await readProjectEntryIdentity(identity);
+      const {newProjectFormatVersion} = await readProjectEntryIdentity(identity);
       if (!owns()) return;
       const capabilities = await client.capabilities();
       if (!owns()) return;
-      emit({capabilities: {...capabilities, saveAs: false}});
+      emit({capabilities: {...capabilities, saveAs: false}, newProjectFormatVersion});
       if (editor && capabilities.ready && capabilities.locationFacts) {
         const location = await client.currentLocation();
         if (owns() && !dismissedRisk) emit({risks: projectLocationRisks(location.facts).filter((risk): risk is OpenedProjectLocationRisk => risk.kind !== 'network')});
@@ -276,8 +278,12 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   async function create() {
     if (!editable() || !state.capabilities?.ready || !state.capabilities.create || !state.selection || !state.selection.facts.isLocal || state.selection.facts.volumeReadOnly) return false;
     const selection = state.selection, values = state.values, serial = generation;
-    const input = {token: selection.token, name: values.name.trim(), description: values.description, timelinePresetId: values.presetId, createFolder: values.createFolder};
-    if (!projectEntryDesktopRequestSchema.safeParse({action: 'createAtSelection', ...input}).success || values.description.length > 500) return false;
+    const format4 = state.newProjectFormatVersion === 4;
+    const input = {
+      token: selection.token, name: values.name.trim(), description: format4 ? '' : values.description,
+      timelinePresetId: format4 ? DEFAULT_TIMELINE_OUTPUT_PRESET : values.presetId, createFolder: values.createFolder,
+    };
+    if (!projectEntryDesktopRequestSchema.safeParse({action: 'createAtSelection', ...input}).success || input.description.length > 500) return false;
     emit({createState: {kind: 'creating'}});
     const success = await run('chooseLocation', async dispatched => {
       dispatched();
@@ -357,7 +363,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     observeError: fail,
     dismissRisk() {dismissedRisk = true; emit({risks: []});},
     bridge: client,
-    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || state.values.description), busy: state.busy, unknown: Boolean(retry) || retiredWrites.size > 0, identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action, retiredWrites.size]};},
+    readCloseSnapshot() {return {dirty: !knownCreated && Boolean(state.values.name || state.newProjectFormatVersion !== 4 && state.values.description), busy: state.busy, unknown: Boolean(retry) || retiredWrites.size > 0, identity: [generation, state.createOpen, state.values, state.selection?.token, knownCreated, state.action, retiredWrites.size]};},
   };
 }
 export type NativeProjectDesktopController = ReturnType<typeof createNativeProjectDesktopController>;

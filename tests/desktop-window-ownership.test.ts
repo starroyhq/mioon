@@ -1198,9 +1198,21 @@ test('actual native dialog disables menu business actions and restart, including
 test('settings ownership, hidden native windows and pending reload cannot execute menu business actions', async t => {
   let focused: DesktopHarnessWindow | null = null;
   const drain = deferred(), f = await harness(t, {focusedWindow: () => focused, flush: index => index === 1 ? drain.promise : true, release: () => drain.resolve(true)});
-  await f.initial(); const {editor} = await openOwnedEditor(f); focused = editor; editor.emit('focus'); publishMenuState(f, editor);
+  await f.initial(); const {launcher, editor} = await openOwnedEditor(f); focused = editor; editor.emit('focus'); publishMenuState(f, editor);
   const callback = f.menu('command-clip-split').click!, host = f.get('windowHost');
   assert.equal(host.showSettings('general', editor), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  const origin = f.r.backends[0].origin, settingsUrl = `${origin}/settings.html`;
+  assert.deepEqual(launcher.urls, [`${origin}/`]);
+  assert.deepEqual(editor.urls, [`${origin}/?project=${host.contextFor(editor).editorProjectId}`]);
+  assert.deepEqual(settings.urls, [settingsUrl]);
+  assert.equal(settings.config.parent, editor);
+  assert.equal(host.contextFor(launcher).settingsModalOpen, false);
+  assert.equal(host.contextFor(editor).settingsModalOpen, true);
+  for (const window of [launcher, editor, settings]) {
+    let blocked = false;
+    window.webContents.emit('will-navigate', {url: settingsUrl, preventDefault() { blocked = true; }});
+    assert.equal(blocked, window !== settings);
+  }
   editor.emit('focus'); assert.equal(f.menu('command-clip-split').enabled, false); callback();
   focused = settings; settings.emit('ready-to-show'); settings.emit('focus'); publishMenuState(f, settings);
   assert.equal(f.menu('command-clip-split').enabled, false, 'A settings report is never a business command owner');
@@ -1423,6 +1435,14 @@ test('actual main creates a parent-bound settings modal and blocks parent close/
   const parent = f.r.windows[0], host = f.get('windowHost');
   assert.equal(host.showSettings('agent', parent), true);
   const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  const origin = f.r.backends[0].origin, settingsUrl = `${origin}/settings.html`;
+  assert.deepEqual(parent.urls, [`${origin}/`]);
+  assert.deepEqual(settings.urls, [settingsUrl]);
+  const firstSettingsFrame = settings.webContents.mainFrame;
+  const firstSettingsContext = f.r.bridge!({sender: settings.webContents, senderFrame: firstSettingsFrame}, {action: 'describe'}) as ProjectWindowContext;
+  assert.equal(firstSettingsContext.role, 'settings');
+  assert.equal(firstSettingsContext.settingsSlot, 'agent');
+  assert.equal(firstSettingsContext.editorProjectId, null);
   assert.equal(settings.config.parent, parent); assert.equal(settings.config.modal, true);
   assert.ok(Number(settings.config.width) < Number(parent.config.width));
   assert.ok(Number(settings.config.height) < Number(parent.config.height));
@@ -1436,6 +1456,15 @@ test('actual main creates a parent-bound settings modal and blocks parent close/
   assert.equal(await f.get('requestApplicationQuit')(parent), false);
   assert.equal(parent.urls.length, loads); assert.equal(f.r.nativeChecks.length, checks);
   assert.equal(f.get('quitRouter.isPending'), false); assert.equal(f.r.drains, 0);
+  assert.equal(await f.get('windowAdmissions').get(settings).requestReload(), true);
+  assert.deepEqual(settings.urls, [settingsUrl, settingsUrl]);
+  assert.deepEqual(f.r.nativeChecks.slice(checks), [settings]);
+  assert.equal(host.contextFor(parent).settingsModalOpen, true);
+  assert.throws(() => f.r.bridge!({sender: settings.webContents, senderFrame: firstSettingsFrame}, {action: 'describe'}), /sender/);
+  const reloadedContext = f.r.bridge!({sender: settings.webContents, senderFrame: settings.webContents.mainFrame}, {action: 'describe'}) as ProjectWindowContext;
+  assert.equal(reloadedContext.role, 'settings');
+  assert.equal(reloadedContext.windowId, firstSettingsContext.windowId);
+  assert.notEqual(reloadedContext.contextId, firstSettingsContext.contextId);
   const closeSettings = () => f.r.bridge!({ sender: settings.webContents, senderFrame: settings.webContents.mainFrame },
     { action: 'settings-close', contextId: host.contextFor(settings).contextId });
   settings.disposition = 'dirty'; assert.equal(closeSettings(), true); await until(() => f.r.dialogs.some(item => item.title === '尚有未保存的修改'));

@@ -20,6 +20,7 @@ import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-
 import type {ProjectDesktopTemplate} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
+import {newProjectFormatVersion} from './project-host/manager.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
@@ -102,7 +103,9 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
         return {project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null};
       });
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
-    const result = projectEntriesResponseSchema.safeParse({version: 1, appLibraryScope: before, instanceId, registered});
+    const result = projectEntriesResponseSchema.safeParse({
+      version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion, registered,
+    });
     if (!result.success) throw unavailable();
     return result.data;
   };
