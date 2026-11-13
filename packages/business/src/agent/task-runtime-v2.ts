@@ -977,14 +977,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
         }else if(step.toolCall&&request.resolution==='discard'){
-          let toolLoadMode:'names'|'groups'|undefined;
           if(step.toolCall.name===AGENT_TASK_TOOLS_LOAD_NAME){
             const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
             if(!sourceId)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
             const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model')throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
-            toolLoadMode=sourceTaskModelToolLoadMode(configuration(run).protocol,source.request);
+            const toolLoadMode=sourceTaskModelToolLoadMode(configuration(run).protocol,source.request);
+            toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,toolLoadMode});
           }
-          const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,...(toolLoadMode?{toolLoadMode}:{})}),proof=toolset().recoverLocalUnknown(prepared,{runId,stepId:step.id,requestId:step.id});
+          const proof=toolset().recoverLocalUnknown({projectId,runId,stepId:step.id,requestId:step.id});
           if(!proof)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'failed',result:{...proof,error:{code:'UNKNOWN_NOT_APPLIED',message:'已核对原子回执，旧步骤未提交。请重新读取当前状态后规划，不要重放旧参数。'}}});
           const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
           if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}

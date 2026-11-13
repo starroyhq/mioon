@@ -34,10 +34,13 @@ export const projectEntriesResponseSchema = z.object({
   version: z.literal(1),
   appLibraryScope: z.string().regex(/^[a-f0-9]{64}$/u),
   instanceId: z.string().uuid(),
+  /** Omitted by earlier servers. This describes creation, independent of the registered files. */
+  newProjectFormatVersion: z.union([z.literal(3), z.literal(4)]).optional(),
   registered: z.array(projectEntrySchema).max(PROJECT_ENTRY_LIMITS.maxEntries),
 }).strict().refine(value => new Set(value.registered.map(entry => entry.project.projectId)).size === value.registered.length,
   'Each registered project appears once.');
 export type ProjectEntriesResponse = z.infer<typeof projectEntriesResponseSchema>;
+export type NewProjectFormatVersion = NonNullable<ProjectEntriesResponse['newProjectFormatVersion']>;
 
 /** One authenticated registration for a native result action. Reading this
  * descriptor does not acquire a project or grant a file/window capability. */

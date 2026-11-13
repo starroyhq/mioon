@@ -190,6 +190,40 @@ test('task list selects one full detail, prioritizes unknown outcomes and preser
   assert.deepEqual((h.calls as unknown), []);
 });
 
+test('task center distinguishes automatic video credential recovery, action required, and legacy records in four languages', async () => {
+  const accepted = { ...job(12, 'running'), providerId: 'minimax', providerJobId: 'original-provider-task', progress: 0 };
+  const legacyError = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', retryable: true};
+  const cases = [
+    {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoSecretStore', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoConnectionDeleted', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: undefined, recovery: undefined, status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoConnectionUnclassified', result: 'tasks.error.videoOriginalTaskRetained'},
+  ] as const;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const store = createLanguageStore({systemLanguages: [locale]});
+    await store.setPreference(locale);
+    const h = harness(store), {t} = createI18nTestContext(locale);
+    for (const scenario of cases) {
+      const {phase, cause, recovery} = scenario;
+      const error = cause ? {...legacyError, diagnostic: {kind: 'video_credential', cause, recovery}} : legacyError;
+      const tree = h.render({jobs: [{...accepted, phase, error}]});
+      const card = find(tree, `job-${accepted.id}`);
+      assert.ok(card);
+      assert.ok(text(card).includes(t(scenario.status)));
+      assert.ok(text(card).includes(t(scenario.detail)));
+      assert.ok(text(card).includes(t(scenario.result)));
+      assert.equal(text(card).includes(t('tasks.error.videoKeychainContinues')), cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+      assert.ok(text(card).includes(t('tasks.error.diagnosticCode', {code: cause ?? legacyError.code})));
+      assert.doesNotMatch(text(card), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
+      assert.equal(find(tree, `task-select-${accepted.id}`)?.props['data-warning'], recovery === 'user_action');
+      assert.equal(find(tree, `retry-job-${accepted.id}`), undefined);
+      assert.equal(find(tree, `reconcile-job-${accepted.id}`), undefined);
+    }
+    assert.deepEqual(h.calls, []);
+    h.unmount();
+  }
+});
+
 test('switching task details revokes retained actions and pending confirmations without dispatching on selection', async () => {
   const h = harness(), uncertain = job(11, 'submission_unknown'), running = job(12, 'running'), decision = defer();
   const props = { jobs: [uncertain, running], confirm: () => decision.promise };

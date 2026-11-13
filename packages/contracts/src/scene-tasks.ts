@@ -31,9 +31,9 @@ export const SCENE_SHOT_ASPECT_RATIOS = Object.freeze(['9:16', '16:9', '1:1'] as
 // Rows of six at the canvas pitch of a shot card. Without a position the batch
 // starts below the existing canvas content.
 export const SCENE_SHOT_LAYOUT = Object.freeze({columns: 6, columnSpacing: 340, rowSpacing: 300, left: 80, top: 100, gap: 360});
-export const SCENE_UNDO_BLOCKERS = Object.freeze(['MISSING', 'EDITED', 'GENERATED', 'CONNECTED', 'SUBJECT_BOUND'] as const);
+export const SCENE_UNDO_BLOCKERS = Object.freeze(['MISSING', 'EDITED', 'GENERATED', 'CONNECTED', 'SUBJECT_BOUND', 'CANVAS_HISTORY'] as const);
 // Undo compares these fields with the created shot. Moving or reordering a
-// shot is layout, not an edit, so it never blocks undo.
+// shot is layout, not a content edit. Retained canvas actions are checked separately.
 export const SCENE_SHOT_CONTENT_FIELDS = Object.freeze(['title', 'prompt', 'referenceAssetIds', 'lastFrameAssetId', 'aspectRatio', 'duration', 'parameters', 'selectedVersionId'] as const);
 export const SCENE_LIMITS = Object.freeze({
   inputBytes: 16384, snapshotBytes: 8192, receiptBytes: 32768, outcomeBytes: 16384, taskBytes: 81920,

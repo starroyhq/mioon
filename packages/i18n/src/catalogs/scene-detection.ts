@@ -213,6 +213,7 @@ export const sceneDetectionMessages = {
   'scene.batch.blocker.connected': { 'zh-Hans': '{title} 已连线', 'zh-Hant': '{title} 已連線', en: '{title} is connected', ja: '{title} は接続されています' },
   'scene.batch.blocker.bound': { 'zh-Hans': '{title} 已绑定主体', 'zh-Hant': '{title} 已綁定主體', en: '{title} is bound to a subject', ja: '{title} は主体に紐付いています' },
   'scene.batch.blocker.missing': { 'zh-Hans': '{title} 已删除', 'zh-Hant': '{title} 已刪除', en: '{title} was deleted', ja: '{title} は削除されています' },
+  'scene.batch.blocker.canvasHistory': { 'zh-Hans': '画布历史仍引用 {title}', 'zh-Hant': '畫布歷史仍引用 {title}', en: 'Canvas history still references {title}', ja: 'キャンバスの履歴がまだ {title} を参照しています' },
   'scene.batch.field.title': { 'zh-Hans': '标题', 'zh-Hant': '標題', en: 'title', ja: 'タイトル' },
   'scene.batch.field.prompt': { 'zh-Hans': '画面描述', 'zh-Hant': '畫面描述', en: 'visual description', ja: '画面描写' },
   'scene.batch.field.reference': { 'zh-Hans': '首帧参考', 'zh-Hant': '首幀參考', en: 'first-frame reference', ja: '先頭フレームの参照' },

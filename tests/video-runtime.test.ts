@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
+import {videoCredentialDiagnostic} from '../packages/business/src/video/credential.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {defaultVideoModels,resolveVideoEndpoint,VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId} from '../packages/contracts/src/video-providers.ts';
@@ -90,6 +91,27 @@ for(const family of ['ark','veo','minimax','vidu','kling']as const)test(`${famil
   if(family==='veo')assert.deepEqual(view(list(body.instances)[0]!.image),{bytesBase64Encoded:f.bytes.toString('base64'),mimeType:'image/png'});
   if(family==='vidu'){assert.deepEqual(body.images,[`data:image/png;base64,${f.bytes.toString('base64')}`]);assert.equal(body.aspect_ratio,undefined);assert.match(f.calls[0]!.url,/\/img2video$/);}
   if(family==='kling'){assert.deepEqual(body.contents,[{type:'prompt',text:f.snapshot.prompt},{type:'first_frame',url:f.bytes.toString('base64')}]);assert.equal(view(body.settings).aspect_ratio,undefined);assert.match(f.calls[0]!.url,/\/image-to-video\/kling-3\.0$/);}
+});
+
+test('credential acquisition exports known local cause codes without retaining a raw error or reaching HTTP',async t=>{
+  for(const family of ['minimax','wan'] as const){
+    const {binding,root,snapshot}=await fixture(t,family);
+    let code='VIDEO_SETTINGS_STORAGE_UNAVAILABLE';
+    const provider=createConfiguredVideoProvider({root,binding,now:()=>Date.UTC(2026,9,20),acquireCredential:async()=>{
+      throw Object.assign(Error('synthetic-private-detail'),{code,detail:'synthetic-private-detail'});
+    },fetchImpl:async()=>assert.fail('A credential failure cannot contact a provider')});
+    for(const cause of ['VIDEO_SETTINGS_STORAGE_UNAVAILABLE','VIDEO_CREDENTIAL_UNAVAILABLE']){
+      await assert.rejects(family==='wan'?provider.submit(snapshot,{requestId:'synthetic-request'}):provider.poll(taskId(binding),{}),error=>{
+        assert.ok(error instanceof Error);
+        assert.equal(view(error).code,'VIDEO_CREDENTIAL_UNAVAILABLE');
+        assert.deepEqual(videoCredentialDiagnostic(error),{kind:'video_credential',cause,recovery:'automatic'});
+        assert.equal(error.cause,undefined);
+        assert.doesNotMatch(error.message+JSON.stringify(error),/synthetic-private-detail/);
+        return true;
+      });
+      code='synthetic-private-detail';
+    }
+  }
 });
 
 test('Kling reconciliation queries its stable external ID and never creates a task',async t=>{

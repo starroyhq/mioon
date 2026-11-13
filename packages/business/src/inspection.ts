@@ -20,6 +20,7 @@ import {isClipTransform,type ClipTransform} from '../../contracts/src/timeline-c
 import {isClipLayoutRect,projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
 import {isClipTransition,type ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {canvasActiveCondition,canvasActiveEdgeCondition} from './canvas-active.ts';
 
 type InspectionRecord = Record<string, unknown>;
 interface ImageTaskLike {input: {purpose?: string;inputImage?: {assetId?: unknown}};snapshot: {sourceImage?: unknown}}
@@ -374,7 +375,8 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     }
     function page(table: string, operation: string, {limit, cursor}: {limit: number;cursor: unknown}): {items: unknown[];nextCursor: string|null} {
       const after = decodeCursor!(cursor, projectId, operation, limit);
-      const rows = db.prepare(`SELECT ${columns(table)} FROM ${table} WHERE projectId=? AND id>? ORDER BY id LIMIT ?`).all(projectId, after, limit + 1);
+      const active = table === 'shots' ? ' AND '+canvasActiveCondition(db) : '';
+      const rows = db.prepare(`SELECT ${columns(table)} FROM ${table} WHERE projectId=? AND id>?${active} ORDER BY id LIMIT ?`).all(projectId, after, limit + 1);
       const items = rows.slice(0, limit).map(row => (table === 'assets' ? assetDto : shotDto)(materialize(table, row)));
       return {items, nextCursor: rows.length > limit ? encodeCursor!(projectId, operation, limit, (items.at(-1) as InspectionRecord).id as string) : null};
     }
@@ -439,7 +441,11 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     }
     const project = get('projects', projectId);
     return {project: () => ({id: project.id, name: string(project.name, 150, 1), description: string(project.description, 2000), revision: number(project.revision, 1, Number.MAX_SAFE_INTEGER, true),
-      counts: Object.fromEntries(countTables.map((table: string) => [table, number((db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE projectId=?`).get(projectId) as {count: number}).count, 0, Number.MAX_SAFE_INTEGER, true)]))}),
+      counts: Object.fromEntries(countTables.map(table => {
+        const active = table === 'edges' ? canvasActiveEdgeCondition(db,'record') : table === 'shots' || table === 'nodes' ? canvasActiveCondition(db,'record') : '1';
+        const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} record WHERE projectId=? AND ${active}`).get(projectId);
+        return [table, number(row?.count, 0, Number.MAX_SAFE_INTEGER, true)];
+      }))}),
       subjectAsset:subjectReader.asset,subjectOwner:subjectReader.owner,subjectVersion:subjectReader.version,subjectReference:subjectReader.reference,validateSubjectReference:subjectReader.validateReference,
       assets: (args: unknown) => page('assets', 'asset.inspect', args as {limit: number;cursor: unknown}), shots: (args: unknown) => page('shots', 'shot.inspect', args as {limit: number;cursor: unknown}), timeline: timelineDto, ownedAsset: (assetId: unknown)=>validateAsset(get('assets',id(assetId))),clipSource,
       ownedTimeline:()=>{const timeline=ownedTimeline();if(timeline)timelineDto(timeline);return timeline;},validateTimeline:timelineDto,version:validateVersion,

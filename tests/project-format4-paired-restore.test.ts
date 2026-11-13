@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
 import {test} from 'node:test';
 import type {TestContext} from 'node:test';
 import {fileURLToPath} from 'node:url';
@@ -15,8 +16,10 @@ import {FORMAT_UPGRADE_BACKUP_DIRECTORY} from '../packages/business/src/project-
 import {restoreFormat4Backup} from '../packages/business/src/project-file/format4-restore.ts';
 import type {Format4RestoreBoundary} from '../packages/business/src/project-file/format4-restore.ts';
 import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/domains/canvas.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import {buildPreviousHistoryDatabase} from './fixtures/kernel-history-previous-schema.ts';
 
 const candidate = {};
 const worker = fileURLToPath(new URL('./fixtures/format4-paired-restore-worker.ts', import.meta.url));
@@ -156,6 +159,26 @@ test('restoring only the project manually leaves newer history until the explici
   const {contentSequence, contentToken} = f.oldStamp;
   assertResult(f, true, restoreFormat4Backup({...f.restoreOptions, expected: {contentSequence, contentToken}}));
   assertRestored(f, true);
+});
+
+test('paired recovery accepts and preserves the exact original candidate history before replacing it', requiresRenameWhileHeld, t => {
+  const f = fixture(t);
+  rmSync(f.historyFile);
+  const history = new DatabaseSync(f.historyFile);
+  try {
+    history.exec('BEGIN');
+    buildPreviousHistoryDatabase(history, FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION);
+    const {projectId, expected} = f.restoreOptions;
+    history.prepare('INSERT INTO history_state VALUES(1,?,?,?)').run(projectId, expected.contentSequence, expected.contentToken);
+    history.prepare('INSERT INTO canvas_requests VALUES(?,?,?,?,?,?)').run('original-candidate-request', projectId, 'move',
+      'a'.repeat(64), '{"retained":true}', '2026-11-13T05:00:00.000Z');
+    history.exec('COMMIT');
+  } finally {history.close();}
+  const displaced = f.liveBytes();
+  const result = restoreFormat4Backup(f.restoreOptions);
+  assertResult(f, true, result);
+  assertRestored(f, true);
+  assertDisplacedPair(f, displaced);
 });
 
 test('a changed candidate content pair or tampered backup leaves the live files untouched', requiresRenameWhileHeld, t => {

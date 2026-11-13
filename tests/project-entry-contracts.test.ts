@@ -25,6 +25,10 @@ test('catalog preserves empty summaries and every host availability without gran
     assert.deepEqual(projectEntriesResponseSchema.parse(value), value);
   }
   assert.deepEqual(projectEntriesResponseSchema.parse(catalog([])).registered, []);
+  for (const newProjectFormatVersion of [3, 4]) {
+    const value = {...catalog([]), newProjectFormatVersion};
+    assert.deepEqual(projectEntriesResponseSchema.parse(value), value);
+  }
   for (const availability of [{state: 'invalid'}, {state: 'invalid', reason: 'PRIVATE_UNKNOWN'}, {state: 'available', reason: 'read-only'}, {state: 'deleted'}]) {
     assert.equal(projectEntriesResponseSchema.safeParse({...catalog(), registered: [{...entry(), availability}]}).success, false);
   }
@@ -42,7 +46,7 @@ test('a cover belongs to this exact project summary and uses the cache-only appl
 
 test('catalog identity is strict, project IDs are unique, and the complete B1 registry fits', () => {
   const value = catalog();
-  for (const patch of [{version: 2}, {appLibraryScope: 'A'.repeat(64)}, {appLibraryScope: 'a'.repeat(63)}, {instanceId: 'not-an-instance'},
+  for (const patch of [{version: 2}, {newProjectFormatVersion: 5}, {newProjectFormatVersion: '4'}, {newProjectFormatVersion: null}, {appLibraryScope: 'A'.repeat(64)}, {appLibraryScope: 'a'.repeat(63)}, {instanceId: 'not-an-instance'},
     {scope: 'desktop'}, {mode: 'all'}, {candidates: []}, {nextCursor: null}, {registered: [entry(), entry()]}]) {
     assert.equal(projectEntriesResponseSchema.safeParse({...value, ...patch}).success, false);
   }

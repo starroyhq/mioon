@@ -6,6 +6,7 @@ import {validateImageConsumption} from './image-consumption.ts';
 import {currentProjectRecord} from './project-record-mutations.ts';
 import {hasSubjectGeneration} from './generation-inputs.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
+import {assertCanvasTargetActive,hasCanvasArchives,listActiveCanvasRecords} from './canvas-active.ts';
 
 type MutationRecord=Record<string, unknown>&{id: string; projectId?: string};
 export interface ShotCreateInput {
@@ -47,6 +48,7 @@ export interface LocalMutationHandlers {
 export function createLocalMutationServices(store: LocalMutationStore,{check,canonical,now,references,readOnly=false}: LocalMutationOptions) {
  const {db,get,list,put}=store;
  const mutate=createMutationReplay(store,{canonical,readOnly});
+ const liveShots=(id: string)=>listActiveCanvasRecords(db,'shots',id,()=>list('shots',id)) as MutationRecord[];
  function invalid(): never {throw new AppError('INVALID_MUTATION_RECORD','记录或关联状态不一致，请先检查项目',409);}
  function foreign(): never {throw new AppError('CROSS_PROJECT_REFERENCE','记录或关联不属于此项目');}
  const tables=new Set(['projects','shots','nodes','assets','versions','jobs']);
@@ -148,6 +150,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   },
   validate:({value})=>{shotRelations(value);if(input.patch.referenceAssetIds!==undefined)assets(value.projectId as string,input.patch.referenceAssetIds);if(Object.hasOwn(input.patch,'lastFrameAssetId'))lastFrame(value.projectId as string,input.patch.lastFrameAssetId);},
   apply:({value:shot})=>{
+   assertCanvasTargetActive(db,'shots',shot.id);
    check(shot,input.expectedRevision);references.guardManualUpdate(shot,input.patch.referenceAssetIds);
    return put('shots',{...shot,...input.patch,revision:(shot.revision as number)+1,updatedAt:now()});
   },
@@ -158,7 +161,13 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    resolve:()=>({projectId:project(input.projectId).id}),
    validate:()=>{assets(input.projectId,input.referenceAssetIds||[]);if(Object.hasOwn(input,'lastFrameAssetId'))lastFrame(input.projectId,input.lastFrameAssetId);},
    apply:()=>{
-    const shot={id:randomUUID(),projectId:input.projectId,title:input.title,prompt:input.prompt||'',referenceAssetIds:input.referenceAssetIds||[],...(Object.hasOwn(input,'lastFrameAssetId')?{lastFrameAssetId:input.lastFrameAssetId}:{}),aspectRatio:input.aspectRatio||'9:16',duration:input.duration||2,parameters:input.parameters||{},position:input.position||{x:80+list('shots',input.projectId).length*300,y:100},orderIndex:list('shots',input.projectId).length,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};
+    const shots=liveShots(input.projectId);
+    const orderIndex=hasCanvasArchives(db)?shots.reduce((next,shot)=>{
+     if(typeof shot.orderIndex!=='number'||!Number.isSafeInteger(shot.orderIndex)||shot.orderIndex<0||shot.orderIndex===Number.MAX_SAFE_INTEGER)
+      throw new AppError('INVALID_ORDER','镜头顺序无效，无法追加镜头',409);
+     return Math.max(next,shot.orderIndex+1);
+    },0):shots.length;
+    const shot={id:randomUUID(),projectId:input.projectId,title:input.title,prompt:input.prompt||'',referenceAssetIds:input.referenceAssetIds||[],...(Object.hasOwn(input,'lastFrameAssetId')?{lastFrameAssetId:input.lastFrameAssetId}:{}),aspectRatio:input.aspectRatio||'9:16',duration:input.duration||2,parameters:input.parameters||{},position:input.position||{x:80+shots.length*300,y:100},orderIndex,revision:1,selectedVersionId:null,createdAt:now(),updatedAt:now()};
     put('shots',shot);touchProject(input.projectId);return shot;
    },
    replay:(response,context)=>replayRecord('shots',response,context),
@@ -171,8 +180,8 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    validate:()=>{for(const id of input.shotIds)owned('shots',id,input.projectId);},
    apply:()=>{
     const p=project(input.projectId);check(currentProjectRecord(p),input.expectedRevision);
-    const shots=list('shots',p.id);
-    if(input.shotIds.length!==shots.length||new Set(input.shotIds).size!==shots.length||shots.some(s=>!input.shotIds.includes(typeof (s as MutationRecord).id==='string'?(s as MutationRecord).id as string:'')))
+    const shots=liveShots(p.id);
+    if(input.shotIds.length!==shots.length||new Set(input.shotIds).size!==shots.length||shots.some(s=>!input.shotIds.includes(typeof s.id==='string'?s.id:'')))
      throw new AppError('INVALID_ORDER','顺序必须包含全部镜头且不能重复');
     input.shotIds.forEach((id,orderIndex)=>{const shot=owned('shots',id,p.id);put('shots',{...shot,orderIndex});});
     touchProject(p.id);return get('projects',p.id);
@@ -193,6 +202,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
    resolve:()=>target('nodes',input.nodeId),
    validate:({value})=>nodeRelations(value),
    apply:({value})=>{
+    assertCanvasTargetActive(db,'nodes',value.id);
     // A previs node's scene is saved by previs.scene.set; only its label and position change here.
     if(value.type==='previs'&&Object.hasOwn(input.patch,'text')&&input.patch.text!==value.text)throw new AppError('INVALID_NODE_PATCH','机位预演节点只能修改名称和位置',400,{nodeId:value.id});
     check(value,input.expectedRevision);return put('nodes',{...value,...input.patch,revision:(value.revision as number)+1});
@@ -202,7 +212,7 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   'version.select':(input: VersionSelectInput)=>mutate('version.select',input,{
    resolve:()=>target('shots',input.shotId),
    validate:({value})=>{shotRelations(value);version(value,input.versionId);},
-   apply:({value})=>{check(value,input.expectedRevision);return put('shots',{...value,selectedVersionId:input.versionId,revision:(value.revision as number)+1,updatedAt:now()});},
+   apply:({value})=>{assertCanvasTargetActive(db,'shots',value.id);check(value,input.expectedRevision);return put('shots',{...value,selectedVersionId:input.versionId,revision:(value.revision as number)+1,updatedAt:now()});},
    replay:(response,context)=>{if((response as MutationRecord).id!==input.shotId)invalid();replayRecord('shots',response,context);},
   }),
  };

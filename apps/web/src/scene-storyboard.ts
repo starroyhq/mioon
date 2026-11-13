@@ -80,7 +80,8 @@ export function storyboardUndoReason(task: Pick<SceneShotsTask, 'titlePrefix'>, 
   const title = storyboardShotTitle(task, first.segment);
   const fields = (first.fields ?? []).map(field => t(fieldKeys[field] ?? 'scene.batch.field.parameters')).join(t('scene.batch.field.separator'));
   const reason = first.reason === 'EDITED' ? t('scene.batch.blocker.edited', { title, fields }) : first.reason === 'GENERATED' ? t('scene.batch.blocker.generated', { title })
-    : first.reason === 'CONNECTED' ? t('scene.batch.blocker.connected', { title }) : first.reason === 'SUBJECT_BOUND' ? t('scene.batch.blocker.bound', { title }) : t('scene.batch.blocker.missing', { title });
+    : first.reason === 'CONNECTED' ? t('scene.batch.blocker.connected', { title }) : first.reason === 'SUBJECT_BOUND' ? t('scene.batch.blocker.bound', { title })
+    : first.reason === 'CANVAS_HISTORY' ? t('scene.batch.blocker.canvasHistory', { title }) : t('scene.batch.blocker.missing', { title });
   return blockers.length > 1 ? t('scene.batch.undoBlockedMore', { reason, count: blockers.length - 1 }) : t('scene.batch.undoBlocked', { reason });
 }
 

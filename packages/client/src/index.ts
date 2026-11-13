@@ -43,6 +43,7 @@ export {prepareTimelineMixLoudness} from './timeline-mix-loudness.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '@mioon/contracts';
 import {isEntityAddressedOperation, rpcPathFor} from '../../contracts/src/project-addressing.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
+import {canvasEditingResponses, canvasEditingSchemas, canvasEditingWrites, isCanvasEditingOperation} from '../../contracts/src/canvas-editing.ts';
 import {projectBackupSchemas,isProjectBackupOperation, isProjectBackupResponse} from '../../contracts/src/project-backups.ts';
 import {isProjectVersionOperation, isProjectVersionResponse} from '../../contracts/src/project-version-operations.ts';
 import {generationImageServiceSchemas, isGenerationImageServiceResponse} from '../../contracts/src/generation-image-services.ts';
@@ -180,6 +181,7 @@ const keyedMutationOperations = new Set<string>([
   'project.backup.restore',
   'project.version.save',
   'project.version.restore',
+  ...canvasEditingWrites,
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>}
 function uncertainRequestDetails(body: unknown): Record<string, unknown> {
@@ -373,10 +375,14 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
   async function rpc<T = unknown>(operation: string, input: unknown = {}, options: RpcOptions = {}): Promise<T> {
     // Parse the exact shared contracts before sending. Required and opt-in request
     // IDs stay caller-owned; this client never creates them and never resubmits.
-    if (!Object.hasOwn(schemas, operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
+    if (!Object.hasOwn(schemas, operation) && !isCanvasEditingOperation(operation)) throw new ClientError('UNKNOWN_OPERATION', 'Unknown operation. Run schema to list available operations.');
     if(operation==='lut.look.inspect'&&(isProxy(input)||!isLookPackInspectInput(input)))throw new ClientError('VALIDATION_ERROR','Expected only a project ID and LUT resource ID.');
     let parsed: Record<string, unknown>;
-    if(isPrevisPublicationOperation(operation)){
+    if (isCanvasEditingOperation(operation)) {
+      const result = canvasEditingSchemas[operation].safeParse(input);
+      if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid canvas editing arguments.', {details: {issues: result.error.issues}});
+      parsed = result.data;
+    } else if(isPrevisPublicationOperation(operation)){
       const result=previsPublicationSchemas[operation].safeParse(input);
       if(!result.success)throw new ClientError('VALIDATION_ERROR','Invalid previs publication arguments.',{details:{issues:result.error.issues}});
       parsed=result.data;
@@ -400,6 +406,15 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
     const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
     const result = envelope.data;
+    if (isCanvasEditingOperation(operation)) {
+      const decoded = canvasEditingResponses[operation].safeParse(result);
+      if (!decoded.success || 'projectId' in decoded.data && decoded.data.projectId !== parsed.projectId) {
+        throw new ClientError('BACKEND_PROTOCOL_ERROR', 'Invalid canvas editing acknowledgement.', {details: {
+          ...uncertainRequestDetails(body), submissionMayHaveSucceeded: (canvasEditingWrites as readonly string[]).includes(operation),
+        }});
+      }
+      return decoded.data as T;
+    }
     const resultRecord = result as Record<string, unknown> | null | undefined;
     if(isPrevisPublicationOperation(operation)&&!isPrevisPublicationResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid previs publication acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:operation==='previs.output.publish'}});

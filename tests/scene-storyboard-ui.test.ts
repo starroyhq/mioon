@@ -139,6 +139,7 @@ test('the batch is counted as its shots are now, and undo names the first change
   assert.equal(storyboardUndoReason(built(), edited, t), '参考 03 的画面描述、时长已修改，另有 1 个镜头也有改动，不能整批撤销。');
   assert.equal(storyboardUndoReason(built(), edited.slice(0, 1), en), 'The visual description, duration of 参考 03 changed, so the batch can’t be undone.');
   assert.equal(storyboardUndoReason(built(), [{ segment: 1, shotId: shotIds[0]!, reason: 'SUBJECT_BOUND' }], t), '参考 01 已绑定主体，不能整批撤销。');
+  assert.equal(storyboardUndoReason(built(), [{ segment: 1, shotId: shotIds[0]!, reason: 'CANVAS_HISTORY' }], t), '画布历史仍引用 参考 01，不能整批撤销。');
   assert.equal(storyboardUndoReason(built(), [], t), null);
 });
 

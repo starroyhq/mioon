@@ -134,9 +134,9 @@ test('a refused crossfade is not applied, a clip changed after planning stops it
  const prepared=f.prepare(CROSSFADE,input);
  const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_timeline_clip_crossfade',arguments:input as unknown as AgentTaskJson}});
  f.journal.markDispatch(f.run.id,step.id);f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
- assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
+ assert.deepEqual(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
  await f.call(CROSSFADE,{projectId:f.projectId,...input,requestId:step.id});
- assert.equal(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),null,'a retained receipt keeps the step for inspection');
+ assert.equal(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),null,'a retained receipt keeps the step for inspection');
 });
 
 test('a Mio gain batch shows each planned and saved gain, stops on a held clip, and one undo restores every clip',async t=>{

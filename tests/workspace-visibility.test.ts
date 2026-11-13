@@ -44,6 +44,7 @@ function treeNodes(tree: UiTree): UiElement[] {
   if (!tree || typeof tree !== 'object') return [];
   return [tree, ...treeNodes(tree.props?.children)];
 }
+const treeText = (node: UiTree): string => Array.isArray(node) ? node.map(treeText).join('') : node && typeof node === 'object' ? treeText(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
 function createHarness(file: string, exportName = 'default') {
   const slots: UiHook[] = [], frames = new Map<number,()=>void>(), elements = new Map<string,ReturnType<typeof makeElement>>(), modules = new Map<string,UiModule>();
   let cursor = 0, layouts: number[] = [], effects: number[] = [], nextFrame = 0, tree: UiTree;
@@ -90,6 +91,7 @@ function createHarness(file: string, exportName = 'default') {
     './previs/PrevisNode.tsx': { default: 'PrevisNode', __esModule: true },
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
+    './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
@@ -131,7 +133,9 @@ function createHarness(file: string, exportName = 'default') {
     );
     return module.exports;
   }
-  const Component = load(file)[exportName];
+  const [exportKey, memberKey] = exportName.split('.');
+  const exports = load(file);
+  const Component = memberKey ? (exports[exportKey] as unknown as UiModule['exports'])[memberKey] : exports[exportKey];
   function flush(queue: number[]) {
     for (const index of queue) { const slot = slots[index]; slot.cleanup?.(); slot.cleanup = slot.callback!(); }
   }
@@ -316,7 +320,6 @@ test('Inspector version cards expose stable version numbers and keep frozen deta
 });
 
 test('Wan history summaries prefer frozen generation duration and ratio with localized automatic values', () => {
-  const treeText = (node: UiTree): string => Array.isArray(node) ? node.map(treeText).join('') : node && typeof node === 'object' ? treeText(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const h = createHarness('Inspector.tsx'); h.locale = locale;
     const version = { id: 'version-one', shotId: 'shot-one', number: 1, model: 'wan3.0-video', createdAt: '2026-10-23T00:00:00Z',
@@ -352,6 +355,36 @@ test('Inspector exposes real generation progress and cancellation only continues
   for (const patch of [{ jobs: [{ id: 'unknown', shotId: 'shot-one', status: 'submission_unknown' }] }] as const) {
     const h = createHarness('Inspector.tsx'); h.render(inspectorProps({ tab: 'settings', onCancelJob: () => assert.fail('Must not cancel'), ...patch }));
     assert.equal(h.find('cancel-generation'), undefined); assert.equal(h.find('inspector-generation-progress'), undefined); h.unmount();
+  }
+});
+
+test('shot node and Inspector replace stalled video progress with Keychain guidance', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const node = createHarness('Nodes.tsx', 'nodeTypes.shot'), inspector = createHarness('Inspector.tsx');
+    node.locale = inspector.locale = locale;
+    const job = {id: 'running-one', shotId: 'shot-one', status: 'running', progress: 0, providerJobId: 'provider-task'};
+    const waiting = {...job, phase: 'connection_retrying', error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}}};
+    const data = {record: {id: job.shotId, title: 'Shot'}, index: 0, job: waiting, generationUnavailableReason: 'Unavailable', onInspect: noop, onGenerate: () => assert.fail('Must not generate')};
+    const nodeView = node.render({data});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null}));
+    const guidance = translate(locale, 'tasks.error.videoSecretStore');
+    const continuation = translate(locale, 'tasks.error.videoKeychainContinues');
+    assert.equal(treeText(node.find(`shot-connection-${job.shotId}`)), `${guidance} ${continuation}`);
+    const panel = inspector.find('inspector-generation-progress');
+    assert.ok(treeText(panel).includes(guidance));
+    assert.ok(treeText(panel).includes(continuation));
+    assert.ok(treeText(panel).includes(translate(locale, 'tasks.error.videoOriginalTaskRetained')));
+    for (const view of [nodeView, panel]) {
+      assert.doesNotMatch(treeText(view), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
+      assert.equal(treeNodes(view).some(element => element.props.role === 'progressbar'), false);
+    }
+    assert.equal(node.nodes().find(element => element.props.className === 'node-generate nodrag')?.props.disabled, true);
+    assert.equal(inspector.find('generate-shot').props.disabled, true);
+    const polling = {...job, progress: 45};
+    node.render({data: {...data, job: polling, generationUnavailableReason: null}});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [polling], highlightedVersionId: null}));
+    for (const harness of [node, inspector]) assert.ok(harness.nodes().some(element => element.props.role === 'progressbar' && element.props['aria-valuenow'] === 45));
+    node.unmount(); inspector.unmount();
   }
 });
 
