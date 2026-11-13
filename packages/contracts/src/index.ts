@@ -67,7 +67,7 @@ export * from './subject-generation.ts';
 import {subjectSchemas} from './subjects.ts';
 import {subjectVariantSchemas,subjectVariantDescriptions} from './subject-variants.ts';
 export * from './subject-variants.ts';
-import {previsSchemas,previsDescriptions} from './previs.ts';
+import {previsSchemas,previsThumbnailPublicSchemas,previsDescriptions} from './previs.ts';
 export * from './previs.ts';
 export * from './previs-framing.ts';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.ts';
@@ -343,11 +343,12 @@ Object.assign(descriptions,{
  'timeline.render':'冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询'
 });
 export {AppError};
-const operationSchemas = schemas as Record<string, z.ZodTypeAny>;
+const operationSchemas: Record<string, z.ZodTypeAny> = {
+ ...schemas,...previsThumbnailPublicSchemas,'timeline.format.set':timelineFrameSetSchema,
+};
 export function parse<K extends OperationName>(op: K, input: unknown): OperationInput<K> {
  if(!Object.hasOwn(schemas,op))throw new AppError('UNKNOWN_OPERATION','未知操作',404);
- const schema=op==='timeline.format.set'?timelineFrameSetSchema:operationSchemas[op];
- const r=schema.safeParse(input);
+ const r=operationSchemas[op].safeParse(input);
  if(!r.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:r.error.issues.map(x=>({path:x.path,message:x.message}))});
  return r.data as OperationInput<K>;
 }

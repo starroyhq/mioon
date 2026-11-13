@@ -61,6 +61,7 @@ export interface ExportPreflightController {
   getState(): ExportPreflightState;
   setContext(context: ExportPreflightContext|null|undefined): void;
   setVisible(next: unknown): void;
+  resetReview(): void;
   check(): Promise<ExportPreflightReport|null>;
   takeExportBinding(binding: Record<string, unknown>|null|undefined): Record<string, unknown>|null;
   takeUncheckedExportIntent(intent: Record<string, unknown>|null|undefined): Record<string, unknown>|null;
@@ -159,6 +160,11 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         emit({ capability: null, capabilityPhase: 'idle', checkingStep: null, phase: state.report ? 'stale' : 'idle', binding: null, uncheckedIntent: null, error: '' });
       }
       visible = Boolean(next);
+    },
+    resetReview(): void {
+      invalidate();
+      emit({ capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null,
+        binding: null, uncheckedIntent: null, error: '', errorCode: undefined, attempted: false });
     },
     async check(): Promise<ExportPreflightReport|null> {
       if (getContext) controller.setContext(getContext());

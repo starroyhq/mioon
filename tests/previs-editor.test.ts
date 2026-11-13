@@ -350,30 +350,65 @@ test('creating a previs node resends one request after an uncertain answer', asy
   assert.deepEqual(lost, {status: 'unknown'});
 });
 test('card thumbnails are read per scene revision and refreshed while older than the scene', async t => {
-  const f = await services(t), node = await f.create(), time = clock(), reads: Row[] = [];
+  const f = await services(t), node = await f.create(), time = clock(), reads: Row[] = [], framePresetId = 'portrait_1080';
   const published: Record<string, {url: string; sceneRevision: number}>[] = [];
   const thumbnails = createPrevisThumbnails({read: (operation, input) => { reads.push(input); return f.wire(operation, input); }, onChange: value => published.push({...value}), setTimer: time.setTimer, clearTimer: time.clearTimer});
-  thumbnails.setNodes(f.projectId, [{id: node.id, sceneRevision: 1}]);
+  thumbnails.setNodes(f.projectId, framePresetId, [{id: node.id, sceneRevision: 1}]);
   await settle();
   assert.equal(reads.length, 1);
   assert.deepEqual(thumbnails.get(), {}, 'no thumbnail yet');
   const bytes = jpeg(384, 216).toString('base64');
-  await f.wire('previs.thumbnail.set', {projectId: f.projectId, nodeId: node.id, slot: 'card', sceneRevision: 1, dataBase64: bytes});
+  await f.wire('previs.thumbnail.set', {projectId: f.projectId, nodeId: node.id, slot: 'card', sceneRevision: 1, framePresetId, dataBase64: bytes});
   await time.advance(3000);
   assert.equal(reads.length, 2, 'an empty card asks again once the editor had time to upload');
   assert.deepEqual(thumbnails.get()[node.id], {url: previsThumbnailUrl(bytes), sceneRevision: 1});
-  thumbnails.setNodes(f.projectId, [{id: node.id, sceneRevision: 1}]);
+  thumbnails.setNodes(f.projectId, framePresetId, [{id: node.id, sceneRevision: 1}]);
   await settle();
   assert.equal(reads.length, 2, 'an unchanged revision is not read again');
   // The editor's own upload shows at once.
-  thumbnails.put(f.projectId, node.id, 2, bytes);
+  thumbnails.put(f.projectId, framePresetId, node.id, 2, bytes);
   assert.equal(thumbnails.get()[node.id]?.sceneRevision, 2);
-  thumbnails.setNodes(f.projectId, [{id: node.id, sceneRevision: 2}]);
+  thumbnails.setNodes(f.projectId, framePresetId, [{id: node.id, sceneRevision: 2}]);
   await settle();
   assert.equal(reads.length, 2, 'a thumbnail as new as the scene needs no read');
-  thumbnails.setNodes(randomUUID(), []);
+  thumbnails.setNodes(randomUUID(), framePresetId, []);
   assert.deepEqual(thumbnails.get(), {}, 'another project starts empty');
   assert.ok(published.length >= 3);
+  thumbnails.dispose();
+});
+
+test('changing the frame clears card thumbnails and ignores late reads and uploads at the same scene revision', async () => {
+  const projectId = randomUUID(), node = {id: randomUUID(), sceneRevision: 2}, time = clock();
+  const portrait = 'portrait_1080', wide = 'landscape_1080';
+  const pending: {input: Row; resolve: (value: Row) => void}[] = [];
+  const thumbnails = createPrevisThumbnails({read: (_operation, input) => new Promise(resolve => pending.push({input, resolve})), setTimer: time.setTimer, clearTimer: time.clearTimer});
+  const result = (framePresetId: string, dataBase64: string): Row => ({
+    projectId, nodeId: node.id, framePresetId, items: [{
+      slot: 'card', sceneRevision: node.sceneRevision, width: 384, height: 216, byteLength: Buffer.from(dataBase64, 'base64').length,
+      updatedAt: '2026-11-13T00:00:00.000Z', dataBase64,
+    }],
+  });
+  const old = jpeg(384, 216).toString('base64'), fresh = jpeg(384, 214).toString('base64');
+  thumbnails.setNodes(projectId, portrait, [node]);
+  assert.equal(pending[0]?.input.framePresetId, portrait);
+  thumbnails.put(projectId, portrait, node.id, node.sceneRevision, old);
+  assert.equal(thumbnails.get()[node.id]?.url, previsThumbnailUrl(old));
+
+  thumbnails.setNodes(projectId, wide, [node]);
+  assert.equal(pending[1]?.input.framePresetId, wide, 'a pending read for the node does not block the new frame');
+  assert.deepEqual(thumbnails.get(), {});
+  thumbnails.put(projectId, portrait, node.id, node.sceneRevision, old);
+  assert.deepEqual(thumbnails.get(), {});
+
+  thumbnails.setNodes(projectId, portrait, [node]);
+  pending[0]!.resolve(result(portrait, old));
+  await settle();
+  assert.deepEqual(thumbnails.get(), {}, 'switching back to a frame still ignores reads from an earlier visit');
+  assert.equal(pending[2]?.input.framePresetId, portrait, 'the latest visit gets a fresh read once a slot frees');
+  pending[1]!.resolve(result(wide, old));
+  pending[2]!.resolve(result(portrait, fresh));
+  await settle();
+  assert.deepEqual(thumbnails.get()[node.id], {url: previsThumbnailUrl(fresh), sceneRevision: node.sceneRevision});
   thumbnails.dispose();
 });
 

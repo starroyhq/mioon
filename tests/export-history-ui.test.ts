@@ -153,7 +153,7 @@ test('App keeps history in the controlled export dialog with visibility, recover
 'orderedExports={orderedExports}', 'outputAssets={data.assets}',
     'projectName={data.project?.name}', 'timelineRevision={timeline?.revision}',
   ]) assert.ok(history.includes(expected), expected);
-  assert.match(history, /onReexport=\{\(\) => \{ if \(clipDraftRef\.current\?\.hasPendingComposition\(\) \|\| !canOpenExport\) return; setDeliveryAttempt\(null\); setDeliveryReviewVersion\(value => value \+ 1\); openTimelineExport\(\); \}\}/);
+  assert.ok(history.includes('onReexport={exportId => reviewNewTimelineExport(exportId, true)}'));
   assert.match(app, /<Dialog open=\{showDelivery\} onOpenChange=\{open => \{ if \(!open\) \{ markPanelIntent\(\); setShowDelivery\(false\); exportPreviewPause\.current\?\.\(\); \} \}\}>/);
   assert.match(app, /keepMounted hidden=\{!showDelivery\} inert=\{!showDelivery\} data-testid="timeline-export-dialog"/);
   assert.doesNotMatch(app, /showExports && <Modal|<Modal title="导出记录"/);

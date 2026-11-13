@@ -30,7 +30,7 @@ type Pending<T = unknown> = {promise: Promise<T>; resolve: (value?: T) => void; 
 interface Binding {projectId?: string; expectedRevision?: number; preflightSnapshotHash?: string}
 interface PreflightStateLike {report: Record<string, unknown> & {snapshotHash?: unknown}; binding: Binding; phase: string; attempted: boolean; error: string; uncheckedIntent: Record<string, unknown> | null; [key: string]: unknown}
 interface PreflightControllerLike {
-  setContext(context: Record<string, unknown>): void; setVisible(value: boolean): void;
+  setContext(context: Record<string, unknown>): void; setVisible(value: boolean): void; resetReview(): void;
   getState(): PreflightStateLike; check(): Promise<void>; takeExportBinding(binding: unknown): Binding | null; takeUncheckedExportIntent(intent: unknown): Record<string, unknown> | null; dispose(): void;
 }
 const id = (n: number): string => `70000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -126,6 +126,26 @@ for (const [label, value] of [
   assert.match(f.state().error, /不完整或与当前快照不匹配/);
 });
 
+test('explicitly reviewing another export retires same-revision bindings and in-flight reads', async () => {
+  const f = fixture(), original = (await f.ready()).binding;
+  const waiting = f.controller.check();
+  f.controller.resetReview();
+  assert.equal(f.calls.at(-1)!.options.signal.aborted, true);
+  assert.equal(f.state().phase, 'idle');
+  assert.equal(f.state().report, null);
+  assert.equal(f.state().binding, null);
+  assert.equal(f.state().attempted, false);
+  assert.equal(f.controller.takeExportBinding(original), null);
+  f.reads.at(-1)!.resolve(report());
+  await waiting;
+  assert.equal(f.state().phase, 'idle');
+  assert.equal(f.state().binding, null);
+  const fresh = (await f.ready()).binding;
+  assert.notEqual(fresh, original);
+  assert.equal(f.controller.takeExportBinding(original), null);
+  assert.equal(f.controller.takeExportBinding(fresh), fresh);
+});
+
 test('incomplete report is distinct, permits only bound warning-only explicit attempts; blocked/stale never bind', async () => {
   const f = fixture(); await f.ready(report({ status: 'incomplete', checks: { ...(report().checks as Record<string, unknown>), checkedAssets: 1 }, issues: [{ code: 'CHECK_BUDGET_EXCEEDED', severity: 'warning', message: '检查达到限额' }] }));
   assert.equal(f.state().phase, 'incomplete'); assert.ok(f.state().binding);
@@ -180,6 +200,35 @@ test('actual topbar action opens the export overlay without probing; explicit ch
   assert.deepEqual(h.panels, [['tasks', false], ['image', false], ['delivery', true]]); assert.equal(f.calls.length, 0); assert.equal(h.calls.length, 0);
   const waiting = h.check(); assert.equal(f.calls.length, 1);
   f.reads.at(-1)!.resolve(report()); await waiting; assert.equal(h.calls.length, 0); assert.equal(h.views.length, 0);
+});
+
+test('history re-export opens a passive fresh review and cannot borrow another project or an unknown request', async () => {
+  const formal = fixture(), sample = fixture(), oldBinding = (await formal.ready()).binding;
+  await sample.ready();
+  const h = appHarness(formal), calls: unknown[] = [], pending: {key: string}[] = [];
+  const row = {id: id(28), projectId, mode: 'timeline', purpose: 'export', status: 'succeeded'};
+  const panelIntent = {current: 4}, captured = {projectId, scope: context().scope};
+  const review = appFunction('  function reviewNewTimelineExport(', '  const exportDetails=', {
+    ...h.env, dataRef: {current: {...h.env.dataRef.current, exports: [row]}}, reexportOwner: captured,
+    canOpenExport: true, showDelivery: true, showExports: true, reexportPanel: 4, panelIntent,
+    pendingTimelineExport: false, pendingForProject: () => pending,
+    sampleExportPreflight: {controller: sample.controller}, setExportPreviewAttempt: (value: unknown) => calls.push(['sample', value]),
+    setDeliveryAttempt: (value: unknown) => calls.push(['formal', value]), setExportContent: (value: unknown) => calls.push(['kind', value]),
+    setDeliveryReviewVersion: (update: (version: number) => number) => calls.push(['review', update(0)]),
+    openTimelineExport: () => calls.push('open'),
+  });
+  review(id(99), true); review(row.id, false);
+  h.env.currentProject.current = id(99); review(row.id, true); h.env.currentProject.current = projectId;
+  pending.push({key: 'timeline:render:export'}); review(row.id, true); pending.length = 0;
+  assert.deepEqual(calls, []);
+  review(row.id, true);
+  assert.deepEqual(calls, [['sample', null], ['formal', null], ['kind', 'timeline'], ['review', 1], 'open']);
+  assert.equal(formal.state().phase, 'idle'); assert.equal(sample.state().phase, 'idle');
+  assert.equal(formal.calls.length, 1); assert.equal(sample.calls.length, 1);
+  await h.render('export', oldBinding);
+  assert.deepEqual(h.calls, []);
+  panelIntent.current++; review(row.id, true);
+  assert.equal(calls.length, 5);
 });
 
 test('actual export path pins exact checked tuple and request once; preview path retains original input', async () => {

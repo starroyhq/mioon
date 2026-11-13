@@ -10,13 +10,16 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {mkdtempSync,rmSync,writeFileSync,createReadStream,createWriteStream} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,writeFileSync,createReadStream,createWriteStream} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 
 import {createServices} from '../packages/business/src/services.ts';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
@@ -223,6 +226,78 @@ test('thumbnails belong to the current scene, stay bounded JPEGs and leave with 
   .run(node.id,'k2',f.projectId,3,1,1,jpeg(1,1),new Date().toISOString()),/current scene/);
 });
 
+test('format-4 thumbnail reads and writes bind the saved frame at one unchanged scene revision',async t=>{
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-previs-frames-')),projectFile=path.join(root,'project.mioon');
+ const projectId=createProjectFile(projectFile),locate=()=>({localDir:path.join(root,'history'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')});
+ const open=(enableFormat4: boolean)=>openServerTestStore({projectFile,locate,...(enableFormat4?{format4:{approveUpgrade:()=>true}}:{})},path.join(root,'app'));
+ let store=open(false),services=createServices(store,new Map());
+ t.after(async()=>{try{if(store.db.isOpen){await services.drain();store.close();}}finally{rmSync(root,{recursive:true,force:true});}});
+ const call=(operation: string,input: unknown)=>services.call(operation,input);
+ await call('project.create',{name:'Previs frame cache'});
+ const created=await call('previs.create',{projectId,position:{x:0,y:0},requestId:randomUUID()}) as PrevisNodeRecord;
+ const node=await call('previs.scene.set',{projectId,nodeId:created.id,expectedSceneRevision:created.sceneRevision,requestId:randomUUID(),
+  scene:scene({keyframes:[keyframe('k1')]})}) as PrevisNodeRecord;
+ const portrait='portrait_1080',landscape='landscape_1080';
+ const shot=(slot: string,framePresetId?: string)=>({projectId,nodeId:node.id,slot,sceneRevision:node.sceneRevision,
+  dataBase64:jpeg(384,216,{pad:framePresetId===landscape?20:0}).toString('base64'),...(framePresetId?{framePresetId}:{})});
+ const query=(framePresetId?: string)=>({projectId,nodeId:node.id,slots:['card','k1'],...(framePresetId?{framePresetId}:{})});
+ const get=(framePresetId?: string)=>call('previs.thumbnail.get',query(framePresetId)) as Promise<PrevisThumbnailGetResponse>;
+ const rows=()=>store.db.prepare('SELECT * FROM cache.previs_thumbnails WHERE nodeId=? ORDER BY slot').all(node.id);
+ const version=()=>store.db.prepare('PRAGMA project.user_version').get()?.user_version;
+ const changeFrame=async(presetId: string)=>{
+  const current=timelineFormatResponseSchema.parse(await call('timeline.format.get',{projectId}));
+  return call('timeline.format.set',{projectId,expectedProjectRevision:current.projectRevision,expectedRevision:current.timelineRevision,requestId:randomUUID(),presetId});
+ };
+
+ assert.equal(version(),PROJECT_FILE_SCHEMA_VERSION);
+ await call('previs.thumbnail.set',shot('card'));
+ await call('previs.thumbnail.set',shot('k1'));
+ assert.equal((await get()).items.length,2,'legacy callers retain the format-3 cache');
+ assert.deepEqual((await get(portrait)).items,[],'a frame-aware caller does not infer the geometry of an unbound row');
+ const legacy=rows();
+ await services.drain();
+ store.close();
+ store=open(true);
+ services=createServices(store,new Map());
+ assert.equal(version(),FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.deepEqual(rows(),legacy,'the upgraded project keeps disposable rows on disk');
+ assert.deepEqual((await get()).items,[]);
+ assert.deepEqual((await get(portrait)).items,[]);
+ await assert.rejects(call('previs.thumbnail.set',shot('card')),{code:'PREVIS_THUMBNAIL_STALE'});
+ assert.deepEqual(rows(),legacy);
+
+ const prior=shot('card',portrait);
+ const portraitAck=await call('previs.thumbnail.set',prior);
+ assert.equal(isPrevisThumbnailSetResponse(prior,portraitAck),true);
+ assert.equal(isPrevisThumbnailSetResponse({...prior,framePresetId:landscape},portraitAck),false);
+ await call('previs.thumbnail.set',shot('k1',portrait));
+ const before=rows();
+ assert.equal((await get(portrait)).items.length,2);
+ await changeFrame(landscape);
+ assert.deepEqual((await get(portrait)).items,[]);
+ assert.deepEqual((await get(landscape)).items,[]);
+ assert.deepEqual(rows(),before,'cache misses do not delete or relabel old captures');
+ await assert.rejects(call('previs.thumbnail.set',prior),{code:'PREVIS_THUMBNAIL_STALE'});
+ assert.deepEqual(rows(),before,'an old upload at the current scene revision changes nothing');
+
+ const wide=shot('card',landscape);
+ await call('previs.thumbnail.set',wide);
+ await call('previs.thumbnail.set',shot('k1',landscape));
+ const result=await get(landscape);
+ assert.equal(isPrevisThumbnailGetResponse(query(landscape),result),true);
+ assert.equal(isPrevisThumbnailGetResponse(query(portrait),result),false);
+ assert.deepEqual(result.items.map(item=>[item.slot,item.sceneRevision,item.dataBase64]),
+  [['card',node.sceneRevision,wide.dataBase64],['k1',node.sceneRevision,wide.dataBase64]]);
+ assert.deepEqual((await get()).items,result.items);
+ assert.notEqual(rows()[0]?.sourceFingerprintDigest,before[0]?.sourceFingerprintDigest);
+ const current=rows();
+ await assert.rejects(call('previs.thumbnail.set',prior),{code:'PREVIS_THUMBNAIL_STALE'});
+ await assert.rejects(call('previs.thumbnail.set',{...wide,sceneRevision:node.sceneRevision-1}),{code:'PREVIS_THUMBNAIL_STALE'});
+ await assert.rejects(call('previs.thumbnail.set',{...wide,framePresetId:'invalid'}),{code:'VALIDATION_ERROR'});
+ assert.deepEqual(rows(),current,'stale, invalid and missing captures cannot overwrite the new frame');
+ assert.deepEqual((await get(portrait)).items,[],'a late read for the old frame cannot label the new JPEG');
+});
+
 test('a project keeps at most 1000 thumbnails and evicts the oldest',async t=>{
  const f=await fixture(t),slots=['card',...Array.from({length:24},(_,index)=>`k${index+1}`)];
  const value=scene({keyframes:slots.slice(1).map(slot=>keyframe(slot))});
@@ -315,11 +390,19 @@ test('S1 thumbnails bind service-derived fingerprints and stop returning bytes a
  await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_CHANGED'});assert.deepEqual(cache(),original);
  const refreshed=referenceTestAsset(f.root,{...saved,relativePath:reference.path,reference:undefined,referenceRevision:2});f.store.put('assets',refreshed);
  assert.deepEqual((await f.thumbnails(node,['k1'])).items,[],'accepted fingerprint changes invalidate prior cache');
- await f.thumbnail(node,'k1');assert.notEqual(cache()[0]!.sourceFingerprintDigest,digest);
+ const framePresetId='portrait_1080',framedRead={projectId:f.projectId,nodeId:node.id,slots:['k1'],framePresetId};
+ await f.thumbnail(node,'k1',jpeg(216,384),{framePresetId});
+ assert.notEqual(cache()[0]!.sourceFingerprintDigest,digest);
+ assert.equal((await f.call<PrevisThumbnailGetResponse>('previs.thumbnail.get',framedRead)).items.length,1);
  const outside=await fs.mkdtemp(path.join(tmpdir(),'previs-consent-'));t.after(()=>fs.rm(outside,{recursive:true,force:true}));
  const destination=path.join(outside,'source.png');await fs.rename(file,destination);
  const relinked=referenceTestAsset(f.root,{...refreshed,relativePath:path.relative(f.root,destination),reference:undefined,referenceRevision:3});f.store.put('assets',relinked);
  let confirmed=true;const {registerProjectMediaStore}=await import('../packages/business/src/project-media-storage.ts');const release=registerProjectMediaStore(f.store,{outsidePaths:{list:()=>confirmed?[{projectId:f.projectId,directory:outside,confirmedAt:new Date().toISOString()}]:[]}});t.after(release);
- assert.equal((await f.thumbnails(node,['k1'])).items.length,1);confirmed=false;
+ assert.equal((await f.thumbnails(node,['k1'])).items.length,1);
+ assert.equal((await f.call<PrevisThumbnailGetResponse>('previs.thumbnail.get',framedRead)).items.length,1);
+ confirmed=false;
+ const beforeRefusal=cache();
  await assert.rejects(f.thumbnails(node,['k1']),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
+ await assert.rejects(f.call('previs.thumbnail.get',framedRead),{code:'MEDIA_OUTSIDE_NOT_CONFIRMED'});
+ assert.deepEqual(cache(),beforeRefusal);
 });
