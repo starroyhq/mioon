@@ -5,7 +5,7 @@ import type {DatabaseKind} from './schema/databases.ts';
 /** The kernel's single live-file registry. Connection opening and release own
  * mutations; schema guards can read identity without importing any generated
  * DDL or manifests into the independent legacy schema derivation chain. */
-const heldFiles = new Map<string, {readonly db: DatabaseSync; readonly kind: DatabaseKind}>();
+const heldFiles = new Map<string, {readonly db: DatabaseSync; readonly kind: DatabaseKind; readonly ready: boolean}>();
 
 // Internal connection lifecycle API. The source boundary test permits only
 // connection.ts to import these functions; no registry entry escapes the leaf.
@@ -13,8 +13,8 @@ export function projectFileOwnerKind(key: string): DatabaseKind | undefined {
   const held = heldFiles.get(key);
   return held?.db.isOpen ? held.kind : undefined;
 }
-export function registerProjectFiles(db: DatabaseSync, files: readonly (readonly [string, DatabaseKind])[]): void {
-  for (const [key, kind] of files) heldFiles.set(key, {db, kind});
+export function registerProjectFiles(db: DatabaseSync, files: readonly (readonly [string, DatabaseKind])[], ready = true): void {
+  for (const [key, kind] of files) heldFiles.set(key, {db, kind, ready});
 }
 export function releaseProjectFiles(db: DatabaseSync, files: readonly (readonly [string, DatabaseKind])[]): void {
   for (const [key] of files) if (heldFiles.get(key)?.db === db) heldFiles.delete(key);
@@ -30,6 +30,6 @@ export function isProjectFileHeld(identity: ProjectFileIdentity): boolean {
 /** Only a live connection registered by a successful kernel open qualifies.
  * Store fields or another SQLite connection cannot establish ownership. */
 export function isProjectDatabase(db: unknown): boolean {
-  for (const held of heldFiles.values()) if (held.db === db && held.db.isOpen) return true;
+  for (const held of heldFiles.values()) if (held.db === db && held.ready && held.db.isOpen) return true;
   return false;
 }

@@ -2,9 +2,9 @@ import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isNormalizedAbsolutePath} from '../../../contracts/src/media-reference.ts';
-import {HISTORY_TABLES} from '../project-file/schema/tables.ts';
+import {historyTablesForVersion} from '../project-file/schema/tables.ts';
 import {rewriteProjectCopyRow, relocateProjectCopyReference} from '../project-file/copy-values.ts';
-import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, validateProjectDocument} from './document.ts';
+import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, readSnapshotProjectFormat, validateProjectDocument} from './document.ts';
 import type {ProjectDocument, SnapshotRow} from './document.ts';
 import {decodeProjectDocument, encodeProjectDocument} from './codec.ts';
 import type {EncodedProjectDocument} from './codec.ts';
@@ -37,7 +37,7 @@ function rebindDocument(document: ProjectDocument, options: CopyProjectVersionsT
     return result;
   };
   const ordered = (table: typeof PROJECT_SNAPSHOT_TABLES[number] | 'agent_task_target_revisions_v2', rows: readonly SnapshotRow[]) => {
-    const keys = primaryKeys(table), key = (row: Record<string, unknown>) => canonicalJson(keys.map(column => row[column]));
+    const keys = primaryKeys(table, document.projectFormatVersion), key = (row: Record<string, unknown>) => canonicalJson(keys.map(column => row[column]));
     return rows.map(row => rewrite(table, row)).sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
   };
   return validateProjectDocument({...document, projectId: options.projectId,
@@ -58,7 +58,10 @@ export function copyProjectVersionsToNewProjectInside(source: DatabaseSync, targ
     const rows = db.prepare('SELECT projectId FROM main.history_state').all();
     if (rows.length !== 1 || rows[0].projectId !== owner) throw new AppError('PROJECT_ID_MISMATCH', '版本复制与源或目标项目身份不一致。', 400);
   }
-  for (const table of HISTORY_TABLES) if (table !== 'mio_storage_counters' && target.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get())
+  const targetFormat = readSnapshotProjectFormat(target);
+  const targetHistory = target.prepare('SELECT version FROM main.schema_version').all();
+  if (targetHistory.length !== 1 || typeof targetHistory[0].version !== 'number') throw invalid('target-history-format');
+  for (const table of historyTablesForVersion(targetHistory[0].version)) if (table !== 'mio_storage_counters' && target.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get())
     throw invalid('target-not-empty');
   const counters = target.prepare('SELECT bytes,rows FROM main.mio_storage_counters').all();
   if (counters.length !== 1 || counters[0].bytes !== 0 || counters[0].rows !== 1 || target.prepare('SELECT 1 FROM main.project_history_resolution LIMIT 1').get())
@@ -95,7 +98,7 @@ export function copyProjectVersionsToNewProjectInside(source: DatabaseSync, targ
           || metadata.payloadBytes !== metadata.compressedBytes) throw invalid('source-blob-size', version.id);
         const payload = source.prepare('SELECT payload FROM main.project_version_blobs WHERE hash=?').get(hash)!.payload;
         let document: ProjectDocument;
-        try {document = decodeProjectDocument({...metadata, payload} as unknown as EncodedProjectDocument);}
+        try {document = decodeProjectDocument({...metadata, payload} as unknown as EncodedProjectDocument, targetFormat);}
         catch (error) {
           if (error instanceof AppError) {
             const details = error.details !== null && typeof error.details === 'object' && !Array.isArray(error.details) ? error.details : {};

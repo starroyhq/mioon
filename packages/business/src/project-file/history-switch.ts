@@ -11,17 +11,19 @@ import {projectHistoryResolveResultSchema} from '../../../contracts/src/project-
 import {projectHistorySwitchIntentSchema as intentSchema, projectHistorySwitchActiveSchema as activeSchema} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {ProjectHistorySwitchIntent as Intent} from '../../../contracts/src/project-history-recovery-records.ts';
 import type {HistoryFileIdentity, ProjectHistoryResolveInput, ProjectHistoryResolveResult} from '../../../contracts/src/project-history-recovery.ts';
-import {buildDatabase} from './schema/databases.ts';
+import {buildDatabase, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+import type {ProjectFileFormat} from './schema/databases.ts';
 import {clearProjectProcessRevisions} from './schema/history-upgrades.ts';
-import {openStagedProjectStore} from './store.ts';
+import {isProjectStore, openStagedProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
-import type {ProjectLocation} from './connection.ts';
-import {inspectProjectFileReadOnly, recoverProjectFile} from './connection.ts';
+import type {Format4Options, ProjectLocation} from './connection.ts';
+import {inspectProjectFormatReadOnly, recoverProjectFile} from './connection.ts';
+import {projectFileError} from './errors.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
 import {syncCopiedDirectory, syncCopiedFile} from './backup.ts';
 import {copyProjectVersionsInside} from '../project-versions/copy.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
-import {canonicalJson} from '../project-versions/document.ts';
+import {canonicalJson, readSnapshotProjectFormat} from '../project-versions/document.ts';
 
 const MAX_INTENT = 16 * 1024;
 const ACTIVE = 'history-switch-active.json';
@@ -30,10 +32,17 @@ export interface HistorySwitchOptions {
   readonly projectFile: string;
   readonly location: ProjectLocation;
   readonly assertMutationAllowed: () => void;
+  readonly format4?: Format4Options;
   /** Trusted crash tests, never an HTTP/environment-controlled hook. */
   readonly onBoundary?: (boundary: HistorySwitchBoundary) => void;
 }
 const failure = (message: string, code = 'PROJECT_HISTORY_SWITCH_INVALID'): AppError => new AppError(code, message, 409);
+function historyVersionForProject(format: ProjectFileFormat, projectId: string, options: HistorySwitchOptions): number {
+  if (format !== FORMAT4_PROJECT_SCHEMA_VERSION) return HISTORY_SCHEMA_VERSION;
+  if (!options.format4) throw projectFileError('PROJECT_FORMAT_NEWER', {database: 'project', reason: 'format-newer', projectId,
+    formatVersion: format, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
+  return FORMAT4_HISTORY_SCHEMA_VERSION;
+}
 const exists = (file: string): boolean => lstatSync(file, {throwIfNoEntry: false}) !== undefined;
 const sameId = (file: string, identity: {dev: string; ino: string}): boolean => {
   const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
@@ -109,6 +118,9 @@ export function completedHistoryResolution(options: HistorySwitchOptions, input:
  * content transaction cannot start before `staged` is durably recorded. */
 export function prepareHistorySwitch(store: ProjectStore, input: ProjectHistoryResolveInput, options: HistorySwitchOptions): void {
   const root = options.location.localDir, requestId = input.requestId;
+  if (!isProjectStore(store) || store.projectFile !== path.resolve(options.projectFile) || store.localDir !== path.resolve(root) || store.projectId !== input.projectId)
+    throw new TypeError('History replacement requires the live project and history owner');
+  const historyVersion = historyVersionForProject(readSnapshotProjectFormat(store.db), store.projectId, options);
   validatePrivateDirectory(root);
   const old = readIntent(root, requestId);
   if (old && old.digest !== historyResolutionDigest(input)) throw failure('请求 ID 已用于不同的处置。', 'REQUEST_ID_REUSED');
@@ -133,7 +145,7 @@ export function prepareHistorySwitch(store: ProjectStore, input: ProjectHistoryR
   const target = new DatabaseSync(staged, {enableForeignKeyConstraints: true, timeout: 0, defensive: true});
   try {
     target.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; BEGIN IMMEDIATE');
-    buildDatabase(target, 'history', 'main');
+    buildDatabase(target, 'history', 'main', undefined, historyVersion);
     target.prepare('INSERT INTO history_state(singleton,projectId,seenContentSequence,seenContentToken) VALUES(1,?,?,?)').run(store.projectId, input.expected.contentSequence, input.expected.contentToken);
     options.onBoundary?.('copy-started');
     copyProjectVersionsInside(store.db, target, {projectId: store.projectId});
@@ -158,9 +170,10 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
   // This entry runs before the normal opener. Preserve the same format gate
   // even for a prepared switch: replacing the file with an old/forged format
   // must not clear a pointer or rename any local record first.
-  const recovery = recoverProjectFile(options.projectFile);
+  const recovery = recoverProjectFile(options.projectFile, options.format4);
   if (recovery.state === 'invalid' || recovery.state === 'locked' || recovery.state === 'missing' || recovery.state === 'open-here' || recovery.state === 'access-denied') throw failure('项目文件暂不能安全完成本机记录切换，已保留所有文件。');
-  const project = inspectProjectFileReadOnly(options.projectFile);
+  const project = inspectProjectFormatReadOnly(options.projectFile, options.format4);
+  const historyVersion = historyVersionForProject(project.formatVersion, project.projectId, options);
   if (project.projectId !== intent.input.projectId) throw failure('项目身份已变化，已保留所有文件。', 'PROJECT_HISTORY_BASELINE_CHANGED');
   if (intent.phase === 'prepared') {
     const original = projectHistoryFileIdentity(path.join(root, PROJECT_HISTORY_FILE));
@@ -183,7 +196,7 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
     if ((project.contentSequence !== intent.input.expected.contentSequence || project.contentToken !== intent.input.expected.contentToken)
       && !provesCommittedStage(staged, root, intent, project)) throw failure('项目在复制后变化，未处置。', 'PROJECT_HISTORY_BASELINE_CHANGED');
     const store = openStagedProjectStore({projectFile: options.projectFile, location: options.location, historyFile: staged, expectedStamp: intent.input.expected,
-      resolution: {requestId, digest: intent.digest}});
+      resolution: {requestId, digest: intent.digest}, ...(historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? {format4: options.format4} : {})});
     try {
       const previous = store.db.prepare('SELECT requestId,digest,result FROM project_history_resolution WHERE singleton=1').get();
       if (previous) {

@@ -133,6 +133,8 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const current = useRef(props); current.current = props;
   const { project, availability, coverUrl } = item, summary = project.summary;
   const missing = availability.state === 'missing';
+  const invalidLabel = availability.state === 'invalid' && availability.reason === 'format-newer' ? 'projectFile.open.newer.title'
+    : availability.state === 'invalid' && availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid';
   const nativeList = nativeLayout && layout === 'list';
   const nativeGrid = nativeLayout && layout === 'grid';
   const when = sort === 'updated' ? summary?.updatedAt ?? project.lastOpenedAt : project.lastOpenedAt ?? summary?.updatedAt;
@@ -143,7 +145,7 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const meta = missing
     ? <><span className="pf-card-status">{t('projectFile.home.missing')}</span>{!nativeGrid && <span>{t('projectFile.home.lastSeen', { place: lastSeenLabel(project.projectFile, homeDirectory) })}</span>}</>
     : availability.state === 'locked' ? <>{folder}<span className="pf-card-status" data-tone="warning">{t('projectFile.home.locked')}</span></>
-      : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid')}</span>{folder}</>
+      : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(invalidLabel)}</span>{folder}</>
         : nativeGrid ? <>{date}{aspect}</> : <>{folder}{!nativeList && date}</>;
   const metaTone = missing ? 'danger' : availability.state === 'invalid' && availability.reason === 'read-only' ? 'warning' : undefined;
   const locate = missing && onLocate && <WorkbenchButton variant="ghost" size="compact" disabled={busy} className="pf-card-locate" data-testid={`pf-card-locate-${project.projectId}`} onClick={() => { if (!current.current.busy && current.current.item.project.projectId === project.projectId) current.current.onLocate?.(project.projectId); }}>{t('projectFile.home.locate')}</WorkbenchButton>;

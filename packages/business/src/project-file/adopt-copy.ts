@@ -7,6 +7,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {inspectProjectFileReadOnly,openProjectCopyReplacementConnections} from './connection.ts';
+import type {Format4Options} from './connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {isSqliteBusy,isSqliteCorrupt,isSqliteReadOnly,projectFileError} from './errors.ts';
 import {PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
@@ -26,6 +27,7 @@ export interface LockedProjectCopyOptions {
  readonly projectFile:string;
  readonly expectedIdentity:ProjectFileIdentity;
  readonly expectedSource:Stamp;
+ readonly format4?:Format4Options;
  /** Application-private, request-owned snapshot input; never source records. */
  readonly snapshotDirectory:string;
  readonly assertMutationAllowed?:()=>void;
@@ -67,7 +69,7 @@ export async function withLockedProjectCopy<T>(options:LockedProjectCopyOptions,
  if(!sameIdentity(before,options.expectedIdentity))throw changed();
  if(isProjectFileHeld(identity(before))||isAppLibraryHeld(identity(before)))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
  assertNoSidecars(file);
- const preflight=inspectProjectFileReadOnly(file);
+ const preflight=inspectProjectFileReadOnly(file,options.format4);
  if(!sameStamp(preflight,options.expectedSource)||generation(lstatSync(file,{bigint:true}))!==generation(before))throw changed();
  let connection:ReturnType<typeof openProjectCopyReplacementConnections>|undefined,created=false,published=false;
  const snapshot=path.join(directory,'project.source.sqlite');

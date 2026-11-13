@@ -4,7 +4,10 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
-import {PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, schemaStatements} from '../project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
+import {CANVAS_ARCHIVE_COLUMNS, CANVAS_ARCHIVE_TABLES} from '../project-file/schema/domains/canvas.ts';
+import {isTimelineGeometryProfileAllowed} from '../project-file/schema/format4-geometry.ts';
 import {PROJECT_SNAPSHOT_MAX_RAW_BYTES} from './limits.ts';
 import {FORMAT_2_SNAPSHOT_TABLE_SQL, FORMAT_1_COPY_TABLE_SQL} from './format-2.ts';
 
@@ -23,10 +26,11 @@ export const PROJECT_SNAPSHOT_EXCLUSIONS = Object.freeze({
 export const PROJECT_SNAPSHOT_PROFILE = 1;
 export type SnapshotCell = null | string | number | {readonly type: 'blob'; readonly base64: string} | {readonly type: 'integer'; readonly decimal: string};
 export type SnapshotRow = Readonly<Record<string, SnapshotCell>>;
-export interface ProjectDocument {
+type DocumentFormat = 1 | 2 | ProjectFileFormat;
+export interface ProjectDocument<Format extends DocumentFormat = ProjectFileFormat> {
   readonly snapshotProfileVersion: 1;
   readonly projectId: string;
-  readonly projectFormatVersion: number;
+  readonly projectFormatVersion: Format;
   readonly evidence: {readonly contentSequence: number; readonly targetRevisions: readonly SnapshotRow[]};
   readonly tables: Readonly<Record<ProjectSnapshotTable, readonly SnapshotRow[]>>;
 }
@@ -53,37 +57,48 @@ export function canonicalJson(value: unknown): string {
 }
 
 interface Column {readonly name: string; readonly type: string; readonly notnull: number; readonly pk: number}
-interface Shape {readonly columns: readonly Column[]; readonly primaryKeys: readonly string[]; readonly sql: string}
+interface Shape {readonly columns: readonly Column[]; readonly primaryKeys: readonly string[]}
 const tableNames = [...PROJECT_SNAPSHOT_TABLES, 'agent_task_target_revisions_v2'] as const;
-const tableSql = schemaStatements('project').filter(sql => sql.startsWith('CREATE TABLE '));
 const validatedDocuments = new WeakSet<object>();
-let shapes: ReadonlyMap<string, Shape> | undefined;
-let format2Shapes: ReadonlyMap<string, Shape> | undefined;
+const profiles = new Map<DocumentFormat, {statements: readonly string[]; shapes: ReadonlyMap<string, Shape>}>();
 function createTableShapes(statements: readonly string[]): ReadonlyMap<string, Shape> {
   const db = new DatabaseSync(':memory:');
   try {
     for (const sql of statements) db.exec(sql);
     return new Map(tableNames.map(table => {
       const columns = db.prepare(`PRAGMA table_info(${quote(table)})`).all().map(row => ({name: String(row.name), type: String(row.type), notnull: Number(row.notnull), pk: Number(row.pk)}));
-      const sql = statements.find(statement => statement.startsWith(`CREATE TABLE ${table}(`));
-      if (!sql || !columns.length) throw snapshotInvalid('unclassified-table-shape');
-      return [table, {columns, primaryKeys: columns.filter(column => column.pk).sort((a, b) => a.pk - b.pk).map(column => column.name), sql}];
+      if (!columns.length) throw snapshotInvalid('unclassified-table-shape');
+      return [table, {columns, primaryKeys: columns.filter(column => column.pk).sort((a, b) => a.pk - b.pk).map(column => column.name)}];
     }));
   } finally {db.close();}
 }
-function tableShapes(): ReadonlyMap<string, Shape> {return shapes ??= createTableShapes(tableSql);}
-export function tableColumns(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2'): readonly string[] {
-  const shape = tableShapes().get(table);
+function profile(format: DocumentFormat) {
+  const existing = profiles.get(format);
+  if (existing) return existing;
+  const statements = format === 1 ? FORMAT_1_COPY_TABLE_SQL : format === 2 ? FORMAT_2_SNAPSHOT_TABLE_SQL
+    : schemaStatements('project', undefined, format).filter(sql => sql.startsWith('CREATE TABLE '));
+  const value = {statements, shapes: createTableShapes(statements)};
+  profiles.set(format, value);
+  return value;
+}
+const isProjectFormat = (version: unknown): version is ProjectFileFormat => version === 3 || version === FORMAT4_PROJECT_SCHEMA_VERSION;
+export function readSnapshotProjectFormat(db: DatabaseSync): ProjectFileFormat {
+  const rows = db.prepare('SELECT version FROM project.schema_version').all();
+  if (rows.length !== 1 || !isProjectFormat(rows[0].version)) throw snapshotInvalid('project-format');
+  return rows[0].version;
+}
+export function tableColumns(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
+  const shape = profile(format).shapes.get(table);
   if (!shape) throw snapshotInvalid('table');
   return shape.columns.map(column => column.name);
 }
-export function primaryKeys(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2'): readonly string[] {
-  const keys = tableShapes().get(table)?.primaryKeys;
+export function primaryKeys(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): readonly string[] {
+  const keys = profile(format).shapes.get(table)?.primaryKeys;
   if (!keys?.length) throw snapshotInvalid('primary-key');
   return keys;
 }
-export function rowKey(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', row: SnapshotRow): string {
-  return canonicalJson(primaryKeys(table).map(key => row[key]));
+export function rowKey(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', row: SnapshotRow, format: ProjectFileFormat = PROJECT_FILE_SCHEMA_VERSION): string {
+  return canonicalJson(primaryKeys(table, format).map(key => row[key]));
 }
 
 const jsonColumns = new Set(['data', 'tags', 'metadata', 'options', 'cuts']);
@@ -106,8 +121,8 @@ export function snapshotCellValue(value: SnapshotCell): SQLInputValue {
   return value.type === 'blob' ? Buffer.from(value.base64, 'base64') : BigInt(value.decimal);
 }
 
-function readRows(store: ProjectStore, table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', budget: {bytes: number}): SnapshotRow[] {
-  const rowBytes = tableColumns(table).map(column => `COALESCE(length(CAST(${quote(column)} AS BLOB)),0)`).join('+');
+function readRows(store: ProjectStore, table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', budget: {bytes: number}, format: ProjectFileFormat): SnapshotRow[] {
+  const rowBytes = tableColumns(table, format).map(column => `COALESCE(length(CAST(${quote(column)} AS BLOB)),0)`).join('+');
   if (store.db.prepare(`SELECT 1 FROM project.${quote(table)} WHERE (${rowBytes})>? LIMIT 1`).get(PROJECT_SNAPSHOT_MAX_RAW_BYTES)) {
     // Bound an individual SQL cell before transferring it into JavaScript.
     throw new AppError('PROJECT_VERSION_SNAPSHOT_LIMIT', '项目内容超过版本快照容量上限，未保存版本。', 413);
@@ -132,7 +147,7 @@ function readRows(store: ProjectStore, table: ProjectSnapshotTable | 'agent_task
     if (budget.bytes > PROJECT_SNAPSHOT_MAX_RAW_BYTES) throw new AppError('PROJECT_VERSION_SNAPSHOT_LIMIT', '项目内容超过版本快照容量上限，未保存版本。', 413);
     rows.push(normalized);
   }
-  return rows.sort((a, b) => compare(rowKey(table, a), rowKey(table, b)));
+  return rows.sort((a, b) => compare(rowKey(table, a, format), rowKey(table, b, format)));
 }
 
 export function assertProjectSnapshotTableLedger(names: readonly string[]): void {
@@ -144,20 +159,20 @@ export function assertProjectSnapshotTableLedger(names: readonly string[]): void
  * connection. No new project descriptor, history query or media read occurs. */
 export function captureProjectDocumentInside(store: ProjectStore): ProjectDocument {
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Snapshot capture requires the exact live store inside a transaction');
+  const format = readSnapshotProjectFormat(store.db);
   const names = store.db.prepare("SELECT name FROM project.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(row => String(row.name));
   assertProjectSnapshotTableLedger(names);
   for (const table of tableNames) {
     const actual = store.db.prepare(`PRAGMA project.table_info(${quote(table)})`).all().map(row => String(row.name));
-    if (canonicalJson(actual) !== canonicalJson(tableColumns(table))) throw snapshotInvalid('table-columns');
+    if (canonicalJson(actual) !== canonicalJson(tableColumns(table, format))) throw snapshotInvalid('table-columns');
   }
   const metadata = store.db.prepare('SELECT singleton,projectId,contentSequence FROM project.project_file').all();
-  const format = store.db.prepare('SELECT version FROM project.schema_version').all();
-  if (metadata.length !== 1 || metadata[0].singleton !== 1 || metadata[0].projectId !== store.projectId || format.length !== 1 || format[0].version !== PROJECT_FILE_SCHEMA_VERSION) throw snapshotInvalid('project-metadata');
+  if (metadata.length !== 1 || metadata[0].singleton !== 1 || metadata[0].projectId !== store.projectId) throw snapshotInvalid('project-metadata');
   const budget = {bytes: 0};
   const document: ProjectDocument = {
-    snapshotProfileVersion: 1, projectId: store.projectId, projectFormatVersion: PROJECT_FILE_SCHEMA_VERSION,
-    evidence: {contentSequence: Number(metadata[0].contentSequence), targetRevisions: readRows(store, 'agent_task_target_revisions_v2', budget)},
-    tables: Object.fromEntries(PROJECT_SNAPSHOT_TABLES.map(table => [table, readRows(store, table, budget)])) as Record<ProjectSnapshotTable, SnapshotRow[]>,
+    snapshotProfileVersion: 1, projectId: store.projectId, projectFormatVersion: format,
+    evidence: {contentSequence: Number(metadata[0].contentSequence), targetRevisions: readRows(store, 'agent_task_target_revisions_v2', budget, format)},
+    tables: Object.fromEntries(PROJECT_SNAPSHOT_TABLES.map(table => [table, readRows(store, table, budget, format)])) as Record<ProjectSnapshotTable, SnapshotRow[]>,
   };
   return validateProjectDocument(document);
 }
@@ -175,7 +190,7 @@ function validateCell(value: unknown, column: Column): value is SnapshotCell {
   if (column.type === 'REAL') return typeof value === 'number' && Number.isFinite(value);
   return false;
 }
-function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string, definitions: ReadonlyMap<string, Shape>): asserts rows is readonly SnapshotRow[] {
+function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions_v2', rows: unknown, projectId: string, definitions: ReadonlyMap<string, Shape>, format: DocumentFormat): asserts rows is readonly SnapshotRow[] {
   if (!Array.isArray(rows)) throw snapshotInvalid('rows');
   const shape = definitions.get(table)!;
   let previous: string | undefined;
@@ -185,11 +200,15 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
     for (const column of shape.columns) {
       const value = row[column.name];
       if (jsonColumns.has(column.name) && typeof value === 'string') {
+        let parsed: unknown;
         try {
-          const parsed: unknown = JSON.parse(value);
+          parsed = JSON.parse(value);
           if (canonicalJson(parsed) !== value || column.name === 'data' && (!object(parsed) || (table !== 'projects' && parsed.projectId !== projectId)
             || Object.hasOwn(row, 'id') && object(parsed) && parsed.id !== row.id)) throw snapshotInvalid('json-owner');
         } catch {throw snapshotInvalid('json-column');}
+        if (table === 'timelines' && column.name === 'data' && format === FORMAT4_PROJECT_SCHEMA_VERSION && !isTimelineGeometryProfileAllowed(parsed, format)) {
+          throw snapshotInvalid('timeline-geometry');
+        }
       }
     }
     const key = canonicalJson(shape.primaryKeys.map(column => row[column]));
@@ -201,14 +220,15 @@ function validateRows(table: ProjectSnapshotTable | 'agent_task_target_revisions
 /** Validate untrusted decoded rows against the current SQL table constraints
  * and native FK graph in an isolated in-memory database. No live trigger is
  * disabled; retained-row triggers are not needed to validate a static value. */
-function validateDocument(input: unknown, format: number, statements: readonly string[], definitions: ReadonlyMap<string, Shape>): ProjectDocument {
+function validateDocument<Format extends DocumentFormat>(input: unknown, format: Format): ProjectDocument<Format> {
   if (!object(input) || !exact(input, ['snapshotProfileVersion', 'projectId', 'projectFormatVersion', 'evidence', 'tables'])
     || input.snapshotProfileVersion !== PROJECT_SNAPSHOT_PROFILE || input.projectFormatVersion !== format || !isProjectId(input.projectId)
     || !object(input.evidence) || !exact(input.evidence, ['contentSequence', 'targetRevisions']) || typeof input.evidence.contentSequence !== 'number'
     || !Number.isSafeInteger(input.evidence.contentSequence) || input.evidence.contentSequence < 0 || !object(input.tables)
     || !exact(input.tables, PROJECT_SNAPSHOT_TABLES)) throw snapshotInvalid('document');
-  for (const table of PROJECT_SNAPSHOT_TABLES) validateRows(table, input.tables[table], input.projectId, definitions);
-  validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId, definitions);
+  const {statements, shapes: definitions} = profile(format);
+  for (const table of PROJECT_SNAPSHOT_TABLES) validateRows(table, input.tables[table], input.projectId, definitions, format);
+  validateRows('agent_task_target_revisions_v2', input.evidence.targetRevisions, input.projectId, definitions, format);
   if ((input.tables.projects as readonly unknown[]).length !== 1) throw snapshotInvalid('project-row');
   const db = new DatabaseSync(':memory:', {enableForeignKeyConstraints: false, enableDoubleQuotedStringLiterals: false});
   try {
@@ -235,36 +255,52 @@ function validateDocument(input: unknown, format: number, statements: readonly s
     Object.freeze(rows);
   }
   Object.freeze(input.tables); Object.freeze(input.evidence); Object.freeze(input);
-  return input as unknown as ProjectDocument;
+  return input as unknown as ProjectDocument<Format>;
 }
 
 export function validateProjectDocument(input: unknown): ProjectDocument {
   if (object(input) && validatedDocuments.has(input)) return input as unknown as ProjectDocument;
-  const result = validateDocument(input, PROJECT_FILE_SCHEMA_VERSION, tableSql, tableShapes());
+  if (!object(input) || !isProjectFormat(input.projectFormatVersion)) throw snapshotInvalid('document');
+  const result = validateDocument(input, input.projectFormatVersion);
   validatedDocuments.add(result);
   return result;
 }
 
-/** A logical format-2 snapshot is validated against its frozen content DDL
- * before the metadata-only 2→3 adaptation. No captured token is invented and
- * no original envelope, digest or compressed bytes are rewritten. */
-export function decodeSupportedProjectDocument(input: unknown): ProjectDocument {
+/** Validate the exact source profile before adapting to the requested writable
+ * profile. Original payload bytes and row data are carried unchanged. */
+export function decodeSupportedProjectDocument(input: unknown, target?: ProjectFileFormat): ProjectDocument {
   if (object(input) && input.projectFormatVersion === 1) {
-    validateDocument(input, 1, FORMAT_1_COPY_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_1_COPY_TABLE_SQL));
+    validateDocument(input, 1);
     throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '此版本使用不支持恢复的旧项目业务格式；正文仍保留。', 422,
       {projectFormatVersion: 1, snapshotProfileVersion: 1});
   }
-  if (object(input) && input.projectFormatVersion === 2 && Number(PROJECT_FILE_SCHEMA_VERSION) === 3) {
-    const old = validateDocument(input, 2, FORMAT_2_SNAPSHOT_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_2_SNAPSHOT_TABLE_SQL));
-    return validateProjectDocument({...old, projectFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
+  const source = object(input) && input.projectFormatVersion === 2 ? validateDocument(input, 2) : validateProjectDocument(input);
+  const format = target ?? (source.projectFormatVersion === 2 ? 3 : source.projectFormatVersion);
+  if (source.projectFormatVersion === format) return source as ProjectDocument;
+  if (source.projectFormatVersion === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    throw new AppError('PROJECT_VERSION_SNAPSHOT_UNSUPPORTED', '当前项目格式无法恢复此版本。', 422,
+      {projectFormatVersion: source.projectFormatVersion, snapshotProfileVersion: source.snapshotProfileVersion});
   }
-  return validateProjectDocument(input);
+  const tables = {...source.tables};
+  if (format === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    // Older named versions retain their original validation and bytes. A
+    // candidate adaptation must not give a new meaning to an older marker.
+    for (const row of source.tables.timelines) {
+      if (!isTimelineGeometryProfileAllowed(JSON.parse(String(row.data)), source.projectFormatVersion))
+        throw snapshotInvalid('timeline-geometry');
+    }
+    const emptyArchive = Object.fromEntries(CANVAS_ARCHIVE_COLUMNS.map(column => [column, null]));
+    for (const table of CANVAS_ARCHIVE_TABLES) {
+      tables[table] = source.tables[table].map(row => ({...row, ...emptyArchive}));
+    }
+  }
+  return validateProjectDocument({...source, projectFormatVersion: format, tables});
 }
 
 /** Structural preservation is deliberately separate from business restore.
  * Known format 1 may be carried byte-for-byte, never adapted to current data. */
-export function validateProjectDocumentForCopy(input: unknown): ProjectDocument {
+export function validateProjectDocumentForCopy(input: unknown): ProjectDocument<ProjectFileFormat | 1> {
   if (object(input) && input.projectFormatVersion === 1)
-    return validateDocument(input, 1, FORMAT_1_COPY_TABLE_SQL, format2Shapes ??= createTableShapes(FORMAT_1_COPY_TABLE_SQL));
+    return validateDocument(input, 1);
   return decodeSupportedProjectDocument(input);
 }

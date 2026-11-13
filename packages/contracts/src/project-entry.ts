@@ -18,7 +18,7 @@ export const PROJECT_ENTRY_ERROR_STATUS = Object.freeze({
 } as const);
 export const projectEntryAvailabilitySchema = z.discriminatedUnion('state', [
   z.object({state: z.enum(['open', 'busy', 'available', 'locked', 'missing', 'access-denied'])}).strict(),
-  z.object({state: z.literal('invalid'), reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
+  z.object({state: z.literal('invalid'), reason: z.enum([...PROJECT_INVALID_REASONS, 'format-newer'])}).strict(),
 ]);
 export type ProjectEntryAvailability = z.infer<typeof projectEntryAvailabilitySchema>;
 

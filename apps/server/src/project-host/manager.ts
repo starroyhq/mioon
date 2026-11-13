@@ -308,7 +308,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** Tail of each project's queue of exclusive operations. */
   const exclusive = new Map<string, Promise<void>>();
   /** What the last recovery found for each project that is not open. */
-  const recoveries = new Map<string, ProjectFileRecovery>();
+  const recoveries = new Map<string, ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'}>();
   /** Searches by file identity for projects the recovery found missing. */
   const searches = new Map<string, Promise<void>>();
   let stopped = false;
@@ -656,6 +656,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       result = maintenance.recoverProjectFile(registration.projectFile);
     } catch (error) {
       const code = errorCode(error);
+      if (code === 'PROJECT_FORMAT_NEWER') {
+        recoveries.set(projectId, {state: 'invalid', reason: 'format-newer'});
+        return;
+      }
       if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId,{state:'access-denied'});
       else recoveries.delete(projectId);
       emit({type: 'maintenance-failed', projectId, error});

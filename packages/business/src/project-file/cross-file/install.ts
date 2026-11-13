@@ -1,7 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import {CONVERTED_TEMP_TRIGGERS} from './converted-triggers.ts';
-import {CROSS_FILE_RELATIONS} from './relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from './relations.ts';
 import type {CrossFileRelation} from './relations.ts';
 import {installRestoreScopeFunction} from './restore-admission.ts';
 
@@ -54,26 +54,28 @@ export function relationTriggerStatements(relation: CrossFileRelation, overrides
  * in the same transaction. */
 export const SEEN_SEQUENCE_TRIGGER = `CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence,contentToken ON ${PROJECT_DATABASE_NAMES.project}.project_file WHEN (SELECT seenContentSequence FROM history_state)=OLD.contentSequence AND (SELECT seenContentToken FROM history_state)=OLD.contentToken BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence,seenContentToken=NEW.contentToken;END`;
 
-const STATEMENTS: readonly string[] = Object.freeze([
-  ...CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.sql),
-  ...CROSS_FILE_RELATIONS.flatMap(relation => relationTriggerStatements(relation)),
-  SEEN_SEQUENCE_TRIGGER,
+const triggerStatements = (relations: readonly CrossFileRelation[]): readonly string[] => Object.freeze([
+  ...CONVERTED_TEMP_TRIGGERS.map(trigger => trigger.sql), ...relations.flatMap(relation => relationTriggerStatements(relation)), SEEN_SEQUENCE_TRIGGER,
 ]);
+const STATEMENTS = triggerStatements(CROSS_FILE_RELATIONS);
+const FORMAT4_STATEMENTS = triggerStatements(FORMAT4_CROSS_FILE_RELATIONS);
 
 /** Every connection-level trigger of the kernel in creation order: the format-72
  * triggers that cross files, four per cross-file relation, then the
  * content-sequence copy. */
-export function crossFileTriggerStatements(): readonly string[] {
-  return STATEMENTS;
+export function crossFileTriggerStatements(format4 = false): readonly string[] {
+  return format4 ? FORMAT4_STATEMENTS : STATEMENTS;
 }
 
 const CREATE_TEMP_TRIGGER = /^CREATE TEMP TRIGGER (\w+) /;
 /** Name and the text SQLite stores in temp.sqlite_master (it drops TEMP). */
-const EXPECTED: ReadonlyMap<string, string> = new Map(STATEMENTS.map(sql => {
+const storedTriggers = (statements: readonly string[]): ReadonlyMap<string, string> => new Map(statements.map(sql => {
   const match = CREATE_TEMP_TRIGGER.exec(sql);
   if (!match) throw new Error(`Not a TEMP trigger: ${sql.slice(0, 60)}`);
   return [match[1]!, `CREATE TRIGGER ${sql.slice('CREATE TEMP TRIGGER '.length)}`] as const;
 }));
+const EXPECTED = storedTriggers(STATEMENTS);
+const EXPECTED_FORMAT4 = storedTriggers(FORMAT4_STATEMENTS);
 const SAVEPOINT = 'project_file_triggers';
 const DATABASES = [PROJECT_DATABASE_NAMES.history, PROJECT_DATABASE_NAMES.project, PROJECT_DATABASE_NAMES.cache] as const;
 
@@ -83,7 +85,8 @@ const listed = (names: readonly string[]): string => names.length > 5 ? `${names
  * main and the project file and the cache are attached. Returns without changes
  * when exactly these triggers already exist; throws when only some of them, or
  * other TEMP triggers, exist. */
-export function installCrossFileTriggers(db: DatabaseSync): void {
+export function installCrossFileTriggers(db: DatabaseSync, format4 = false): void {
+  const expected = format4 ? EXPECTED_FORMAT4 : EXPECTED;
   installRestoreScopeFunction(db);
   const attached = new Set(db.prepare('PRAGMA database_list').all().map(row => String(row.name)));
   const absent = DATABASES.filter(schema => !attached.has(schema));
@@ -99,9 +102,9 @@ export function installCrossFileTriggers(db: DatabaseSync): void {
   const existing = db.prepare("SELECT name,sql FROM temp.sqlite_master WHERE type='trigger'").all();
   if (existing.length) {
     const found = new Map(existing.map(row => [String(row.name), String(row.sql)] as const));
-    const missing = [...EXPECTED.keys()].filter(name => !found.has(name));
-    const unexpected = [...found.keys()].filter(name => !EXPECTED.has(name));
-    const changed = [...EXPECTED].filter(([name, sql]) => found.has(name) && found.get(name) !== sql).map(([name]) => name);
+    const missing = [...expected.keys()].filter(name => !found.has(name));
+    const unexpected = [...found.keys()].filter(name => !expected.has(name));
+    const changed = [...expected].filter(([name, sql]) => found.has(name) && found.get(name) !== sql).map(([name]) => name);
     if (missing.length === 0 && unexpected.length === 0 && changed.length === 0) return;
     throw new Error(`Connection-level triggers are partly installed: ${[
       missing.length ? `missing ${listed(missing)}` : '', unexpected.length ? `unexpected ${listed(unexpected)}` : '', changed.length ? `changed ${listed(changed)}` : '',
@@ -109,7 +112,7 @@ export function installCrossFileTriggers(db: DatabaseSync): void {
   }
   db.exec(`SAVEPOINT ${SAVEPOINT}`);
   try {
-    for (const sql of STATEMENTS) db.exec(sql);
+    for (const sql of crossFileTriggerStatements(format4)) db.exec(sql);
     db.exec(`RELEASE ${SAVEPOINT}`);
   } catch (error) {
     if (db.isTransaction) {

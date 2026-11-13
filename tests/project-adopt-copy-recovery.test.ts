@@ -19,17 +19,18 @@ import {captureProjectDocumentInside} from '../packages/business/src/project-ver
 import {encodeProjectDocument} from '../packages/business/src/project-versions/codec.ts';
 import {storeManualVersionInside} from '../packages/business/src/project-versions/repository.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
-import {HISTORY_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectAdoptCopyInput} from '../packages/contracts/src/project-copies.ts';
 
 type Boundary=Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
 const runtime=async()=>({handle:async()=>false,isBusy:()=>false,interrupt(){},drain:async()=>{},dispose(){}});
-function owner(root:string,onActionBoundary?:Boundary){
+function owner(root:string,onActionBoundary?:Boundary,targetFormat?:ProjectFileFormat){
  const directories=serverAppDirectories(root),signal=new AbortController();
  let manager:ReturnType<typeof createProjectHostManager>;
  const library=openAppLibrary({dataDir:root,isProjectOpen:id=>manager?.status(id)!==null&&manager?.status(id)!==undefined});
  manager=createProjectHostManager({directories,registry:library.registry,identity:library.projectFileIdentity,factory:runtime});
- const copies=createProjectCopies({manager,library,directories,signal:signal.signal,assertProjectFile:createApplicationFileGuard(directories),onActionBoundary});
+ const copies=createProjectCopies({manager,library,directories,signal:signal.signal,assertProjectFile:createApplicationFileGuard(directories),onActionBoundary,targetFormat});
  return {directories,library,manager,copies,async close(){await copies.drain();await manager.closeAll();library.close();}};
 }
 function tree(directory:string):unknown {
@@ -59,7 +60,7 @@ async function fixture(t:TestContext){
  const intentFile=path.join(root,'project-copy-actions',`project.adopt-copy-${input.requestId}.json`);
  return {root,source,selected,input,local,selectedBefore,intentFile,get app(){return app;},
   readIntent:()=>JSON.parse(readFileSync(intentFile,'utf8')),
-  async restart(boundary?:Boundary){await app.close();app=owner(root,boundary);},
+  async restart(boundary?:Boundary,targetFormat?:ProjectFileFormat){await app.close();app=owner(root,boundary,targetFormat);},
   unchanged(registration=original.registration){assert.deepEqual(readFileSync(source.projectFile),original.project);assert.deepEqual(tree(local.localDir),original.records);assert.deepEqual(app.library.registry.get(source.projectId),registration);},
  };
 }
@@ -103,6 +104,40 @@ for(const point of ['ready','records-prepared','records-published','project-publ
  assert.deepEqual(await f.app.copies.adoptCopy(f.input),result);assert.equal(f.readIntent().phase,'completed');
  assert.equal(inspectCopiedProjectFile(f.selected).projectId,saved.projectId);
  for(const suffix of ['-journal','-wal','-shm'])assert.equal(existsSync(f.selected+suffix),false);
+ f.unchanged();
+});
+
+test('default recovery leaves a ready format 4 adoption untouched until a trusted host resumes it',async t=>{
+ const f=await fixture(t);
+ await f.restart(phase=>{if(phase==='ready')throw Error('candidate adoption ready');},FORMAT4_PROJECT_SCHEMA_VERSION);
+ await assert.rejects(f.app.copies.adoptCopy(f.input),/candidate adoption ready/u);
+ const saved=f.readIntent(),intentBytes=readFileSync(f.intentFile),stageBefore=tree(saved.stageDirectory);
+ const stage=path.join(saved.stageDirectory,'project.mioon'),records=projectLocation(f.app.directories,saved.projectId).localDir;
+ assert.equal(saved.phase,'ready');
+ assert.equal(inspectCopiedProjectFile(stage).formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.deepEqual(readFileSync(f.selected),f.selectedBefore);
+
+ await f.restart();await f.app.copies.recover();
+ await assert.rejects(f.app.copies.adoptCopy(f.input),{code:'PROJECT_FORMAT_NEWER',details:{database:'project',reason:'format-newer',
+  formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION}});
+ assert.deepEqual(readFileSync(f.selected),f.selectedBefore);
+ assert.deepEqual(readFileSync(f.intentFile),intentBytes);
+ assert.deepEqual(tree(saved.stageDirectory),stageBefore);
+ assert.equal(existsSync(records),false);
+ assert.equal(f.app.library.registry.get(saved.projectId),null);
+ assert.equal(f.app.library.receipts.read('project.adopt-copy',f.input.requestId),null);
+
+ await f.restart(undefined,FORMAT4_PROJECT_SCHEMA_VERSION);await f.app.copies.recover();
+ const result=await f.app.copies.adoptCopy(f.input);
+ assert.deepEqual(result,saved.response);
+ assert.equal(f.readIntent().phase,'completed');
+ assert.equal(inspectCopiedProjectFile(f.selected).formatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ const store=openProjectStore({projectFile:f.selected,locate:id=>projectLocation(f.app.directories,id),format4:{}});
+ try{
+  assert.equal(store.projectId,saved.projectId);
+  assert.equal(store.historyState,'current');
+  assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
+ }finally{store.close();}
  f.unchanged();
 });
 

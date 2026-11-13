@@ -26,7 +26,9 @@ import {
   TIMELINE_RESPONSE_BYTES, TIMELINE_SUBTITLE_PROFILE_ID,
   hasRequestNotAppliedProof, isTimelineMutationResponse, isTimelineRecord,
 } from '@mioon/contracts';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openStore, testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectBackup, openProjectBackup} from '../packages/business/src/project-file/backup.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createServices, type ServiceHandlerContext} from '../packages/business/src/services.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
@@ -223,6 +225,25 @@ test('image budget uses exact JSON UTF-8 bytes and leaves the historical 256 KiB
   for (const clip of reviewerExample.clips) clip.colour = structuredClone(nonImage.clips[0].colour);
   assert.ok(encodedBytes(reviewerExample) < limit);
   assert.equal(isTimelineRecord(reviewerExample), true, 'the equivalent three-UUID video v1 record remains admissible');
+});
+
+test('a normal format 3 edit saves and backs up a real timeline at the 256 KiB limit', async t => {
+  const f = await fixture(t, {bytes: TIMELINE_RESPONSE_BYTES - 1});
+  const track = f.timeline.tracks.at(-1)!;
+  assert.ok(typeof track.name === 'string');
+  await f.call('timeline.track.update', f.params(f.timeline, {trackId: track.id, patch: {name: track.name + 'x'}}));
+  const store = testStoreForConnection(f.store.db, f.root);
+  assert.ok(store);
+  const data = store.db.prepare('SELECT data FROM project.timelines WHERE projectId=?').get(f.projectId)?.data;
+  assert.ok(typeof data === 'string');
+  assert.equal(Buffer.byteLength(data), TIMELINE_RESPONSE_BYTES);
+  assert.equal(isTimelineRecord(JSON.parse(data)), true);
+  const backupFile = path.join(f.root, 'backup.mioon');
+  assert.equal((await createProjectBackup(store, backupFile)).formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const reader = openProjectBackup(backupFile);
+  try {
+    assert.equal(reader.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId)?.data, data);
+  } finally {reader.close();}
 });
 
 test('one-byte image candidate overflow rejects before any SQL write with exact scoped proof', async t => {

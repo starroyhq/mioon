@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {openStore} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore, openStore} from '../packages/business/src/project-file/index.ts';
 import {schemaObjects} from '../packages/business/src/project-file/cross-file/inspect.ts';
 import {tokenizeSql} from './helpers/sql-tokenizer.ts';
 import type {SqlToken} from './helpers/sql-tokenizer.ts';
@@ -101,8 +101,10 @@ function assertTriggerGraph(catalog: Catalog) {
   return {graph, writers};
 }
 
-test('fresh K1 connection trigger writes are acyclic, never self-write and cannot implicitly REPLACE', t => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-trigger-graph-')), store = openStore(root);
+for (const format4 of [false, true]) test(`fresh K1 ${format4 ? 'candidate' : 'released'} connection trigger writes are acyclic, never self-write and cannot implicitly REPLACE`, t => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-trigger-graph-'));
+  const store = format4 ? createProjectStore({projectFile: join(root, 'candidate.mioon'), format4: {},
+    locate: () => ({localDir: join(root, 'records'), cacheDir: join(root, 'cache'), tempDir: join(root, 'temp')})}) : openStore(root);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   assert.equal(store.db.prepare('PRAGMA recursive_triggers').get()!.recursive_triggers, 1);
   const catalog = schemaObjects(store.db), triggers = catalog.filter(row => row.type === 'trigger');

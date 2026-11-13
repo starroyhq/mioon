@@ -3,7 +3,7 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
+import {inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
@@ -85,7 +85,20 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     const before = scope();
     refreshSummaries();
     const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
-      .map(entry => ({...entry, coverUrl: entry.project.summary?.cover ? '/api/project-covers/' + entry.project.projectId : null}));
+      .map(({project, availability}) => {
+        if (availability.state === 'available') {
+          // Recovery leaves cold files alone. Check just the header for the
+          // newer-format hint, without opening the project or local records.
+          try {
+            assertProjectFile?.(project.projectFile);
+            sourceMetadata(project.projectFile);
+            inspectProjectFormatHeader(project.projectFile);
+          } catch (error) {
+            if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') availability = {state: 'invalid', reason: 'format-newer'};
+          }
+        }
+        return {project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null};
+      });
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
     const result = projectEntriesResponseSchema.safeParse({version: 1, appLibraryScope: before, instanceId, registered});
     if (!result.success) throw unavailable();

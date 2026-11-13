@@ -335,8 +335,9 @@ const openProps = {open: true, projectName: '访谈剪辑样片', failure: OPEN_
 test('native rows and grid place their metadata next to the cover, keeping missing and waiting actions', () => {
   const homeDirectory = '/private/tmp/launcher-home';
   const projects = entries().map(entry => ({...entry, project: {...entry.project, projectFile: `${homeDirectory}/Projects/${entry.project.projectId}.mioon`}}));
+  const newer = {...projects[1]!, availability: {state: 'invalid', reason: 'format-newer'} as const};
   const missing = {...projects.at(-1)!, availability: {state: 'missing'} as const};
-  const state = {kind: 'ready', value: [...projects.slice(0, -1), missing]};
+  const state = {kind: 'ready', value: [projects[0]!, newer, ...projects.slice(2, -1), missing]};
   const waiting = {kind: 'ready', value: waitingProjects(state.value, [{projectId: missing.project.projectId, taskCount: 2, reasonCodes: ['PROJECT_MISSING']}])};
   const props = {state, waiting, homeDirectory, nativeLayout: true, sort: 'recent', now: new Date('2026-10-21T14:40:00+08:00'),
     onSortChange: noAction, onViewChange: noAction, onRetry: noAction, onOpen: noAction, onLocate: noAction};
@@ -363,6 +364,9 @@ test('native rows and grid place their metadata next to the cover, keeping missi
       assert.ok(tagOf(missingCard, `pf-card-locate-${PROJECT_IDS.interview}`));
       assert.ok(tagOf(missingCard, `pf-card-waiting-${PROJECT_IDS.interview}`));
       assert.ok(tagOf(missingCard, `pf-card-menu-${PROJECT_IDS.interview}`));
+      const newerCard = page.slice(page.indexOf(`data-testid="pf-card-${newer.project.projectId}"`)).split('</article>')[0]!;
+      const newerLabel = escapeHtml(translate(locale, 'projectFile.open.newer.title'));
+      assert.ok(newerCard.includes(`<span class="pf-card-status" data-tone="danger">${newerLabel}</span>`), `${locale}/${view}: newer format status and tone`);
     }
     const busy = controlled.render('recent', {...props, view: 'list', busy: true}, locale);
     assert.equal(disabled(tagOf(busy, `pf-card-open-${PROJECT_IDS.ui}`)), true);
@@ -394,9 +398,10 @@ test('custom launcher empty content appears only after an empty directory has lo
 
 test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
   const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
-  const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'}, {state: 'invalid', reason: 'corrupt'}];
-  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid'] as const;
-  const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, 4).map((project, index) => ({project: {...project, name: `Status ${4 - index}`,
+  const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'},
+    {state: 'invalid', reason: 'corrupt'}, {state: 'invalid', reason: 'format-newer'}];
+  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid', 'projectFile.open.newer.title'] as const;
+  const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, states.length).map((project, index) => ({project: {...project, name: `Status ${states.length - index}`,
     projectFile: `${directory}/project-${index}.mioon`, lastOpenedAt: `2026-10-${20 + index}T00:00:00.000Z`,
     summary: project.summary ? {...project.summary, updatedAt: `2026-10-${20 + index}T00:00:00.000Z`} : null}, availability: states[index]!, coverUrl: null}));
   const original = structuredClone(projects);

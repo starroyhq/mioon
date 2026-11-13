@@ -2,6 +2,7 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {copyFileSync,lstatSync,mkdtempSync,readFileSync,readdirSync,renameSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -11,9 +12,14 @@ import {createMemoryProjectRegistry} from '../apps/server/src/project-host/stand
 import {projectLocation,serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
-import {recoverHistorySwitch} from '../packages/business/src/project-file/history-switch.ts';
+import {prepareHistorySwitch, projectHistoryFileIdentity, recoverHistorySwitch} from '../packages/business/src/project-file/history-switch.ts';
 import type {HistorySwitchBoundary} from '../packages/business/src/project-file/history-switch.ts';
+import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {CANVAS_HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
+import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
+import {isHotJournal} from '../packages/business/src/project-file/journals.ts';
 import type {ProjectHistoryResolveInput,ProjectHistoryStatus} from '../packages/contracts/src/project-history-recovery.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 
@@ -54,6 +60,77 @@ async function fixture(t:TestContext,seed?:(store:ProjectStore)=>void){
 function restoreInput(status:ProjectHistoryStatus,versionId:string,previewDigest:string):ProjectHistoryResolveInput {
  return {projectId:status.projectId,requestId:randomUUID(),expected:status.file,historyIdentity:status.historyIdentity,confirmationDigest:status.confirmationDigest,action:'restore-version',versionId,previewDigest};
 }
+
+test('an available format 4 capability leaves a staged format 3 history switch on its original profile',async t=>{
+ const f=await fixture(t);await f.stop('staged');
+ const result=recoverHistorySwitch({...f.options,format4:{approveUpgrade:()=>assert.fail('History replacement is not a project format upgrade')}});
+ assert.equal(result?.requestId,f.input.requestId);
+ const opened=await f.manager.acquire(f.projectId,'window');
+ try{
+  assert.equal(opened.host.store.db.prepare('PRAGMA project.user_version').get()?.user_version,PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(opened.host.store.db.prepare('SELECT version FROM main.schema_version').get()?.version,HISTORY_SCHEMA_VERSION);
+ }finally{opened.release();}
+});
+
+test('an explicitly admitted format 4 history switch resumes after commit with history 11 and its archived version intact',t=>{
+ const root=mkdtempSync(path.join(tmpdir(),'history-switch-format4-')),projectFile=path.join(root,'project.mioon'),projectId=randomUUID();
+ t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const location={localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')};
+ const options={projectFile,location,assertMutationAllowed:()=>{}};
+ const candidate={...options,format4:{approveUpgrade:()=>assert.fail('An existing format 4 project does not upgrade')}};
+ const open={projectFile,locate:()=>location,format4:candidate.format4};
+ const nodeId=randomUUID(),archiveBatchId=randomUUID(),archivedAt='2026-11-12T00:00:00.000Z';
+ const seed=createProjectStore({...open,projectId});
+ let versionId:string;
+ try{
+  ensureProjectRow(seed,{name:'Saved version'});
+  seed.put('nodes',{id:nodeId,projectId,type:'text',label:'Archived text',text:'',revision:1});
+  seed.db.prepare("UPDATE project.nodes SET archivedAt=?,archiveBatchId=?,archiveReason='user-delete' WHERE id=?").run(archivedAt,archiveBatchId,nodeId);
+  versionId=createProjectVersions(seed).save({projectId,requestId:randomUUID(),name:'Archived snapshot'}).version.id;
+ }finally{seed.close();}
+ const external=new DatabaseSync(projectFile);
+ try{external.prepare("UPDATE nodes SET archivedAt=NULL,archiveBatchId=NULL,archiveReason=NULL WHERE id=?").run(nodeId);}finally{external.close();}
+ const historyFile=path.join(location.localDir,'history.db'),diverged=openProjectStore(open);
+ let input:ProjectHistoryResolveInput;
+ try{
+  assert.equal(diverged.historyState,'diverged');
+  const preview=createProjectVersions(diverged,{executionDomain:'empty'}).preview({projectId,versionId});
+  input={projectId,requestId:randomUUID(),expected:readProjectContentStamp(diverged.db),historyIdentity:projectHistoryFileIdentity(historyFile),
+   confirmationDigest:'a'.repeat(64),action:'restore-version',versionId,previewDigest:preview.previewDigest};
+  const before=readdirSync(location.localDir).sort();
+  assert.throws(()=>prepareHistorySwitch(diverged,input,options),{code:'PROJECT_FORMAT_NEWER'});
+  assert.deepEqual(readdirSync(location.localDir).sort(),before);
+  prepareHistorySwitch(diverged,input,candidate);
+ }finally{diverged.close();}
+ const prepared=snapshot(root);
+ assert.throws(()=>recoverHistorySwitch(options),{code:'PROJECT_FORMAT_NEWER'});
+ assert.deepEqual(snapshot(root),prepared);
+ const killed=spawnSync(process.execPath,['--input-type=module','--eval',`
+  import {DatabaseSync} from 'node:sqlite';
+  const db=new DatabaseSync(process.argv[1]);
+  db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA cache_size=4; BEGIN IMMEDIATE');
+  db.prepare("UPDATE projects SET data=json_set(data,'$.description',?)").run('x'.repeat(524288));
+  process.kill(process.pid,'SIGKILL');
+ `,projectFile],{encoding:'utf8',timeout:10000});
+ assert.equal(killed.signal,'SIGKILL',killed.stderr);
+ assert.equal(isHotJournal(`${projectFile}-journal`),true);
+ const hot=snapshot(root);
+ assert.throws(()=>recoverHistorySwitch(options),{code:'PROJECT_FORMAT_NEWER'});
+ assert.deepEqual(snapshot(root),hot);
+ assert.throws(()=>recoverHistorySwitch({...candidate,onBoundary:point=>{if(point==='after-commit')throw Error('stop after format 4 commit');}}),/stop after format 4 commit/u);
+ const result=recoverHistorySwitch(candidate);
+ assert.equal(result?.requestId,input.requestId);
+ const reopened=openProjectStore(open);
+ try{
+  assert.equal(reopened.historyState,'current');
+  assert.equal(reopened.db.prepare('PRAGMA project.user_version').get()?.user_version,FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(reopened.db.prepare('SELECT version FROM main.schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
+  for(const table of CANVAS_HISTORY_TABLES)assert.equal(reopened.db.prepare(`SELECT count(*) n FROM main.${table}`).get()?.n,0);
+  assert.deepEqual({...reopened.db.prepare('SELECT archivedAt,archiveBatchId,archiveReason FROM project.nodes WHERE id=?').get(nodeId)},
+   {archivedAt,archiveBatchId,archiveReason:'user-delete'});
+  assert.ok(createProjectVersions(reopened).list({projectId}).versions.some(version=>version.id===versionId));
+ }finally{reopened.close();}
+});
 
 test('prepared intent never mutates old-format or forged-current source, sidecars, local directories or registry',async t=>{
  for(const variant of ['format2-hot','forged3-schema'] as const)await t.test(variant,async child=>{

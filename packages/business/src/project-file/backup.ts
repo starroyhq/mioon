@@ -9,8 +9,10 @@ import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/projec
 import {isProjectFileHeld} from './held-files.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {projectFileError} from './errors.ts';
-import {PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL} from './schema/databases.ts';
-import {SCHEMA_MANIFEST} from './schema/manifest.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL} from './schema/databases.ts';
+import type {ProjectFileFormat} from './schema/databases.ts';
+import {projectManifestForVersion} from './schema/format-manifests.ts';
+import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
 import {isProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
@@ -22,7 +24,7 @@ export interface ProjectBackupIdentity {
   readonly projectId: string;
   readonly contentSequence: number;
   readonly contentToken: string;
-  readonly formatVersion: number;
+  readonly formatVersion: ProjectFileFormat;
   readonly name: string | null;
   readonly sizeBytes: number;
 }
@@ -51,7 +53,7 @@ function checkHeader(file: string, applicationId: number) {
   const identity = {dev: String(info.dev), ino: String(info.ino)};
   if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw invalid('held-database');
   // A read-only connection must not reinterpret uncertain journal pages or
-  // create sidecars. Old formats are rejected before SQLite sees the file.
+  // create sidecars. Unknown formats are rejected before SQLite sees the file.
   for (const suffix of ['-journal','-wal','-shm']) {
     const sidecar=lstatSync(file+suffix,{throwIfNoEntry:false});
     if(sidecar && (sidecar.size>0 || !sidecar.isFile()))throw invalid('journal');
@@ -66,25 +68,38 @@ function checkHeader(file: string, applicationId: number) {
     const header = Buffer.alloc(100);
     if (readSync(fd, header, 0, header.length, 0) !== 100 || header.toString('latin1', 0, 16) !== 'SQLite format 3\u0000'
       || header.readUInt32BE(68) !== applicationId || header[18] !== 1 || header[19] !== 1) throw invalid('header');
-    if(header.readUInt32BE(60)!==PROJECT_FILE_SCHEMA_VERSION)throw invalid('format');
-    return {sizeBytes:Number(actual.size),generation:[actual.dev,actual.ino,actual.size,actual.mtimeNs,actual.ctimeNs].join(':')};
+    const formatVersion = header.readUInt32BE(60);
+    if(!projectManifestForVersion(formatVersion))throw invalid('format');
+    return {formatVersion,sizeBytes:Number(actual.size),generation:[actual.dev,actual.ino,actual.size,actual.mtimeNs,actual.ctimeNs].join(':')};
   } finally { closeSync(fd); }
 }
 
-/** Full current project profile; only the dedicated marker differs. */
-export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: number, sizeBytes: number): ProjectBackupIdentity {
-  if (pragma(db, 'application_id') !== applicationId || pragma(db,'user_version')!==PROJECT_FILE_SCHEMA_VERSION || pragma(db, 'encoding') !== 'UTF-8' || pragma(db, 'journal_mode') !== 'delete') throw invalid('profile');
-  if (db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='schema_version'").get()?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid('format');
-  const versions = db.prepare('SELECT version FROM schema_version').all();
-  if (versions.length !== 1 || versions[0].version !== PROJECT_FILE_SCHEMA_VERSION) throw invalid('format');
-  const diff = compareManifest(readSchemaManifest(db, 'main'), SCHEMA_MANIFEST.project.entries);
+/** Exact project profile for either known format; MioB differs only in its marker. */
+export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: number, sizeBytes: number, schema: 'main' | 'project' = 'main'): ProjectBackupIdentity {
+  if (schema !== 'main' && schema !== 'project') throw new TypeError('A copied project requires a fixed schema name');
+  const qualifier = schema === 'main' ? '' : 'project.';
+  const profile = (name: string) => pragma(db, qualifier + name);
+  if (profile('application_id') !== applicationId || profile('encoding') !== 'UTF-8' || profile('journal_mode') !== 'delete') throw invalid('profile');
+  const formatVersion = profile('user_version');
+  if (formatVersion !== PROJECT_FILE_SCHEMA_VERSION && formatVersion !== FORMAT4_PROJECT_SCHEMA_VERSION) throw invalid('format');
+  const expected = projectManifestForVersion(formatVersion);
+  if (!expected || db.prepare(`SELECT sql FROM ${schema}.sqlite_schema WHERE type='table' AND name='schema_version'`).get()?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid('format');
+  const versions = db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
+  if (versions.length !== 1 || versions[0].version !== formatVersion) throw invalid('format');
+  const diff = compareManifest(readSchemaManifest(db, schema), expected.entries);
   if (diff.changed.length || diff.missing.length || diff.unexpected.length) throw invalid('schema');
-  const rows = db.prepare('SELECT singleton,projectId,contentSequence,contentToken FROM project_file').all(), row = rows[0];
+  const rows = db.prepare(`SELECT singleton,projectId,contentSequence,contentToken FROM ${schema}.project_file`).all(), row = rows[0];
   if (rows.length !== 1 || row.singleton !== 1 || !isProjectId(row.projectId) || typeof row.contentSequence !== 'number'
     || !Number.isSafeInteger(row.contentSequence) || row.contentSequence < 0 || typeof row.contentToken!=='string' || !/^[a-f0-9]{32}$/u.test(row.contentToken)) throw invalid('metadata');
-  const projects = db.prepare('SELECT id,data FROM projects LIMIT 2').all();
+  const projects = db.prepare(`SELECT id,data FROM ${schema}.projects LIMIT 2`).all();
   if (projects.length > 1 || projects.length === 1 && projects[0].id !== row.projectId) throw invalid('project-row');
-  if (pragma(db, 'quick_check') !== 'ok' || db.prepare('PRAGMA foreign_key_check').get() !== undefined) throw invalid('integrity');
+  if (profile('quick_check') !== 'ok' || db.prepare(`PRAGMA ${qualifier}foreign_key_check`).get() !== undefined) throw invalid('integrity');
+  // Backups preserve released project rows even when a business reader would
+  // reject the timeline. Only the candidate format owns a geometry profile.
+  if (formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    try { assertProjectTimelineGeometryProfile(db, schema, formatVersion); }
+    catch (error) { throw invalid('geometry', error); }
+  }
   let name: string | null = null;
   if (projects.length) {
     try {
@@ -92,7 +107,7 @@ export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: numbe
       if (data !== null && typeof data === 'object' && 'name' in data && typeof data.name === 'string') name = data.name;
     } catch { throw invalid('project-data'); }
   }
-  return Object.freeze({projectId: row.projectId, contentSequence: row.contentSequence, contentToken:row.contentToken, formatVersion: PROJECT_FILE_SCHEMA_VERSION, name, sizeBytes});
+  return Object.freeze({projectId: row.projectId, contentSequence: row.contentSequence, contentToken:row.contentToken, formatVersion, name, sizeBytes});
 }
 
 function openReadOnly(file: string, applicationId: number): ProjectBackupReader {
@@ -102,6 +117,7 @@ function openReadOnly(file: string, applicationId: number): ProjectBackupReader 
     db = new DatabaseSync(file, options);
     db.exec('PRAGMA trusted_schema=OFF; PRAGMA query_only=ON; PRAGMA cell_size_check=ON');
     const identity = readCopiedProjectIdentity(db, applicationId, before.sizeBytes), database = db;
+    if (identity.formatVersion !== before.formatVersion) throw invalid('file-changed');
     const after=lstatSync(file,{bigint:true});
     if(!after.isFile() || after.nlink!==1n || [after.dev,after.ino,after.size,after.mtimeNs,after.ctimeNs].join(':')!==before.generation)throw invalid('file-changed');
     const reader: ProjectBackupReader = Object.freeze({db: database, identity, close: (): void => { if (database.isOpen) database.close(); }});

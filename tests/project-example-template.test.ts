@@ -8,6 +8,10 @@ import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication, type InspectProject} from '../apps/server/src/index.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
+import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
+import {createProjectCopies} from '../apps/server/src/project-host/copies.ts';
+import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {stageProjectExampleResources, verifyProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 import {projectTemplateManifestSchema} from '../packages/contracts/src/project-template-manifest.ts';
 import type {ProjectTemplateManifest} from '../packages/contracts/src/project-template-manifest.ts';
@@ -19,7 +23,7 @@ import type {MediaReference} from '../packages/contracts/src/media-reference.ts'
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
 import {openProjectBackup} from '../packages/business/src/project-file/backup.ts';
-import {HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {CONTENT_TABLES, HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
 import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
@@ -139,6 +143,45 @@ test('the shipped timeline example is current, bounded, licensed and contains on
     assert.ok(input.assets.some(item => item.path === asset.reference.path));
     assert.equal(asset.reference.fullSha256, input.assets.find(item => item.path === asset.reference.path)!.sha256);
   }
+});
+
+test('the shipped format 3 example produces a format 4 candidate without changing the signed resources', async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 's6d-example-format4-'));
+  const installed = path.join(root, 'installed'), targets = path.join(root, 'targets');
+  t.after(() => rmSync(root, {recursive: true, force: true}));
+  mkdirSync(targets);
+  await stageProjectExampleResources(sourceRoot, installed);
+  const entries = verifyProjectExampleResources(installed), entry = entries[0]!, original = tree(installed);
+  const source = await sourceContent(entry.directory, entry.manifest);
+  assert.equal(source.identity.formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const directories = serverAppDirectories(path.join(root, 'app'));
+  const library = openAppLibrary({dataDir: directories.dataDir});
+  try {
+    const manager = createProjectHostManager({directories, registry: library.registry,
+      factory: async () => assert.fail('template instantiation must not open the source or target runtime')});
+    const copies = createProjectCopies({manager, library, directories, projectTemplates: entries, targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION,
+      assertProjectFile: createApplicationFileGuard(directories), signal: new AbortController().signal});
+    const copy = await copies.instantiateTemplate({templateId: entry.manifest.templateId, templateVersion: entry.manifest.version,
+      parentDir: targets, name: 'Format 4 example', requestId: randomUUID()});
+    const target = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id), format4: {}});
+    try {
+      assert.equal(target.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      assert.equal(target.historyState, 'current');
+      assert.equal(target.db.prepare('SELECT contentToken FROM project.project_file').get()?.contentToken, copy.contentToken);
+      assert.notEqual(copy.project.projectId, source.identity.projectId);
+      const timelines = target.db.prepare('SELECT data FROM project.timelines ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Timeline);
+      assert.deepEqual(timelines.map(timeline => ({...timeline, projectId: source.identity.projectId})), source.timelines);
+      for (const item of entry.manifest.assets) {
+        const file = path.join(target.projectDir, item.path);
+        assert.equal(sha(readFileSync(file)), item.sha256);
+        assert.equal(lstatSync(file).nlink, 1);
+        assert.notEqual(lstatSync(file).ino, lstatSync(path.join(entry.directory, item.path)).ino);
+      }
+    } finally {target.close();}
+    await copies.drain();
+  } finally {library.close();}
+  assert.deepEqual(tree(installed), original);
 });
 
 test('the default web build resources create two new identities with intact timeline content and no carried local execution records', async t => {

@@ -10,7 +10,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {createProjectFile,isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
+import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 import {projectEntriesResponseSchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
@@ -32,7 +32,7 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false} = {}) {
+async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false} = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
   const dataDir = path.join(root, 'app'), projectsDir = externalProjectsRoot ? path.join(root, 'selected-projects') : path.join(dataDir, 'projects');
   let server: Server | undefined;
@@ -51,7 +51,15 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   a.store.close();
   const b = createServerProject(dataDir, {name: 'Catalog B'});
   let bFile = b.store.projectFile;
+  const bLocation = {localDir: b.store.localDir, cacheDir: b.store.cacheDir, tempDir: b.store.tempDir};
   b.store.close();
+  if (candidateB) {
+    const candidate = openProjectStore({projectFile: bFile, locate: () => bLocation, format4: {approveUpgrade: () => true}});
+    try {
+      assert.equal(candidate.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(candidate.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    } finally {candidate.close();}
+  }
   if (externalProjectsRoot) {
     mkdirSync(projectsDir);
     const move = (file: string): string => {
@@ -156,6 +164,28 @@ test('application catalog retains the physical application identity and reads me
   assert.deepEqual(descriptor.entry,entries.registered.find(entry=>entry.project.projectId===f.a.projectId));
   assert.equal(descriptor.instanceId,entries.instanceId);assert.equal(descriptor.appLibraryScope,entries.appLibraryScope);
   assert.equal(a.db.isOpen,true);assert.equal(b.db.isOpen,true);
+});
+
+test('default web routes keep the released project format and report the candidate pair as too new', async t => {
+  const f = await fixture(t, 'web', {candidateB: true});
+  const call = (projectId: string) => f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({operation: 'timeline.get', input: {projectId}})});
+  const stable = await call(f.a.projectId);
+  assert.equal(stable.status, 200);
+  assert.equal(stable.body.ok, true);
+  const db = f.native(f.a.projectId);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, HISTORY_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM cache.schema_version').get()?.version, CACHE_SCHEMA_VERSION);
+
+  const recent = (await f.catalog()).registered.find(entry => entry.project.projectId === f.b.projectId);
+  const candidate = await call(f.b.projectId);
+  assert.equal(candidate.status, 409);
+  assert.equal(candidate.body.ok, false);
+  assert.equal(candidate.body.error?.code, 'PROJECT_UNAVAILABLE');
+  assert.deepEqual(candidate.body.error?.details, {projectId: f.b.projectId, reason: 'PROJECT_FORMAT_NEWER'});
+  assert.ok(recent);
+  assert.deepEqual(recent.availability, {state: 'invalid', reason: 'format-newer'});
 });
 
 test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{
