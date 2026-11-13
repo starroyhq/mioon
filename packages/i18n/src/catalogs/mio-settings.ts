@@ -2,6 +2,33 @@ import type {MessageCatalog} from '../types.ts';
 
 /** Settings › Mio (design screens 07-09 and 07-10). */
 export const mioSettingsMessages = {
+  "settings.modelPicker.title": {"zh-Hans":"选择要添加的模型","zh-Hant":"選擇要新增的模型","en":"Choose models to add","ja":"追加するモデルを選択"},
+  "settings.modelPicker.results": {
+    "zh-Hans":"{service} 这次返回了 {count} 个模型。勾选要加入列表的模型。已经添加的保持勾选，移除请在设置列表里操作。",
+    "zh-Hant":"{service} 這次傳回了 {count} 個模型。勾選要加入清單的模型。已新增的保持勾選，請在設定清單中移除。",
+    "en":"Models returned by {service}: {count}. Select models to add. Added models stay checked and can be removed in Settings.",
+    "ja":"{service} から {count} 件のモデルが返されました。一覧に追加するモデルを選択してください。追加済みのモデルを削除するには設定の一覧を使用してください。"
+  },
+  "settings.modelPicker.search": {"zh-Hans":"搜索模型","zh-Hant":"搜尋模型","en":"Search models","ja":"モデルを検索"},
+  "settings.modelPicker.list": {"zh-Hans":"获取的模型","zh-Hant":"取得的模型","en":"Fetched models","ja":"取得したモデル"},
+  "settings.modelPicker.selectAll": {"zh-Hans":"全选新模型","zh-Hant":"全選新模型","en":"Select all new","ja":"新規モデルをすべて選択"},
+  "settings.modelPicker.clear": {"zh-Hans":"清空","zh-Hant":"清除","en":"Clear","ja":"選択を解除"},
+  "settings.modelPicker.inUse": {"zh-Hans":"Mio 使用中","zh-Hant":"Mio 使用中","en":"In use by Mio","ja":"Mio で使用中"},
+  "settings.modelPicker.added": {"zh-Hans":"已添加","zh-Hant":"已新增","en":"Added","ja":"追加済み"},
+  "settings.modelPicker.willAdd": {"zh-Hans":"将添加","zh-Hant":"將新增","en":"Will add","ja":"追加予定"},
+  "settings.modelPicker.unavailable": {"zh-Hans":"此 ID 无法添加","zh-Hant":"無法新增此 ID","en":"Unsupported model ID","ja":"未対応のモデル ID"},
+  "settings.modelPicker.noMatch": {"zh-Hans":"没有匹配的模型。","zh-Hant":"沒有符合的模型。","en":"No matching models.","ja":"一致するモデルはありません。"},
+  "settings.modelPicker.manual": {"zh-Hans":"这里只列出这次获取到的模型，手动新建的模型不受影响。","zh-Hant":"這裡只列出這次取得的模型，手動建立的模型不受影響。","en":"Only models returned by this fetch are shown. Manually added models stay in Settings.","ja":"今回取得したモデルのみを表示しています。手動で追加したモデルは設定の一覧に残ります。"},
+  "settings.modelPicker.draftKey": {"zh-Hans":"这次获取使用了当前填写的未保存密钥。","zh-Hant":"這次取得使用了目前輸入且尚未儲存的金鑰。","en":"This fetch uses the unsaved key in the form.","ja":"今回の取得には入力中の未保存のキーを使います。"},
+  "settings.modelPicker.count": {
+    "zh-Hans":"已勾选 {count} 个新模型","zh-Hant":"已勾選 {count} 個新模型",
+    "en":"New models selected: {count}","ja":"新規モデル {count} 件を選択中"
+  },
+  "settings.modelPicker.add": {"zh-Hans":"添加 {count} 个","zh-Hant":"新增 {count} 個","en":"Add {count}","ja":"{count} 件追加"},
+  "settings.modelPicker.limit": {
+    "zh-Hans":"当前列表最多还能添加 {count} 个模型。","zh-Hant":"目前清單最多還能新增 {count} 個模型。",
+    "en":"Remaining model slots: {count}.","ja":"この一覧にあと {count} 件まで追加できます。"
+  },
   "agent.settings.models.loading": {"zh-Hans":"正在获取模型列表…","zh-Hant":"正在取得模型清單…","en":"Fetching models…","ja":"モデルを取得中…"},
   "agent.settings.models.idle": {"zh-Hans":"先显示已保存的缓存；获取列表不会保存连接设置。","zh-Hant":"先顯示已儲存的快取；取得清單不會儲存連線設定。","en":"Saved cache appears first. Fetching a list does not save connection settings.","ja":"保存済みのキャッシュを先に表示します。一覧の取得では接続設定を保存しません。"},
   "agent.settings.models.waitingKey": {"zh-Hans":"填写密钥后获取模型列表，也可以手动添加模型。","zh-Hant":"填寫金鑰後取得模型清單，也可以手動新增模型。","en":"Enter a key to fetch models, or add a model manually.","ja":"キーを入力してモデルを取得するか、モデルを手動で追加してください。"},

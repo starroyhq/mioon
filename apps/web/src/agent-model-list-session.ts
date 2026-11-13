@@ -29,15 +29,15 @@ export function createAgentModelListClient({fetchImpl=(input:RequestInfo|URL,ini
  return {modelsList:(input,{signal})=>request(input,'list',signal),modelsCache:(input,{signal})=>request(input,'cache',signal)};
 }
 export type AgentModelListPhase='idle'|'loading'|'waiting_key'|'success'|'invalid_key'|'unavailable'|'unreachable'|'network_denied'|'error';
-export interface AgentModelListView {identity:string;phase:AgentModelListPhase;observation:AgentModelListSuccess|null;result:AgentModelListResult|null;fromCache:boolean}
+export interface AgentModelListView {requestId:number;identity:string;phase:AgentModelListPhase;observation:AgentModelListSuccess|null;result:AgentModelListResult|null;fromCache:boolean}
 interface Entry {view:AgentModelListView;epoch:number;controller:AbortController|null}
 type Credential=AgentModelListRequest['credential'];
 const identity=(input:AgentModelListCacheRequest)=>JSON.stringify([input.serviceKey,input.selection.presetId,input.selection.platformId,input.selection.baseUrl,input.selection.protocol]);
-const empty=(key:string):AgentModelListView=>({identity:key,phase:'idle',observation:null,result:null,fromCache:false});
+const empty=(key:string):AgentModelListView=>({requestId:0,identity:key,phase:'idle',observation:null,result:null,fromCache:false});
 /** Independent observations and cancellation epochs never join the settings
  * draft or its CAS. Only an active detail can issue a request. */
 export function createAgentModelListSession({client=createAgentModelListClient(),onChange=()=>{}}:{client?:AgentModelListClient;onChange?:(views:Readonly<Record<string,AgentModelListView>>)=>void}={}){
- const entries=new Map<string,Entry>();let active:string|null=null,disposed=false;
+ const entries=new Map<string,Entry>();let active:string|null=null,disposed=false,nextRequestId=0;
  const emit=()=>{if(!disposed)onChange(Object.fromEntries([...entries].map(([key,entry])=>[key,structuredClone(entry.view)])));};
  function cancel(key:string){const entry=entries.get(key);if(entry){entry.epoch++;entry.controller?.abort();entry.controller=null;if(entry.view.phase==='loading')entry.view={...entry.view,phase:entry.view.observation?'success':'idle'};}}
  function get(input:AgentModelListCacheRequest):Entry{
@@ -45,15 +45,20 @@ export function createAgentModelListSession({client=createAgentModelListClient()
   if(!entry||entry.view.identity!==key){cancel(input.serviceKey);entry={view:empty(key),epoch:(entry?.epoch??0)+1,controller:null};entries.set(input.serviceKey,entry);}
   return entry;
  }
- async function run(raw:AgentModelListCacheRequest,readCredential:()=>Credential|null,cache:boolean){
+ async function run(raw:AgentModelListCacheRequest,readCredential?:()=>Credential|null){
   if(disposed)return;const parsed=agentModelListCacheRequestSchema.safeParse(raw);if(!parsed.success)return;const input=parsed.data;
   if(active!==input.serviceKey){if(active)cancel(active);active=input.serviceKey;}
-  const entry=get(input);cancel(input.serviceKey);const epoch=++entry.epoch,controller=new AbortController();entry.controller=controller;entry.view={...entry.view,phase:'loading',result:null};emit();
+  const entry=get(input);cancel(input.serviceKey);const epoch=++entry.epoch,controller=new AbortController();entry.controller=controller;entry.view={...entry.view,requestId:++nextRequestId,phase:'loading',result:null,fromCache:!readCredential};emit();
   const current=()=>!disposed&&active===input.serviceKey&&entries.get(input.serviceKey)===entry&&entry.epoch===epoch&&!controller.signal.aborted;
   try{
-   if(cache){const cached:AgentModelListCacheResult=agentModelListCacheResultSchema.parse(await client.modelsCache(input,{signal:controller.signal}));if(!current())return;if(cached.status==='hit'){entry.view={identity:identity(input),phase:'success',observation:cached.result,result:cached.result,fromCache:true};emit();return;}}
+   if(!readCredential){
+    const cached:AgentModelListCacheResult=agentModelListCacheResultSchema.parse(await client.modelsCache(input,{signal:controller.signal}));
+    if(!current())return;
+    entry.view=cached.status==='hit'?{...entry.view,phase:'success',observation:cached.result,result:cached.result}:{...entry.view,phase:'idle'};
+    emit();return;
+   }
    if(!current())return;
-   // Read DOM at dispatch time, after cache lookup. This value is never placed
+   // Read DOM immediately before dispatch. This value is never placed
    // in an Entry, state emission, request identity or replayable closure.
    const credential=readCredential();if(!credential){entry.view={...entry.view,phase:'waiting_key',result:null};emit();return;}
    const request=agentModelListRequestSchema.safeParse({...input,credential});if(!request.success){entry.view={...entry.view,phase:'error',result:null};emit();return;}
@@ -63,8 +68,12 @@ export function createAgentModelListSession({client=createAgentModelListClient()
   finally{if(entry.epoch===epoch)entry.controller=null;}
  }
  return {
-  open:(input:AgentModelListCacheRequest,credential:()=>Credential|null)=>run(input,credential,true),
-  refresh:(input:AgentModelListCacheRequest,credential:()=>Credential|null)=>run(input,credential,false),
+  readCache:(input:AgentModelListCacheRequest)=>run(input),
+  refresh:(input:AgentModelListCacheRequest,credential:()=>Credential|null)=>run(input,credential),
+  isCurrentSuccess(key:string,requestId:number){
+   const view=entries.get(key)?.view;
+   return active===key&&view?.requestId===requestId&&view.result?.outcome==='success'&&!view.fromCache;
+  },
   invalidate(key?:string){if(key===undefined){for(const id of entries.keys())cancel(id);active=null;}else cancel(key);emit();},
   forget(keys:readonly string[]){const keep=new Set(keys);for(const key of entries.keys())if(!keep.has(key)){cancel(key);entries.delete(key);if(active===key)active=null;}emit();},
   suspend(){if(active)cancel(active);active=null;emit();},

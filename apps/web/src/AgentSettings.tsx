@@ -19,6 +19,7 @@ import AgentTaskPolicy from './AgentTaskPolicy.tsx';
 import type {AgentTaskPolicyController,AgentTaskPolicyNavigation} from './AgentTaskPolicy.tsx';
 import SettingsServicesLayout from './SettingsServicesLayout.tsx';
 import type {SettingsServicesFooter} from './SettingsServicesLayout.tsx';
+import ModelPickerDialog from './ModelPickerDialog.tsx';
 import {WorkbenchSelect} from './WorkspaceControls.tsx';
 import Icon from './icons.tsx';
 import {useWorkspaceVisibility} from './workspace-visibility.tsx';
@@ -30,6 +31,7 @@ import type {AgentSettingsSnapshot,AgentSettingsState,Translate} from './agent-s
 type AgentSettingsSession=ReturnType<typeof createAgentSettingsSession>;
 type NavigationReporter=ReturnType<typeof createSettingsNavigationReporter>;
 type NavigationInput=Parameters<NavigationReporter['update']>[0];
+interface ActiveModelPicker {key:string;request:AgentModelListCacheRequest;usesDraftKey:boolean}
 interface AgentSettingsProps {
  onClose:()=>void;beforeClose?:Parameters<typeof closeSettingsAfterPermission>[0];closeLabel?:string;
  onNavigationStateChange?:Parameters<NavigationReporter['connect']>[0];projectId?:string|null;
@@ -75,7 +77,8 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  const {t,renderMessage,formatDate}=useI18n(),confirm=useConfirmation(),visible=useWorkspaceVisibility();
  const [state,setState]=useState<AgentSettingsState>(initialAgentSettingsState),[hasKeys,setHasKeys]=useState<ReadonlySet<string>>(new Set()),[replacing,setReplacing]=useState<ReadonlySet<string>>(new Set()),[keyCleared,setKeyCleared]=useState<ReadonlySet<string>>(new Set()),[modelErrors,setModelErrors]=useState<ReadonlySet<string>>(new Set());
  const [latest,setLatest]=useState<AgentTaskConnectionTest|null>(null),[policyState,setPolicyState]=useState<AgentTaskPolicyNavigation>({dirty:false,busy:false,unknown:false}),[partial,setPartial]=useState(false);
- const [modelLists,setModelLists]=useState<Readonly<Record<string,AgentModelListView>>>({}),modelListsSession=useRef<ReturnType<typeof createAgentModelListSession>|null>(null),modelDetailIdentity=useRef<string|null>(null),addressEditing=useRef(new Set<string>()),[addressEpoch,setAddressEpoch]=useState(0);
+ const [modelLists,setModelLists]=useState<Readonly<Record<string,AgentModelListView>>>({}),modelListsSession=useRef<ReturnType<typeof createAgentModelListSession>|null>(null),addressEditing=useRef(new Set<string>()),[addressEpoch,setAddressEpoch]=useState(0);
+ const [picker,setPicker]=useState<ActiveModelPicker|null>(null),activePicker=useRef<ActiveModelPicker|null>(null),pickerTrigger=useRef<HTMLElement|null>(null);
  const interaction=useMemo(()=>({visible}),[visible]),interactionRef=useRef(interaction);
  const [documentEpoch,setDocumentEpoch]=useState(0),documentVersion=useRef(0);
  const [saveOutcome,setSaveOutcome]=useState<{connectionSaved:boolean;connectionFailed:boolean;policyDirty:boolean}|null>(null);
@@ -88,7 +91,15 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  const anyKey=()=>Array.from(keyInputs.current.values()).some(ref=>Boolean(ref.current?.value));
  const navigationInput=(next:AgentSettingsState):NavigationInput=>({dirty:agentSettingsDirty(next)||anyKey()||policyNavigation.current.dirty,phase:policyNavigation.current.busy?'saving':next.phase,recovery:policyNavigation.current.unknown?'unknown':next.recovery});
  const report=(next:AgentSettingsState)=>navigation.current!.update(navigationInput(next));
+ function closePicker(expected?:ActiveModelPicker){
+  const current=activePicker.current;
+  if(!current||expected&&current!==expected)return;
+  activePicker.current=null;
+  setPicker(null);
+  modelListsSession.current?.invalidate(current.key);
+ }
  function clearKeys(key?:string){
+  if(key===undefined||activePicker.current?.key===key)closePicker();
   modelListsSession.current?.invalidate(key);
   for(const [owner,ref] of keyInputs.current)if(key===undefined||key===owner){if(ref.current)ref.current.value='';}
   setHasKeys(previous=>key===undefined?new Set():new Set([...previous].filter(item=>item!==key)));
@@ -99,7 +110,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  useLayoutEffect(()=>{
   dismissed.current=false;const current=createAgentSettingsSession({onChange:next=>{if(!dismissed.current){report(next);setState(next);}}});session.current=current;void current.load();
   const discovery=createAgentModelListSession({onChange:next=>{if(!dismissed.current)setModelLists(next);}});modelListsSession.current=discovery;
-  return()=>{dismissed.current=true;discovery.dispose();if(modelListsSession.current===discovery)modelListsSession.current=null;for(const ref of keyInputs.current.values())if(ref.current)ref.current.value='';current.dispose();if(session.current===current)session.current=null;};
+  return()=>{dismissed.current=true;activePicker.current=null;discovery.dispose();if(modelListsSession.current===discovery)modelListsSession.current=null;for(const ref of keyInputs.current.values())if(ref.current)ref.current.value='';current.dispose();if(session.current===current)session.current=null;};
  },[]);
  useLayoutEffect(()=>{visibility.current=visible;interactionRef.current=interaction;session.current?.setVisible(visible);if(!visible){const keys=new Set([...keyInputs.current].filter(([,ref])=>Boolean(ref.current?.value)).map(([key])=>key));clearKeys();if(keys.size)setKeyCleared(previous=>new Set([...previous,...keys]));}report(session.current?.getState()||state);},[interaction]);
  useLayoutEffect(()=>{
@@ -122,22 +133,31 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   if(['qwen','zhipu','ollama','openrouter'].includes(entry.presetId))return {source:'none'};
   return null;
  }
- function fetchModels(key:string,force=true){
+ function fetchModels(key:string,openPicker=false,trigger:HTMLElement|null=null){
   if(!usable(key)||!agentSettingsEditable(session.current?.getState()))return;const request=modelListRequest(key);if(!request)return;
-  void modelListsSession.current?.[force?'refresh':'open'](request,()=>modelListCredential(key));
+  if(activePicker.current||modelListsSession.current?.getState()[key]?.phase==='loading')return;
+  if(openPicker){
+   const next:ActiveModelPicker={key,request,usesDraftKey:Boolean(keyInputs.current.get(key)?.current?.value)};
+   activePicker.current=next;
+   pickerTrigger.current=trigger;
+   setPicker(next);
+  }
+  void modelListsSession.current?.refresh(request,()=>modelListCredential(key));
  }
  const selectedEntry=state.draft?.services.find(entry=>entry.serviceKey===state.selectedKey);
  let detailIdentity:string|null=null;try{if(selectedEntry&&state.snapshot)detailIdentity=JSON.stringify([selectedEntry.serviceKey,selectedEntry.presetId,selectedEntry.platformId,agentServiceBase(selectedEntry,state.snapshot.presets),selectedEntry.protocol]);}catch{/* Incomplete addresses do not dispatch. */}
  useLayoutEffect(()=>{addressEditing.current.clear();},[state.selectedKey]);
+ const settingsEditable=agentSettingsEditable(state);
  useLayoutEffect(()=>{
-  if(addressEditing.current.has(state.selectedKey)){modelListsSession.current?.suspend();return;}
-  if(!visible||document.hidden||!agentSettingsEditable(state)||!detailIdentity){modelListsSession.current?.suspend();modelDetailIdentity.current=null;return;}
-  const previous=modelDetailIdentity.current;modelDetailIdentity.current=detailIdentity;
-  const changed=Boolean(previous&&previous!==detailIdentity&&JSON.parse(previous)[0]===state.selectedKey);
-  fetchModels(state.selectedKey,changed);
- },[detailIdentity,state.snapshot?.revision,visible,documentEpoch,state.phase,addressEpoch]);
+  closePicker();
+  if(!visible||document.hidden||!settingsEditable||!detailIdentity||addressEditing.current.has(state.selectedKey)){
+   modelListsSession.current?.suspend();return;
+  }
+  const request=modelListRequest(state.selectedKey);
+  if(request)void modelListsSession.current?.readCache(request);
+ },[detailIdentity,state.snapshot?.revision,visible,documentEpoch,settingsEditable,addressEpoch]);
  function bindingChange(key:string,change:()=>boolean|undefined){
-  if(!usable(key))return;modelListsSession.current?.invalidate(key);const before=session.current?.getState().draft?.services.find(item=>item.serviceKey===key);if(!change())return;
+  if(!usable(key))return;closePicker();modelListsSession.current?.invalidate(key);const before=session.current?.getState().draft?.services.find(item=>item.serviceKey===key);if(!change())return;
   const next=session.current!.getState(),after=next.draft?.services.find(item=>item.serviceKey===key);
   if(agentServiceBindingChanged(before,after,next.snapshot!.presets)){clearKeys(key);setKeyCleared(previous=>new Set([...previous,key]));}
  }
@@ -145,7 +165,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   if(!usable()||submitPending.current||policyNavigation.current.busy)return;
   const current=session.current?.getState()||state,connectionDirty=agentSettingsDirty(current)||anyKey(),policyDirty=policyNavigation.current.dirty;
   if(connectionDirty&&!agentSettingsCanSave(current)||!connectionDirty&&!policyDirty)return;
-  modelListsSession.current?.invalidate();
+  closePicker();modelListsSession.current?.invalidate();
   submitPending.current=true;setPartial(false);setSaveOutcome(null);
   try{
    // save reads all DOM inputs exactly once and clears all of them before its
@@ -195,9 +215,20 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   const selectedModel=draft!.mioSelection?.serviceKey===key?draft!.mioSelection.modelId:null,savedModel=snapshot!.mioSelection?.serviceKey===key?snapshot!.mioSelection.modelId:null;
   let base='';try{base=agentServiceBase(entry,snapshot!.presets);}catch{/* Incomplete address is an editable draft. */}
   const listIdentity=base?JSON.stringify([key,entry.presetId,entry.platformId,base,entry.protocol]):null,list=modelLists[key]?.identity===listIdentity?modelLists[key]:undefined;
-  const familyHints=[...entry.manualModelIds,...(list?.observation?.models.map(model=>model.id)??[]),...(savedModel?[savedModel]:[]),...(selectedModel?[selectedModel]:[])].filter(model=>agentOpenAiModelIsAdapted(entry.presetId,entry.protocol,model));
-  const models=agentModelListRows({observation:list?.observation,adaptedIds:[...new Set([...hints,...familyHints])],manualIds:entry.manualModelIds,currentId:savedModel,draftId:selectedModel,custom:entry.presetId==='custom',hasCompleteList:list?.phase==='success'&&list.observation?.complete===true,showMissing:list?.phase==='success'&&!changedBinding&&saved?.protocol===entry.protocol}),missing=models.find(model=>model.missing);
+  const isAdapted=(id:string)=>entry.presetId!=='custom'&&(hints.includes(id)||agentOpenAiModelIsAdapted(entry.presetId,entry.protocol,id));
+  const adaptedIds=[...new Set([...hints,...entry.manualModelIds.filter(isAdapted),...(savedModel&&isAdapted(savedModel)?[savedModel]:[]),...(selectedModel&&isAdapted(selectedModel)?[selectedModel]:[])])];
+  // Keep catalog suggestions and added IDs stable across provider observations.
+  const models=agentModelListRows({observation:list?.observation,adaptedIds,manualIds:entry.manualModelIds,currentId:savedModel,draftId:selectedModel,custom:entry.presetId==='custom',showMissing:list?.phase==='success'&&!changedBinding&&saved?.protocol===entry.protocol}),missing=models.find(model=>model.missing);
   const listBusy=list?.phase==='loading',listStatus=modelListStatus(list);
+  const serviceName=entry.presetId==='custom'?entry.name:agentPresetLabel(preset,t);
+  const active=enabled&&picker?.key===key&&activePicker.current===picker?picker:null;
+  const latestList=list?.phase==='success'&&list.result?.outcome==='success'?list.result:null;
+  const pickerItems=active&&latestList?latestList.models.map(model=>({
+   id:model.id,label:model.displayName,
+   added:entry.manualModelIds.includes(model.id)||model.id===savedModel||model.id===selectedModel,
+   active:model.id===savedModel,verified:isAdapted(model.id),
+  })):[];
+  const pickerStatus=!list||listBusy?'loading':!latestList?'error':pickerItems.length?'ready':'empty';
   const messagesV1=entry.presetId==='custom'&&entry.protocol==='anthropic_messages'&&/\/v1\/?$/u.test(entry.addressInput.trim());
   const ownTest=snapshot!.execution?.binding.serviceKey===key?snapshot!.execution:null;
   const addressRow=<div className="mio-settings-row"><Label htmlFor={`agent-address-${key}`}>{t(platform.addressMode==='workspace'?'agent.settings.x6.workspace':platform.addressMode==='local'?'agent.settings.x6.localOrigin':platform.addressMode==='custom'?'agent.settings.x6.customBase':'mio.settings.label.baseUrl')}</Label><div className="mio-settings-control">
@@ -208,7 +239,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
      {Boolean(platform.sources.length)&&<div className="agent-settings-sources">{platform.sources.map(source=>snapshot!.storage.sessionScope==='app'?<span className="agent-settings-source-reference" key={source.url}><span>{t('agent.settings.officialDocs')}</span><span>{source.url}</span></span>:<a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{t('agent.settings.officialDocs')}<Icon name="arrow" size={10}/></a>)}</div>}
     </div></div>;
   return {key,content:<div className="mio-settings-service" data-testid={`agent-settings-service-${key}`}>
-   <header className="mio-settings-service-head"><h2>{entry.presetId==='custom'?entry.name:agentPresetLabel(preset,t)}</h2>{entry.presetId==='custom'&&<WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-settings-delete-${key}`} disabled={!enabled||!session.current?.canRemove(key)} title={!session.current?.canRemove(key)?t('agent.settings.x6.deleteInUse'):undefined} onClick={()=>{void deleteService(key);}}>{t('agent.settings.x6.deleteService')}</WorkbenchButton>}</header>
+   <header className="mio-settings-service-head"><h2>{serviceName}</h2>{entry.presetId==='custom'&&<WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-settings-delete-${key}`} disabled={!enabled||!session.current?.canRemove(key)} title={!session.current?.canRemove(key)?t('agent.settings.x6.deleteInUse'):undefined} onClick={()=>{void deleteService(key);}}>{t('agent.settings.x6.deleteService')}</WorkbenchButton>}</header>
    {entry.presetId==='custom'&&!session.current?.canRemove(key)&&<p className="agent-settings-help">{t('agent.settings.x6.deleteInUse')}</p>}
    <p className="agent-settings-help" data-testid={`agent-settings-preset-note-${key}`}>{agentPresetNote(preset,platform,t)}</p>
    <div className="mio-settings-rows">
@@ -223,7 +254,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
       {replacing.has(key)&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-cancel-replace-${key}`} disabled={!enabled} onClick={()=>{if(usable(key))clearKeys(key);}}>{t('common.cancel')}</WorkbenchButton>}
       {saved?.secret.configured&&<WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-settings-remove-key-${key}`} aria-pressed={intent.action==='remove'} disabled={!enabled} onClick={()=>{if(usable(key)){clearKeys(key);session.current?.removeKey(key,intent.action!=='remove');}}}>{t(intent.action==='remove'?'connections.undoRemove':'mio.settings.key.clear')}</WorkbenchButton>}
      </div>
-     <div className="mio-settings-key-entry" hidden={!keyEntry} inert={!keyEntry}><Label className="sr-only" htmlFor={`agent-key-${key}`}>{t(configured?'agent.settings.replaceKey':'agent.settings.enterKey')}</Label><Input ref={refs} id={`agent-key-${key}`} data-testid={`agent-settings-key-${key}`} type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!enabled||!keyEntry} maxLength={8192} placeholder={t(configured?'agent.settings.keepPlaceholder':'agent.settings.newKeyPlaceholder')} onBlur={()=>{if(usable(key)&&keyEntry&&refs.current?.value)fetchModels(key);}} onChange={(event:ChangeEvent<HTMLInputElement>)=>{if(!usable(key)||!keyEntry)return;modelListsSession.current?.invalidate(key);setHasKeys(previous=>new Set([...previous].filter(item=>item!==key).concat(event.target.value?[key]:[])));setKeyCleared(previous=>new Set([...previous].filter(item=>item!==key)));report(session.current?.getState()||state);}}/>
+     <div className="mio-settings-key-entry" hidden={!keyEntry} inert={!keyEntry}><Label className="sr-only" htmlFor={`agent-key-${key}`}>{t(configured?'agent.settings.replaceKey':'agent.settings.enterKey')}</Label><Input ref={refs} id={`agent-key-${key}`} data-testid={`agent-settings-key-${key}`} type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!enabled||!keyEntry} maxLength={8192} placeholder={t(configured?'agent.settings.keepPlaceholder':'agent.settings.newKeyPlaceholder')} onChange={(event:ChangeEvent<HTMLInputElement>)=>{if(!usable(key)||!keyEntry)return;closePicker();modelListsSession.current?.invalidate(key);setHasKeys(previous=>new Set([...previous].filter(item=>item!==key).concat(event.target.value?[key]:[])));setKeyCleared(previous=>new Set([...previous].filter(item=>item!==key)));report(session.current?.getState()||state);}}/>
       <WorkbenchSelect id={`agent-storage-${key}`} data-testid={`agent-settings-storage-${key}`} aria-label={t('agent.settings.keyStorage')} value={intent.storage} disabled={!enabled} onChange={(event:{target:{value:string}})=>{if(usable(key))session.current?.setStorage(key,event.target.value);}}><option value="session">{t(snapshot!.storage.sessionScope==='app'?'connections.storage.appSession':'connections.storage.serverSession')}</option><option value="persistent" disabled={!snapshot!.storage.persistentAvailable}>{t(snapshot!.storage.persistentAvailable?'connections.storage.persistent':'connections.storage.persistentUnavailable')}</option></WorkbenchSelect>
       <p className="agent-settings-help">{t('agent.settings.keyHelp')} {storageReason(snapshot!.storage,t)} {!hasKeys.has(key)&&configured?t('agent.settings.reenterStorage'):''}</p>
      </div>
@@ -232,14 +263,23 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
     </div></div>
     {entry.presetId!=='custom'&&addressRow}
    </div>
-   <section className="mio-settings-section mio-model-section"><header className="mio-settings-model-heading"><h3>{t('mio.settings.label.model')}</h3><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||!base||listBusy} loading={listBusy} data-testid={`agent-settings-fetch-${key}`} onClick={()=>fetchModels(key)}>{t('agent.settings.x6.fetchModels')}</WorkbenchButton></header>
+   <section className="mio-settings-section mio-model-section"><header className="mio-settings-model-heading"><h3>{t('mio.settings.label.model')}</h3><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||!base||listBusy} loading={listBusy} data-testid={`agent-settings-fetch-${key}`} onClick={event=>fetchModels(key,true,event?.currentTarget)}>{t('agent.settings.x6.fetchModels')}</WorkbenchButton></header>
     <p className="agent-settings-help mio-model-observation" role="status" data-testid={`agent-settings-model-list-status-${key}`} data-phase={list?.phase??'idle'}>{t(listStatus)}{list?.observation&&<> · {t('agent.settings.models.fetchedAt',{time:formatDate(list.observation.fetchedAt,{dateStyle:'short',timeStyle:'short'})})}</>}</p>
     {entry.protocol==='responses'&&<p className="agent-settings-help" data-testid={`agent-settings-model-guidance-${key}`}>{entry.presetId==='custom'?t('agent.settings.responsesCustom'):t('agent.task.protocolScope')}{entry.presetId==='qwen'?' '+t('agent.settings.presets.qwenResponses'):''}</p>}{entry.protocol==='anthropic_messages'&&<p className="agent-settings-help" data-testid={`agent-settings-anthropic-guidance-${key}`}>{t('agent.settings.anthropicScope')}</p>}
-    <div className="mio-model-list">{models.map(model=><div className="mio-model-row" key={model.id} data-testid={`agent-settings-model-row-${key}-${model.id}`}><div><strong>{model.id}</strong>{model.displayName&&model.displayName!==model.id&&<span className="mio-model-display-name">{model.displayName}</span>}<WorkbenchBadge tone={model.missing?'warning':'neutral'}>{t(model.missing?'agent.settings.models.missing':model.adapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge>{model.manual&&<WorkbenchBadge>{t('agent.settings.models.manual')}</WorkbenchBadge>}{model.current&&selectedModel!==model.id&&<WorkbenchBadge>{t('agent.settings.x6.usingModel')}</WorkbenchBadge>}</div><div className="mio-settings-inline"><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||selectedModel===model.id} data-testid={`agent-settings-use-${key}-${model.id}`} onClick={()=>{if(usable(key))session.current?.selectMio(key,model.id);}}>{t(selectedModel===model.id?savedModel===model.id?'agent.settings.x6.usingModel':'agent.settings.x6.pendingModel':'agent.settings.x6.useModel')}</WorkbenchButton>{model.manual&&<WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled} aria-label={t('agent.settings.x6.removeModel')} onClick={()=>{if(usable(key))session.current?.removeModel(key,model.id);}}><Icon name="close" size={12}/></WorkbenchButton>}</div></div>)}</div>
+    <div className="mio-model-list">{models.map(model=><div className="mio-model-row" key={model.id} data-testid={`agent-settings-model-row-${key}-${model.id}`}><div><strong>{model.id}</strong>{model.displayName&&model.displayName!==model.id&&<span className="mio-model-display-name">{model.displayName}</span>}<WorkbenchBadge tone={model.missing?'warning':'neutral'}>{t(model.missing?'agent.settings.models.missing':model.adapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge>{model.manual&&<WorkbenchBadge>{t('settings.modelPicker.added')}</WorkbenchBadge>}{model.current&&selectedModel!==model.id&&<WorkbenchBadge>{t('agent.settings.x6.usingModel')}</WorkbenchBadge>}</div><div className="mio-settings-inline"><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||selectedModel===model.id} data-testid={`agent-settings-use-${key}-${model.id}`} onClick={()=>{if(usable(key))session.current?.selectMio(key,model.id);}}>{t(selectedModel===model.id?savedModel===model.id?'agent.settings.x6.usingModel':'agent.settings.x6.pendingModel':'agent.settings.x6.useModel')}</WorkbenchButton>{model.manual&&<WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled} aria-label={t('agent.settings.x6.removeModel')} onClick={()=>{if(usable(key))session.current?.removeModel(key,model.id);}}><Icon name="close" size={12}/></WorkbenchButton>}</div></div>)}</div>
     {missing&&<p className="agent-settings-binding-warning" role="status" data-testid={`agent-settings-model-missing-${key}`}>{t('agent.settings.models.missingWarning',{model:missing.id})}</p>}
     <div className="mio-settings-inline"><Input ref={manualRef} id={`agent-model-${key}`} data-testid={`agent-settings-model-${key}`} aria-label={t('mio.settings.label.model')} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none"/><WorkbenchButton type="button" size="compact" variant="ghost" data-testid={`agent-settings-add-model-${key}`} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} onClick={()=>{if(!usable(key))return;const accepted=session.current?.addModel(key,manualRef.current?.value??'');setModelErrors(previous=>new Set([...previous].filter(item=>item!==key).concat(accepted?[]:[key])));if(accepted&&manualRef.current)manualRef.current.value='';}}>{t('agent.settings.x6.addModel')}</WorkbenchButton></div><p className="agent-settings-help">{t('agent.settings.x6.manualHint')}</p>{modelErrors.has(key)&&<p className="mio-settings-notice" role="alert">{t('agent.settings.x6.modelRequired')}</p>}
     <p className="agent-settings-help">{t('agent.settings.models.scope')}</p>
    </section>
+   {active&&<ModelPickerDialog key={listIdentity} serviceName={serviceName} items={pickerItems} status={pickerStatus}
+    statusMessage={pickerStatus==='ready'&&latestList?.complete?undefined:t(listStatus)} usesDraftKey={active.usesDraftKey}
+    maxAdditions={AGENT_CONNECTION_LIMITS.manualModels-entry.manualModelIds.length} triggerRef={pickerTrigger}
+    onClose={()=>closePicker(active)} onAdd={ids=>{
+     if(!usable(key)||activePicker.current!==active||JSON.stringify(modelListRequest(key))!==JSON.stringify(active.request))return;
+     if(!list||!modelListsSession.current?.isCurrentSuccess(key,list.requestId))return;
+     const available=new Set(pickerItems.filter(item=>!item.added).map(item=>item.id));
+     if(ids.every(id=>available.has(id))&&session.current?.addModels(key,ids))closePicker(active);
+    }}/>}
    <section className="mio-settings-section"><header className="mio-settings-section-head"><h3>{t('mio.settings.label.test')}</h3></header>{ownTest?<AgentConnectionTest visible={visible&&selected} configuration={ownTest.configuration} settingsRevision={ownTest.revision} settingsBinding={ownTest.binding} blocked={connectionDirty||!agentSettingsCanSave(state)} projectId={projectId} onLatestChange={setLatest}/>:<div className="mio-settings-test"><WorkbenchButton type="button" disabled>{t('mio.settings.test.run')}</WorkbenchButton><span className="agent-settings-help">{t('agent.settings.x6.testSelectedOnly')}</span></div>}</section>
   </div>};
  })];
