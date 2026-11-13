@@ -195,6 +195,7 @@ function trayCanHide(): boolean {
     !windowHost!.windows().some(window => windowAdmissions.get(window)?.pending);
 }
 function performTrayAction(action: TrayAction, settingsSlot: ProjectWindowSettingsSlot = 'general'): Promise<void> {
+  const receivedAt = Date.now();
   if (action === 'quit') { trayIntent++; app.quit(); return Promise.resolve(); }
   if (!trayCanInteract(action)) return Promise.resolve();
   if (action === 'show' && nativeDialogs.size !== 0) {
@@ -221,7 +222,7 @@ function performTrayAction(action: TrayAction, settingsSlot: ProjectWindowSettin
     const document = await host.loadDocumentFor(target);
     if (!current() || !document?.isCurrent()) return;
     if (!host.activate(target)) return;
-    if (action === 'settings') host.showSettings(settingsSlot, target);
+    if (action === 'settings') host.showSettings(settingsSlot, target, receivedAt);
     else if (action === 'new-project' || action === 'open-project') host.requestProjectEntry(action === 'new-project' ? 'new' : 'open', target);
   })().finally(() => { if (trayOperation?.promise === operation) trayOperation = null; trayHost?.refresh(); refreshApplicationMenu(); });
   trayOperation = {action, settingsSlot, intent, promise: operation};

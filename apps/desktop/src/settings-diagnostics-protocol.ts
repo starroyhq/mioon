@@ -26,7 +26,7 @@ export type SettingsOpenOutcome = typeof outcomes[number];
 type SettingsTimingRecord = {schemaVersion: 1; at: string; attempt: number; event: 'settings-open-timing' | 'settings-open-slow';
   mode: SettingsOpenMode; outcome: SettingsOpenOutcome; elapsedMs: number; utilityMaxDelayMs: number | null;
   phases: Partial<Record<SettingsOpenPhase, number>>};
-type SettingsReadRecord = {schemaVersion: 1; at: string; attempt: number; event: 'settings-page-read'; page: SettingsDiagnosticsRead;
+type SettingsReadRecord = {schemaVersion: 1; at: string; attempt: number; event: 'settings-page-read' | 'settings-page-read-slow'; page: SettingsDiagnosticsRead;
   startedMs: number; endedMs: number; durationMs: number; utilityMaxDelayMs: number | null};
 export type SettingsDiagnosticRecord = SettingsTimingRecord | SettingsReadRecord;
 
@@ -56,7 +56,7 @@ export function sanitizeSettingsDiagnosticRecord(value: unknown): SettingsDiagno
   if (!object(value) || value.schemaVersion !== 1 || !iso(value.at) || !integer(value.attempt, 1, Number.MAX_SAFE_INTEGER)) return null;
   if (value.utilityMaxDelayMs !== null && !integer(value.utilityMaxDelayMs, 0, 120_000)) return null;
   const base = {schemaVersion: 1 as const, at: value.at, attempt: value.attempt, utilityMaxDelayMs: value.utilityMaxDelayMs};
-  if (value.event === 'settings-page-read' && member(readStages, value.page) && integer(value.startedMs, 0, 120_000) &&
+  if ((value.event === 'settings-page-read' || value.event === 'settings-page-read-slow') && member(readStages, value.page) && integer(value.startedMs, 0, 120_000) &&
     integer(value.endedMs, value.startedMs, 120_000) && value.durationMs === value.endedMs - value.startedMs &&
     (value.utilityMaxDelayMs === null || value.utilityMaxDelayMs <= value.durationMs)) {
     return {...base, event: value.event, page: value.page, startedMs: value.startedMs, endedMs: value.endedMs, durationMs: value.durationMs};

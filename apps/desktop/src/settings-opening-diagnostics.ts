@@ -41,8 +41,7 @@ export function createSettingsOpeningDiagnostics<W extends object>({record, samp
   const write = (value: SettingsDiagnosticRecord) => setImmediate(() => {
     try { record(value); } catch { /* Evidence cannot interrupt settings. */ }
   }).unref();
-  function sampleLater(from: number, to: number, makeRecord: (delay: number | null) => SettingsDiagnosticRecord): void {
-    const report = (delay: number | null) => write(makeRecord(delay));
+  function sampleLater(from: number, to: number, report: (delay: number | null) => void): void {
     // Even issuing the utility request stays off the UI path.
     setImmediate(() => { void Promise.resolve().then(() => sample(from, to, signal)).then(report, () => report(null)); }).unref();
   }
@@ -50,7 +49,7 @@ export function createSettingsOpeningDiagnostics<W extends object>({record, samp
     const elapsedMs = Math.max(0, Math.min(HISTORY_MS, at - attempt.origin));
     const phases = {...attempt.phases};
     const {id, mode, origin} = attempt;
-    sampleLater(origin, at, utilityMaxDelayMs => ({schemaVersion: 1, at: new Date(origin).toISOString(),
+    sampleLater(origin, at, utilityMaxDelayMs => write({schemaVersion: 1, at: new Date(origin).toISOString(),
       event: slow ? 'settings-open-slow' : 'settings-open-timing', attempt: id, mode, outcome, elapsedMs, utilityMaxDelayMs, phases}));
   }
   function slow(attempt: Attempt, outcome: SettingsOpenOutcome, at: number): void {
@@ -135,11 +134,15 @@ export function createSettingsOpeningDiagnostics<W extends object>({record, samp
       const durationMs = request.at - start.at;
       const startedMs = Math.max(0, start.at - attempt.origin);
       const withinOpening = startedMs + durationMs <= HISTORY_MS;
-      sampleLater(start.at, request.at, utilityMaxDelayMs => ({
-        schemaVersion: 1, at: new Date(withinOpening ? attempt.origin : start.at).toISOString(), event: 'settings-page-read',
-        attempt: attempt.id, page: request.page, startedMs: withinOpening ? startedMs : 0,
-        endedMs: withinOpening ? startedMs + durationMs : durationMs, durationMs, utilityMaxDelayMs,
-      }));
+      sampleLater(start.at, request.at, utilityMaxDelayMs => {
+        const read = {
+          schemaVersion: 1 as const, at: new Date(withinOpening ? attempt.origin : start.at).toISOString(),
+          attempt: attempt.id, page: request.page, startedMs: withinOpening ? startedMs : 0,
+          endedMs: withinOpening ? startedMs + durationMs : durationMs, durationMs, utilityMaxDelayMs,
+        };
+        write({...read, event: 'settings-page-read'});
+        if (durationMs >= SLOW_MS) write({...read, event: 'settings-page-read-slow'});
+      });
     },
     close(window) {
       const attempt = attempts.get(window);

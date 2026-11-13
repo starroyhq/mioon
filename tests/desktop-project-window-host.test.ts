@@ -1183,8 +1183,13 @@ test('settings timings correlate a delayed click and page reads with a bounded u
   d.read(window, {kind: 'read', phase: 'start', page: 'workspace-directory', requestId: 1, at: now});
   now += 75;
   d.read(window, {kind: 'read', phase: 'end', page: 'workspace-directory', requestId: 1, at: now});
-  d.boot(window, 'ready', now); d.close(window); await tick(); await tick(); await tick();
-  assert.deepEqual(samples, [[origin + 3520, now], [origin, now], [origin, now]]);
+  d.boot(window, 'ready', now);
+  const slowReadStarted = now;
+  d.read(window, {kind: 'read', phase: 'start', page: 'appearance', requestId: 2, at: now});
+  now += 3100;
+  d.read(window, {kind: 'read', phase: 'end', page: 'appearance', requestId: 2, at: now});
+  d.close(window); await tick(); await tick(); await tick();
+  assert.deepEqual(samples, [[origin + 3520, slowReadStarted], [origin, slowReadStarted], [origin, slowReadStarted], [slowReadStarted, now]]);
   const timing = rows.find(row => row.event === 'settings-open-timing');
   assert.ok(timing && timing.event === 'settings-open-timing');
   assert.equal(timing?.utilityMaxDelayMs, 2840);
@@ -1194,6 +1199,10 @@ test('settings timings correlate a delayed click and page reads with a bounded u
   assert.ok(read && read.event === 'settings-page-read');
   assert.equal(read?.durationMs, 75);
   assert.equal(read?.utilityMaxDelayMs, 35);
+  const slowRead = rows.find(row => row.event === 'settings-page-read-slow');
+  assert.ok(slowRead && slowRead.event === 'settings-page-read-slow');
+  assert.equal(slowRead?.durationMs, 3100);
+  assert.deepEqual(sanitizeSettingsDiagnosticRecord(slowRead), slowRead);
   assert.deepEqual(sanitizeSettingsDiagnosticRecord({...read, credential: 'synthetic'}), read);
   assert.deepEqual(sanitizeSettingsDiagnosticRecord({...timing, phases: {...timing?.phases, title: 'private'}}), timing);
 });
