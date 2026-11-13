@@ -285,7 +285,7 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
     // unsubscribes and immediately reuses the same listener.
     const notify = () => listener();
     storageListeners.add(notify);
-    if (availability?.persistentAvailable) queueMicrotask(() => notifyStorageAvailable(notify));
+    if (availability?.persistentAvailable) notifyStorageAvailable(notify);
     else schedulePolling();
     return () => {
       storageListeners.delete(notify);

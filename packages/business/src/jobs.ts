@@ -666,7 +666,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  function tick(): Promise<void> {
   if(stopped)return Promise.resolve();
   if(cycle)return cycle;
-  cycle=Promise.resolve().then(async()=>{
+  cycle=(async()=>{
    try {
     // Projection does not grant authority or classify failures of its gate.
     // Recheck only agent-blocked queued candidates through the original gate:
@@ -680,11 +680,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(stopped)return;
     for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);verifyInvalidCandidates();}
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
-  }).finally(()=>{cycle=null;});
+  })().finally(()=>{cycle=null;});
   return cycle;
  }
  const timer=setInterval(tick,200);
- const unsubscribeStorage=stopped?undefined:subscribeVideoStorageAvailable?.(()=>{storageEpoch++;void tick();});
+ const unsubscribeStorage=stopped?undefined:subscribeVideoStorageAvailable?.(()=>{
+  storageEpoch++;
+  // A status callback may arrive during startup or inside a worker cycle.
+  queueMicrotask(()=>void tick());
+ });
  const abort=(): void=>{if(!stopped)unsubscribeStorage?.();stopped=true;clearInterval(timer);for(const controller of operations)controller.abort();};
  ownerSignal?.addEventListener('abort',abort,{once:true});
  if(stopped)clearInterval(timer);else void tick();

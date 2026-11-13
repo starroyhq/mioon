@@ -49,19 +49,14 @@ for (const platform of ['darwin', 'linux'] as const) test('Video status polling 
   assert.equal(wakes, 0);
 });
 
-test('a Video subscriber to cached ready storage is notified in a microtask unless it unsubscribes', async t => {
+test('a Video subscriber learns cached ready storage before starting its worker without another IPC', async t => {
   const f = connected();
   t.after(() => f.close());
   assert.equal((await f.client.refreshStorage()).persistentAvailable, true);
-  let active = 0, canceled = 0;
-  const listener = () => { active++; };
-  f.client.subscribeStorageAvailable(listener)();
-  f.client.subscribeStorageAvailable(listener);
-  f.client.subscribeStorageAvailable(() => { canceled++; })();
-  assert.equal(active, 0);
-  await Promise.resolve();
+  let active = 0;
+  const unsubscribe = f.client.subscribeStorageAvailable(() => { active++; });
   assert.equal(active, 1);
-  assert.equal(canceled, 0);
+  unsubscribe();
   assert.equal(f.port.sent.length, 1);
 });
 
