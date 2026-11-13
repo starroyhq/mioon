@@ -88,10 +88,11 @@ test('exports keep the newest four per keyframe, belong to one keyframe and surv
   model = editorState.redoPrevisModel(model);
   assert.deepEqual([model.scene.light.intensity, model.scene.keyframes[0]!.exports], [2, [ids[5]]]);
   // Content keys: what a keyframe picture depends on.
-  const base = withKeyframes(35), key = keyframes.previsKeyframeContentKey(base, base.keyframes[0]!);
-  assert.equal(keyframes.previsKeyframeContentKey({...base, camera: cam(85, 3)}, base.keyframes[0]!), key, 'the current camera does not matter');
-  assert.equal(keyframes.previsKeyframeContentKey(keyframes.recordPrevisExport(base, 'k1', asset()), base.keyframes[0]!), key, 'exports do not matter');
-  assert.notEqual(keyframes.previsKeyframeContentKey(sceneEdits.updatePrevisFigure(base, 'f1', {pose: 'sit'}), base.keyframes[0]!), key);
+  const base = withKeyframes(35), frame = 'portrait_1080', key = keyframes.previsKeyframeContentKey(base, base.keyframes[0]!, frame);
+  assert.equal(keyframes.previsKeyframeContentKey({...base, camera: cam(85, 3)}, base.keyframes[0]!, frame), key, 'the current camera does not matter');
+  assert.equal(keyframes.previsKeyframeContentKey(keyframes.recordPrevisExport(base, 'k1', asset()), base.keyframes[0]!, frame), key, 'exports do not matter');
+  assert.notEqual(keyframes.previsKeyframeContentKey(sceneEdits.updatePrevisFigure(base, 'f1', {pose: 'sit'}), base.keyframes[0]!, frame), key);
+  assert.notEqual(keyframes.previsKeyframeContentKey(base, base.keyframes[0]!, 'landscape_1080'), key);
 });
 
 // ---- Shots fed by the previs ----
@@ -127,6 +128,17 @@ test('a keyframe image cannot become a frame the shot cannot take', () => {
   assert.equal(issue({}, 'first', '9:16', [], other), 'duplicate', 'the same image cannot be both ends');
   assert.equal(issue({referenceAssetIds: [image]}, 'last'), 'duplicate');
   for (const reason of ['aspect', 'reference', 'duplicate', 'text', 'pending', 'missing'] as const) assert.ok(zh(output.PREVIS_FRAME_ISSUE_KEYS[reason]).trim(), reason);
+});
+test('a late published PNG uses its captured frame and proves the current owned asset', () => {
+  const image = {projectId: randomUUID(), nodeId: randomUUID(), assetId: asset(), width: 1280, height: 720, sha256: 'a'.repeat(64)};
+  const owned = {id: image.assetId, projectId: image.projectId, width: 1280, height: 720, sha256: image.sha256, mimeType: 'image/png'};
+  const ratio = output.publishedPrevisFrameRatio(image, owned);
+  assert.equal(ratio, '1280:720');
+  const issue = (aspectRatio: string) => output.previsFrameIssue({shot: shot({aspectRatio}), role: 'first', ratio: ratio!, edges: []});
+  assert.equal(issue('16:9'), null);
+  assert.equal(issue('9:16'), 'aspect', 'a new portrait frame cannot stand in for the published landscape PNG');
+  for (const candidate of [undefined, {...owned, projectId: randomUUID()}, {...owned, width: 720, height: 1280}, {...owned, sha256: 'b'.repeat(64)}])
+    assert.equal(output.publishedPrevisFrameRatio(image, candidate), null);
 });
 test('a keyframe lists what its camera frames', () => {
   let scene = sceneEdits.addPrevisFigure(defaultPrevisScene()).scene;
@@ -309,7 +321,8 @@ function withKeyframesOn(scene: PrevisScene, ...focals: number[]): PrevisScene {
 test('the app sets frames through ordinary shot edits and labels previs links', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(app, /run\(`save:\$\{shot\.id\}`, 'shot\.update', \{ shotId: shot\.id, expectedRevision: shot\.revision, patch \}/, 'set and undo go through the shot edit path');
-  assert.match(app, /previsFrameIssue\(\{ shot, role: request\.role, ratio: previsFrame\(state\.timeline\)\.ratio, edges: state\.edges, assetId: request\.assetId \}\)/);
+  assert.match(app, /const ratio = publishedPrevisFrameRatio\(image, state\.assets\.find\(item => item\.id === image\.assetId\)\)/);
+  assert.match(app, /previsFrameIssue\(\{ shot, role: request\.role, ratio, edges: state\.edges, assetId: image\.assetId \}\)/);
   assert.match(app, /'edge\.create', \{ projectId, source: node\.id, target: shot\.id \}/, 'a missing link is added');
   assert.match(app, /previsEdgeLabel\(source\.scene, shot,/);
   assert.match(app, /onImport=\{importPrevisImage\} onSetFrame=\{setPrevisFrame\} onUndoFrame=\{undoPrevisFrame\}/);

@@ -28,7 +28,7 @@ const firstRenderAssetId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const secondRenderAssetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 function makeElement(src:unknown = null) {
   return {
-    src, currentTime: 0, duration: 20, paused: true, seeking: false, isConnected: true,
+    src, currentTime: 0, duration: 20, readyState: 1, paused: true, seeking: false, isConnected: true,
     pauses: 0, loads: 0, focuses: 0, scrolls: 0,
     getAttribute(name: string) { return name === 'src' ? this.src : null; },
     setAttribute(name: string, value: unknown) { if (name === 'src') this.src = value; },
@@ -262,6 +262,29 @@ test('replaced Preview sources reject old callbacks and Strict Mode disposal res
   old.props.onTimeUpdate({ currentTarget: original }); old.props.onSeeked({ currentTarget: original }); old.props.onPlay({ currentTarget: original });
   assert.deepEqual(seeks, []); assert.equal(original.paused, true);
   h.replayEffects(); assert.equal(current.src, mediaUrl(renderProjectId, secondRenderAssetId)); assert.equal(current.paused, true);
+});
+
+test('an old render seeks and steps within its frozen duration, in either direction of the duration change', () => {
+  const h = createHarness('Preview.tsx'), seeks: unknown[] = [];
+  const frozen = { id: 'timeline', projectId: renderProjectId, revision: 2, fps: 30, width: 1280, height: 720, durationFrames: 300 };
+  const live = { ...frozen, revision: 3, width: 720, height: 1280, durationFrames: 90 };
+  const job = { id: 'old-render', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded', purpose: 'preview', mode: 'timeline', timelineRevision: 2, snapshot: { timeline: frozen } };
+  const props = previewProps({ kind: 'timeline', timeline: live, job, playhead: 150, onSeek: (frame: number) => seeks.push(frame) });
+  const controls = () => h.nodes().find(node => node.type === 'PreviewPlaybackControls')!.props;
+  const step = (delta: number) => (controls().onStep as (delta: number) => void)(delta);
+  h.render(props);
+  assert.equal(h.mediaNode().props.ref.current.currentTime, 5);
+  assert.equal(controls().position, 150); assert.equal(controls().duration, 300);
+  step(1); assert.deepEqual(seeks, [151]);
+  const media = h.mediaNode().props.ref.current;
+  media.duration = 10; media.currentTime = 9.9;
+  h.mediaNode().props.onSeeked({currentTarget: media});
+  assert.deepEqual(seeks, [151, 297]);
+
+  h.render({ ...props, timeline: { ...live, durationFrames: 600 }, playhead: 500 });
+  assert.equal(controls().position, 300); assert.equal(controls().duration, 300);
+  assert.equal(media.currentTime, 9.999);
+  step(-1); assert.deepEqual(seeks, [151, 297, 299]);
 });
 
 test('Inspector version cards expose stable version numbers and keep frozen details collapsed without changing actions', () => {

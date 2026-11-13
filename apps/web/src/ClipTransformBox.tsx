@@ -86,8 +86,9 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
     return () => { observer.disconnect(); element.removeEventListener('loadedmetadata', measure); element.removeEventListener('resize', measure); };
   }, [media, mediaKey, timeline.width, timeline.height]);
   const cancel = (): void => { if (drag.current) { drag.current = null; setLive(null); } };
+  useLayoutEffect(() => () => { drag.current = null; }, []);
   // A drag belongs to the frame and clip it started on.
-  useEffect(() => { cancel(); }, [frame, box.clip.id, timeline.width, timeline.height, sourceKey]);
+  useLayoutEffect(() => { cancel(); }, [frame, box.clip.id, timeline.width, timeline.height, sourceKey]);
   const dragging = Boolean(live);
   useEffect(() => {
     if (!dragging) return;

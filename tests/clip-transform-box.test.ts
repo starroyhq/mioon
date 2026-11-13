@@ -122,10 +122,11 @@ test('the box renders in percent of the layer, with handles only when editable',
 
 test('the rendered timeline preview carries the box for visual clips the inspector can edit', () => {
   const preview = readFileSync(resolve(root, 'apps/web/src/Preview.tsx'), 'utf8'), app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(preview, /\{rendered && type === 'video' && transformBox && timeline && <ClipTransformBox box=\{transformBox\} playhead=\{playhead\} timeline=\{timeline\} media=\{media\} mediaKey=\{mediaKey\} \/>\}/);
+  assert.ok(preview.includes("rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline"));
+  assert.ok(preview.includes('key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`}'));
   assert.match(app, / transformBox=\{clipTransformBox\(\)\} \/>/);
   assert.match(app, /if \(!view \|\| clipInspectorRetained\) return null;/);
   assert.match(app, /track\.id === clip\.trackId && track\.kind === 'video'/);
-  assert.match(app, /busy: timelineBusy, onSetTransform: setTimelineClipTransform,/);
+  assert.match(app, /clipId === clip\.id && canExecute\(\).*setTimelineClipTransform\(clipId, transform, revision, canExecute\)/);
   assert.match(app, /disabledReason: clipDirty \|\| clipCompositionPending \? msg\('clip\.transform\.saveFirst'\) : lockedTrackIds\.has\(clip\.trackId\) \? msg\('edit\.track\.lockedHint'\) : null/);
 });

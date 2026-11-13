@@ -1615,8 +1615,8 @@ keyframe export. The scene format and all rules are in [PREVIS.md](PREVIS.md).
 | --- | --- |
 | `previs.create` | `{projectId,label?,position,requestId}` |
 | `previs.scene.set` | `{projectId,nodeId,expectedSceneRevision,scene,requestId}` |
-| `previs.thumbnail.set` | `{projectId,nodeId,slot,sceneRevision,dataBase64}` |
-| `previs.thumbnail.get` | `{projectId,nodeId,slots}` |
+| `previs.thumbnail.set` | `{projectId,nodeId,slot,sceneRevision,framePresetId?,dataBase64}` |
+| `previs.thumbnail.get` | `{projectId,nodeId,slots,framePresetId?}` |
 
 A previs node is a canvas node of type `previs` whose record carries a bounded
 scene and a `sceneRevision`. `create` adds the default scene; `scene.set`
@@ -1625,11 +1625,12 @@ label and position. `node.update` changes only a previs node's label and
 position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
-keyframe, outside receipts and packages. These operations are
-not built-in Mio tools. There is no separate export operation: the editor
-imports a keyframe image with `asset.import`, records its asset ID in the
-keyframe's `exports` with `scene.set`, and sets a shot's first or last frame
-with `shot.update`.
+keyframe, outside receipts and packages. Public thumbnail requests can bind
+`framePresetId` to the project's current output preset. Format 4 writes
+require this evidence in addition to the current scene revision. The editor
+publishes keyframe PNGs with `previs.output.publish` and records the asset ID
+in the scene's `exports`. It checks the published image's dimensions against
+the shot's ratio before setting a first or last frame with `shot.update`.
 
 
 ## Timeline output frame

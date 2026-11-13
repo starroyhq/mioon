@@ -4,7 +4,9 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore, openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createPrevisPublicationServices} from '../packages/business/src/previs-publication.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
@@ -18,13 +20,18 @@ import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-setti
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import {publishPrevisOutput} from '../apps/web/src/previs/previs-publication.ts';
+import {previsFrameIssue, publishedPrevisFrameRatio} from '../apps/web/src/previs/previs-output.ts';
 import {previsPublicationIdentity, isPrevisPublicationResponse} from '../packages/contracts/src/previs-publication.ts';
 import type {PrevisPublicationInput, PrevisPublicationResponse} from '../packages/contracts/src/previs-publication.ts';
 import type {PrevisNodeRecord} from '../packages/contracts/src/previs.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
-async function fixture(t: TestContext, {withImageReview = false} = {}) {
-  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-previs-publication-')), store = openStore(root);
+async function fixture(t: TestContext, {withImageReview = false, format4 = false} = {}) {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-previs-publication-'));
+  const projectFile = path.join(root, 'project.mioon'), format = {approveUpgrade: () => true};
+  const locate = () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')});
+  if (format4) createProjectFile(projectFile, {format4: format});
+  const store = format4 ? openServerTestStore({projectFile, locate, format4: format}, path.join(root, 'app')) : openStore(root);
   const settings = {
     [IMAGE_SETTINGS_READ_CURRENT]: () => ({revision: 1, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {configured: true}}),
     [IMAGE_SETTINGS_ASSERT_CURRENT]: (expected: {expectedRevision: number}) => expected.expectedRevision === 1,
@@ -66,6 +73,31 @@ test('previs publishes one owned PNG in 生成, replays the exact request and su
   assert.equal(await f.services.call('previs.output.lookup', {...previsPublicationIdentity(f.input), requestId: randomUUID()}), null);
   await assert.rejects(f.services.call('previs.output.lookup', {...previsPublicationIdentity(f.input), name: 'different.png'}), {code: 'IDEMPOTENCY_CONFLICT'});
   assert.equal(f.outputs().length, 1);
+});
+
+test('a captured landscape PNG can publish after switching the project to portrait', async t => {
+  const f = await fixture(t, {format4: true}), projectId = f.input.projectId;
+  const setFrame = async (presetId: string) => {
+    const current = timelineFormatResponseSchema.parse(await f.services.call('timeline.format.get', {projectId}));
+    await f.services.call('timeline.format.set', {projectId, presetId, expectedProjectRevision: current.projectRevision,
+      expectedRevision: current.timelineRevision, requestId: randomUUID()});
+  };
+  await setFrame('landscape_1080');
+  const bytes = png({width: 1920, height: 1080, rgba: false});
+  const input = {...f.input, width: 1920, height: 1080, sha256: createHash('sha256').update(bytes).digest('hex'), dataBase64: bytes.toString('base64')};
+  await setFrame('portrait_1080');
+
+  const outcome = await publishPrevisOutput(input, f.services.call);
+  assert.equal(outcome.status, 'imported');
+  const row = record(f.store.get('assets', outcome.image.assetId));
+  const ratio = publishedPrevisFrameRatio(outcome.image, row);
+  assert.equal(ratio, '1920:1080');
+  const shot = {id: randomUUID(), orderIndex: 0, revision: 1};
+  assert.equal(previsFrameIssue({shot: {...shot, aspectRatio: '16:9'}, role: 'first', ratio, edges: []}), null);
+  assert.equal(previsFrameIssue({shot: {...shot, aspectRatio: '9:16'}, role: 'last', ratio, edges: []}), 'aspect');
+  const result = await f.services.call('previs.output.lookup', previsPublicationIdentity(input));
+  assert.ok(isPrevisPublicationResponse('previs.output.lookup', previsPublicationIdentity(input), result) && result);
+  assert.deepEqual([result.asset.id, result.width, result.height, result.sha256], [outcome.image.assetId, 1920, 1080, input.sha256]);
 });
 
 test('equal PNG bytes from separate previs requests remain separate owned publications', async t => {

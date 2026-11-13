@@ -57,8 +57,8 @@ item limit stays under the 16 KiB bound, and a previs node row stays under
 | --- | --- |
 | `previs.create` | `{projectId,label?,position,requestId}` |
 | `previs.scene.set` | `{projectId,nodeId,expectedSceneRevision,scene,requestId}` |
-| `previs.thumbnail.set` | `{projectId,nodeId,slot,sceneRevision,dataBase64}` |
-| `previs.thumbnail.get` | `{projectId,nodeId,slots}` |
+| `previs.thumbnail.set` | `{projectId,nodeId,slot,sceneRevision,framePresetId?,dataBase64}` |
+| `previs.thumbnail.get` | `{projectId,nodeId,slots,framePresetId?}` |
 
 `create` adds a node with the default scene: one standing figure, the key light
 and an eye-level camera. `scene.set` replaces the whole scene when
@@ -94,8 +94,14 @@ slot. Saving a scene removes the thumbnails of keyframes it no longer has and
 of keyframes whose camera changed (only Mio and Mio's undo change an existing
 keyframe's camera); the others keep their older `sceneRevision`, which tells
 the editor to redraw them. Each project keeps at most 1,000 and the workspace 2,048 thumbnails;
-the oldest are evicted first. `thumbnail.get` returns the requested slots that
-exist, in request order, as base64.
+the oldest are evicted first. `thumbnail.get` returns matching slots in request
+order as base64. The cache binds the saved output preset and owned source
+fingerprints. Format 4 requires `framePresetId` on writes and rejects captures
+for a different frame with `PREVIS_THUMBNAIL_STALE`. Requests that supply
+`framePresetId` receive it back in the response. Reads for a different preset
+return an empty list without changing the cache. Format 4 reads skip unbound
+legacy rows. Existing format 3 callers can still omit the field. No thumbnail
+migration is required.
 
 ## Canvas and editor
 
@@ -174,11 +180,11 @@ from it, and the export format.
 A card's menu (⋯ or right-click) has:
 
 - **导出为图片**: renders the keyframe at the project frame size (for example
-  1080×1920) without the editor overlays and adds the PNG to the asset library
-  with `asset.import`. An identical image already in the project (same
-  SHA-256) is reused; an uncertain answer is resolved by reading the library
-  again. The asset ID is recorded in the keyframe's `exports`. Recording it is
-  not an undo step, and undo keeps it.
+  1080×1920) without the editor overlays and publishes the PNG to the asset
+  library with `previs.output.publish`. An uncertain answer is resolved by
+  looking up that exact request. The asset ID is recorded in the keyframe's
+  `exports` and survives scene undo. A capture already in progress retains
+  its original PNG dimensions if the project frame changes.
 - **设为镜头 NN 首帧 / 尾帧** for each shot the node is linked to, and
   **设为其他镜头的首帧 / 尾帧** for the others: exports the picture the same
   way, then sets it with an ordinary `shot.update` under the shot's revision.
@@ -186,7 +192,9 @@ A card's menu (⋯ or right-click) has:
   frame sets `lastFrameAssetId`. A visual link from the previs node to the
   shot is added when there is none. An item is disabled, with the reason,
   when the shot's aspect ratio differs from the previs frame or a reference
-  link controls its first frame. Setting is refused, with the reason, when
+  link controls its first frame. Before setting the frame, the editor checks
+  the published PNG's dimensions against the shot's current ratio. Setting
+  is refused, with the reason, when
   the image is already the shot's other frame, the shot has unsaved text or
   edits await confirmation. The result notice offers undo for 12 seconds.
   Undo restores the previous frame only while the shot still has the image
