@@ -9,6 +9,7 @@ import {isProjectId, PROJECT_RECORDS_DIRECTORY} from '../../../contracts/src/pro
 import {localRecordsEntrySchema} from '../../../contracts/src/project-registry.ts';
 import type {LocalRecordsEntry, ProjectFileIdentity, RecentProject} from '../../../contracts/src/project-registry.ts';
 import {isSuperJournalInUse, superJournalsIn} from '../project-file/index.ts';
+import {FORMAT4_RESTORE_ACTIVE} from '../project-file/format4-backup.ts';
 import {appLibraryError} from './errors.ts';
 import {sameProjectFileIdentity} from './identity.ts';
 import {fileAtRegisteredPlace} from './registry.ts';
@@ -196,6 +197,7 @@ export function createLocalRecords({dataDir, registry, identity, isProjectOpen, 
       if (folder === null) throw appLibraryError('LOCAL_RECORDS_NOT_FOUND', {projectId});
       const entry = registry.get(projectId);
       if (isProjectOpen(projectId) || (entry !== null && atRegisteredPlace(entry)) || isProjectBackgroundBusy(projectId)) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
+      if (lstatSync(path.join(folder, FORMAT4_RESTORE_ACTIVE), {throwIfNoEntry: false})) throw appLibraryError('LOCAL_RECORDS_IN_USE', {projectId});
       if (hasSuperJournalInUse(folder)) throw appLibraryError('LOCAL_RECORDS_SUPER_JOURNAL', {projectId});
       validatePrivateDirectory(folder);
       // Renamed first, so a removal that stops halfway never leaves a records

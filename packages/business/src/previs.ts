@@ -7,11 +7,13 @@ import {validatedProjectAssetSource} from './project-media-storage.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {assertCanvasTargetActive} from './canvas-active.ts';
-import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,publicValue} from '@mioon/contracts';
+import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,previsThumbnailPublicSchemas,publicValue,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
 import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {ownsStoreLock} from './store-runtime.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 
 // Camera previs nodes (schema64). A node's scene is saved whole under scene
 // revision CAS with an exact stable-key receipt. Autosave writes often, so only
@@ -27,8 +29,8 @@ export interface PrevisStore {
 }
 interface CreateInput {projectId: string; label?: string; position: {x: number; y: number}; requestId: string}
 interface SceneSetInput {projectId: string; nodeId: string; expectedSceneRevision: number; scene: PrevisScene; requestId: string}
-interface ThumbnailSetInput {projectId: string; nodeId: string; slot: string; sceneRevision: number; dataBase64: string}
-interface ThumbnailGetInput {projectId: string; nodeId: string; slots: string[]}
+interface ThumbnailSetInput {projectId: string; nodeId: string; slot: string; sceneRevision: number; dataBase64: string; framePresetId?: string}
+interface ThumbnailGetInput {projectId: string; nodeId: string; slots: string[]; framePresetId?: string}
 interface ReceiptRow {operation: unknown; projectId: unknown; nodeId: unknown; inputHash: unknown; response: unknown}
 type PrevisOperation=keyof typeof previsSchemas;
 
@@ -42,7 +44,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PREVIS_REVISION_LIMIT:'预演节点的修订号已达上限',
  PREVIS_EXPORT_INVALID:'关键帧导出必须是本项目的图片素材',
  PREVIS_CAPACITY:'预演节点或保存记录已达上限',
- PREVIS_THUMBNAIL_STALE:'缩略图不是按当前场景渲染的',
+ PREVIS_THUMBNAIL_STALE:'缩略图不是按当前场景和画框渲染的',
  PREVIS_THUMBNAIL_SLOT:'当前场景没有这个关键帧',
  PREVIS_THUMBNAIL_INVALID:'缩略图必须是长边不超过384像素、不超过64KB的JPEG',
  PREVIS_STATE_CONFLICT:'工作区当前不能保存预演',
@@ -65,7 +67,9 @@ const sha=(value: string): string=>createHash('sha256').update(value).digest('he
 const inputHash=(operation: PrevisOperation,fields: Row): string=>sha(canonicalPrevisValue({operation,input:fields}));
 const decode=(text: unknown): unknown=>{try{return JSON.parse(String(text));}catch{return invalid();}};
 function parse<T>(operation: PrevisOperation,input: unknown): T {
- const parsed=previsSchemas[operation].safeParse(input);
+ const schema=operation==='previs.thumbnail.set'||operation==='previs.thumbnail.get'
+  ?previsThumbnailPublicSchemas[operation]:previsSchemas[operation];
+ const parsed=schema.safeParse(input);
  if(!parsed.success)throw new AppError('VALIDATION_ERROR','输入字段无效',400,{issues:parsed.error.issues.map(issue=>({path:issue.path,message:issue.message}))});
  return parsed.data as T;
 }
@@ -117,20 +121,32 @@ function exportAsset(db: DatabaseSync,projectId: string,assetId: string): void {
 
 /** A digest is derived only from bounded, owned scene dependencies, never a
  * renderer-supplied token. Pure history reads do not inspect local files. */
-function thumbnailDependencies(db: DatabaseSync, node: PrevisNodeRecord, root?: string): string {
+function thumbnailDependencies(db: DatabaseSync,node: PrevisNodeRecord,fingerprinted: boolean,root?: string): [string,string][] {
  const ids=[...new Set(node.scene.keyframes.flatMap(keyframe=>keyframe.exports))].sort();
- const fingerprints=ids.map(assetId=>{
+ return ids.map(assetId=>{
   exportAsset(db,node.projectId,assetId);
   const raw=db.prepare("SELECT CASE WHEN length(CAST(data AS BLOB))<=65536 THEN data END AS data FROM assets WHERE id=? AND projectId=?").get(assetId,node.projectId);
   const asset=decode(raw?.data) as Row;
   const parsed=mediaReferenceSchema.safeParse(asset.reference);
-  if(root&&fingerprintedThumbnails(db)){const source=validatedProjectAssetSource(root,asset);if(parsed.success&&mediaMtimeMs(lstatSync(source.file,{bigint:true}))!==parsed.data.mtimeMs)throw failure('PREVIS_THUMBNAIL_STALE');}
-  const token=parsed.success?mediaFingerprintToken(parsed.data):!fingerprintedThumbnails(db)&&typeof asset.sha256==='string'&&/^[a-f0-9]{64}$/u.test(asset.sha256)?asset.sha256:null;
+  if(root&&fingerprinted){const source=validatedProjectAssetSource(root,asset);if(parsed.success&&mediaMtimeMs(lstatSync(source.file,{bigint:true}))!==parsed.data.mtimeMs)throw failure('PREVIS_THUMBNAIL_STALE');}
+  const token=parsed.success?mediaFingerprintToken(parsed.data):!fingerprinted&&typeof asset.sha256==='string'&&/^[a-f0-9]{64}$/u.test(asset.sha256)?asset.sha256:null;
   if(!token)invalid();
   return [assetId,token];
  });
- return sha(canonicalPrevisValue(fingerprints));
 }
+function thumbnailDigest(sources: [string,string][],framePresetId?: string): string {
+ return sha(canonicalPrevisValue(framePresetId===undefined?sources:['previs-thumbnail-frame-v1',framePresetId,sources]));
+}
+function thumbnailFrame(db: DatabaseSync,projectId: string): string {
+ const rows=db.prepare(`SELECT id,CASE WHEN length(CAST(data AS BLOB))<=${TIMELINE_RESPONSE_BYTES} THEN data END AS data
+  FROM timelines WHERE projectId=? LIMIT 2`).all(projectId);
+ if(!rows.length)return DEFAULT_TIMELINE_OUTPUT_PRESET;
+ const row=rows[0]!,record=decode(row.data) as Row|null;
+ const preset=timelineOutputPreset(record);
+ if(rows.length!==1||!record||record.id!==row.id||record.projectId!==projectId||!preset)return invalid();
+ return preset.id;
+}
+const format4=(db: DatabaseSync): boolean=>db.prepare('PRAGMA project.user_version').get()?.user_version===FORMAT4_PROJECT_SCHEMA_VERSION;
 const fingerprintedThumbnails=(db: DatabaseSync): boolean=>db.prepare('SELECT name FROM pragma_table_info(?)').all('previs_thumbnails').some(row=>row.name==='sourceFingerprintDigest');
 
 /** Read-only previs node and thumbnail access, shared with restored workspaces. */
@@ -152,21 +168,34 @@ export function createPrevisReaders(db: DatabaseSync) {
   if(!isPrevisNodeRecord(value)||value.id!==nodeId||value.projectId!==projectId)invalid();
   return value;
  }
- function thumbnails(raw: unknown): PrevisThumbnailGetResponse {
+ function thumbnails(raw: unknown,root?: string): PrevisThumbnailGetResponse {
   const input=parse<ThumbnailGetInput>('previs.thumbnail.get',raw);
-  const current=node(input.projectId,input.nodeId),fingerprinted=fingerprintedThumbnails(db),fingerprint=thumbnailDependencies(db,current);
-  // Workspaces before schema64 hold no thumbnails.
-  if(!usesPrevisSchema(db))return {projectId:input.projectId,nodeId:input.nodeId,items:[]};
-  const rows=db.prepare(`SELECT slot,sceneRevision,width,height,bytes,updatedAt${fingerprinted?',sourceFingerprintDigest':''} FROM previs_thumbnails
-   WHERE nodeId=? AND projectId=? AND slot IN (SELECT value FROM json_each(?))`).all(input.nodeId,input.projectId,JSON.stringify(input.slots));
-  const bySlot=new Map(rows.filter(row=>!fingerprinted||row.sourceFingerprintDigest===fingerprint).map(row=>[row.slot,row]));
-  const items=input.slots.filter(slot=>bySlot.has(slot)).map(slot=>{
-   const row=bySlot.get(slot)!;
-   if(!(row.bytes instanceof Uint8Array)||typeof row.sceneRevision!=='number'||typeof row.width!=='number'||typeof row.height!=='number'||typeof row.updatedAt!=='string')invalid();
-   const bytes=Buffer.from(row.bytes as Uint8Array);
-   return {slot,sceneRevision:row.sceneRevision as number,width:row.width as number,height:row.height as number,byteLength:bytes.length,updatedAt:row.updatedAt as string,dataBase64:bytes.toString('base64')};
-  });
-  return {projectId:input.projectId,nodeId:input.nodeId,items};
+  const read=(): PrevisThumbnailGetResponse=>{
+   const current=node(input.projectId,input.nodeId);
+   const response={projectId:input.projectId,nodeId:input.nodeId,...(input.framePresetId===undefined?{}:{framePresetId:input.framePresetId})};
+   // Workspaces before schema64 hold no thumbnails.
+   if(!usesPrevisSchema(db))return {...response,items:[]};
+   const framePresetId=thumbnailFrame(db,input.projectId);
+   if(input.framePresetId!==undefined&&input.framePresetId!==framePresetId)return {...response,items:[]};
+   const fingerprinted=fingerprintedThumbnails(db),sources=thumbnailDependencies(db,current,fingerprinted,root);
+   const digest=thumbnailDigest(sources,framePresetId);
+   const legacy=input.framePresetId===undefined&&!format4(db)?thumbnailDigest(sources):undefined;
+   const rows=db.prepare(`SELECT slot,sceneRevision,width,height,bytes,updatedAt${fingerprinted?',sourceFingerprintDigest':''} FROM previs_thumbnails
+    WHERE nodeId=? AND projectId=? AND slot IN (SELECT value FROM json_each(?))`).all(input.nodeId,input.projectId,JSON.stringify(input.slots));
+   const bySlot=new Map(rows.filter(row=>!fingerprinted||row.sourceFingerprintDigest===digest||
+    legacy!==undefined&&row.sourceFingerprintDigest===legacy).map(row=>[row.slot,row]));
+   const items=input.slots.filter(slot=>bySlot.has(slot)).map(slot=>{
+    const row=bySlot.get(slot)!;
+    if(!(row.bytes instanceof Uint8Array)||typeof row.sceneRevision!=='number'||typeof row.width!=='number'||typeof row.height!=='number'||typeof row.updatedAt!=='string')invalid();
+    const bytes=Buffer.from(row.bytes);
+    return {slot,sceneRevision:row.sceneRevision,width:row.width,height:row.height,byteLength:bytes.length,updatedAt:row.updatedAt,dataBase64:bytes.toString('base64')};
+   });
+   return {...response,items};
+  };
+  if(db.isTransaction)return read();
+  db.exec('BEGIN');
+  try{const result=read();db.exec('COMMIT');return result;}
+  catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}
  }
  return {project,node,thumbnails};
 }
@@ -262,11 +291,19 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   const bytes=Buffer.from(input.dataBase64,'base64'),size=bytes.toString('base64')===input.dataBase64&&bytes.length<=PREVIS_LIMITS.thumbnailBytes?previsJpegSize(bytes):null;
   if(!size||size.width>PREVIS_LIMITS.thumbnailEdge||size.height>PREVIS_LIMITS.thumbnailEdge)throw failure('PREVIS_THUMBNAIL_INVALID',400);
   return tx(()=>{
+   const fingerprinted=fingerprintedThumbnails(db);
+   const dependencies=(node: PrevisNodeRecord): string=>{
+    const currentFramePresetId=thumbnailFrame(db,input.projectId);
+    if(input.sceneRevision!==node.sceneRevision||
+      (input.framePresetId===undefined?format4(db):input.framePresetId!==currentFramePresetId))
+     throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:node.sceneRevision,currentFramePresetId});
+    return thumbnailDigest(thumbnailDependencies(db,node,fingerprinted,store.root),input.framePresetId);
+   };
    const current=readers.node(input.projectId,input.nodeId);
    assertCanvasTargetActive(db,'nodes',current.id);
-   if(input.sceneRevision!==current.sceneRevision)throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:current.sceneRevision});
+   const sourceFingerprintDigest=dependencies(current);
    if(input.slot!==PREVIS_THUMBNAIL_CARD&&!current.scene.keyframes.some(keyframe=>keyframe.id===input.slot))throw failure('PREVIS_THUMBNAIL_SLOT',409,{slot:input.slot});
-   const updatedAt=now(),fingerprinted=fingerprintedThumbnails(db),sourceFingerprintDigest=thumbnailDependencies(db,current,store.root),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;
+   const updatedAt=now(),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;
    const updated=db.prepare(`UPDATE previs_thumbnails SET sceneRevision=?,width=?,height=?,bytes=?,updatedAt=?${fingerprinted?',sourceFingerprintDigest=?':''} WHERE nodeId=? AND slot=?`).run(...values,...(fingerprinted?[sourceFingerprintDigest]:[]),input.nodeId,input.slot);
    if(!updated.changes){
     // Evict the least recently written thumbnails of the project, then of the workspace.
@@ -279,15 +316,16 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
     db.prepare(`INSERT INTO previs_thumbnails(nodeId,slot,projectId,sceneRevision,width,height,bytes,updatedAt${fingerprinted?',sourceFingerprintDigest':''}) VALUES(?,?,?,?,?,?,?,?${fingerprinted?',?':''})`)
      .run(input.nodeId,input.slot,input.projectId,...values,...(fingerprinted?[sourceFingerprintDigest]:[]));
    }
-   if(fingerprinted&&(thumbnailDependencies(db,readers.node(input.projectId,input.nodeId),store.root)!==sourceFingerprintDigest||readers.node(input.projectId,input.nodeId).sceneRevision!==input.sceneRevision))throw failure('PREVIS_THUMBNAIL_STALE');
-   return {projectId:input.projectId,nodeId:input.nodeId,slot:input.slot,sceneRevision:input.sceneRevision,width:size.width,height:size.height,byteLength:bytes.length,updatedAt};
+   if(dependencies(readers.node(input.projectId,input.nodeId))!==sourceFingerprintDigest)throw failure('PREVIS_THUMBNAIL_STALE');
+   return {projectId:input.projectId,nodeId:input.nodeId,slot:input.slot,sceneRevision:input.sceneRevision,
+    ...(input.framePresetId===undefined?{}:{framePresetId:input.framePresetId}),width:size.width,height:size.height,byteLength:bytes.length,updatedAt};
   });
  }
  const handlers: Record<string,(input: never)=>unknown>={
   'previs.create':(input: never)=>create(input),
   'previs.scene.set':(input: never)=>setScene(input),
   'previs.thumbnail.set':(input: never)=>setThumbnail(input),
-  'previs.thumbnail.get':(input: never)=>{const value=parse<ThumbnailGetInput>('previs.thumbnail.get',input);thumbnailDependencies(db,readers.node(value.projectId,value.nodeId),store.root);return readers.thumbnails(input);},
+  'previs.thumbnail.get':(input: never)=>readers.thumbnails(input,store.root),
  };
  return {handlers};
 }

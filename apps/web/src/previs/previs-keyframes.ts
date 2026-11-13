@@ -78,6 +78,6 @@ export function previsKeyframeName(keyframe: PrevisKeyframe, t: PrevisTranslate)
   return keyframe.name || t(PREVIS_SHOT_SIZE_KEYS[previsShotSize(keyframe.camera.focalLength)]);
 }
 /** Everything a keyframe's picture depends on; equal keys render the same picture. */
-export function previsKeyframeContentKey(scene: PrevisScene, keyframe: PrevisKeyframe): string {
-  return canonicalPrevisValue({figures: scene.figures, props: scene.props, light: scene.light, camera: keyframe.camera});
+export function previsKeyframeContentKey(scene: PrevisScene, keyframe: PrevisKeyframe, framePresetId: string): string {
+  return canonicalPrevisValue({framePresetId, figures: scene.figures, props: scene.props, light: scene.light, camera: keyframe.camera});
 }

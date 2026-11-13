@@ -116,6 +116,23 @@ test('a failed result cannot start another export while a request is busy or unk
 
 const deferred=()=>{let resolve!:(value:boolean)=>void;const promise=new Promise<boolean>(yes=>{resolve=yes;});return{promise,resolve};};
 const flush=async()=>{for(let n=0;n<12;n++)await Promise.resolve();};
+test('a completed output can open another review, and stale or blocked success controls cannot', () => {
+ const record = {id:'finished-export', projectId:PROJECT, status:'succeeded', assetId:ASSET};
+ const calls: string[] = [], onReexport = () => calls.push('review');
+ const h = harness({projectId:PROJECT, record, onReexport});
+ const another = find(h.render(), 'export-workflow-another');
+ assert.equal(another.props.disabled, false);
+ another.props.onClick();
+ assert.deepEqual(calls, ['review']);
+ for (const patch of [{pendingExport:true}, {pendingExport:false, exportBusy:true}, {exportBusy:false, cancelBusy:true}]) {
+  assert.equal(find(h.render(patch), 'export-workflow-another').props.disabled, true);
+  another.props.onClick();
+ }
+ h.render({cancelBusy:false, record:{...record,id:'replacement-export'}});
+ another.props.onClick();
+ assert.deepEqual(calls, ['review']);
+});
+
 test('unmeasurable activity stays indeterminate and observations cannot cross export identities',()=>{
  const h=harness({projectId:'p',attempted:true,record:{id:'e',status:'running'},activity:{projectId:'p',exportId:'e',status:'running',stage:'encoding',progress:null,elapsedSeconds:4,cancelled:false}});
  let tree=h.render();assert.ok(find(tree,'export-workflow-indeterminate'));assert.equal(nodes(tree).some(node=>node.type==='Progress'),false);assert.equal(find(tree,'export-workflow-progress').props.children,'进度暂不可测');

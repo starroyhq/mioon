@@ -89,8 +89,25 @@ export const PREVIS_FRAME_ISSUE_KEYS: Readonly<Record<PrevisFrameRefusal, string
 });
 // ---- What the editor asks App to do ----
 export type PrevisImportRequest = Readonly<PrevisPublicationInput>;
-export type PrevisImportOutcome = {readonly status: 'imported'; readonly assetId: string} | {readonly status: 'failed'; readonly code: string} | {readonly status: 'unknown'};
-export interface PrevisFrameRequest {readonly projectId: string; readonly nodeId: string; readonly shotId: string; readonly role: PrevisFrameRole; readonly assetId: string}
+export interface PrevisPublishedImage {
+  readonly projectId: string;
+  readonly nodeId: string;
+  readonly assetId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly sha256: string;
+}
+export type PrevisImportOutcome = {readonly status: 'imported'; readonly image: PrevisPublishedImage} | {readonly status: 'failed'; readonly code: string} | {readonly status: 'unknown'};
+export interface PrevisFrameRequest {readonly shotId: string; readonly role: PrevisFrameRole; readonly image: PrevisPublishedImage}
+
+export function publishedPrevisFrameRatio(image: PrevisPublishedImage, asset: {
+  id?: unknown; projectId?: unknown; mimeType?: unknown; width?: unknown; height?: unknown; sha256?: unknown;
+} | undefined): string | null {
+  if (!asset || asset.id !== image.assetId || asset.projectId !== image.projectId || asset.mimeType !== 'image/png' ||
+      asset.width !== image.width || asset.height !== image.height || asset.sha256 !== image.sha256 ||
+      !Number.isSafeInteger(image.width) || image.width <= 0 || !Number.isSafeInteger(image.height) || image.height <= 0) return null;
+  return `${image.width}:${image.height}`;
+}
 /** What undoing a set frame restores: the shot's previous first-frame list or last frame, and the link it added. */
 export interface PrevisFrameUndo {readonly projectId: string; readonly nodeId: string; readonly shotId: string; readonly role: PrevisFrameRole; readonly assetId: string; readonly previous: readonly string[] | string | null; readonly edgeId: string | null}
 export type PrevisFrameOutcome = {readonly status: 'applied'; readonly undo: PrevisFrameUndo} | {readonly status: 'refused'; readonly reason: PrevisFrameRefusal} | {readonly status: 'failed'};

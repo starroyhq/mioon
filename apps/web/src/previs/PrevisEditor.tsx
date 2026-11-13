@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PrevisCamera, PrevisKeyframe, PrevisNodeRecord, PrevisProp, PrevisScene } from '@mioon/contracts';
-import { PREVIS_LIMITS, PREVIS_THUMBNAIL_CARD, canonicalPrevisValue } from '@mioon/contracts';
+import { PREVIS_LIMITS, PREVIS_THUMBNAIL_CARD, canonicalPrevisValue, isPrevisThumbnailSetResponse } from '@mioon/contracts';
 import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { ArrowLeft, Box, Camera, CircleAlert, CircleCheck, LoaderCircle, LocateFixed, Monitor, Move, Orbit, PersonStanding, Redo2, Sun, Undo2, X } from '@mioon/ui/components/workbench-icons';
@@ -33,12 +33,13 @@ export interface PrevisEditorProps {
   node: PrevisNodeRecord;
   projectName: string;
   frame: { width: number; height: number; aspect: number; ratio: string };
+  framePresetId: string | null;
   readOnly: boolean;
   /** Scene revision of the card thumbnail the canvas already has, 0 for none. */
   thumbnailRevision: number;
   rpc: (operation: string, input: Record<string, unknown>) => Promise<unknown>;
   requestId: () => string;
-  onThumbnail: (nodeId: string, sceneRevision: number, dataBase64: string) => void;
+  onThumbnail: (nodeId: string, framePresetId: string, sceneRevision: number, dataBase64: string) => void;
   onClose: () => void;
   /** The project's shots and canvas links, for setting keyframes as shot frames. */
   shots: readonly PrevisShotView[];
@@ -55,7 +56,7 @@ const THUMBNAIL_DELAY_MS = 1200, LEAVE_WAIT_MS = 8000, KEYFRAME_THUMB_DELAY_MS =
 /** A set frame that can be undone, with the shot number it was set on. */
 interface FrameUndo { readonly value: PrevisFrameUndo; readonly number: string }
 interface EditorToast { readonly id: number; readonly tone: 'progress' | 'success' | 'warning' | 'error'; readonly title: string; readonly detail?: string; readonly undo?: FrameUndo }
-interface KeyframeThumbnail { readonly key: string; readonly url: string; readonly base64: string }
+interface KeyframeThumbnail { readonly key: string; readonly framePresetId: string; readonly url: string; readonly base64: string }
 const canvasBlob = (canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob | null> => new Promise(resolve => canvas.toBlob(resolve, type, quality));
 async function encodeBlob(blob: Blob): Promise<{ base64: string; sha256: string }> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -78,7 +79,7 @@ const same = (a: unknown, b: unknown): boolean => canonicalPrevisValue(a) === ca
 const typing = (target: EventTarget | null): boolean => target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"]'));
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform || navigator.userAgent);
 
-export default function PrevisEditor({ node, projectName, frame, readOnly, thumbnailRevision, rpc, requestId, onThumbnail, onClose, closeRegistry, shots, edges, onImport, onSetFrame, onUndoFrame }: PrevisEditorProps): React.ReactElement {
+export default function PrevisEditor({ node, projectName, frame, framePresetId, readOnly, thumbnailRevision, rpc, requestId, onThumbnail, onClose, closeRegistry, shots, edges, onImport, onSetFrame, onUndoFrame }: PrevisEditorProps): React.ReactElement {
   const { t, formatNumber } = useI18n(), translate = t as unknown as PrevisTranslate, confirm = useConfirmation();
   const [model, setModel] = useState<PrevisEditorModel>(() => createPrevisEditorModel(node.scene));
   const [mode, setMode] = useState<PrevisViewMode>('orbit');
@@ -93,7 +94,14 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const [save, setSave] = useState<PrevisSaveState>(() => ({ status: readOnly ? 'readOnly' : 'saved', node, conflict: null, errorCode: null }));
   if (!saver.current) saver.current = createPrevisSaver({ node, readOnly, rpc: (operation, input) => calls.current.rpc(operation, input), requestId: () => calls.current.requestId(), onState: setSave });
   const host = useRef<HTMLDivElement | null>(null), overlay = useRef<HTMLDivElement | null>(null), viewport = useRef<PrevisViewport | null>(null);
-  const thumbnail = useRef({ uploaded: thumbnailRevision, running: false });
+  // A new scope allows the current frame's capture to start while an old
+  // JPEG encoder or RPC settles. Reference identity also distinguishes A→B→A.
+  const thumbnail = useRef({ framePresetId, uploaded: thumbnailRevision, running: false });
+  useLayoutEffect(() => {
+    const scope = { framePresetId, uploaded: thumbnailRevision, running: false };
+    thumbnail.current = scope;
+    return () => { if (thumbnail.current === scope) thumbnail.current = { framePresetId: null, uploaded: 0, running: false }; };
+  }, [framePresetId]);
 
   // ---- Edits ----
   const change = useCallback((transform: (scene: PrevisScene) => PrevisScene, key: string | null = null, select?: PrevisSelection): void => {
@@ -210,24 +218,27 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   }, [closeRegistry]);
   useLayoutEffect(() => { publishClose(); });
   const uploadThumbnail = useCallback(async (): Promise<void> => {
-    const state = saver.current!.state(), view = viewport.current, revision = state.node.sceneRevision;
+    const state = saver.current!.state(), view = viewport.current, revision = state.node.sceneRevision, scope = thumbnail.current;
     // The card shows the scene camera, never a moment of playback.
-    if (readOnly || !view || playback.current || thumbnail.current.running || state.status !== 'saved' || revision <= thumbnail.current.uploaded || !same(modelRef.current.scene, state.node.scene)) return;
-    thumbnail.current.running = true;
+    if (readOnly || !framePresetId || scope.framePresetId !== framePresetId || !view || playback.current || scope.running ||
+      state.status !== 'saved' || revision <= scope.uploaded || !same(modelRef.current.scene, state.node.scene)) return;
+    scope.running = true;
     try {
       const shot = await view.capture(PREVIS_LIMITS.thumbnailEdge, PREVIS_LIMITS.thumbnailBytes, 'wide');
-      if (!shot || saver.current!.state().node.sceneRevision !== revision) return;
-      await calls.current.rpc('previs.thumbnail.set', { projectId: state.node.projectId, nodeId: state.node.id, slot: PREVIS_THUMBNAIL_CARD, sceneRevision: revision, dataBase64: shot.dataBase64 });
-      thumbnail.current.uploaded = Math.max(thumbnail.current.uploaded, revision);
-      calls.current.onThumbnail(state.node.id, revision, shot.dataBase64);
+      if (!shot || thumbnail.current !== scope || saver.current!.state().node.sceneRevision !== revision) return;
+      const input = { projectId: state.node.projectId, nodeId: state.node.id, slot: PREVIS_THUMBNAIL_CARD, sceneRevision: revision, framePresetId, dataBase64: shot.dataBase64 };
+      const result = await calls.current.rpc('previs.thumbnail.set', input);
+      if (thumbnail.current !== scope || !isPrevisThumbnailSetResponse(input, result)) return;
+      scope.uploaded = Math.max(scope.uploaded, revision);
+      calls.current.onThumbnail(state.node.id, framePresetId, revision, shot.dataBase64);
     } catch { /* A stale or refused thumbnail is a cache miss; the next save renders another. */ }
-    finally { thumbnail.current.running = false; }
-  }, [readOnly]);
+    finally { scope.running = false; }
+  }, [readOnly, framePresetId]);
   useEffect(() => {
-    if (readOnly || playing || webgl !== 'ready' || save.status !== 'saved' || save.node.sceneRevision <= thumbnail.current.uploaded) return;
+    if (readOnly || !framePresetId || playing || webgl !== 'ready' || save.status !== 'saved' || save.node.sceneRevision <= thumbnail.current.uploaded) return;
     const timer = setTimeout(() => { if (viewport.current?.busy()) return; void uploadThumbnail(); }, THUMBNAIL_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [readOnly, playing, webgl, save.status, save.node.sceneRevision, model.scene, uploadThumbnail]);
+  }, [readOnly, framePresetId, playing, webgl, save.status, save.node.sceneRevision, model.scene, uploadThumbnail]);
   // ---- Keyframe pictures: local thumbnails for the strip, uploaded for the canvas ----
   const [keyframeThumbs, setKeyframeThumbs] = useState<Readonly<Record<string, KeyframeThumbnail>>>({});
   const keyframeThumbsRef = useRef(keyframeThumbs);
@@ -236,9 +247,9 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const thumbSize = useMemo(() => frame.aspect >= 1 ? { width: PREVIS_LIMITS.thumbnailEdge, height: Math.max(1, Math.round(PREVIS_LIMITS.thumbnailEdge / frame.aspect)) }
     : { width: Math.max(1, Math.round(PREVIS_LIMITS.thumbnailEdge * frame.aspect)), height: PREVIS_LIMITS.thumbnailEdge }, [frame.aspect]);
   useEffect(() => {
-    if (webgl !== 'ready') return;
-    const scene = model.scene, current = keyframeThumbsRef.current;
-    const stale = scene.keyframes.filter(item => current[item.id]?.key !== previsKeyframeContentKey(scene, item));
+    if (webgl !== 'ready' || !framePresetId) return;
+    const scene = model.scene, current = keyframeThumbsRef.current, scope = thumbnail.current;
+    const stale = scene.keyframes.filter(item => current[item.id]?.key !== previsKeyframeContentKey(scene, item, framePresetId));
     const gone = Object.keys(current).filter(id => !scene.keyframes.some(item => item.id === id));
     if (!stale.length && !gone.length) return;
     let cancelled = false;
@@ -249,44 +260,48 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
       const canvases = stale.length ? view.renderViews(stale.map(item => ({ camera: item.camera, ...thumbSize }))) : [];
       if (!canvases) return;
       const encoded = await Promise.all(canvases.map(canvas => encodeJpeg(canvas, PREVIS_LIMITS.thumbnailBytes)));
-      if (cancelled) return;
+      if (cancelled || thumbnail.current !== scope) return;
       const next: Record<string, KeyframeThumbnail> = { ...keyframeThumbsRef.current };
       for (const id of gone) { if (next[id]) URL.revokeObjectURL(next[id]!.url); delete next[id]; }
       stale.forEach((item, index) => {
         const value = encoded[index];
         if (!value) return;
         if (next[item.id]) URL.revokeObjectURL(next[item.id]!.url);
-        next[item.id] = { key: previsKeyframeContentKey(scene, item), url: URL.createObjectURL(value.blob), base64: value.base64 };
+        next[item.id] = { key: previsKeyframeContentKey(scene, item, framePresetId), framePresetId, url: URL.createObjectURL(value.blob), base64: value.base64 };
       });
       setKeyframeThumbs(next);
     })(); }, KEYFRAME_THUMB_DELAY_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [webgl, model.scene, thumbSize, thumbRetry]);
+  }, [webgl, framePresetId, model.scene, thumbSize, thumbRetry]);
   useEffect(() => () => { for (const value of Object.values(keyframeThumbsRef.current)) URL.revokeObjectURL(value.url); }, []);
   // A keyframe picture goes to the cache once its scene is saved and only when it changed.
   const uploadedKeyframes = useRef(new Map<string, string>());
+  useLayoutEffect(() => { uploadedKeyframes.current.clear(); }, [framePresetId]);
   useEffect(() => {
     // Saving a scene without a keyframe drops its cached picture, so one brought back by undo is uploaded again.
     for (const id of [...uploadedKeyframes.current.keys()]) if (!save.node.scene.keyframes.some(item => item.id === id)) uploadedKeyframes.current.delete(id);
-    if (readOnly || webgl !== 'ready' || save.status !== 'saved' || !same(model.scene, save.node.scene)) return;
-    const saved = save.node, pending = saved.scene.keyframes.filter(item => {
+    if (readOnly || !framePresetId || webgl !== 'ready' || save.status !== 'saved' || !same(model.scene, save.node.scene)) return;
+    const saved = save.node, scope = thumbnail.current, pending = saved.scene.keyframes.filter(item => {
       const local = keyframeThumbs[item.id];
-      return local && local.key === previsKeyframeContentKey(saved.scene, item) && uploadedKeyframes.current.get(item.id) !== local.key;
+      return local && local.key === previsKeyframeContentKey(saved.scene, item, framePresetId) && uploadedKeyframes.current.get(item.id) !== local.key;
     });
     if (!pending.length) return;
     let cancelled = false;
     const timer = setTimeout(() => { void (async () => {
       for (const item of pending) {
         const local = keyframeThumbsRef.current[item.id];
-        if (cancelled || !local || saver.current!.state().node.sceneRevision !== saved.sceneRevision) return;
+        if (cancelled || thumbnail.current !== scope || !local || local.key !== previsKeyframeContentKey(saved.scene, item, framePresetId) ||
+          saver.current!.state().node.sceneRevision !== saved.sceneRevision) return;
         try {
-          await calls.current.rpc('previs.thumbnail.set', { projectId: saved.projectId, nodeId: saved.id, slot: item.id, sceneRevision: saved.sceneRevision, dataBase64: local.base64 });
+          const input = { projectId: saved.projectId, nodeId: saved.id, slot: item.id, sceneRevision: saved.sceneRevision, framePresetId, dataBase64: local.base64 };
+          const result = await calls.current.rpc('previs.thumbnail.set', input);
+          if (cancelled || thumbnail.current !== scope || !isPrevisThumbnailSetResponse(input, result)) return;
           uploadedKeyframes.current.set(item.id, local.key);
         } catch { return; /* A stale or refused thumbnail is a cache miss; the next save tries again. */ }
       }
     })(); }, THUMBNAIL_DELAY_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [readOnly, webgl, save.status, save.node, model.scene, keyframeThumbs]);
+  }, [readOnly, framePresetId, webgl, save.status, save.node, model.scene, keyframeThumbs]);
   // ---- Export a keyframe picture, optionally as a shot's first or last frame ----
   const exporting = useRef<string | null>(null), exportRun = useRef<Promise<void> | null>(null), [busyKeyframe, setBusyKeyframe] = useState<string | null>(null);
   const exportKeyframe = useCallback(async (id: string, target: { shot: PrevisShotView; role: PrevisFrameRole } | null): Promise<void> => {
@@ -312,11 +327,11 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
       const imported = await calls.current.onImport({ projectId: saved.projectId, nodeId: saved.id, keyframeId: id, sceneRevision: saved.sceneRevision, requestId: calls.current.requestId(), name: exportName(saved.label || t('previs.node.defaultLabel'), label, previsKeyframeName(keyframe, translate)),
         dataBase64: encoded.base64, sha256: encoded.sha256, width: frame.width, height: frame.height });
       if (imported.status !== 'imported') { showToast({ tone: imported.status === 'unknown' ? 'warning' : 'error', title: t(imported.status === 'unknown' ? 'previs.export.unknown' : 'previs.export.failed', { label }) }); return; }
-      setModel(current => recordPrevisModelExport(current, id, imported.assetId));
-      const done = t('previs.export.done', { label, width: frame.width, height: frame.height });
+      setModel(current => recordPrevisModelExport(current, id, imported.image.assetId));
+      const done = t('previs.export.done', { label, width: imported.image.width, height: imported.image.height });
       if (!target) { showToast({ tone: 'success', title: done, detail: t('previs.export.library') }); return; }
       const number = previsShotNumber(target.shot);
-      const outcome = await calls.current.onSetFrame({ projectId: saved.projectId, nodeId: saved.id, shotId: target.shot.id, role: target.role, assetId: imported.assetId });
+      const outcome = await calls.current.onSetFrame({ shotId: target.shot.id, role: target.role, image: imported.image });
       if (outcome.status === 'applied') showToast({ tone: 'success', title: done, detail: t(target.role === 'first' ? 'previs.frame.doneFirst' : 'previs.frame.doneLast', { number }), undo: { value: outcome.undo, number } });
       else showToast({ tone: outcome.status === 'refused' ? 'warning' : 'error', title: t(target.role === 'first' ? 'previs.frame.failedFirst' : 'previs.frame.failedLast', { number }),
         detail: outcome.status === 'refused' ? t(PREVIS_FRAME_ISSUE_KEYS[outcome.reason] as never) : t('previs.export.library') });
@@ -419,7 +434,7 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const rect: PrevisRect | null = size.width && size.height ? previsFrameRect(size.width, size.height, frame.aspect) : null;
   const focal = Math.round(camera.focalLength), label = node.label || save.node.label || t('previs.node.defaultLabel');
   const held = useMemo(() => new Set(scene.figures.flatMap(item => item.held ? [item.held.propId] : [])), [scene.figures]);
-  const keyframeUrls = useMemo(() => Object.fromEntries(Object.entries(keyframeThumbs).map(([id, value]) => [id, value.url])), [keyframeThumbs]);
+  const keyframeUrls = useMemo(() => Object.fromEntries(Object.entries(keyframeThumbs).filter(([, value]) => value.framePresetId === framePresetId).map(([id, value]) => [id, value.url])), [keyframeThumbs, framePresetId]);
   const shortcut = mac ? '⌘Z' : 'Ctrl+Z', viewable = webgl !== 'unavailable' && webgl !== 'lost';
   return <div className="previs-editor" ref={root} role="dialog" aria-modal="true" aria-label={t('previs.editor.label')} data-testid="previs-editor" data-read-only={readOnly || undefined} data-playing={playing || undefined}
     onPointerDownCapture={interrupt} onKeyDownCapture={interrupt} onKeyDown={onKeyDown} onKeyUp={event => event.stopPropagation()}>

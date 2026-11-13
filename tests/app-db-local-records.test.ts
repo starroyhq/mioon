@@ -17,6 +17,7 @@ import {AppError} from '../packages/contracts/src/app-error.ts';
 import {projectCacheDirSegments, projectLocalDirSegments, PROJECT_RECORDS_DIRECTORY} from '../packages/contracts/src/project-file.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
 import {createProjectFile, openProjectConnection} from '../packages/business/src/project-file/index.ts';
+import {FORMAT4_RESTORE_ACTIVE} from '../packages/business/src/project-file/format4-backup.ts';
 import {hasSuperJournalInUse, openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary, LocalRecordsItem} from '../packages/business/src/app-db/index.ts';
 
@@ -79,6 +80,14 @@ function writeJournal(file: string, {hot = true, names}: {readonly hot?: boolean
 const writeSuperJournal = (file: string, journals: readonly string[]): void => {
   writeFileSync(file, journals.map(journal => `${journal}\u0000`).join(''));
 };
+
+test('an active format restore preserves records even after the registered project inode is gone', async t => {
+  const f = setup(t), projectId = randomUUID(), folder = f.records(projectId, {'history.db': 32, [FORMAT4_RESTORE_ACTIVE]: 32});
+  const error = await appError(() => f.library.localRecords.delete(projectId));
+  assert.equal(error.code, 'LOCAL_RECORDS_IN_USE');
+  assert.equal(readFileSync(path.join(folder, 'history.db')).length, 32);
+  assert.equal(readFileSync(path.join(folder, FORMAT4_RESTORE_ACTIVE)).length, 32);
+});
 
 test('orphan list reports the physical automatic backup count and bytes without following links or opening databases', async t => {
   const f=setup(t),id=randomUUID(),first=randomUUID(),second=randomUUID(),linked=randomUUID(),folder=f.records(id,{
