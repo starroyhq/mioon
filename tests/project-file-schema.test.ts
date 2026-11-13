@@ -11,6 +11,7 @@ import type {DatabaseKind} from '../packages/business/src/project-file/schema/da
 import {readSchemaManifest, compareManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 import {FORMAT3_RELEASE_MANIFEST} from '../packages/business/src/project-file/schema/format3-manifest.ts';
+import {FORMAT4_INITIAL_HISTORY_MANIFEST} from '../packages/business/src/project-file/schema/history-v11-manifest.ts';
 import {projectManifestForVersion, historyManifestForVersion} from '../packages/business/src/project-file/schema/format-manifests.ts';
 import {CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, CACHE_TABLES, APP_DATABASE_TABLES, REMOVED_TABLES, LEGACY_MIO_TABLES, databaseOf} from '../packages/business/src/project-file/schema/tables.ts';
 import {CROSS_FILE_RELATIONS, DROPPED_CONTENT_KEYS} from '../packages/business/src/project-file/cross-file/relations.ts';
@@ -131,7 +132,7 @@ test('released fixture manifests and format 4 candidate digests stay independent
     ['project', FORMAT4_PROJECT_SCHEMA_VERSION, projectManifestForVersion(FORMAT4_PROJECT_SCHEMA_VERSION),
       '9b00945ef99bf98b6a7c401bb4fac31c2aa52ac4e212347b1ce259b2a2690ecf'],
     ['history', FORMAT4_HISTORY_SCHEMA_VERSION, historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION),
-      'a3b62304d78ac1aa20872b7a48235fd876b49db5c18313e4b0a5df1abc730f7b'],
+      '560654c9edad7f001402374cc3111a2ecbb46af7c6ee6d16d0045c11764ab93d'],
   ] as const) {
     const released = FORMAT3_RELEASE_MANIFEST[kind];
     const db = new DatabaseSync(':memory:');
@@ -145,6 +146,17 @@ test('released fixture manifests and format 4 candidate digests stay independent
     assert.deepEqual(compareManifest(built, expected!.entries), {missing: [], unexpected: [], changed: []});
     assert.equal(createHash('sha256').update(JSON.stringify(built)).digest('hex'), digest);
   }
+});
+
+test('the frozen first format 4 history fixture matches its independently recorded catalog', () => {
+  const old = FORMAT4_INITIAL_HISTORY_MANIFEST, db = new DatabaseSync(':memory:');
+  try {
+    db.exec(readFileSync(new URL(`./fixtures/kernel-history-previous-schema/v${old.version}.sql`, import.meta.url), 'utf8'));
+    const found = readSchemaManifest(db, 'main');
+    assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version, old.version);
+    assert.deepEqual(compareManifest(found, old.entries), {missing: [], unexpected: [], changed: []});
+    assert.equal(createHash('sha256').update(JSON.stringify(found)).digest('hex'), 'a3b62304d78ac1aa20872b7a48235fd876b49db5c18313e4b0a5df1abc730f7b');
+  } finally {db.close();}
 });
 
 test('schema generation in a fresh process cannot import legacy constructors, openers or its output manifest', () => {

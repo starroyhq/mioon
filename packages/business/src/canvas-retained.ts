@@ -27,7 +27,6 @@ export function retainedCanvasDependencies(db: DatabaseSync, projectId: string, 
           const key = canvasKey(target);
           if (keys.has(key)) retained.add(key);
         }
-        for (const id of patch.order ?? []) if (shots.has(id)) retained.add(`shot:${id}`);
         for (const anchor of patch.anchors) {
           for (const id of [anchor.id, anchor.previous, anchor.next]) if (id !== null && shots.has(id)) retained.add(`shot:${id}`);
         }

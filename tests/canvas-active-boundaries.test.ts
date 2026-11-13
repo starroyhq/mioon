@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test, {type TestContext} from 'node:test';
 import {hasRequestNotAppliedProof} from '@mioon/contracts';
-import {canvasEditingResponses} from '../packages/contracts/src/canvas-editing.ts';
+import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import type {PrevisNodeRecord} from '../packages/contracts/src/previs.ts';
 import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
@@ -20,6 +20,13 @@ import type {TypedServices, TypedStore} from './helpers/strict-service-responses
 const at = '2026-11-13T00:00:00.000Z';
 const archived = {code: 'CANVAS_TARGET_ARCHIVED'};
 const position = {x: 0, y: 0};
+const notApplied = (requestId: string) => ({...archived, status: 409, details: {mutationOutcome: 'not_applied', requestId}});
+
+async function assertArchivedMutation(store: TypedStore, request: Promise<unknown>, id: string, requestId: string): Promise<void> {
+  const expected = notApplied(requestId);
+  await assert.rejects(request, {...expected, details: {...expected.details, id}});
+  assert.equal(store.db.prepare('SELECT 1 FROM main.mutation_requests WHERE requestId=?').get(requestId), undefined);
+}
 
 async function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-canvas-active-'));
@@ -102,8 +109,10 @@ test('live canvas filters before pagination and keeps retained rows and mutation
   assert.deepEqual(await f.call('shot.update', editShot), shotAck);
   assert.deepEqual(await f.call('node.update', editNode), nodeAck);
   assert.deepEqual(await f.call('shot.reorder', oldOrder), orderAck);
-  await assert.rejects(f.call('shot.update', {...editShot, expectedRevision: shotAck.revision, requestId: randomUUID()}), archived);
-  await assert.rejects(f.call('node.update', {...editNode, expectedRevision: nodeAck.revision, requestId: randomUUID()}), archived);
+  const freshShot = {...editShot, expectedRevision: shotAck.revision, requestId: randomUUID()};
+  const freshNode = {...editNode, expectedRevision: nodeAck.revision, requestId: randomUUID()};
+  await assertArchivedMutation(f.store, f.call('shot.update', freshShot), first.id, freshShot.requestId);
+  await assertArchivedMutation(f.store, f.call('node.update', freshNode), node.id, freshNode.requestId);
   await assert.rejects(f.call('edge.create', {projectId, source: secondNode.id, target: first.id}), archived);
   await assert.rejects(f.call('edge.delete', {edgeId: hiddenByNode.id}), archived);
   await assert.rejects(f.call('edge.delete', {edgeId: explicitlyHidden.id}), archived);
@@ -166,10 +175,15 @@ test('legacy edge deletion and reference detachment preserve identities needed b
   const target = {kind: 'node', id: node.id, revision: readMioTargetRevision(f.store.db, projectId, 'node', node.id)};
   const preview = canvasEditingResponses['canvas.archive.preview'].parse(await f.call('canvas.archive.preview',
     {projectId, operation: 'archive', targets: [target]}));
-  const archivedAction = canvasEditingResponses['canvas.apply'].parse(await f.call('canvas.apply',
-    {projectId, operation: 'archive', targets: [target], historyRevision: preview.historyRevision, requestId: randomUUID(),
-      ...(preview.confirmation ? {confirmation: preview.confirmation} : {})}));
-  await f.call('canvas.history.undo', {projectId, historyRevision: archivedAction.history.revision, requestId: randomUUID()});
+  const history = canvasEditingResponses['canvas.history.get'].parse(await f.call('canvas.history.get', {projectId}));
+  const archiveInput = {projectId, operation: 'archive', targets: [target], historyRevision: preview.historyRevision,
+    requestId: createCanvasRequestId(history.requestEpoch, randomUUID()),
+    ...(preview.confirmation ? {confirmation: preview.confirmation} : {})};
+  const archivedAction = canvasEditingResponses['canvas.apply'].parse(await f.call('canvas.apply', archiveInput));
+  const afterArchive = canvasEditingResponses['canvas.history.get'].parse(await f.call('canvas.history.get', {projectId}));
+  await f.call('canvas.history.undo', {projectId, historyRevision: archivedAction.history.revision,
+    requestId: createCanvasRequestId(afterArchive.requestEpoch, randomUUID())});
+  assert.deepEqual(await f.call('canvas.apply', archiveInput), archivedAction);
   await assert.rejects(f.call('edge.delete', {edgeId: decorative.id}), {code: 'CANVAS_HISTORY_DEPENDENCY'});
   assert.deepEqual(await f.call('edge.delete', {edgeId: unrelated.id}), {deleted: true});
   const detach = {projectId, edgeId: bound.edge.id, expectedShotRevision: f.store.get('shots', shot.id)!.revision, requestId: randomUUID()};
@@ -230,7 +244,8 @@ test('timeline seeding uses active shots while an existing clip and its source v
   f.store.put('jobs', {id: jobId, projectId, shotId: live.id, versionId, assetId: asset.id, status: 'succeeded',
     snapshot: {projectId, shotId: live.id}});
   f.store.put('versions', {id: versionId, projectId, shotId: live.id, jobId, assetId: asset.id, number: 1, sha256: asset.sha256});
-  f.store.put('shots', {...live, selectedVersionId: versionId});
+  const selection = {shotId: live.id, versionId, expectedRevision: live.revision, requestId: randomUUID()};
+  const selectionAck = await f.call('version.select', selection);
   f.mark('shots', hidden.id);
   const timeline = await f.call('timeline.get', {projectId});
   const seed = {projectId, expectedRevision: timeline.revision, requestId: randomUUID()};
@@ -240,5 +255,7 @@ test('timeline seeding uses active shots while an existing clip and its source v
   assert.deepEqual(await f.call('timeline.seed', seed), seeded);
   assert.deepEqual((await f.call('timeline.get', {projectId})).clips, seeded.clips);
   assert.deepEqual((await f.call('version.list', {shotId: live.id})).map(version => version.id), [versionId]);
-  await assert.rejects(f.call('version.select', {shotId: live.id, versionId, expectedRevision: live.revision, requestId: randomUUID()}), archived);
+  assert.deepEqual(await f.call('version.select', selection), selectionAck);
+  const freshSelection = {...selection, expectedRevision: selectionAck.revision, requestId: randomUUID()};
+  await assertArchivedMutation(f.store, f.call('version.select', freshSelection), live.id, freshSelection.requestId);
 });

@@ -4,7 +4,7 @@ import {AppError,publicValue,LOCAL_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIO
 import {isAsyncFunction,isPromise} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
 
-const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','INVALID_NODE_PATCH','REFERENCE_CONNECTED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT','ANNOTATION_REVISION_LIMIT','SUBJECT_NO_CHANGE','SUBJECT_REVISION_LIMIT','SUBJECT_BINDING_LIMIT','SUBJECT_ROLE_MISMATCH','SUBJECT_VERSION_HIDDEN']);
+const definite=new Set(['NOT_FOUND','REVISION_CONFLICT','INVALID_ORDER','ASSET_REQUIRED','INVALID_NODE_ASSET','INVALID_NODE_PATCH','REFERENCE_CONNECTED','CANVAS_TARGET_ARCHIVED','SOURCE_BOUNDS','SOURCE_RANGE_UNSUPPORTED','RANGE_REVISION_LIMIT','DISPOSITION_REVISION_LIMIT','ANNOTATION_REVISION_LIMIT','SUBJECT_NO_CHANGE','SUBJECT_REVISION_LIMIT','SUBJECT_BINDING_LIMIT','SUBJECT_ROLE_MISMATCH','SUBJECT_VERSION_HIDDEN']);
 export interface MutationReplayStore {
  readonly db: DatabaseSync;
  tx<T>(callback: () => T): T;
@@ -130,8 +130,7 @@ export function createMutationReplay(store: MutationReplayStore,{canonical,readO
    // error can be mistaken for proof that an earlier attempt never committed.
    // An asset metadata scope denial is deliberately indistinguishable from absence. Keep
    // client recovery state on that error; preserve the original six semantics.
-   if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&(definite.has(error.code)||
-      operation==='subject.binding.set'&&error.code==='CANVAS_TARGET_ARCHIVED')&&
+   if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
       !((['asset.range.set','asset.disposition.set','asset.annotation.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
     error.details={...detailObject(error.details),mutationOutcome:'not_applied',requestId,...(subjectMutation?{operation,projectId:(input as Record<string,unknown>).projectId}:{})};
    throw error;

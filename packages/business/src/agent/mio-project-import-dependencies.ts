@@ -1,6 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {CANVAS_EDIT_LIMITS, canvasEditingResponses} from '../../../contracts/src/canvas-editing.ts';
-import {CANVAS_ARCHIVE_ORDER_FIELD, decodeCanvasPatch, isCanvasOrderAnchor} from '../canvas-patch.ts';
+import {CANVAS_ARCHIVE_ORDER_FIELD, decodeCanvasPatch, isCanvasGuardEvidence, isCanvasOrderAnchor} from '../canvas-patch.ts';
 import {schemas} from '../../../contracts/src/index.ts';
 import {assetMediaRecordSchema} from '../../../contracts/src/asset-media.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
@@ -161,13 +161,18 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       tree(item, source, depth + 1);
     }
   }
+  const duplicateKeys = db.prepare("SELECT 1 FROM json_tree(?) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1 LIMIT 1");
+  function parseStoredJson(raw: string): unknown {
+    // SQL checks duplicates before JSON.parse can erase a conflicting key.
+    try {
+      if (!duplicateKeys.get(raw)) return JSON.parse(raw);
+    } catch {deny('invalid');}
+    return deny('invalid');
+  }
   function decode(raw: unknown, source: string, maximum = limits.cellBytes): unknown {
     if (typeof raw !== 'string') deny('invalid');
     if (++cells > limits.cells || Buffer.byteLength(raw) > maximum || (bytes += Buffer.byteLength(raw)) > limits.totalBytes) deny('limit');
-    // SQL checks duplicates before JSON.parse can erase a conflicting key.
-    const duplicate = db.prepare("SELECT 1 FROM json_tree(?) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1 LIMIT 1").get(raw);
-    if (duplicate) deny('invalid');
-    let value: unknown; try {value = JSON.parse(raw);} catch {deny('invalid');}
+    const value = parseStoredJson(raw);
     // The bound is checked before downstream recursive schema validators run.
     const pending = [{value, depth: 0}]; let count = 0;
     while (pending.length) {
@@ -311,11 +316,18 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
           countRow();
           const evidence = decode(row.evidence, 'main.canvas_history_state', 1024 * 1024);
           if (row.projectId !== store.projectId || !object(evidence) || Object.entries(evidence).some(([key, revision]) =>
-            !/^(shot|node|edge):/u.test(key) || !uuid(key.slice(key.indexOf(':') + 1)) || !Number.isSafeInteger(revision) || Number(revision) < 0)) deny('unsupported');
+            !/^(shot|node|edge):/u.test(key) || !uuid(key.slice(key.indexOf(':') + 1)) || !isCanvasGuardEvidence(revision))) deny('unsupported');
         }
-        for (const row of db.prepare('SELECT projectId,response FROM main.canvas_requests LIMIT ?').iterate(limits.rows + 1)) {
-          countRow();
-          const response = canvasEditingResponses['canvas.apply'].safeParse(decode(row.response, 'main.canvas_requests', 65536));
+        const windows = db.prepare('SELECT singleton,epoch,floor FROM main.canvas_receipt_window LIMIT 2').all();
+        if (windows.length > 1 || windows.some(row => row.singleton !== 1 || typeof row.epoch !== 'string' ||
+          !/^[a-f0-9]{32}$/u.test(row.epoch) || typeof row.floor !== 'number' || !Number.isSafeInteger(row.floor) || row.floor < 0)) deny('unsupported');
+        // Receipts carry only typed, asset-free acknowledgements. Check
+        // every retained shape without spending the asset traversal budget.
+        const receipts = db.prepare(`SELECT projectId,CASE WHEN typeof(response)='text'
+          AND length(CAST(response AS BLOB)) BETWEEN 2 AND 65536 THEN response END AS response FROM main.canvas_requests`);
+        for (const row of receipts.iterate()) {
+          if (typeof row.response !== 'string') deny('invalid');
+          const response = canvasEditingResponses['canvas.apply'].safeParse(parseStoredJson(row.response));
           if (row.projectId !== store.projectId || !response.success || response.data.projectId !== store.projectId) deny('unsupported');
         }
       }

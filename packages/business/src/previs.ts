@@ -172,6 +172,7 @@ export function createPrevisReaders(db: DatabaseSync) {
   const input=parse<ThumbnailGetInput>('previs.thumbnail.get',raw);
   const read=(): PrevisThumbnailGetResponse=>{
    const current=node(input.projectId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
    const response={projectId:input.projectId,nodeId:input.nodeId,...(input.framePresetId===undefined?{}:{framePresetId:input.framePresetId})};
    // Workspaces before schema64 hold no thumbnails.
    if(!usesPrevisSchema(db))return {...response,items:[]};

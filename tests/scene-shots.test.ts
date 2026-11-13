@@ -22,6 +22,7 @@ import {setAgentTaskJobOriginRunner,setAgentTaskEffectGate,resumeAgentTaskJobs} 
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
 import {createCanvasEditing} from '../packages/business/src/canvas-editing.ts';
+import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
@@ -467,7 +468,9 @@ test('storyboard appends after the live order and undo keeps a later archived sh
  assert.deepEqual(ids.map(id=>f.store.get('shots',id)?.orderIndex),[0,1,2]);
  const [shotId,moved]=ids;
  assert.ok(shotId&&moved&&isProjectStore(f.store));
- createCanvasEditing(f.store).call('canvas.apply',{projectId,operation:'move',historyRevision:0,requestId:randomUUID(),
+ const canvas=createCanvasEditing(f.store);
+ const history=canvasEditingResponses['canvas.history.get'].parse(canvas.call('canvas.history.get',{projectId}));
+ canvas.call('canvas.apply',{projectId,operation:'move',historyRevision:history.revision,requestId:createCanvasRequestId(history.requestEpoch,randomUUID()),
   moves:[{kind:'shot',id:moved,revision:readMioTargetRevision(f.store.db,projectId,'shot',moved),position:{x:100,y:200}}]});
  archive(shotId);
  const current=await f.get(done.id);
@@ -477,6 +480,28 @@ test('storyboard appends after the live order and undo keeps a later archived sh
  assert.ok(f.store.get('shots',shotId));
  assert.deepEqual(await f.call('scene.shots.create',input),accepted);
  assert.deepEqual(current.shots,done.shots);
+});
+
+test('storyboard undo may remove shots used only in the canvas order snapshot', async t=>{
+ const f=fixture(t,{canvas:true}),resultId=await f.detected(),projectId=f.project.id;
+ const ack=await f.call('scene.shots.create',f.input(resultId)),done=await f.state(ack.id,'succeeded');
+ const storyboard=done.shots!.map(shot=>shot.shotId);
+ const anchorId=randomUUID(),archivedId=randomUUID();
+ f.store.put('shots',{id:anchorId,projectId,orderIndex:storyboard.length,revision:1});
+ f.store.put('shots',{id:archivedId,projectId,orderIndex:storyboard.length+1,revision:1});
+ assert.ok(isProjectStore(f.store));
+ const canvas=createCanvasEditing(f.store);
+ const history=canvasEditingResponses['canvas.history.get'].parse(canvas.call('canvas.history.get',{projectId}));
+ canvas.call('canvas.apply',{projectId,operation:'archive',historyRevision:history.revision,requestId:createCanvasRequestId(history.requestEpoch,randomUUID()),
+  targets:[{kind:'shot',id:archivedId,revision:readMioTargetRevision(f.store.db,projectId,'shot',archivedId)}]});
+ assert.deepEqual((await f.get(done.id)).undo,{available:true,blockers:[]});
+ assert.equal((await f.call('scene.shots.undo',f.control(done))).state,'undone');
+ for(const id of storyboard)assert.equal(f.store.get('shots',id),null);
+ assert.ok(f.store.get('shots',anchorId));
+ assert.ok(f.store.get('shots',archivedId));
+ const current=canvasEditingResponses['canvas.history.get'].parse(canvas.call('canvas.history.get',{projectId}));
+ assert.throws(()=>canvas.call('canvas.history.undo',{projectId,historyRevision:current.revision,
+  requestId:createCanvasRequestId(current.requestEpoch,randomUUID())}),{code:'CANVAS_EDIT_CONFLICT'});
 });
 
 test('the PNG stream splitter and keyframe targets are exact', ()=>{

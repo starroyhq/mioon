@@ -169,10 +169,12 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are a
 
 画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。只有以格式 4 候选入口打开的项目支持以下操作。默认桌面和 Web 宿主仍按格式 3 打开项目。
 
-- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一宿主、项目内容、目标及影响范围，两分钟内有效。活动任务或未决写入会阻止整批操作。
+- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
 - `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象，返回批次和当前目标修订。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
 - `canvas.apply` 原子提交删除、恢复、移动或整理。格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
-- `canvas.history.get` 返回画布游标修订、可撤销和重做的动作以及冲突状态。写入携带 `historyRevision` 和调用方生成的 `requestId`。响应丢失时，用同一请求 ID 原样重试，可取回原回执。撤销和重做通过 `canvas.history.undo`、`canvas.history.redo`，与剪辑历史独立。补丁按最多 100 步及 8 MiB 保留，回执不会随历史裁剪。
+- `canvas.history.get` 返回画布游标、两边动作以及各自的 `undoConflict` 和 `redoConflict`。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。
+- 写入携带 `historyRevision`，并用 `createCanvasRequestId(requestEpoch, uuid, issuedAt)` 生成 `requestId`。从 `canvas.history.get` 取 `requestEpoch` 和 `requestAfter`。时间戳是大于 `requestAfter` 的 Unix 毫秒，最多比服务时钟快两分钟。成功写入后，该代际随本机记录保留。
+- 响应丢失时，七天窗口内用同一请求 ID 原样重试可取回原回执。写入时清理已过期的回执并推进持久截止时间。活跃窗口暂满时返回 `CANVAS_RECEIPT_WINDOW_FULL` 和最早可重试时间。回执过期或本机记录已更换且查不到原回执时，返回 `CANVAS_REQUEST_OUTCOME_UNKNOWN`，客户端须先重新读取画布核对结果。
 
 ### Private last-project locator（已退役）
 

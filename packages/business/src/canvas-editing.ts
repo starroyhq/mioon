@@ -1,6 +1,6 @@
 import {createHash, createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {
-  CANVAS_EDIT_LIMITS, canvasEditingResponses, canvasEditingSchemas, canvasEditingWrites,
+  CANVAS_EDIT_LIMITS, canvasEditingResponses, canvasEditingSchemas, canvasEditingWrites, readCanvasRequestId,
 } from '../../contracts/src/canvas-editing.ts';
 import type {
   CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
@@ -14,9 +14,10 @@ import {assertCanvasEdgeEffects, canvasEdgeEvidence, planCanvasArchive} from './
 import {inspectCanvasDependencies} from './canvas-dependencies.ts';
 import {
   activeShotOrder, applyCanvasPatch, canvasError, canvasKey, canvasLimit, compareCanvasTargets, decodeCanvasPatch, encodeCanvasPatch, expectCanvasRows,
+  isCanvasGuardEvidence,
   previousFields, readCanvasRow,
 } from './canvas-patch.ts';
-import type {CanvasPatch} from './canvas-patch.ts';
+import type {CanvasGuardEvidence, CanvasPatch} from './canvas-patch.ts';
 import {readProjectContentStamp, sameContentStamp} from './project-file/content-stamp.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {canonicalJson} from './project-versions/document.ts';
@@ -26,14 +27,16 @@ const isRevision = (value: unknown): value is number => typeof value === 'number
 const MAX_PATCH_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 65536;
 const CONFIRMATION_MS = 2 * 60_000;
+const connectionKeys = new WeakMap<ProjectStore['db'], {confirmation: Buffer; epoch: string}>();
 
 interface HistoryState {
   readonly position: number;
   readonly revision: number;
-  readonly evidence: Readonly<Record<string, number>>;
+  readonly evidence: Readonly<Record<string, CanvasGuardEvidence>>;
 }
 interface HistoryEntry {
   readonly id: string;
+  readonly position: number;
   readonly operation: 'archive' | 'restore' | 'move' | 'layout';
   readonly before: CanvasPatch;
   readonly after: CanvasPatch;
@@ -47,7 +50,13 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   readonly now?: () => string;
   readonly time?: () => number;
 } = {}) {
-  const {db, projectId} = store, key = randomBytes(32);
+  const {db, projectId} = store;
+  let keys = connectionKeys.get(db);
+  if (!keys) {
+    keys = {confirmation: randomBytes(32), epoch: randomBytes(16).toString('hex')};
+    connectionKeys.set(db, keys);
+  }
+  const {confirmation: key, epoch: initialEpoch} = keys;
   const dependency = (targets: readonly CanvasTarget[]) => inspectCanvasDependencies(store, targets);
   function patchEvidence(patch: Pick<CanvasPatch, 'guards' | 'rows'>) {
     const impact = dependency(patch.guards);
@@ -59,8 +68,8 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     let evidence: unknown;
     try { evidence = JSON.parse(String(row.evidence)); } catch { return canvasError('invalid-history'); }
     if (!isRevision(row.position) || !isRevision(row.revision) || !evidence || typeof evidence !== 'object' || Array.isArray(evidence) ||
-      Object.entries(evidence).some(([target, revision]) => !decodeKey(target) || !isRevision(revision))) return canvasError('invalid-history');
-    return {position: row.position, revision: row.revision, evidence: evidence as Record<string, number>};
+      Object.entries(evidence).some(([target, revision]) => !decodeKey(target) || !isCanvasGuardEvidence(revision))) return canvasError('invalid-history');
+    return {position: row.position, revision: row.revision, evidence: evidence as Record<string, CanvasGuardEvidence>};
   };
   const entryAt = (position: number): HistoryEntry | null => {
     const row = db.prepare('SELECT id,operation,beforePatch,afterPatch FROM main.canvas_history_entries WHERE projectId=? AND position=?').get(projectId, position);
@@ -71,32 +80,34 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     const before = decodeCanvasPatch(row.beforePatch), after = decodeCanvasPatch(row.afterPatch);
     const guards = before.guards.map(canvasKey);
     if (JSON.stringify(guards) !== JSON.stringify(after.guards.map(canvasKey))) return canvasError('invalid-history');
-    return {id: row.id, operation: row.operation, before, after};
+    return {id: row.id, position, operation: row.operation, before, after};
   };
   function decodeKey(target: string): CanvasTarget | null {
     const [kind, id, extra] = target.split(':');
     return extra === undefined && isProjectId(id) && (kind === 'shot' || kind === 'node' || kind === 'edge') ? {kind, id} : null;
   }
-  function evidenceCurrent(current: HistoryState, entries: readonly (HistoryEntry | null)[]): boolean {
-    if (entries.some(entry => entry?.before.guards.some(target => !Object.hasOwn(current.evidence, canvasKey(target))))) return false;
-    for (const [target, revision] of Object.entries(current.evidence)) {
-      const {kind, id} = decodeKey(target)!;
-      try { if (readMioTargetRevision(db, projectId, kind, id) !== revision) return false; }
-      catch (error) { if (error instanceof AppError) return false; throw error; }
-    }
-    return true;
+  function evidenceCurrent(current: HistoryState, entry: HistoryEntry): boolean {
+    return entry.before.guards.every(target => {
+      const prior = current.evidence[canvasKey(target)];
+      const revision = typeof prior === 'number' ? prior : prior?.revision;
+      if (revision === undefined || typeof prior === 'object' && entry.position < prior.since) return false;
+      return readMioTargetRevision(db, projectId, target.kind, target.id) === revision;
+    });
   }
-  function history(current = state()): CanvasHistoryView {
+  function history(current = state()) {
     const undo = entryAt(current.position), redo = entryAt(current.position + 1);
-    let conflict = !evidenceCurrent(current, [undo, redo]);
     const action = (entry: HistoryEntry | null) => entry && ({id: entry.id, operation: entry.operation, count: entry.after.rows.length});
-    if (!conflict) conflict = [undo?.after, redo?.before].some(patch => {
-      if (!patch) return false;
+    function conflicted(entry: HistoryEntry | null, backward: boolean): boolean {
+      if (!entry) return false;
+      if (!evidenceCurrent(current, entry)) return true;
+      const patch = backward ? entry.after : entry.before;
       if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return true;
       const impact = patchEvidence(patch);
       return Boolean(impact.blocked.length || impact.digest !== patch.dependencyDigest);
-    });
-    return {revision: current.revision, undo: action(undo), redo: action(redo), conflict};
+    }
+    const undoConflict = conflicted(undo, true), redoConflict = conflicted(redo, false);
+    return {view: {revision: current.revision, undo: action(undo), redo: action(redo), conflict: undoConflict || redoConflict},
+      undoConflict, redoConflict};
   }
   function archivePlan(input: CanvasArchivePreviewInput, at: string) {
     const {operation, targets} = input;
@@ -143,14 +154,31 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     const last = items.at(-1);
     return {projectId, items, next: rows.length > limit && last ? {id:last.id, kind:last.kind} : null};
   }
-  function saveState(position: number, revision: number): HistoryState {
-    const targets = new Map<string, CanvasTarget>();
-    const rows = db.prepare('SELECT beforePatch FROM main.canvas_history_entries WHERE projectId=? ORDER BY position LIMIT ?')
+  function saveState(current: HistoryState, position: number, patch: CanvasPatch, before: ReadonlyMap<string, number>,
+    newEntry: boolean): HistoryState {
+    const firstPosition = new Map<string, number>();
+    const rows = db.prepare('SELECT position,beforePatch FROM main.canvas_history_entries WHERE projectId=? ORDER BY position LIMIT ?')
       .all(projectId, CANVAS_EDIT_LIMITS.historyEntries + 1);
     if (rows.length > CANVAS_EDIT_LIMITS.historyEntries) return canvasLimit();
-    for (const row of rows) for (const target of decodeCanvasPatch(row.beforePatch).guards) targets.set(canvasKey(target), target);
-    const evidence = Object.fromEntries([...targets].map(([key, {kind,id}]) => [key,
-      readMioTargetRevision(db, projectId, kind, id) ?? canvasError('invalid-revision', {id})]));
+    for (const row of rows) {
+      if (!isRevision(row.position)) return canvasError('invalid-history');
+      for (const target of decodeCanvasPatch(row.beforePatch).guards) {
+        const key = canvasKey(target);
+        if (!firstPosition.has(key)) firstPosition.set(key, row.position);
+      }
+    }
+    const evidence = Object.fromEntries(Object.entries(current.evidence).filter(([key]) => firstPosition.has(key)));
+    for (const target of patch.guards) {
+      const key = canvasKey(target), previous = evidence[key];
+      const prior = typeof previous === 'number' ? previous : previous?.revision;
+      const revision = readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target);
+      if (newEntry && (prior !== before.get(key) || typeof previous === 'object' && position < previous.since)) {
+        // A new action may use a fresh external revision without blessing
+        // older actions that depended on the same object before that write.
+        evidence[key] = (firstPosition.get(key) ?? position) < position ? {revision, since: position} : revision;
+      } else evidence[key] = typeof previous === 'object' ? {...previous, revision} : revision;
+    }
+    const revision = current.revision + 1;
     const encoded = JSON.stringify(evidence);
     if (Buffer.byteLength(encoded) > MAX_PATCH_BYTES) return canvasLimit();
     db.prepare(`INSERT INTO main.canvas_history_state(projectId,position,revision,evidence) VALUES(?,?,?,?)
@@ -158,6 +186,8 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       .run(projectId, position, revision, encoded);
     return {position, revision, evidence};
   }
+  const readGuardRevisions = (patch: CanvasPatch): Map<string, number> => new Map(patch.guards.map(target =>
+    [canvasKey(target), readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target)]));
   function prune(): void {
     const rows = db.prepare(`SELECT position,length(CAST(beforePatch AS BLOB))+length(CAST(afterPatch AS BLOB)) AS bytes
       FROM main.canvas_history_entries WHERE projectId=? ORDER BY position DESC`).all(projectId);
@@ -171,7 +201,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     }
   }
   const result = (actionId: string | null, affected: number, current: HistoryState): CanvasEditResult =>
-    ({projectId, actionId, affected, history: history(current), ...readProjectContentStamp(db)});
+    ({projectId, actionId, affected, history: history(current).view, ...readProjectContentStamp(db)});
   function edit(input: CanvasEditInput, current: HistoryState, at: string): CanvasEditResult {
     let before: CanvasPatch, after: CanvasPatch;
     if (input.operation === 'archive' || input.operation === 'restore') {
@@ -197,10 +227,11 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       before = {...fields, rows: changed.map(({row, old}) => ({kind: row.kind, id: row.id, fields: old}))};
       after = {...fields, rows: changed.map(({row}) => row)};
     }
-    const reset = history(current).conflict, position = reset ? 1 : current.position + 1;
+    const position = current.position + 1;
     if (!isRevision(position) || current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
     const first = encodeCanvasPatch(before);
     if (Buffer.byteLength(first) + Buffer.byteLength(encodeCanvasPatch(after)) > MAX_PATCH_BYTES) return canvasLimit();
+    const revisions = readGuardRevisions(before);
     applyCanvasPatch(store, before, after, at);
     const second = encodeCanvasPatch({...after, dependencyDigest: patchEvidence(after).digest});
     db.prepare('DELETE FROM main.canvas_history_entries WHERE projectId=? AND position>=?').run(projectId, position);
@@ -208,12 +239,12 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     db.prepare('INSERT INTO main.canvas_history_entries(id,projectId,position,operation,beforePatch,afterPatch,createdAt) VALUES(?,?,?,?,?,?,?)')
       .run(id, projectId, position, input.operation, first, second, at);
     prune();
-    return result(id, after.rows.length, saveState(position, current.revision + 1));
+    return result(id, after.rows.length, saveState(current, position, after, revisions, true));
   }
   function travel(undo: boolean, current: HistoryState, at: string): CanvasEditResult {
     const target = entryAt(current.position + (undo ? 0 : 1));
     if (!target) return result(null, 0, current);
-    if (!evidenceCurrent(current, [target])) return canvasError('history-revision');
+    if (!evidenceCurrent(current, target)) return canvasError('history-revision');
     const before = undo ? target.after : target.before, after = undo ? target.before : target.after;
     const effect = patchEvidence(before);
     assertUnblocked(effect);
@@ -221,7 +252,38 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     if (current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
     assertCanvasEdgeEffects(store, after);
     applyCanvasPatch(store, before, after, at);
-    return result(target.id, after.rows.length, saveState(current.position + (undo ? -1 : 1), current.revision + 1));
+    return result(target.id, after.rows.length, saveState(current, current.position + (undo ? -1 : 1), after, new Map(), false));
+  }
+  function receiptWindow() {
+    const row = db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window WHERE singleton=1').get();
+    if (!row) return {epoch: initialEpoch, floor: 0};
+    if (typeof row.epoch !== 'string' || !/^[0-9a-f]{32}$/u.test(row.epoch) || !isRevision(row.floor) || row.floor > 9_999_999_999_999) {
+      return canvasError('invalid-receipt-window');
+    }
+    return {epoch: row.epoch, floor: row.floor};
+  }
+  const cutoff = (floor: number, clock: number): number => Math.max(floor, clock - CANVAS_EDIT_LIMITS.receiptLifetimeMs);
+  const unknownReceipt = (requestId: string): never => {
+    throw new AppError('CANVAS_REQUEST_OUTCOME_UNKNOWN', '画布请求已过期或本机记录已更换。请重新读取画布，核对操作结果。', 409,
+      {requestId, submissionMayHaveSucceeded: true, recovery: 'refresh_canvas'});
+  };
+  function prepareReceiptSpace(epoch: string, floor: number) {
+    const expired = new Date(floor).toISOString();
+    db.prepare(`INSERT INTO main.canvas_receipt_window(singleton,epoch,floor) VALUES(1,?,?)
+      ON CONFLICT(singleton) DO UPDATE SET floor=excluded.floor WHERE floor<excluded.floor`).run(epoch, floor);
+    db.prepare('DELETE FROM main.canvas_requests WHERE issuedAt<=?').run(floor);
+    db.prepare('DELETE FROM main.canvas_requests WHERE issuedAt IS NULL AND createdAt<=?').run(expired);
+    const usage = db.prepare(`SELECT count(*) AS rows,coalesce(sum(length(CAST(response AS BLOB))),0) AS bytes,
+      min(issuedAt) AS earliest,min(CASE WHEN issuedAt IS NULL THEN createdAt END) AS earliestLegacy
+      FROM main.canvas_requests WHERE projectId=?`).get(projectId)!;
+    return {rows: Number(usage.rows), bytes: Number(usage.bytes), retryAfter: Math.min(
+      typeof usage.earliest === 'number' ? usage.earliest : Infinity,
+      typeof usage.earliestLegacy === 'string' ? Date.parse(usage.earliestLegacy) : Infinity,
+    ) + CANVAS_EDIT_LIMITS.receiptLifetimeMs};
+  }
+  function receiptCapacity(retryAfter: number): never {
+    throw new AppError('CANVAS_RECEIPT_WINDOW_FULL', '画布请求回执暂时已满，请在旧回执过期后重试。', 409,
+      {retryAfter: new Date(retryAfter).toISOString()});
   }
   function mutation(operation: 'canvas.apply' | 'canvas.history.undo' | 'canvas.history.redo',
     input: CanvasEditInput | CanvasHistoryInput, authorize: () => void): CanvasEditResult {
@@ -231,8 +293,12 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     const inputDigest = digest({operation, input: normalized});
     return store.tx(() => {
       authorize();
-      const old = db.prepare('SELECT projectId,operation,inputDigest,response FROM main.canvas_requests WHERE requestId=?').get(input.requestId);
+      const clock = time(), {epoch, floor} = receiptWindow(), expiresBefore = cutoff(floor, clock);
+      const old = db.prepare('SELECT projectId,operation,inputDigest,response,createdAt,issuedAt FROM main.canvas_requests WHERE requestId=?').get(input.requestId);
       if (old) {
+        const issuedAt = old.issuedAt ?? Date.parse(String(old.createdAt));
+        if (!isRevision(issuedAt)) return canvasError('invalid-receipt');
+        if (issuedAt <= expiresBefore) return unknownReceipt(input.requestId);
         if (old.projectId !== projectId || old.operation !== mode || old.inputDigest !== inputDigest) {
           throw new AppError('REQUEST_ID_REUSED', '请求 ID 已用于不同的画布操作。', 409);
         }
@@ -242,17 +308,23 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
           return receipt;
         } catch { return canvasError('invalid-receipt'); }
       }
-      const usage = db.prepare('SELECT count(*) AS rows,coalesce(sum(length(CAST(response AS BLOB))),0) AS bytes FROM main.canvas_requests WHERE projectId=?').get(projectId)!;
-      if (Number(usage.rows) >= CANVAS_EDIT_LIMITS.receiptRows) return canvasLimit();
+      const request = readCanvasRequestId(input.requestId);
+      if (!request || request.epoch !== epoch || request.issuedAt <= expiresBefore) return unknownReceipt(input.requestId);
+      if (request.issuedAt > clock + CANVAS_EDIT_LIMITS.requestClockSkewMs) {
+        throw new AppError('VALIDATION_ERROR', '画布请求时间超出允许范围。', 400);
+      }
       const current = state();
       if (input.historyRevision !== current.revision) return canvasError('history-revision');
+      const usage = prepareReceiptSpace(epoch, expiresBefore);
+      if (usage.rows >= CANVAS_EDIT_LIMITS.receiptRows) return receiptCapacity(usage.retryAfter);
       const at = now();
       const saved = operation === 'canvas.apply' ? edit(input as CanvasEditInput, current, at)
         : travel(operation === 'canvas.history.undo', current, at);
       const response = JSON.stringify(canvasEditingResponses[operation].parse(saved)), bytes = Buffer.byteLength(response);
-      if (bytes > MAX_RECEIPT_BYTES || Number(usage.bytes) + bytes > CANVAS_EDIT_LIMITS.receiptBytes) return canvasLimit();
-      db.prepare('INSERT INTO main.canvas_requests(requestId,projectId,operation,inputDigest,response,createdAt) VALUES(?,?,?,?,?,?)')
-        .run(input.requestId, projectId, mode, inputDigest, response, at);
+      if (bytes > MAX_RECEIPT_BYTES) return canvasLimit();
+      if (usage.bytes + bytes > CANVAS_EDIT_LIMITS.receiptBytes) return receiptCapacity(usage.retryAfter);
+      db.prepare('INSERT INTO main.canvas_requests(requestId,projectId,operation,inputDigest,response,createdAt,issuedAt) VALUES(?,?,?,?,?,?,?)')
+        .run(input.requestId, projectId, mode, inputDigest, response, at, request.issuedAt);
       authorize();
       return saved;
     });
@@ -264,7 +336,10 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       if (!parsed.success || parsed.data.projectId !== projectId) throw new AppError('VALIDATION_ERROR', '画布操作参数无效。', 400);
       if (operation === 'canvas.archive.preview') return canvasEditingResponses[operation].parse(preview(parsed.data as CanvasArchivePreviewInput));
       if (operation === 'canvas.archive.list') return canvasEditingResponses[operation].parse(archived(parsed.data as CanvasArchiveListInput));
-      if (operation === 'canvas.history.get') return history();
+      if (operation === 'canvas.history.get') {
+        const {view, undoConflict, redoConflict} = history(), {epoch, floor} = receiptWindow();
+        return {...view, undoConflict, redoConflict, requestEpoch: epoch, requestAfter: cutoff(floor, time())};
+      }
       return mutation(operation, parsed.data as CanvasEditInput | CanvasHistoryInput, authorize);
     },
   };

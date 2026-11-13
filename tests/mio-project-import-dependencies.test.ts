@@ -8,7 +8,7 @@ import {gzipSync} from 'node:zlib';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createCanvasEditing} from '../packages/business/src/canvas-editing.ts';
 import {CANVAS_ARCHIVE_ORDER_FIELD} from '../packages/business/src/canvas-patch.ts';
-import {canvasEditingResponses} from '../packages/contracts/src/canvas-editing.ts';
+import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
 import {readMioProjectImportDependencies, readMioProjectImportDependenciesInside,
   MIO_PROJECT_IMPORT_DEPENDENCY_LIMITS as LIMITS} from '../packages/business/src/agent/mio-project-import-dependencies.ts';
@@ -645,10 +645,12 @@ test('G1a valid v6 JSON does not bypass the existing canonicalIntent cell budget
 
 test('candidate canvas patches are asset-free but archived consumers remain in the import dependency proof', t => {
   const f = fixture(t, true, undefined, true), {store, projectId} = f, canvas = createCanvasEditing(store);
+  const {requestEpoch, requestAfter} = canvasEditingResponses['canvas.history.get'].parse(canvas.call('canvas.history.get', {projectId}));
+  const request = () => createCanvasRequestId(requestEpoch, randomUUID(), Math.max(Date.now(), requestAfter + 1));
   const node = {id: randomUUID(), projectId, type: 'text', revision: 1, position: {x: 0, y: 0}, createdAt: now, updatedAt: now};
   store.put('nodes', node);
   const target = (id: string) => ({kind: 'node', id, revision: readMioTargetRevision(store.db, projectId, 'node', id)});
-  const moved = canvasEditingResponses['canvas.apply'].parse(canvas.call('canvas.apply', {projectId, requestId: randomUUID(), operation: 'move', historyRevision: 0,
+  const moved = canvasEditingResponses['canvas.apply'].parse(canvas.call('canvas.apply', {projectId, requestId: request(), operation: 'move', historyRevision: 0,
     moves: [{...target(node.id), position: {x: 50, y: 60}}]}));
   assert.deepEqual(f.read(), {status: 'clear'});
   const beforePatch = store.db.prepare('SELECT beforePatch FROM main.canvas_history_entries WHERE id=?').get(moved.actionId)!.beforePatch!;
@@ -657,17 +659,45 @@ test('candidate canvas patches are asset-free but archived consumers remain in t
   store.db.prepare('UPDATE main.canvas_history_entries SET beforePatch=? WHERE id=?').run(beforePatch, moved.actionId);
   const media = {...node, id: randomUUID(), type: 'image', assetId: f.assetId};
   store.put('nodes', media);
-  canvas.call('canvas.apply', {projectId, requestId: randomUUID(), operation: 'archive', historyRevision: moved.history.revision, targets: [target(media.id)]});
+  canvas.call('canvas.apply', {projectId, requestId: request(), operation: 'archive', historyRevision: moved.history.revision, targets: [target(media.id)]});
   assert.equal(store.db.prepare('SELECT archiveReason FROM project.nodes WHERE id=?').get(media.id)?.archiveReason, 'user-delete');
   assert.deepEqual(f.read(), {status: 'referenced', source: 'project.nodes.data'});
 });
 
+test('strict canvas receipts do not consume the Mio import proof traversal budget', t => {
+  const f = fixture(t, true, undefined, true);
+  const response = canvasEditingResponses['canvas.apply'].parse({projectId: f.projectId, actionId: null, affected: 0,
+    history: {revision: 0, undo: null, redo: null, conflict: false}, contentSequence: 0, contentToken: '0'.repeat(32)});
+  const count = LIMITS.rows + 1;
+  const raw = JSON.stringify(response).padEnd(Math.floor(LIMITS.totalBytes / count) + 1, ' ');
+  const {db} = f.store;
+  const insert = db.prepare("INSERT INTO main.canvas_requests(requestId,projectId,operation,inputDigest,response,createdAt) VALUES(?,?,'move',?,?,?)");
+  f.store.tx(() => {
+    for (let index = 0; index < count; index++) insert.run(`receipt-${index}`, f.projectId, hash, raw, now);
+  });
+  assert.deepEqual(f.read(), {status: 'clear'});
+  insert.run('unknown-shape', f.projectId, hash, JSON.stringify({...response, assetId: f.assetId}), now);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'}, 'an unrecognized receipt must still fail closed');
+});
+
+test('the canvas receipt window is optional, but a malformed stored window refuses absence proof', t => {
+  const f = fixture(t, true, undefined, true);
+  const {db} = f.store;
+  assert.deepEqual(f.read(), {status: 'clear'});
+  db.exec('PRAGMA ignore_check_constraints=ON');
+  try {db.prepare('INSERT OR REPLACE INTO main.canvas_receipt_window(singleton,epoch,floor) VALUES(1,?,0)').run('malformed');}
+  finally {db.exec('PRAGMA ignore_check_constraints=OFF');}
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'});
+});
+
 test('candidate import proof accepts private anchors only on valid archived shot content', t => {
   const f = fixture(t, false, undefined, true), {store, projectId} = f, canvas = createCanvasEditing(store);
+  const {requestEpoch, requestAfter} = canvasEditingResponses['canvas.history.get'].parse(canvas.call('canvas.history.get', {projectId}));
   const first = shot(f), second = {...shot(f), orderIndex: 1};
   store.put('shots', first);
   store.put('shots', second);
-  canvas.call('canvas.apply', {projectId, requestId: randomUUID(), operation: 'archive', historyRevision: 0,
+  const requestId = createCanvasRequestId(requestEpoch, randomUUID(), Math.max(Date.now(), requestAfter + 1));
+  canvas.call('canvas.apply', {projectId, requestId, operation: 'archive', historyRevision: 0,
     targets: [{kind: 'shot', id: first.id, revision: readMioTargetRevision(store.db, projectId, 'shot', first.id)}]});
   const saved = store.get('shots', first.id) as Record<string, unknown>;
   assert.deepEqual(saved[CANVAS_ARCHIVE_ORDER_FIELD], {previous: null, next: second.id});

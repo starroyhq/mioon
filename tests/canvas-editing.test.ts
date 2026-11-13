@@ -16,7 +16,7 @@ import {foreignKeyCheck} from '../packages/business/src/project-file/cross-file/
 import {createProjectStore, openProjectStore, readProjectContentStamp} from '../packages/business/src/project-file/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {layoutCanvas} from '../packages/contracts/src/canvas-tidy-layout.ts';
-import {canvasEditingResponses} from '../packages/contracts/src/canvas-editing.ts';
+import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import {CANVAS_EDIT_LIMITS} from '../packages/contracts/src/canvas-editing.ts';
 import type {CanvasEditBase, CanvasEditInput, CanvasEditingOperation, CanvasEditingResponse, CanvasTarget} from '../packages/contracts/src/canvas-editing.ts';
 
@@ -32,17 +32,21 @@ function fixture(t: TestContext, candidate = true) {
   let store = createProjectStore(openOptions);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const {projectId} = store;
-  let clock = Date.parse(date), editing = createCanvasEditing(store, {now: () => date, time: () => clock});
+  let clock = Date.parse(date), editing = createCanvasEditing(store, {now: () => new Date(clock).toISOString(), time: () => clock});
   const call = <T extends CanvasEditingOperation>(operation: T, input: object = {}): CanvasEditingResponse<T> =>
     canvasEditingResponses[operation].parse(editing.call(operation, {projectId, ...input})) as CanvasEditingResponse<T>;
   const reopen = () => {
     store.close();
     store = openProjectStore(openOptions);
-    editing = createCanvasEditing(store, {now: () => date, time: () => clock});
+    editing = createCanvasEditing(store, {now: () => new Date(clock).toISOString(), time: () => clock});
   };
   const expectTarget = (target: CanvasTarget) => ({...target,
     revision: readMioTargetRevision(store.db, projectId, target.kind, target.id)!});
   const id = () => randomUUID();
+  const requestId = () => {
+    const {requestEpoch, requestAfter} = call('canvas.history.get');
+    return createCanvasRequestId(requestEpoch, id(), Math.max(clock, requestAfter + 1));
+  };
   const node = (type = 'text', options: object = {}) => {
     const target = {kind: 'node' as const, id: id()};
     store.put('nodes', {id: target.id, projectId, type, label: 'Card', text: '', revision: 1, position: {x: 0, y: 0}, ...options});
@@ -64,16 +68,16 @@ function fixture(t: TestContext, candidate = true) {
     const selection = targets.map(expectTarget);
     const preview = call('canvas.archive.preview', {operation, targets: selection});
     assert.deepEqual(preview.blocked, []);
-    return apply({operation, targets: selection, historyRevision: preview.historyRevision, requestId: id(), confirmation: preview.confirmation ?? undefined});
+    return apply({operation, targets: selection, historyRevision: preview.historyRevision, requestId: requestId(), confirmation: preview.confirmation ?? undefined});
   };
-  const undo = () => call('canvas.history.undo', {historyRevision: call('canvas.history.get').revision, requestId: id()});
-  const redo = () => call('canvas.history.redo', {historyRevision: call('canvas.history.get').revision, requestId: id()});
+  const undo = () => call('canvas.history.undo', {historyRevision: call('canvas.history.get').revision, requestId: requestId()});
+  const redo = () => call('canvas.history.redo', {historyRevision: call('canvas.history.get').revision, requestId: requestId()});
   const archived = (item: CanvasTarget) => Boolean(store.db.prepare(`SELECT archivedAt FROM project.${{node:'nodes',shot:'shots',edge:'edges'}[item.kind]} WHERE id=?`)
     .get(item.id)?.archivedAt);
   const order = () => store.db.prepare("SELECT id FROM project.shots WHERE archivedAt IS NULL ORDER BY json_extract(data,'$.orderIndex'),id").all().map(row => row.id);
   store.put('projects', {id: projectId, name: 'Test canvas', revision: 1});
-  return {root, projectFile, location, projectId, get store(){return store;}, call, reopen, expectTarget, id, node, shot, edge, apply, edit, undo, redo, archived, order,
-    advanceTime: () => {clock += 200_000;}};
+  return {root, projectFile, location, projectId, get store(){return store;}, call, reopen, expectTarget, id, requestId, node, shot, edge, apply, edit, undo, redo, archived, order,
+    advanceTime: (ms = 200_000) => {clock += ms;}};
 }
 
 test('archive of a first-frame source preserves the manual asset and hides both types of edges, with exact undo', async t => {
@@ -137,7 +141,7 @@ test('restoring a deletion batch requires every remaining member and keeps an ar
   assert.throws(() => f.call('canvas.archive.preview', {operation: 'restore', batchId, targets: selection.slice(1)}),
     {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'archive-batch'}});
   const preview = f.call('canvas.archive.preview', {operation: 'restore', batchId, targets: selection});
-  f.call('canvas.apply', {operation: 'restore', batchId, targets: selection, requestId: f.id(), historyRevision: preview.historyRevision});
+  f.call('canvas.apply', {operation: 'restore', batchId, targets: selection, requestId: f.requestId(), historyRevision: preview.historyRevision});
   assert.equal(f.archived(shot), false);
   assert.equal(f.archived(card), false);
   assert.equal(f.archived(reference), false);
@@ -168,7 +172,7 @@ test('moves share one durable cursor, layout is atomic, and exact replay survive
   const f = fixture(t), card = f.node(), other = f.node();
   const position = (item: CanvasTarget) => (f.store.get('nodes',item.id) as {position: {x:number;y:number}}).position;
   const move = (x: number) => f.call('canvas.apply', {operation: 'move', historyRevision: f.call('canvas.history.get').revision,
-    requestId: f.id(), moves: [{...f.expectTarget(card), position: {x,y:0}}]});
+    requestId: f.requestId(), moves: [{...f.expectTarget(card), position: {x,y:0}}]});
   move(12);
   move(24);
   f.undo();
@@ -180,7 +184,7 @@ test('moves share one durable cursor, layout is atomic, and exact replay survive
   assert.equal(position(card).x, 24);
   const layout = layoutCanvas({shots: [], nodes: [card,other].map(item => ({id: item.id, type: 'text', position: position(item), width: 210, height: 100})), edges: []});
   assert.equal(layout.status, 'moved');
-  const input = {operation: 'layout', requestId: f.id(), historyRevision: f.call('canvas.history.get').revision,
+  const input = {operation: 'layout', requestId: f.requestId(), historyRevision: f.call('canvas.history.get').revision,
     ...readProjectContentStamp(f.store.db), moves: layout.moves.map(move => ({...move, revision: f.expectTarget(move).revision}))};
   const response = f.call('canvas.apply', input);
   assert.equal(response.history.undo?.operation, 'layout');
@@ -192,11 +196,11 @@ test('moves share one durable cursor, layout is atomic, and exact replay survive
   assert.deepEqual(position(other), {x:0,y:0});
 });
 
-test('stale or duplicate targets and external writes leave the cursor unchanged and a new action starts a new segment', t => {
+test('stale or duplicate targets leave the cursor unchanged and unrelated history is preserved', t => {
   const f = fixture(t), card = f.node(), second = f.node(), target = f.expectTarget(card);
-  f.call('canvas.apply', {operation:'move', requestId:f.id(), historyRevision:0, moves:[{...target,position:{x:1,y:2}}]});
+  f.call('canvas.apply', {operation:'move', requestId:f.requestId(), historyRevision:0, moves:[{...target,position:{x:1,y:2}}]});
   const latest = f.call('canvas.history.get');
-  assert.throws(() => f.call('canvas.apply', {operation:'move',requestId:f.id(),historyRevision:latest.revision,
+  assert.throws(() => f.call('canvas.apply', {operation:'move',requestId:f.requestId(),historyRevision:latest.revision,
     moves:[{...target,position:{x:3,y:4}}]}), {code:'CANVAS_EDIT_CONFLICT'});
   assert.throws(() => f.edit('archive', [second,second]), {code:'CANVAS_EDIT_CONFLICT'});
   f.store.put('nodes', {...f.store.get('nodes',card.id) as object, id:card.id, projectId:f.projectId, revision:3, label:'External change'});
@@ -204,14 +208,39 @@ test('stale or duplicate targets and external writes leave the cursor unchanged 
   assert.throws(f.undo, {code:'CANVAS_EDIT_CONFLICT'});
   assert.equal(f.call('canvas.history.get').revision, latest.revision);
   f.edit('archive',[second]);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM main.canvas_history_entries').get()?.n, 1);
-  assert.equal(f.call('canvas.history.get').redo, null);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM main.canvas_history_entries').get()?.n, 2);
+  assert.equal(f.call('canvas.history.get').undoConflict, false);
+  f.undo();
+  assert.equal(f.call('canvas.history.get').undoConflict, true);
+  assert.equal(f.call('canvas.history.get').redoConflict, false);
+  f.redo();
+  assert.equal(f.archived(second), true);
+});
+
+test('undo and redo check their own guards and never rebase an older externally changed action', t => {
+  const f = fixture(t), card = f.node(), other = f.node();
+  const move = (target: CanvasTarget, x: number) => f.call('canvas.apply', {operation: 'move',
+    requestId: f.requestId(), historyRevision: f.call('canvas.history.get').revision,
+    moves: [{...f.expectTarget(target), position: {x,y:0}}]});
+  move(card, 12);
+  move(other, 24);
+  f.store.put('nodes', {...f.store.get('nodes', card.id) as object, id: card.id, projectId: f.projectId, label: 'Edited externally'});
+  assert.equal(f.call('canvas.history.get').undoConflict, false);
+  f.undo();
+  const conflict = f.call('canvas.history.get');
+  assert.deepEqual([conflict.undoConflict, conflict.redoConflict], [true,false]);
+  f.redo();
+  move(card, 36);
+  f.undo();
+  f.undo();
+  assert.throws(f.undo, {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'history-revision'}});
+  assert.equal((f.store.get('nodes', card.id) as {label:string}).label, 'Edited externally');
 });
 
 test('a full-size layout fits one history entry and undoes in one step', t => {
   const f = fixture(t);
   const cards = f.store.tx(() => Array.from({length: CANVAS_EDIT_LIMITS.targets}, () => f.node()));
-  const input = {operation: 'layout', requestId: f.id(), historyRevision: 0, ...readProjectContentStamp(f.store.db),
+  const input = {operation: 'layout', requestId: f.requestId(), historyRevision: 0, ...readProjectContentStamp(f.store.db),
     moves: cards.map((card, i) => ({...f.expectTarget(card), position: {x: i + 0.125, y: i * 2 + 0.75}}))};
   const result = f.call('canvas.apply', input);
   assert.equal(result.affected, cards.length);
@@ -230,7 +259,7 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
   const first = preview();
   assert.deepEqual([first.versions,first.clips,first.historyRevision], [1,0,0]);
   assert.ok(first.confirmation);
-  const initial = {operation:'archive' as const, targets, requestId:f.id(), historyRevision:0, confirmation:first.confirmation};
+  const initial = {operation:'archive' as const, targets, requestId:f.requestId(), historyRevision:0, confirmation:first.confirmation};
   const timeline = {id:f.id(), projectId:f.projectId, fps:30, width:1920, height:1080, revision:1, durationFrames:30, createdAt:date, updatedAt:date,
     tracks:[{id:trackId,name:'Hidden track',kind:'video',orderIndex:0,hidden:true,muted:false}],
     clips:[{id:f.id(),trackId,assetId,name:'Retained',startFrame:0,durationFrames:30,sourceInFrame:0,gain:1,rect:{x:0,y:0,width:1920,height:1080}}]};
@@ -242,7 +271,8 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
   const verified = preview();
   assert.equal(verified.clips, 1);
   const input = {...initial, confirmation:verified.confirmation!};
-  const result = f.apply(input);
+  const peer = createCanvasEditing(f.store, {now: () => date, time: () => Date.parse(date)});
+  const result = canvasEditingResponses['canvas.apply'].parse(peer.call('canvas.apply', {projectId: f.projectId, ...input}));
   f.advanceTime();
   f.reopen();
   assert.deepEqual(f.apply({...input, targets:[...targets].reverse()}), result);
@@ -252,12 +282,57 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
   assert.deepEqual(f.store.get('timelines', timeline.id), timeline);
 });
 
+test('expired or lost-history request keys cannot execute again, including after clock rollback', t => {
+  const f = fixture(t), card = f.node();
+  const moves = [{...f.expectTarget(card), position: {x: 0, y: 0}}];
+  const first = {operation: 'move', requestId: f.requestId(), historyRevision: 0, moves};
+  assert.equal(f.call('canvas.apply', first).affected, 0);
+  f.advanceTime(CANVAS_EDIT_LIMITS.receiptLifetimeMs);
+  assert.throws(() => f.call('canvas.apply', first), {code: 'CANVAS_REQUEST_OUTCOME_UNKNOWN'});
+  f.call('canvas.apply', {...first, requestId: f.requestId()});
+  assert.equal(f.store.db.prepare('SELECT requestId FROM main.canvas_requests WHERE requestId=?').get(first.requestId), undefined);
+  f.advanceTime(-CANVAS_EDIT_LIMITS.receiptLifetimeMs);
+  f.reopen();
+  assert.throws(() => f.call('canvas.apply', first), {code: 'CANVAS_REQUEST_OUTCOME_UNKNOWN'});
+  const oldEpoch = f.call('canvas.history.get').requestEpoch;
+  f.store.close();
+  rmSync(path.join(f.location.localDir, 'history.db'));
+  f.reopen();
+  assert.notEqual(f.call('canvas.history.get').requestEpoch, oldEpoch);
+  assert.throws(() => f.call('canvas.apply', first), {code: 'CANVAS_REQUEST_OUTCOME_UNKNOWN'});
+  assert.equal(f.call('canvas.apply', {...first, requestId: f.requestId(), moves: [{...f.expectTarget(card), position: {x: 0, y: 0}}]}).affected, 0);
+});
+
+test('a full receipt window reports retry time and makes space when old keys expire', t => {
+  const f = fixture(t), card = f.node();
+  const input = {operation: 'move', requestId: f.requestId(), historyRevision: 0,
+    moves: [{...f.expectTarget(card), position: {x: 0, y: 0}}]};
+  const response = f.call('canvas.apply', input);
+  const db = f.store.db;
+  const add = db.prepare(`INSERT INTO main.canvas_requests(requestId,projectId,operation,inputDigest,response,createdAt,issuedAt)
+    VALUES(?,?,'move',?,?,?,?)`);
+  const pad = 'a'.repeat(65_000);
+  const receipt = JSON.stringify({...response, pad});
+  f.store.tx(() => {
+    for (let index = 0; index <= CANVAS_EDIT_LIMITS.receiptBytes / Buffer.byteLength(receipt); index++) {
+      add.run(f.id(), f.projectId, 'a'.repeat(64), receipt, date, Date.parse(date));
+    }
+  });
+  f.advanceTime(1);
+  const waiting = {...input, requestId: f.requestId()};
+  const retryAt = Date.parse(date) + CANVAS_EDIT_LIMITS.receiptLifetimeMs;
+  assert.throws(() => f.call('canvas.apply', waiting), {code: 'CANVAS_RECEIPT_WINDOW_FULL', details: {retryAfter: new Date(retryAt).toISOString()}});
+  f.advanceTime(CANVAS_EDIT_LIMITS.receiptLifetimeMs - 1);
+  assert.equal(f.call('canvas.apply', waiting).affected, 0);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM main.canvas_requests').get()?.n, 1);
+});
+
 test('history pruning keeps the original receipt and archived content remains recoverable', t => {
   const f = fixture(t), first = f.shot(0), shot = f.shot(1), last = f.shot(2), card = f.node();
-  const input = {operation:'archive' as const, requestId:f.id(), historyRevision:0, targets:[f.expectTarget(shot)]};
+  const input = {operation:'archive' as const, requestId:f.requestId(), historyRevision:0, targets:[f.expectTarget(shot)]};
   const archive = f.apply(input);
   for (let index=1; index<=101; index++) {
-    f.call('canvas.apply', {operation:'move', requestId:f.id(), historyRevision:index,
+    f.call('canvas.apply', {operation:'move', requestId:f.requestId(), historyRevision:index,
       moves:[{...f.expectTarget(card),position:{x:index,y:0}}]});
   }
   assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM main.canvas_history_entries').get()?.n, 100);
@@ -276,7 +351,7 @@ test('invalid receipt keys are rejected before writing and missing cursor eviden
   const f = fixture(t), card = f.node();
   const input = {operation: 'move', historyRevision: 0, moves: [{...f.expectTarget(card), position: {x:1,y:0}}]};
   assert.throws(() => f.call('canvas.apply', {...input, requestId: 'receipt\u0000bad'}), {code: 'VALIDATION_ERROR'});
-  f.call('canvas.apply', {...input, requestId: f.id()});
+  f.call('canvas.apply', {...input, requestId: f.requestId()});
   f.store.db.prepare("UPDATE main.canvas_history_state SET evidence='{}' WHERE projectId=?").run(f.projectId);
   assert.equal(f.call('canvas.history.get').conflict, true);
   assert.throws(f.undo, {code: 'CANVAS_EDIT_CONFLICT'});
@@ -284,7 +359,7 @@ test('invalid receipt keys are rejected before writing and missing cursor eviden
 
 test('project client retries an unacknowledged canvas write only with the original request', async t => {
   const f = fixture(t), card = f.node();
-  const input = {projectId: f.projectId, operation: 'move', requestId: f.id(), historyRevision: 0,
+  const input = {projectId: f.projectId, operation: 'move', requestId: f.requestId(), historyRevision: 0,
     moves: [{...f.expectTarget(card), position: {x: 48, y: 24}}]};
   const requests: unknown[] = [];
   const client = createClient({env: {MIOON_BASE_URL: 'http://127.0.0.1:9999', MIOON_TOKEN: 'a'.repeat(64)}, fetchImpl: async (url, options) => {
@@ -316,9 +391,11 @@ test('default format exposes no canvas editing operations', t => {
 for (const boundary of ['before-commit','after-commit'] as const) {
   test(`SIGKILL ${boundary} keeps archive, cursor, and receipt together`, {skip: process.platform === 'win32'}, t => {
     const f = fixture(t), shot = f.shot(0);
-    const input = {projectId: f.projectId, operation:'archive', requestId: f.id(), historyRevision: 0, targets: [f.expectTarget(shot)]};
+    const input = {projectId: f.projectId, operation:'archive', requestId: f.requestId(), historyRevision: 0, targets: [f.expectTarget(shot)]};
+    const {requestEpoch} = f.call('canvas.history.get');
+    f.store.db.prepare('INSERT INTO main.canvas_receipt_window VALUES(1,?,0)').run(requestEpoch);
     f.store.close();
-    const killed = spawnSync(process.execPath, [worker, JSON.stringify({projectFile:f.projectFile, location:f.location,input,boundary})], {
+    const killed = spawnSync(process.execPath, [worker, JSON.stringify({projectFile:f.projectFile, location:f.location,input,boundary,clock:Date.parse(date)})], {
       stdio:'ignore', timeout:60000,
     });
     assert.equal(killed.error, undefined);

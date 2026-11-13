@@ -20,6 +20,8 @@ import {openServerTestStore,openStore} from '../packages/business/src/project-fi
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
+import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
+import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
 
 import {createServices} from '../packages/business/src/services.ts';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
@@ -296,6 +298,13 @@ test('format-4 thumbnail reads and writes bind the saved frame at one unchanged 
  await assert.rejects(call('previs.thumbnail.set',{...wide,framePresetId:'invalid'}),{code:'VALIDATION_ERROR'});
  assert.deepEqual(rows(),current,'stale, invalid and missing captures cannot overwrite the new frame');
  assert.deepEqual((await get(portrait)).items,[],'a late read for the old frame cannot label the new JPEG');
+ const history=canvasEditingResponses['canvas.history.get'].parse(await call('canvas.history.get',{projectId}));
+ await call('canvas.apply',{projectId,operation:'archive',historyRevision:history.revision,
+  requestId:createCanvasRequestId(history.requestEpoch,randomUUID()),
+  targets:[{kind:'node',id:node.id,revision:readMioTargetRevision(store.db,projectId,'node',node.id)}]});
+ await assert.rejects(get(landscape),{code:'CANVAS_TARGET_ARCHIVED'});
+ await assert.rejects(call('previs.thumbnail.set',wide),{code:'CANVAS_TARGET_ARCHIVED'});
+ assert.deepEqual(rows(),current,'archived nodes retain cache bytes without serving or changing them');
 });
 
 test('a project keeps at most 1000 thumbnails and evicts the oldest',async t=>{

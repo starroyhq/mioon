@@ -5,12 +5,29 @@ import {projectIdSchema} from './project-file.ts';
 export const CANVAS_EDIT_LIMITS = Object.freeze({
   targets: 4096, effects: 16384, archivedPage: 100, historyEntries: 100,
   historyBytes: 8 * 1024 * 1024, receiptRows: 65536, receiptBytes: 32 * 1024 * 1024,
+  receiptLifetimeMs: 7 * 24 * 60 * 60_000, requestClockSkewMs: 2 * 60_000,
 });
 
 const revision = z.number().int().safe().nonnegative();
 const id = projectIdSchema;
 const requestId = z.string().min(8).max(200).refine(value =>
   !value.includes('\u0000') && [...value].length >= 8 && (value as string & {isWellFormed(): boolean}).isWellFormed());
+const requestEpoch = z.string().regex(/^[0-9a-f]{32}$/u);
+const currentKey = /^([0-9a-f]{32})\.(\d{13})\.([0-9a-f-]{36})$/u;
+
+export function createCanvasRequestId(epoch: string, nonce: string, issuedAt = Date.now()): string {
+  if (!requestEpoch.safeParse(epoch).success || !id.safeParse(nonce).success ||
+      !Number.isSafeInteger(issuedAt) || issuedAt <= 0 || issuedAt > 9_999_999_999_999) {
+    throw new TypeError('Invalid canvas request identity');
+  }
+  return `${epoch}.${String(issuedAt).padStart(13, '0')}.${nonce}`;
+}
+
+export function readCanvasRequestId(value: string): {epoch: string; issuedAt: number} | null {
+  const match = currentKey.exec(value);
+  if (!match || !id.safeParse(match[3]).success || Number(match[2]) <= 0) return null;
+  return {epoch: match[1]!, issuedAt: Number(match[2])};
+}
 const kind = z.enum(['shot', 'node', 'edge']);
 const target = z.object({kind, id}).strict();
 const selected = z.array(target.extend({revision})).min(1).max(CANVAS_EDIT_LIMITS.targets);
@@ -70,7 +87,7 @@ export const canvasEditingResponses = Object.freeze({
   'canvas.archive.list': z.object({projectId: id, next: archiveCursor.nullable(),
     items: z.array(target.extend({archive: archiveInfo, revision, label: z.string()})).max(CANVAS_EDIT_LIMITS.archivedPage)}).strict(),
   'canvas.apply': result,
-  'canvas.history.get': historyResponse,
+  'canvas.history.get': historyResponse.extend({requestEpoch, requestAfter: revision, undoConflict: z.boolean(), redoConflict: z.boolean()}),
   'canvas.history.undo': result,
   'canvas.history.redo': result,
 });

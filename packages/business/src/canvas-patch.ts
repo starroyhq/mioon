@@ -43,6 +43,7 @@ export interface CanvasOrderAnchor {
   readonly next: string | null;
 }
 export const CANVAS_ARCHIVE_ORDER_FIELD = 'canvasArchiveOrder';
+export type CanvasGuardEvidence = number | {readonly revision: number; readonly since: number};
 export interface CanvasPatch {
   readonly version: 1;
   readonly rows: readonly CanvasPatchRow[];
@@ -57,6 +58,9 @@ const archiveReason = (value: unknown): value is CanvasArchive['reason'] =>
   value === 'user-delete' || value === 'undo-create' || value === 'reference-source';
 const token = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
 const validOrder = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+export const isCanvasGuardEvidence = (value: unknown): value is CanvasGuardEvidence => validOrder(value) ||
+  jsonObject(value) && Object.keys(value).length === 2 && validOrder(value.revision) && value.revision > 0 &&
+  validOrder(value.since) && value.since > 0;
 const point = (value: unknown): value is CanvasPosition => jsonObject(value) && typeof value.x === 'number' &&
   Number.isFinite(value.x) && typeof value.y === 'number' && Number.isFinite(value.y);
 const target = (value: unknown): value is CanvasTarget => jsonObject(value) && isProjectId(value.id) &&

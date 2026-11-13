@@ -19,7 +19,7 @@ import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
-import {canvasEditingResponses} from '../packages/contracts/src/canvas-editing.ts';
+import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
@@ -924,6 +924,8 @@ test('a storyboard built for the Assistant records its images and shots as one l
 
 test('candidate Mio live paging and execution ignore archived canvas while old receipts stay readable',async t=>{
  const f=await fixture(t,{},new Map(),true),{store,tools,journal,run,projectId}=f;
+ const {requestEpoch,requestAfter}=canvasEditingResponses['canvas.history.get'].parse(await f.services.call('canvas.history.get',{projectId}));
+ const request=()=>createCanvasRequestId(requestEpoch,randomUUID(),Math.max(Date.now(),requestAfter+1));
  const first=await f.shot('Archived shot'),second=await f.shot('Live shot');
  const node=async(label:string)=>{
   const result=await f.services.call('node.create',{projectId,type:'text',label,position:{x:0,y:0},requestId:randomUUID()});
@@ -943,7 +945,7 @@ test('candidate Mio live paging and execution ignore archived canvas while old r
  const archivedTargets=[{kind:'node',id:hiddenNode,revision:journal.targetRevision(projectId,'node',hiddenNode)},
   {kind:'shot',id:first.id,revision:journal.targetRevision(projectId,'shot',first.id)}];
  const archived=canvasEditingResponses['canvas.apply'].parse(await f.services.call('canvas.apply',{
-  projectId,operation:'archive',requestId:randomUUID(),historyRevision:0,targets:archivedTargets}));
+  projectId,operation:'archive',requestId:request(),historyRevision:0,targets:archivedTargets}));
  assert.equal(journal.targetRevision(projectId,'edge',hiddenEdge),pending.targets[0]!.revision,
   'the endpoint archive hides a decorative edge without modifying the edge itself');
 
@@ -973,7 +975,7 @@ test('candidate Mio live paging and execution ignore archived canvas while old r
  assert.throws(()=>f.undo(edgeChange),{code:'AGENT_TASK_TARGET_CHANGED'});
  assert.ok(store.get('edges',hiddenEdge),'the hidden row and its receipt are retained');
  const restored=canvasEditingResponses['canvas.apply'].parse(await f.services.call('canvas.apply',{
-  projectId,operation:'restore',requestId:randomUUID(),historyRevision:archived.history.revision,
+  projectId,operation:'restore',requestId:request(),historyRevision:archived.history.revision,
   targets:[{kind:'node',id:hiddenNode,revision:journal.targetRevision(projectId,'node',hiddenNode)}]}));
  assert.equal(restored.history.revision,archived.history.revision+1);
  // Simulate an older persisted uncertain step surviving independently of
