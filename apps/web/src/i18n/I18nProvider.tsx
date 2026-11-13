@@ -31,7 +31,12 @@ function browserBridge(): LanguageBridge | null {
   return value;
 }
 export function I18nProvider({ children, store: supplied }: { children: ReactNode; store?: ReturnType<typeof createLanguageStore> }) {
-  const [store] = useState(() => supplied ?? createLanguageStore({ systemLanguages: [...navigator.languages], storage: () => localStorage, bridge: browserBridge() }));
+  const [store] = useState(() => {
+    if (supplied) return supplied;
+    const locale = (window as Window & {__mioonSettingsBootAppearance?: {locale: unknown}}).__mioonSettingsBootAppearance?.locale;
+    return createLanguageStore({ systemLanguages: [...navigator.languages], storage: () => localStorage, bridge: browserBridge(),
+      bootLocale: locale });
+  });
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   useEffect(() => {
     const release = store.connect();

@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import React,{useEffect,useRef,useState} from 'react';
 import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
 import Icon from './icons.tsx';
@@ -20,7 +21,7 @@ export default function AgentAuthorizations({visible=true}:{visible?:boolean}){
   async function load(){
     const token=++epoch.current;controller.current?.abort();const abort=new AbortController();controller.current=abort;
     setBusy(true);setFailed(false);
-    try{const next=agentAuthorizationListSchema.parse(await rpc('agent.authorization.list',{},abort.signal));if(epoch.current===token&&!abort.signal.aborted)setData(next);}
+    try{const next=await measureSettingsRead('agent-authorizations',async()=>agentAuthorizationListSchema.parse(await rpc('agent.authorization.list',{},abort.signal)));if(epoch.current===token&&!abort.signal.aborted)setData(next);}
     catch{if(epoch.current===token&&!abort.signal.aborted)setFailed(true);}
     finally{if(epoch.current===token)setBusy(false);}
   }

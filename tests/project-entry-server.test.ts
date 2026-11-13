@@ -8,7 +8,10 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {createProjectEntries} from '../apps/server/src/project-entries.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
+import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
+import {createMemoryProjectRegistry, createProjectHostManager, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
@@ -186,6 +189,59 @@ test('default web routes keep the released project format and report the candida
   assert.deepEqual(candidate.body.error?.details, {projectId: f.b.projectId, reason: 'PROJECT_FORMAT_NEWER'});
   assert.ok(recent);
   assert.deepEqual(recent.availability, {state: 'invalid', reason: 'format-newer'});
+});
+
+test('a catalog shares one private identity scan but checks each project and refreshes on the next read', async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-catalog-snapshot-'));
+  const directories = serverAppDirectories(path.join(root, 'app'));
+  mkdirSync(directories.projectsDir, {recursive: true});
+  const registry = createMemoryProjectRegistry();
+  const candidates = ['Stable', 'Candidate'].map((name, index) => {
+    const projectFile = path.join(directories.projectsDir, `${name}.mioon`);
+    const projectId = createProjectFile(projectFile, index === 0 ? {} : {format4: {}});
+    const fileIdentity = statProjectFileIdentity(projectFile);
+    assert.ok(fileIdentity);
+    registry.upsert({projectId, name, projectFile, fileIdentity, lastOpenedAt: null, summary: null});
+    return projectFile;
+  });
+  const secret = path.join(directories.dataDir, 'private-settings.json');
+  let reads: string[] = [], rejectRefresh = false;
+  const guard = createApplicationFileGuard(directories, {metadata(file) {
+    reads.push(file);
+    if (file === directories.dataDir && rejectRefresh) throw new Error('Synthetic unavailable private root');
+    const stat = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    // Simulate the candidate being a private inode moved outside the protected
+    // tree, independently of filesystem inode and creation-time reuse rules.
+    return file === secret && stat ? lstatSync(candidates[1]!, {bigint: true}) : stat;
+  }});
+  const manager = createProjectHostManager({directories, registry, factory: async () => assert.fail('Catalog must not create a project runtime'),
+    maintenance: {recoverProjectFile: () => ({state: 'clean'})}});
+  const shutdown = new AbortController();
+  t.after(async () => {
+    shutdown.abort();
+    try { await manager.closeAll(); }
+    finally { rmSync(root, {recursive: true, force: true}); }
+  });
+  const {control} = createProjectEntries({manager, registry, projectsDir: directories.projectsDir, channel: 'web', signal: shutdown.signal,
+    readScope: () => 'a'.repeat(64), createProject: async () => assert.fail('Catalog must not create a project'), refreshSummaries() {}, assertProjectFile: guard});
+
+  const readCatalog = () => {
+    reads = [];
+    return control.listRecent().registered.map(entry => entry.availability);
+  };
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'invalid', reason: 'format-newer'}]);
+  assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+
+  writeFileSync(secret, '{}', {mode: 0o600});
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
+  assert.ok(reads.includes(secret), 'the second read refreshes private identities before reading any project header');
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+
+  rejectRefresh = true;
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.deepEqual(reads, [directories.dataDir], 'a failed snapshot exposes no project header hints');
 });
 
 test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{

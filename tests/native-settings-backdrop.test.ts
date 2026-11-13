@@ -13,6 +13,10 @@ import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-
 import type { SettingsRenderProps } from '../apps/web/src/SettingsRoot.tsx';
 import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import * as settingsLocale from '../packages/i18n/src/locale.ts';
+import {settingsBootMessages} from '../packages/i18n/src/catalogs/settings-boot.ts';
+import type {SettingsDiagnosticsBridge} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
+import {markSettingsClick, measureSettingsRead} from '../apps/web/src/settings-diagnostics.ts';
 
 interface Node { type: unknown; key: unknown; props: Record<string, unknown> & { children?: unknown } }
 interface Effect { deps: readonly unknown[]; cleanup?: void | (() => void) }
@@ -140,6 +144,180 @@ const id = (number: number) => `92000000-0000-4000-8000-${String(number).padStar
 const context = (patch: Partial<ProjectWindowContext> = {}): ProjectWindowContext => ({ version: 2, role: 'editor', windowId: id(1), contextId: id(2), backendId: id(3), initialProjectId: id(4), autoOpen: false,
   editorProjectId: id(4), editorPhase: 'ready', editorCount: 1, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0,
   selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
+
+function executeBoot(appearance: unknown, bridge?: SettingsDiagnosticsBridge, native = true) {
+  const source = readFileSync(new URL('../apps/web/src/settings-boot.ts', import.meta.url), 'utf8');
+  const bootstrap = Promise.withResolvers();
+  const bootCalls: string[] = [];
+  const closeHandlers: Array<() => void> = [];
+  const elements = new Map(['settings-boot', 'settings-boot-title', 'settings-boot-status', 'settings-boot-close'].map(id => [id, {
+    textContent: '', hidden: true, addEventListener(type: string, callback: () => void) {
+      assert.equal(id, 'settings-boot-close'); assert.equal(type, 'click'); closeHandlers.push(callback);
+    },
+  }]));
+  const classes = new Set<string>();
+  const root = {lang: 'en', dataset: {} as {theme?: string}, style: {} as {colorScheme?: string},
+    classList: {toggle(name: string, on: boolean) { if (on) classes.add(name); else classes.delete(name); }}};
+  let receive: ((next: ProjectWindowContext) => void) | undefined;
+  const host = {
+    __mioonSettingsBootAppearance: appearance,
+    __mioonSettingsDiagnostics: bridge,
+    ...(native ? {__mioonProjectWindow: {
+      subscribe(callback: (next: ProjectWindowContext) => void) { receive = callback; return () => { bootCalls.push('unsubscribe'); }; },
+      context() { assert.fail('An idle shell may not call describe'); },
+      async closeSettings() { bootCalls.push('close-request'); return true; },
+    }} : {}),
+  };
+  const code = transformSync(source.replace("import('./main.tsx')", 'loadMain()'), {loader: 'ts', format: 'cjs'}).code;
+  Function('require', 'window', 'document', 'navigator', 'loadMain', code)((name: string) => {
+    if (name.endsWith('/locale.ts')) return settingsLocale;
+    if (name.endsWith('/settings-boot.ts')) return {settingsBootMessages};
+    assert.equal(name, './settings-boot-close.ts');
+    return {installSettingsBootClose(value: unknown) { assert.equal(value, host); bootCalls.push('close-installed'); }};
+  }, host, {documentElement: root, getElementById: (name: string) => elements.get(name)}, {languages: ['en-US']},
+  () => { bootCalls.push('import'); return bootstrap.promise; });
+  return {root, classes, bootCalls, elements, bootstrap, closeHandlers, receive: (next: ProjectWindowContext) => receive?.(next)};
+}
+
+test('prewarmed settings paint the selected locale and theme and import only after the active document ACK', async () => {
+  const ack = Promise.withResolvers<boolean>(), marks: string[] = [];
+  const boot = executeBoot({locale: 'zh-Hant', theme: 'light'}, {
+    markBoot(phase) { marks.push(phase); return phase === 'start' ? ack.promise : Promise.resolve(true); },
+    markClick() { assert.fail('A settings document cannot mark a click'); },
+    markRead() { assert.fail('An idle shell cannot read settings'); },
+  });
+  assert.equal(boot.root.lang, 'zh-Hant');
+  assert.equal(boot.root.dataset.theme, 'light');
+  assert.equal(boot.root.style.colorScheme, 'light');
+  assert.deepEqual([...boot.classes], ['light']);
+  assert.equal(boot.elements.get('settings-boot-title')?.textContent, '設定');
+  assert.equal(boot.elements.get('settings-boot-status')?.textContent, '正在載入設定…');
+  assert.equal(boot.elements.get('settings-boot')?.hidden, false);
+  assert.equal(boot.elements.get('settings-boot-close')?.hidden, true);
+  const html = readFileSync(new URL('../apps/web/settings.html', import.meta.url), 'utf8');
+  assert.match(html, /<main id="settings-boot" hidden>/);
+  assert.match(html, /#settings-boot\[hidden\]\s*\{\s*display:\s*none/);
+  assert.deepEqual(boot.bootCalls, ['close-installed']);
+  boot.receive(context({settingsSlot: 'general'}));
+  boot.receive(context({role: 'settings', settingsSlot: 'general', quitting: true}));
+  assert.deepEqual(marks, []);
+  const active = context({role: 'settings', settingsSlot: 'general'});
+  boot.receive(active); boot.receive(active);
+  assert.deepEqual(marks, ['start']);
+  assert.deepEqual(boot.bootCalls, ['close-installed']);
+  ack.resolve(true);
+  await new Promise(setImmediate);
+  assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import']);
+  assert.equal(boot.elements.get('settings-boot-close')?.textContent, '關閉設定視窗');
+  boot.bootstrap.resolve(undefined);
+  await new Promise(setImmediate);
+  assert.deepEqual(marks, ['start', 'import', 'ready']);
+});
+
+test('a refused boot does not import and failures stay localized and closable', async () => {
+  for (const admission of ['refused', 'unavailable', 'accepted'] as const) {
+    const accepted = admission === 'accepted';
+    const marks: string[] = [];
+    const boot = executeBoot({locale: 'ja', theme: 'dark'}, {
+      async markBoot(phase) {
+        marks.push(phase);
+        if (admission === 'unavailable') throw Error('synthetic activation transport failure');
+        return accepted;
+      },
+      markClick() {}, markRead() {},
+    });
+    boot.receive(context({role: 'settings', settingsSlot: 'general'}));
+    await new Promise(setImmediate);
+    assert.equal(boot.bootCalls.includes('import'), accepted);
+    if (accepted) {
+      boot.bootstrap.reject(Error('synthetic import failure'));
+      await new Promise(setImmediate);
+    }
+    assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+    assert.equal(boot.elements.get('settings-boot-close')?.hidden, false);
+    assert.deepEqual(marks, accepted ? ['start', 'import', 'failed'] : ['start']);
+  }
+  const browser = executeBoot(undefined, undefined, false);
+  assert.equal(browser.root.lang, 'en');
+  assert.deepEqual(browser.bootCalls, ['import']);
+  browser.bootstrap.resolve(undefined);
+});
+
+test('an ACK denied during quit retries once the active owner returns without duplicating the close listener', async () => {
+  for (const resumeBeforeDenial of [true, false]) {
+    const first = Promise.withResolvers<boolean>(), marks: string[] = [];
+    let admissions = 0;
+    const boot = executeBoot({locale: 'ja', theme: 'dark'}, {
+      markBoot(phase) {
+        marks.push(phase);
+        if (phase === 'start' && admissions++ === 0) return first.promise;
+        return Promise.resolve(true);
+      },
+      markClick() {}, markRead() {},
+    });
+    const active = context({role: 'settings', settingsSlot: 'general', settingsVersion: 1});
+    boot.receive(active);
+    boot.receive(active);
+    boot.receive({...active, quitting: true});
+    if (resumeBeforeDenial) boot.receive(active);
+    assert.deepEqual(marks, ['start']);
+    first.resolve(false);
+    await new Promise(setImmediate);
+    if (!resumeBeforeDenial) {
+      assert.deepEqual(marks, ['start']);
+      assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+      boot.receive(active);
+      await new Promise(setImmediate);
+    }
+    assert.deepEqual(marks, ['start', 'start', 'import']);
+    assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込んでいます…');
+    assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import']);
+    assert.equal(boot.closeHandlers.length, 1);
+    boot.closeHandlers[0]!();
+    assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import', 'close-request']);
+    boot.bootstrap.resolve(undefined);
+    await new Promise(setImmediate);
+    assert.deepEqual(marks, ['start', 'start', 'import', 'ready']);
+  }
+});
+
+test('trusted click uses the browser event timestamp and simultaneous reads pair their own terminal marks', async t => {
+  const events: unknown[][] = [];
+  const bridge = {
+    markClick: at => { events.push(['click', at]); },
+    async markBoot() { return true; },
+    markRead: (page, phase, id, at) => { events.push([page, phase, id, at]); },
+  } satisfies SettingsDiagnosticsBridge;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const host: {__mioonSettingsDiagnostics: SettingsDiagnosticsBridge; __mioonSettingsBootAppearance?: unknown} = {__mioonSettingsDiagnostics: bridge};
+  Object.defineProperty(globalThis, 'window', {configurable: true, value: host});
+  t.after(() => { if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window'); });
+  const timeStamp = Math.max(1, performance.now() - 50);
+  markSettingsClick({isTrusted: false, timeStamp});
+  markSettingsClick({isTrusted: true, timeStamp: Number.NaN});
+  markSettingsClick({isTrusted: true, timeStamp});
+  assert.deepEqual(events, [['click', Math.floor(performance.timeOrigin + timeStamp)]]);
+  assert.equal(await measureSettingsRead('appearance', async () => 'editor'), 'editor');
+  assert.equal(events.length, 1, 'settings helpers used by an editor emit no read timing');
+  host.__mioonSettingsBootAppearance = {locale: 'en', theme: 'dark'};
+
+  const left = Promise.withResolvers<string>(), right = Promise.withResolvers<string>();
+  const a = measureSettingsRead('appearance', () => left.promise);
+  const b = measureSettingsRead('appearance', () => right.promise);
+  assert.equal(events.length, 3);
+  const first = events[1]!, second = events[2]!;
+  assert.deepEqual(first.slice(0, 2), ['appearance', 'start']);
+  assert.deepEqual(second.slice(0, 2), ['appearance', 'start']);
+  assert.notEqual(first[2], second[2]);
+  const failure = Error('synthetic read failure');
+  right.reject(failure); await assert.rejects(b, error => error === failure);
+  left.resolve('result'); assert.equal(await a, 'result');
+  assert.deepEqual(events.slice(3).map(event => event.slice(0, 3)), [
+    ['appearance', 'end', second[2]], ['appearance', 'end', first[2]],
+  ]);
+  assert.ok(Number(events[3]![3]) >= Number(second[3]));
+  assert.ok(Number(events[4]![3]) >= Number(first[3]));
+});
 
 test('DesktopRoot applies only its verified modal flag without replacing its editor owner or accepting stale unlocks', async () => {
   const h = hooks(), initial = Promise.withResolvers<ProjectWindowContext>();

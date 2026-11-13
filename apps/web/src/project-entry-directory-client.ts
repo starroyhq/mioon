@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import {PROJECT_ENTRY_ERROR_STATUS, PROJECT_ENTRY_LIMITS, projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 
@@ -63,7 +64,7 @@ export async function readBoundedJsonResponse(response: Response, {signal, maxBy
 export function createProjectEntryDirectoryClient({fetcher = (...args: Parameters<typeof fetch>) => fetch(...args), timeoutMs = 30_000}: {
   readonly fetcher?: typeof fetch; readonly timeoutMs?: number;
 } = {}) {
-  return {async list(options: {readonly signal?: AbortSignal} = {}): Promise<ProjectEntriesResponse> {
+  async function list(options: {readonly signal?: AbortSignal} = {}): Promise<ProjectEntriesResponse> {
     if (!record(options) || Object.keys(options).some(key => key !== 'signal') || !validSignal(options.signal) ||
       typeof fetcher !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000) throw new ProjectEntryDirectoryError('VALIDATION_ERROR');
     if (options.signal?.aborted) throw interrupted();
@@ -102,5 +103,6 @@ export function createProjectEntryDirectoryClient({fetcher = (...args: Parameter
     } finally {
       clearTimeout(timer); options.signal?.removeEventListener('abort', abort); controller.signal.removeEventListener('abort', stop);
     }
-  }};
+  }
+  return {list: (options?: {readonly signal?: AbortSignal}) => measureSettingsRead('workspace-directory', () => list(options))};
 }

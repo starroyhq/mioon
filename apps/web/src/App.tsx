@@ -53,6 +53,7 @@ import ExportPreview from './ExportPreview.tsx';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';
 import AgentSettings from './AgentSettings.tsx';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
+import { markSettingsClick, type SettingsClick } from './settings-diagnostics.ts';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import { providerDisplayName, jobStatusDescriptor, statusDescriptor } from './creation-i18n.ts';
 import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage, type Locale } from '../../../packages/i18n/src/index.ts';
@@ -926,15 +927,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (settingsNavigation.current!.needsConfirmation(ticket) && !await confirm(msg('shell.confirm.leaveConnections'))) return null;
     return importSession.current.active && importSession.current.selection === lifetime && isCurrent(captured) && settingsNavigation.current!.canLeave(ticket as Parameters<NonNullable<typeof settingsNavigation.current>['canLeave']>[0]) ? ticket : null;
   }
-  function openGlobalSettings(page = 'general'): Promise<boolean> {
-
-    if (nativeWindow) return nativeSettingsScope!.open(page as ProjectWindowSettingsSlot);
+  function openGlobalSettings(page = 'general', click?: SettingsClick): Promise<boolean> {
+    if (nativeWindow) {
+      markSettingsClick(click);
+      return nativeSettingsScope!.open(page as ProjectWindowSettingsSlot);
+    }
     webSettingsRequestRef.current?.resolve?.(false);
     return new Promise(resolve => { const request = { page: page as SettingsPage, resolve }; webSettingsRequestRef.current = request; setWebSettingsRequest(request); });
   }
-  async function changeHomePage(page: string): Promise<void> {
+  async function changeHomePage(page: string, click?: SettingsClick): Promise<void> {
     if (loading || projectCreateFlight.current || isBusy('project-create') || !['projects', 'settings'].includes(page)) return;
-    if (page === 'settings') { openGlobalSettings(); return; }
+    if (page === 'settings') { openGlobalSettings('general', click); return; }
     if (page === homePage) return;
     if (page !== 'settings' && !await prepareSettingsDeparture()) return;
     setHomePage(page);
@@ -3320,8 +3323,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         ...activePending.map(item=>({id:`pending:${item.origin||'legacy'}:${item.key}`,label:t('shell.tasks'),status:t('redesign.tasks.unknownHint'),phase:'attention',tone:'warning'})),
         ...sceneOverviewItems(sceneTasks, sceneTaskContext),
       ] as never} onOpenTasks={id => { openTasks(undefined, id); }} />
-      <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={() => openGlobalSettings('agent')}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-      <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={() => openGlobalSettings()}><WorkbenchIcon name="settings" size={16} /></Button>
+      <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={event => openGlobalSettings('agent', event?.nativeEvent)}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+      <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={event => openGlobalSettings('general', event?.nativeEvent)}><WorkbenchIcon name="settings" size={16} /></Button>
       {workspaceMode === 'editing' && <WorkbenchButton variant="primary" id="right-dock-delivery-tab" data-testid="export-timeline" disabled={!canOpenExport} onClick={openTimelineExport}><span data-testid="right-dock-tab-delivery">{t('redesign.shell.export')}</span></WorkbenchButton>}
     </>} />
     {showGuide && <section className="region-guide" role="region" aria-label={t('shell.regionGuide')} data-testid="region-guide"><header><strong>{t('shell.guideTitle')}</strong><Button variant="ghost" className="icon-button" aria-label={t('shell.closeGuide')} onClick={() => setShowGuide(false)}><Icon name="close" size={16} /></Button></header><div><p><b>{t('shell.canvas')}</b>{t('shell.guideCanvas')}</p><p><b>{t('shell.editing')}</b>{t('shell.guideEditing')}</p><p><b>{t('shell.sharedAssets')}</b>{t('shell.guideAssets')}</p><p><b>{t('shell.guideTransitionTitle')}</b>{t('shell.guideTransition')}</p></div><footer>{t('shell.guideVersions')}</footer></section>}

@@ -3,13 +3,15 @@ import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdi
 import type { Stats } from 'node:fs';
 import path from 'node:path';
 import { appendWindowsDiagnostic } from './diagnostic-append-windows.ts';
+import { sanitizeSettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
+import type { SettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
 
-// Renderer health evidence only. One bounded JSONL family covers unresponsive /
-// responsive / render-process-gone transitions so an issue #4 investigation has
-// causal ordering without renderer content. Rotation mirrors backend exit
+// One bounded JSONL family covers renderer health and settings timing without
+// recording renderer content. Rotation mirrors backend exit
 // diagnostics: at most maxBytes per file and fileCount files (current plus two
 // rotated), 0700 directory and 0600 files, atomic rename rotation.
 export const RENDERER_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileCount: 3 });
+const settingsBatch = {delayMs: 200, maxRows: 64, maxBytes: 16 * 1024};
 
 const events = ['unresponsive', 'responsive', 'render-process-gone'] as const;
 const classifications = ['unresponsive', 'responsive', 'exited', 'terminated', 'crashed', 'abnormal'] as const;
@@ -32,7 +34,11 @@ export interface RendererDiagnosticRecord {
   readonly appVersion: string | null;
   readonly channel: RendererChannel | null;
 }
-export interface RendererDiagnostics { record(event: unknown, details?: unknown): boolean }
+export interface RendererDiagnostics {
+  record(event: unknown, details?: unknown): boolean;
+  recordSettings(value: SettingsDiagnosticRecord): boolean;
+  flushSettings(): void;
+}
 interface Metadata {
   readonly appVersion: string | null;
   readonly channel: RendererChannel | null;
@@ -95,6 +101,18 @@ export function classifyRendererEvent(event: unknown, details: unknown): Rendere
     case 'abnormal-exit': return 'abnormal';
     default: return null;
   }
+}
+
+export function sanitizeRendererHealthRecord(value: unknown): RendererDiagnosticRecord | null {
+  if (!isRecord(value) || value.schemaVersion !== schemaVersion || typeof value.at !== 'string' ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.at) || !Number.isFinite(Date.parse(value.at)) ||
+    new Date(value.at).toISOString() !== value.at) return null;
+  const event = enumValue(value.event, events);
+  if (!event) return null;
+  const reason = event === 'render-process-gone' ? enumValue(value.reason, goneReasons) : null;
+  return {schemaVersion, at: value.at, event, classification: classifyRendererEvent(event, {reason}), reason,
+    exitCode: event === 'render-process-gone' && typeof value.exitCode === 'number' && Number.isSafeInteger(value.exitCode) ? value.exitCode : null,
+    appVersion: appVersion(value.appVersion), channel: enumValue(value.channel, channels)};
 }
 
 function existingFile(file: string): Stats | null {
@@ -214,7 +232,7 @@ export interface RendererHealthContents { on(event: string, listener: (...args: 
  * factory, write error, or even a hostile listener transport) is swallowed so
  * it can never replace, delay or gate the caller's existing recovery handlers.
  */
-export function installRendererHealthDiagnostics(contents: RendererHealthContents, diagnostics: RendererDiagnostics | null | undefined): void {
+export function installRendererHealthDiagnostics(contents: RendererHealthContents, diagnostics: Pick<RendererDiagnostics, 'record'> | null | undefined): void {
   const record = (event: string, details?: unknown): void => {
     try { diagnostics?.record(event, details); } catch { /* Evidence only. */ }
   };
@@ -239,10 +257,18 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
   const metadata = readMetadata(modulePath);
   const directory = typeof dataDir === 'string' && dataDir.length ? path.join(dataDir, 'diagnostics') : null;
   const file = directory && path.join(directory, 'renderer-health.jsonl');
+  let pending: Buffer[] = [], pendingBytes = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  function append(line: Buffer): boolean {
+    if (!file || !directory || !dataDir) return false;
+    if (line.length > RENDERER_DIAGNOSTIC_LIMITS.maxBytes) return false;
+    appendDiagnostic(dataDir, directory, file, line, directoryPolicy);
+    return true;
+  }
 
   function record(event: unknown, details?: unknown): boolean {
     try {
-      if (!file || !directory || !dataDir) return false;
       const input: RendererEventInput = isRecord(details) ? details : {};
       const name = enumValue(event, events);
       const reason = enumValue(input.reason, goneReasons);
@@ -254,14 +280,34 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
         reason: name === 'render-process-gone' ? reason : null,
         exitCode: name === 'render-process-gone' && typeof exitCode === 'number' && Number.isSafeInteger(exitCode) ? exitCode : null,
       };
-      const line = Buffer.from(`${JSON.stringify(record)}\n`);
-      if (line.length > RENDERER_DIAGNOSTIC_LIMITS.maxBytes) return false;
-      appendDiagnostic(dataDir, directory, file, line, directoryPolicy);
-      return true;
+      return append(Buffer.from(`${JSON.stringify(record)}\n`));
     } catch {
       // Diagnostics are evidence only: I/O failures never change recovery.
       return false;
     }
   }
-  return { record };
+  function flushSettings(): void {
+    clearTimeout(timer); timer = undefined;
+    if (pending.length === 0) return;
+    const batch = pending, bytes = pendingBytes;
+    pending = []; pendingBytes = 0;
+    try {append(Buffer.concat(batch, bytes));} catch { /* Evidence only. */ }
+  }
+  function recordSettings(value: SettingsDiagnosticRecord): boolean {
+    try {
+      if (!file || !directory || !dataDir) return false;
+      const safe = sanitizeSettingsDiagnosticRecord(value);
+      if (!safe) return false;
+      const line = Buffer.from(`${JSON.stringify(safe)}\n`);
+      if (line.length > settingsBatch.maxBytes) return false;
+      while (pending.length >= settingsBatch.maxRows || pendingBytes + line.length > settingsBatch.maxBytes) {
+        pendingBytes -= pending.shift()!.length;
+      }
+      pending.push(line); pendingBytes += line.length;
+      timer ??= setTimeout(flushSettings, settingsBatch.delayMs);
+      timer.unref?.();
+      return true;
+    } catch { return false; }
+  }
+  return {record, recordSettings, flushSettings};
 }

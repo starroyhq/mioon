@@ -22,6 +22,9 @@ export const nativeMessages = {
   'native.menuNoWindows': { 'zh-Hans': "没有打开的项目", 'zh-Hant': "沒有開啟的專案", en: "No Open Projects", ja: "開いているプロジェクトはありません" },
   'native.menuGuide': { 'zh-Hans': "使用说明", 'zh-Hant': "使用說明", en: "User Guide", ja: "使い方" },
   'native.menuShortcuts': { 'zh-Hans': "快捷键…", 'zh-Hant': "快速鍵…", en: "Keyboard Shortcuts…", ja: "キーボードショートカット…" },
+  'native.menuExportDiagnostics': { 'zh-Hans': "导出诊断日志…", 'zh-Hant': "匯出診斷日誌…", en: "Export Diagnostic Logs…", ja: "診断ログを書き出す…" },
+  'native.diagnosticsExportEmpty': { 'zh-Hans': "目前没有可导出的诊断日志。", 'zh-Hant': "目前沒有可匯出的診斷日誌。", en: "There are no diagnostic logs to export.", ja: "書き出せる診断ログはありません。" },
+  'native.diagnosticsExportFailed': { 'zh-Hans': "无法导出诊断日志。请检查保存位置后重试。", 'zh-Hant': "無法匯出診斷日誌。請檢查儲存位置後再試。", en: "Could not export diagnostic logs. Check the save location and try again.", ja: "診断ログを書き出せませんでした。保存先を確認して、やり直してください。" },
   'native.menuTroubleshooting': { 'zh-Hans': "故障排查", 'zh-Hant': "疑難排解", en: "Troubleshooting", ja: "トラブルシューティング" },
   'native.menuProjectWindow': { 'zh-Hans': "项目", 'zh-Hant': "專案", en: "Project", ja: "プロジェクト" },
   "native.trayShow": {

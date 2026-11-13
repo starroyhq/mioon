@@ -15,6 +15,7 @@ import {initializeDesktopPrivateStorage} from '../../../packages/node-host/src/p
 import path from 'node:path';
 import {createProjectEntryControlBroker} from './project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
+import {createSettingsEventLoopMonitor} from './settings-event-loop.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -52,10 +53,12 @@ const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
 const videoSecretCodec = createVideoSecretClient({ port: process.parentPort });
 const projectTrash = createProjectTrashClient({port: process.parentPort});
+const settingsEventLoop = createSettingsEventLoopMonitor();
 onMediaProcess(({ type, pid, kind }: MediaProcessEvent) => process.parentPort!.postMessage({ type: 'media-process', event: type, pid, kind }));
 async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
   closing = true;
+  settingsEventLoop.close();
   projectControl?.close();
   reportExitDiagnostic(reason);
   parentLease.close();
@@ -89,6 +92,7 @@ process.parentPort.on('message', ({ data }) => {
     return;
   }
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
+  if (settingsEventLoop.handle(data, reply => process.parentPort!.postMessage(reply))) return;
   if (projectControl?.handle(data)) return;
   if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
     if (nativeAudioPreview && !closing) void nativeAudioPreview.command(data).then(
@@ -127,6 +131,7 @@ process.parentPort.on('message', ({ data }) => {
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {
       startFailed = true;
+      settingsEventLoop.close();
       reportExitDiagnostic('startup-failed');
       // No stack, token, provider key, raw body, or entire config in process messages.
       process.parentPort!.postMessage({ type: 'failed', code: 'BACKEND_START_FAILED',

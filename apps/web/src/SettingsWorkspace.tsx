@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import React,{useEffect,useRef,useState} from 'react';
 import {WorkbenchAlert,WorkbenchBadge,WorkbenchButton} from '@mioon/ui/components/workbench-controls';
 import {useI18n} from './i18n/I18nProvider.tsx';
@@ -18,7 +19,7 @@ export default function SettingsWorkspace({active}:{active:boolean}) {
  useEffect(()=>{
   if(!active)return;let live=true,reading=false;const controller=new AbortController();
   const read=async()=>{if(!live||!visible.current||reading)return;reading=true;const owner=++readEpoch.current;
-   try{const values=await Promise.allSettled([readWorkspaceInfo(controller.signal,'storage'),readWorkspaceSettings(controller.signal)]);if(!live||!visible.current||owner!==readEpoch.current)return;
+   try{const values=await Promise.allSettled([measureSettingsRead('workspace-storage',()=>readWorkspaceInfo(controller.signal,'storage')),readWorkspaceSettings(controller.signal)]);if(!live||!visible.current||owner!==readEpoch.current)return;
     if(values[0].status==='fulfilled')setInfo(values[0].value);if(values[1].status==='fulfilled')setSettings(values[1].value);
     const failed=values.find(value=>value.status==='rejected');if(failed?.status==='rejected')setError((failed.reason as {code?:string})?.code??'NETWORK');else setError(null);
    }finally{reading=false;}

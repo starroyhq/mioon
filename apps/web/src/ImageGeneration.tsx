@@ -21,6 +21,7 @@ import CustomImageServicesSettings from './CustomImageServicesSettings.tsx';
 import {createGenerationImageServicesClient} from './generation-image-services.ts';
 import type {GenerationImageServicesClient} from './generation-image-services.ts';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
+import {markSettingsClick} from './settings-diagnostics.ts';
 import { createImageGenerationCloseReporter } from './native-close-sources.ts';
 import ComfyImageSettings from './ComfyImageSettings.tsx';
 import { ComfyImageReviewDetails, ComfyImageTaskDetails } from './ComfyImageDetails.tsx';
@@ -71,7 +72,7 @@ interface ImageGenerationProps {
   revealTask?: AgentTaskRecoveryIntent | null;
   editIntent?: ImageEditIntent | null;
   isEditIntentCurrent?: ((intent: ImageEditIntent) => boolean | undefined) | undefined;
-  onOpenSettings?: ((slot: string) => unknown) | undefined;
+  onOpenSettings?: ((slot: string, click?: import('./settings-diagnostics.ts').SettingsClick) => unknown) | undefined;
   settingsOverlayOpen?: boolean;
   nativeSettingsScope?: EditorSettingsScope | undefined;
   nativeCloseRegistry?: NativeCloseSourceRegistry | undefined;
@@ -180,13 +181,13 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
   function run(action: (current: Session | null) => unknown) { if (usable()) void action(session.current); }
   return <section ref={recoveryRoot} className="image-generation-page" data-testid="image-generation-page" data-project-id={projectId || ''} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label={t('image.studio.imageGeneration')}>
     <div className="image-generation-workbench" hidden={page !== 'compose'} inert={page !== 'compose'}>
-    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">{t('image.studio.studioEyebrow')}</span><h2>{t('image.studio.workshopTitle')}</h2><p>{projectName || t('image.studio.currentProject')}</p></div><div className="image-generation-heading-actions"><Badge className="small-badge neutral">{state.providerId === 'mock' ? t('image.studio.mockTest') : comfy ? t('image.studio.localComfy') : custom ? t('image.studio.customPaid') : t('image.studio.openaiPaid')}</Badge><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-open" disabled={!composerVisible} onClick={() => run(current => { if (onOpenSettings) { current?.setVisible(false); interactionRef.current = null;
+    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">{t('image.studio.studioEyebrow')}</span><h2>{t('image.studio.workshopTitle')}</h2><p>{projectName || t('image.studio.currentProject')}</p></div><div className="image-generation-heading-actions"><Badge className="small-badge neutral">{state.providerId === 'mock' ? t('image.studio.mockTest') : comfy ? t('image.studio.localComfy') : custom ? t('image.studio.customPaid') : t('image.studio.openaiPaid')}</Badge><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-open" disabled={!composerVisible} onClick={event => run(current => { if (onOpenSettings) { current?.setVisible(false); interactionRef.current = null;
       const restoreRejectedSettings = (accepted?: unknown) => {
         if (accepted === false && session.current === current && lifetime.current === owner && !owner!.closed && visibilityRef.current && interactionRef.current === null) {
           interactionRef.current = interaction; current?.setVisible(typeof document === 'undefined' || document.visibilityState !== 'hidden');
         }
       };
-      void Promise.resolve().then(() => onOpenSettings(comfy ? 'comfy' : custom ? 'custom' : 'official')).then(restoreRejectedSettings, () => restoreRejectedSettings(false)); return; } if (nativeSettingsScope) { void nativeSettingsScope.open(comfy ? 'comfy' : custom ? 'custom' : 'official'); return; } current?.setVisible(false); interactionRef.current = null; if (comfy) setSettingsSlot('comfy'); else if (custom) setSettingsSlot('custom'); setPage('settings'); })}><Icon name="settings" size={13} />{t('image.studio.settings')}</Button></div></header>
+      void Promise.resolve().then(() => onOpenSettings(comfy ? 'comfy' : custom ? 'custom' : 'official', event?.nativeEvent)).then(restoreRejectedSettings, () => restoreRejectedSettings(false)); return; } if (nativeSettingsScope) { markSettingsClick(event?.nativeEvent); void nativeSettingsScope.open(comfy ? 'comfy' : custom ? 'custom' : 'official'); return; } current?.setVisible(false); interactionRef.current = null; if (comfy) setSettingsSlot('comfy'); else if (custom) setSettingsSlot('custom'); setPage('settings'); })}><Icon name="settings" size={13} />{t('image.studio.settings')}</Button></div></header>
     {!projectId ? <p className="image-generation-empty">{t('image.studio.selectProject')}</p> : <div className="image-generation-scroll">
       <form className="image-generation-composer" onSubmit={event => { event.preventDefault(); run(current => current?.generate()); }} noValidate>
         <div className="image-generation-target"><strong>{state.target ? t('image.studio.groupNewVersion', { expectedRevision: creationParameter(state.target.expectedRevision) }) : t('image.studio.newImageGroup')}</strong>{state.target && <span>{targetGroup?.name || state.draft.name}</span>}<Button type="button" variant="ghost" className="button quiet" data-testid="image-new-group" disabled={busy} onClick={() => run(current => current?.requestTarget(null))}>{t('image.studio.newImageGroup')}</Button></div>

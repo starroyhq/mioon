@@ -15,6 +15,9 @@
         color: light-dark(#272931, #e5e6e8);
         font: 13px system-ui, sans-serif;
       }
+      #settings-boot[hidden] { display: none; }
+      html[data-theme="light"] #settings-boot { color-scheme: light; }
+      html[data-theme="dark"] #settings-boot { color-scheme: dark; }
       #settings-boot header {
         grid-column: 1 / -1;
         padding: 12px 20px;
@@ -39,7 +42,7 @@
   </head>
   <body>
     <div id="root">
-      <main id="settings-boot">
+      <main id="settings-boot" hidden>
         <header id="settings-boot-title">Settings</header>
         <aside aria-hidden="true"><span></span><span></span><span></span><span></span></aside>
         <section>

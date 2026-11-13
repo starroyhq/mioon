@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import { defaultVideoModels, VIDEO_REGIONS, VIDEO_PROVIDER_NAMES, videoConnectionEndpoint, normalizeCompatibleVideoBaseUrl, isVideoCatalogProvider } from '../../../packages/contracts/src/video-providers.ts';
 import type { CompatibleVideoCheck, CompatibleVideoCheckResult, VideoModelEntry, VideoProviderId } from '../../../packages/contracts/src/video-providers.ts';
 import {compatibleVideoCheckResultV2Schema, compatibleVideoCheckV2Schema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
@@ -54,7 +55,7 @@ export function createVideoSettingsClient({ fetchImpl = globalThis.fetch, timeou
     } catch (error) { throw fail(errorCode(error)); }
     finally { clearTimeout(timer); external?.removeEventListener('abort', abort); }
   }
-  return { read: signal => request('GET', undefined, signal), write: (input, signal) => request('PUT', input, signal), check };
+  return { read: signal => measureSettingsRead('generation-video', () => request('GET', undefined, signal)), write: (input, signal) => request('PUT', input, signal), check };
 }
 export interface VideoSettingsState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'load_error' | 'review' | 'blocked' | 'reconciling';

@@ -34,13 +34,18 @@ const Context = createContext<UiPreferencesContextValue>({ preferences: DEFAULT_
   edit: () => {}, save: unavailable, setMioFollow: unavailable, mioFollowRetry: undefined, discard: () => {}, reload: unavailable, markOpened: async () => {}, pauseObservation: () => {} });
 const same = (left: Readonly<UiPreferences>, right: Readonly<UiPreferences>) => Object.keys(DEFAULT_UI_PREFERENCES).every(key => left[key as keyof UiPreferences] === right[key as keyof UiPreferences]);
 
+function bootTheme(): ResolvedAppearance | undefined {
+  const theme = typeof window === 'undefined' ? undefined : (window as Window & {__mioonSettingsBootAppearance?: {theme: unknown}}).__mioonSettingsBootAppearance?.theme;
+  return theme === 'light' || theme === 'dark' ? theme : undefined;
+}
+
 /** Global display preferences are separate from project view state and language.
  * Failed writes retain their frozen request for an explicit same-request retry. */
 export function UiPreferencesProvider({ children, client: supplied }: { children: React.ReactNode; client?: UiPreferencesClient }) {
   const [client] = useState(() => supplied ?? createUiPreferencesClient());
   const [saved, setSaved] = useState<UiPreferencesResponse | null>(null);
   const [preferences, setPreferences] = useState<UiPreferences>({ ...DEFAULT_UI_PREFERENCES });
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedAppearance>('dark');
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedAppearance>(() => bootTheme() ?? 'dark');
   const [phase, setPhase] = useState<Phase>('loading');
   const [pending, setPending] = useState(false);
   const [recentError, setRecentError] = useState(false);
@@ -102,12 +107,16 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     return () => { owner.close(); if (sync.current === owner) sync.current = null; };
   }, [reload]);
 
+  const holdBootTheme = phase === 'loading' && !saved && bootTheme() !== undefined;
   useLayoutEffect(() => {
+    // The native shell already painted the cached appearance. Keep it until
+    // the authoritative preference has arrived or its read has failed.
+    if (holdBootTheme) return;
     const appearance = preferences.theme;
     return bindUiAppearance(document.documentElement, appearance,
       typeof window.matchMedia === 'function' ? query => window.matchMedia(query) : null,
       () => current.current.preferences.theme === appearance, setResolvedTheme);
-  }, [preferences.theme]);
+  }, [preferences.theme, holdBootTheme]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;

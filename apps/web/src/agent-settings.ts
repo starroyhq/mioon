@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage,MessageKey,MessageArguments} from '../../../packages/i18n/src/index.ts';
 import {AGENT_PROTOCOLS,deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
@@ -110,7 +111,7 @@ export function createAgentSettingsClient({ fetchImpl = (input: RequestInfo | UR
     } catch (error) { const code = failureCode(error); throw failure(code && (codes.has(code) || code === 'INVALID_RESPONSE') ? code : 'NETWORK'); }
     finally { clearTimeout(timer); }
   }
-  return { read: () => request('GET'), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
+  return { read: () => measureSettingsRead('agent-settings', () => request('GET')), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
 }
 
 

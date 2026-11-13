@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import {canonicalImageInput} from '../../../packages/contracts/src/images.ts';
 import {imageSettingsResultSchema, imageSettingsUpdateSchema} from '../../../packages/contracts/src/image-settings.ts';
 import {normalizeCustomImageBaseUrl} from '../../../packages/contracts/src/image-compatible.ts';
@@ -68,8 +69,9 @@ export function createGenerationImageServicesClient(kind: GenerationImageDomainK
       throw Object.assign(new Error('Image settings request did not complete.'), {code: code === 'UNAUTHORIZED' || /^(?:IMAGE_SETTINGS|COMFY_[A-Z_]+)_[A-Z_]+$/.test(code) ? code : 'NETWORK'});
     } finally {clearTimeout(timer); signal?.removeEventListener('abort', abort);}
   }
-  return {read: signal => request(routeFor(kind), 'GET', undefined, signal), write: (input, signal) => request(routeFor(kind), 'PUT', input, signal),
-    readAvailability: signal => request('/api/images/comfy-availability', 'GET', undefined, signal),
+  const readStage = kind === 'comfy' ? 'generation-comfy' : kind === 'official' ? 'generation-image-official' : 'generation-image-custom';
+  return {read: signal => measureSettingsRead(readStage, () => request(routeFor(kind), 'GET', undefined, signal)), write: (input, signal) => request(routeFor(kind), 'PUT', input, signal),
+    readAvailability: signal => measureSettingsRead('generation-comfy-availability', () => request('/api/images/comfy-availability', 'GET', undefined, signal)),
     check: (input, signal) => request('/api/images/comfy-check', 'POST', input, signal)};
 }
 

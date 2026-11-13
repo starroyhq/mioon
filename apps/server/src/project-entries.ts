@@ -24,6 +24,7 @@ import {newProjectFormatVersion} from './project-host/manager.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
+import type {ApplicationFileGuard} from './project-host/application-storage.ts';
 import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
 import type {NativeAssetMediaPort,NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
@@ -65,7 +66,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly markRecentOpened?: (projectId: string, lastOpenedAt: string) => void;
   readonly templates?: readonly ProjectDesktopTemplate[];
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
-  readonly assertProjectFile?: (file:string) => void;
+  readonly assertProjectFile?: ApplicationFileGuard;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
@@ -88,20 +89,27 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     const before = scope();
     refreshSummaries();
     const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
-      .map(({project, availability}) => {
-        if (availability.state === 'available') {
-          // Recovery leaves cold files alone. Check just the header for the
-          // newer-format hint, without opening the project or local records.
-          try {
-            assertProjectFile?.(project.projectFile);
-            sourceMetadata(project.projectFile);
-            inspectProjectFormatHeader(project.projectFile);
-          } catch (error) {
-            if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') availability = {state: 'invalid', reason: 'format-newer'};
-          }
+      .map(({project, availability}) => ({project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null}));
+    const inspectFormats = () => {
+      for (const entry of registered) {
+        if (entry.availability.state !== 'available') continue;
+        // Recovery leaves cold files alone. Check just the header for the
+        // newer-format hint, without opening the project or local records.
+        const file = entry.project.projectFile;
+        try {
+          assertProjectFile?.(file);
+          sourceMetadata(file);
+          inspectProjectFormatHeader(file);
+        } catch (error) {
+          if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') entry.availability = {state: 'invalid', reason: 'format-newer'};
         }
-        return {project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null};
-      });
+      }
+    };
+    if (!assertProjectFile) inspectFormats();
+    else if (registered.some(entry => entry.availability.state === 'available')) {
+      try { assertProjectFile.withSnapshot(inspectFormats); }
+      catch { /* An unavailable private-tree refresh leaves only catalog metadata. */ }
+    }
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
     const result = projectEntriesResponseSchema.safeParse({
       version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion, registered,

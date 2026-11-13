@@ -7,6 +7,9 @@ import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjec
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowContext } from '../apps/desktop/src/project-window-protocol.ts';
 import {createProjectWindowLeaseFixture,projectWindowLeaseValue} from './helpers/project-window-lease-fixture.ts';
+import { createSettingsOpeningDiagnostics } from '../apps/desktop/src/settings-opening-diagnostics.ts';
+import { parseSettingsDiagnosticRequest, sanitizeSettingsDiagnosticRecord } from '../apps/desktop/src/settings-diagnostics-protocol.ts';
+import type { SettingsDiagnosticRecord } from '../apps/desktop/src/settings-diagnostics-protocol.ts';
 
 import type {ProjectWindowContext, ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
 import type {ProjectEntryWindow} from '../packages/contracts/src/project-entry-native.ts';
@@ -91,6 +94,8 @@ interface HostSetup {
  prepare?: HostOptions['prepareWindow']; onLoadError?: HostOptions['onLoadError'];
  prepareWarmSettings?: HostOptions['prepareWarmSettings'];
  discardWarmSettings?: HostOptions['discardWarmSettings'];
+ settingsBootAckTimeoutMs?: number;
+ warmSettingsMatches?: HostOptions['warmSettingsMatches'];
  restoreFocus?: HostOptions['canRestoreParentFocus'];
  invalidated?: HostOptions['onDocumentInvalidated']; destroyed?: HostOptions['onWebContentsDestroyed'];
  consume?: HostOptions['consumeProjectEntry'];
@@ -126,6 +131,8 @@ function fixture(t: test.TestContext, setup: HostSetup = {}) {
     },
     prepareWarmSettings: setup.prepareWarmSettings,
     discardWarmSettings: setup.discardWarmSettings,
+    settingsBootAckTimeoutMs: setup.settingsBootAckTimeoutMs,
+    warmSettingsMatches: setup.warmSettingsMatches,
     closeCandidate: setup.closeCandidate,
     onLoadError: setup.onLoadError,
     canRestoreParentFocus: setup.restoreFocus,
@@ -1096,6 +1103,99 @@ test('settings prewarm is retired on parent navigation or tray hide and cannot r
       assert.equal(f.host.settingsForParent(launcher), settings);
     });
   }
+});
+
+test('only an active exact settings document can acknowledge boot and cancel warm reload', async t => {
+  for (const acknowledge of [true, false]) {
+    const f = warmSettingsFixture(t, {settingsBootAckTimeoutMs: 5});
+    const parent = await f.launcher(); f.host.prewarmSettings(parent); await tick();
+    const shell = f.prepared[0]!, original = f.event(shell);
+    const request = {kind: 'boot', phase: 'start', at: Date.now()} as const;
+    assert.equal(f.host.recordSettingsDiagnostic(original, request), false);
+    assert.equal(f.host.recordSettingsDiagnostic(f.event(parent), request), false);
+    assert.equal(f.host.showSettings('general', parent), true);
+    const first = f.host.contextFor(shell)!;
+    assert.equal(first.settingsSlot, 'general');
+    if (acknowledge) assert.equal(f.host.recordSettingsDiagnostic(original, request), true);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const current = f.host.contextFor(shell)!;
+    assert.equal(current.windowId, first.windowId);
+    assert.equal(f.host.settingsForParent(parent), shell);
+    assert.equal(f.events.filter(value => value === 'settings:load').length, acknowledge ? 1 : 2);
+    assert.equal(f.host.recordSettingsDiagnostic(original, request), false);
+    assert.equal(f.host.recordSettingsDiagnostic(f.event(shell), request), !acknowledge);
+  }
+});
+
+test('warm fallback load errors recover only the exact current navigation', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  for (const outcome of ['failed', 'superseded', 'aborted'] as const) {
+    const load = Promise.withResolvers<void>(), recovery: unknown[] = [];
+    const f = warmSettingsFixture(t, {settingsBootAckTimeoutMs: 5, onLoadError: error => { recovery.push(error); }});
+    const parent = await f.launcher();
+    f.host.prewarmSettings(parent);
+    await tick();
+    const shell = f.prepared[0]!;
+    shell.loadURL = async url => {
+      await tick();
+      shell.navigate(url);
+      return load.promise;
+    };
+    assert.equal(f.host.showSettings('general', parent), true);
+    const firstContext = f.host.contextFor(shell)!.contextId;
+    t.mock.timers.tick(5);
+    await tick();
+    assert.notEqual(f.host.contextFor(shell)!.contextId, firstContext);
+    if (outcome === 'superseded') shell.navigate(f.settingsUrl);
+    const error = Object.assign(new Error('Synthetic fallback load error'), {code: outcome === 'aborted' ? 'ERR_ABORTED' : 'ERR_FAILED'});
+    load.reject(error);
+    await tick();
+    assert.deepEqual(recovery, outcome === 'failed' ? [error] : []);
+    assert.equal(f.host.settingsForParent(parent), shell);
+  }
+});
+
+test('prewarmed settings with stale presentation are replaced before the shell is shown', async t => {
+  const f = warmSettingsFixture(t, {warmSettingsMatches: () => false});
+  const parent = await f.launcher(); f.host.prewarmSettings(parent); await tick();
+  const shell = f.prepared[0]!;
+  assert.equal(f.host.showSettings('general', parent), true);
+  assert.deepEqual(f.discarded, [shell]);
+  const cold = f.host.settingsForParent(parent)!;
+  await f.host.loadFor(cold);
+  assert.notEqual(cold, shell);
+  assert.equal(shell.shows, 0);
+  assert.equal(cold.shows, 1);
+});
+
+test('settings timings correlate a delayed click and page reads with a bounded utility sample', async () => {
+  const origin = 1_790_000_000_000, window = {}, source = {};
+  let now = origin + 3500;
+  const rows: SettingsDiagnosticRecord[] = [], samples: number[][] = [];
+  const controller = new AbortController();
+  const d = createSettingsOpeningDiagnostics({now: () => now, signal: controller.signal,
+    record: value => { rows.push(value); }, sample: async (from, to) => { samples.push([from, to]); return from === origin ? 2840 : 35; }});
+  const request = parseSettingsDiagnosticRequest({kind: 'click', eventAt: origin, handledAt: now - 1});
+  assert.equal(request?.kind, 'click'); if (request?.kind !== 'click') return assert.fail('click request');
+  assert.equal(parseSettingsDiagnosticRequest({...request, path: '/private/synthetic'}), null);
+  d.click(source, request); d.begin(window, source, 'warm', now, {readyToShow: origin - 500});
+  d.phase(window, 'promoted'); now += 20; d.phase(window, 'show'); d.boot(window, 'start', now); d.boot(window, 'import', now);
+  d.read(window, {kind: 'read', phase: 'start', page: 'workspace-directory', requestId: 1, at: now});
+  now += 75;
+  d.read(window, {kind: 'read', phase: 'end', page: 'workspace-directory', requestId: 1, at: now});
+  d.boot(window, 'ready', now); d.close(window); await tick(); await tick(); await tick();
+  assert.deepEqual(samples, [[origin + 3520, now], [origin, now], [origin, now]]);
+  const timing = rows.find(row => row.event === 'settings-open-timing');
+  assert.ok(timing && timing.event === 'settings-open-timing');
+  assert.equal(timing?.utilityMaxDelayMs, 2840);
+  assert.deepEqual(timing?.phases, {rendererEvent: 0, rendererHandled: 3499, mainReceived: 3500, readyToShow: -500, promoted: 3500, show: 3520, bootAck: 3520, bootStarted: 3520, bootReady: 3595});
+  assert.equal(rows.filter(row => row.event === 'settings-open-slow').length, 1);
+  const read = rows.find(row => row.event === 'settings-page-read');
+  assert.ok(read && read.event === 'settings-page-read');
+  assert.equal(read?.durationMs, 75);
+  assert.equal(read?.utilityMaxDelayMs, 35);
+  assert.deepEqual(sanitizeSettingsDiagnosticRecord({...read, credential: 'synthetic'}), read);
+  assert.deepEqual(sanitizeSettingsDiagnosticRecord({...timing, phases: {...timing?.phases, title: 'private'}}), timing);
 });
 
 test('a warm settings shell cannot be promoted for a different editor', async t => {

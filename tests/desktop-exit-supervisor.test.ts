@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { BackendSupervisor, type BackendSupervisorOptions } from '../apps/desktop/src/supervisor.ts';
+import { createSettingsEventLoopMonitor } from '../apps/desktop/src/settings-event-loop.ts';
 
 const sensitive = 'private-token-request-body-/Users/private/movie.mp4';
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -204,6 +205,65 @@ test('late probes from an old child never reach its replacement and repeated pro
   assert.equal(f.children.length, 2, 'only the explicit second start created a replacement');
   assert.equal(f.supervisor.child, current);
   await f.supervisor.stop();
+});
+
+test('utility settings diagnostics measure a real stall before and after the overdue timer fires', async t => {
+  const monitor = createSettingsEventLoopMonitor();
+  t.after(() => monitor.close());
+  const fromMs = Date.now();
+  const buffer = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  Atomics.wait(buffer, 0, 0, 160);
+  const toMs = Date.now();
+  const pendingDelay = monitor.sample(fromMs, toMs);
+  assert.ok(pendingDelay !== null && pendingDelay >= 100);
+  assert.equal(monitor.sample(toMs - 40, toMs), 40, 'measure only the portion that overlapped the requested window');
+  assert.equal(monitor.sample(fromMs, fromMs), 0);
+  assert.equal(monitor.sample(fromMs - 121_000, fromMs), null);
+  await new Promise(resolve => setTimeout(resolve, 60));
+
+  const replies: unknown[] = [], request = {type: 'settings-event-loop:sample', sampleId: 1, fromMs, toMs};
+  assert.equal(monitor.handle({...request, data: 'synthetic extra field'}, reply => replies.push(reply)), false);
+  assert.equal(monitor.handle(request, reply => replies.push(reply)), true);
+  const delay = monitor.sample(fromMs, toMs);
+  assert.ok(delay !== null && delay >= 100, 'the recorded sample still includes the stall');
+  assert.deepEqual(replies[0], {type: 'settings-event-loop:result', sampleId: 1, maxDelayMs: delay});
+  monitor.close();
+  assert.equal(monitor.sample(fromMs, toMs), null);
+  assert.equal(monitor.handle(request, reply => replies.push(reply)), true);
+  assert.equal(replies.length, 1);
+});
+
+test('settings diagnostics accept only a matching fixed reply from the current utility and clear pending work on shutdown', async t => {
+  const f = await fixture(t);
+  await f.supervisor.start(f.config);
+  const old = f.child!, toMs = Date.now(), fromMs = toMs - 100;
+  const pendingOld = f.supervisor.sampleSettingsEventLoop(fromMs, toMs);
+  assert.deepEqual(old.messages.at(-1), {type: 'settings-event-loop:sample', sampleId: 1, fromMs, toMs});
+  old.emit('exit', 9);
+  assert.equal(await pendingOld, null);
+  await f.supervisor.start(f.config);
+  const current = f.child!;
+  let settled = false;
+  const pending = f.supervisor.sampleSettingsEventLoop(fromMs, toMs).then(delay => { settled = true; return delay; });
+  const reply = {type: 'settings-event-loop:result', sampleId: 1, maxDelayMs: 72};
+  old.emit('message', reply);
+  current.emit('message', {...reply, secret: 'synthetic extra field'});
+  current.emit('message', {...reply, sampleId: 2});
+  current.emit('message', {...reply, maxDelayMs: 101});
+  await tick();
+  assert.equal(settled, false);
+  current.emit('message', reply);
+  assert.equal(await pending, 72);
+
+  const abort = new AbortController();
+  const aborted = f.supervisor.sampleSettingsEventLoop(fromMs, toMs, abort.signal);
+  abort.abort();
+  assert.equal(await aborted, null);
+  const timeout = f.supervisor.sampleSettingsEventLoop(fromMs, toMs);
+  const stopping = f.supervisor.stop();
+  assert.equal(await timeout, null);
+  assert.equal(await f.supervisor.sampleSettingsEventLoop(fromMs, toMs), null);
+  await stopping;
 });
 
 for (const ready of [false, true]) test(`lease acknowledgement communication failure retains the existing kill path (ready=${ready})`, async t => {

@@ -21,7 +21,7 @@ const busy = (state: GenerationLiveSettingsState) => ['loading', 'saving', 'reco
 /** The global dispatch gate participates in the page save. Closing runs first;
  * opening runs only after every service file was confirmed. */
 export function createGenerationLiveSettings({
-  client = {read: readWorkspaceSettings, write: saveWorkspaceSettings}, onChange = () => {}, onConfirmed = () => {},
+  client = {read: signal => readWorkspaceSettings(signal, 'generation-live'), write: saveWorkspaceSettings}, onChange = () => {}, onConfirmed = () => {},
 }: {client?: GenerationLiveSettingsClient; onChange?: (state: GenerationLiveSettingsState) => void; onConfirmed?: () => void} = {}) {
   let state = initialGenerationLiveSettings(), live = true, visible = false, epoch = 0, visibilityEpoch = 0;
   let pending: AbortController | null = null;
