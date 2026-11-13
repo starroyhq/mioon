@@ -140,7 +140,6 @@ export function planCanvasArchive(store: ProjectStore, operation: 'archive' | 'r
   const add = (row: CanvasRow, fields: CanvasFields) => {
     const key = canvasKey(row);
     changed.set(key, {row, fields: {...changed.get(key)?.fields, ...fields}});
-    guard(row);
   };
   function guard({kind, id}: CanvasTarget): void { guards.set(canvasKey({kind, id}), {kind, id}); }
   const edgeIds = selected.filter(row => row.kind === 'edge').map(row => row.id);
@@ -177,6 +176,7 @@ export function planCanvasArchive(store: ProjectStore, operation: 'archive' | 'r
     }
     if (restoring && row.archive?.reason === 'undo-create') return canvasError('undo-created', {id: row.id});
     add(row, {archive: restoring ? null : archive});
+    guard(row);
   }
   const affectedNodes = new Map(selected.filter(row => row.kind === 'node').map(row => [row.id, row]));
   const shotSelection = selected.filter(row => row.kind === 'shot');
@@ -229,6 +229,8 @@ export function planCanvasArchive(store: ProjectStore, operation: 'archive' | 'r
       const target: CanvasTarget = {kind: 'shot', id};
       const changedRow = changed.get(canvasKey(target))?.row;
       if ((changedRow?.data.orderIndex ?? currentPositions.get(id)) !== orderIndex) {
+        // The patch checks the exact order and orderIndex. An unrelated edit
+        // to a surviving shot must not invalidate the archive action.
         add(changedRow ?? readCanvasRow(store, target), {orderIndex});
       }
     }
