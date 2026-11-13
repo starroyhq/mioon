@@ -197,7 +197,7 @@ export function imageTaskConnectionMessage(task: ImageTaskView | null | undefine
   if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchMessages, task.errorCode ?? '')) return '';
   return `${customPreDispatchMessages[task.errorCode ?? '']}本次未发送生成 POST；任何新请求都需要重新明确批准，不会自动重试。`;
 }
-const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错。', IMAGE_LIVE_DISABLED: '暂没有可用的图像生成服务，请在设置里配置并启用。', GENERATION_SERVICE_UNAVAILABLE: '暂没有可用的图像生成服务，请在设置里配置并启用。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
+const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错。', IMAGE_LIVE_DISABLED: renderMessage('zh-Hans', localizedMessage('image.state.liveDisabled')), GENERATION_SERVICE_UNAVAILABLE: renderMessage('zh-Hans', localizedMessage('image.state.liveDisabled')), IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
 const rejectionMessage = (code: string): string => Object.hasOwn(rejectionMessages, code) ? rejectionMessages[code] : '请求未被接受，草稿保留。请重新读取并核对后再提交。';
 export function imageInputIssue(draft: ImageDraft): string {
   if (!draft.name.trim()) return '请填写图像名称。';
@@ -221,7 +221,7 @@ export function imageEditSourceIssue(asset: ImageEditAsset | null | undefined, p
   if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return '每边最多 4096 像素。';
   return '';
 }
-export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !(state.providerId === 'openai' || state.providerId === 'mock' && state.mockAvailable) ? '图像编辑需要 OpenAI 官方连接。' : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张源图。' : '';
+export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !(state.providerId === 'openai' || state.providerId === 'mock' && state.mockAvailable) ? renderMessage('zh-Hans', localizedMessage('image.state.editProvidersOnly')) : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张源图。' : '';
 const editInput = (state: ImageGenerationState): Record<string, unknown> => state.mode === 'edit' ? { purpose: 'edit', inputImage: copy(state.inputImage) } : {};
 /** An edit's output follows its source's ratio within the model's edit profile;
  * null until a source with known dimensions is chosen. Text-to-image stays fixed. */
@@ -474,7 +474,7 @@ export function createImageGenerationSession({ projectId, mockAvailable = false,
       }
       if (settingsReader) {
         try { const latest = safeImageSettings(await settingsReader()) as ImageSettingsView; if (!owned(epoch)) return false; emit({ settings: latest }); }
-        catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，仍可查看已保存记录。', displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
+        catch { if (!owned(epoch)) return false; emit({ settings: null, message: renderMessage('zh-Hans', localizedMessage('image.state.settingsUnverifiable')), displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
       }
       if (generationServices) {
         try { const services = safeCustomServices(await serviceCall(signal => generationServices.list(projectId, signal))); if (!owned(epoch)) return false;

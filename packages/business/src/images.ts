@@ -103,7 +103,7 @@ export function listImageProfiles({settings,customSettings,customSettingsV2,comf
   const withRevision=(profile: ImageProfileItem,state: {revision?: unknown}|undefined): ImageProfileItem=>{if(input.includeSettingsRevision===true){const revision=state?.revision;if(Number.isSafeInteger(revision)&&(revision as number)>0)profile.settingsRevision=revision as number;}return profile;};
   try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);const liveItem=value.items.find(item=>item.providerId==='openai');if(liveItem){liveItem.enabled=value.liveEnabled;liveItem.name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';withRevision(liveItem,state);}}catch{/* settings absence is not readiness */}
   try{const state=customSettings?.[IMAGE_SETTINGS_READ_CURRENT]();if(state&&isCompleteCustomImageConfiguration(state.configuration)){const enabled=Boolean(compatible&&state.configuration.enabled&&state.secret.configured);value.items.push(withRevision({providerId:'openai-compatible',model:state.configuration.model,name:enabled?'自定义 Images · 需逐次确认':'自定义 Images · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
-  if(customSettingsV2&&compatible){
+  if(customSettingsV2){
    const state=customSettingsV2.readCurrent(),ambiguous=state.connections.length>1;
    // Ambiguous entries describe model groups, never a selected connection.
    // Old prepare rejects before using their advisory revision or any key.

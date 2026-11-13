@@ -196,7 +196,7 @@ test('stable task history retains Mock jobs but offers retry only for a real pro
   const history = h.render({...props, selectedTaskId: simulated.id});
   assert.ok(find(history, `job-${simulated.id}`));
   assert.equal(find(history, `retry-job-${simulated.id}`), undefined);
-  assert.deepEqual(h.calls, []);
+  assert.equal(h.calls.length, 0);
   const real = h.render({...props, selectedTaskId: paid.id});
   find(real, `retry-job-${paid.id}`)!.props.onClick();
   assert.equal(h.calls.length, 1);
