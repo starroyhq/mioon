@@ -2514,9 +2514,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (workspaceMode !== 'editing' || !['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current!.project?.id) return null;
     const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current!.timeline, history: dataRef.current!.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
     if (!(direction === 'undo' ? latest.canUndo : latest.canRedo)) return null;
-    return canExecute
-      ? mutateTimeline(`timeline.${direction}`, {}, expectedRevision, {canExecute})
-      : mutateTimeline(`timeline.${direction}`);
+    if (canExecute) return mutateTimeline(`timeline.${direction}`, {}, expectedRevision, {canExecute});
+    return mutateTimeline(`timeline.${direction}`);
   }
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

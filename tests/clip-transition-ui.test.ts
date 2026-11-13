@@ -81,6 +81,6 @@ test('the inspector offers transitions on visual clips and App keeps the user to
   assert.match(app, /mutateTimeline\('timeline\.clip\.setTransition', \{ clipId, transition \}/);
   assert.match(app, /maxFrames: clipTransitionRoom\(timeline\.clips, clip, sources\)/);
   // Another edit that drops a transition says so; undo, redo and the transition edit itself do not.
-  assert.match(app, /if \(!transitions\.length \|\| \['timeline\.clip\.setTransition', 'timeline\.undo', 'timeline\.redo'\]\.includes\(operation\)\) return run\('timeline:mutation', operation, request/);
+  assert.match(app, /if \(!firstVisualPlacement && \(!transitions\.length \|\| \['timeline\.clip\.setTransition', 'timeline\.undo', 'timeline\.redo'\]\.includes\(operation\)\)\) return run\('timeline:mutation', operation, request/);
   assert.match(app, /if \(lost\) notify\(msg\('clip\.transition\.removed', \{ count: lost \}\), 'warning'\);/);
 });
