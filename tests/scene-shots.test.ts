@@ -14,11 +14,15 @@ import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {ownsStoreLock,assertProjectStore} from '../packages/business/src/store-runtime.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import {setAgentTaskJobOriginRunner,setAgentTaskEffectGate,resumeAgentTaskJobs} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
+import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
+import {createCanvasEditing} from '../packages/business/src/canvas-editing.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
@@ -57,8 +61,12 @@ function keyframes(input: DecodeSceneKeyframesOptions,{groups=(input.marks)!.map
 const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','scene_results','shots','assets'].map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
 const staging=(root: string)=>existsSync(path.join(root,'.mioon-store','tmp','scene-staging'))?readdirSync(path.join(root,'.mioon-store','tmp','scene-staging')).filter(name=>name.endsWith('.png')):[];
 
-function open(root: string,{decode,detect,fault,cuts=[30,900],frameCount=1800,autoRun=true,real=false}: {decode?: (input: DecodeSceneKeyframesOptions) => unknown; detect?: SceneServicesOptions['detect']; fault?: SceneServicesOptions['fault']; cuts?: number[]; frameCount?: number; autoRun?: boolean; real?: boolean}={}){
- const store=(openStore(root) as unknown as TypedStore);let decodes=0;
+function open(root: string,{decode,detect,fault,cuts=[30,900],frameCount=1800,autoRun=true,real=false,canvas=false}: {decode?: (input: DecodeSceneKeyframesOptions) => unknown; detect?: SceneServicesOptions['detect']; fault?: SceneServicesOptions['fault']; cuts?: number[]; frameCount?: number; autoRun?: boolean; real?: boolean; canvas?: boolean}={}){
+ const projectFile=path.join(root,'project.mioon'),layout=path.join(root,'.mioon-store');
+ const location={localDir:path.join(layout,'local'),cacheDir:path.join(layout,'cache'),tempDir:path.join(layout,'tmp')};
+ if(canvas&&!existsSync(projectFile)){createProjectFile(projectFile,{format4:{}});mkdirSync(path.join(root,'media'),{mode:0o700});}
+ const store=(canvas?openServerTestStore({projectFile,locate:()=>location,format4:{}},path.join(layout,'app')):openStore(root)) as TypedStore;
+ let decodes=0;
  const holds=new Map<string, ReturnType<typeof deferred>>();
  const services=(createSceneServices(store,({autoRun,fault,...(real?{}:{
   detect:async input=>{
@@ -445,6 +453,30 @@ test('undo removes the untouched shots and keeps the keyframes; any real change 
  await assert.rejects(f.call('scene.shots.undo',f.control({id:((await f.call('scene.task.list',{projectId:f.project.id})).items.find((item: { kind: string; })=>item.kind==='detect'))!.id,revision:3})),code('SCENE_STATE_CONFLICT'));
  assert.equal((await f.get(ack.id)).state,'undone');
  assert.equal((await f.call('scene.shots.create',f.input(resultId))).state,'queued','the video can be storyboarded again');
+});
+
+test('storyboard appends after the live order and undo keeps a later archived shot and its original receipt', async t=>{
+ const f=fixture(t,{canvas:true}),resultId=await f.detected(),projectId=f.project.id;
+ const oldId=randomUUID(),at='2026-11-13T00:00:00.000Z';
+ const archive=(shotId:string)=>f.store.tx(()=>f.store.db.prepare(
+  "UPDATE project.shots SET archivedAt=?,archiveBatchId=?,archiveReason='user-delete' WHERE id=?").run(at,randomUUID(),shotId));
+ f.store.put('shots',{id:oldId,projectId,orderIndex:500,revision:1});
+ archive(oldId);
+ const input=f.input(resultId),accepted=await f.call('scene.shots.create',input),done=await f.state(accepted.id,'succeeded');
+ const ids=done.shots!.map(shot=>shot.shotId);
+ assert.deepEqual(ids.map(id=>f.store.get('shots',id)?.orderIndex),[0,1,2]);
+ const [shotId,moved]=ids;
+ assert.ok(shotId&&moved&&isProjectStore(f.store));
+ createCanvasEditing(f.store).call('canvas.apply',{projectId,operation:'move',historyRevision:0,requestId:randomUUID(),
+  moves:[{kind:'shot',id:moved,revision:readMioTargetRevision(f.store.db,projectId,'shot',moved),position:{x:100,y:200}}]});
+ archive(shotId);
+ const current=await f.get(done.id);
+ assert.deepEqual(current.undo,{available:false,blockers:[{segment:1,shotId,reason:'MISSING'},{segment:2,shotId:moved,reason:'CANVAS_HISTORY'}]});
+ const undo=f.control(current);
+ await assert.rejects(f.call('scene.shots.undo',undo),refused('SCENE_UNDO_BLOCKED','scene.shots.undo',undo));
+ assert.ok(f.store.get('shots',shotId));
+ assert.deepEqual(await f.call('scene.shots.create',input),accepted);
+ assert.deepEqual(current.shots,done.shots);
 });
 
 test('the PNG stream splitter and keyframe targets are exact', ()=>{

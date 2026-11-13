@@ -165,6 +165,15 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
 
+### 画布编辑（格式 4 候选）
+
+画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。只有以格式 4 候选入口打开的项目支持以下操作。默认桌面和 Web 宿主仍按格式 3 打开项目。
+
+- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一宿主、项目内容、目标及影响范围，两分钟内有效。活动任务或未决写入会阻止整批操作。
+- `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象，返回批次和当前目标修订。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
+- `canvas.apply` 原子提交删除、恢复、移动或整理。格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
+- `canvas.history.get` 返回画布游标修订、可撤销和重做的动作以及冲突状态。写入携带 `historyRevision` 和调用方生成的 `requestId`。响应丢失时，用同一请求 ID 原样重试，可取回原回执。撤销和重做通过 `canvas.history.undo`、`canvas.history.redo`，与剪辑历史独立。补丁按最多 100 步及 8 MiB 保留，回执不会随历史裁剪。
+
 ### Private last-project locator（已退役）
 
 `GET /api/last-project`、`PUT /api/last-project` 及该路径的子路径已在 S6-C 2a 退役。保留现有 Host/Origin 和令牌/会话校验；通过校验后，无论 method、query 或 body，均返回 404 `NOT_FOUND`。不存在替代的 last-project RPC、CLI、MCP 或 Mio 操作。

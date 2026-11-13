@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {opendirSync} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {assetMediaRecordSchema, toAssetMediaDto} from '../../contracts/src/asset-media.ts';
@@ -6,8 +7,9 @@ import {canonicalPrevisValue} from '../../contracts/src/previs.ts';
 import {previsPublicationIdentity, previsPublicationInputSchema, previsPublicationLookupSchema, previsPublicationManifestSchema} from '../../contracts/src/previs-publication.ts';
 import type {PrevisPublicationInput, PrevisPublicationLookupInput, PrevisPublicationResponse, PrevisPublicationManifest} from '../../contracts/src/previs-publication.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
-import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
+import {ensurePrivateDirectory, readPrivateFile, validateManagedDirectory, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
 import {createPrevisReaders} from './previs.ts';
+import {assertCanvasTargetActive} from './canvas-active.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {decodeMediaUpload} from './media-upload.ts';
@@ -17,18 +19,63 @@ import {previsOutputInputHash, readPrevisOutputSource} from './previs-output-own
 export {readPrevisOutputSource} from './previs-output-ownership.ts';
 
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
-const active = new WeakMap<ProjectStore, Map<string, Promise<PrevisPublicationResponse>>>();
+type ActivePublication = {readonly identity: PrevisPublicationLookupInput; readonly promise: Promise<PrevisPublicationResponse>};
+const active = new WeakMap<ProjectStore, Map<string, ActivePublication>>();
+const publicationDirectory = (store: ProjectStore): string => path.join(store.tempDir, 'previs-publications');
 const conflict = (): never => {throw new AppError('IDEMPOTENCY_CONFLICT', '同一预演请求 ID 已用于不同内容', 409);};
 const invalid = (): never => {throw new AppError('PREVIS_EXPORT_INVALID', '预演导出来源或发布记录无法核验', 409);};
 const inputHash = previsOutputInputHash;
+
+export interface PendingPrevisPublication {
+  readonly nodeId: string;
+  readonly requestId: string;
+  readonly inputHash: string;
+  readonly state: 'running' | 'unknown';
+}
+
+/** Only durable unmatched intents and operations on this exact store are
+ * blockers. A registered asset keeps its original proof after archiving. */
+export function pendingPrevisPublications(store: ProjectStore, nodeIds: ReadonlySet<string>): PendingPrevisPublication[] {
+  if (!isProjectStore(store)) throw new TypeError('A live project store is required');
+  if (!nodeIds.size) return [];
+  const pending = new Map<string, PendingPrevisPublication>(), directory = publicationDirectory(store);
+  for (const [key, {identity}] of active.get(store) ?? []) {
+    if (nodeIds.has(identity.nodeId)) pending.set(key, {nodeId: identity.nodeId, requestId: identity.requestId, inputHash: inputHash(identity), state: 'running'});
+  }
+  if (!validateManagedDirectory(directory, {root: store.tempDir, private: true, allowMissing: true})) return [...pending.values()];
+  const dir = opendirSync(directory);
+  let count = 0;
+  try {
+    for (let file = dir.readSync(); file; file = dir.readSync()) {
+      if (++count > 8192) return invalid();
+      if (!/^[0-9a-f]{64}\.json$/u.test(file.name)) continue;
+      const key = file.name.slice(0, -5);
+      if (pending.has(key)) continue;
+      const raw = readPrivateFile(path.join(directory, file.name), {root: store.tempDir, maxBytes: 32768, encoding: 'utf8'});
+      const parsed = previsPublicationManifestSchema.safeParse(JSON.parse(String(raw)));
+      if (!parsed.success || parsed.data.identity.projectId !== store.projectId ||
+          hash(parsed.data.identity.requestId) !== key || inputHash(parsed.data.identity) !== parsed.data.inputHash) return invalid();
+      const {identity, assetId, publicationId} = parsed.data;
+      if (!nodeIds.has(identity.nodeId)) continue;
+      const asset = store.get('assets', assetId);
+      if (asset) {
+        const source = readPrevisOutputSource(asset, store.projectId);
+        const proof = projectOutputPublicationProofSchema.safeParse((asset as {publication?: unknown}).publication);
+        if (source && proof.success && proof.data.publicationId === publicationId && inputHash(source) === parsed.data.inputHash) continue;
+      }
+      pending.set(key, {nodeId: identity.nodeId, requestId: identity.requestId, inputHash: parsed.data.inputHash, state: 'unknown'});
+    }
+  } finally {dir.closeSync();}
+  return [...pending.values()];
+}
 
 /** A fixed local PNG producer. Ordinary asset.import cannot enter this path or
  * choose its provenance. Only complete PNG bytes receive a durable manifest;
  * the shared publisher owns final naming, exclusive I/O and crash recovery. */
 export function createPrevisPublicationServices(store: ProjectStore, {now = () => new Date().toISOString(), signal, beforeEffect}:
   {now?: () => string; signal?: AbortSignal; beforeEffect?: () => void} = {}) {
-  const readers = createPrevisReaders(store.db), directory = path.join(store.tempDir, 'previs-publications');
-  const running = active.get(store) ?? new Map<string, Promise<PrevisPublicationResponse>>();
+  const readers = createPrevisReaders(store.db), directory = publicationDirectory(store);
+  const running = active.get(store) ?? new Map<string, ActivePublication>();
   active.set(store, running);
   const fence = (identity: PrevisPublicationLookupInput): void => {
     signal?.throwIfAborted(); beforeEffect?.();
@@ -38,6 +85,7 @@ export function createPrevisPublicationServices(store: ProjectStore, {now = () =
   const sourceFence = (identity: PrevisPublicationLookupInput): void => {
     fence(identity);
     const node = readers.node(identity.projectId, identity.nodeId);
+    assertCanvasTargetActive(store.db,'nodes',node.id);
     if (node.sceneRevision !== identity.sceneRevision) throw new AppError('REVISION_CONFLICT', '预演场景已有新版本，请保存当前场景后重新导出', 409);
     if (!node.scene.keyframes.some(item => item.id === identity.keyframeId)) throw new AppError('PREVIS_THUMBNAIL_SLOT', '当前场景没有这个关键帧', 409);
   };
@@ -73,7 +121,7 @@ export function createPrevisPublicationServices(store: ProjectStore, {now = () =
     const input: PrevisPublicationInput = previsPublicationInputSchema.parse(raw), identity = previsPublicationIdentity(input);
     fence(identity);
     const key = hash(identity.requestId), pending = running.get(key);
-    if (pending) {await pending.catch(() => {}); return publish(input);}
+    if (pending) {await pending.promise.catch(() => {}); return publish(input);}
     const execute = async (): Promise<PrevisPublicationResponse> => {
       // Validate even a replay's supplied bytes: a forged hash cannot borrow a
       // genuine request's acknowledgement.
@@ -129,8 +177,8 @@ export function createPrevisPublicationServices(store: ProjectStore, {now = () =
       });
       return {...identity, asset: toAssetMediaDto(asset)};
     };
-    const operation = execute(); running.set(key, operation);
-    try {return await operation;} finally {if (running.get(key) === operation) running.delete(key);}
+    const entry = {identity, promise: execute()}; running.set(key, entry);
+    try {return await entry.promise;} finally {if (running.get(key) === entry) running.delete(key);}
   }
   return {handlers: {
     'previs.output.publish': (input: unknown) => publish(input),

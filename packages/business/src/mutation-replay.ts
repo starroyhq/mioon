@@ -130,7 +130,8 @@ export function createMutationReplay(store: MutationReplayStore,{canonical,readO
    // error can be mistaken for proof that an earlier attempt never committed.
    // An asset metadata scope denial is deliberately indistinguishable from absence. Keep
    // client recovery state on that error; preserve the original six semantics.
-   if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&definite.has(error.code)&&
+   if(!readOnly&&absent&&!db.isTransaction&&error instanceof AppError&&(definite.has(error.code)||
+      operation==='subject.binding.set'&&error.code==='CANVAS_TARGET_ARCHIVED')&&
       !((['asset.range.set','asset.disposition.set','asset.annotation.set'].includes(operation)||subjectMutation)&&error.code==='NOT_FOUND'))
     error.details={...detailObject(error.details),mutationOutcome:'not_applied',requestId,...(subjectMutation?{operation,projectId:(input as Record<string,unknown>).projectId}:{})};
    throw error;

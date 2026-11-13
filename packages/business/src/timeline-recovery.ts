@@ -10,6 +10,7 @@ import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_CLIP_TRANSFORM_OPERATION,TIMELINE_CLIP_TRANSFORM_PROOF_CODES,TIMELINE_CLIP_TRANSFORM_RESPONSE_BYTES,TIMELINE_CLIP_TRANSITION_OPERATION,TIMELINE_CLIP_TRANSITION_PROOF_CODES,TIMELINE_CLIP_TRANSITION_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
+import {canvasActiveCondition} from './canvas-active.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {validateSavedTimeline} from './timeline-inputs.ts';
 import {timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
@@ -227,7 +228,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
  }
  function shots(): TimelineShotRecord[]{
   graph();
-  const rows=db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data',INSPECTION_ROW_LIMITS.shots)} AS data FROM shots WHERE projectId=? LIMIT 101`).all(input.projectId);
+  const rows=db.prepare(`SELECT ${identity('id')},${identity('projectId')},${bounded('data',INSPECTION_ROW_LIMITS.shots)} AS data FROM shots WHERE projectId=? AND ${canvasActiveCondition(db)} LIMIT 101`).all(input.projectId);
   const values: TimelineShotRecord[]=rows.map(row=>{
    let value;try{value=JSON.parse(row.data as string);}catch{unavailable();}
    if(!object(value)||!uuid(row.id)||value.id!==row.id||row.projectId!==input.projectId||value.projectId!==input.projectId||

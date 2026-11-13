@@ -3,6 +3,8 @@ import {randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import {createReferenceRecoveryBoundary,readReferenceReceipt,rejectReferenceMutation,invalidReference} from './reference-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {assertCanvasTargetActive,isCanvasArchived} from './canvas-active.ts';
+import {hasRetainedCanvasDependency} from './canvas-retained.ts';
 
 type RefRecord = Record<string, unknown>;
 interface RefShotLike {[key: string]: unknown;id: string;projectId: string;referenceAssetIds: string[];revision: number}
@@ -34,7 +36,8 @@ interface RefAssetLike {[key: string]: unknown;id: string;mimeType?: string;sha2
 // asset ID on the edge: node labels/positions may change without retargeting it.
 export function createReferenceServices(store: ReferenceStore,{check,hash,now}: ReferenceServiceOptions) {
  const {db,list,put,tx}=store;
- const bindings=(shot: RefShotLike): RefEdgeLike[]=>list('edges',shot.projectId).filter((edge)=>edge.kind==='reference'&&edge.target===shot.id);
+ const bindings=(shot: RefShotLike): RefEdgeLike[]=>list('edges',shot.projectId)
+  .filter(edge=>edge.kind==='reference'&&edge.target===shot.id&&!isCanvasArchived(db,'edges',edge.id));
  const conflict=(code: string,message: string,details: Record<string,unknown>={}): never=>{throw new AppError(code,message,409,details);};
  function validateBinding(shot: RefShotLike,edge: RefEdgeLike): void {
   if(edge.role!=='first_frame'||shot.referenceAssetIds.length!==1||shot.referenceAssetIds[0]!==edge.sourceAssetId)
@@ -83,6 +86,7 @@ export function createReferenceServices(store: ReferenceStore,{check,hash,now}: 
  const handlers={
   'reference.attach':(input: ReferenceInput)=>mutation('reference.attach',input,boundary=>{
    const source=boundary.node(input.sourceNodeId),shot=boundary.shot(input.targetShotId),edges=boundary.bindings(shot);
+   assertCanvasTargetActive(db,'nodes',source.id);assertCanvasTargetActive(db,'shots',shot.id);
    if(edges.length>1)conflict('REFERENCE_STATE_CONFLICT','镜头存在多个首帧连线，请先检查最新状态',{shotId:shot.id});
    if(edges.length)validateBinding(shot,edges[0]);
    check(source,input.expectedSourceRevision);check(shot,input.expectedShotRevision);
@@ -100,11 +104,15 @@ export function createReferenceServices(store: ReferenceStore,{check,hash,now}: 
   }),
   'reference.detach':(input: ReferenceInput)=>mutation('reference.detach',input,boundary=>{
    const edge=boundary.edge(input.edgeId)!;
+   assertCanvasTargetActive(db,'edges',edge.id);
    if(edge.kind!=='reference'||edge.role!=='first_frame')throw new AppError('INVALID_REFERENCE_EDGE','这不是首帧参考连线；视觉连线请使用 edge.delete');
    const shot=boundary.shot(edge.target),edges=boundary.bindings(shot);
+   assertCanvasTargetActive(db,'shots',shot.id);assertCanvasTargetActive(db,'nodes',edge.source as string);
    validateBinding(shot,edge);
    if(edges.length!==1)conflict('REFERENCE_STATE_CONFLICT','镜头存在多个首帧连线，请先检查最新状态',{shotId:shot.id});
    check(shot,input.expectedShotRevision);
+   if(hasRetainedCanvasDependency(db,shot.projectId,[{kind:'edge',id:edge.id}]))
+    throw new AppError('CANVAS_HISTORY_DEPENDENCY','画布历史仍引用这条首帧连线。',409,{edgeId:edge.id});
    advance(shot);
    const updated={...shot,referenceAssetIds:[],revision:shot.revision+1,updatedAt:now()};
    return {response:{edge:edge as RefRecord,shot:updated,detached:true},save:()=>{db.prepare('DELETE FROM edges WHERE id=?').run(edge!.id);put('shots',updated);}};

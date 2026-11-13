@@ -6,6 +6,7 @@ import {mediaFingerprintToken} from './project-asset-references.ts';
 import {validatedProjectAssetSource} from './project-media-storage.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
+import {assertCanvasTargetActive} from './canvas-active.ts';
 import {AppError,PREVIS_LIMITS,PREVIS_THUMBNAIL_CARD,canonicalPrevisValue,defaultPrevisScene,isPrevisNodeRecord,previsSchemas,publicValue} from '@mioon/contracts';
 import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumbnailSetResponse} from '@mioon/contracts';
 import {usesPrevisSchema} from './store-capabilities.ts';
@@ -238,6 +239,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
    // Ownership is checked before any retained receipt is used.
    const current=readers.node(input.projectId,input.nodeId);
    if(prior)return replay(prior,'previs.scene.set',input.projectId,hash,requestId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
    if(current.sceneRevision!==input.expectedSceneRevision)throw failure('REVISION_CONFLICT',409,{entityId:current.id,
     expectedSceneRevision:input.expectedSceneRevision,currentSceneRevision:current.sceneRevision,current:publicValue(current)});
    if(current.revision>=Number.MAX_SAFE_INTEGER||current.sceneRevision>=Number.MAX_SAFE_INTEGER)throw failure('PREVIS_REVISION_LIMIT');
@@ -261,6 +263,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   if(!size||size.width>PREVIS_LIMITS.thumbnailEdge||size.height>PREVIS_LIMITS.thumbnailEdge)throw failure('PREVIS_THUMBNAIL_INVALID',400);
   return tx(()=>{
    const current=readers.node(input.projectId,input.nodeId);
+   assertCanvasTargetActive(db,'nodes',current.id);
    if(input.sceneRevision!==current.sceneRevision)throw failure('PREVIS_THUMBNAIL_STALE',409,{currentSceneRevision:current.sceneRevision});
    if(input.slot!==PREVIS_THUMBNAIL_CARD&&!current.scene.keyframes.some(keyframe=>keyframe.id===input.slot))throw failure('PREVIS_THUMBNAIL_SLOT',409,{slot:input.slot});
    const updatedAt=now(),fingerprinted=fingerprintedThumbnails(db),sourceFingerprintDigest=thumbnailDependencies(db,current,store.root),values=[input.sceneRevision,size.width,size.height,bytes,updatedAt] as const;

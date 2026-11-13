@@ -4,6 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {validateImageConsumption} from './image-consumption.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
+import {canvasActiveEdgeCondition} from './canvas-active.ts';
 
 export type GenerationRecord=Record<string, unknown>;
 export interface GenerationAsset {
@@ -205,8 +206,8 @@ export function assertSubjectGenerationSelection(db: DatabaseSync,shot: Generati
  if(referenceIds.length||shot.lastFrameAssetId!=null)fail('REFERENCE_STATE_CONFLICT','本次主体参考不能与已保存的首帧或尾帧混用；请先明确修改镜头选择');
  const limit=INSPECTION_ROW_LIMITS.edges;
  const rows=db.prepare(`SELECT CASE WHEN length(CAST(id AS BLOB))=36 THEN id END AS id,CASE WHEN length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId,
-  CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ${limit} THEN data END AS data FROM edges
-  WHERE CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ${limit} THEN
+  CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ${limit} THEN data END AS data FROM edges e
+  WHERE ${canvasActiveEdgeCondition(db,'e')} AND CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ${limit} THEN
    CASE WHEN json_valid(data) THEN CASE WHEN json_type(data) IS NOT 'object' THEN 1
     WHEN projectId=? AND (json_type(data,'$.target') IS NOT 'text' OR length(CAST(json_extract(data,'$.target') AS BLOB)) IS NOT 36 OR json_extract(data,'$.id') IS NOT id OR json_extract(data,'$.projectId') IS NOT projectId) THEN 1
     WHEN json_extract(data,'$.target')=? THEN 1 ELSE 0 END ELSE 1 END ELSE 1 END LIMIT 1025`).all(shot.projectId,shot.id);

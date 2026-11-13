@@ -1,3 +1,4 @@
+import {listActiveCanvasRecords} from '../canvas-active.ts';
 import {PREVIS_HANDS,PREVIS_LIMITS,PREVIS_POSES,PREVIS_PROP_KINDS,PREVIS_SCENE_SCHEMA_VERSION,previsFrame,previsFramedElements,previsLookAt,previsSchemas,roundPrevisNumber} from '@mioon/contracts';
 import type {PrevisCamera,PrevisNodeRecord,PrevisScene} from '@mioon/contracts';
 import type {AgentTaskJson} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -115,7 +116,7 @@ function timelineFormat(store:Store,projectId:string):Value|null{
 /** A previs node as Mio reads it, also returned after Mio creates or saves one. */
 export function previsTaskView(store:Store,projectId:string,node:PrevisNodeRecord):AgentTaskJson{
  const frame=previsFrame(timelineFormat(store,projectId)),scene=node.scene;
- const shots=store.list('shots',projectId).flatMap(value=>object(value)&&typeof value.id==='string'?[{id:value.id,orderIndex:typeof value.orderIndex==='number'?value.orderIndex:0,
+ const shots=listActiveCanvasRecords(store.db,'shots',projectId,()=>store.list('shots',projectId)).flatMap(value=>object(value)&&typeof value.id==='string'?[{id:value.id,orderIndex:typeof value.orderIndex==='number'?value.orderIndex:0,
   first:Array.isArray(value.referenceAssetIds)&&typeof value.referenceAssetIds[0]==='string'?value.referenceAssetIds[0].toLowerCase():null,
   last:typeof value.lastFrameAssetId==='string'?value.lastFrameAssetId.toLowerCase():null}]:[]).sort((a,b)=>a.orderIndex-b.orderIndex);
  const framed=(view:PrevisCamera)=>previsFramedElements(scene,view,frame.aspect);
