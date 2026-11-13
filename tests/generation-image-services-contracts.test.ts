@@ -8,6 +8,39 @@ import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/g
 import {generationImageServiceSchemas, isGenerationImageServiceResponse} from '../packages/contracts/src/generation-image-services.ts';
 import {createGenerationImageServicesClient} from '../apps/web/src/generation-image-services.ts';
 import {OUTPUT_LOCALE_HEADER} from '../packages/contracts/src/output-locale.ts';
+import {readDraftServiceModels} from '../packages/business/src/draft-service-probe.ts';
+import {DRAFT_SERVICE_PROBE_LIMITS, draftServiceProbeResultSchema} from '../packages/contracts/src/draft-service-probe.ts';
+
+test('model probes return bounded identifiers even if the service reflects the credential', async () => {
+  const secret = 'synthetic-draft-only-key';
+  const response = Response.json({data: [
+    {id: `prefix-${secret}`}, {id: 'model-a', displayName: secret}, {id: 'model-a'},
+    {id: '<script>'}, {id: 'vendor/model-b:preview'}, {id: 5}, {name: secret},
+  ], secret});
+  const result = await readDraftServiceModels(response, secret);
+  assert.deepEqual(result, [{id: 'model-a'}, {id: 'vendor/model-b:preview'}]);
+  assert.equal(draftServiceProbeResultSchema.safeParse({result: 'ok', models: result}).success, true);
+  assert.equal(draftServiceProbeResultSchema.safeParse({result: 'ok', models: [{id: 'model-a', secret}]}).success, false);
+  assert.equal(draftServiceProbeResultSchema.safeParse({result: 'unauthorized', models: result}).success, false);
+  assert.equal(await readDraftServiceModels(Response.json({data: Array.from({length: 1001}, (_, i) => ({id: `model-${i}`}))}), secret), null);
+  assert.equal(await readDraftServiceModels(new Response('x'.repeat(DRAFT_SERVICE_PROBE_LIMITS.responseBytes + 1)), secret), null);
+});
+
+test('cancelling a model probe releases a pending response without reporting a model list', async () => {
+  const controller = new AbortController();
+  const started = Promise.withResolvers<void>();
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    pull() {started.resolve();},
+    cancel() {cancelled = true;},
+  }));
+  const models = readDraftServiceModels(response, 'synthetic-draft-only-key', controller.signal);
+  await started.promise;
+  controller.abort();
+  assert.equal(await models, null);
+  assert.equal(cancelled, true);
+  assert.equal(response.body?.locked, false);
+});
 
 const generation = () => ({projectId: randomUUID(), requestId: randomUUID(), providerId: 'openai-compatible' as const,
   name: 'Synthetic service image', prompt: 'A synthetic contract fixture', model: 'same-model', options: {...IMAGE_FIXED_OPTIONS}});

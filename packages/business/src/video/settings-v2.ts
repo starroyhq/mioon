@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {VIDEO_SECRET_NAMESPACE, VIDEO_SETTINGS_LIMITS, parseVideoBinding, videoConnectionEndpoint, videoOutputHosts} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding, VideoSecretUpdate} from '../../../contracts/src/video-providers.ts';
-import {VIDEO_SETTINGS_V1_RESET_NOTICE, videoConnectionConfigurationV2Schema, videoExecutionBindingV2Schema, videoSettingsSelectionV2Schema, videoSettingsUpdateV2Schema, videoSettingsUuidV2Schema, videoStorageV2Schema} from '../../../contracts/src/generation-video-settings.ts';
-import type {VideoConnectionConfigurationV2, VideoConnectionViewV2, VideoSettingsOperationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2, VideoStorageV2} from '../../../contracts/src/generation-video-settings.ts';
+import {VIDEO_SETTINGS_V1_RESET_NOTICE, videoConnectionConfigurationV2Schema, videoExecutionBindingV2Schema, videoModelsListEndpoint, videoSettingsSelectionV2Schema, videoSettingsUpdateV2Schema, videoSettingsUuidV2Schema, videoStorageV2Schema} from '../../../contracts/src/generation-video-settings.ts';
+import type {VideoConnectionConfigurationV2, VideoConnectionViewV2, VideoModelsListRecipient, VideoSettingsOperationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2, VideoStorageV2} from '../../../contracts/src/generation-video-settings.ts';
 import {VIDEO_SECRET_LIMITS, validateVideoSecretPlaintext, videoSettingsError} from './settings.ts';
 import type {VideoSettingsEnvelope, VideoSettingsError, VideoSettingsOptions} from './settings.ts';
 import {createVideoSettingsV2File} from './settings-v2-file.ts';
@@ -28,6 +28,7 @@ export interface VideoSettingsV2Service {
   select(connectionId: string, configurationRevision: number, modelEntryId: string): VideoExecutionBinding;
   assertBinding(binding: unknown): void;
   acquire(binding: unknown, signal?: AbortSignal): Promise<string>;
+  acquireForProbe(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   acquireCompatible(connectionId: string, configurationRevision: number, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   close(): Promise<void>;
 }
@@ -220,6 +221,34 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (current) candidate.connections[candidate.connections.indexOf(current)] = entry; else candidate.connections.push(entry);
     candidate.history.push(copy(entry)); return true;
   }
+  function acquireCurrent(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient | null, request?: AbortSignal) {
+    return schedule(async () => {
+      ensureStable();
+      if (!uuid(connectionId) || !revision(configurationRevision) || configurationRevision === 0) return fail('VIDEO_SETTINGS_VALIDATION');
+      if (state.deletedConnectionIds.includes(connectionId)) return fail('VIDEO_SETTINGS_DELETED');
+      const entry = state.connections.find(entry => entry.configuration.id === connectionId);
+      if (!entry || entry.revision !== configurationRevision) return fail('VIDEO_SETTINGS_CONFLICT');
+      const {configuration} = entry, endpoint = videoConnectionEndpoint(configuration);
+      if (!target) {
+        if (configuration.providerId !== 'compatible') return fail('VIDEO_SETTINGS_VALIDATION');
+      } else {
+        let targetEndpoint: string;
+        try {targetEndpoint = videoModelsListEndpoint(target);} catch {return fail('VIDEO_SETTINGS_VALIDATION');}
+        if (configuration.providerId !== target.providerId || configuration.region !== target.region
+          || configuration.workspaceId !== target.workspaceId || endpoint !== targetEndpoint) return fail('VIDEO_SETTINGS_CONFLICT');
+      }
+      const credential = state.credentials.find(credential => credential.ref === entry.credentialRef);
+      if (!credential) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
+      if (!same(recipient(configuration), credentialRecipient(credential))) return fail('VIDEO_SETTINGS_CORRUPT');
+      if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
+      const value = await secretOf(credential, request);
+      ensureStable();
+      if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
+      if (state.connections.find(current => current.configuration.id === connectionId)?.revision !== configurationRevision) return fail('VIDEO_SETTINGS_CONFLICT');
+      if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
+      return {endpoint, value};
+    });
+  }
   const service: VideoSettingsV2Service = {
     get: () => schedule(async () => {await refresh(); check(); return snapshot();}),
     list() {ensureStable(); return state.connections.map(view);},
@@ -242,20 +271,12 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
       if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED'); return value;
     });},
-    acquireCompatible(connectionId, configurationRevision, request) {return schedule(async () => {
-      ensureStable(); if (!uuid(connectionId) || !revision(configurationRevision) || configurationRevision === 0) return fail('VIDEO_SETTINGS_VALIDATION');
-      if (state.deletedConnectionIds.includes(connectionId)) return fail('VIDEO_SETTINGS_DELETED');
-      const entry = state.connections.find(entry => entry.configuration.id === connectionId);
-      if (!entry || entry.revision !== configurationRevision) return fail('VIDEO_SETTINGS_CONFLICT');
-      if (entry.configuration.providerId !== 'compatible') return fail('VIDEO_SETTINGS_VALIDATION');
-      const credential = state.credentials.find(credential => credential.ref === entry.credentialRef);
-      if (!credential) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
-      if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
-      const value = await secretOf(credential, request); ensureStable();
-      if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
-      if (state.connections.find(current => current.configuration.id === connectionId)?.revision !== configurationRevision || credential.endpoint !== videoConnectionEndpoint(entry.configuration)) return fail('VIDEO_SETTINGS_CONFLICT');
-      if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED'); return {endpoint: credential.endpoint, value};
-    });},
+    acquireForProbe(connectionId, configurationRevision, target, request) {
+      return acquireCurrent(connectionId, configurationRevision, target, request);
+    },
+    acquireCompatible(connectionId, configurationRevision, request) {
+      return acquireCurrent(connectionId, configurationRevision, null, request);
+    },
     put(input) {
       let update: VideoSettingsUpdateV2;
       try {if (Buffer.byteLength(JSON.stringify(input)) > VIDEO_SETTINGS_LIMITS.updateBytes) throw Error(); update = videoSettingsUpdateV2Schema.parse(input);} catch {return Promise.reject(videoSettingsV2Error('VIDEO_SETTINGS_VALIDATION'));}

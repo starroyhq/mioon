@@ -275,6 +275,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
   await t.test('custom settings and private review actions require authentication; no public approval or settings operation exists', async () => {
     for (const [route, method, input] of [
       ['/api/images/custom-settings', 'GET'], ['/api/images/custom-settings', 'PUT', {}],
+      ['/api/images/settings', 'POST', {}], ['/api/images/custom-settings', 'POST', {}],
       [projectApiPath(project.id,'images','services'),'POST',{operation:'image.service.list',input:{projectId:project.id}}],
       [projectApiPath(project.id, 'images', 'reviews', 'approve'), 'POST', {}], [projectApiPath(project.id, 'images', 'reviews', 'reject'), 'POST', {}],
     ] as const) {
@@ -284,7 +285,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     for (const operation of ['image.review.approve', 'image.review.reject', 'image.customSettings.get', 'image.customSettings.put', 'image.settings.get','image.service.list','image.service.review.prepare'])
       await f.rpc(operation, {}, 'UNKNOWN_OPERATION');
     assert.equal((await f.request('/api/images/custom-settings?unexpected=1')).status, 400);
-    assert.equal((await f.request('/api/images/custom-settings', {method: 'POST', input: {}})).status, 405);
+    assert.equal((await f.request('/api/images/custom-settings', {method: 'POST', input: {}})).status, 400);
     assert.deepEqual(f.counts(), [0, 0, 0]);
   });
 

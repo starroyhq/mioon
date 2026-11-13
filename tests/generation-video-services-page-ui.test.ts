@@ -10,7 +10,7 @@ import * as contracts from '../packages/contracts/src/video-providers.ts';
 import type {CompatibleVideoCheckResult} from '../packages/contracts/src/video-providers.ts';
 import type {CompatibleVideoCheck} from '../packages/contracts/src/video-providers.ts';
 import type {VideoSettingsClient} from '../apps/web/src/video-settings.ts';
-import type {VideoSettingsSnapshotV2} from '../packages/contracts/src/generation-video-settings.ts';
+import type {VideoModelsListInput, VideoSettingsSnapshotV2} from '../packages/contracts/src/generation-video-settings.ts';
 import type {GenerationServiceDomain} from '../apps/web/src/generation-services-settings.ts';
 
 interface Element {type: unknown; props: Record<string, unknown>}
@@ -20,13 +20,13 @@ function nodes(value: unknown): Element[] {return Array.isArray(value) ? value.f
 function invoke(element: Element, method: string, ...args: unknown[]) {const callback = element.props[method]; assert.equal(typeof callback, 'function'); return (callback as (...args: unknown[]) => unknown)(...args);}
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 const flush = async () => {for (let index = 0; index < 6; index++) await new Promise<void>(resolve => setImmediate(resolve));};
-function fixture({check, write}: Partial<VideoSettingsClient> = {}) {
+function fixture({check, modelsList, write}: Partial<VideoSettingsClient> = {}) {
   const a = newVideoConnection('compatible'), b = newVideoConnection('compatible'); a.name = 'A'; b.name = 'B'; a.baseUrl = b.baseUrl = 'https://api.example.com/v1';
   let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'session'}})), storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
   const keyA = `video:${a.id}`, keyB = `video:${b.id}`;
   const hooks = new Map<string, Hook[]>(), inputs = new Map<string, {value: string}>(), trees = new Map<string, unknown>(), reports: navigation.SettingsNavigationState[] = [];
   let context = 'domain', cursor = 0, effects: Array<() => void> = [], pageVisible = true, selected = keyA, locale = 'zh-Hans', confirmValue: boolean | Promise<boolean> = true, interaction = true, domain: GenerationServiceDomain;
-  const client: VideoSettingsClient = {read: async () => structuredClone(snapshot), write: write ?? (async update => {assert.ok([...inputs.values()].every(input => !input.value)); if (update.action !== 'batch') throw Error('Expected batch'); for (const operation of update.operations) {if (operation.action === 'delete') snapshot.connections = snapshot.connections.filter(view => view.configuration.id !== operation.connectionId); else {const previous = snapshot.connections.find(view => view.configuration.id === operation.configuration.id); snapshot.connections = [...snapshot.connections.filter(view => view.configuration.id !== operation.configuration.id), {configuration: operation.configuration, revision: 2, secret: operation.secret.action === 'replace' ? {configured: true, storage: operation.secret.storage} : previous?.secret ?? {configured: false, storage: 'none'}}];}} snapshot.revision++; return structuredClone(snapshot);}), check};
+  const client: VideoSettingsClient = {read: async () => structuredClone(snapshot), write: write ?? (async update => {assert.ok([...inputs.values()].every(input => !input.value)); if (update.action !== 'batch') throw Error('Expected batch'); for (const operation of update.operations) {if (operation.action === 'delete') snapshot.connections = snapshot.connections.filter(view => view.configuration.id !== operation.connectionId); else {const previous = snapshot.connections.find(view => view.configuration.id === operation.configuration.id); snapshot.connections = [...snapshot.connections.filter(view => view.configuration.id !== operation.configuration.id), {configuration: operation.configuration, revision: 2, secret: operation.secret.action === 'replace' ? {configured: true, storage: operation.secret.storage} : previous?.secret ?? {configured: false, storage: 'none'}}];}} snapshot.revision++; return structuredClone(snapshot);}), check, modelsList};
   const react = {
     createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {return {type, props: {...props, children}};},
     useRef(initial: unknown) {const list = hooks.get(context)!; const index = cursor++; return (list[index] ??= {value: {current: initial}}).value;},
@@ -174,4 +174,64 @@ test('late checks cannot publish after selection, address edit, save, hide or ow
 for (const result of ['ok', 'unauthorized', 'unsupported', 'unreachable', 'denied'] as const) test(`compatible checks retain the ${result} presentation without changing configured facts`, async () => {
   const f = fixture({check: async () => ({result, httpStatus: result === 'unauthorized' ? 401 : result === 'unsupported' ? 404 : 200})}); await flush(); f.render(); invoke(f.find(f.keyA, 'video-compatible-check'), 'onClick'); await flush(); f.render();
   assert.equal(f.find(f.keyA, 'video-compatible-check-result').props['data-result'], result); assert.equal(f.domain().services.find(service => service.key === f.keyA)!.configured, true); f.unmount();
+});
+
+
+test('built-in check and model discovery use one-time draft values and retain no password in UI state', async () => {
+  const requests: VideoModelsListInput[] = [];
+  let writes = 0;
+  const f = fixture({
+    modelsList: async input => {
+      requests.push(structuredClone(input));
+      return input.operation === 'models' ? {result: 'ok', models: [{id: 'veo-test-video'}]} : {result: 'ok'};
+    },
+    write: async () => {writes++; throw Error('Unexpected save');},
+  });
+  await flush();
+  f.render();
+  f.select('video:veo');
+  f.type('video:veo', 'synthetic-video-ui-draft');
+  assert.equal(f.domain().services.find(service => service.key === 'video:veo')?.dirty, true);
+  invoke(f.find('video:veo', 'video-compatible-check'), 'onClick');
+  await flush();
+  f.render();
+  invoke(f.find('video:veo', 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  assert.deepEqual(requests, [
+    {operation: 'check', source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value: 'synthetic-video-ui-draft'},
+    {operation: 'models', source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value: 'synthetic-video-ui-draft'},
+  ]);
+  assert.equal(f.find('video:veo', 'video-compatible-check-result').props['data-result'], 'ok');
+  assert.equal(f.all('video:veo').some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'veo-test-video'), false);
+  assert.equal(f.domain().navigation.dirty, true);
+  assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-video-ui-draft/);
+  f.domain().discard();
+  f.render();
+  assert.equal(f.inputs.get('video:veo')?.value, '');
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(writes, 0);
+  f.unmount();
+});
+
+test('a saved password cannot be reused by a retained callback after the draft address changes', async () => {
+  const requests: VideoModelsListInput[] = [];
+  const f = fixture({modelsList: async input => {requests.push(input); return {result: 'ok', models: []};}});
+  await flush();
+  f.render();
+  const button = f.find(f.keyA, 'video-fetch-models');
+  invoke(f.find(f.keyA, 'video-connection-base-url'), 'onChange', {target: {value: 'https://new.example.com/v2'}});
+  // Even before React commits the new props, the event reads the live draft.
+  invoke(button, 'onClick');
+  await flush();
+  assert.deepEqual(requests, []);
+  f.render();
+  assert.equal(f.find(f.keyA, 'video-fetch-models').props.disabled, true);
+  f.type(f.keyA, 'synthetic-new-video-ui-draft');
+  invoke(button, 'onClick');
+  await flush();
+  assert.deepEqual(requests, [
+    {operation: 'models', source: 'draft', providerId: 'compatible', region: 'custom', workspaceId: '', baseUrl: 'https://new.example.com/v2', value: 'synthetic-new-video-ui-draft'},
+  ]);
+  f.unmount();
 });

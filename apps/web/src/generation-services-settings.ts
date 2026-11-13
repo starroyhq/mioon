@@ -9,6 +9,7 @@ export interface GenerationServiceDetail {
   kind: 'video' | 'image';
   custom: boolean;
   configured: boolean | null;
+  dirty?: boolean;
   available: boolean | null;
   content: ReactNode;
 }
