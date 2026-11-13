@@ -112,14 +112,15 @@ function validateStorage(value: unknown): VideoStorageV2 {
   if (!parsed.success) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
   return parsed.data;
 }
-async function bounded<T>(operation: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
+async function bounded<T>(operation: () => T | Promise<T>, signal?: AbortSignal, {preserveCorruption = false} = {}): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let done = false;
-    const finish = (error: boolean, value?: T) => {if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); error ? reject(videoSettingsV2Error('VIDEO_SETTINGS_STORAGE_UNAVAILABLE')) : resolve(value as T);};
-    const abort = () => finish(true), timer = setTimeout(abort, 5000);
+    const finish = (code: string | null, value?: T) => {if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); code ? reject(videoSettingsV2Error(code)) : resolve(value as T);};
+    const unavailable = 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE';
+    const abort = () => finish(unavailable), timer = setTimeout(abort, 5000);
     if (signal?.aborted) return abort();
     signal?.addEventListener('abort', abort, {once: true});
-    Promise.resolve().then(() => {if (done) throw Error(); return operation();}).then(value => finish(false, value), () => finish(true));
+    Promise.resolve().then(() => {if (done) throw Error(); return operation();}).then(value => finish(null, value), error => finish(preserveCorruption && sanitizeVideoSettingsV2Error(error).code === 'VIDEO_SETTINGS_CORRUPT' ? 'VIDEO_SETTINGS_CORRUPT' : unavailable));
   });
 }
 
@@ -165,7 +166,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (!credential.encrypted) return sessions.get(credential.ref);
     await refresh(request); check();
     if (!capabilities().persistentAvailable || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
-    const plaintext = validateVideoSecretPlaintext(await bounded(() => secretCodec.decrypt(credential.encrypted!), operationSignal(request)));
+    const plaintext = validateVideoSecretPlaintext(await bounded(() => secretCodec.decrypt(credential.encrypted!), operationSignal(request), {preserveCorruption: true}));
     check();
     if (plaintext.credentialRef !== credential.ref || !same(credentialRecipient(credential), [plaintext.connectionId, plaintext.providerId, plaintext.region, plaintext.workspaceId, plaintext.endpoint])) return fail('VIDEO_SETTINGS_CORRUPT');
     return plaintext.value;

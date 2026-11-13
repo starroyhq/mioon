@@ -29,6 +29,7 @@ import {ensureProjectOutputDirectory, registeredProjectStore, registeredProjectA
 import type {JobRecord,OrdinaryServices,ServiceStore,ServiceRow} from './services.ts';
 import type {Provider} from './provider-registry.ts';
 import {readVideoBinding} from './video/generation.ts';
+import {videoCredentialDiagnostic} from './video/credential.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
@@ -220,7 +221,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    continue;
   }
   if(job&&job.status==='submitting')saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
-  else if(job&&(job.status==='submission_unknown'||job.phase==='connection_required'&&['queued','running','downloading'].includes(job.status)))services.saveJob(job,{nextPollAt:0});
+  else if(job&&(job.status==='submission_unknown'||['connection_required','connection_retrying'].includes(job.phase??'')&&['queued','running','downloading'].includes(job.status)))services.saveJob(job,{nextPollAt:0});
  }
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='export')){const e=workerExport(ref.taskId);if(e?.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
@@ -323,7 +324,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const latestStatus=stringValue(property(get('jobs',j.id),'status'));
     if(latestStatus==='cancelled')return;
     if(remote.status==='failed'){services.saveJob(j,{status:'failed',phase:'provider_failed',error:typeof remote.error==='object'?remote.error:{code:'GENERATION_FAILED',message:remote.error||'供应商任务失败',retryable:true}});return;}
-    if(remote.status!=='succeeded'){services.saveJob(j,{progress:remote.progress==null?j.progress:Math.round(remote.progress*100),nextPollAt:Date.now()+(numberValue(property(provider!.capabilities,'minPollIntervalMs'))||350),error:null});return;}
+    if(remote.status!=='succeeded'){services.saveJob(j,{...(['connection_required','connection_retrying'].includes(j.phase??'')?{phase:'polling'}:{}),progress:remote.progress==null?j.progress:Math.round(remote.progress*100),nextPollAt:Date.now()+(numberValue(property(provider!.capabilities,'minPollIntervalMs'))||350),error:null});return;}
     j=services.saveJob(j,{status:'downloading',phase:'downloading',progress:90,nextPollAt:0,error:null}) as JobRecord;
    }
    if(j.status==='downloading') {
@@ -410,11 +411,21 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const cancelled=isAgentTaskJobStopped(store.db,'job',j.id);if(j.status==='submitting'||j.status==='queued'&&cancelled)saveGenerationGuarded(guardJob,{status:cancelled?'cancelled':'queued',phase:cancelled?'cancelled_before_dispatch':'waiting',submissionCount,error:null,nextPollAt:0});
     return;
    }
-   if(errorCode?.startsWith('VIDEO_SETTINGS_')||errorCode==='VIDEO_CREDENTIAL_UNAVAILABLE'){
-    // Retain the exact configured connection and task when credentials need
-    // restoring; this path never authorizes a replacement submission.
-    const definitelyUnsubmitted=j.status==='submitting'&&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
-    if(latest)saveGenerationGuarded(latest,{...(definitelyUnsubmitted?{status:'queued',submissionCount}:{}),phase:'connection_required',error:safeError(error),nextPollAt:Date.now()+5000});
+   const credentialDiagnostic=videoCredentialDiagnostic(error);
+   if(credentialDiagnostic||errorCode?.startsWith('VIDEO_SETTINGS_')){
+    if(signal.aborted&&j.status!=='submitting')return;
+    // A paused user-action task releases its background lease. A transient
+    // failure must retain that lease so the scheduled observation can run.
+    const automatic=credentialDiagnostic?.recovery==='automatic';
+    const definitelyUnsubmitted=j.status==='submitting'&&!postPermitted&&!acceptedProviderId
+     &&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
+    const unconfirmedSubmit=j.status==='submitting'&&!definitelyUnsubmitted;
+    if(latest)saveGenerationGuarded(latest,{
+     ...(definitelyUnsubmitted?{status:'queued',submissionCount}:unconfirmedSubmit?{status:'submission_unknown',...(acceptedProviderId?{providerJobId:acceptedProviderId}:{})}:{}),
+     phase:unconfirmedSubmit?'reconciliation_required':automatic?'connection_retrying':'connection_required',
+     error:credentialDiagnostic?{code:errorCode??credentialDiagnostic.cause,message:'视频任务无法使用原连接。',retryable:automatic,diagnostic:credentialDiagnostic}:safeError(error),
+     nextPollAt:Date.now()+5000,
+    });
     return;
    }
    if(j.status==='submitting') {

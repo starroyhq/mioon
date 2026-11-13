@@ -442,7 +442,7 @@ for (const method of ['encrypt', 'decrypt']) {
   });
 }
 
-test('async native wait leaves the JS loop responsive; timeout and late status never restore availability', async t => {
+test('async native wait leaves the JS loop responsive; a fresh probe recovers after late Keychain approval', async t => {
   const f = vault(), gate = deferred(), entered = deferred();
   f.before = async method => { if (method === 'status') { entered.resolve(); await gate.promise; } };
   const codec = codecFor(f, {timeout: 30});
@@ -453,8 +453,31 @@ test('async native wait leaves the JS loop responsive; timeout and late status n
   assert.equal((await pending).persistentAvailable, false);
   gate.resolve(); await turn();
   assert.equal(codec.storage().persistentAvailable, false);
-  assert.equal((await codecFor(f).refreshStorage()).persistentAvailable, false);
   assert.deepEqual(f.calls, ['status']);
+  const replacement = codecFor(f); t.after(() => replacement.close());
+  assert.equal((await replacement.refreshStorage()).persistentAvailable, true);
+  assert.deepEqual(f.calls, ['status', 'status', 'encrypt', 'decrypt']);
+  assert.equal(codec.storage().persistentAvailable, true);
+});
+
+test('timing out one vault caller preserves another caller’s in-flight encryption', async t => {
+  const f = vault(), statusGate = deferred(), encryptGate = deferred(), encryptEntered = deferred();
+  let firstStatus = true;
+  f.before = async (method, value) => {
+    if (method === 'status' && firstStatus) { firstStatus = false; await statusGate.promise; }
+    if (method === 'encrypt' && asString(value).startsWith('{')) { encryptEntered.resolve(); await encryptGate.promise; }
+  };
+  const short = codecFor(f, {timeout: 30}), long = codecFor(f);
+  t.after(() => { statusGate.resolve(); encryptGate.resolve(); short.close(); long.close(); });
+  const status = short.refreshStorage();
+  const encryption = long.encrypt(SENTINEL);
+  void encryption.catch(() => {});
+  await encryptEntered.promise;
+  assert.equal((await status).persistentAvailable, false);
+  encryptGate.resolve();
+  const encrypted = await encryption;
+  statusGate.resolve(); await turn();
+  assert.equal(await long.decrypt(encrypted), SENTINEL);
 });
 
 test('native capacity survives repeated broker/codec replacement and releases only on real settlement', async t => {
@@ -703,7 +726,8 @@ test('initial async status is bounded and legacy keys are never decrypted, prese
     assert.equal(snapshot.storage.persistentAvailable, operation !== 'status'); assert.equal(execution(snapshot).secret.configured, false);
     assert.ok(snapshot.notices.includes('LEGACY_KEYS_CLEARED')); assert.equal(oldDecrypts, 0);
     gate.resolve(); await turn();
-    assert.equal((await engine.get()).storage.persistentAvailable, operation !== 'status'); assert.equal(oldDecrypts, 0);
+    assert.equal(codec.storage().persistentAvailable, operation !== 'status');
+    assert.equal((await engine.get()).storage.persistentAvailable, true); assert.equal(oldDecrypts, 0);
     const session = await engine.put(update(4, 'session'));
     assert.equal(execution(session).secret.storage, 'session');
   }
