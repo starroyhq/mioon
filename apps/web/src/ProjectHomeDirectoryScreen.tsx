@@ -277,7 +277,7 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
       item.projectId === projectId && (item.reason === 'missing' || item.reason === 'missing-volume'));
     if (missing || waitingForFile) openFile();
   } : undefined;
-  return <div className={`project-home-screen project-home-${presentation}`} data-presentation={presentation} data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0}
+  return <div className={`project-home-screen project-home-${presentation}`} data-presentation={presentation} data-view={preferences.preferences.homeView}><ProjectHome {...props} active={enabled} projects={props.projects} totalProjects={snapshot?.registered.length ?? 0} newProjectFormatVersion={snapshot?.newProjectFormatVersion}
     launcher={props.launcher ? {...props.launcher, empty: view.kind === 'ready' && view.value.length === 0} : undefined}
     onOpenFile={openFile}
     notice={preparingNative.current && nativeState.kind === 'idle' ? t('projectHomeNative.preparing') : closedExampleUnknown ? t('projectHomeNative.example.pendingWrites') : props.notice}

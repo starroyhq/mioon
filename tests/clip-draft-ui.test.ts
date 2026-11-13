@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClipDraftController, clipDraftPatch, clipDraftRaw, clipDraftSource } from '../apps/web/src/clip-draft-state.ts';
 import { isTimelineRecord } from '../packages/contracts/src/timeline-replacement.ts';
+import { CLIP_LAYOUT_PROFILE, type ClipLayout } from '../packages/contracts/src/timeline-clip-layout.ts';
 import type { ClipDraftRequestError } from '../apps/web/src/clip-draft-client.ts';
 import type { MessageDescriptor } from '../packages/i18n/src/index.ts';
 import { createClipDraftClient } from '../apps/web/src/clip-draft-client.ts';
@@ -107,6 +108,55 @@ test('invalid raw numbers and missing name never become valid zero-valued busine
   assert.equal(clipDraftPatch({ ...raw, fadeInFrames: '0' })!.fadeInFrames, 0);
   assert.deepEqual(clipDraftRaw({ id: clipId, assetId, ...raw }), raw);
   assert.deepEqual(clipDraftSource({ assetId, versionId: id(9) }, { sha256: source.assetSha256 }), { ...source, versionId: id(9) });
+});
+
+const relativeLayout = {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: 'portrait_720'} satisfies ClipLayout;
+const relativeTimeline = (patch: Record<string, unknown> = {}) => ({
+  ...timeline({...patch, layout: relativeLayout}), width: 1280, height: 720,
+});
+
+test('relative-layout clip drafts preserve the basis rectangle locally and omit it from ordinary saves', async t => {
+  const h = harness(t, {ctx: {...context(), layout: relativeLayout}});
+  await h.controller.load();
+  assert.equal(h.controller.edit('rect', {...raw.rect, x: 2}), false);
+  assert.equal(h.controller.getState().dirty, false);
+  assert.equal(h.controller.edit('name', 'Renamed'), true);
+  await h.controller.flush();
+  assert.deepEqual(h.current().draft?.raw.rect, raw.rect);
+  assert.equal(Object.hasOwn(h.current().draft!.raw, 'layout'), false);
+  const saved = await h.controller.save(async (target, patch, revision, {canExecute}) => {
+    assert.equal(target, clipId);
+    assert.equal(revision, 7);
+    assert.equal(canExecute(), true);
+    assert.equal(Object.hasOwn(patch, 'rect'), false);
+    assert.equal(Object.hasOwn(patch, 'layout'), false);
+    assert.equal(patch.name, 'Renamed');
+    return relativeTimeline(patch);
+  });
+  assert.ok(saved);
+  assert.equal(h.controller.getState().dirty, false);
+  assert.deepEqual(h.controller.getState().raw.rect, raw.rect);
+  assert.deepEqual(h.calls.map(([operation]) => operation), ['get', 'put', 'delete']);
+});
+
+test('relative-layout draft save refuses a recovered geometry edit or a mismatched geometry acknowledgement', async t => {
+  const recovered = record({raw: {...raw, name: 'Recovered name', rect: {...raw.rect, x: 2}}});
+  const h = harness(t, {ctx: {...context(), layout: relativeLayout}, draft: recovered});
+  await h.controller.load();
+  assert.equal(h.controller.restore(), true);
+  assert.equal(await h.controller.save(async () => assert.fail('Do not drop an edited rectangle')), null);
+  assert.equal(h.controller.getState().dirty, true);
+  assert.deepEqual(h.current().draft, recovered);
+  assert.deepEqual(h.calls.map(([operation]) => operation), ['get']);
+
+  const g = harness(t, {ctx: {...context(), layout: relativeLayout}});
+  await g.controller.load();
+  assert.equal(g.controller.edit('name', 'New name'), true);
+  // The ACK is valid and the name matches, but the basis rectangle changed.
+  assert.equal(await g.controller.save(async (_, patch) => relativeTimeline({...patch, rect: {...raw.rect, height: 1000}})), null);
+  assert.equal(g.controller.getState().dirty, true);
+  assert.deepEqual(g.current().draft?.raw.rect, raw.rect);
+  assert.deepEqual(g.calls.map(([operation]) => operation), ['get', 'put']);
 });
 
 test('a delayed GET preserves newer typed input and requires explicit old-draft handling', async t => {

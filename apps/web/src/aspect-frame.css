@@ -1,0 +1,218 @@
+.preview-mode-bar > .aspect-frame-trigger {
+  flex: none;
+  height: 24px;
+  min-width: 79px;
+  gap: 4px;
+  padding: 0 6px 0 8px;
+  border-color: var(--wb-line);
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-card);
+  color: var(--wb-text);
+  font: var(--wb-text-label) var(--wb-font-mono);
+}
+
+.preview-mode-bar > .aspect-frame-trigger svg {
+  color: var(--wb-soft);
+}
+
+.preview-mode-bar > .aspect-frame-trigger[aria-expanded="true"] {
+  background: var(--wb-hover);
+  border-color: var(--wb-line-strong);
+}
+
+.preview-mode-bar > .aspect-frame-trigger:hover {
+  background: var(--wb-hover);
+}
+
+.preview-mode-bar > .aspect-frame-trigger[aria-expanded="true"] > svg:last-child {
+  transform: rotate(180deg);
+}
+
+.aspect-frame-menu[data-slot="dropdown-menu-content"] {
+  width: 272px;
+  max-width: min(calc(100vw - 16px), var(--available-width));
+  padding: 4px;
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-raised);
+  box-shadow: var(--wb-shadow);
+  color: var(--wb-text);
+}
+
+.aspect-frame-menu .aspect-frame-menu-title {
+  padding: 6px 8px 4px;
+  color: var(--wb-soft);
+  font-size: var(--wb-text-caption);
+  font-weight: 400;
+}
+
+.aspect-frame-menu .aspect-frame-option {
+  min-height: 28px;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: var(--wb-text-label);
+  font-weight: 400;
+}
+
+.aspect-frame-menu .aspect-frame-option[aria-checked="true"],
+.aspect-frame-menu .aspect-frame-option[data-highlighted],
+.aspect-frame-menu .aspect-frame-option:focus {
+  background: var(--wb-hover);
+  color: var(--wb-text);
+}
+
+.aspect-frame-option [data-slot="dropdown-menu-radio-item-indicator"] {
+  position: static;
+  width: 14px;
+  flex: none;
+}
+
+.aspect-frame-option [data-slot="dropdown-menu-radio-item-indicator"] svg {
+  width: 12px;
+  height: 12px;
+}
+
+.aspect-frame-option .aspect-frame-dimensions {
+  margin-left: auto;
+  color: var(--wb-muted);
+  font: var(--wb-text-caption) var(--wb-font-mono);
+}
+
+.aspect-frame-menu-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 7px 8px 5px;
+  border-top: 1px solid var(--wb-line-subtle);
+  color: var(--wb-muted);
+  font-size: var(--wb-text-caption);
+}
+
+.aspect-frame-menu-note svg,
+.aspect-frame-notice > svg {
+  flex: none;
+}
+
+.aspect-frame-feedback {
+  display: grid;
+  flex: none;
+  gap: 4px;
+  padding: 12px 8px 0;
+  justify-items: center;
+}
+
+.aspect-frame-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(460px, 100%);
+  min-height: 44px;
+  padding: 4px 8px 4px 12px;
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-raised);
+  color: var(--wb-text);
+  font-size: var(--wb-text-label);
+}
+
+.aspect-frame-notice > svg {
+  color: var(--wb-soft);
+}
+
+.aspect-frame-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.aspect-frame-notice .aspect-frame-undo {
+  font-weight: 400;
+}
+
+.aspect-frame-notice .aspect-frame-dismiss {
+  color: var(--wb-soft);
+}
+
+.aspect-frame-notice.aspect-frame-error {
+  border-color: var(--wb-warning);
+  background: var(--wb-warning-subtle);
+  color: var(--wb-warning);
+}
+
+.aspect-frame-notice.aspect-frame-error > svg {
+  color: inherit;
+}
+
+.aspect-frame-notice.aspect-frame-suggestion {
+  flex: none;
+  flex-wrap: wrap;
+  align-self: center;
+  width: min(488px, calc(100% - 16px));
+  margin: 0 auto 12px;
+}
+
+.aspect-frame-suggestion > span {
+  flex: 1 1 190px;
+}
+
+.aspect-frame-suggestion-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.aspect-frame-suggestion-actions > button {
+  height: 26px;
+  font-weight: 400;
+}
+
+.aspect-frame-suggestion-actions .aspect-frame-suggestion-accept {
+  background: var(--wb-accent);
+  color: var(--wb-accent-foreground);
+}
+
+.aspect-frame-suggestion-actions .aspect-frame-suggestion-accept:hover {
+  background: color-mix(in srgb, var(--wb-accent) 88%, var(--wb-accent-foreground));
+}
+
+.aspect-frame-suggestion-actions .aspect-frame-suggestion-keep {
+  border-color: var(--wb-line);
+  background: var(--wb-card);
+  color: var(--wb-text);
+}
+
+.aspect-frame-suggestion-actions .aspect-frame-suggestion-keep:hover {
+  background: var(--wb-hover);
+}
+
+.aspect-frame-export {
+  min-height: 28px;
+  font-size: var(--wb-text-label);
+}
+
+.aspect-frame-export dt {
+  color: var(--wb-soft);
+}
+
+.aspect-frame-export dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0;
+}
+
+.aspect-frame-export dd > svg,
+.aspect-frame-export small {
+  color: var(--wb-muted);
+}
+
+.aspect-frame-export dd > span {
+  font-family: var(--wb-font-mono);
+}
+
+.aspect-frame-export small {
+  font-size: inherit;
+}

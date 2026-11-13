@@ -6,6 +6,7 @@ import { Label } from '@mioon/ui/components/label';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Check } from '@mioon/ui/components/workbench-icons';
+import type { NewProjectFormatVersion } from '../../../../packages/contracts/src/project-entry.ts';
 import { DEFAULT_TIMELINE_OUTPUT_PRESET, TIMELINE_CURRENT_OUTPUT_PRESETS } from '../../../../packages/contracts/src/timeline-output-geometry.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import Icon from '../icons.tsx';
@@ -31,6 +32,7 @@ export type NewProjectFileState =
   | { readonly kind: 'error'; readonly code: 'PROJECT_FILE_EXISTS' | 'unknown' };
 export interface NewProjectFileDialogProps {
   readonly interactionBlocked?: boolean;
+  readonly newProjectFormatVersion?: NewProjectFormatVersion;
   readonly open: boolean;
   readonly values: NewProjectFileValues;
   readonly onChange: (patch: Partial<NewProjectFileValues>) => void;
@@ -54,7 +56,7 @@ export const NEW_PROJECT_FILE_DEFAULTS: Omit<NewProjectFileValues, 'name'> = Obj
 
 /** New project (12-02): a controlled form; the caller creates the file. */
 export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactElement {
-  const {open, values, location, onChooseLocation, state, folderMode = 'choose', interactionBlocked = false} = props;
+  const {open, values, location, onChooseLocation, state, folderMode = 'choose', interactionBlocked = false, newProjectFormatVersion} = props;
   const { t } = useI18n();
   const id = useId();
   const current = useRef(props); current.current = props;
@@ -62,13 +64,17 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
   const frozen = interactionBlocked || creating || state.kind === 'unknown' || state.kind === 'created';
   const createFolder = folderMode === 'always' || folderMode === 'choose' && values.createFolder;
   const problem = projectNameProblem(values.name);
-  const canSubmit = problem === null && values.description.length <= NEW_PROJECT_DESCRIPTION_MAX_LENGTH && !frozen &&
+  const showProjectOptions = newProjectFormatVersion !== 4;
+  const canSubmit = problem === null && (!showProjectOptions || values.description.length <= NEW_PROJECT_DESCRIPTION_MAX_LENGTH) && !frozen &&
     (location.status === undefined || location.status === 'ready') && !location.risks?.some(risk => risk.kind === 'network');
   const editable = (): boolean => !current.current.interactionBlocked && current.current.open && ['editing', 'error'].includes(current.current.state.kind);
   const change = (patch: Partial<NewProjectFileValues>): void => {if (editable()) current.current.onChange(patch);};
+  const changeProjectOptions = (patch: Partial<NewProjectFileValues>): void => {
+    if (current.current.newProjectFormatVersion !== 4) change(patch);
+  };
   const submit = (): void => {
     const next = current.current;
-    if (!editable() || projectNameProblem(next.values.name) !== null || next.values.description.length > NEW_PROJECT_DESCRIPTION_MAX_LENGTH ||
+    if (!editable() || projectNameProblem(next.values.name) !== null || next.newProjectFormatVersion !== 4 && next.values.description.length > NEW_PROJECT_DESCRIPTION_MAX_LENGTH ||
       next.location.status !== undefined && next.location.status !== 'ready' || next.location.risks?.some(risk => risk.kind === 'network')) return;
     next.onSubmit();
   };
@@ -106,11 +112,11 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
             ? t('projectFile.create.willCreateInFolder', { path: projectFilePathPreview(location.display, values.name, true) })
             : t('projectFile.create.willCreate', { path: projectFilePathPreview(location.display, values.name, false) })}</p>}
         </div>
-        <div className="pf-field">
+        {showProjectOptions && <><div className="pf-field">
           <Label htmlFor={`${id}-direction`} className="pf-label-with-icon">{t('projectFile.create.direction')}<span className="pf-info" title={t('projectFile.create.directionHelp')}><Icon name="info" size={13} /></span></Label>
           <div className="pf-create-direction">
             <Textarea id={`${id}-direction`} data-testid="pf-create-description" value={values.description} rows={2} maxLength={NEW_PROJECT_DESCRIPTION_MAX_LENGTH} readOnly={frozen}
-              placeholder={t('projectFile.create.directionPlaceholder')} onChange={event => change({ description: event.target.value })} />
+              placeholder={t('projectFile.create.directionPlaceholder')} onChange={event => changeProjectOptions({ description: event.target.value })} />
             <span className="pf-create-count" aria-hidden="true">{t('projectFile.create.directionCount', { length: values.description.length, limit: NEW_PROJECT_DESCRIPTION_MAX_LENGTH })}</span>
           </div>
         </div>
@@ -119,7 +125,7 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
           <div className="pf-create-preset-cards">{TIMELINE_CURRENT_OUTPUT_PRESETS.map(preset => {
             const selected = values.presetId === preset.id;
             return <label key={preset.id} data-selected={selected || undefined} data-testid={`pf-create-preset-${preset.id}`}>
-              <input type="radio" name={`${id}-preset`} value={preset.id} checked={selected} onChange={() => change({ presetId: preset.id })} />
+              <input type="radio" name={`${id}-preset`} value={preset.id} checked={selected} onChange={() => changeProjectOptions({ presetId: preset.id })} />
               {selected && <Check className="pf-create-preset-check" size={14} aria-hidden="true" />}
               <span className="pf-format-symbol" data-shape={preset.width > preset.height ? 'landscape' : preset.width < preset.height ? 'portrait' : 'square'} aria-hidden="true" />
               <span className="pf-create-preset-name">{t(`projectFile.create.preset.${preset.id}`)}</span>
@@ -127,7 +133,7 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
             </label>;
           })}</div>
           <p className="pf-help">{t('projectFile.create.formatHelp')}</p>
-        </fieldset>
+        </fieldset></>}
         {state.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-create-error">{t(state.code === 'PROJECT_FILE_EXISTS' ? 'projectFile.create.exists' : 'projectFile.create.failed')}</WorkbenchAlert>}
         {state.kind === 'unknown' && <WorkbenchAlert tone="warning" data-testid="pf-create-unknown">{t('projectFile.create.unknown')}</WorkbenchAlert>}
         {state.kind === 'created' && <WorkbenchAlert tone="warning" data-testid="pf-create-created">{t('projectFile.create.createdNotOpened', {name: state.projectName ?? values.name})}</WorkbenchAlert>}

@@ -429,9 +429,13 @@ test('public project.create uses the same complete initialization without exposi
   assert.equal(response.status, 200); assert.equal(response.body.ok, true);
   const project = object(response.body.data), projectId = String(project.id), windowId = randomUUID();
   await f.server.projectEntries.acquire({projectId, windowId});
-  const row = f.native(projectId).prepare('SELECT data FROM project.projects WHERE id=?').get(projectId);
+  const db = f.native(projectId);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal((await f.catalog()).newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(f.server.projectEntries.listRecent().newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const row = db.prepare('SELECT data FROM project.projects WHERE id=?').get(projectId);
   assert.equal(object(JSON.parse(String(row!.data))).description, 'Public description');
-  const timeline = f.native(projectId).prepare('SELECT data FROM project.timelines WHERE projectId=?').get(projectId);
+  const timeline = db.prepare('SELECT data FROM project.timelines WHERE projectId=?').get(projectId);
   assert.equal(timelineOutputPreset(object(JSON.parse(String(timeline!.data))))?.id, 'landscape_1080');
   const outside = path.join(f.root, 'not-created');
   const rejected = await f.rpc('project.create', {name: 'No HTTP paths', parentDir: outside});
