@@ -8,7 +8,9 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import type {ChildProcess} from 'node:child_process';
+import fs from 'node:fs';
 import {chmodSync, linkSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,6 +18,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation} from '../packages/business/src/project-file/index.ts';
 import {isHotJournal} from '../packages/business/src/project-file/journals.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {addCrashProject, crashPad, readCrashRows, writeCrashRows} from './helpers/project-file-crash-data.ts';
 
 const CHILD = fileURLToPath(new URL('./helpers/project-file-child.ts', import.meta.url));
@@ -30,7 +33,7 @@ interface Project extends ProjectLocation {
 }
 /** `<base>/Film/project.mioon` with this computer's directories in
  * `<base>/app/`, holding k = 1 as the crash tests write it, closed. */
-function newProject(t: TestContext): Project {
+function newProject(t: TestContext, candidate = false): Project {
   const base = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-s0a-recover-'));
   t.after(() => {
     chmodSync(path.join(base, 'Film'), 0o700);
@@ -42,7 +45,7 @@ function newProject(t: TestContext): Project {
     projectFile: path.join(base, 'Film', 'project.mioon'), historyFile: path.join(app, 'local', 'history.db'),
     localDir: path.join(app, 'local'), cacheDir: path.join(app, 'cache'), tempDir: path.join(app, 'tmp'),
   };
-  const store = createProjectStore({projectFile: project.projectFile, locate: () => project});
+  const store = createProjectStore({projectFile: project.projectFile, locate: () => project, ...(candidate ? {format4: {}} : {})});
   try {
     store.tx(() => {
       addCrashProject(store);
@@ -80,8 +83,9 @@ function fileState(file: string): string {
 
 /** Another process with the project open: idle (open-hold), or in the middle of
  * a transaction it has spilled into both files (mid-transaction), until killed. */
-async function holdInChild(t: TestContext, project: Project, mode: 'open-hold' | 'mid-transaction'): Promise<ChildProcess> {
-  const holder = spawn(process.execPath, [CHILD], {cwd: REPOSITORY, env: childEnv(mode, projectEnv(project)), stdio: ['ignore', 'pipe', 'pipe']});
+async function holdInChild(t: TestContext, project: Project, mode: 'open-hold' | 'mid-transaction', candidate = false): Promise<ChildProcess> {
+  const holder = spawn(process.execPath, [CHILD], {cwd: REPOSITORY,
+    env: childEnv(mode, {...projectEnv(project), TEST_PROJECT_FORMAT4: candidate ? '1' : '0'}), stdio: ['ignore', 'pipe', 'pipe']});
   t.after(() => { if (holder.exitCode === null && holder.signalCode === null) holder.kill('SIGKILL'); });
   let stdout = '', stderr = '';
   holder.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
@@ -228,4 +232,28 @@ test('a hot journal beside a read-only project file is reported as read-only, an
   } finally {
     store.close();
   }
+});
+
+test('default recovery rejects a newer header before isolated replay and leaves a real candidate hot journal intact', {skip: process.platform === 'win32'}, async t => {
+  const project = newProject(t, true), journal = project.projectFile + '-journal';
+  const writer = await holdInChild(t, project, 'mid-transaction', true);
+  await killed(writer);
+  assert.equal(isHotJournal(journal), true);
+  const before = [fileState(project.projectFile), fileState(journal)];
+  const copy = t.mock.method(fs, 'copyFileSync');
+  syncBuiltinESMExports();
+  const newer = (version: number) => ({code: 'PROJECT_FORMAT_NEWER', details: {
+    database: 'project', reason: 'format-newer', formatVersion: version, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION,
+  }});
+  try {
+    assert.throws(() => recoverProjectFile(project.projectFile), newer(FORMAT4_PROJECT_SCHEMA_VERSION));
+    assert.equal(copy.mock.callCount(), 0);
+    assert.deepEqual([fileState(project.projectFile), fileState(journal)], before);
+  } finally {copy.mock.restore();syncBuiltinESMExports();}
+  assert.deepEqual(recoverProjectFile(project.projectFile, {}), {state: 'recovered'});
+  const db = new DatabaseSync(project.projectFile);
+  const future = FORMAT4_PROJECT_SCHEMA_VERSION + 1;
+  try {db.exec(`PRAGMA user_version=${future}`);} finally {db.close();}
+  writeFileSync(journal, Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]));
+  assert.throws(() => recoverProjectFile(project.projectFile), newer(future));
 });

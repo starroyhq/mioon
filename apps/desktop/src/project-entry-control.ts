@@ -82,6 +82,7 @@ export function createProjectEntryControlClient({backendId,send,isCurrent=()=>tr
   create:(input:Parameters<ProjectEntryControlPort['create']>[0])=>request({operation:'create',input}),
   openPath:(input:Parameters<ProjectEntryControlPort['openPath']>[0])=>request({operation:'openPath',input}),
   acquire:(input:Parameters<ProjectEntryControlPort['acquire']>[0])=>request({operation:'acquire',input}),
+  markOpened:(input:Parameters<NonNullable<ProjectEntryControlPort['markOpened']>>[0])=>request({operation:'markOpened',input}),
   release:(input:Parameters<ProjectEntryControlPort['release']>[0])=>{
    const message=projectEntryControlReleaseSchema.parse({type:'project-entry-control-release',version:1,backendId,...input});
    if(closed||!isCurrent())return;
@@ -109,7 +110,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
  const releasedWindows=new Set<string>();
  const releaseWindow=(id:string)=>{if(releasedWindows.has(id))return;releasedWindows.add(id);control.release({windowId:id});};
  const unlisten=control.onWindowRevoked(event=>{releasedWindows.add(event.windowId);if(!closed&&isCurrent())send({type:'project-entry-control-revoked',version:1,backendId,event});});
- const release=(command:ProjectEntryControlCommand)=>{const id=windowId(command);if(id&&command.operation!=='release')releaseWindow(id);};
+ const release=(command:ProjectEntryControlCommand)=>{const id=windowId(command);if(id&&command.operation!=='release'&&command.operation!=='markOpened')releaseWindow(id);};
  const cleanNative=(command:ProjectEntryControlCommand,data:unknown)=>{
   if(!control.nativeRelink||!record(data))return;
   if(command.operation!=='mediaRelinkCandidate'&&command.operation!=='mediaRelinkPreview')return;
@@ -135,6 +136,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'mediaRelinkDiscard':if(!control.nativeRelink)throw failure();await control.nativeRelink.discard(command.input,{signal});return true;
   case 'capabilities':return {ready:true,create:typeof control.create==='function',open:['openPath','prepareAcquire','acquire','release'].every(key=>typeof control[key as keyof ProjectEntryControlPort]==='function'),saveAs:typeof control.saveAs==='function',duplicate:typeof control.duplicate==='function',copyTo:typeof control.copyTo==='function',adoptCopy:typeof control.adoptCopy==='function'&&typeof control.inspectSelectedCopy==='function',openOriginal:typeof control.observeSource==='function',copySource:typeof control.observeSource==='function'&&typeof control.copyTo==='function',...(typeof control.instantiateTemplate==='function'&&control.templates?.length?{templates:control.templates}:{})};
   case 'prepareAcquire':if(!control.prepareAcquire)throw failure();return control.prepareAcquire(command.input);
+  case 'markOpened':if(!control.markOpened)throw failure();return control.markOpened(command.input);
   case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input.windowId);return true;
   case 'inspectCopy':if(!control.inspectSelectedCopy)throw failure();return control.inspectSelectedCopy(command.input);
   case 'observeSource':if(!control.observeSource)throw failure();return control.observeSource(command.input);

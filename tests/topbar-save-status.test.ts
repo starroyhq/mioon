@@ -250,7 +250,8 @@ test('App owns one busy projection, annotation-aware dirty status, late-bound Re
     '}',
   ]);
   assert.equal(renderCoreMessage('zh-Hans', msg('shell.confirm.loadSavedView')), '载入已保存视图会替换当前的工作区、选择和位置。继续？');
-  assert.match(selectSource, /if \(!importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| editorSession\.current !== attempt\.workspaceScope\) return false;/);
+  const openingOwnerFence = /if \(importSession\.current\.leaseRevoked \|\| !importSession\.current\.active \|\| currentProject\.current !== id \|\| projectEpoch\.current !== epoch \|\| editorSession\.current !== attempt\.workspaceScope\) return false;/g;
+  assert.equal(selectSource.match(openingOwnerFence)?.length, 2);
   assert.match(selectSource, /if \(!loadedView\) throw Object\.assign\(localizedError\([^;]+PROJECT_VIEW_UNAVAILABLE/);
   const source = readFileSync(componentPath, 'utf8');
   assert.doesNotMatch(source, /useState|useEffect|useLayoutEffect|useRef|useMemo|\bmemo\s*\(|\bfetch\s*\(|\brpc\s*\(|setTimeout|setInterval|localStorage|sessionStorage|preferencesRef|currentProject|navigationEpoch|realConfirm|generationReview|Agent/);
@@ -298,7 +299,7 @@ function harness(t: test.TestContext) {
   const env = { msg, application: null, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), nativeWindow: null, nativeProjectEntry: null, currentProject, navigationEpoch, projectEpoch, editorSession: {current: 'normal'}, workspaceRef: { current: {  } as {} },
     projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind, canOfferBackupRecovery, projects: [],
     openedProject: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
-    loading: false, importSession: { current: { active: true, selection: 0 } }, agentDraft: { current: false }, imageDraft: { current: false },
+    loading: false, importSession: { current: { active: true, selection: 0, leaseRevoked: false } }, agentDraft: { current: false }, imageDraft: { current: false },
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, canLeave: () => unknown) => canLeave(), confirm: (async () => true) as (message?:unknown)=>Promise<unknown>,
     projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,
     requestCounter: { current: 0 }, preferencesRef: { current: null as ReturnType<typeof createWorkspacePreferences>|null }, tasksRef: { current: { getState: () => ({}), load: async () => {} } },

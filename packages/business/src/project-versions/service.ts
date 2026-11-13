@@ -4,7 +4,7 @@ import type {ProjectStore} from '../project-file/store.ts';
 import {readProjectContentStamp} from '../project-file/content-stamp.ts';
 import {projectVersionSchemas,projectVersionSaveResponseSchema,projectVersionRestoreResponseSchema} from '../../../contracts/src/project-version-operations.ts';
 import type {ProjectVersionListInput,ProjectVersionSaveInput,ProjectVersionPreviewInput,ProjectVersionRestoreInput,ProjectVersionRestoreResponse} from '../../../contracts/src/project-version-operations.ts';
-import {captureProjectDocumentInside,canonicalJson} from './document.ts';
+import {captureProjectDocumentInside,canonicalJson,readSnapshotProjectFormat} from './document.ts';
 import {encodeProjectDocument,decodeProjectDocument} from './codec.ts';
 import type {EncodedProjectDocument} from './codec.ts';
 import {readVersion,storeManualVersionInside,versionError,versionSummary} from './repository.ts';
@@ -78,7 +78,7 @@ export function createProjectVersions(store:ProjectStore,options:ProjectVersions
       try{
       const blob=store.db.prepare('SELECT * FROM main.project_version_blobs WHERE hash=?').get(String(row.blobHash));
       if(!blob)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文缺失。',422);
-      const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument);
+      const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument,readSnapshotProjectFormat(store.db));
       if(document.projectId!==input.projectId||document.evidence.contentSequence!==version.contentSequence)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文与摘要不一致。',422);
       const current=captureProjectDocumentInside(store);
       const {contentToken}=readProjectContentStamp(store.db);
@@ -121,7 +121,7 @@ export function createProjectVersions(store:ProjectStore,options:ProjectVersions
       const row=readVersion(store.db,input.projectId,input.versionId),version=versionSummary(row);
       const blob=store.db.prepare('SELECT * FROM main.project_version_blobs WHERE hash=?').get(String(row.blobHash));
       if(!blob)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文缺失。',422);
-      const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument);
+      const document=decodeProjectDocument(blob as unknown as EncodedProjectDocument,readSnapshotProjectFormat(store.db));
       if(document.projectId!==input.projectId||document.evidence.contentSequence!==version.contentSequence)throw versionError('PROJECT_VERSION_RECORD_INVALID','版本正文与摘要不一致。',422);
       const current=captureProjectDocumentInside(store);
       const stamp=readProjectContentStamp(store.db);

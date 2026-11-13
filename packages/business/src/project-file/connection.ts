@@ -12,23 +12,29 @@ import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EX
 import type {ContentStamp, ProjectHistoryAdmission, ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {installCrossFileTriggers, installDivergedWriteGuards} from './cross-file/install.ts';
+import {foreignKeyCheck} from './cross-file/inspect.ts';
 import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError, projectFileMovedError} from './errors.ts';
 import {copyIsolatedRecoveryJournal, isHotJournal, isSuperJournalInUse, superJournalsIn} from './journals.ts';
 import type {ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
 import {
   buildDatabase, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
   PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL,
+  FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION,
 } from './schema/databases.ts';
-import type {DatabaseKind} from './schema/databases.ts';
+import type {DatabaseKind, ProjectFileFormat} from './schema/databases.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
 import type {SchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
+import {historyManifestForVersion, projectManifestForVersion} from './schema/format-manifests.ts';
+import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, writeFormat4HistoryVersionInside, writeFormat4ProjectVersionInside} from './schema/format4-upgrade.ts';
+import {createFormat4UpgradeBackup} from './format4-backup.ts';
+import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {clearProjectProcessRevisions, HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import type {HistoryUpgrade} from './schema/history-upgrades.ts';
 import {projectFileOwnerKind, registerProjectFiles, releaseProjectFiles} from './held-files.ts';
 export {isProjectDatabase, isProjectFileHeld} from './held-files.ts';
 import {classifyHistoryStamp, isContentToken, readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
-import {HISTORY_TABLES} from './schema/tables.ts';
+import {historyTablesForVersion} from './schema/tables.ts';
 
 const HISTORY = PROJECT_DATABASE_NAMES.history;
 const PROJECT = PROJECT_DATABASE_NAMES.project;
@@ -67,6 +73,20 @@ export interface OpenProjectConnectionOptions {
   readonly projectFile: string;
   readonly locate: (projectId: string) => ProjectLocation;
   readonly checkCopy?: ProjectCopyCheck;
+  readonly format4?: Format4Options;
+}
+
+export interface Format4UpgradePreview extends ProjectIdentity {
+  readonly projectVersion: typeof PROJECT_FILE_SCHEMA_VERSION;
+  readonly historyVersion: number | null;
+}
+
+export type Format4UpgradeBoundary = 'before-version-write' | 'before-commit' | 'after-commit';
+export interface Format4Options {
+  /** Trusted caller's approval for the exact preflight identity. Existing
+   * v4 projects and new private destinations do not need this callback. */
+  readonly approveUpgrade?: (preview: Format4UpgradePreview) => boolean;
+  readonly onUpgradeBoundary?: (phase: Format4UpgradeBoundary, observed: Readonly<{projectVersion: number; historyVersion: number | null}>) => void;
 }
 
 /** Internal S5 reader capability. The caller validates both closed sources
@@ -137,6 +157,7 @@ export interface ProjectConnection extends Omit<ProjectStoreContract<DatabaseSyn
 export interface CreateProjectFileOptions {
   readonly projectId?: string;
   readonly contentToken?: string;
+  readonly format4?: Format4Options;
 }
 
 const describe = (database: DatabaseKind, reason: ProjectFileErrorReason, projectId?: string): ProjectFileErrorDetails =>
@@ -183,7 +204,7 @@ type HeldFile = readonly [key: string, kind: DatabaseKind];
 /** Creates a complete project file without ever replacing one: the database is
  * built under a temporary name in the same directory, then hard-linked into
  * place (or renamed where the file system has no hard links). */
-export function createProjectFile(projectFile: string, {projectId = randomUUID(), contentToken}: CreateProjectFileOptions = {}): string {
+export function createProjectFile(projectFile: string, {projectId = randomUUID(), contentToken, format4}: CreateProjectFileOptions = {}): string {
   if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
   if (contentToken !== undefined && !isContentToken(contentToken)) throw new TypeError('Invalid content token');
   const target = path.resolve(projectFile);
@@ -195,7 +216,7 @@ export function createProjectFile(projectFile: string, {projectId = randomUUID()
     try {
       db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL');
       inTransaction(db, () => {
-        buildDatabase(db, 'project', 'main');
+        buildDatabase(db, 'project', 'main', undefined, format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION);
         db.prepare('INSERT INTO main.project_file VALUES(1,?,0,COALESCE(?,lower(hex(randomblob(16)))))').run(projectId,contentToken ?? null);
       });
     } finally {
@@ -262,15 +283,17 @@ function inTransaction(db: DatabaseSync, write: () => void): void {
 /** Version, identity, journal mode and structure manifest of one database on
  * the connection. A newer version is reported before any other mismatch: a
  * newer Mioon may have changed the structure. */
-function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, projectId?: string, expected: SchemaManifest = SCHEMA_MANIFEST[kind]): void {
+function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, projectId?: string,
+  expected: SchemaManifest = SCHEMA_MANIFEST[kind], storedVersion = expected.version): void {
   if (pragmaValue(db, `${schema}.application_id`) !== APPLICATION_IDS[kind]) throw invalid(kind, 'application-id', projectId);
   const definition = db.prepare(`SELECT sql FROM ${schema}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
   if (definition?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid(kind, 'schema-version', projectId);
   const versions = db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${schema}.schema_version`).get();
-  if (typeof versions?.version === 'number' && versions.version > SUPPORTED_VERSIONS[kind]) {
-    throw projectFileError('PROJECT_FORMAT_NEWER', {...describe(kind, 'format-newer', projectId), formatVersion: versions.version, supportedFormatVersion: SUPPORTED_VERSIONS[kind]});
+  const maximum = Math.max(SUPPORTED_VERSIONS[kind], expected.version);
+  if (typeof versions?.version === 'number' && versions.version > maximum) {
+    throw projectFileError('PROJECT_FORMAT_NEWER', {...describe(kind, 'format-newer', projectId), formatVersion: versions.version, supportedFormatVersion: maximum});
   }
-  if (versions?.count !== 1 || versions.version !== expected.version) throw invalid(kind, 'schema-version', projectId);
+  if (versions?.count !== 1 || versions.version !== storedVersion) throw invalid(kind, 'schema-version', projectId);
   if (pragmaValue(db, `${schema}.journal_mode`) !== 'delete') throw invalid(kind, 'journal-mode', projectId);
   const {missing, unexpected, changed} = compareManifest(readSchemaManifest(db, schema), expected.entries);
   const differences = [...missing.map(name => `missing ${name}`), ...unexpected.map(name => `unexpected ${name}`), ...changed.map(name => `changed ${name}`)];
@@ -280,7 +303,11 @@ function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, pr
 /** An older history is accepted only for one reviewed version/manifest pair.
  * This merely identifies the transition: no table is changed before the
  * project is attached, locked and checked for external content changes. */
-function checkHistoryStructure(db: DatabaseSync, projectId: string): HistoryUpgrade | undefined {
+function checkHistoryStructure(db: DatabaseSync, projectId: string, candidate = false): HistoryUpgrade | undefined {
+  if (candidate) {
+    checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION));
+    return;
+  }
   const definition = db.prepare(`SELECT sql FROM ${HISTORY}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
   const version = definition?.sql === SCHEMA_VERSION_TABLE_SQL
     ? db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${HISTORY}.schema_version`).get()
@@ -292,6 +319,19 @@ function checkHistoryStructure(db: DatabaseSync, projectId: string): HistoryUpgr
 
 export interface ProjectIdentity extends ContentStamp {
   readonly projectId: string;
+}
+export interface ProjectFormatIdentity extends ProjectIdentity {
+  readonly formatVersion: ProjectFileFormat;
+}
+
+function checkProjectStructure(db: DatabaseSync, schema: string, format: ProjectFileFormat, projectId?: string): void {
+  const manifest = projectManifestForVersion(format);
+  if (!manifest || pragmaValue(db, `${schema}.user_version`) !== format) throw invalid('project', 'schema-version', projectId);
+  checkStructure(db, schema, 'project', projectId, manifest);
+  if (format === FORMAT4_PROJECT_SCHEMA_VERSION) {
+    if (schema !== 'main' && schema !== 'project') throw new TypeError('Invalid project schema');
+    assertProjectTimelineGeometryProfile(db, schema, format);
+  }
 }
 
 /** The project file's metadata row and its at most one project row. */
@@ -307,11 +347,22 @@ function readProjectIdentity(db: DatabaseSync, schema: string): ProjectIdentity 
 
 const SQLITE_MAGIC = 'SQLite format 3\u0000';
 
+function checkProjectVersion(format: unknown, maximum: ProjectFileFormat): ProjectFileFormat {
+  if (typeof format === 'number' && format > maximum) {
+    throw projectFileError('PROJECT_FORMAT_NEWER', {...describe('project','format-newer'),formatVersion:format,supportedFormatVersion:maximum});
+  }
+  if (format !== PROJECT_FILE_SCHEMA_VERSION && format !== FORMAT4_PROJECT_SCHEMA_VERSION) throw invalid('project','schema-version');
+  return format;
+}
+
+const projectFormatMaximum = (format4?: Format4Options): ProjectFileFormat =>
+  format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
+
 /** Reads the 100-byte SQLite header without SQLite, so a file that is not a
  * project file (history.db and cache.db included) is never opened as one and
  * SQLite never rolls back a journal out of order. */
-function checkHeader(projectFile: string): void {
-  const fd = openSync(projectFile, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+function checkHeader(projectFile: string, maximum: ProjectFileFormat): ProjectFileFormat {
+  const fd = openSync(projectFile, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     if (!fstatSync(fd).isFile()) throw invalid('project', 'not-a-regular-file');
     const header = Buffer.alloc(100);
@@ -319,11 +370,10 @@ function checkHeader(projectFile: string): void {
     if (length < header.length || header.toString('latin1', 0, 16) !== SQLITE_MAGIC || header.readUInt32BE(68) !== PROJECT_FILE_APPLICATION_ID) {
       throw invalid('project', 'not-a-project-file');
     }
-    const format = header.readUInt32BE(60);
-    if (format > PROJECT_FILE_SCHEMA_VERSION) throw projectFileError('PROJECT_FORMAT_NEWER', {...describe('project','format-newer'),formatVersion:format,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION});
-    if (format !== PROJECT_FILE_SCHEMA_VERSION) throw invalid('project','schema-version');
+    const format = checkProjectVersion(header.readUInt32BE(60), maximum);
     // The file format versions at offsets 18 and 19 are 2 in WAL mode.
     if (header[18] !== 1 || header[19] !== 1) throw invalid('project', 'journal-mode');
+    return format;
   } finally {
     closeSync(fd);
   }
@@ -331,33 +381,54 @@ function checkHeader(projectFile: string): void {
 
 /** Full preflight without a writable SQLite descriptor. A current header is
  * only a gate: the exact manifest, metadata and native keys still have to pass. */
-export function inspectProjectFileReadOnly(requested: string): ProjectIdentity {
+export function inspectProjectFileReadOnly(requested: string, format4?: Format4Options): ProjectIdentity {
+  const {formatVersion: _format, ...identity} = inspectProjectFormatReadOnly(requested, format4);
+  return identity;
+}
+
+export function inspectProjectFormatReadOnly(requested: string, format4?: Format4Options): ProjectFormatIdentity {
+  return inspectProjectFile(requested, projectFormatMaximum(format4));
+}
+
+function checkReadableProjectHeader(projectFile: string, before: BigIntStats, maximum: ProjectFileFormat): ProjectFileFormat {
+  if (!before.isFile()) throw invalid('project','not-a-regular-file');
+  const held = projectFileOwnerKind(identityOf(before,projectFile));
+  if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED',describe('project','locked')) : invalid('project','not-a-project-file');
+  return checkHeader(projectFile, maximum);
+}
+
+/** A bounded hint for the recent-project list. Opening still checks the
+ * manifest and content under the normal SQLite admission path. */
+export function inspectProjectFormatHeader(requested: string, format4?: Format4Options): ProjectFileFormat {
+  const projectFile = path.resolve(requested);
+  try {
+    return checkReadableProjectHeader(projectFile, lstatSync(projectFile,{bigint:true}), projectFormatMaximum(format4));
+  } catch (error) {throw openFailure(error,'project');}
+}
+
+function inspectProjectFile(requested: string, maximum: ProjectFileFormat): ProjectFormatIdentity {
   const projectFile = path.resolve(requested);
   let db: DatabaseSync | undefined;
   try {
     const before = lstatSync(projectFile,{bigint:true});
-    const held = projectFileOwnerKind(identityOf(before,projectFile));
-    if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED',describe('project','locked')) : invalid('project','not-a-project-file');
-    checkHeader(projectFile);
+    const formatVersion = checkReadableProjectHeader(projectFile, before, maximum);
     if (isHotJournal(`${projectFile}-journal`)) throw invalid('project','hot-journal');
     db = new DatabaseSync(`${pathToFileURL(projectFile).href}?mode=ro`,{...DATABASE_OPTIONS,readOnly:true});
     db.exec('PRAGMA trusted_schema=OFF; PRAGMA cell_size_check=ON');
     if (pragmaValue(db,'encoding') !== 'UTF-8') throw invalid('project','encoding');
-    checkStructure(db,'main','project');
-    if (pragmaValue(db,'user_version') !== PROJECT_FILE_SCHEMA_VERSION) throw invalid('project','schema-version');
+    checkProjectStructure(db, 'main', formatVersion);
     const identity = readProjectIdentity(db,'main');
     if (db.prepare('PRAGMA main.foreign_key_check').get() !== undefined) throw invalid('project','foreign-key',identity.projectId);
     const after = lstatSync(projectFile,{bigint:true});
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw invalid('project','unusable',identity.projectId);
-    return identity;
+    return {...identity, formatVersion};
   } catch (error) {throw openFailure(error,'project');}
   finally {db?.close();}
 }
-const inspectProjectFile = inspectProjectFileReadOnly;
 
 /** Validate recovery on a disconnected clone. Its journal never names a source
  * super-journal, so SQLite cannot delete or write any original companion. */
-function validateRecoveryInIsolation(projectFile: string): ProjectIdentity {
+function validateRecoveryInIsolation(projectFile: string, maximum: ProjectFileFormat): ProjectFormatIdentity {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-recovery-preflight-'));
   const file = path.join(directory,'project.mioon');
   let db: DatabaseSync | undefined;
@@ -366,11 +437,11 @@ function validateRecoveryInIsolation(projectFile: string): ProjectIdentity {
     copyIsolatedRecoveryJournal(`${projectFile}-journal`,`${file}-journal`);
     db = openDatabase(existingFile(file));
     lock(db);
-    checkStructure(db,'main','project');
-    if (pragmaValue(db,'user_version') !== PROJECT_FILE_SCHEMA_VERSION) throw invalid('project','schema-version');
+    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), maximum);
+    checkProjectStructure(db, 'main', formatVersion);
     const identity = readProjectIdentity(db,'main');
     if (db.prepare('PRAGMA main.foreign_key_check').get() !== undefined) throw invalid('project','foreign-key');
-    return identity;
+    return {...identity, formatVersion};
   } finally {db?.close();rmSync(directory,{recursive:true,force:true});}
 }
 
@@ -468,6 +539,7 @@ export interface StagedProjectConnectionOptions {
   readonly historyFile: string;
   readonly expectedStamp: ContentStamp;
   readonly resolution?: {readonly requestId: string; readonly digest: string};
+  readonly format4?: Format4Options;
 }
 function validateStagedHistory(db: DatabaseSync, options: StagedProjectConnectionOptions, current: ProjectIdentity): void {
   const records = db.prepare('SELECT requestId,digest,result FROM main.project_history_resolution').all();
@@ -482,7 +554,8 @@ function validateStagedHistory(db: DatabaseSync, options: StagedProjectConnectio
     throw new AppError('PROJECT_VERSION_PREVIEW_STALE','项目内容身份已变化，未执行处置。',409,{projectId:current.projectId});
   }
   const versions = new Set(['project_version_blobs','project_versions','project_version_requests','project_version_capture_marks','mio_storage_counters']);
-  for (const table of HISTORY_TABLES) if (!versions.has(table) && db.prepare(`SELECT 1 FROM main."${table}" LIMIT 1`).get()) throw invalid('history','metadata',current.projectId);
+  const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
+  for (const table of historyTablesForVersion(Number(historyVersion))) if (!versions.has(table) && db.prepare(`SELECT 1 FROM main."${table}" LIMIT 1`).get()) throw invalid('history','metadata',current.projectId);
   const counter = db.prepare('SELECT bytes,rows FROM main.mio_storage_counters').all();
   if (counter.length !== 1 || counter[0].bytes !== 0 || counter[0].rows !== 1) throw invalid('history','metadata',current.projectId);
 }
@@ -491,7 +564,7 @@ export function openStagedProjectConnection(options: StagedProjectConnectionOpti
   if (path.dirname(historyFile) !== localDir || !/^history\.staged-[a-f0-9-]{36}\.db$/u.test(path.basename(historyFile))
     || !Number.isSafeInteger(options.expectedStamp.contentSequence) || options.expectedStamp.contentSequence < 0 || !isContentToken(options.expectedStamp.contentToken)
     || options.resolution && (!isProjectId(options.resolution.requestId) || !/^[a-f0-9]{64}$/u.test(options.resolution.digest))) throw new TypeError('Invalid staged history identity');
-  return openConnection({projectFile:options.projectFile,locate:()=>options.location},{...options,historyFile});
+  return openConnection({projectFile:options.projectFile,locate:()=>options.location,format4:options.format4},{...options,historyFile});
 }
 
 interface AttachedDatabases {
@@ -499,6 +572,7 @@ interface AttachedDatabases {
   readonly historyState: ProjectHistoryState;
   readonly historyAdmission: ProjectHistoryAdmission;
   readonly held: readonly HeldFile[];
+  readonly backupDescriptors: readonly number[];
   readonly historyIdentity: {readonly directory: string; readonly db: string; readonly birthtimeMs: number};
 }
 
@@ -506,37 +580,120 @@ interface AttachedDatabases {
  * then the project file and the cache attached, locked and checked; the local
  * records of a new project are built only after that, then the connection's
  * temporary triggers. */
-function attachDatabases(projectFile: string, projectKey: string, identity: ProjectIdentity, historyFile: string, cacheFile: string, staged?: StagedProjectConnectionOptions): AttachedDatabases {
+function upgradeRequired(preview: Format4UpgradePreview): AppError {
+  return new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, {
+    ...preview, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION,
+  });
+}
+
+function observeUpgrade(db: DatabaseSync, options: Format4Options, phase: Format4UpgradeBoundary): void {
+  if (!options.onUpgradeBoundary) return;
+  options.onUpgradeBoundary(phase, Object.freeze({
+    projectVersion: Number(db.prepare('SELECT version FROM project.schema_version').get()?.version),
+    historyVersion: Number(db.prepare('SELECT version FROM main.schema_version').get()?.version),
+  }));
+}
+
+/** Open before SQLite takes the source lock. Closing an additional file
+ * descriptor while the native handle is live can release POSIX locks. */
+function pinBackupDescriptor(file: string, key: string, database: 'history' | 'project'): number {
+  const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    const stat = fstatSync(fd, {bigint: true});
+    if (!stat.isFile() || identityOf(stat, file) !== key) throw invalid(database, 'unusable');
+    return fd;
+  } catch (error) {closeSync(fd); throw error;}
+}
+
+function attachDatabases(
+  projectFile: string, projectKey: string, identity: ProjectFormatIdentity, historyFile: string, cacheFile: string,
+  staged?: StagedProjectConnectionOptions, format4?: Format4Options, approvedWithoutHistory?: Format4UpgradePreview,
+): AttachedDatabases {
   const {projectId} = identity;
   let database: DatabaseKind = 'history';
   let opened: DatabaseSync | undefined;
+  const opening: HeldFile[] = [];
+  const backupDescriptors: number[] = [];
+  const oldProject = identity.formatVersion === PROJECT_FILE_SCHEMA_VERSION;
+  const mayUpgrade = Boolean(format4 && oldProject && !staged);
   try {
     if (!isRegularFileOrMissing(historyFile)) throw invalid('history', 'not-a-regular-file', projectId);
+    const priorHistory = lstatSync(historyFile, {bigint: true, throwIfNoEntry: false});
+    if (priorHistory && projectFileOwnerKind(identityOf(priorHistory, historyFile)) !== undefined) throw projectFileError('PROJECT_LOCKED', describe('history', 'locked', projectId));
+    const historySource = mayUpgrade && priorHistory && priorHistory.size > 0n
+      ? pinBackupDescriptor(historyFile, identityOf(priorHistory, historyFile), 'history') : undefined;
+    if (historySource !== undefined) backupDescriptors.push(historySource);
     const db = openDatabase(historyFile);
     opened = db;
     lock(db);
+    const historyKey = identityOf(lstatSync(historyFile, {bigint: true}), historyFile);
+    if (priorHistory && historyKey !== identityOf(priorHistory, historyFile)) throw invalid('history', 'unusable', projectId);
     const fresh = isEmpty(db, HISTORY);
     let upgrade: HistoryUpgrade | undefined;
     if (!fresh) {
       if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid('history', 'encoding', projectId);
-      upgrade = checkHistoryStructure(db, projectId);
+      upgrade = checkHistoryStructure(db, projectId, identity.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION);
       const states = db.prepare(`SELECT projectId,seenContentSequence FROM ${HISTORY}.history_state`).all();
       if (states.length !== 1 || typeof states[0].seenContentSequence !== 'number') throw invalid('history', 'metadata', projectId);
       if (states[0].projectId !== projectId) throw invalid('history', 'project-mismatch', projectId);
     }
     database = 'project';
+    const projectSource = mayUpgrade ? pinBackupDescriptor(projectFile, projectKey, 'project') : undefined;
+    if (projectSource !== undefined) backupDescriptors.push(projectSource);
     db.prepare(`ATTACH DATABASE ? AS ${PROJECT}`).run(existingFile(projectFile));
     lock(db);
     // Checked again under this connection's lock: the file was unlocked since step 1.
-    checkStructure(db, PROJECT, 'project', projectId);
+    checkProjectStructure(db, PROJECT, identity.formatVersion, projectId);
     const current = readProjectIdentity(db, PROJECT);
     if (current.projectId !== projectId) throw invalid('project', 'project-mismatch', projectId);
     // Token-bearing histories must pass admission before an upgrade (or cache
     // rebuild) can publish any change. Older profiles acquire a nullable token
     // inside their reviewed transition and are checked in that transaction.
-    if (!fresh && (!upgrade || upgrade.from.version >= 8)) classifyHistoryStamp(db, false);
+    const admission = !fresh && (!upgrade || upgrade.from.version >= 8) ? classifyHistoryStamp(db, false) : undefined;
+    // A legacy history without a token first takes the existing history-only
+    // transition and stays diverged until the user resolves that admission.
+    const changeFormat = mayUpgrade && (fresh || admission?.state === 'current');
+    const historySourceManifest = fresh ? undefined : upgrade?.from ?? SCHEMA_MANIFEST.history;
+    const historySourceVersion = historySourceManifest?.version ?? HISTORY_SCHEMA_VERSION;
+    const verifySources = () => {
+      if (identityOf(lstatSync(projectFile, {bigint: true}), projectFile) !== projectKey) throw projectFileMovedError(projectId);
+      if (identityOf(lstatSync(historyFile, {bigint: true}), historyFile) !== historyKey) throw invalid('history', 'unusable', projectId);
+    };
+    if (changeFormat && format4) {
+      if (projectSource === undefined) throw invalid('project', 'unusable', projectId);
+      verifySources();
+      if (!sameContentStamp(identity, current)) throw invalid('project', 'metadata', projectId);
+      assertProjectTimelineGeometryProfile(db, PROJECT, PROJECT_FILE_SCHEMA_VERSION);
+      const preview: Format4UpgradePreview = Object.freeze({...current, projectVersion: PROJECT_FILE_SCHEMA_VERSION, historyVersion: historySourceManifest?.version ?? null});
+      // A callback may make a reentrant read. A second descriptor's close
+      // would release the native locks on POSIX even before the store exists.
+      opening.push([projectKey, 'project'], [historyKey, 'history']);
+      registerProjectFiles(db, opening, false);
+      if (approvedWithoutHistory) {
+        if (!fresh || !sameContentStamp(preview, approvedWithoutHistory)) throw upgradeRequired(preview);
+      } else if (format4.approveUpgrade?.(preview) !== true) throw upgradeRequired(preview);
+      verifySources();
+      configure(db, HISTORY);
+      configure(db, PROJECT);
+      // A previously absent companion must already be a complete empty v10
+      // history when the migration begins. After a failed backup or a killed
+      // upgrade, read-only copy must not mistake our empty SQLite file for a
+      // corrupt user's history. The pre-upgrade backup records its absence.
+      if (fresh) inTransaction(db, () => {
+        buildDatabase(db, 'history', HISTORY);
+        db.prepare('INSERT INTO main.history_state VALUES(1,?,?,?)').run(projectId, current.contentSequence, current.contentToken);
+        checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(HISTORY_SCHEMA_VERSION));
+      });
+      createFormat4UpgradeBackup(db, path.dirname(historyFile), current, {project: projectSource, history: historySource}, historySourceManifest);
+      verifySources();
+    }
     database = 'cache';
     attachCache(db, cacheFile);
+    if (opening.length) {
+      const cacheKey = identityOf(lstatSync(cacheFile, {bigint: true}), cacheFile);
+      opening.push([cacheKey, 'cache']);
+      registerProjectFiles(db, opening, false);
+    }
     for (const [schema, kind] of [[HISTORY, 'history'], [PROJECT, 'project'], [CACHE, 'cache']] as const) {
       database = kind;
       configure(db, schema);
@@ -546,22 +703,46 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     // do not share this connection setting.
     db.exec('PRAGMA recursive_triggers=ON');
     database = 'history';
-    if (upgrade) {
+    const useFormat4 = !oldProject || changeFormat;
+    if (changeFormat && format4) {
+      inTransaction(db, () => {
+        verifySources();
+        if (fresh) clearProjectProcessRevisions(db, projectId);
+        if (upgrade) {
+          upgrade.apply(db);
+          checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(HISTORY_SCHEMA_VERSION), historySourceVersion);
+        }
+        addFormat4ProjectStructureInside(db, PROJECT);
+        addFormat4HistoryStructureInside(db, historySourceVersion);
+        observeUpgrade(db, format4, 'before-version-write');
+        writeFormat4ProjectVersionInside(db, PROJECT);
+        writeFormat4HistoryVersionInside(db, historySourceVersion);
+        checkProjectStructure(db, PROJECT, FORMAT4_PROJECT_SCHEMA_VERSION, projectId);
+        checkHistoryStructure(db, projectId, true);
+        if (foreignKeyCheck(db).length !== 0) throw invalid('history', 'foreign-key', projectId);
+        if (classifyHistoryStamp(db, false).state !== 'current' || !sameContentStamp(readProjectContentStamp(db), current)) throw invalid('history', 'metadata', projectId);
+        observeUpgrade(db, format4, 'before-commit');
+        verifySources();
+      });
+      observeUpgrade(db, format4, 'after-commit');
+      verifySources();
+    } else if (upgrade) {
       const transition = upgrade;
       inTransaction(db, () => {
         transition.apply(db);
         classifyHistoryStamp(db, false);
         db.exec(`UPDATE ${HISTORY}.schema_version SET version=${transition.toVersion}`);
         checkStructure(db, HISTORY, 'history', projectId);
-        checkStructure(db, PROJECT, 'project', projectId);
+        checkProjectStructure(db, PROJECT, identity.formatVersion, projectId);
       });
     } else if (fresh) {
       inTransaction(db, () => {
-        buildDatabase(db, 'history', HISTORY);
+        const historyVersion = useFormat4 ? FORMAT4_HISTORY_SCHEMA_VERSION : HISTORY_SCHEMA_VERSION;
+        buildDatabase(db, 'history', HISTORY, undefined, historyVersion);
         db.prepare(`INSERT INTO ${HISTORY}.history_state VALUES(1,?,?,?)`).run(projectId, current.contentSequence,current.contentToken);
         if (!staged) clearProjectProcessRevisions(db, projectId);
-        checkStructure(db, HISTORY, 'history', projectId);
-        checkStructure(db, PROJECT, 'project', projectId);
+        checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(historyVersion));
+        checkProjectStructure(db, PROJECT, identity.formatVersion, projectId);
       });
     }
     database = 'project';
@@ -572,12 +753,12 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     // Confirmation changes the execution history. Rebuildable references from
     // the old cache must not constrain the empty-domain restore preview.
     if (staged) inTransaction(db,()=>db.exec('DELETE FROM cache.previs_thumbnails; DELETE FROM cache.waveform_cache'));
-    installCrossFileTriggers(db);
+    installCrossFileTriggers(db, useFormat4);
     if (historyAdmission.state === 'diverged') installDivergedWriteGuards(db);
     else openProjectJournal(db);
     const held: readonly HeldFile[] = [
       [projectKey, 'project'],
-      [identityOf(lstatSync(historyFile, {bigint: true}), historyFile), 'history'],
+      [historyKey, 'history'],
       [identityOf(lstatSync(cacheFile, {bigint: true}), cacheFile), 'cache'],
     ];
     // Native open() would reopen only main, losing the attached databases,
@@ -589,9 +770,13 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     const history = validateManagedFile(historyFile, {root: path.dirname(historyFile)});
     if (!directory || !history) throw invalid('history', 'unusable', projectId);
     if (history.ino && `${history.dev}:${history.ino}` !== held[1]![0]) throw invalid('history', 'unusable', projectId);
-    return {db, held, historyIdentity: {directory: privateStorageIdentity(directory), db: privateStorageIdentity(history), birthtimeMs: history.birthtimeMs}, historyState: historyAdmission.state, historyAdmission};
+    return {db, held, backupDescriptors, historyIdentity: {directory: privateStorageIdentity(directory), db: privateStorageIdentity(history), birthtimeMs: history.birthtimeMs}, historyState: historyAdmission.state, historyAdmission};
   } catch (error) {
     try { opened?.close(); } catch {}
+    finally {
+      for (const fd of backupDescriptors) closeSync(fd);
+      if (opened && opening.length) releaseProjectFiles(opened, opening);
+    }
     throw openFailure(error, database, projectId);
   }
 }
@@ -633,7 +818,7 @@ function movedAlone(projectFile: string, projectKey: string): boolean {
 export function openProjectConnection(options: OpenProjectConnectionOptions): ProjectConnection {
   return openConnection(options);
 }
-function openConnection({projectFile: requested, locate, checkCopy}: OpenProjectConnectionOptions, staged?: StagedProjectConnectionOptions): ProjectConnection {
+function openConnection({projectFile: requested, locate, checkCopy, format4}: OpenProjectConnectionOptions, staged?: StagedProjectConnectionOptions): ProjectConnection {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
   try {
@@ -647,23 +832,40 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
   const held = projectFileOwnerKind(projectKey);
   if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED', describe('project', 'locked')) : invalid('project', 'not-a-project-file');
   if (staged) {
-    const recovery = recoverProjectFile(projectFile);
+    const recovery = recoverProjectFile(projectFile, format4);
     if (recovery.state === 'invalid') throw invalid('project',recovery.reason);
     if (recovery.state === 'locked') throw projectFileError('PROJECT_LOCKED',describe('project','locked'));
     if (recovery.state === 'access-denied') throw projectFileError('PROJECT_ACCESS_DENIED',describe('project','access-denied'));
   }
-  const identity = inspectProjectFile(projectFile);
+  const identity = inspectProjectFormatReadOnly(projectFile, format4);
   checkCopy?.({projectId: identity.projectId, projectFile});
   const location = locate(identity.projectId);
   const localDir = path.resolve(location.localDir), cacheDir = path.resolve(location.cacheDir), tempDir = path.resolve(location.tempDir);
   if (!staged && lstatSync(path.join(localDir,'history-switch-active.json'),{throwIfNoEntry:false})) throw new AppError('PROJECT_HISTORY_SWITCH_PENDING','本机记录切换尚未完成。',409,{projectId:identity.projectId});
-  for (const directory of [localDir, cacheDir, tempDir]) ensurePrivateDirectory(directory, {create: true});
   const historyFile = staged?.historyFile ?? path.join(localDir, PROJECT_HISTORY_FILE);
-  const {db, held: files, historyState, historyAdmission, historyIdentity} = attachDatabases(projectFile, projectKey, identity, historyFile, path.join(cacheDir, PROJECT_CACHE_FILE), staged);
+  let approvedWithoutHistory: Format4UpgradePreview | undefined;
+  if (format4 && !staged && identity.formatVersion === PROJECT_FILE_SCHEMA_VERSION && !lstatSync(historyFile, {throwIfNoEntry: false})) {
+    const {formatVersion, ...project} = identity;
+    const preview: Format4UpgradePreview = Object.freeze({...project, projectVersion: formatVersion, historyVersion: null});
+    if (format4.approveUpgrade?.(preview) !== true) throw upgradeRequired(preview);
+    approvedWithoutHistory = preview;
+  }
+  for (const directory of [localDir, cacheDir, tempDir]) ensurePrivateDirectory(directory, {create: true});
+  const {db, held: files, backupDescriptors, historyState, historyAdmission, historyIdentity} = attachDatabases(projectFile, projectKey, identity, historyFile, path.join(cacheDir, PROJECT_CACHE_FILE), staged, format4, approvedWithoutHistory);
   const {directory: directoryIdentity, db: historyFileIdentity, birthtimeMs: historyBirthtime} = historyIdentity;
-  registerProjectFiles(db, files);
-  removeUnusedSuperJournals(localDir);
   let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    try { db.close(); }
+    finally {
+      try { for (const fd of backupDescriptors) closeSync(fd); }
+      finally { releaseProjectFiles(db, files); }
+    }
+  };
+  registerProjectFiles(db, files);
+  try { removeUnusedSuperJournals(localDir); }
+  catch (error) { close(); throw error; }
   return {
     db, projectId: identity.projectId, projectFile, projectDir: path.dirname(projectFile), localDir, cacheDir, tempDir, historyState, historyAdmission,
     throwIfMoved(): void {
@@ -680,15 +882,7 @@ function openConnection({projectFile: requested, locate, checkCopy}: OpenProject
       }
       return {directory, db: history};
     },
-    close(): void {
-      if (closed) return;
-      closed = true;
-      try {
-        db.close();
-      } finally {
-        releaseProjectFiles(db, files);
-      }
-    },
+    close,
   };
 }
 
@@ -732,10 +926,10 @@ const recoveryOf = (error: unknown): ProjectFileRecovery => {
  * not open, for example at startup and when listing recent projects. A project
  * this process has open is recognised by file identity before any file is read.
  * The journal is looked at before the project file: without a hot journal
- * (none, 0 bytes, or a zero first byte) nothing of the project file is read.
- * Every listing of recent projects calls this, and a first read of a file that
- * iCloud has moved off this computer downloads all of it. */
-export function recoverProjectFile(requested: string): ProjectFileRecovery {
+ * (none, 0 bytes, or a zero first byte) nothing of the project file is read by
+ * recovery. A newer header beside a hot journal raises PROJECT_FORMAT_NEWER
+ * before replay. */
+export function recoverProjectFile(requested: string, format4?: Format4Options): ProjectFileRecovery {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
   try {
@@ -750,17 +944,19 @@ export function recoverProjectFile(requested: string): ProjectFileRecovery {
   let db: DatabaseSync | undefined;
   try {
     if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};
-    checkHeader(projectFile);
+    const maximum = projectFormatMaximum(format4);
+    checkHeader(projectFile, maximum);
     const before = lstatSync(projectFile,{bigint:true});
-    const recovered = validateRecoveryInIsolation(projectFile);
+    const recovered = validateRecoveryInIsolation(projectFile, maximum);
     const after = lstatSync(projectFile,{bigint:true});
     if (before.dev!==after.dev || before.ino!==after.ino || before.size!==after.size || before.mtimeNs!==after.mtimeNs) throw invalid('project','unusable');
     db = openDatabase(existingFile(projectFile));
     lock(db);
-    checkStructure(db,'main','project');
+    checkProjectStructure(db, 'main', recovered.formatVersion);
     if (!sameContentStamp(readProjectIdentity(db,'main'),recovered)) throw invalid('project','metadata');
     return {state: 'recovered'};
   } catch (error) {
+    if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') throw error;
     return recoveryOf(error);
   } finally {
     db?.close();

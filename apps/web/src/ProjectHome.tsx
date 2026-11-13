@@ -7,11 +7,14 @@ import type {MenuHelpControl} from './desktop-menu-client.ts';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
-import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
+import { ChevronRight, Clapperboard, FolderOpen, Info, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import type { ProjectSummary } from '../../../packages/contracts/src/project-home.ts';
 import { Textarea } from '@mioon/ui/components/textarea';
+import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
+import {PendingProjectOpenStatus, type PendingProjectOpen} from './project-file/RecentProjects.tsx';
+import './launcher-home.css';
 
 export interface ProjectHomeProject {
   id: string;
@@ -34,12 +37,16 @@ export interface ProjectHomeCreateState {
   readonly version: number;
 }
 
+type LauncherPage = 'projects' | 'examples' | 'help';
+
 export interface ProjectHomeProps {
   onRegisterMenuHelp?: (control: MenuHelpControl) => () => void;
   onMenuHelpStateChange?: () => void;
   projects: readonly ProjectHomeProject[];
   phase: 'home' | 'opening' | 'error';
   openingName?: string;
+  deferOpeningFeedback?: boolean;
+  pendingOpen?: PendingProjectOpen;
   error?: string | DisplayMessage;
   notice?: string | DisplayMessage;
   busy: boolean;
@@ -54,6 +61,8 @@ export interface ProjectHomeProps {
   onCreate: (name: string, description: string, timelinePresetId?: string) => Promise<boolean>;
   /** A native entry owns its retained create dialog and departure guard. */
   onRequestCreate?: () => void;
+  /** A native entry opens its owned .mioon file picker. */
+  onOpenFile?: () => void;
   /** Supplied only when a trusted template destination/instantiate port exists. */
   onStartExample?: () => void | Promise<boolean>;
   /** Feedback only: a blocked click must not dispatch the example operation. */
@@ -61,9 +70,10 @@ export interface ProjectHomeProps {
   query?: string;
   onQuery?: (value: string) => void;
   toolbar?: ReactNode;
-  /** A verified project-file catalog can replace the legacy summary cards
-   * while the existing header, form owner and navigation guards stay mounted. */
-  catalog?: ReactNode;
+  /** A verified catalog supplies its own loading and error views and admits the
+   * launcher's empty content only when the directory is known to be empty. */
+  renderCatalog?: (emptyContent?: ReactNode, pendingOpen?: PendingProjectOpen) => ReactNode;
+  launcher?: {readonly version?: string; readonly service: 'ready' | 'connecting' | 'unavailable'; readonly empty: boolean};
   projectMenu?: (project: ProjectHomeProject) => ReactNode;
   totalProjects?: number;
   settings: ReactNode;
@@ -106,14 +116,15 @@ function ProjectTime({ value }: { value: string }) {
 
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
-export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, catalog, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
+export default function ProjectHome({ projects, phase, openingName, deferOpeningFeedback, pendingOpen, error, notice, busy, listBusy, listError,
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const helpScope = useMemo(() => ({ active, page, open: helpOpen }), [active, page, helpOpen]);
+  const [launcherPage, setLauncherPage] = useState<LauncherPage>('projects');
+  const helpScope = useMemo(() => ({ active, page, open: helpOpen, launcherPage }), [active, page, helpOpen, launcherPage]);
   const helpAuthority = useRef<typeof helpScope | null>(helpScope);
   helpAuthority.current = helpScope;
   const [name, setName] = useState('');
@@ -122,8 +133,8 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   const [formError, setFormError] = useState<string | DisplayMessage>('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample, onStartExampleBlocked });
-  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry, onRequestCreate, onStartExample, onStartExampleBlocked };
+  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
+  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
   const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange });
   const publishCreate = (patch: Partial<{ name: string; description: string; preset: string; busy: boolean }> = {}) => {
     Object.assign(createMetadata.current, patch);
@@ -136,9 +147,9 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   }
   const locked = busy || submitting || phase === 'opening';
   const empty = !totalProjects && !listBusy && !listError;
-  const canAct = () => canMutateEntry?.() !== false && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
+  const canAct = () => current.current.canMutateEntry?.() !== false && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
   const canRefresh = () => current.current.active && current.current.page === 'projects' && current.current.phase !== 'opening' && !current.current.listBusy && !current.current.busy && !submissionPending.current;
-  useEffect(()=>{if(typeof window==='undefined')return;const shortcut=(event:KeyboardEvent)=>{const state=current.current;if((event.metaKey||event.ctrlKey)&&!event.altKey&&event.key.toLowerCase()==='f'&&state.active&&state.page==='projects'&&!state.createOpen&&!state.helpOpen&&!state.busy&&state.phase!=='opening'&&onQuery&&totalProjects>0&&searchInput.current){event.preventDefault();searchInput.current.focus();searchInput.current.select();}};window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[onQuery,totalProjects]);
+  useEffect(()=>{if(typeof window==='undefined')return;const shortcut=(event:KeyboardEvent)=>{const state=current.current;if((event.metaKey||event.ctrlKey)&&!event.altKey&&event.key.toLowerCase()==='f'&&state.active&&state.page==='projects'&&state.launcherPage==='projects'&&!state.createOpen&&!state.helpOpen&&!state.busy&&state.phase!=='opening'&&onQuery&&totalProjects>0&&searchInput.current){event.preventDefault();searchInput.current.focus();searchInput.current.select();}};window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[onQuery,totalProjects]);
   const changeHelp = (open: boolean) => { helpAuthority.current = null; current.current.helpOpen = open; setHelpOpen(open); };
   useEffect(() => {
     let mounted = true;
@@ -164,6 +175,28 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
     if (canAct() && current.current.active) void current.current.onStartExample?.();
     else current.current.onStartExampleBlocked?.();
   };
+  const launcherNavigationLocked = locked || !active || createOpen || helpOpen || page !== 'projects';
+  const canNavigateLauncher = (): boolean => {
+    const state = current.current;
+    return state.active && state.page === 'projects' && state.phase !== 'opening' && !state.busy &&
+      !submissionPending.current && !state.createOpen && !state.helpOpen &&
+      (typeof document === 'undefined' || !hasOpenWorkbenchModal(document));
+  };
+  function navigateLauncher(destination: LauncherPage): void {
+    if (!canNavigateLauncher() || current.current.launcherPage === destination) return;
+    helpAuthority.current = null;
+    current.current.launcherPage = destination;
+    setLauncherPage(destination);
+  }
+  function openLauncherFile(): void {
+    if (current.current.launcherPage === 'projects' && canNavigateLauncher() && canAct()) current.current.onOpenFile?.();
+  }
+  function createLauncherProject(): void {
+    if (current.current.launcherPage === 'projects' && canNavigateLauncher()) requestCreate();
+  }
+  function startLauncherExample(source: 'projects' | 'examples'): void {
+    if (current.current.launcherPage === source && canNavigateLauncher()) startExample();
+  }
   useEffect(() => { if (createIntentVersion > 0) requestCreate(); }, [createIntentVersion]);
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -193,10 +226,90 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
     }
   }
 
-  return <div className="project-home" data-testid="project-home" data-phase={phase} data-page={page}>
-    <header className="project-home-header" data-text-selectable={false}>
+  const renderSearch = (inLauncher: boolean) => {
+    const label = t('redesign.projects.search');
+    return <div className={inLauncher ? 'launcher-home-search' : 'project-home-search-field'}>
+      <WorkbenchIcon name="search" size={15} />
+      <Input ref={searchInput} className={inLauncher ? 'launcher-home-search-input' : 'project-home-search'} data-testid="project-home-search"
+        aria-label={label} value={query} placeholder={label} disabled={locked || inLauncher && !active}
+        onChange={event => { if (canAct() && (!inLauncher || current.current.launcherPage === 'projects')) onQuery?.(event.target.value); }} />
+      <kbd aria-hidden="true">{t('redesign.projects.searchShortcut')}</kbd>
+    </div>;
+  };
+  const renderHelp = (surface: 'page' | 'dialog') => <>
+    <p>{t('projects.workspaceFootnote')}</p>
+    {help && <div className="project-home-status">{help}</div>}
+    <WorkbenchButton type="button" data-testid={surface === 'dialog' ? 'project-home-refresh' : 'launcher-help-refresh'} disabled={listBusy || locked} onClick={() => {
+      if (helpAuthority.current !== helpScope || !canRefresh()) return;
+      if (surface === 'dialog' ? helpScope.open && current.current.helpOpen : helpScope.launcherPage === 'help' && canNavigateLauncher()) current.current.onRefresh();
+    }}>{listBusy ? t('projects.refreshing') : t('projects.refreshList')}</WorkbenchButton>
+  </>;
+  const launcherEmpty = launcher ? <div className="launcher-home-empty" data-testid="launcher-empty">
+    <h1>{t('launcher.empty.title')}</h1>
+    <p>{t('launcher.empty.description')}</p>
+    <WorkbenchButton type="button" variant="primary" className="launcher-home-create-tile" data-testid="project-home-create-toggle"
+      aria-label={t('projects.createNew')} aria-describedby={`${prefix}-launcher-create-hint`}
+      disabled={launcherNavigationLocked || Boolean(createDisabledReason)} onClick={createLauncherProject}>
+      <span className="launcher-home-create-title"><span><WorkbenchIcon name="plus" size={23} /></span>{t('projects.createNew')}</span>
+      <span className="launcher-home-create-description" id={`${prefix}-launcher-create-hint`}>{t('launcher.empty.createHint')}</span>
+    </WorkbenchButton>
+    {(onStartExample || onOpenFile) && <div className="launcher-home-empty-actions">
+      {onStartExample && <WorkbenchButton type="button" className="launcher-home-action-tile" data-testid="project-home-example"
+        aria-label={t('projectHomeNative.example')} aria-describedby={`${prefix}-launcher-example-hint`}
+        disabled={launcherNavigationLocked} onClick={() => startLauncherExample('projects')}>
+        <span className="launcher-home-action-icon"><Clapperboard size={22} aria-hidden="true" /></span>
+        <span className="launcher-home-action-copy"><strong>{t('projectHomeNative.example')}</strong><span id={`${prefix}-launcher-example-hint`}>{t('projectHomeNative.example.description')}</span></span>
+        <ChevronRight size={15} aria-hidden="true" />
+      </WorkbenchButton>}
+      {onOpenFile && <WorkbenchButton type="button" className="launcher-home-action-tile" data-testid="project-home-open-file"
+        aria-label={t('launcher.openFile')} aria-describedby={`${prefix}-launcher-open-hint`}
+        disabled={launcherNavigationLocked} onClick={openLauncherFile}>
+        <span className="launcher-home-action-icon"><FolderOpen size={22} aria-hidden="true" /></span>
+        <span className="launcher-home-action-copy"><strong>{t('launcher.openFile')}</strong><span id={`${prefix}-launcher-open-hint`}>{t('launcher.empty.openHint')}</span></span>
+        <ChevronRight size={15} aria-hidden="true" />
+      </WorkbenchButton>}
+    </div>}
+  </div> : undefined;
+  const catalogVisible = page === 'projects' && (!launcher || launcherPage === 'projects');
+  const catalogContent = renderCatalog?.(launcherEmpty, catalogVisible ? pendingOpen : undefined);
+  const launcherLinks = launcher ? [
+    {id: 'projects', label: t('launcher.projects'), icon: FolderOpen},
+    {id: 'examples', label: t('launcher.examples'), icon: Clapperboard},
+    {id: 'help', label: t('launcher.help'), icon: Info},
+  ] as const : [];
+
+  return <div className={launcher ? 'project-home launcher-home' : 'project-home'} data-testid="project-home" data-phase={phase} data-page={page}>
+    {launcher && <aside className="launcher-home-sidebar" data-testid="launcher-sidebar">
+      <div className="launcher-home-titlebar" aria-hidden="true" />
+      <div className="launcher-home-brand">
+        <img src="/favicon.png" width={32} height={32} alt="" />
+        <span className="launcher-home-brand-copy"><strong>Mioon</strong>
+          {launcher.version && <span className="launcher-home-version" data-testid="launcher-version">{launcher.version}</span>}
+        </span>
+      </div>
+      <nav aria-label={t('projects.entry')} className="launcher-home-nav">
+        {launcherLinks.map(({id, label, icon: Icon}) => <WorkbenchButton key={id} type="button" variant="ghost" className="launcher-home-nav-button"
+          data-testid={`launcher-nav-${id}`} aria-label={label} title={label} aria-current={launcherPage === id ? 'page' : undefined}
+          disabled={launcherNavigationLocked} onClick={() => navigateLauncher(id)}>
+          <Icon size={17} aria-hidden="true" /><span>{label}</span>
+        </WorkbenchButton>)}
+      </nav>
+      <div className="launcher-home-sidebar-footer">
+        <div className="launcher-home-service" data-testid="launcher-service" data-service={launcher.service} role="status"
+          title={t(`launcher.service.${launcher.service}`)}>
+          <span className="launcher-home-service-dot" aria-hidden="true" />
+          <span className="launcher-home-service-label">{t(`launcher.service.${launcher.service}`)}</span>
+        </div>
+        <WorkbenchButton type="button" variant="ghost" className="launcher-home-nav-button" data-testid="project-home-page-settings"
+          aria-label={t('settings.title')} title={t('settings.title')} disabled={launcherNavigationLocked}
+          onClick={() => { if (canNavigateLauncher()) onPage('settings'); }}>
+          <WorkbenchIcon name="settings" size={17} /><span>{t('settings.title')}</span>
+        </WorkbenchButton>
+      </div>
+    </aside>}
+    {!launcher && <header className="project-home-header" data-text-selectable={false}>
       <div className="project-home-brand" aria-label="Mioon">Mioon</div>
-      {onQuery && totalProjects > 0 && <div className="project-home-search-field"><WorkbenchIcon name="search" size={15}/><Input ref={searchInput} className="project-home-search" data-testid="project-home-search" aria-label={t('redesign.projects.search')} value={query} placeholder={t('redesign.projects.search')} disabled={locked} onChange={event => { if (canAct()) onQuery(event.target.value); }} /><kbd aria-hidden="true">{t('redesign.projects.searchShortcut')}</kbd></div>}
+      {onQuery && totalProjects > 0 && renderSearch(false)}
       <div className="project-home-header-spacer" />
       <Button type="button" variant="ghost" data-testid="project-home-page-projects" className="sr-only" onClick={() => { if (page !== 'projects') onPage('projects'); }}>{t('projects.list')}</Button>
       <WorkbenchButton type="button" variant="icon" className="project-home-help-button" data-testid="project-home-help" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} disabled={locked || !active || page !== 'projects'} onClick={() => { if (current.current.active && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening') changeHelp(true); }}><HelpSymbol /></WorkbenchButton>
@@ -204,19 +317,28 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
       {totalProjects > 0 && onImport && <WorkbenchButton type="button" data-testid="project-home-import" disabled={locked} onClick={() => { if (canAct()) onImport(); }}><WorkbenchIcon name="upload" />{t('projectPackage.menu.import')}</WorkbenchButton>}
       {totalProjects > 0 && onStartExample && <WorkbenchButton type="button" data-testid="project-home-example" disabled={locked || !active} onClick={startExample}>{t('projectHomeNative.example')}</WorkbenchButton>}
       {totalProjects > 0 && <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate(true)}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>}
-    </header>
+    </header>}
     {helpOpen && active && page === 'projects' && <Dialog open onOpenChange={changeHelp}><WorkbenchDialogContent title={t('redesign.shell.help')} className="project-home-help-dialog">
-      <p>{t('projects.workspaceFootnote')}</p>
-      {help && <div className="project-home-status">{help}</div>}
-      <WorkbenchButton type="button" data-testid="project-home-refresh" disabled={listBusy || locked} onClick={() => { if (helpAuthority.current === helpScope && helpScope.open && helpScope.active && helpScope.page === 'projects' && canRefresh()) onRefresh(); }}>{listBusy ? t('projects.refreshing') : t('projects.refreshList')}</WorkbenchButton>
+      {renderHelp('dialog')}
     </WorkbenchDialogContent></Dialog>}
     <div className="project-home-layout">
-      <main className="project-home-main" aria-labelledby={catalog ? undefined : `${prefix}-heading`}>
+      {launcher && launcherPage === 'projects' && !launcher.empty && <header className="launcher-home-toolbar" data-testid="launcher-toolbar" data-text-selectable={false}>
+        {onQuery && renderSearch(true)}
+        {onStartExample && <WorkbenchButton type="button" data-testid="project-home-example" disabled={launcherNavigationLocked}
+          onClick={() => startLauncherExample('projects')}><Clapperboard size={15} aria-hidden="true" />{t('projectHomeNative.example')}</WorkbenchButton>}
+        {onOpenFile && <WorkbenchButton type="button" data-testid="project-home-open-file" disabled={launcherNavigationLocked}
+          onClick={openLauncherFile}><FolderOpen size={15} aria-hidden="true" />{t('launcher.open')}</WorkbenchButton>}
+        <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={launcherNavigationLocked || Boolean(createDisabledReason)}
+          onClick={createLauncherProject}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
+      </header>}
+      <main className="project-home-main" aria-labelledby={launcher && launcherPage !== 'projects' || !catalogContent ? `${prefix}-heading` : undefined}>
         {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
         {status && <div className="project-home-notice">{status}</div>}
-        {phase === 'opening' && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
+        {phase === 'opening' && !deferOpeningFeedback && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
           <div><strong>{openingName ? t('projects.openingNamed', { name: openingName }) : t('projects.opening')}</strong><p>{t('projects.loadingView')}</p></div>
         </section>}
+        {pendingOpen && (!catalogVisible || !catalogContent) &&
+          <PendingProjectOpenStatus pending={pendingOpen} name={projects.find(project => project.id === pendingOpen.projectId)?.name} />}
         {phase === 'error' && <section className="project-home-feedback" data-phase="error" role="alert">
           <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong><p>{error ? renderMessage(error) : t('projects.openRetryHint')}</p></div>
           {page === 'projects' && <Button type="button" variant="outline" data-testid="project-home-retry" disabled={busy || submitting}
@@ -226,7 +348,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
           <header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1 id={`${prefix}-heading`}>{t('settings.title')}</h1><p>{t('settings.scope')}</p></div></header>
           <div className="project-home-settings-body">{settings}</div>
         </section> : <>
-          {!catalog && <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>}
+          {!catalogContent && <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>}
           {createDisabledReason && <p className="project-home-notice" role="status" data-testid="project-home-create-disabled">{createDisabledReason}</p>}
           {createOpen && <Dialog open onOpenChange={open => { if (!open && canAct()) setCreateOpen(false); }}><WorkbenchDialogContent title={t('projects.createNew')} size="standard" className="project-home-create-dialog"><form id={`${prefix}-create`} className="project-home-create" data-testid="project-home-create-form" onSubmit={create} aria-labelledby={`${prefix}-create-heading`} aria-busy={busy || submitting}>
             <h2 className="sr-only" id={`${prefix}-create-heading`}>{t('projects.createNew')}</h2>
@@ -247,7 +369,21 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
               <WorkbenchButton type="submit" variant="primary" size="large" data-testid="project-home-create-submit" disabled={locked || Boolean(createDisabledReason) || !name.trim()}>{busy || submitting ? t('projects.creating') : t('projects.create')}</WorkbenchButton>
             </div>
           </form></WorkbenchDialogContent></Dialog>}
-          {catalog ?? <section className={`project-home-catalog${empty ? ' project-home-catalog-empty' : ''}`} aria-labelledby={`${prefix}-heading`} aria-busy={listBusy}>
+          {launcher && <div className="launcher-home-projects" hidden={launcherPage !== 'projects'} inert={launcherPage !== 'projects'}>{catalogContent}</div>}
+          {launcher && launcherPage === 'examples' && <section className="launcher-home-page" data-testid="launcher-examples">
+            <h1 id={`${prefix}-heading`}>{t('launcher.examples')}</h1>
+            {onStartExample ? <article className="launcher-home-example">
+              <span className="launcher-home-action-icon"><Clapperboard size={24} aria-hidden="true" /></span>
+              <div><h2>{t('projectHomeNative.example.name')}</h2><p>{t('projectHomeNative.example.description')}</p></div>
+              <WorkbenchButton type="button" data-testid="launcher-example-start" disabled={launcherNavigationLocked}
+                onClick={() => startLauncherExample('examples')}>{t('projectHomeNative.example')}</WorkbenchButton>
+            </article> : <p role="status">{t('launcher.examplesUnavailable')}</p>}
+          </section>}
+          {launcher && launcherPage === 'help' && <section className="launcher-home-page" data-testid="launcher-help">
+            <h1 id={`${prefix}-heading`}>{t('launcher.help')}</h1>
+            {renderHelp('page')}
+          </section>}
+          {!launcher && (catalogContent ?? <section className={`project-home-catalog${empty ? ' project-home-catalog-empty' : ''}`} aria-labelledby={`${prefix}-heading`} aria-busy={listBusy}>
             {listError && <div className="project-home-list-header">
               <Button type="button" variant="ghost" data-testid={helpOpen ? undefined : 'project-home-refresh'} disabled={listBusy || locked || !active}
                 onClick={() => { if (canRefresh()) onRefresh(); }}>{listBusy ? t('projects.refreshing') : t('projects.refreshList')}</Button>
@@ -268,9 +404,9 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
                 </Button>
               </article></li>)}
             </ul>}
-          </section>}
-          {totalProjects === 0 && !listBusy && !listError && onStartExample && <WorkbenchButton type="button" variant="ghost" className="project-home-import-link" data-testid="project-home-example" disabled={locked || !active} onClick={startExample}>{t('projectHomeNative.example')}</WorkbenchButton>}
-          {!catalog && !projects.length && totalProjects > 0 && <p className="project-home-empty" role="status">{t('redesign.projects.noResults')}</p>}
+          </section>)}
+          {!launcher && totalProjects === 0 && !listBusy && !listError && onStartExample && <WorkbenchButton type="button" variant="ghost" className="project-home-import-link" data-testid="project-home-example" disabled={locked || !active} onClick={startExample}>{t('projectHomeNative.example')}</WorkbenchButton>}
+          {!launcher && !catalogContent && !projects.length && totalProjects > 0 && <p className="project-home-empty" role="status">{t('redesign.projects.noResults')}</p>}
         </>}
       </main>
     </div>

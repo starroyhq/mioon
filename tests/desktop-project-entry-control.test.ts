@@ -5,12 +5,13 @@ import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSy
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer,type InspectProject} from '../apps/server/src/index.ts';
+import {projectLocation,serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker,safeProjectEntryControlError} from '../apps/desktop/src/project-entry-control.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS} from '../packages/contracts/src/project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
-import {openStore,isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
+import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,openStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary,isAppLibraryHeld} from '../packages/business/src/app-db/index.ts';
 import type {NativeAssetMediaPort} from '../packages/contracts/src/asset-media-native.ts';
 import {createProjectEntries} from '../apps/server/src/project-entries.ts';
@@ -20,13 +21,37 @@ import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,onReply?:(message:unknown,deliver:()=>void)=>void){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-control-')),dataDir=path.join(root,'app'),parent=path.join(root,'selected');mkdirSync(parent);
  const created=createServerProject(dataDir,{name:'Original'}),projectId=created.projectId,file=created.store.projectFile;created.store.close();
- const server=await startServer({dataDir,port:0,token:'synthetic-project-entry-control-token'}),backendId=randomUUID(),sent:unknown[]=[];
+ let inspect!:InspectProject;
+ const server=await startServer({dataDir,port:0,token:'synthetic-project-entry-control-token',localDraftChannel:'production',inspectProject:read=>{inspect=read;}}),backendId=randomUUID(),sent:unknown[]=[];
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>{const deliver=()=>queueMicrotask(()=>client.handle(message));if(onReply)onReply(message,deliver);else deliver();}});
  client=createProjectEntryControlClient({backendId,send:message=>{sent.push(message);queueMicrotask(()=>broker.handle(message));}});
  t.after(async()=>{client.close();broker.close();await server.close();rmSync(root,{recursive:true,force:true});});
- return {server,client,broker,backendId,sent,root,parent,projectId,file};
+ return {server,client,broker,backendId,sent,root,dataDir,parent,projectId,file,inspect};
 }
+
+test('default desktop open keeps the released project format and rejects a real candidate pair',async t=>{
+ const f=await fixture(t),windowId=randomUUID();
+ const opened=await f.client.api.openPath({projectFile:f.file,windowId});
+ assert.equal(opened.project.projectId,f.projectId);
+ f.inspect(f.projectId,db=>{
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version,PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version,HISTORY_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM cache.schema_version').get()?.version,CACHE_SCHEMA_VERSION);
+ });
+ f.client.api.release({windowId});
+
+ const projectFile=path.join(f.parent,'candidate.mioon');
+ createProjectFile(projectFile,{format4:{}});
+ const candidate=openProjectStore({projectFile,locate:projectId=>projectLocation(serverAppDirectories(f.dataDir),projectId),format4:{}});
+ try{
+  assert.equal(candidate.db.prepare('PRAGMA project.user_version').get()?.user_version,FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(candidate.db.prepare('SELECT version FROM main.schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
+ }finally{candidate.close();}
+ await assert.rejects(f.client.api.openPath({projectFile,windowId:randomUUID()}),{
+  code:'PROJECT_FORMAT_NEWER',details:{database:'project',reason:'format-newer',formatVersion:FORMAT4_PROJECT_SCHEMA_VERSION,supportedFormatVersion:PROJECT_FILE_SCHEMA_VERSION},
+ });
+});
 
 test('real utility control roundtrip opens the selected original, creates once and isolates replies by generation',async t=>{
  const f=await fixture(t),capability=await f.client.api.capabilities();assert.equal(capability.open,true);assert.equal(capability.adoptCopy,true);
@@ -43,6 +68,32 @@ test('real utility control roundtrip opens the selected original, creates once a
  const observed=await f.client.api.inspectSelectedCopy({projectFile:adoptedCopy});assert.equal(observed.sourceProjectId,f.projectId);
  assert.match(observed.sourceStamp.contentToken,/^[a-f0-9]{32}$/u);assert.equal(observed.sourceFile,adoptedCopy);
  const source=await f.client.api.observeSource({projectFile:adoptedCopy});assert.equal(source.name,'Original');assert.equal(source.source.sourceFile,adoptedCopy);
+});
+
+test('cancelling an unacknowledged ready write never releases its displayed window lease', async t => {
+ const acknowledgement = Promise.withResolvers<() => void>(), released: string[] = [];
+ const f = await fixture(t, control => ({...control, release(input) {
+  released.push(input.windowId); control.release(input);
+ }}), (message, deliver) => {
+  if (message !== null && typeof message === 'object' && 'ok' in message && message.ok === true
+      && 'data' in message && message.data === true) acknowledgement.resolve(deliver);
+  else deliver();
+ });
+ const windowId = randomUUID(), input = {projectId: f.projectId, windowId, deferRecent: true as const};
+ const opened = await f.client.api.acquire(input);
+ const abort = new AbortController();
+ const pending = f.client.request({operation: 'markOpened', input: {windowId, contextId: randomUUID()}}, {signal: abort.signal});
+ const deliver = await acknowledgement.promise;
+ abort.abort();
+ await assert.rejects(pending, {code: 'PROJECT_ENTRY_OUTCOME_UNKNOWN'});
+ deliver();
+ assert.deepEqual(await f.client.api.acquire(input), opened);
+ assert.equal(isProjectFileHeld(opened.project.fileIdentity), true);
+ assert.deepEqual(released, []);
+ f.client.api.release({windowId});
+ await new Promise<void>(resolve => setImmediate(resolve));
+ assert.deepEqual(released, [windowId]);
+ assert.equal(isProjectFileHeld(opened.project.fileIdentity), false);
 });
 
 for(const kind of ['project','history','cache','application'] as const)test(`source observation refuses an alias of a held ${kind} before any descriptor can release its real write lock`,async t=>{

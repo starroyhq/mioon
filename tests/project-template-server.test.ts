@@ -4,7 +4,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import type {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
@@ -227,4 +227,27 @@ test('template capture is bound to the catalog-validated content pair even when 
   assert.equal(reachedCaptured, false); assert.ok(edited); assert.deepEqual(readFileSync(f.projectFile), edited);
   assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal(f.native.listRecent().registered.length, 0);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
+});
+
+test('a source generation change cannot reuse the template signature with an unchanged content pair', async t => {
+  const f = await fixture(t), input = f.input(), original = readFileSync(f.projectFile), before = lstatSync(f.projectFile, {bigint: true});
+  let edited: Buffer | undefined;
+  f.setBoundary(phase => {
+    if (phase !== 'prepared') return;
+    const source = new DatabaseSync(f.projectFile, {defensive: false});
+    try {
+      const beforePair = source.prepare('SELECT contentSequence,contentToken FROM project_file').get();
+      const cookie = Number(source.prepare('PRAGMA schema_version').get()?.schema_version);
+      // Format upgrades also preserve the content pair while changing bytes.
+      source.exec(`PRAGMA schema_version=${cookie + 1}`);
+      assert.deepEqual(source.prepare('SELECT contentSequence,contentToken FROM project_file').get(), beforePair);
+    } finally {source.close();}
+    const after = lstatSync(f.projectFile, {bigint: true});
+    assert.equal(after.dev, before.dev); assert.equal(after.ino, before.ino);
+    edited = readFileSync(f.projectFile); assert.notDeepEqual(edited, original);
+  });
+  await assert.rejects(f.native.instantiateTemplate!(input), {code: 'PROJECT_COPY_SOURCE_CHANGED'});
+  assert.ok(edited); assert.deepEqual(readFileSync(f.projectFile), edited);
+  assert.equal(existsSync(path.join(f.target, input.name)), false);
+  assert.equal(f.native.listRecent().registered.length, 0);
 });

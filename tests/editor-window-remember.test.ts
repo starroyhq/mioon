@@ -22,10 +22,11 @@ const report = (binding: unknown, projectId: string, status: string, options?: R
   reportRaw(binding as never, projectId, status as never, options as never);
 const backendId = '11111111-1111-4111-8111-111111111111';
 const projectA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', projectB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const projectC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', projectD = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const origin = 'http://127.0.0.1:41234';
 const tick = () => new Promise(setImmediate);
 function fixture(t: TestContext) {
-  let interactive = true, token = 0, directory = projectEntryFixture([{id: projectA}, {id: projectB}]);
+  let interactive = true, token = 0, directory = projectEntryFixture([projectA, projectB, projectC, projectD].map(id => ({id})));
   const windows: FakeWindowView[] = [], requests: unknown[] = [], writes: unknown[] = [], locatorReads: string[] = [], directoryCalls: unknown[][] = [], controllers = new Map<FakeWindowView, AttachedController>();
   class FakeWindow extends EventEmitter implements FakeWindowView {
     destroyed = false;
@@ -66,10 +67,17 @@ function fixture(t: TestContext) {
     if (!launcher) await controller.show('open');
     return { window, bridge: native, controller };
   }
+  async function beginOpen(source: Attached, projectId: string, remember = true) {
+    const result = source.controller.open(projectId, remember);
+    await tick();
+    const target = windows.find(window => host.contextFor(window as never)?.initialProjectId === projectId);
+    assert.ok(target);
+    return {editor: await attach(target), result};
+  }
   return { host, windows, requests, writes, locator, locatorReads, directoryCalls, attach,
     setDirectory(value: typeof directory) {directory = value;},
     async launcher() { return attach(host.ensureLauncher() as unknown as FakeWindowView, true); },
-    async editor(id: string): Promise<Attached> { const target = windows.find(window => (host.contextFor(window as never) as {initialProjectId?: string} | null | undefined)?.initialProjectId === id); assert.ok(target); return attach(target); },
+    beginOpen,
     async binding(editor: Attached) { return {context: await editor.bridge.context(), bridge: editor.bridge}; },
     setInteractive(value: boolean): void { interactive = value; host.refresh(); } };
 }
@@ -80,28 +88,58 @@ test('v2 native open requires exact explicit entry token and no business payload
 });
 test('automatic native startup is read-only; editors never call their locator callback', async (t: TestContext) => {
   const f = fixture(t), launcher = await f.launcher();
-  await launcher.controller.open(projectA, false); const editor = await f.editor(projectA);
+  const {editor, result} = await f.beginOpen(launcher, projectA, false);
   await report(await f.binding(editor), projectA, 'ready', { rememberProject: () => assert.fail('Editor cannot write locator') });
+  assert.equal(await result, true);
   await tick(); assert.deepEqual(f.writes, []); const context = await editor.bridge.context(); assert.equal(isProjectWindowContext(context), true); assert.equal(context.editorPhase, 'ready');
   const selection = await launcher.bridge.context(); assert.equal(selection.selectionProjectId, null); assert.equal(selection.selectionVersion, 0);
 });
+test('editor reports exact status and ignores rejected or stale acknowledgements', async (t: TestContext) => {
+  const f = fixture(t), launcher = await f.launcher();
+  const {editor, result} = await f.beginOpen(launcher, projectA, false), binding = await f.binding(editor);
+  let active = true;
+  const calls: unknown[][] = [];
+  const options = {isCurrent: () => active};
+  const bridge = (accept: (...args: unknown[]) => boolean) => ({
+    ...binding, bridge: {...binding.bridge, editorStatus: async (...args: unknown[]) => {
+      calls.push(args);
+      return accept(...args);
+    }},
+  });
+  assert.equal(await report(bridge(() => false), projectA, 'ready', options), false);
+  assert.equal(await report(bridge(() => {active = false; return true;}), projectA, 'ready', options), false);
+  active = true;
+  const failure = {code: 'PROJECT_MISSING'};
+  assert.equal(await report(bridge(() => true), projectA, 'failed', {...options, failure}), true);
+  assert.equal(await report(bridge(() => true), projectA, 'ready', options), true);
+  assert.deepEqual(calls, [[projectA, 'ready'], [projectA, 'ready'], [projectA, 'failed', failure], [projectA, 'ready']]);
+  await report(binding, projectA, 'ready');
+  assert.equal(await result, true);
+});
 test('out-of-order A/B readiness reports only the newest host selection without persisting a locator target', async (t: TestContext) => {
   const f = fixture(t), launcher = await f.launcher();
-  await launcher.controller.open(projectA); const a = await f.editor(projectA);
-  await a.controller.open(projectB); const b = await f.editor(projectB);
+  const anchor = await f.beginOpen(launcher, projectC, false);
+  await report(await f.binding(anchor.editor), projectC, 'ready'); assert.equal(await anchor.result, true);
+  const secondAnchor = await f.beginOpen(anchor.editor, projectD, false);
+  await report(await f.binding(secondAnchor.editor), projectD, 'ready'); assert.equal(await secondAnchor.result, true);
+  const {editor: a, result: resultA} = await f.beginOpen(anchor.editor, projectA);
+  const {editor: b, result: resultB} = await f.beginOpen(secondAnchor.editor, projectB);
   await report(await f.binding(a), projectA, 'ready'); await tick(); assert.equal((await launcher.bridge.context()).selectionProjectId, null); assert.equal(f.writes.length, 0);
   await report(await f.binding(b), projectB, 'ready'); await tick();
+  assert.deepEqual(await Promise.all([resultA, resultB]), [true, true]);
   const selected = await launcher.bridge.context(); assert.equal(selected.selectionProjectId, projectB); assert.equal(selected.selectionVersion, 2);
   await report(await f.binding(a), projectA, 'ready'); await tick(); assert.equal((await launcher.bridge.context()).selectionProjectId, projectB);
   assert.deepEqual(f.writes, []); assert.deepEqual(f.locatorReads, []);
 });
 test('ready A then B uses fresh strict directory metadata independently of host selection and has no locator CAS queue', async (t: TestContext) => {
   const f = fixture(t);
-  const launcher = await f.launcher(); await launcher.controller.open(projectA); const a = await f.editor(projectA);
-  await report(await f.binding(a), projectA, 'ready'); await tick(); assert.equal((await launcher.bridge.context()).selectionProjectId, projectA);
+  const launcher = await f.launcher(), {editor: a, result: resultA} = await f.beginOpen(launcher, projectA);
+  await report(await f.binding(a), projectA, 'ready'); assert.equal(await resultA, true);
+  await tick(); assert.equal((await launcher.bridge.context()).selectionProjectId, projectA);
   const reads = f.directoryCalls.length;
   f.setDirectory(projectEntryFixture([{id: projectB, name: '来自新目录的 B'}]));
-  await a.controller.open(projectB); const b = await f.editor(projectB); await report(await f.binding(b), projectB, 'ready'); await tick();
+  const {editor: b, result: resultB} = await f.beginOpen(a, projectB);
+  await report(await f.binding(b), projectB, 'ready'); assert.equal(await resultB, true); await tick();
   assert.equal((await launcher.bridge.context()).selectionProjectId, projectB); assert.ok(f.directoryCalls.length > reads);
   await launcher.controller.refresh(); assert.deepEqual(launcher.controller.getState().projects, [{id: projectB, name: '来自新目录的 B', updatedAt: ''}]);
   const snapshot = launcher.controller.identity!.getState().snapshot!; assert.equal(snapshot.registered[0].project.summary, null); assert.equal(snapshot.registered[0].project.lastOpenedAt, null);
@@ -109,7 +147,8 @@ test('ready A then B uses fresh strict directory metadata independently of host 
 });
 test('directory instance replacement blocks a new window before dispatch and cannot borrow a previous ready selection', async (t: TestContext) => {
   const f = fixture(t); const launcher = await f.launcher();
-  await launcher.controller.open(projectA); const a = await f.editor(projectA); await report(await f.binding(a), projectA, 'ready'); await tick();
+  const {editor: a, result} = await f.beginOpen(launcher, projectA);
+  await report(await f.binding(a), projectA, 'ready'); assert.equal(await result, true); await tick();
   const before = f.windows.length, requests = f.requests.length;
   f.setDirectory(projectEntryFixture([{id: projectA}, {id: projectB}], {instanceId: '77000000-0000-4000-8000-000000000010'}));
   assert.equal(await a.controller.open(projectB), false); assert.equal(f.windows.length, before); assert.equal(f.requests.length, requests);
@@ -120,18 +159,19 @@ test('directory instance replacement blocks a new window before dispatch and can
 });
 test('failed/reloaded/closed target cannot supply late remember eligibility', async (t: TestContext) => {
   for (const action of ['failed', 'reload', 'close']) await t.test(action, async (t: TestContext) => {
-    const f = fixture(t), launcher = await f.launcher(); await launcher.controller.open(projectA); const a = await f.editor(projectA), old = await f.binding(a);
+    const f = fixture(t), launcher = await f.launcher(), {editor: a, result} = await f.beginOpen(launcher, projectA), old = await f.binding(a);
     if (action === 'failed') await report(old, projectA, 'failed');
     if (action === 'reload') await a.window.loadURL(`${origin}/?project=${projectA}`);
     if (action === 'close') a.window.close();
-    if (action === 'failed') await report(old, projectA, 'ready');
-    else { const accepted = await report(old, projectA, 'ready').catch(() => false); assert.equal(accepted, false); }
+    const accepted = await report(old, projectA, 'ready').catch(() => false); assert.equal(accepted, false);
+    assert.equal(await result, false);
     await tick(); assert.deepEqual(f.writes, []); assert.equal((await launcher.bridge.context()).selectionProjectId, null);
   });
 });
 test('wrong project and disposed editor cannot even report readiness', async (t: TestContext) => {
-  const f = fixture(t), launcher = await f.launcher(); await launcher.controller.open(projectA); const a = await f.editor(projectA), binding = await f.binding(a);
+  const f = fixture(t), launcher = await f.launcher(), {editor: a, result} = await f.beginOpen(launcher, projectA), binding = await f.binding(a);
   const before = f.requests.length;
   assert.equal(await report(binding, projectB, 'ready'), false);
   assert.equal(await report(binding, projectA, 'ready', { isCurrent: () => false }), false); assert.deepEqual(f.writes, []); assert.equal(f.requests.length, before);
+  a.window.close(); assert.equal(await result, false);
 });

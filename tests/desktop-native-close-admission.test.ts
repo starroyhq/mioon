@@ -43,7 +43,7 @@ function installNativePresentationHarness(context: vm.Context, main: string) {
   context.refreshApplicationMenu ??= () => {};
   context.windowHost = {contextFor: () => ({contextId: 'synthetic-document'}), prepareNativeDialog: () => true,
     finishNativeDialog() {}, ...context.windowHost};
-  const from = main.indexOf('function finishNativePresentation('), to = main.indexOf('\nconst projectFileFailureText', from);
+  const from = main.indexOf('function finishNativePresentation('), to = main.indexOf('\nfunction projectFileFailureText', from);
   assert.ok(from > 0 && to > from);
   vm.runInContext(executable(main.slice(from, to)), context);
 }
@@ -1029,11 +1029,11 @@ test('the explicit Reload menu cannot treat unresponsive or replaced owners as c
 
 async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: object, options: DialogOptions): unknown; showMessageBoxSync?(parent: object, options: DialogOptions): number}, window: object = {}, owner: () => boolean = () => true, bindings: vm.Context = {}) {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  const from = main.indexOf('windowAdmissions.set(window, installNativeCloseAdmission(window, {');
+  const from = main.indexOf('const closeDialog = async');
   const to = main.indexOf("\n  window.on('closed'", from);
   let callbacks!: NativeOptions;
   const context = vm.createContext({ nt: nativeText, window, context: { ready: { url: 'http://127.0.0.1:45000' } },
-    owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}},
+    owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}, isCandidate: () => false},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });

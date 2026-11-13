@@ -125,14 +125,15 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
   /** Opens a file by path: the host of the same file (by file identity) if it
    * is open; otherwise the file is opened and registered, or its registration
    * moved to this path. Kernel errors pass through unchanged. */
-  openPath(projectFile: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>>;
+  openPath(projectFile: string, kind: ProjectLeaseKind, options?: {readonly deferRecent?: true}): Promise<ProjectLease<Runtime>>;
   /** Resolves the registered file by identity using metadata only, before a
    * trusted desktop caller admits its current location. Opens no database. */
   prepareAcquire(projectId: string): Promise<RecentProject>;
   /** A lease on the project's host, opening a registered project that is not
    * open. PROJECT_NOT_FOUND when not registered, PROJECT_UNAVAILABLE when it
    * cannot be opened. */
-  acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile: string}): Promise<ProjectLease<Runtime>>;
+  acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile?: string; readonly deferRecent?: true}): Promise<ProjectLease<Runtime>>;
+  markWindowOpened(lease: ProjectLease<Runtime>): string | null;
   /** Synchronously borrows only an already-open, unpaused host. Never waits
    * for an exclusive operation or opens a project for an application read. */
   tryAcquireOpen(projectId: string, kind: ProjectLeaseKind): ProjectLease<Runtime> | null;
@@ -308,7 +309,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** Tail of each project's queue of exclusive operations. */
   const exclusive = new Map<string, Promise<void>>();
   /** What the last recovery found for each project that is not open. */
-  const recoveries = new Map<string, ProjectFileRecovery>();
+  const recoveries = new Map<string, ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'}>();
   /** Searches by file identity for projects the recovery found missing. */
   const searches = new Map<string, Promise<void>>();
   let stopped = false;
@@ -354,7 +355,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** Takes over a store the kernel just opened, synchronously: file identity,
    * registration, then the entry in `opening` while the runtime is composed.
    * (The kernel itself removes unused super-journals on every open, S0a.) */
-  function adopt(store: ProjectStore, registered: RecentProject | null): HostEntry<Runtime> {
+  function adopt(store: ProjectStore, registered: RecentProject | null, deferRecent = false): HostEntry<Runtime> {
     let entry: HostEntry<Runtime>;
     try {
       const fileIdentity = identity(store.projectFile);
@@ -386,12 +387,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
     entries.set(entry.projectId, entry);
     recoveries.delete(entry.projectId);
-    entry.ready = compose(entry);
+    entry.ready = compose(entry, deferRecent);
     entry.ready.catch(() => {});
     return entry;
   }
 
-  async function compose(entry: HostEntry<Runtime>): Promise<void> {
+  async function compose(entry: HostEntry<Runtime>, deferRecent: boolean): Promise<void> {
     try {
       // Admission precedes ensureProjectRow, service constructors, Mio
       // recovery, worker startup and every afterOpen hook (including daily).
@@ -419,12 +420,13 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const summary = entry.runtime?.summarize?.() ?? null;
         // Identity registration is needed before composing, but a failed open
         // must not become the most recently opened project.
-        const registration: RecentProject = {
-          ...entry.registration, ...(summary ? {name: summary.name, summary: summary.summary} : {}), lastOpenedAt: timestamp(),
-        };
         const current = registry.get(entry.projectId);
         if (!current || current.projectFile !== entry.registration.projectFile
           || !sameProjectFileIdentity(current.fileIdentity, entry.identity)) throw projectFileMoved(entry.projectId);
+        const registration: RecentProject = {
+          ...entry.registration, ...(summary ? {name: summary.name, summary: summary.summary} : {}),
+          lastOpenedAt: deferRecent ? current.lastOpenedAt : timestamp(),
+        };
         registry.upsert(registration);
         entry.registration = registration;
       }
@@ -467,6 +469,24 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     const record: LeaseRecord = {kind, seq: ++grants, controller: new AbortController(), released: false};
     entry.leases.add(record);
     return Object.freeze({kind, host: entry.host!, signal: record.controller.signal, release: (): void => release(entry, record)});
+  }
+
+  function markWindowOpened(lease: ProjectLease<Runtime>): string | null {
+    assertRunning();
+    const projectId = lease.host.projectId, entry = entries.get(projectId);
+    if (!entry || entry.state !== 'open' || entry.paused || entry.relocating || entry.host !== lease.host ||
+        ![...entry.leases].some(record => record.kind === 'window' && record.controller.signal === lease.signal && !record.released))
+      throw projectHostError('PROJECT_HOST_TRANSITION', {projectId});
+    if (entry.recovery) return null;
+    const current = registry.get(projectId);
+    const selectedIdentity = current && identityOrNull(current.projectFile);
+    if (!current || current.projectFile !== entry.registration.projectFile ||
+        !sameProjectFileIdentity(current.fileIdentity, entry.identity) ||
+        !selectedIdentity || !sameProjectFileIdentity(selectedIdentity, entry.identity)) throw projectFileMoved(projectId);
+    const updated = {...current, lastOpenedAt: timestamp()};
+    registry.upsert(updated);
+    entry.registration = updated;
+    return updated.lastOpenedAt;
   }
 
   function release(entry: HostEntry<Runtime>, record: LeaseRecord): void {
@@ -656,6 +676,10 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       result = maintenance.recoverProjectFile(registration.projectFile);
     } catch (error) {
       const code = errorCode(error);
+      if (code === 'PROJECT_FORMAT_NEWER') {
+        recoveries.set(projectId, {state: 'invalid', reason: 'format-newer'});
+        return;
+      }
       if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId,{state:'access-denied'});
       else recoveries.delete(projectId);
       emit({type: 'maintenance-failed', projectId, error});
@@ -773,7 +797,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
   }
 
-  async function acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile: string}): Promise<ProjectLease<Runtime>> {
+  async function acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile?: string; readonly deferRecent?: true}): Promise<ProjectLease<Runtime>> {
     checkProjectId(projectId);
     checkLeaseKind(kind);
     const pinned = admission?.projectFile;
@@ -800,7 +824,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       const registration = registry.get(projectId);
       if (!registration) throw projectNotFound(projectId);
       try {
-        adopt(openRegistered(registration), registration);
+        adopt(openRegistered(registration), registration, kind === 'window' && admission?.deferRecent === true);
         continue;
       } catch (error) {
         // Not at its path, or moved while the kernel opened it (S0a: PROJECT_INVALID caused by 1032).
@@ -838,7 +862,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return null;
   }
 
-  async function openPath(projectFile: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>> {
+  async function openPath(projectFile: string, kind: ProjectLeaseKind, options?: {readonly deferRecent?: true}): Promise<ProjectLease<Runtime>> {
     if (typeof projectFile !== 'string' || !path.isAbsolute(projectFile)) throw new TypeError('Project file must be an absolute path');
     checkLeaseKind(kind);
     const file = path.resolve(projectFile);
@@ -846,7 +870,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       assertRunning();
       const fileIdentity = identityOrNull(file);
       const held = fileIdentity ? [...entries.values()].find(entry => sameProjectFileIdentity(entry.identity, fileIdentity)) : undefined;
-      if (held) return acquire(held.projectId, kind);
+      if (held) return acquire(held.projectId, kind, options);
       const registered = fileIdentity ? registry.list().find(entry => sameProjectFileIdentity(entry.fileIdentity, fileIdentity)) : undefined;
       if (registered) recoverHistorySwitch(switchOptions(file, registered.projectId));
       let store: ProjectStore;
@@ -872,12 +896,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         throw error;
       }
       try {
-        adopt(store, registry.get(store.projectId));
+        adopt(store, registry.get(store.projectId), kind === 'window' && options?.deferRecent === true);
       } catch (error) {
         emit({type: 'open-failed', projectId: store.projectId, error});
         throw error;
       }
-      return acquire(store.projectId, kind);
+      return acquire(store.projectId, kind, options);
     }
   }
 
@@ -1080,5 +1104,5 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       : {...task, phase: 'archived', reason: 'PROJECT_HISTORY_ARCHIVED', revision: (task.revision ?? 0) + 1}));
   }
 
-  return Object.freeze({list, create, openPath, prepareAcquire, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
+  return Object.freeze({list, create, openPath, prepareAcquire, acquire, markWindowOpened, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
 }

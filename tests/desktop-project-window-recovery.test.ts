@@ -39,6 +39,31 @@ test('initial retry is fixed URL and cannot reuse a replaced frame, navigation, 
   current = true; const proof = state.captureFailure(); assert.equal(await proof!.retry(), true); assert.deepEqual(window.webContents.loads, [url]); assert.equal(await proof!.retry(), false);
   window.webContents.emit('did-navigate'); window.webContents.url = 'about:blank'; assert.equal(state.captureFailure(), null);
 });
+
+test('only the candidate can close its exact uncommitted Chromium error page', () => {
+  for (const evidence of ['exact', 'cancelled', 'other-frame', 'subframe', 'other-url', 'committed', 'replaced', 'new-navigation'] as const) {
+    const window = blank(), contents = window.webContents;
+    const state = observeInitialProjectLoad(window as unknown as Parameters<typeof observeInitialProjectLoad>[0], url, () => true);
+    installNativeCloseAdmission(window as unknown as Parameters<typeof installNativeCloseAdmission>[0], {
+      isCurrent: () => false, consumeInitialEmptyClose: state.consumeClose,
+      confirmDiscard: () => assert.fail('No draft existed'), confirmClose: () => assert.fail('No renderer drain'),
+      onBlocked() {}, onCancel() {}, requestQuit() { assert.fail('Not application quit'); },
+    });
+    contents.emit('did-start-navigation', {isMainFrame: true, isSameDocument: false, url});
+    contents.url = url;
+    contents.mainFrame = {processId: 5, routingId: 4};
+    if (evidence === 'committed') contents.emit('did-navigate', {}, url);
+    contents.emit('did-fail-load', {}, evidence === 'cancelled' ? -3 : -324, 'Synthetic network failure',
+      evidence === 'other-url' ? `${url}&different=1` : url, evidence !== 'subframe', 5, evidence === 'other-frame' ? 8 : 4);
+    const proof = state.captureFailure(true);
+    assert.equal(state.captureFailure(), null, 'ordinary launcher recovery cannot borrow the candidate proof');
+    if (evidence === 'replaced') contents.mainFrame = {...contents.mainFrame};
+    if (evidence === 'new-navigation') contents.emit('did-start-navigation', {isMainFrame: true, isSameDocument: false, url});
+    assert.equal(proof?.close() ?? false, evidence === 'exact', evidence);
+    assert.equal(window.destroyed, evidence === 'exact', evidence);
+  }
+});
+
 test('independent renderer incidents keep A pending recovery while B dialog is open', async () => {
   const a = {}, b = {}, context = {}, promptA = defer(), promptB = defer(), secondA = defer(), observedSecondA = defer();
   let aCaptures = 0, bCaptures = 0; const actions: unknown[] = [];

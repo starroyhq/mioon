@@ -53,6 +53,12 @@ export const HISTORY_TABLES: readonly string[] = Object.freeze([
   ...HISTORY_TABLES_BY_DOMAIN.timelineHistory, ...HISTORY_TABLES_BY_DOMAIN.mio, ...HISTORY_TABLES_BY_DOMAIN.versions,
   ...HISTORY_TABLES_BY_DOMAIN.drafts,
 ]);
+export const CANVAS_HISTORY_TABLES = ['canvas_requests', 'canvas_history_entries', 'canvas_history_state'] as const;
+const FORMAT4_HISTORY_TABLES = Object.freeze([...HISTORY_TABLES, ...CANVAS_HISTORY_TABLES]);
+
+export function historyTablesForVersion(version: number): readonly string[] {
+  return version === 11 ? FORMAT4_HISTORY_TABLES : HISTORY_TABLES;
+}
 
 export const CACHE_TABLES: readonly string[] = Object.freeze(['waveform_cache', 'previs_thumbnails']);
 
@@ -69,7 +75,7 @@ export const REMOVED_TABLES: readonly string[] = Object.freeze([
 
 const placements = new Map<string, TablePlacement>();
 for (const [placement, tables] of [
-  ['project', CONTENT_TABLES], ['history', HISTORY_TABLES], ['cache', CACHE_TABLES],
+  ['project', CONTENT_TABLES], ['history', FORMAT4_HISTORY_TABLES], ['cache', CACHE_TABLES],
   ['app', APP_DATABASE_TABLES], ['removed', REMOVED_TABLES], ['history', LEGACY_MIO_TABLES],
 ] as const) {
   for (const table of tables) placements.set(table, placement);

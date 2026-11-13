@@ -11,6 +11,8 @@ import {createDesktopMenuController, readDesktopMenuBridge, launcherMenuView, na
 import type {MenuHelpControl} from './desktop-menu-client.ts';
 import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
 import { claimLauncherDocumentTitle } from './document-title.ts';
+import { readWorkspaceInfo } from './workspace-info-client.ts';
+import type { ProjectHomeProps } from './ProjectHome.tsx';
 export type { SettingsRenderProps as LauncherSettingsProps } from './SettingsRoot.tsx';
 export interface LauncherRootProps { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge; readonly rpc: LauncherRpc; readonly contractChecks: LauncherContractChecks }
 type LauncherWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
@@ -28,6 +30,15 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
   }).current;
   const [identity] = useState(() => createProjectEntryIdentityOwner({...(contractChecks.readDirectory ? {read: () => contractChecks.readDirectory!()} : {})}));
   const controller = useNativeProjectEntry({ context, bridge, rpc, contractChecks, identity });
+  const [service, setService] = useState<Omit<NonNullable<ProjectHomeProps['launcher']>, 'empty'>>({service: 'connecting'});
+  useEffect(() => {
+    const abort = new AbortController();
+    void readWorkspaceInfo(abort.signal, 'metadata').then(
+      ({version}) => { if (!abort.signal.aborted) setService({version, service: 'ready'}); },
+      () => { if (!abort.signal.aborted) setService({service: 'unavailable'}); },
+    );
+    return () => abort.abort();
+  }, [context.backendId]);
   const native = useRef(createNativeCloseRegistry()).current, settings = useRef(createSettingsNavigationRegistry()).current;
   useEffect(() => {
     mounted.current = true;
@@ -62,8 +73,8 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
   useEffect(() => {refreshMenu();});
   const entryState = controller.getState(), identityState = identity.getState();
   const identityStatus = <ProjectEntryIdentityStatus state={identityState} owner={identity} />;
-  const quietEmpty = entryState.projects.length === 0 && entryState.catalogReady && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
+  const quietDirectory = entryState.catalogReady && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
     && identityState.phase === 'ready' && !identityState.identityBlocked;
   return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }} onRegisterMenuHelp={registerMenuHelp} onMenuHelpStateChange={refreshMenu}
-    status={quietEmpty ? undefined : identityStatus} help={identityStatus} />;
+    launcher={service} status={quietDirectory ? undefined : identityStatus} help={identityStatus} />;
 }

@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {isNormalizedAbsolutePath} from './media-reference.ts';
-import {projectEntryAcquireInputSchema,projectEntryPrepareAcquireInputSchema,projectEntryCreateInputSchema,projectEntryOpenPathInputSchema,projectEntryReleaseInputSchema,projectEntrySaveAsInputSchema,projectEntryAdoptCopyInputSchema,projectEntryWindowSchema,projectEntryWindowRevokedSchema,projectEntrySourceObservationSchema} from './project-entry-native.ts';
+import {projectEntryAcquireInputSchema,projectEntryPrepareAcquireInputSchema,projectEntryCreateInputSchema,projectEntryOpenPathInputSchema,projectEntryMarkOpenedInputSchema,projectEntryReleaseInputSchema,projectEntrySaveAsInputSchema,projectEntryAdoptCopyInputSchema,projectEntryWindowSchema,projectEntryWindowRevokedSchema,projectEntrySourceObservationSchema} from './project-entry-native.ts';
 import {projectCopyInputSchema,projectCopyToInputSchema,projectCopyResponseSchema,projectCopySourceSchema,projectTemplateInputSchema} from './project-copies.ts';
 import {PROJECT_ENTRY_LIMITS,projectEntriesResponseSchema} from './project-entry.ts';
 import {recentProjectSchema} from './project-registry.ts';
@@ -24,6 +24,7 @@ const commands=[
  z.object({operation:z.literal('create'),input:projectEntryCreateInputSchema}).strict(),
  z.object({operation:z.literal('openPath'),input:projectEntryOpenPathInputSchema}).strict(),
  z.object({operation:z.literal('acquire'),input:projectEntryAcquireInputSchema}).strict(),
+ z.object({operation:z.literal('markOpened'),input:projectEntryMarkOpenedInputSchema}).strict(),
  z.object({operation:z.literal('release'),input:projectEntryReleaseInputSchema}).strict(),
  z.object({operation:z.literal('inspectCopy'),input:projectEntryInspectCopyInputSchema}).strict(),
  z.object({operation:z.literal('observeSource'),input:projectEntryInspectCopyInputSchema}).strict(),
@@ -39,12 +40,12 @@ const commands=[
 ] as const;
 export const projectEntryControlCommandSchema=z.discriminatedUnion('operation',commands);
 export type ProjectEntryControlCommand=z.infer<typeof projectEntryControlCommandSchema>;
-export interface ProjectEntryControlResults{capabilities:ProjectDesktopCapabilities;listRecent:ProjectEntriesResponse;prepareAcquire:RecentProject;create:RecentProject;openPath:ProjectEntryWindow;acquire:ProjectEntryWindow;release:true;inspectCopy:z.infer<typeof projectCopySourceSchema>;observeSource:ProjectEntrySourceObservation;adoptCopy:{copy:ProjectCopyResponse;window:ProjectEntryWindow};saveAs:{copy:ProjectCopyResponse;window:ProjectEntryWindow};duplicate:ProjectCopyResponse;copyTo:ProjectCopyResponse;instantiateTemplate:ProjectCopyResponse;mediaRelinkCandidate:NativeRelinkCandidate;mediaRelinkPreview:NativeRelinkPreview;mediaRelinkApply:NativeRelinkApplyResult;mediaRelinkDiscard:true}
+export interface ProjectEntryControlResults{capabilities:ProjectDesktopCapabilities;listRecent:ProjectEntriesResponse;prepareAcquire:RecentProject;create:RecentProject;openPath:ProjectEntryWindow;acquire:ProjectEntryWindow;markOpened:true;release:true;inspectCopy:z.infer<typeof projectCopySourceSchema>;observeSource:ProjectEntrySourceObservation;adoptCopy:{copy:ProjectCopyResponse;window:ProjectEntryWindow};saveAs:{copy:ProjectCopyResponse;window:ProjectEntryWindow};duplicate:ProjectCopyResponse;copyTo:ProjectCopyResponse;instantiateTemplate:ProjectCopyResponse;mediaRelinkCandidate:NativeRelinkCandidate;mediaRelinkPreview:NativeRelinkPreview;mediaRelinkApply:NativeRelinkApplyResult;mediaRelinkDiscard:true}
 export const projectEntryControlRequestSchema=z.object({type:z.literal('project-entry-control-request'),version:z.literal(1),backendId:id,requestId:id,deadline:z.number().int().positive(),command:projectEntryControlCommandSchema}).strict();
 export const projectEntryControlCancelSchema=z.object({type:z.literal('project-entry-control-cancel'),version:z.literal(1),backendId:id,requestId:id}).strict();
 /** Main-to-utility cleanup only; never a renderer action or queued business request. */
 export const projectEntryControlReleaseSchema=z.object({type:z.literal('project-entry-control-release'),version:z.literal(1),backendId:id,windowId:id}).strict();
-export const projectEntryControlErrorSchema=z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u),status:z.number().int().min(400).max(599),details:z.object({projectId:id.optional(),requestId:z.string().min(8).max(200).optional(),operation:z.enum(['create','adoptCopy','saveAs','duplicate','copyTo','instantiateTemplate','release','openPath','acquire','prepareAcquire','listRecent','inspectCopy','observeSource','capabilities','mediaRelinkCandidate','mediaRelinkPreview','mediaRelinkApply','mediaRelinkDiscard']).optional(),database:z.enum(['project','history','cache']).optional(),reason:z.string().max(100).optional(),invalidReason:z.string().max(100).optional(),formatVersion:z.number().int().positive().optional(),supportedFormatVersion:z.number().int().positive().optional()}).strict()}).strict();
+export const projectEntryControlErrorSchema=z.object({code:z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u),status:z.number().int().min(400).max(599),details:z.object({projectId:id.optional(),requestId:z.string().min(8).max(200).optional(),operation:z.enum(['create','adoptCopy','saveAs','duplicate','copyTo','instantiateTemplate','release','openPath','acquire','markOpened','prepareAcquire','listRecent','inspectCopy','observeSource','capabilities','mediaRelinkCandidate','mediaRelinkPreview','mediaRelinkApply','mediaRelinkDiscard']).optional(),database:z.enum(['project','history','cache']).optional(),reason:z.string().max(100).optional(),invalidReason:z.string().max(100).optional(),formatVersion:z.number().int().positive().optional(),supportedFormatVersion:z.number().int().positive().optional()}).strict()}).strict();
 export const projectEntryControlResponseSchema=z.discriminatedUnion('ok',[
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(true),data:z.unknown()}).strict(),
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(false),error:projectEntryControlErrorSchema}).strict(),
@@ -68,7 +69,7 @@ export function parseProjectEntryControlResult(command:ProjectEntryControlComman
    const result=recentProjectSchema.parse(value);
    if(command.input.projectFile!==undefined&&result.projectFile!==command.input.projectFile)throw new TypeError('Project create target mismatch');return result;
   }
-  case 'release':return z.literal(true).parse(value);
+  case 'markOpened':case 'release':return z.literal(true).parse(value);
   case 'inspectCopy':{const result=projectCopySourceSchema.parse(value);if(result.sourceFile!==command.input.projectFile)throw new TypeError('Project copy observation mismatch');return result;}
   case 'observeSource':{const result=projectEntrySourceObservationSchema.parse(value);if(result.source.sourceFile!==command.input.projectFile||result.original!==null&&result.original.projectId!==result.source.sourceProjectId)throw new TypeError('Project source observation mismatch');return result;}
   case 'openPath':case 'acquire':{

@@ -244,6 +244,6 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
 
 /** Creates the project file (never replacing one), then opens it. */
 export function createProjectStore(options: OpenProjectConnectionOptions & CreateProjectFileOptions): ProjectStore {
-  createProjectFile(options.projectFile, {projectId: options.projectId,contentToken:options.contentToken});
+  createProjectFile(options.projectFile, {projectId: options.projectId, contentToken: options.contentToken, format4: options.format4});
   return openProjectStore(options);
 }

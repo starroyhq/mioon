@@ -13,6 +13,7 @@ import {legacyProjectBackupIndexSchema,legacyProjectBackupIntentSchema,projectBa
 import type {ProjectBackupEntry} from '../../../../packages/contracts/src/project-backup-records.ts';
 import {createProjectBackup, openProjectBackup, inspectCopiedProjectFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {copyProjectBackup} from '../../../../packages/business/src/project-file/copy.ts';
+import type {ProjectFileFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {transferCopiedProjectConfirmations} from './copy-outside-confirmations.ts';
 import type {CopyOutsidePaths} from './copy-outside-confirmations.ts';
 import type {RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
@@ -41,11 +42,13 @@ export interface ProjectBackupsOptions {
    * is no HTTP/environment option for choosing a copy implementation. */
   readonly copy?: typeof copyProjectBackup;
   readonly openBackup?: typeof openProjectBackup;
+  /** Trusted target format for isolated restores. The source backup is never upgraded. */
+  readonly targetFormat?: ProjectFileFormat;
   readonly slowMs?: number;
   readonly onWarning?: (projectId: string, code: string) => void;
 }
 
-export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, openBackup = openProjectBackup, slowMs = 10_000,
+export function createProjectBackups({directories, registry, identity, assertProjectFile, outsidePaths, backup = createProjectBackup, copy = copyProjectBackup, openBackup = openProjectBackup, targetFormat, slowMs = 10_000,
   onWarning = (projectId, code) => console.warn('Project backup:', projectId, code)}: ProjectBackupsOptions) {
   const queues = new Map<string, Promise<unknown>>();
   const statuses = new Map<string, Status>();
@@ -308,6 +311,7 @@ export function createProjectBackups({directories, registry, identity, assertPro
         const entry = find(sourceProjectId, backupId), reader = verify(entry); reader.close();
         if(entry.contentSequence!==intent.sourceContentSequence || entry.contentToken!==intent.sourceContentToken)throw failure('PROJECT_BACKUP_CHANGED','备份内容与恢复意图不一致，未执行恢复。');
         await copy({backupFile: fileFor(sourceProjectId, backupId), sourceProjectDir: entry.sourceProjectDir, projectFile, projectId: intent.projectId,
+          ...(targetFormat === undefined ? {} : {targetFormat}),
           contentToken:intent.targetContentToken,expectedSource:{projectId:sourceProjectId,contentSequence:intent.sourceContentSequence,contentToken:intent.sourceContentToken}});
       }
       const copied = inspectCopiedProjectFile(projectFile);

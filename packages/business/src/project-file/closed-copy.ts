@@ -9,12 +9,14 @@ import {AGENT_TASK_STATUSES} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
+import type {Format4Options} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
 import {projectFileError,isSqliteBusy,isSqliteCorrupt} from './errors.ts';
-import {HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
 import {HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import {compareManifest,readSchemaManifest} from './schema/manifest-check.ts';
-import {SCHEMA_MANIFEST} from './schema/manifest.ts';
+import {historyManifestForVersion} from './schema/format-manifests.ts';
+import {sameContentStamp} from './content-stamp.ts';
 import {PROJECT_BACKUP_APPLICATION_ID,readCopiedProjectIdentity,syncCopiedFile} from './backup.ts';
 import type {ProjectBackupIdentity} from './backup.ts';
 
@@ -23,6 +25,9 @@ export interface CaptureClosedProjectSnapshotOptions {
  readonly historyFile:(projectId:string)=>string;
  /** An application-private, request-owned staging directory, never the source records. */
  readonly directory:string;
+ /** A signed template binds its prior byte verification to this exact generation. */
+ readonly expectedProjectGeneration?:string;
+ readonly format4?:Format4Options;
  readonly assertMutationAllowed?:()=>void;
  /** Trusted crash/concurrency seam, never taken from an external request. */
  readonly onBoundary?:(boundary:'locked'|'project-copied'|'history-copied')=>void|Promise<void>;
@@ -57,6 +62,7 @@ export interface ClosedProjectTrashInspection {
 export interface InspectClosedProjectForTrashOptions {
  readonly projectFile:string;
  readonly historyFile:(projectId:string)=>string;
+ readonly format4?:Format4Options;
  readonly assertMutationAllowed?:()=>void;
 }
 const pragma=(db:DatabaseSync,name:string):unknown=>Object.values(db.prepare(`PRAGMA ${name}`).get()??{})[0];
@@ -88,13 +94,14 @@ function historyHeader(file:string,expected:BigIntStats):void {
   if(header[18]!==1||header[19]!==1)throw invalid('history');
  }finally{closeSync(fd);}
 }
-function validateHistory(db:DatabaseSync,schema:string,projectId:string):Omit<ClosedProjectTrashHistory,'hasBlockingMio'> {
+function validateHistory(db:DatabaseSync,schema:string,projectId:string,format4?:Format4Options):Omit<ClosedProjectTrashHistory,'hasBlockingMio'> {
  if(pragma(db,`${schema}.application_id`)!==HISTORY_APPLICATION_ID||pragma(db,`${schema}.journal_mode`)!=='delete'||pragma(db,`${schema}.encoding`)!=='UTF-8')throw invalid('history');
  const versions=db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
  if(versions.length!==1||typeof versions[0].version!=='number')throw invalid('history');
  const version=versions[0].version;
- if(version>HISTORY_SCHEMA_VERSION)throw projectFileError('PROJECT_FORMAT_NEWER',{database:'history',reason:'format-newer',formatVersion:version,supportedFormatVersion:HISTORY_SCHEMA_VERSION});
- const expected=version===HISTORY_SCHEMA_VERSION?SCHEMA_MANIFEST.history:HISTORY_UPGRADES.find(item=>item.from.version===version)?.from;
+ const maximum=format4?FORMAT4_HISTORY_SCHEMA_VERSION:HISTORY_SCHEMA_VERSION;
+ if(version>maximum)throw projectFileError('PROJECT_FORMAT_NEWER',{database:'history',reason:'format-newer',formatVersion:version,supportedFormatVersion:maximum});
+ const expected=historyManifestForVersion(version)??HISTORY_UPGRADES.find(item=>item.from.version===version)?.from;
  if(!expected)throw invalid('history');
  const diff=compareManifest(readSchemaManifest(db,schema),expected.entries);
  if(diff.changed.length||diff.missing.length||diff.unexpected.length)throw invalid('history');
@@ -152,7 +159,7 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
  try{
   const before=metadata(projectFile,'project');journals(projectFile,'project');
   trashSuperJournals(path.dirname(projectFile),'project');
-  const inspected=inspectProjectFileReadOnly(projectFile),historyFile=options.historyFile(inspected.projectId);
+  const inspected=inspectProjectFileReadOnly(projectFile,options.format4),historyFile=options.historyFile(inspected.projectId);
   if(typeof historyFile!=='string'||!path.isAbsolute(historyFile))throw new TypeError('Closed project inspection requires an absolute history path');
   const history=path.resolve(historyFile),historyInfo=lstatSync(history,{bigint:true,throwIfNoEntry:false});
   if(lstatSync(path.join(path.dirname(history),'history-switch-active.json'),{throwIfNoEntry:false}))
@@ -177,7 +184,7 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
   if(project===null||typeof project!=='object'||Array.isArray(project)||!('id' in project)||project.id!==identity.projectId
    ||!('revision' in project)||typeof project.revision!=='number'||!Number.isSafeInteger(project.revision)||project.revision<1)throw invalid('project','metadata');
   let historyResult:ClosedProjectTrashHistory|null=null;
-  if(historyBefore){active='history';historyResult={...validateHistory(db,'history',identity.projectId),hasBlockingMio:hasBlockingMioRun(db,identity.projectId,'history')};}
+  if(historyBefore){active='history';historyResult={...validateHistory(db,'history',identity.projectId,options.format4),hasBlockingMio:hasBlockingMioRun(db,identity.projectId,'history')};}
   assertAllowed();
   checkTrashGeneration(projectFile,before,'project');if(historyBefore)checkTrashGeneration(history,historyBefore,'history');
   db.exec('COMMIT');connection.close();connection=undefined;
@@ -205,8 +212,11 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
  let connection:ReturnType<typeof openClosedProjectSnapshotConnection>|undefined,source:DatabaseSync|undefined,active:'project'|'history'='project';
  const created:string[]=[];
  try{
-  const before=metadata(project,'project');journals(project,'project');
-  const inspected=inspectProjectFileReadOnly(project);
+  const before=metadata(project,'project');
+  if(options.expectedProjectGeneration!==undefined&&stamp(before)!==options.expectedProjectGeneration)
+   throw new AppError('PROJECT_COPY_SOURCE_CHANGED','所选源项目内容已改变。',409);
+  journals(project,'project');
+  const inspected=inspectProjectFileReadOnly(project,options.format4);
   const history=path.resolve(options.historyFile(inspected.projectId));
   const historyInfo=lstatSync(history,{bigint:true,throwIfNoEntry:false});
   if(lstatSync(path.join(path.dirname(history),'history-switch-active.json'),{throwIfNoEntry:false}))
@@ -225,7 +235,8 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   active='project';source.exec('BEGIN');
   const identity=readCopiedProjectIdentity(source,PROJECT_FILE_APPLICATION_ID,Number(before.size));
   if(identity.projectId!==inspected.projectId||identity.contentSequence!==inspected.contentSequence||identity.contentToken!==inspected.contentToken)throw invalid('project','metadata');
-  if(historyBefore){active='history';validateHistory(source,'history',identity.projectId);}
+  if(historyBefore)active='history';
+  const historyIdentity=historyBefore?validateHistory(source,'history',identity.projectId,options.format4):null;
   if(options.onBoundary)await options.onBoundary('locked');
   assertAllowed();
   ensurePrivateDirectory(directory,{create:true});
@@ -245,7 +256,15 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   let actual:ProjectBackupIdentity;
   try{copied.exec(`PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL; PRAGMA application_id=${PROJECT_BACKUP_APPLICATION_ID}`);actual=readCopiedProjectIdentity(copied,PROJECT_BACKUP_APPLICATION_ID,Number(lstatSync(projectFile).size));}
   finally{copied.close();}
-  if(historyFile){const copiedHistory=new DatabaseSync(historyFile,{readOnly:true,timeout:0,defensive:true});try{validateHistory(copiedHistory,'main',identity.projectId);}finally{copiedHistory.close();}}
+  if(actual.projectId!==identity.projectId||actual.formatVersion!==identity.formatVersion||!sameContentStamp(actual,identity))throw invalid('project','metadata');
+  if(historyFile&&historyIdentity){
+   const copiedHistory=new DatabaseSync(historyFile,{readOnly:true,timeout:0,defensive:true});
+   try{
+    const actualHistory=validateHistory(copiedHistory,'main',identity.projectId,options.format4);
+    if(actualHistory.formatVersion!==historyIdentity.formatVersion||actualHistory.seenContentSequence!==historyIdentity.seenContentSequence
+     ||actualHistory.seenContentToken!==historyIdentity.seenContentToken)throw invalid('history','metadata');
+   }finally{copiedHistory.close();}
+  }
   assertAllowed();for(const file of created)syncCopiedFile(file);
   return {identity:actual,projectFile,historyFile};
  }catch(error){

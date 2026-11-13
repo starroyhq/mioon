@@ -1,0 +1,167 @@
+.project-home.launcher-home {
+  --launcher-sidebar-width: 216px;
+  --launcher-content-inset: 27px;
+  display: grid;
+  grid-template-columns: var(--launcher-sidebar-width) minmax(0, 1fr);
+  color: var(--wb-text);
+  background: var(--wb-bg);
+}
+
+.launcher-home-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 12px 12px;
+  border-right: 1px solid var(--wb-line-subtle);
+  background: var(--wb-panel);
+}
+
+.launcher-home-titlebar { flex: none; height: 48px; margin-inline: -12px; }
+:root[data-desktop-frame="mac-inset"] .launcher-home-titlebar { -webkit-app-region: drag; }
+
+.launcher-home-brand { display: flex; align-items: center; gap: 14px; padding: 10px 10px 24px; }
+.launcher-home-brand > img { flex: none; border-radius: 8px; }
+.launcher-home-brand-copy { display: flex; flex-direction: column; min-width: 0; }
+.launcher-home-brand-copy > strong { font-size: var(--wb-text-title); line-height: 1.15; }
+.launcher-home-version { overflow: hidden; color: var(--wb-muted); font: var(--wb-text-caption)/1.7 var(--wb-font-mono); text-overflow: ellipsis; }
+
+.launcher-home-nav, .launcher-home-sidebar-footer { display: flex; flex-direction: column; gap: 3px; }
+.launcher-home-sidebar-footer { margin-top: auto; }
+.launcher-home-nav-button.wb-button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 36px;
+  padding-inline: 10px;
+  border-radius: var(--wb-radius-card);
+  color: var(--wb-soft);
+  -webkit-app-region: no-drag;
+}
+.launcher-home-nav-button.wb-button[aria-current="page"] { background: var(--wb-selected); color: var(--wb-text); }
+.launcher-home-nav-button.wb-button > svg { flex: none; }
+.launcher-home-nav-button.wb-button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.launcher-home-service { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 8px 10px; color: var(--wb-soft); font-size: var(--wb-text-caption); }
+.launcher-home-service-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--wb-warning); }
+.launcher-home-service[data-service="ready"] .launcher-home-service-dot { background: var(--wb-success); }
+.launcher-home-service[data-service="unavailable"] .launcher-home-service-dot { background: var(--wb-danger); }
+
+.project-home-screen > .project-home.launcher-home > .project-home-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.project-home-screen > .project-home.launcher-home > .project-home-layout > .project-home-main {
+  flex: 1;
+  height: auto;
+  padding: 16px var(--launcher-content-inset) 24px;
+  overflow-x: hidden;
+  scrollbar-gutter: auto;
+}
+.launcher-home-projects > .pf-home { padding: 0; }
+.launcher-home-projects[hidden] { display: none; }
+
+.launcher-home-toolbar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  min-width: 0;
+  margin-inline: var(--launcher-content-inset);
+  padding-block: 16px 17px;
+  border-bottom: 1px solid var(--wb-line-subtle);
+}
+.launcher-home-toolbar > .wb-button {
+  flex: none;
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 12px;
+  font-size: var(--wb-text-label);
+  -webkit-app-region: no-drag;
+}
+.launcher-home-search { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; height: 32px; -webkit-app-region: no-drag; }
+.launcher-home-search-input[data-slot="input"] {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 27px 30px;
+  background: var(--wb-input);
+  font-size: var(--wb-text-label);
+}
+.launcher-home-search > svg, .launcher-home-search > kbd { position: absolute; color: var(--wb-muted); pointer-events: none; }
+.launcher-home-search > svg { z-index: 1; left: 8px; }
+.launcher-home-search > kbd { right: 8px; font: var(--wb-text-caption) var(--wb-font-mono); }
+
+.launcher-home-empty { margin: 26px 12px 0; }
+.launcher-home-empty h1, .launcher-home-page h1 { margin: 0; color: var(--wb-text); font-size: var(--wb-text-display); line-height: 1.3; }
+.launcher-home-empty > p, .launcher-home-page > p { margin: 8px 0 0; color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.5; }
+.launcher-home-create-tile.wb-button {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  min-height: 174px;
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--wb-line);
+  border-radius: 14px;
+  white-space: normal;
+}
+.launcher-home-create-tile.wb-button[data-variant="primary"]:not(:disabled):not([data-disabled]) {
+  background: var(--wb-launcher-create-gradient);
+  color: var(--wb-media-text);
+}
+.launcher-home-create-tile.wb-button[data-variant="primary"]:not(:disabled):not([data-disabled]):is(:hover, :active) {
+  background: var(--wb-launcher-create-gradient-hover);
+}
+.launcher-home-create-title { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: var(--wb-text-title); font-weight: 650; }
+.launcher-home-create-title > span { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wb-media-text); color: var(--wb-media-matte); }
+.launcher-home-create-description { font-size: var(--wb-text-body); font-weight: 400; }
+
+.launcher-home-empty-actions { display: flex; gap: 16px; margin-top: 22px; }
+.launcher-home-action-tile.wb-button {
+  display: flex;
+  justify-content: flex-start;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+  min-height: 96px;
+  height: auto;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--wb-card);
+  text-align: left;
+  white-space: normal;
+}
+.launcher-home-action-icon { display: grid; flex: none; place-items: center; width: 50px; height: 50px; border-radius: var(--wb-radius-card); background: var(--wb-raised); color: var(--wb-text); }
+.launcher-home-action-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.launcher-home-action-copy > strong, .launcher-home-example h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; line-height: 1.35; }
+.launcher-home-action-copy > span, .launcher-home-example p { color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 400; line-height: 1.4; }
+.launcher-home-action-tile > svg { flex: none; color: var(--wb-muted); }
+
+.launcher-home-page { padding-block: 8px; }
+.launcher-home-page > .project-home-status { margin-block: 14px; }
+.launcher-home-example { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-card); }
+.launcher-home-example > div { flex: 1; min-width: 0; }
+.launcher-home-example h2 { margin: 0; }
+.launcher-home-example p { margin: 4px 0 0; }
+.launcher-home-example > .wb-button { flex: none; }
+
+@media (width < 900px) {
+  .project-home.launcher-home { --launcher-sidebar-width: 64px; --launcher-content-inset: 20px; }
+  .launcher-home-sidebar { padding-inline: 8px; }
+  .launcher-home-titlebar { margin-inline: -8px; }
+  .launcher-home-brand { justify-content: center; padding-inline: 0; }
+  .launcher-home-brand-copy, .launcher-home-nav-button.wb-button > span { display: none; }
+  .launcher-home-nav-button.wb-button, .launcher-home-service { justify-content: center; }
+  .launcher-home-service-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+@media (width < 640px) {
+  .launcher-home-toolbar { flex-wrap: wrap; }
+  .launcher-home-search { flex-basis: 100%; }
+  .launcher-home-empty-actions { flex-direction: column; }
+}

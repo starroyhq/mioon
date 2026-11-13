@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
 import type { Store } from '../store-contract.ts';
@@ -52,6 +53,9 @@ function relational(db:Store['db'],table:string,projectId:string):Row[]{return d
  * stat-checked here; their bytes are re-hashed while the package is written. */
 export function collectProject(store:Store,projectId:string,options:ProjectPackageOptions):CollectedProject{
  return store.tx(()=>{
+  if (isProjectLayout(store.db) && store.db.prepare('SELECT version FROM project.schema_version').get()?.version === FORMAT4_PROJECT_SCHEMA_VERSION) {
+   throw projectPackageError('PROJECT_PACKAGE_NEWER_FORMAT', {projectFormatVersion: FORMAT4_PROJECT_SCHEMA_VERSION, supportedProjectFormatVersion: PROJECT_FILE_SCHEMA_VERSION});
+  }
   const projectRow=parse(store.get('projects',projectId));
   if(!projectRow)throw projectPackageError('PROJECT_PACKAGE_NOT_FOUND');
   const list=(table:string):Row[]=>store.list(table,projectId).map(parse);

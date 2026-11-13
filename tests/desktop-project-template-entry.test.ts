@@ -131,9 +131,14 @@ async function mainTemplatePanelFixture(t:TestContext,role:'launcher'|'editor'){
  const documents=path.join(f.root,'Library','Mobile Documents','com~apple~CloudDocs','Documents');mkdirSync(documents,{recursive:true});
  let entry:ReturnType<typeof createProjectEntryController>|null=null;
  let source:TemplatePanelWindow;
+ const expectedWindows=new Map<string,(window:TemplatePanelWindow)=>void>();
  const windowHost:ReturnType<typeof createProjectWindowHost<TemplatePanelWindow>>=createProjectWindowHost<TemplatePanelWindow>({backendId,launcherUrl:'http://127.0.0.1:4321/',editorUrl:id=>`http://127.0.0.1:4321/?project=${id}`,
   isCurrent:()=>true,canInteract:()=>true,projectEntries:f.client.api,
-  createWindow:creation=>{const window=new TemplatePanelWindow(creation);windows.push(window);return window;},
+  createWindow:creation=>{
+   const window=new TemplatePanelWindow(creation);windows.push(window);
+   if(creation.projectId){expectedWindows.get(creation.projectId)?.(window);expectedWindows.delete(creation.projectId);}
+   return window;
+  },
   consumeProjectEntry:(owner,token,projectId):ProjectEntryConsumption=>{
    assert.equal(owner.window,source);assert.ok(entry);const receipt=entry.consume(token,projectId);
    assert.equal(receipt.accepted,true,'Only the actual sealed renderer permit admits a new editor');consumed.push(token);return receipt;
@@ -182,7 +187,8 @@ async function mainTemplatePanelFixture(t:TestContext,role:'launcher'|'editor'){
   client:createLauncherClient(async()=>assert.fail('No legacy create or open RPC'),{parseCreateInput:value=>value,readDirectory:()=>readProjectEntryIdentity(identity)}),confirm:async()=>true});
  entry.activate();const release=bridge.subscribe(value=>entry?.updateContext(value));await entry.boot();if(role==='editor'){assert.equal(await entry.show('open'),true);await entry.refresh();}
  const dispose=async()=>{release();entry?.dispose();identity.dispose();native.close();windowHost.dispose();await new Promise(setImmediate);};
- return {...f,documents,source,windowHost,native,desktop,entry,windows,consumed,dialogs,panelCalls,order,event,dispose};
+ const expectWindow=(projectId:string)=>new Promise<TemplatePanelWindow>(resolve=>{expectedWindows.set(projectId,resolve);});
+ return {...f,documents,source,windowHost,native,desktop,entry,windows,expectWindow,consumed,dialogs,panelCalls,order,event,dispose};
 }
 
 test('real main save-panel wiring creates and sealed-opens the shipped example from launcher and editor with iCloud Documents',async t=>{
@@ -202,9 +208,14 @@ test('real main save-panel wiring creates and sealed-opens the shipped example f
    const response=await f.desktop.instantiateTemplate!({...f.input(selection),locale:'zh-Hant'});
    assert.equal(f.inputs[0]?.locale,'zh-Hant');
    assert.equal(response.project.projectFile,selection.displayPath);assert.equal(response.project.name,name);
-   assert.equal(await f.entry.openNativeResult(response.project.projectId,grant),true);
+   const candidate=f.expectWindow(response.project.projectId),result=f.entry.openNativeResult(response.project.projectId,grant);
+   const opened=await Promise.race([candidate,result.then(()=>assert.fail('Open resolved before creating its candidate editor'))]);assert.ok(opened);await f.windowHost.loadFor(opened);
+   const candidateContext=f.windowHost.contextFor(opened)!;assert.equal(candidateContext.editorPhase,'opening');assert.equal(f.entry.getState().sealed,true);
+   assert.equal(f.windowHost.dispatch({sender:opened.webContents,senderFrame:opened.webContents.mainFrame},
+    {action:'editor-status',contextId:candidateContext.contextId,projectId:response.project.projectId,phase:'ready'}),true);
+   assert.equal(await result,true);
    assert.equal(f.consumed.length,1,'Opening consumes the real entry controller seal exactly once');
-   const opened=f.windows.find(window=>window.creation.projectId===response.project.projectId);assert.ok(opened);await f.windowHost.loadFor(opened);
+   assert.equal(f.windows.find(window=>window.creation.projectId===response.project.projectId),opened);
    assert.equal(f.windowHost.contextFor(opened)!.editorProjectId,response.project.projectId);
    assert.equal(f.entry.getState().sealed,false);assert.equal(f.entry.getState().openUnknown,false);
    const instance=files(path.dirname(selection.displayPath));

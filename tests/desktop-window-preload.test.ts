@@ -1,12 +1,68 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { runInNewContext } from 'node:vm';
 import { createProjectWindowBridge } from '../apps/desktop/src/project-window-preload.ts';
-import { isProjectWindowContext, isProjectWindowRequest, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
+import { isProjectWindowContext, isProjectWindowRequest, isProjectWindowOpenResult, projectWindowOpenFailure, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
 import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 const id = '11111111-1111-4111-8111-111111111111';
 const context = { version:2, role:'launcher', windowId:id, contextId:id, backendId:id, initialProjectId:null, autoOpen:true, editorProjectId:null, editorPhase:'none', editorCount:0, entryMode:null, entryVersion:0, entryReceipt:null, settingsSlot:null, settingsVersion:0, selectionProjectId:null, selectionVersion:0, locatorStatus:null, locatorIntent:null, quitting:false };
+test('window open receipts carry only verified failure fields', () => {
+  const format = {code: 'PROJECT_FORMAT_NEWER', database: 'history', formatVersion: 8, supportedFormatVersion: 7};
+  const error = {code: 'PROJECT_UNAVAILABLE', message: 'Internal path /private/raw.mioon', details: {...format,
+    reason: 'PROJECT_FORMAT_NEWER', projectId: id, projectFile: '/private/raw.mioon'}};
+  assert.deepEqual(projectWindowOpenFailure(error, id), format);
+  assert.equal(projectWindowOpenFailure(error, '22222222-2222-4222-8222-222222222222'), undefined);
+  assert.equal(projectWindowOpenFailure({...error, details: {...error.details, supportedFormatVersion: 8}}, id), undefined);
+  assert.equal(projectWindowOpenFailure({code: 'PROJECT_UNAVAILABLE', details: {reason: 'PROJECT_FORMAT_NEWER'}}, id), undefined);
+  assert.deepEqual(projectWindowOpenFailure({code: 'PROJECT_NOT_FOUND', details: {projectId: id}}, id), {code: 'PROJECT_MISSING'});
+  assert.equal(projectWindowOpenFailure({code: 'PROJECT_NOT_FOUND', details: {}}, id), undefined);
+  assert.deepEqual(projectWindowOpenFailure({code: 'PROJECT_UNAVAILABLE', details: {reason: 'PROJECT_INVALID', invalidReason: 'hot-journal'}}, id),
+    {code: 'PROJECT_INVALID', reason: 'hot-journal'});
+  assert.equal(projectWindowOpenFailure({code: 'PROJECT_INVALID', details: {reason: '/private/raw.mioon'}}, id), undefined);
+  const refused = {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null};
+  assert.equal(isProjectWindowOpenResult({...refused, failure: format}), true);
+  assert.equal(isProjectWindowOpenResult({...refused, reason: 'cancelled'}), true);
+  assert.equal(isProjectWindowOpenResult({...refused, reason: 'busy', failure: format}), false);
+  assert.equal(isProjectWindowOpenResult({...refused, failure: {...format, message: error.message}}), false);
+  assert.equal(isProjectWindowOpenResult({...refused, failure: undefined}), false);
+});
+
+test('both window bridges restrict editor failures and cancellation to their exact shapes and document', async () => {
+  const failure = {code: 'PROJECT_INVALID', reason: 'corrupt'} as const;
+  const token = '22222222-2222-4222-8222-222222222222';
+  const pending = {entryToken: token, projectId: id};
+  const result = {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure};
+  const calls: unknown[] = [];
+  let current: unknown = {...context, entryPending: pending};
+  assert.equal(isProjectWindowContext(current), true);
+  assert.equal(isProjectWindowContext({...context, entryPending: {...pending, path: '/private/raw.mioon'}}), false);
+  assert.equal(isProjectWindowContext({...context, entryPending: pending, entryReceipt: {entryToken: token, result}}), false);
+  assert.equal(isProjectWindowContext({...context, entryPending: {...pending, kind: 'selected'}, entryReceipt: {entryToken: id, result}}), true);
+  assert.equal(isProjectWindowContext({...context, entryPending: {...pending, kind: 'selected'}, entryReceipt: {entryToken: token, result}}), false);
+  assert.equal(isProjectWindowContext({...context, entryPending: {...pending, kind: 'recent'}}), false);
+  const preload = createProjectWindowBridge({invoke: async (_channel, request) => {
+    if (request.action === 'describe') return current;
+    calls.push(request);
+    return request.action === 'open' ? result : true;
+  }, on(){}, removeListener(){}});
+  const renderer = readDesktopWindowBridge({__mioonProjectWindow: preload}); assert.ok(renderer?.cancelOpen);
+  assert.equal(Object.isFrozen((await renderer.context()).entryPending), true);
+  assert.equal(await renderer.cancelOpen(id), false);
+  assert.equal(await renderer.cancelOpen(token), true);
+  assert.deepEqual(calls, [{action: 'cancel-open', contextId: id, entryToken: token}]);
+  assert.equal(isProjectWindowRequest({...calls[0] as object, projectId: id}), false);
+  assert.deepEqual(await renderer.openProject(id, true, token), result);
+  assert.equal(Object.isFrozen((await renderer.openProject(id, true, token)).failure), true);
+  assert.equal(await renderer.editorStatus(id, 'failed', failure), true);
+  assert.deepEqual(calls.at(-1), {action: 'editor-status', contextId: id, projectId: id, phase: 'failed', failure});
+  await assert.rejects(renderer.editorStatus(id, 'ready', failure));
+  await assert.rejects(preload.editorStatus(id, 'failed', {...failure, projectFile: '/private/raw.mioon'} as typeof failure));
+  current = {...context, contextId: token, entryPending: pending};
+  await assert.rejects(renderer.cancelOpen(token));
+  assert.equal(calls.length, 4);
+});
 test('native settings pages cross both strict bridges as fixed intentions while old connection slots remain valid', async () => {
   const pages = ['agent', 'official', 'custom', 'comfy', 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'] as const;
   const calls: unknown[] = [];
@@ -36,7 +92,7 @@ test('fixed preload exposes only validated window actions and strips Electron ev
   type BridgeOptions = Parameters<typeof createProjectWindowBridge>[0];
   const bridge = createProjectWindowBridge({ invoke: async (channel: string, request: {action: string; [key: string]: unknown}) => { calls.push([channel, request]); return request.action === 'describe' ? context : request.action === 'open' ? {ok:true,reason:'accepted',targetWindowId:id,targetPhase:'opening'} : true; },
     on: (channel: string, listener: (...args: unknown[]) => void) => { assert.equal(channel, PROJECT_WINDOW_EVENT); receive=listener; }, removeListener: (_channel: string, listener: (...args: unknown[]) => void) => { removed=listener; } } as unknown as BridgeOptions);
-  assert.deepEqual(Object.keys(bridge).sort(), ['closeSettings','context','editorStatus','openProject','publishLocatorStatus','requestLocatorAction','requestProjectEntry','showProjects','showSettings','subscribe']);
+  assert.deepEqual(Object.keys(bridge).sort(), ['cancelOpen','closeSettings','context','editorStatus','openProject','publishLocatorStatus','requestLocatorAction','requestProjectEntry','showProjects','showSettings','subscribe']);
   assert.equal(Object.isFrozen(bridge), true);
   await bridge.openProject(id, true, id); await bridge.requestProjectEntry('new'); await bridge.showProjects(); await bridge.showSettings('agent'); await bridge.editorStatus(id,'ready');
   assert.ok(calls.every(([channel, request]) => channel === PROJECT_WINDOW_CHANNEL && isProjectWindowRequest(request)));
@@ -82,6 +138,23 @@ test('actual sandbox preload bundle requires only Electron and exposes no arbitr
   const text=result.outputFiles[0].text;
   const imports=Object.values(result.metafile.outputs).flatMap(output=>output.imports.map(item=>item.path));
   assert.deepEqual(imports,['electron']); assert.match(text,/exposeInMainWorld\("__mioonProjectWindow"/); assert.doesNotMatch(text,/node:|\.sendSync\(|\.postMessage\(|webContents|process\.env/);
+  const homeDirectory = '/synthetic/home with spaces';
+  for (const [isMainFrame, argv, expected] of [
+    [true, [`--mioon-home-directory=${homeDirectory}`], homeDirectory],
+    [false, [`--mioon-home-directory=${homeDirectory}`], undefined],
+    [true, ['--unrelated=synthetic'], undefined],
+  ] as const) {
+    const exposed = new Map<string, unknown>();
+    runInNewContext(text, {
+      process: {isMainFrame, argv},
+      TextEncoder, TextDecoder, URL,
+      require: (module: string) => {
+        assert.equal(module, 'electron');
+        return {contextBridge: {exposeInMainWorld: (name: string, value: unknown) => exposed.set(name, value)}, ipcRenderer: {}, webUtils: {}};
+      },
+    });
+    assert.equal(exposed.get('__mioonHomeDirectory'), expected);
+  }
 });
 test('restart confirmation cannot act on replaced startup/backend or a newly requested Quit', async () => {
   let owner: Record<string, unknown> = {}, available=true, calls=0; const deferred=Promise.withResolvers<boolean>();

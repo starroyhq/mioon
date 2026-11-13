@@ -18,7 +18,7 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse, ProjectCopyToInput} from '../packages/contracts/src/project-copies.ts';
@@ -132,6 +132,41 @@ for (const state of ['current', 'diverged'] as const) test(`copy-to reads all ${
   } finally {store.close();}
   assert.deepEqual((await f.rpc('project.copy-to', input)).body.data, copy);
   assert.deepEqual(f.sourceFiles(), before);
+});
+
+test('trusted copy-to stages format 4 with retained named versions from either source format', async t => {
+  const f = await fixture(t);
+  await f.server.close();
+  const before = f.sourceFiles(), input = f.input();
+  const library = openAppLibrary({dataDir: f.dataDir}), owner = new AbortController();
+  const manager = createProjectHostManager({directories: f.directories, registry: library.registry,
+    factory: async () => assert.fail('closed-source copy must not create a project runtime')});
+  const copies = createProjectCopies({manager, library, directories: f.directories, signal: owner.signal,
+    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION, assertProjectFile: createApplicationFileGuard(f.directories)});
+  try {
+    const copied = await copies.copyTo(input);
+    assert.equal(copied.versions, f.versions.length);
+    assert.deepEqual(await copies.copyTo(input), copied);
+    const store = openProjectStore({projectFile: copied.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    try {
+      assert.equal(store.historyState, 'current');
+      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      assert.deepEqual(createProjectVersions(store).list({projectId: copied.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
+      assert.deepEqual(readProjectContentStamp(store.db), {contentSequence: copied.contentSequence, contentToken: copied.contentToken});
+    } finally {store.close();}
+    const next = await copies.copyTo({sourceProjectId: copied.project.projectId, sourceFile: copied.project.projectFile,
+      sourceIdentity: copied.project.fileIdentity, sourceStamp: {contentSequence: copied.contentSequence, contentToken: copied.contentToken},
+      requestId: randomUUID(), projectFile: path.join(f.targets, 'Second copy.mioon')});
+    assert.equal(next.versions, f.versions.length);
+    const second = openProjectStore({projectFile: next.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    try {
+      assert.equal(second.historyState, 'current');
+      assert.equal(second.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
+      assert.equal(second.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    } finally {second.close();}
+    assert.deepEqual(f.sourceFiles(), before);
+  } finally {await copies.drain(); await manager.closeAll(); library.close();}
 });
 
 test('copy-to without local history creates only target records and does not create source records', async t => {

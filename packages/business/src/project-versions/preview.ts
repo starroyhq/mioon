@@ -6,7 +6,8 @@ import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {readProjectContentStamp} from '../project-file/content-stamp.ts';
-import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, rowKey, snapshotCellValue, tableColumns, validateProjectDocument} from './document.ts';
+import type {ProjectFileFormat} from '../project-file/schema/databases.ts';
+import {canonicalJson, primaryKeys, PROJECT_SNAPSHOT_TABLES, readSnapshotProjectFormat, rowKey, snapshotCellValue, tableColumns, validateProjectDocument} from './document.ts';
 import type {ProjectDocument, ProjectSnapshotTable, SnapshotRow} from './document.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from '../timeline-receipt-project.ts';
 
@@ -103,9 +104,9 @@ function semantic(row: SnapshotRow): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).filter(([name]) => !metadata.has(name)).map(([name, value]) => [name,
     name === 'data' && typeof value === 'string' ? Object.fromEntries(Object.entries(data(row)).filter(([key]) => !metadata.has(key))) : value]));
 }
-function fields(table: Table, before?: SnapshotRow, after?: SnapshotRow): string[] {
+function fields(table: Table, format: ProjectFileFormat, before?: SnapshotRow, after?: SnapshotRow): string[] {
   const a = before ? semantic(before) : {}, b = after ? semantic(after) : {};
-  return tableColumns(table).filter(column => !metadata.has(column) && canonicalJson(a[column] ?? null) !== canonicalJson(b[column] ?? null));
+  return tableColumns(table, format).filter(column => !metadata.has(column) && canonicalJson(a[column] ?? null) !== canonicalJson(b[column] ?? null));
 }
 
 /** Attribution is deliberately object-level. A later rowid, undo evidence or
@@ -149,7 +150,7 @@ function source(table: Table, row: SnapshotRow, projectId: string, touched: Set<
 }
 
 interface ForeignKey {readonly parent: Table; readonly from: readonly string[]; readonly to: readonly string[]}
-function nativeKeys(store: ProjectStore): Map<Table, ForeignKey[]> {
+function nativeKeys(store: ProjectStore, format: ProjectFileFormat): Map<Table, ForeignKey[]> {
   const all = new Set<string>(PROJECT_SNAPSHOT_TABLES), result = new Map<Table, ForeignKey[]>();
   for (const table of PROJECT_SNAPSHOT_TABLES) {
     const groups = new Map<number, {parent: Table; parts: {seq: number; from: string; to: string | null}[]}>();
@@ -159,7 +160,7 @@ function nativeKeys(store: ProjectStore): Map<Table, ForeignKey[]> {
       group.parts.push({seq: Number(row.seq), from: String(row.from), to: row.to === null ? null : String(row.to)}); groups.set(id, group);
     }
     result.set(table, [...groups.values()].map(group => {const parts = group.parts.sort((a, b) => a.seq - b.seq); return {
-      parent: group.parent, from: parts.map(part => part.from), to: parts.map((part, index) => part.to ?? primaryKeys(group.parent)[index]),
+      parent: group.parent, from: parts.map(part => part.from), to: parts.map((part, index) => part.to ?? primaryKeys(group.parent, format)[index]),
     };}));
   }
   return result;
@@ -202,13 +203,16 @@ function logicalReferences(table: Table, row: SnapshotRow): {table: Table; id: s
 export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, current: ProjectDocument, mioChangeRowid: number, versionCreatedAt: string, options: RestorePlanningOptions = {}): RestorePlan {
   if (!isProjectStore(store) || !store.db.isTransaction) throw new TypeError('Preview requires a real project store in its transaction');
   if (saved.projectId !== store.projectId || current.projectId !== store.projectId) fail('PROJECT_ID_MISMATCH', '版本内容不属于此项目。');
+  const format = readSnapshotProjectFormat(store.db);
+  if (saved.projectFormatVersion !== format || current.projectFormatVersion !== format)
+    fail('PROJECT_VERSION_SNAPSHOT_INVALID', '版本预览必须使用当前项目的格式。');
   const empty = options.executionDomain === 'empty';
   const touched = empty ? new Set<string>() : mioTargets(store, saved, mioChangeRowid, versionCreatedAt);
   const differences = new Map<string, ProjectVersionDifference>(), predicted = new Map<Table, Map<string, SnapshotRow>>();
   const removable = new Map<string, {table: Table; key: string; row: SnapshotRow}>();
   for (const table of PROJECT_SNAPSHOT_TABLES) {
-    const old = new Map(saved.tables[table].map(row => [rowKey(table, row), row]));
-    const now = new Map(current.tables[table].map(row => [rowKey(table, row), row]));
+    const old = new Map(saved.tables[table].map(row => [rowKey(table, row, format), row]));
+    const now = new Map(current.tables[table].map(row => [rowKey(table, row, format), row]));
     const finalRows = new Map(now); predicted.set(table, finalRows);
     for (const key of [...new Set([...old.keys(), ...now.keys()])].sort(compare)) {
       if (key.length > 4096) fail('PROJECT_VERSION_PREVIEW_LIMIT', '对象标识超过预览上限，未截断标识。');
@@ -228,7 +232,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       if (before && after && immutable.has(table) && canonicalJson(before) !== canonicalJson(after)) {
         fail('PROJECT_VERSION_IMMUTABLE_CONFLICT', '同一标识的不可变内容不同，不能生成恢复计划。', {table, key});
       }
-      const changed = fields(table, before, after);
+      const changed = fields(table, format, before, after);
       if (table === 'subjects' && before && after && saved.tables.subject_versions.some(version => version.subjectId === after?.id
         && Number(version.number) > Number(before.revision))) changed.push('revision');
       if (before && after && !changed.length && !keptLocation) continue;
@@ -263,11 +267,11 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
         diff.action = 'keep-current'; setReason(diff, 'PROJECT_VERSION_TIMELINE_HISTORY_CURRENT', '本机时间线编辑历史或请求回执仍引用此聚合，保持当前身份和内容，不删除过程记录。');
       } else if (table === 'asset_annotations') {
         const reset = {...before!, tags: '[]', note: ''}; finalRows.set(key, reset);
-        diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
+        diff.fields = fields(table, format, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
         setReason(diff, 'PROJECT_VERSION_ANNOTATION_IDENTITY_CURRENT', '标注行必须保留；仅恢复默认空标签和备注，不删除其身份或历史修订。');
       } else if (table === 'subject_bindings') {
         const reset = {...before!, subjectVersionId: null}; finalRows.set(key, reset);
-        diff.fields = fields(table, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
+        diff.fields = fields(table, format, before, reset); diff.action = diff.fields.length ? 'change' : 'keep-current';
         setReason(diff, 'PROJECT_VERSION_BINDING_TOMBSTONE_CURRENT', '绑定墓碑必须保留；清空当前绑定版本，身份和已审版本证据保持当前。');
       } else {
         finalRows.delete(key); removable.set(identity, {table, key, row: before!});
@@ -275,7 +279,7 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
       differences.set(identity, diff);
     }
   }
-  const graph = nativeKeys(store);
+  const graph = nativeKeys(store, format);
   const candidatesByParent = new Map<string, Map<string, {table: Table; key: string; row: SnapshotRow}[]>>();
   const matches = (table: Table, columns: readonly string[], values: readonly unknown[]) => {
     const signature = `${table}\0${canonicalJson(columns)}`;
@@ -335,12 +339,12 @@ export function buildRestorePlan(store: ProjectStore, saved: ProjectDocument, cu
   }
   let document: ProjectDocument;
   try {document = validateProjectDocument({...current, tables: Object.fromEntries([...predicted].map(([table, rows]) =>
-    [table, [...rows.values()].sort((a, b) => compare(rowKey(table, a), rowKey(table, b)))]))});}
+    [table, [...rows.values()].sort((a, b) => compare(rowKey(table, a, format), rowKey(table, b, format)))]))});}
   catch {fail('PROJECT_VERSION_DEPENDENCY_CONFLICT', '保留当前内容与快照的引用或唯一性约束冲突，无法生成恢复计划。');}
   const changes = [...differences.values()].sort((a, b) => compare(a.table, b.table) || compare(a.key, b.key));
   let subjectBudget=PROJECT_VERSION_RESTORE_MAX_SUBJECT_STEPS;
-  const currentSubjects=new Map(current.tables.subjects.map(row=>[rowKey('subjects',row),row]));
-  const desiredSubjects=new Map(document.tables.subjects.map(row=>[rowKey('subjects',row),row]));
+  const currentSubjects=new Map(current.tables.subjects.map(row=>[rowKey('subjects',row,format),row]));
+  const desiredSubjects=new Map(document.tables.subjects.map(row=>[rowKey('subjects',row,format),row]));
   for(const change of changes)if(change.table==='subjects'&&change.action!=='keep-current'){
     const before=currentSubjects.get(change.key),after=desiredSubjects.get(change.key);
     if(before&&after)subjectBudget-=planSubjectRestoreRevisions(after,before,document.tables.subject_versions,subjectBudget).length;

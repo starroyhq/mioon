@@ -292,7 +292,17 @@ async function presentForReload(window: BrowserWindow, context: DesktopWindowCon
   try { const operation = reload(); refreshApplicationMenu(); return await operation; }
   finally { finishNativePresentation(window, host, owner.contextId); refreshApplicationMenu(); }
 }
-const projectFileFailureText=(code:string,reason?:'read-only')=>reason==='read-only'?'native.openProjectFileReadOnly':code==='PROJECT_FORMAT_NEWER'?'native.openProjectFileNewer':code==='PROJECT_ACCESS_DENIED'?'native.openProjectFileAccessDenied':code==='PROJECT_INVALID'?'native.openProjectFileDamaged':code==='PROJECT_MISSING'?'native.openProjectFileMissing':'native.openProjectFileUnavailable';
+function projectFileFailureText(code: string, reason?: 'read-only') {
+  if (reason === 'read-only') return 'native.openProjectFileReadOnly';
+  switch (code) {
+    case 'PROJECT_FORMAT_NEWER': return 'native.openProjectFileNewer';
+    case 'PROJECT_ACCESS_DENIED': return 'native.openProjectFileAccessDenied';
+    case 'PROJECT_INVALID': return 'native.openProjectFileDamaged';
+    case 'PROJECT_MISSING': return 'native.openProjectFileMissing';
+    case 'PROJECT_LOCKED': return 'native.openProjectFileLocked';
+    default: return 'native.openProjectFileUnavailable';
+  }
+}
 async function showProjectFileFailure(context: DesktopWindowContext, name: string, code: string, reason?: 'read-only') {
   const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
   if (ownsWindow(parent, context)) await showOwnedDialog(parent, context, {type: 'warning', message: nt('native.openProjectFileFailed'),
@@ -455,7 +465,8 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     startup.checkpoint();
     const tools = await toolsFromUser(startup);
     startup.checkpoint();
-    const directories = desktopAppDirectories({platform:process.platform,home:app.getPath('home'),env:process.env,appId:identity.appId,
+    const homeDirectory = app.getPath('home');
+    const directories = desktopAppDirectories({platform:process.platform,home:homeDirectory,env:process.env,appId:identity.appId,
       dataDir:paths.dataDir,videosDir:app.getPath('videos'),userDataOverridden:process.env.MIOON_DESKTOP_USER_DATA!==undefined});
     // Main owns the single settings instance across trusted backend restarts.
     if (!agentSettings) {
@@ -527,7 +538,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           backgroundColor: context.appearance.backgroundColor(), show: false,
           autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
           ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
-          webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') },
+          webPreferences: {
+            ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs'),
+            ...(creation.role !== 'settings' ? {additionalArguments: [`--mioon-home-directory=${homeDirectory}`]} : {}),
+          },
         });
         if (launcher) {
           window.on('page-title-updated', (event, pageTitle) => {
@@ -554,6 +568,12 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       },
       onWebContentsDestroyed: windowId => {ownedAudioHost?.revokeWindowDestroyed(windowId);ownedRelinkHost?.invalidateWindow(windowId);},
       onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
+      closeCandidate: (window, cause) => {
+        if (!ownsWindow(window, context)) return;
+        if (initialWindowLoads.get(window)?.captureFailure(true)?.close()) return;
+        if (cause === 'gone' && windowAdmissions.get(window)?.closeConfirmedGone()) return;
+        window.close();
+      },
     });
     const ownedWindowHost=windowHost;
     ownedAudioHost = createNativeAudioPreviewHost({ backendId, origin: started.url, signer: nativeAudioIdentity,
@@ -675,7 +695,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       notifyPendingOpen:(owner,notice)=>{if(owner.isCurrent())owner.window.webContents.send(PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,notice);},
       ...(process.platform==='darwin'?{openPrivacySettings:async()=>locationHelp.openPrivacySettings()}:{}),
       revealVerifiedPath:(_owner,file)=>locationHelp.revealVerifiedPath(file),
-      adoptPrepared:prepared=>ownedWindowHost.adoptPrepared(prepared),
+      adoptPrepared:(prepared,waitForReady,origin)=>ownedWindowHost.adoptPrepared(prepared,waitForReady,origin),
       openRecent:(owner,projectId,entryToken,remember)=>Promise.resolve(ownedWindowHost.dispatch({sender:owner.window.webContents,senderFrame:owner.window.webContents.mainFrame},{action:'open',contextId:owner.contextId,projectId,entryToken,remember})) as Promise<import('./project-window-protocol.ts').ProjectWindowOpenResult>,
     });
     ownedRelinkHost=assetRelinkHost=createAssetRelinkHost<IpcMainInvokeEvent,BrowserWindow>({
@@ -715,7 +735,13 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
         if(!owner||!await admit(owner,facts))return;nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
         admission={owner,file,facts};
       }
-      try{const result=await ownedWindowHost.openPath(file);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');if(!result.ok)throw new Error('Project open unavailable');}
+      try {
+        const result=await ownedWindowHost.openPath(file);nativeBackendCurrent();
+        if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
+        if(!result.ok && result.reason!=='cancelled') {
+          throw Object.assign(new Error('Project open unavailable'), {code:result.failure?.code,details:result.failure});
+        }
+      }
       catch(error){
         const failure=codedFailure(error),readOnly=failure.code==='PROJECT_INVALID'&&failure.details?.reason==='read-only'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_INVALID'&&failure.details?.invalidReason==='read-only';
         if(failure.code!=='PROJECT_FILE_COPY'&&!readOnly)throw error;
@@ -830,6 +856,17 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   const initialLoad = observeInitialProjectLoad(window, owner.url, () => ownsWindow(window, context));
   initialWindowLoads.set(window, initialLoad);
   installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
+  const closeDialog = async (options: MessageBoxOptions): Promise<number> => {
+    const host = windowHost;
+    if (!host?.isCandidate(window)) return showOwnedDialog(window, context, options);
+    const source = host.candidateSourceWindow(window), cancel = options.cancelId ?? 0;
+    if (!source?.isVisible()) return cancel;
+    const sourceOwner = host.ownerForContents(source.webContents);
+    if (!sourceOwner) return cancel;
+    const response = await showOwnedDialog(source, context, options);
+    return windowHost === host && ownsWindow(window, context) && sourceOwner.isCurrent() &&
+      host.candidateSourceWindow(window) === source ? response : cancel;
+  };
   windowAdmissions.set(window, installNativeCloseAdmission(window, {
     isCurrent: () => ownsWindow(window, context) && window.webContents.getURL() === owner.url && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
     canAct: () => {
@@ -841,7 +878,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
     onCloseStateChange: state => {
       // Restore a hidden owner before renderer inspection, rather than between
       // inspection and confirmation, when visibility can refresh its inputs.
-      if (state === 'closing') windowHost?.prepareNativeDialog(window);
+      if (state === 'closing' && !windowHost?.isCandidate(window)) windowHost?.prepareNativeDialog(window);
       windowHost?.closeStateChanged(window, state); trayHost?.refresh(); refreshApplicationMenu();
     },
     consumeInitialEmptyClose: () => initialLoad.consumeClose(),
@@ -851,20 +888,29 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       return document?.window === window && document.backendId === owner.backendId
         ? context.audioHost?.retireOwnerForReload({ ...document, projectId: document.projectId as string, contents }, signal) ?? false : false;
     },
-    confirmClose: action => Boolean(smokeOutput) || showOwnedDialog(window, context, { type: 'warning', title: nt('native.draftTitle'),
+    confirmClose: action => Boolean(smokeOutput) || closeDialog({ type: 'warning', title: nt('native.draftTitle'),
       message: nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'),
       detail: nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'),
       buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmUnknown: () => showOwnedDialog(window, context, { type: 'warning', title: nt('native.unknownTitle'),
+    confirmUnknown: () => closeDialog({ type: 'warning', title: nt('native.unknownTitle'),
       message: nt('native.unknownMessage'),
       detail: nt('native.unknownDetail'),
       buttons: [nt('native.understandClose'), nt('native.keepWindow')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : showOwnedDialog(window, context, { type: 'question', title: nt('native.unsavedTitle'),
+    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
       message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'), detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
       buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    onBlocked: reason => smokeOutput ? undefined : showOwnedDialog(window, context, { type: 'warning', title: nt('native.leaveBlockedTitle'),
-      message: reason === 'blocked' ? nt('native.leaveBlocked') : reason === 'changed' ? nt('native.leaveChanged') : nt('native.leaveUnverified'),
-      detail: nt('native.leaveDetail'), buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 }),
+    onBlocked: async reason => {
+      if (smokeOutput) return;
+      // A ready report racing the P0 snapshot can request one fresh close
+      // after retention. Keep any notice attached to the original visible owner.
+      if (windowHost?.isCandidate(window)) {
+        await Promise.resolve();
+        if (!ownsWindow(window, context) || windowAdmissions.get(window)?.pending) return;
+      }
+      await closeDialog({ type: 'warning', title: nt('native.leaveBlockedTitle'),
+        message: reason === 'blocked' ? nt('native.leaveBlocked') : reason === 'changed' ? nt('native.leaveChanged') : nt('native.leaveUnverified'),
+        detail: nt('native.leaveDetail'), buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 });
+    },
     onCancel: () => { if (ownsWindow(window, context)) {
       if (windowHost) finishNativePresentation(window, windowHost, owner.contextId);
       quitCoordinator.cancel(window); restartCoordinator.cancel(window); trayHost?.refresh();
@@ -875,9 +921,12 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   window.on('closed', () => trayHost?.refresh());
   window.on('ready-to-show', () => trayHost?.refresh());
   const onRendererFailure = () => {
-    if (ownsWindow(window, context) && !smokeOutput) void rendererFailed(window, context).catch(fatal);
+    if (ownsWindow(window, context) && !windowHost?.isCandidate(window) && !smokeOutput) void rendererFailed(window, context).catch(fatal);
   };
-  window.webContents.on('render-process-gone', onRendererFailure);
+  window.webContents.on('render-process-gone', () => {
+    if (ownsWindow(window, context) && windowHost?.rendererGone(window)) return;
+    onRendererFailure();
+  });
   window.webContents.on('unresponsive', onRendererFailure);
   // Recording is additive: it does not replace, delay or gate the existing
   // recovery dialog/reload path above. Only fixed health fields are persisted.

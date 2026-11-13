@@ -3,7 +3,7 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
+import {inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
@@ -11,7 +11,7 @@ import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema, projectEntryPrepareAcquireInputSchema,
-  projectEntryReleaseInputSchema, projectEntryWindowSchema,
+  projectEntryMarkOpenedInputSchema, projectEntryReleaseInputSchema, projectEntryWindowSchema,
   projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema, projectEntrySourceObservationSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
@@ -34,6 +34,7 @@ interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly promise: Promise<ProjectEntryWindow>;
   lease: ProjectLease<Runtime> | null;
   revoke: (() => void) | null;
+  readyContextId: string | null;
 }
 const invalid = (): AppError => new AppError('VALIDATION_ERROR', '项目入口参数无效', 400);
 const unavailable = (): AppError => new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 503);
@@ -51,7 +52,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -60,6 +61,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
+  readonly markRecentOpened?: (projectId: string, lastOpenedAt: string) => void;
   readonly templates?: readonly ProjectDesktopTemplate[];
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
   readonly assertProjectFile?: (file:string) => void;
@@ -85,7 +87,20 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     const before = scope();
     refreshSummaries();
     const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
-      .map(entry => ({...entry, coverUrl: entry.project.summary?.cover ? '/api/project-covers/' + entry.project.projectId : null}));
+      .map(({project, availability}) => {
+        if (availability.state === 'available') {
+          // Recovery leaves cold files alone. Check just the header for the
+          // newer-format hint, without opening the project or local records.
+          try {
+            assertProjectFile?.(project.projectFile);
+            sourceMetadata(project.projectFile);
+            inspectProjectFormatHeader(project.projectFile);
+          } catch (error) {
+            if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') availability = {state: 'invalid', reason: 'format-newer'};
+          }
+        }
+        return {project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null};
+      });
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
     const result = projectEntriesResponseSchema.safeParse({version: 1, appLibraryScope: before, instanceId, registered});
     if (!result.success) throw unavailable();
@@ -163,8 +178,10 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       try {listener(event);} catch { /* An observer cannot prevent lease cleanup. */ }
     }
   };
-  const bind = (windowId: string, key: string, acquire: () => Promise<ProjectLease<Runtime>>, expectedProjectFile?: string): Promise<ProjectEntryWindow> => {
+  const bind = (windowId: string, key: string, acquire: () => Promise<ProjectLease<Runtime>>,
+    expectedProjectFile?: string, deferRecent = false): Promise<ProjectEntryWindow> => {
     scope();
+    if (deferRecent) key = 'provisional:' + key;
     const existing = windows.get(windowId);
     if (existing) {
       if (existing.key !== key) throw new AppError('PROJECT_ENTRY_WINDOW_CONFLICT', '窗口已绑定其他项目意图', 409);
@@ -174,7 +191,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     let resolve!: (value: ProjectEntryWindow) => void;
     let reject!: (error: unknown) => void;
     const promise = new Promise<ProjectEntryWindow>((accept, fail) => {resolve = accept; reject = fail;});
-    const slot: WindowSlot<Runtime> = {key, promise, lease: null, revoke: null};
+    const slot: WindowSlot<Runtime> = {key, promise, lease: null, revoke: null, readyContextId: null};
     windows.set(windowId, slot);
     void (async () => {
       // release() can retire an in-flight open. Its eventual lease must never
@@ -231,13 +248,25 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     },
     openPath: input => {
       const selected = parse(projectEntryOpenPathInputSchema, input);
-      return bind(selected.windowId, 'path:' + selected.projectFile, () => manager.openPath(selected.projectFile, 'window'));
+      return bind(selected.windowId, 'path:' + selected.projectFile,
+        () => manager.openPath(selected.projectFile, 'window', {deferRecent: selected.deferRecent}), undefined, selected.deferRecent);
     },
     acquire: input => {
       const selected = parse(projectEntryAcquireInputSchema, input);
       const pinned = selected.expectedProjectFile;
       return bind(selected.windowId, 'id:' + selected.projectId + (pinned === undefined ? '' : ':path:' + pinned),
-        () => manager.acquire(selected.projectId, 'window', pinned === undefined ? undefined : {projectFile: pinned}), pinned);
+        () => manager.acquire(selected.projectId, 'window', {projectFile: pinned, deferRecent: selected.deferRecent}), pinned, selected.deferRecent);
+    },
+    markOpened: input => {
+      scope();
+      const {windowId, contextId} = parse(projectEntryMarkOpenedInputSchema, input), slot = windows.get(windowId);
+      if (!slot?.lease || slot.lease.signal.aborted) throw unavailable();
+      if (slot.readyContextId !== contextId) {
+        const lastOpenedAt = manager.markWindowOpened(slot.lease);
+        slot.readyContextId = contextId;
+        if (lastOpenedAt) markRecentOpened?.(slot.lease.host.projectId, lastOpenedAt);
+      }
+      return true;
     },
     release: input => {
       const {windowId} = parse(projectEntryReleaseInputSchema, input), slot = windows.get(windowId);

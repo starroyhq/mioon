@@ -52,8 +52,9 @@ function fixture(t: TestContext) {
 test('a trusted catalog resolves only its immutable ID/version, not caller paths', t => {
   const f = fixture(t), catalog = f.catalog();
   f.manifest.projectFile.path = 'changed.mioon'; f.manifest.assets.length = 0;
+  const {dev, ino, size, mtimeNs, ctimeNs} = lstatSync(f.projectFile, {bigint: true});
   assert.deepEqual(catalog.describe('starter', 1), {templateId: 'starter', version: 1, projectFile: f.projectFile,
-    projectId: f.projectId, sourceProjectDir: f.directory, sourceStamp: f.sourceStamp});
+    projectId: f.projectId, sourceProjectDir: f.directory, sourceStamp: f.sourceStamp, sourceGeneration: [dev, ino, size, mtimeNs, ctimeNs].join(':')});
   assert.throws(() => catalog.describe(f.projectFile, 1), code('PROJECT_TEMPLATE_NOT_FOUND'));
   assert.throws(() => catalog.describe('starter', 2), code('PROJECT_TEMPLATE_NOT_FOUND'));
   assert.equal(existsSync(path.join(f.directory, 'changed.mioon')), false);

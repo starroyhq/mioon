@@ -16,6 +16,9 @@ import {
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {CONTENT_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {TIMELINE_RESPONSE_BYTES, isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
+import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts';
 
 const referenceFixture=(root: string, relativePath: string, sha256: string, sizeBytes: number)=>({pathForm:'relative' as const,path:relativePath,volume:null,sizeBytes,
  mtimeMs:mediaMtimeMs(fs.statSync(path.join(root,relativePath),{bigint:true})),sampledSha256:sha256,fullSha256:sha256});
@@ -36,9 +39,10 @@ function destination(root: string, name = 'recovered'): string {
   const directory = path.join(root, name); mkdirSync(directory, {mode: 0o700});
   return path.join(directory, 'project.mioon');
 }
-function openRecovered(projectFile: string): ProjectStore {
+function openRecovered(projectFile: string, candidate = false): ProjectStore {
   const root = path.dirname(projectFile);
-  return openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'local'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')})});
+  return openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'local'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')}),
+    ...(candidate ? {format4: {}} : {})});
 }
 const code = (expected: string) => (error: unknown): boolean => error !== null && typeof error === 'object' && 'code' in error && error.code === expected;
 const plain = (row: object | undefined) => row === undefined ? undefined : {...row};
@@ -124,6 +128,95 @@ test('dedicated reader rejects symlinks, hard links, unknown format and altered 
     try { db.exec(sql); } finally { db.close(); }
     assert.throws(() => openProjectBackup(file), code('PROJECT_BACKUP_INVALID'), name);
   }
+});
+
+test('format 4 backup copies upgrade only the selected target and retain archive metadata on subsequent copies', async t => {
+  const {root, store, backupFile} = fixture(t), nodeId = randomUUID();
+  store.put('nodes', {id: nodeId, projectId: store.projectId, type: 'text', text: 'retained content'});
+  const legacy = await createProjectBackup(store, backupFile);
+  const oldBytes = readFileSync(backupFile);
+  assert.equal(legacy.formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+
+  const forged = path.join(path.dirname(backupFile), 'forged-format.mioon');
+  copyFileSync(backupFile, forged);
+  const fake = new DatabaseSync(forged);
+  try {
+    fake.exec(`PRAGMA user_version=${FORMAT4_PROJECT_SCHEMA_VERSION}`);
+    fake.prepare('UPDATE schema_version SET version=?').run(FORMAT4_PROJECT_SCHEMA_VERSION);
+  } finally {fake.close();}
+  assert.throws(() => inspectProjectBackup(forged), code('PROJECT_BACKUP_INVALID'), 'a known number does not bypass the exact manifest');
+
+  const legacyTarget = await copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile: destination(root, 'legacy')});
+  assert.equal(legacyTarget.formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const upgraded = await copyProjectBackup({backupFile, sourceProjectDir: store.projectDir, projectFile: destination(root, 'candidate'),
+    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION});
+  assert.equal(upgraded.formatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(upgraded.contentSequence, legacy.contentSequence);
+  assert.deepEqual(readFileSync(backupFile), oldBytes);
+
+  const archive = {archivedAt: '2026-11-12T00:00:00.000Z', archiveBatchId: randomUUID(), archiveReason: 'user-delete'};
+  const candidateBackup = path.join(path.dirname(backupFile), 'candidate-backup.mioon');
+  const candidate = openRecovered(upgraded.projectFile, true);
+  try {
+    assert.equal(candidate.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+    assert.deepEqual(plain(candidate.db.prepare('SELECT archivedAt,archiveBatchId,archiveReason FROM project.nodes WHERE id=?').get(nodeId)),
+      {archivedAt: null, archiveBatchId: null, archiveReason: null});
+    candidate.db.prepare('UPDATE project.nodes SET archivedAt=?,archiveBatchId=?,archiveReason=? WHERE id=?')
+      .run(archive.archivedAt, archive.archiveBatchId, archive.archiveReason, nodeId);
+    assert.equal((await createProjectBackup(candidate, candidateBackup)).formatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  } finally {candidate.close();}
+  const copied = await copyProjectBackup({backupFile: candidateBackup, sourceProjectDir: path.dirname(upgraded.projectFile), projectFile: destination(root, 'recovered-archive'),
+    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION});
+  assert.equal(copied.formatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  const restored = openRecovered(copied.projectFile, true);
+  try {
+    assert.deepEqual(plain(restored.db.prepare('SELECT archivedAt,archiveBatchId,archiveReason FROM project.nodes WHERE id=?').get(nodeId)), archive);
+    assert.equal((restored.get('nodes', nodeId) as {projectId: string}).projectId, copied.projectId);
+  } finally {restored.close();}
+
+  for (const targetFormat of [undefined, PROJECT_FILE_SCHEMA_VERSION] as const) {
+    const downgrade = path.join(root, targetFormat === undefined ? 'default-downgrade' : 'explicit-downgrade', 'project.mioon');
+    await assert.rejects(copyProjectBackup({backupFile: candidateBackup, sourceProjectDir: path.dirname(upgraded.projectFile), projectFile: downgrade,
+      targetFormat}), {code: 'PROJECT_FORMAT_NEWER', details: {database: 'project', reason: 'format-newer',
+      formatVersion: FORMAT4_PROJECT_SCHEMA_VERSION, supportedFormatVersion: PROJECT_FILE_SCHEMA_VERSION}});
+    assert.equal(existsSync(path.dirname(downgrade)), false);
+  }
+});
+
+test('a format 3 backup preserves an oversized raw timeline accepted by the released schema', async t => {
+  const {store, backupFile} = fixture(t);
+  const timeline = newTimelineRecord(store.projectId, {fps: 30, width: 720, height: 1280}, () => '2026-11-12T00:00:00.000Z');
+  assert.equal(isTimelineRecord(timeline), true);
+  store.put('timelines', timeline);
+  const data = JSON.stringify(timeline).padEnd(TIMELINE_RESPONSE_BYTES + 1);
+  store.db.prepare('UPDATE project.timelines SET data=? WHERE id=?').run(data, timeline.id);
+  assert.equal(Buffer.byteLength(data), TIMELINE_RESPONSE_BYTES + 1);
+  await createProjectBackup(store, backupFile);
+  const reader = openProjectBackup(backupFile);
+  try {
+    assert.equal(reader.identity.formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+    assert.equal(reader.db.prepare('SELECT data FROM timelines WHERE id=?').get(timeline.id)?.data, data);
+  } finally {reader.close();}
+});
+
+test('format 3 backup inspection preserves legacy bytes and the candidate copy rejects a smuggled layout', async t => {
+  const {root, store, backupFile} = fixture(t), timelineId = randomUUID();
+  store.put('timelines', {id: timelineId, projectId: store.projectId, clips: [{id: randomUUID()}]});
+  await createProjectBackup(store, backupFile);
+  const before = readFileSync(backupFile);
+  const backup = new DatabaseSync(backupFile);
+  try {
+    const layout = JSON.stringify({profileId: 'mioon-clip-layout-v2', basisPresetId: 'portrait_1080'});
+    backup.prepare("UPDATE timelines SET data=json_set(data,'$.clips[0].layout',json(?)) WHERE id=?").run(layout, timelineId);
+  } finally {backup.close();}
+  const forged = readFileSync(backupFile);
+  assert.notDeepEqual(forged, before);
+  assert.equal(inspectProjectBackup(backupFile).formatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  const target = destination(root, 'candidate-copy');
+  await assert.rejects(copyProjectBackup({backupFile, projectFile: target, sourceProjectDir: store.projectDir,
+    targetFormat: FORMAT4_PROJECT_SCHEMA_VERSION}), {code: 'PROJECT_INVALID', details: {database: 'project', reason: 'metadata'}});
+  assert.equal(existsSync(target), false);
+  assert.deepEqual(readFileSync(backupFile), forged);
 });
 
 test('restore preserves real IDs, immutable content, BLOBs and project-owned references with a new owner ID', async t => {
