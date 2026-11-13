@@ -119,7 +119,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
     }
     if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, mockAvailable: true, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
+    if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
     if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (name === './image-settings.ts') return { createImageSettingsClient: () => fixture.settingsClient };
     if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};
@@ -134,7 +134,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
   const ui = {
     render() {
       cursor = 0; effects = [];
-      tree = module.exports.default({ nativeCloseRegistry: observedRegistry, projectId, projectName: 'Project', onClose() {}, onSettings() {}, ...fixture });
+      tree = module.exports.default({ nativeCloseRegistry: observedRegistry, projectId, projectName: 'Project', mockAvailable: true, onClose() {}, onSettings() {}, ...fixture });
       for (const node of nodes(tree)) if (node.props.ref) (node.props.ref as {current:unknown}).current ||= { value: '', scrollTop: 0, scrollHeight: 0 };
       for (const index of effects) { hooks[index].cleanup?.(); hooks[index].cleanup = hooks[index].fn!(); }
       return tree;
