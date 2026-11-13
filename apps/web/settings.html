@@ -34,7 +34,7 @@
         background: light-dark(#e7e7ed, #2b2d32);
       }
       #settings-boot section { padding: 16px 24px; }
-      #settings-boot a { color: inherit; }
+      #settings-boot button { color: inherit; font: inherit; }
     </style>
   </head>
   <body>
@@ -44,7 +44,7 @@
         <aside aria-hidden="true"><span></span><span></span><span></span><span></span></aside>
         <section>
           <p id="settings-boot-status" role="status">Loading settings…</p>
-          <a id="settings-boot-retry" href="/settings.html" hidden>Try again</a>
+          <button id="settings-boot-close" type="button" hidden>Close settings</button>
         </section>
       </main>
     </div>

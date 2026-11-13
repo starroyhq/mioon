@@ -92,7 +92,7 @@ export function installSessionPolicy(session: Session, origin: string, getWindow
     if (blocked || !isWarmSettings?.(details.webContentsId)) return callback({cancel: blocked});
     const shell = details.resourceType === 'mainFrame' && details.url === `${origin}/settings.html`;
     const script = details.resourceType === 'script' && isSameOrigin(details.url, origin) &&
-      /^\/assets\/(?:settings|preload-helper)-[\w-]+\.js$/.test(new URL(details.url).pathname);
+      /^\/assets\/(?:settings|settings-boot-close)-[\w-]{8}\.js$/.test(new URL(details.url).pathname);
     callback({cancel: details.method !== 'GET' || !(shell || script)});
   });
 }
