@@ -1,3 +1,4 @@
+import { markSettingsClick } from '../apps/web/src/settings-diagnostics.ts';
 import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
@@ -291,6 +292,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
   react.default = react;
   const module: {exports: Obj} = {exports: {}}, primitive = new Proxy<Obj>({}, {get: (_target, key) => String(key)});
   const require = (name: string): unknown => {
+    if (name === './settings-diagnostics.ts') return {markSettingsClick};
     if (name === './project-media-read-gate.tsx') return {ProjectMediaImage: 'img'};
     const i18nDependency = creationTestDependency(name, options.languageStore); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;

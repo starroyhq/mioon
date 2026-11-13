@@ -326,7 +326,7 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
@@ -339,5 +339,5 @@ test('desktop wiring keeps renderer secret capabilities private and settings own
   const menuProtocol = await readFile(new URL('../apps/desktop/src/menu-command-protocol.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preload + bridge + assetImportBridge + assetRelinkBridge + audioBridge + languageBridge + menuBridge + menuProtocol + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonAssetMediaNative', '__mioonDesktop', '__mioonExportFiles', '__mioonHomeDirectory', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectEntries', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
+    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonAssetMediaNative', '__mioonDesktop', '__mioonExportFiles', '__mioonHomeDirectory', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectEntries', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonSettingsBootAppearance', '__mioonSettingsDiagnostics', '__mioonWorkspaceNative', '__mioonWorkspaceTools']);
 });

@@ -19,6 +19,7 @@ import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts
 import * as image from '../apps/web/src/image-generation.ts';
 import * as contracts from '@mioon/contracts';
 import { mediaUrl } from '../apps/web/src/api.ts';
+import { markSettingsClick } from '../apps/web/src/settings-diagnostics.ts';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), requestId = id(4), groupId = id(6), taskId = id(7), reviewId = id(8);
@@ -106,6 +107,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
       return activity.exports;
     }
     if (name === './native-close-sources.ts') return sources;
+    if (name === './settings-diagnostics.ts') return { markSettingsClick };
     if (name === './project-media-read-gate.tsx') {
       // Preserve the real optional context for these standalone close owners;
       // no application Provider or fabricated readable media state is supplied.
