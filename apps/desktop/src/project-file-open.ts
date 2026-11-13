@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {PROJECT_OPEN_ERROR_CODES} from '../../../packages/contracts/src/project-file.ts';
+import {projectEntryOpenFailure} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 
 export const PROJECT_FILE_EXTENSION='.mioon';
 export type ProjectFileOpenFailure=typeof PROJECT_OPEN_ERROR_CODES[number]|'PROJECT_LOCATION_INVALID'|'PROJECT_LOCATION_REJECTED'|'UNAVAILABLE';
@@ -15,10 +16,12 @@ export function projectFileArguments(argv:readonly string[]|undefined,cwd?:strin
 }
 
 const failureFor=(error:unknown):{code:ProjectFileOpenFailure;reason?:'read-only'}=>{
- const source=error!==null&&typeof error==='object'?error as {code?:unknown;details?:unknown}:{};
- const code=source.code,details=source.details!==null&&typeof source.details==='object'?source.details as {reason?:unknown;invalidReason?:unknown}:{};
- const known=typeof code==='string'&&[...PROJECT_OPEN_ERROR_CODES,'PROJECT_LOCATION_INVALID','PROJECT_LOCATION_REJECTED'].includes(code)?code as ProjectFileOpenFailure:'UNAVAILABLE';
- return {code:known,...(code==='PROJECT_INVALID'&&details.reason==='read-only'?{reason:'read-only' as const}:{})};
+ const exact=projectEntryOpenFailure(error);
+ if(exact)return {code:exact.code,...(exact.code==='PROJECT_INVALID'&&exact.reason==='read-only'?{reason:'read-only' as const}:{})};
+ const code=error!==null&&typeof error==='object'&&'code'in error?error.code:undefined;
+ // A native sheet can describe generic invalid files and rejected locations.
+ // The newer-format instruction requires the verified database/version pair.
+ return {code:code==='PROJECT_INVALID'||code==='PROJECT_LOCATION_INVALID'||code==='PROJECT_LOCATION_REJECTED'?code:'UNAVAILABLE'};
 };
 
 /** OS intents wait for a trusted path-opening port. No project bytes are uploaded.

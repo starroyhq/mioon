@@ -15,6 +15,7 @@ export interface ProjectEntryState extends LauncherState {
   readonly formIntent: number;
   readonly sealed: boolean;
   readonly openUnknown: boolean;
+  readonly pendingOpenProjectId?: string | null;
   readonly createdProjectId: string | null;
 }
 interface Departure { readonly owner: number; readonly localVersion: number; readonly intent: number; readonly metadataVersion: number; readonly contextVersion: number; readonly external: string }
@@ -24,7 +25,9 @@ interface Permit {
   readonly contextId: string;
   readonly backendId: string;
   readonly localVersion: number;
+  readonly owner: number;
   consumed: boolean;
+  result?: ProjectWindowOpenResult;
 }
 export interface ProjectEntryConsumption { readonly version: 1; readonly entryToken: string; readonly projectId: string; readonly accepted: boolean }
 /** An entry owns only its catalog, create request and departure permission.
@@ -32,7 +35,7 @@ export interface ProjectEntryConsumption { readonly version: 1; readonly entryTo
  * same latch; the native host can consume, but cannot mint, this permission. */
 export function createProjectEntryController({ client, bridge, context: initialContext, identity = null, manageIdentityLifecycle = true, explicitProjectId = null,
   desktopClient = null, readAdditionalSnapshot = () => ({dirty: false, busy: false, unknown: false, identity: [] as unknown[]}),
-  onNativeOpenError = () => {},
+  onNativeOpenError,
   readNativeDraftVersion = () => 0,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
@@ -46,12 +49,13 @@ export function createProjectEntryController({ client, bridge, context: initialC
   let visible = true, autoConsumed = initialContext.role !== 'launcher' || !initialContext.autoOpen;
   let observedEntry = 0;
   let openFlight: object | null = null;
+  let cancelFlight: string | null = null;
   let metadata: LauncherCreateMetadata = { dirty: false, busy: false, version: 0 }, permit: Permit | null = null;
   let nativeActionMetadata: {busy: boolean; unknown: boolean; version: number; allowOpen?: true} = {busy: false, unknown: false, version: 0};
   const nativeResultPermits = new WeakSet<() => boolean>();
   let state: ProjectEntryState = { projects: [], catalogReady: false, listBusy: true, listError: '', phase: 'home', openingProjectId: null,
     error: '', notice: '', creating: false, createUnknown: false, version: 0, shown: initialContext.role === 'launcher', mode: 'open',
-    formIntent: 0, sealed: false, openUnknown: false, createdProjectId: null };
+    formIntent: 0, sealed: false, openUnknown: false, pendingOpenProjectId: null, createdProjectId: null };
   const emit = (patch: Partial<ProjectEntryState> = {}) => { state = Object.freeze({ ...state, ...patch, version: state.version + 1 }); if (active) onChange(state); };
   const alive = (owner: number) => active && lifetime === owner;
   const ownerCurrent = () => active && !context.quitting && !context.leaseRevoked && !context.settingsModalOpen && !identity?.getState().identityBlocked && context.contextId === initialContext.contextId && context.backendId === initialContext.backendId;
@@ -73,14 +77,31 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (!preserveDraft && (metadata.dirty || readAdditionalSnapshot().dirty) && !await confirm(message)) return null;
     return departureCurrent(ticket) ? ticket : null;
   }
-  function settle(token: string, result: ProjectWindowOpenResult): boolean {
-    if (!permit || permit.token !== token) return false;
+  function settle(attempt: Permit, result: ProjectWindowOpenResult, presentIssue = true): boolean {
+    if (permit !== attempt || !alive(attempt.owner)) return false;
+    attempt.result = result;
     permit = null;
-    emit({ sealed: false, openUnknown: false, phase: result.ok ? 'home' : 'error',
-      error: result.ok ? '' : msg('projects.windowOpenFailed'),
+    const present = ownerCurrent(), cancelled = result.reason === 'cancelled';
+    const showIssue = present && presentIssue && result.reason === 'unavailable' && desktopClient && onNativeOpenError;
+    const showInline = present && !result.ok && !cancelled && !showIssue;
+    emit({ sealed: false, openUnknown: false, openingProjectId: showInline ? attempt.projectId : null, pendingOpenProjectId: null,
+      phase: showInline ? 'error' : 'home',
+      error: showInline ? msg(result.reason === 'busy' ? 'projects.checkCurrentRequest' : 'projects.windowOpenFailed') : '',
       notice: result.ok ? (result.targetPhase === 'failed' ? msg('projects.targetWindowFailed') : '') : state.notice,
-      ...(result.ok && context.role === 'editor' ? { shown: false } : {}) });
+      ...(present && result.ok && context.role === 'editor' ? { shown: false } : {}) });
+    if (showIssue) showIssue(result.failure ?? {code: 'OPEN_UNAVAILABLE'}, attempt.projectId);
     return result.ok;
+  }
+  function pendingEntry() {
+    const pending = context.entryPending;
+    if (!pending || !ownerCurrent() || !visible || !state.shown) return undefined;
+    if (pending.kind === 'selected') return desktopClient ? pending : undefined;
+    return permit?.consumed && alive(permit.owner) && pending.entryToken === permit.token &&
+      pending.projectId === permit.projectId ? pending : undefined;
+  }
+  function updatePending() {
+    const pendingOpenProjectId = pendingEntry()?.projectId ?? null;
+    if (pendingOpenProjectId !== state.pendingOpenProjectId) emit({pendingOpenProjectId});
   }
   function updateContext(next: ProjectWindowContext) {
     if (next.contextId !== context.contextId || next.backendId !== context.backendId || next.windowId !== context.windowId || next.role !== context.role) return;
@@ -89,7 +110,8 @@ export function createProjectEntryController({ client, bridge, context: initialC
     // A pre-quit catalog reply cannot regain authority if quitting is cancelled.
     if (enteredQuit) { readSerial++; if (state.listBusy) emit({ listBusy: false }); }
     if (!next.autoOpen) autoConsumed = true;
-    if (next.entryReceipt && permit?.token === next.entryReceipt.entryToken) settle(permit.token, next.entryReceipt.result);
+    if (next.entryReceipt && permit?.token === next.entryReceipt.entryToken) settle(permit, next.entryReceipt.result);
+    updatePending();
     if (next.entryVersion > observedEntry) {
       observedEntry = next.entryVersion; interact();
       if (next.entryMode) void show(next.entryMode);
@@ -99,33 +121,33 @@ export function createProjectEntryController({ client, bridge, context: initialC
     if (!ownerCurrent() || permit || state.createUnknown || !isProjectWindowId(projectId)) return false;
     const token = newToken();
     if (!isProjectWindowId(token)) return false;
-    const owner = lifetime;
-    permit = { token, projectId, contextId: context.contextId, backendId: context.backendId, localVersion, consumed: false };
+    const attempt: Permit = { token, projectId, contextId: context.contextId, backendId: context.backendId, localVersion, owner: lifetime, consumed: false };
+    permit = attempt;
     emit({ sealed: true, openUnknown: false, phase: 'opening', openingProjectId: projectId, error: '', notice: '' });
     try {
       const native = desktopClient ? await desktopClient.openRecent({projectId, remember, entryToken: token}) : null;
-      if (native && (native.status !== 'opened' || native.projectId !== projectId)) throw new Error('Native recent acknowledgement does not match its sealed entry');
-      const result: ProjectWindowOpenResult = native
-        ? {ok: true, reason: 'accepted', targetWindowId: native.windowId, targetPhase: null}
-        : await bridge.openProject(projectId, remember, token);
-      if (!alive(owner)) return false;
-      if (permit?.token === token) return settle(token, result);
+      let result: ProjectWindowOpenResult;
+      if (!native) result = await bridge.openProject(projectId, remember, token);
+      else if (native.status === 'opened') {
+        if (native.projectId !== projectId) throw new Error('Native recent acknowledgement does not match its sealed entry');
+        result = {ok: true, reason: 'accepted', targetWindowId: native.windowId, targetPhase: null};
+      } else result = {ok: false, reason: native.status === 'cancelled' ? 'cancelled' : native.reason, targetWindowId: null, targetPhase: null,
+        ...(native.status === 'failed' && 'failure' in native && native.failure ? {failure: native.failure} : {})};
+      if (!alive(attempt.owner)) return false;
       // A matching subscription receipt may have arrived before invoke returned.
-      return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
+      return attempt.result?.ok ?? settle(attempt, result);
     } catch (error) {
-      if (desktopClient && alive(owner)) onNativeOpenError(error, projectId);
-      const preHostRefusal = permit?.token === token && !permit.consumed && error !== null && typeof error === 'object' && 'code' in error && 'status' in error &&
+      if (!alive(attempt.owner)) return false;
+      if (permit !== attempt) return attempt.result?.ok === true;
+      const preHostRefusal = !attempt.consumed && error !== null && typeof error === 'object' && 'code' in error && 'status' in error &&
         (error.code === 'PROJECT_ENTRY_UNAVAILABLE' && error.status === 409 || error.code === 'PROJECT_ENTRY_BUSY' && (error.status === 409 || error.status === 503));
       // Only a still-unconsumed renderer admission proves these main refusals
       // preceded host work. The same code after consumption remains unknown.
-      if (desktopClient && alive(owner) && (preHostRefusal || error !== null && typeof error === 'object' && 'code' in error && ['PROJECT_ACCESS_DENIED', 'PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_INVALID', 'PROJECT_FORMAT_NEWER'].includes(String(error.code)))) {
-        if (permit?.token === token) {permit = null; emit({sealed: false, openUnknown: false, phase: 'error', error: msg('projects.windowOpenFailed')});}
-        return false;
-      }
-      if (!alive(owner) || permit?.token !== token) return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
+      if (desktopClient && preHostRefusal) return settle(attempt, {ok: false, reason: error.code === 'PROJECT_ENTRY_BUSY' ? 'busy' : 'unavailable',
+        targetWindowId: null, targetPhase: null}, false);
       emit({ openUnknown: true, phase: 'error', error: msg('projects.openOutcomeUnknown') });
       await reconcileOpen();
-      return context.entryReceipt?.entryToken === token && context.entryReceipt.result.ok === true;
+      return attempt.result?.ok === true;
     }
   }
   async function open(projectId: string, remember = true): Promise<boolean> {
@@ -149,9 +171,29 @@ export function createProjectEntryController({ client, bridge, context: initialC
   }
   async function reconcileOpen(): Promise<void> {
     if (!active || !permit) return;
-    const owner = lifetime, token = permit.token;
-    try { const fresh = await bridge.context(); if (alive(owner) && permit?.token === token) updateContext(fresh); }
+    const attempt = permit, observedContext = contextVersion;
+    try { const fresh = await bridge.context(); if (alive(attempt.owner) && permit === attempt &&
+      (observedContext === contextVersion || fresh.entryReceipt?.entryToken === attempt.token)) updateContext(fresh); }
     catch { /* Missing evidence keeps the original owner and latch. */ }
+  }
+  async function cancelOpen(): Promise<boolean> {
+    const pending = pendingEntry();
+    if (!pending || cancelFlight || !bridge.cancelOpen) return false;
+    const owner = lifetime;
+    cancelFlight = pending.entryToken;
+    try { return await bridge.cancelOpen(pending.entryToken); }
+    catch { return false; }
+    finally {
+      if (cancelFlight === pending.entryToken) cancelFlight = null;
+      // A cancellation acknowledgement does not settle the original attempt.
+      if (permit?.token === pending.entryToken) void reconcileOpen();
+      else if (pending.kind === 'selected' && alive(owner) && context.entryPending?.entryToken === pending.entryToken) {
+        const observedContext = contextVersion;
+        void bridge.context().then(fresh => {
+          if (alive(owner) && contextVersion === observedContext) updateContext(fresh);
+        }, () => {});
+      }
+    }
   }
   async function show(mode: 'open' | 'new'): Promise<boolean> {
     if (readAdditionalSnapshot().busy || readAdditionalSnapshot().unknown || nativeActionMetadata.busy || nativeActionMetadata.unknown && !(mode === 'open' && nativeActionMetadata.allowOpen)) return false;
@@ -279,10 +321,10 @@ export function createProjectEntryController({ client, bridge, context: initialC
   }
   return {
     activate() { if (!active) { active = true; lifetime++; if (manageIdentityLifecycle) identity?.activate(); } },
-    dispose() { active = false; lifetime++; readSerial++; openFlight = null; if (manageIdentityLifecycle) identity?.dispose(); },
-    boot: () => refresh(true), refresh: () => refresh(false), open, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
+    dispose() { active = false; lifetime++; readSerial++; openFlight = null; cancelFlight = null; if (manageIdentityLifecycle) identity?.dispose(); },
+    boot: () => refresh(true), refresh: () => refresh(false), open, cancelOpen, create, show, dismiss, reconcileOpen, updateContext, reportCreate,
     interacted() { interactionSerial++; autoConsumed = true; },
-    setVisible(value: boolean) { visible = value; },
+    setVisible(value: boolean) { visible = value; updatePending(); },
     canMutate: () => available() && !readAdditionalSnapshot().busy && !readAdditionalSnapshot().unknown && !homeNavigationBlocked(),
     prepareNativeDeparture: async (preserveDraft = false) => Boolean(await prepareNativeDeparture(preserveDraft)),
     prepareHomeNativeDeparture: async () => {const granted = await prepareNativeDeparture(false); if (granted) nativeResultPermits.add(granted); return granted;},
@@ -294,7 +336,7 @@ export function createProjectEntryController({ client, bridge, context: initialC
     consume(entryToken: string, projectId: string): ProjectEntryConsumption {
       const accepted = Boolean(ownerCurrent() && permit && !permit.consumed && permit.token === entryToken && permit.projectId === projectId &&
         permit.contextId === context.contextId && permit.backendId === context.backendId && permit.localVersion === localVersion && !state.createUnknown);
-      if (accepted && permit) permit.consumed = true;
+      if (accepted && permit) {permit.consumed = true; updatePending();}
       return Object.freeze({ version: 1, entryToken, projectId, accepted });
     },
     readCloseSnapshot() { const extra = readAdditionalSnapshot(); return { dirty: metadata.dirty || extra.dirty, busy: state.creating || Boolean(permit && !state.openUnknown) || extra.busy || nativeActionMetadata.busy, unknown: state.createUnknown || state.openUnknown || extra.unknown || nativeActionMetadata.unknown,

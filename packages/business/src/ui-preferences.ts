@@ -98,13 +98,13 @@ export function createUiPreferences({root,channel='web',storage,guards,signal,no
       const next:Disk={...disk,revision:disk.revision+1,preferences,recoveredDefaults:false,lastWrite:{requestId:input.data.requestId,digest}};
       persist(next);return response(next);
     });},
-    markOpened(projectId:unknown):void{safe(()=>{
+    markOpened(projectId:unknown, openedAt?:string):void{safe(()=>{
       const parsed=uiPreferencesProjectIdSchema.safeParse(projectId);if(!parsed.success)fail('UI_PREFERENCES_VALIDATION');
       if(guards.isReadOnly())fail('UI_PREFERENCES_READ_ONLY');
       if(!guards.hasProject(parsed.data))fail('UI_PREFERENCES_VALIDATION');
       const disk=read();
       if(!Object.hasOwn(disk.recentOpened,parsed.data)&&Object.keys(disk.recentOpened).length>=UI_PREFERENCES_LIMITS.recentProjects)fail('UI_PREFERENCES_LIMIT');
-      disk.recentOpened[parsed.data]=now();persist(disk);
+      disk.recentOpened[parsed.data]=openedAt??now();persist(disk);
     });},
     /** Backend project-deletion cleanup; no project lookup after DB removal. */
     removeProject(projectId:unknown):void{safe(()=>{

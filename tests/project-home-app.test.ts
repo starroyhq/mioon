@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
 import * as opening from '../apps/web/src/project-open-state.ts';
 import { editorInitialSelection, revealNativeProjects } from '../apps/web/src/editor-native-window.ts';
+import { isProjectWindowId, projectWindowOpenFailure } from '../apps/desktop/src/project-window-protocol.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard } from '../apps/web/src/last-project-navigation.ts';
@@ -54,7 +55,8 @@ function environment(options:HomeOptions = {}) {
   const identity = projectEntryOwnerFixture(() => options.directory ? options.directory() : projectEntryFixture(created ? [...directoryProjects, {id:id(3),name:'新项目'}].filter((project,index,all)=>all.findIndex(item=>item.id===project.id)===index) : directoryProjects), calls);
   const env = { LanguageControl: () => null, renderImportFeedback: (locale: string, value: string|i18nCore.DisplayMessage|null|undefined) => renderCoreMessage((locale as unknown as Parameters<typeof renderCoreMessage>[0]), value), msg, ...createI18nTestContext(), localizedError: (displayMessage: string|i18nCore.DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', displayMessage)), { displayMessage }),
     ...opening, videoConnectionProviders, readGenerationProviderDirectory, canOfferBackupRecovery: homeUi().canOfferBackupRecovery,
-    editorInitialSelection, revealNativeProjects, nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
+    editorInitialSelection, revealNativeProjects, isProjectWindowId, projectWindowOpenFailure,
+    nativeWindow: options.nativeWindow ?? null, nativeLeaseRevoked: {current: false},
     clipDraftRef: {current: null}, retainWorkbenchForClip: false, retainSettingsForIdentity: false, guardRetainedInputInteraction() {},
 
 
@@ -514,7 +516,7 @@ function boundaryRenderer() {
   // App's actual provider, settings/identity-alert siblings and outer workbench
   // element; full workbench internals are outside
   // this focused fixture, rather than replaced by a generic permissive proxy.
-  const readiness = section('  const workbenchReady =', '  function readProjectMediaOwner()') + section('  useEditorWindowStatus(', '  const panelSurface =') + section('  const retainWorkbenchForIdentity =', '  const staleClips =');
+  const readiness = section('  const workbenchReady =', '  function readProjectMediaOwner()') + section('  function showProjectRules()', '  const panelSurface =') + section('  const retainWorkbenchForIdentity =', '  const staleClips =');
   const renderSource = readiness + section('  const historyLayer =', '  if (auth === false && !retainWorkbenchForClip') + app.slice(start, workbench) + app.slice(workbench, openingEnd + 1) + '</main></ProjectMediaProvider>;';
   const ui = homeUi();
   const body = transformSync(`function renderBoundary() { ${renderSource} }`, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code;
@@ -692,7 +694,7 @@ test('actual home keeps optional video directory failure visible across toast ch
 test('actual App shares authenticated settled project readiness between workbench display and geometry observation', async () => {
   // Media has a separate owner test; retain the actual opening gate, window
   // status and geometry wiring without invoking its independent hook here.
-  const wiring = section('  function projectSessionReady()', '  function readProjectMediaOwner()') + section('  useEditorWindowStatus(', '  const markPanelIntent =');
+  const wiring = section('  function projectSessionReady()', '  function readProjectMediaOwner()') + section('  function showProjectRules()', '  const markPanelIntent =');
   const render = boundaryRenderer();
   const cases:[string,(env:HomeEnvironment)=>void,boolean][] = [
     ['validated project', () => {}, true],
@@ -740,7 +742,7 @@ test('native pending/error render never mounts launcher home or settings in the 
     assert.equal(result.mounted.includes('AgentSettings'), false); assert.equal(result.mounted.includes('ImageSettings'), false);
     const report = callsOf(h, 'editorWindowStatus').at(-1);
     assert.deepEqual(report!.slice(0, 5), ['editorWindowStatus', h.env.nativeWindow, id(3), phase, false]);
-    assert.equal(report!.length, 5, 'native status has no renderer-local remember callback');
+    assert.deepEqual(report!.slice(5), [undefined], 'native status can carry a typed failure and has no renderer-local remember callback');
     assert.deepEqual((callsOf(h, 'remember') as unknown), [], 'opening/error cannot persist a locator');
   }
 });
@@ -750,7 +752,7 @@ test('native and Web accepted selection have no retired locator writer', async (
   const render = boundaryRenderer(), h = harness({ nativeWindow: nativeEditor(id(3)) });
   assert.equal(await h.selectProject(id(3), true), true);
   render(h); const report = callsOf(h, 'editorWindowStatus').at(-1);
-  assert.equal(report!.length, 5); assert.equal(report![4], true);
+  assert.deepEqual(report!.slice(4), [true, undefined]);
   assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   assert.equal(await h.selectProject(id(3)), true); assert.deepEqual((callsOf(h, 'remember') as unknown), []);
   const web = harness(); assert.equal(await web.selectProject(id(1)), true);
@@ -779,29 +781,113 @@ test('home navigation cannot discard over a newer scope or a refused draft confi
 });
 
 
+const backupNativeActions = () => readProjectBackupNativeActions({__mioonProjectBackups: {
+  chooseDestination: async () => ({ok: true, value: null}),
+  reveal: async () => ({ok: true, value: true}),
+}});
+function recoveryNodes(value: unknown): {type?: unknown; props?: Record<string, unknown>}[] {
+  if (Array.isArray(value)) return value.flatMap(recoveryNodes);
+  if (!value || typeof value !== 'object') return [];
+  const node = value as {type?: unknown; props?: Record<string, unknown>};
+  return [node, ...recoveryNodes(node.props?.children), ...recoveryNodes(node.props?.status), ...recoveryNodes(node.props?.recovery)];
+}
+
 test('failed project opening retains an application-only backup admission without treating the invalid source as ready', async () => {
   const h = harness({get: async () => {throw failure('PROJECT_INVALID');}});
-  h.env.nativeBackup=readProjectBackupNativeActions({__mioonProjectBackups:{chooseDestination:async()=>({ok:true,value:null}),reveal:async()=>({ok:true,value:true})}});
+  h.env.nativeBackup=backupNativeActions();
   assert.equal(await h.selectProject(id(1)),false);assert.equal(h.projectSessionReady(),false);
   const failed = h.env.backupFailure as {projectId:string;admission:ProjectFeatureAdmission|null};
   assert.equal(failed.projectId,id(1));assert.ok(failed.admission);assert.equal(failed.admission.isCurrent(),true);
   const directory=h.env.projectEntryIdentityRef.current.getState();
   assert.equal(failed.admission.scope,directory.appLibraryScope);assert.equal(failed.admission.key,JSON.stringify([directory.appLibraryScope,directory.instanceId,id(1)]));
-  const nodes=(value:unknown): {props?:Record<string,unknown>}[]=>{
-    if(Array.isArray(value))return value.flatMap(nodes);if(!value||typeof value!=='object')return [];
-    const node=value as {props?:Record<string,unknown>};return [node,...nodes(node.props?.children),...nodes(node.props?.status),...nodes(node.props?.recovery)];
-  };
-  const recovery=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.projectId===id(1)&&node.props?.admission===failed.admission);
+  const recovery=recoveryNodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.projectId===id(1)&&node.props?.admission===failed.admission);
   assert.notEqual(homeStatus(h),null);
   assert.ok(recovery,'the actual failed-opening branch passes the captured application admission to backup recovery');
   assert.equal(recovery.props?.interactionBlocked,false);
   const before=h.calls.length;(recovery.props!.onRestore as ()=>void)();
   const view=h.env.historyView as {projectId:string;backupsOnly:boolean;admission:ProjectFeatureAdmission};
   assert.equal(view.projectId,id(1));assert.equal(view.backupsOnly,true);assert.equal(view.admission,failed.admission);
-  const history=nodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.backupsOnly===true);assert.ok(history);assert.equal(history.props?.admission,failed.admission);
+  const history=recoveryNodes(boundaryRenderer()(h).sourceTree()).find(node=>node.props?.backupsOnly===true);assert.ok(history);assert.equal(history.props?.admission,failed.admission);
   assert.equal(h.calls.slice(before).some(call=>call[0]==='rpc'),false,'opening failed-source backups never retries project.get or other project RPC');
   const lease={current:true};h.env.nativeLeaseRevoked=lease;
   assert.equal(failed.admission.isCurrent(),false);assert.equal(h.captureProjectFeatureAdmission(id(1)),null);
+});
+
+test('native first read of a damaged project presents backup recovery and opens the restored copy as a normal editor', async () => {
+  const sourceId = id(3), restoredId = id(4), render = boundaryRenderer();
+  const damaged = Object.assign(failure('PROJECT_UNAVAILABLE'), {
+    details: {projectId: sourceId, reason: 'PROJECT_INVALID', invalidReason: 'corrupt'},
+  });
+  const source = harness({nativeWindow: nativeEditor(sourceId), get: async () => {throw damaged;}});
+  source.env.nativeBackup = backupNativeActions();
+  await source.boot();
+  assert.equal(source.env.projectOpening.phase, 'error');
+  assert.equal(source.env.projectOpening.projectId, sourceId);
+  assert.equal(source.env.data.project, null);
+  assert.equal(source.projectSessionReady(), false);
+  assert.deepEqual(callsOf(source, 'tasks.load'), []);
+
+  const failed = render(source);
+  assert.match(failed.html, /data-testid="editor-window-opening"/u);
+  assert.doesNotMatch(failed.html, /data-testid="project-home"|data-testid="workbench"/u);
+  assert.deepEqual(callsOf(source, 'editorWindowStatus').at(-1)?.slice(1, 5), [source.env.nativeWindow, sourceId, 'error', true],
+    'the native window is ready to present recovery before its workbench is ready');
+  const recovery = recoveryNodes(failed.sourceTree()).find(node => node.type === homeUi().ProjectBackupRecovery);
+  assert.ok(recovery?.props);
+  assert.equal(recovery.props.projectId, sourceId);
+  assert.equal(recovery.props.interactionBlocked, false);
+  const admission = recovery.props.admission as ProjectFeatureAdmission;
+  assert.equal(admission.isCurrent(), true);
+  const before = source.calls.length;
+  (recovery.props.onRestore as () => void)();
+  const history = recoveryNodes(render(source).sourceTree()).find(node => node.type === homeUi().ProjectHistoryDialog);
+  assert.ok(history?.props);
+  assert.equal(history.props.projectId, sourceId);
+  assert.equal(history.props.backupsOnly, true);
+  assert.equal(history.props.admission, admission);
+  (history.props.onOpenProject as (projectId: string) => void)(restoredId);
+  assert.deepEqual(callsOf(source, 'nativeEntry.open'), [['nativeEntry.open', restoredId]]);
+  assert.equal(source.env.historyView, null);
+  assert.equal(source.env.currentProject.current, sourceId);
+  assert.equal(source.calls.slice(before).some(call => call[0] === 'rpc'), false);
+
+  const restoredWindow = nativeEditor(restoredId);
+  restoredWindow.context.windowId = id(17);
+  restoredWindow.context.contextId = id(18);
+  const restored = harness({nativeWindow: restoredWindow});
+  await restored.boot();
+  assert.equal(restored.env.data.project?.id, restoredId);
+  assert.equal(restored.projectSessionReady(), true);
+  assert.match(render(restored).html, /data-testid="workbench"/u);
+  assert.deepEqual(callsOf(restored, 'editorWindowStatus').at(-1)?.slice(1), [restoredWindow, restoredId, 'ready', true, undefined]);
+});
+
+test('a native first-read failure needs an available recovery action and a current admission to present its editor', async () => {
+  const sourceId = id(3), render = boundaryRenderer();
+  const cases = [
+    {label: 'non-recoverable', error: failure('PROJECT_LOCKED'), bridge: true, stale: false},
+    {label: 'read-only', error: Object.assign(failure('PROJECT_INVALID'), {details: {reason: 'read-only'}}), bridge: true, stale: false},
+    {label: 'missing native backup capability', error: failure('PROJECT_INVALID'), bridge: false, stale: false},
+    {label: 'stale recovery admission', error: failure('PROJECT_INVALID'), bridge: true, stale: true},
+  ];
+  for (const {label, error, bridge, stale} of cases) {
+    const h = harness({nativeWindow: nativeEditor(sourceId), get: async () => {throw error;}});
+    if (bridge) h.env.nativeBackup = backupNativeActions();
+    await h.boot();
+    if (stale) h.env.projectEpoch.current++;
+    assert.equal(h.env.projectOpening.phase, 'error', label);
+    assert.equal(h.projectSessionReady(), false, label);
+    const view = render(h);
+    assert.doesNotMatch(view.html, /data-testid="workbench"/u, label);
+    assert.deepEqual(callsOf(h, 'editorWindowStatus').at(-1)?.slice(1, 5), [h.env.nativeWindow, sourceId, 'error', false], label);
+    const recovery = recoveryNodes(view.sourceTree()).find(node => node.type === homeUi().ProjectBackupRecovery);
+    if (!stale) assert.equal(recovery, undefined, label);
+    if (recovery) {
+      assert.equal(recovery.props?.interactionBlocked, true, label);
+      (recovery.props?.onRestore as () => void)();
+      assert.equal(h.env.historyView, null, label);
+    }
+  }
 });
 
 test('project feature admission pins the application pair and checks native lease and selection live without repairing the original owner', async () => {

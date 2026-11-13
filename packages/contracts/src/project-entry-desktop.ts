@@ -4,6 +4,7 @@ import {projectIdSchema} from './project-file.ts';
 import {recentProjectSchema} from './project-registry.ts';
 import {projectEntriesResponseSchema} from './project-entry.ts';
 import {projectTemplateInputSchema} from './project-copies.ts';
+import {projectEntryOpenFailureSchema} from './project-entry-open-failure.ts';
 
 export const PROJECT_ENTRY_DESKTOP_CHANNEL = 'mioon:project-entries:v1';
 export const PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT = 'mioon:project-entries:pending-open:v1';
@@ -24,13 +25,22 @@ export const projectDesktopSelectionSchema=z.object({token:uuid,displayPath:z.st
 export type ProjectDesktopSelection=z.infer<typeof projectDesktopSelectionSchema>;
 export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create:z.boolean(),open:z.boolean(),saveAs:z.boolean(),duplicate:z.boolean(),copyTo:z.boolean(),adoptCopy:z.boolean(),help:z.boolean().optional(),reveal:z.boolean().optional(),openOriginal:z.boolean().optional(),copySource:z.boolean().optional(),locationFacts:z.boolean().optional(),templates:z.array(projectDesktopTemplateSchema).max(1).optional()}).strict();
 export type ProjectDesktopCapabilities=z.infer<typeof projectDesktopCapabilitiesSchema>;
+const desktopOpened=z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict();
+const desktopCancelled=z.object({status:z.literal('cancelled')}).strict();
 export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
- z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict(),
- z.object({status:z.literal('cancelled')}).strict(),
+ desktopOpened,
+ desktopCancelled,
  z.object({status:z.literal('copy'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict(),
  z.object({status:z.literal('copy-source'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
 ]);
 export type ProjectDesktopOpenResult=z.infer<typeof projectDesktopOpenResultSchema>;
+export const projectDesktopRecentOpenResultSchema=z.union([
+ desktopOpened,
+ desktopCancelled,
+ z.object({status:z.literal('failed'),reason:z.literal('busy')}).strict(),
+ z.object({status:z.literal('failed'),reason:z.literal('unavailable'),failure:projectEntryOpenFailureSchema.optional()}).strict(),
+]);
+export type ProjectDesktopRecentOpenResult=z.infer<typeof projectDesktopRecentOpenResultSchema>;
 export const projectDesktopLocationSchema=z.object({displayPath:z.string().min(1).max(4096),facts:projectLocationFactsSchema}).strict();
 export const projectDesktopCreatedSchema=z.object({status:z.literal('created'),project:recentProjectSchema}).strict();
 export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
@@ -65,7 +75,7 @@ export interface ProjectEntriesDesktopBridge {
  reveal(input:{projectId:string}|{token:string}):Promise<void>;
  openOriginal(input:{token:string}):Promise<ProjectDesktopOpenResult>;
  currentLocation():Promise<z.infer<typeof projectDesktopLocationSchema>>;
- openRecent(input:{projectId:string;entryToken:string;remember:boolean}):Promise<ProjectDesktopOpenResult>;
+ openRecent(input:{projectId:string;entryToken:string;remember:boolean}):Promise<ProjectDesktopRecentOpenResult>;
  adoptCopy(input:{token:string}):Promise<ProjectDesktopOpenResult>;
  saveAs(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'saveAs'}>,'action'>):Promise<unknown>;
  duplicate(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'duplicate'}>,'action'>):Promise<unknown>;

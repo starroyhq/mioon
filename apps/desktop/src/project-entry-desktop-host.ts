@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {lstat} from 'node:fs/promises';
-import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema,projectDesktopOpenResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema,projectDesktopOpenResultSchema,projectDesktopRecentOpenResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult,ProjectPendingOpenNotice} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntryWindowSchema,projectEntrySourceObservationSchema} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
@@ -12,10 +12,12 @@ import type {RecentProject} from '../../../packages/contracts/src/project-regist
 import type {DesktopProjectEntryControl} from './project-entry-control.ts';
 import {safeProjectEntryControlError} from './project-entry-control.ts';
 import {projectNameProblem} from '../../../packages/contracts/src/project-name.ts';
+import type {ProjectWindowOpenResult} from './project-window-protocol.ts';
 
 export interface ProjectEntryDesktopOwner<W=unknown>{window:W;windowId:string;backendId:string;contextId:string;projectId?:string;isCurrent():boolean}
 export interface ProjectEntryLocationAdmission<W=unknown>{owner:ProjectEntryDesktopOwner<W>;file:string;facts:ProjectLocationFacts}
-interface OpenResult{ok:boolean;targetWindowId:string|null;reason:string}
+type OpenResult=Pick<ProjectWindowOpenResult,'ok'|'targetWindowId'|'reason'|'failure'>;
+type PreparedOpenResult=Omit<OpenResult,'reason'>&{reason:string};
 interface Options<E,W>{
  ownerForEvent(event:E):ProjectEntryDesktopOwner<W>|null;
  backend:DesktopProjectEntryControl;
@@ -26,7 +28,7 @@ interface Options<E,W>{
  probeLocation(input:{path:string;purpose:ProjectStoragePurpose|'open';isDirectory:boolean}):Promise<ProjectLocationFacts>;
  /** Policy and any warning confirmation belong to the trusted caller. */
  admitLocation(owner:ProjectEntryDesktopOwner<W>,facts:ProjectLocationFacts):Promise<boolean>;
- adoptPrepared(prepared:ProjectEntryWindow):Promise<OpenResult>;
+ adoptPrepared(prepared:ProjectEntryWindow,waitForReady?:boolean,origin?:Pick<ProjectEntryDesktopOwner<W>,'window'|'contextId'|'isCurrent'>):Promise<PreparedOpenResult>;
  openRecent(owner:ProjectEntryDesktopOwner<W>,projectId:string,entryToken:string,remember:boolean):Promise<OpenResult>;
  replaceAfterSaveAs?(owner:ProjectEntryDesktopOwner<W>,result:{copy:ProjectCopyResponse;window:ProjectEntryWindow}):Promise<void>;
  openPrivacySettings?(owner:ProjectEntryDesktopOwner<W>):Promise<void>;
@@ -62,12 +64,18 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   const facts=await probe(owner,file,purpose,isDirectory);
   if(!await options.admitLocation(owner,facts))throw unavailable('PROJECT_LOCATION_REJECTED');check(owner);return facts;
  }
- async function opened(owner:ProjectEntryDesktopOwner<W>,prepared:ProjectEntryWindow):Promise<ProjectDesktopOpenResult>{
+ async function opened(owner:ProjectEntryDesktopOwner<W>,prepared:ProjectEntryWindow,waitForReady=false):Promise<ProjectDesktopOpenResult>{
   const parsed=projectEntryWindowSchema.parse(prepared);
   try{check(owner);}catch(error){options.backend.release({windowId:parsed.windowId});throw error;}
   // adoptPrepared owns cleanup on both success and refusal, including a
   // duplicate project that already has its own immutable editor/lease.
-  const result=await options.adoptPrepared(parsed);
+  const result=await options.adoptPrepared(parsed,waitForReady,waitForReady?owner:undefined);
+  if(waitForReady)check(owner);
+  if(result.reason==='cancelled')return {status:'cancelled'};
+  if(result.failure){
+   const {code,...details}=result.failure;
+   throw Object.assign(new Error(code),{code,status:code==='PROJECT_ACCESS_DENIED'?403:409,details});
+  }
   if(!result.ok||!result.targetWindowId)throw unavailable();
   return {status:'opened',projectId:parsed.project.projectId,windowId:result.targetWindowId};
  }
@@ -85,7 +93,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   }
   if(!facts.isLocal||facts.volumeReadOnly)return await copySource(facts.isLocal?'read-only':'network');
   if(!admission&&!await options.admitLocation(owner,facts))throw unavailable('PROJECT_LOCATION_REJECTED');check(owner);
-  try{return await opened(owner,await options.backend.openPath({projectFile:file,windowId:randomUUID()}));}
+  try{return await opened(owner,await options.backend.openPath({projectFile:file,windowId:randomUUID(),deferRecent:true}),true);}
   catch(error){
    check(owner);
    if(error===null||typeof error!=='object'||!('code'in error))throw error;
@@ -212,7 +220,9 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      // actual path once. Probing the catalog's old path here would prevent
      // findMoved and could show the same risk warning twice.
      const result=await options.openRecent(owner,request.projectId,request.entryToken,request.remember);check(owner);
-     if(!result.ok||!result.targetWindowId)throw unavailable();return {status:'opened',projectId:request.projectId,windowId:result.targetWindowId};
+     return projectDesktopRecentOpenResultSchema.parse(result.ok
+      ? {status:'opened',projectId:request.projectId,windowId:result.targetWindowId}
+      : result.reason==='cancelled' ? {status:'cancelled'} : {status:'failed',reason:result.reason,...(result.failure?{failure:result.failure}:{})});
     }
     if(request.action==='adoptCopy')return await mutate(request.token,owner,request,async ticket=>{
      if(ticket.kind!=='copy')throw unavailable();

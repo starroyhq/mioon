@@ -1,4 +1,4 @@
-import {projectEntryDesktopRequestSchema, projectDesktopCapabilitiesSchema, projectDesktopSelectionSchema, projectDesktopOpenResultSchema, projectDesktopCreatedSchema, projectDesktopLocationSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {projectEntryDesktopRequestSchema, projectDesktopCapabilitiesSchema, projectDesktopSelectionSchema, projectDesktopOpenResultSchema, projectDesktopRecentOpenResultSchema, projectDesktopCreatedSchema, projectDesktopLocationSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntriesDesktopBridge} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
@@ -43,7 +43,7 @@ export function readProjectEntryDesktopClient(source: unknown): ProjectEntriesDe
     reveal: input => call('reveal', input, empty),
     openOriginal: input => call('openOriginal', input, projectDesktopOpenResultSchema),
     currentLocation: () => call('currentLocation', {}, projectDesktopLocationSchema),
-    openRecent: input => call('openRecent', input, projectDesktopOpenResultSchema),
+    openRecent: input => call('openRecent', input, projectDesktopRecentOpenResultSchema),
     adoptCopy: input => call('adoptCopy', input, projectDesktopOpenResultSchema),
     saveAs: async () => {throw Object.assign(new Error('Window replacement unavailable'), {code: 'PROJECT_ENTRY_UNAVAILABLE'});},
     duplicate: input => call('duplicate', input, projectCopyResponseSchema),

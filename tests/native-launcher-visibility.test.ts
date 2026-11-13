@@ -17,7 +17,7 @@ import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-ent
 import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 
 const uuid = (n: number) => `79000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const context = (patch?: { autoOpen?: boolean; role?: string; initialProjectId?: string; editorProjectId?: string; editorPhase?: string; editorCount?: number; quitting?: boolean; }|undefined) => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
+const context = (patch?: Partial<ProjectWindowContext>):ProjectWindowContext => ({ version: 2, role: 'launcher', windowId: uuid(1), contextId: uuid(2), backendId: uuid(3), initialProjectId: null, autoOpen: false,
   editorProjectId: null, editorPhase: 'none', editorCount: 0, entryMode: null, entryVersion: 0, entryReceipt: null,
   settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
 const project = (n: number) => ({ id: uuid(n), name: `Project ${n}`, description: '', revision: 1, createdAt: '2026-10-14T00:00:00.000Z', updatedAt: '2026-10-14T00:00:00.000Z' });
@@ -30,13 +30,14 @@ const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 
 /** Run the real renderer hook and controller; only React scheduling, the DOM,
  * read-only directory transport and native bridge are synthetic. */
-function fixture({ initialContext = context(), visible = true, list, open, explicitProjectId = null, desktop, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;explicitProjectId?:string|null;desktop?:ProjectEntriesDesktopBridge;create?:(input:unknown)=>unknown} = {}) {
+function fixture({ initialContext = context(), visible = true, list, open, cancelOpen, explicitProjectId = null, desktop, create = async () => { throw new Error('lost create ACK'); } }: {initialContext?:ReturnType<typeof context>;visible?:boolean;list?:()=>unknown;open?:()=>unknown;cancelOpen?:(token:string)=>Promise<boolean>;explicitProjectId?:string|null;desktop?:ProjectEntriesDesktopBridge;create?:(input:unknown)=>unknown} = {}) {
   const effects:(()=>void|(()=>void))[] = [], cleanups:(()=>void)[] = [], calls: (string | Error | undefined)[] = [], opens:{projectId:string;remember:boolean;entryToken:string}[] = [], listeners = new Set<(value:ReturnType<typeof context>)=>void>();
   let current = initialContext, catalog = [project(10), project(11)], controller:Controller;
   const document = new EventTarget() as EventTarget&{visibilityState:string}; document.visibilityState = visible ? 'visible' : 'hidden';
   const window:{location:{search:string};__mioonProjectEntryAdmission?:{consume:Controller['consume']};__mioonProjectEntries?:ProjectEntriesDesktopBridge} = { location: { search: explicitProjectId === null ? '' : `?project=${explicitProjectId}` }, ...(desktop ? {__mioonProjectEntries: desktop} : {}) };
   const bridge = {
     context: async () => current,
+    cancelOpen,
     subscribe(listener:(value:ReturnType<typeof context>)=>void) { listeners.add(listener); return () => listeners.delete(listener); },
     async openProject(projectId:string,remember:boolean,entryToken:string) {
       opens.push({ projectId, remember, entryToken });
@@ -69,11 +70,146 @@ function fixture({ initialContext = context(), visible = true, list, open, expli
   return { controller, calls, opens, window,
     replayEffects() {cleanups.splice(0).forEach(cleanup => cleanup()); effects.forEach(effect => {const cleanup = effect(); if (cleanup) cleanups.push(cleanup);});},
     catalog(value: { id: string; name: string; description: string; revision: number; createdAt: string; updatedAt: string; }[]) { catalog = value; },
-    receive(patch: { editorCount?: number; quitting?: boolean; leaseRevoked?: boolean; editorPhase?: string }) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
+    receive(patch: Partial<ProjectWindowContext>) { current = { ...current, ...patch }; listeners.forEach(listener => listener(current)); },
     visibility(value: boolean) { document.visibilityState = value ? 'visible' : 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
     dispose() { cleanups.forEach(cleanup => cleanup()); },
   };
 }
+
+for (const order of ['event-first', 'invoke-first', 'lost-ack']) {
+  test(`native recent settles the original typed failure once (${order})`, async () => {
+    const ack = Promise.withResolvers<unknown>(), dispatched = Promise.withResolvers<string>();
+    let f: ReturnType<typeof fixture>, calls = 0;
+    const projectId = uuid(10);
+    const failure = {code: 'PROJECT_FORMAT_NEWER', database: 'history', formatVersion: 8, supportedFormatVersion: 7} as const;
+    const desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+      const input = raw as {action: string; projectId: string; entryToken: string};
+      if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+      if (input.action === 'takePendingOpen') return {ok: true, data: null};
+      assert.equal(input.action, 'openRecent');
+      calls++; assert.equal(input.projectId, projectId); assert.equal(f.controller.consume(input.entryToken, input.projectId).accepted, true);
+      dispatched.resolve(input.entryToken);
+      return ack.promise;
+    });
+    f = fixture({desktop});
+    try {
+      await tick(); await tick();
+      const open = f.controller.open(projectId), entryToken = await dispatched.promise;
+      const result = {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure} as const;
+      const receipt = {entryToken, result};
+      f.receive({entryReceipt: {...receipt, entryToken: uuid(901)}});
+      assert.equal(f.controller.desktop?.getState().failure, null);
+      if (order === 'event-first') {
+        f.receive({entryReceipt: receipt});
+        assert.equal(f.controller.desktop?.getState().failure?.issue.code, failure.code);
+        ack.reject(new Error('late transport failure'));
+      } else if (order === 'invoke-first') ack.resolve({ok: true, data: {status: 'failed', reason: 'unavailable', failure}});
+      else ack.reject(new Error('missing native acknowledgement'));
+      assert.equal(await open, false);
+      if (order === 'lost-ack') {
+        assert.equal(f.controller.getState().openUnknown, true);
+        assert.equal(f.controller.desktop?.getState().failure, null);
+        assert.equal(await f.controller.open(projectId), false);
+        f.receive({entryReceipt: receipt});
+      }
+      const first = f.controller.desktop?.getState().failure;
+      assert.deepEqual(first, {issue: {...failure, projectId, projectFile: `/native-recent/${projectId}.mioon`}, name: 'Project 10', projectId});
+      assert.equal(f.controller.getState().openUnknown, false);
+      assert.equal(f.controller.getState().sealed, false);
+      assert.equal(f.controller.getState().phase, 'home', 'the typed dialog is the only presentation');
+      assert.equal(f.controller.getState().error, '');
+      f.receive({entryReceipt: receipt}); await f.controller.reconcileOpen();
+      assert.equal(f.controller.desktop?.getState().failure, first);
+      assert.equal(calls, 1);
+    } finally {ack.resolve(null); f.dispose();}
+  });
+}
+
+test('only the current consumed native open can be cancelled and its original receipt returns home', async () => {
+  const held = Promise.withResolvers<unknown>(), requested = Promise.withResolvers<string>();
+  const cancelAck = Promise.withResolvers<boolean>(), cancelled: string[] = [];
+  const projectId = uuid(10);
+  let f: ReturnType<typeof fixture>, calls = 0;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+    const input = raw as {action: string; projectId: string; entryToken: string};
+    if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (input.action === 'takePendingOpen') return {ok: true, data: null};
+    assert.equal(input.action, 'openRecent');
+    calls++; assert.equal(f.controller.consume(input.entryToken, input.projectId).accepted, true);
+    requested.resolve(input.entryToken); return held.promise;
+  });
+  f = fixture({desktop, cancelOpen: token => {cancelled.push(token); return cancelAck.promise;}});
+  try {
+    await tick(); await tick();
+    f.controller.reportCreate({dirty: true, busy: false, version: 1});
+    const open = f.controller.open(projectId), entryToken = await requested.promise;
+    f.receive({entryPending: {entryToken: uuid(901), projectId}});
+    assert.equal(f.controller.getState().pendingOpenProjectId, null);
+    assert.equal(await f.controller.cancelOpen(), false);
+    f.receive({entryPending: {entryToken, projectId}});
+    assert.equal(f.controller.getState().pendingOpenProjectId, projectId);
+    f.visibility(false);
+    assert.equal(await f.controller.cancelOpen(), false);
+    f.visibility(true);
+    const cancel = f.controller.cancelOpen();
+    assert.deepEqual(cancelled, [entryToken]);
+    assert.equal(await f.controller.cancelOpen(), false);
+    cancelAck.resolve(true); assert.equal(await cancel, true);
+    assert.equal(f.controller.getState().sealed, true, 'a cancellation ACK does not settle the open');
+    assert.equal(await f.controller.cancelOpen(), true, 'a retained close can be requested again while the same token is pending');
+    assert.deepEqual(cancelled, [entryToken, entryToken]);
+    f.receive({entryPending: undefined, entryReceipt: {entryToken, result: {ok: false, reason: 'cancelled', targetWindowId: null, targetPhase: null}}});
+    held.resolve({ok: true, data: {status: 'cancelled'}});
+    assert.equal(await open, false);
+    assert.equal(f.controller.getState().phase, 'home');
+    assert.equal(f.controller.getState().pendingOpenProjectId, null);
+    assert.equal(f.controller.getState().sealed, false);
+    assert.equal(f.controller.getState().error, '');
+    assert.equal(f.controller.desktop?.getState().failure, null);
+    assert.equal(f.controller.readCloseSnapshot().dirty, true);
+    assert.equal(calls, 1);
+  } finally {held.resolve(null); cancelAck.resolve(false); f.dispose();}
+});
+
+test('a slow native file selection uses only its exact host token and finishes through its original picker response', async () => {
+  const picked = Promise.withResolvers<unknown>(), pickerStarted = Promise.withResolvers<void>();
+  const projectId = uuid(14), entryToken = uuid(901), cancelled: string[] = [];
+  let pickerCalls = 0;
+  const desktop = createProjectEntriesDesktopBridge(async (_channel, raw) => {
+    const input = raw as {action: string};
+    if (input.action === 'capabilities') return {ok: true, data: {ready: true, create: true, open: true, saveAs: false, duplicate: true, copyTo: true, adoptCopy: true}};
+    if (input.action === 'takePendingOpen') return {ok: true, data: null};
+    assert.equal(input.action, 'openSelectedFile');
+    pickerCalls++; pickerStarted.resolve(); return picked.promise;
+  });
+  const f = fixture({desktop, cancelOpen: async token => {cancelled.push(token); return true;}});
+  try {
+    await tick(); await tick();
+    f.controller.desktop?.observeError({code: 'PROJECT_INVALID', details: {reason: 'corrupt'}});
+    const previousFailure = f.controller.desktop?.getState().failure;
+    assert.equal(previousFailure?.issue.code, 'PROJECT_INVALID');
+    const selecting = f.controller.desktop!.retryFailure();
+    await pickerStarted.promise;
+    assert.equal(f.controller.desktop?.getState().failure, null, 'a previous issue must not cover the pending cancel action');
+    f.receive({entryPending: {entryToken, projectId}});
+    assert.equal(await f.controller.cancelOpen(), false, 'recent pending requires its consumed renderer permit');
+    f.receive({contextId: uuid(902), entryPending: {entryToken, projectId, kind: 'selected'}});
+    assert.equal(await f.controller.cancelOpen(), false, 'a replacement document cannot lend its selected token');
+    f.receive({contextId: uuid(2), entryPending: {entryToken, projectId, kind: 'selected'}});
+    assert.equal(f.controller.getState().pendingOpenProjectId, projectId);
+    assert.equal(await f.controller.cancelOpen(), true);
+    assert.deepEqual(cancelled, [entryToken]);
+    assert.equal(f.controller.desktop?.getState().busy, true);
+    f.receive({entryPending: undefined});
+    picked.resolve({ok: true, data: {status: 'cancelled'}});
+    assert.equal(await selecting, false);
+    assert.equal(f.controller.getState().pendingOpenProjectId, null);
+    assert.equal(f.controller.desktop?.getState().busy, false);
+    assert.equal(f.controller.desktop?.getState().failure, previousFailure);
+    assert.equal(pickerCalls, 1);
+    assert.deepEqual(f.opens, []);
+  } finally {picked.resolve(null); f.dispose();}
+});
 
 test('StrictMode effect replay fences the disposed boot continuation before native capability initialization', async () => {
   const requests: unknown[] = [];

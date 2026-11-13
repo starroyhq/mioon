@@ -71,6 +71,7 @@ import { createNativeProjectLocation } from './native-project-location.ts';
 import { createNativeAudioPreviewAdmission } from './native-audio-preview-adapter.ts';
 import { useEditorSettingsScope } from './editor-settings-scope.ts';
 import { editorInitialSelection, useEditorWindowStatus, openNativeSettings, revealNativeProjects } from './editor-native-window.ts';
+import { isProjectWindowId, projectWindowOpenFailure, type ProjectWindowOpenFailure } from '../../desktop/src/project-window-protocol.ts';
 import EditorWindowOpening from './EditorWindowOpening.tsx';
 import { useExportRange } from './export-range-state.ts';
 import { deriveTimelineAssetUsage, retainTimelineAssetUsage } from './timeline-asset-usage.ts';
@@ -330,7 +331,7 @@ export interface LayoutModeState {assetsWidth: number; inspectorWidth: number; t
 export type ViewState = ReturnType<typeof import('./workspace-state.ts').normalizeWorkspaceState>;
 export type ProviderRecord = GenerationProvider;
 export interface ToastState {message: AppMessage; type: ToastTone; time: number}
-export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: AppMessage}
+export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: AppMessage; failure?: ProjectWindowOpenFailure}
 export interface ProjectListStatus {busy: boolean; error: AppMessage}
 export interface PreferenceStatus {phase: string; pending: boolean; error?: unknown}
 export interface WebSettingsRequest {page: SettingsPage; resolve: (value: boolean) => void}
@@ -803,7 +804,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setRulesAdmission({scope:admission.scope,key: admission.key, isCurrent: () => admission.isCurrent() && projectSessionReady() && dataRef.current?.project?.id === project.id});
     setRulesOpen(true);
   }
-  useEditorWindowStatus(nativeWindow, currentProject.current, projectOpening.phase, workbenchReady);
+  const backupRecoveryAdmission = nativeBackup && backupFailure?.admission && projectOpening.phase === 'error' &&
+    projectOpening.projectId === backupFailure.projectId ? backupFailure.admission : null;
+  const nativeEditorReady = workbenchReady || (auth === true && backupRecoveryAdmission?.isCurrent() === true);
+  // The recovery view can own the editor window before project contents are usable.
+  useEditorWindowStatus(nativeWindow, projectOpening.projectId, projectOpening.phase, nativeEditorReady, projectOpening.failure);
   const panelSurface = useRef<HTMLDivElement | null>(null), panelIntent = useRef(0), taskWorkspaceState = useRef<{visible: boolean; connected: boolean} | null>(null), taskShotAttempt = useRef(0);
   const [panelChange, setPanelChange] = useState(0);
   const panelScope = `${currentProject.current}:${projectEpoch.current}:${workspaceMode}:${panelChange}`;
@@ -1114,14 +1119,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!settingsCurrent()) return false;
     try {
       const directory = await readProjectEntryIdentity(projectEntryIdentityRef.current!);
-      if (!settingsCurrent() || !directory.registered.some(entry => entry.project.projectId === id)) return false;
+      if (!settingsCurrent()) return false;
+      if (!directory.registered.some(entry => entry.project.projectId === id)) {
+        if (nativeWindow) setProjectOpening({phase: 'error', projectId: id, error: msg('shell.error.selectionNotReady')});
+        return false;
+      }
       projectEntryIdentityRef.current!.assertIdentity();
     } catch (error) {
       if (settingsCurrent()) {
         const kind = projectOpenFailureKind(error);
         if (kind === 'auth') setAuth(false);
         else if (kind === 'identity') setAuth('error');
-        setProjectOpening({phase: 'error', projectId: id, error: readableError(error)});
+        setProjectOpening({phase: 'error', projectId: id, error: readableError(error),
+          failure: nativeWindow ? projectWindowOpenFailure(error, id) : undefined});
       }
       return false;
     }
@@ -1143,7 +1153,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     // project mounts and its initial viewport/selection effects can persist.
     try {
     const loadedView = await preferencesRef.current!.load(id, { reload: reloadPreferences });
-    if (!importSession.current.active || currentProject.current !== id || projectEpoch.current !== epoch || editorSession.current !== attempt.workspaceScope) return false;
+    if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== id || projectEpoch.current !== epoch || editorSession.current !== attempt.workspaceScope) return false;
     if (!loadedView) throw Object.assign(localizedError(msg('shell.error.viewNotReady')), { code: 'PROJECT_VIEW_UNAVAILABLE' });
     const preferenceError = preferencesRef.current!.getStatus(id)?.error;
     if (preferenceError && projectOpenFailureKind(preferenceError) !== 'project') throw preferenceError;
@@ -1152,19 +1162,22 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setZoom(Math.round((loadedView.canvas.viewport?.zoom || 1) * 100));
     setPreferenceStatus(preferencesRef.current!.getStatus(id) as PreferenceStatus);
     const next = await refresh(id, false, { opening: true }) as AppData | null;
-    if (!importSession.current.active || currentProject.current !== id || projectEpoch.current !== epoch || editorSession.current !== attempt.workspaceScope) return false;
+    if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== id || projectEpoch.current !== epoch || editorSession.current !== attempt.workspaceScope) return false;
+    if (nativeWindow) projectEntryIdentityRef.current!.assertIdentity();
     setLoading(false);
     if (!projectResponseMatches(next, id) || !canPublishProjectOpen(attempt, { active: importSession.current.active, currentProjectId: currentProject.current, epoch: projectEpoch.current, workspaceScope: editorSession.current as string, preferencesReady: viewReady.current, dataProjectId: next?.project?.id || null, loading: false })) throw Object.assign(localizedError(msg('shell.error.selectionNotReady')), { code: 'BACKEND_PROTOCOL_ERROR' });
     openedProject.current = attempt; setProjectOpening({ phase: 'ready', projectId: id, error: '' });
-    void window.__mioonUiPreferences?.markOpened?.(id);
+    if (!nativeWindow) void window.__mioonUiPreferences?.markOpened?.(id);
     void tasksRef.current!.load(id);
     if (next && !viewRef.current!.canvas.selectedId) { const first = [...next.shots].sort((a, b) => a.orderIndex - b.orderIndex)[0] || next.nodes.find((n: AppNode) => n.type !== 'text') || next.nodes[0]; if (first) updateView('canvas', { selectedId: first.id }, { passive: true }); }
     return true;
     } catch (e) {
-      if (importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && editorSession.current === attempt.workspaceScope) {
+      if (!importSession.current.leaseRevoked && importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && editorSession.current === attempt.workspaceScope) {
         openedProject.current = null; viewReady.current = false;
-        setBackupFailure(canOfferBackupRecovery(e) ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
-        setProjectOpening({ phase: 'error', projectId: id, error: canOfferBackupRecovery(e) ? t('projectFile.open.invalid.body') : readableError(e) });
+        const canRecover = canOfferBackupRecovery(e);
+        setBackupFailure(canRecover ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
+        setProjectOpening({ phase: 'error', projectId: id, error: canRecover ? t('projectFile.open.invalid.body') : readableError(e),
+          failure: nativeWindow ? projectWindowOpenFailure(e, id) : undefined });
         const kind = projectOpenFailureKind(e);
         if (kind === 'auth') setAuth(false);
         else if (kind === 'identity') { setAuth('error'); notify(readableError(e), 'error'); }
@@ -1220,7 +1233,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         const accepted = await selectProject(choice.projectId, true);
         if (accepted && currentProject.current === choice.projectId && choice.notice) notify(choice.notice, 'error');
       } else { setData(emptyData); dataRef.current = emptyData; currentProject.current = null; openedProject.current = null; viewReady.current = false; setProjectOpening({ phase: 'home', projectId: null, error: '' }); if (choice.notice) notify(choice.notice, 'error'); }
-    } catch (e) { if (bootGuard.current!.isCurrent(ticket)) { if ((e as {code?: string; status?: number}).code === 'UNAUTHORIZED' || (e as {status?: number}).status === 401) setAuth(false); else { setAuth('error'); notify(readableError(e), 'error'); } } }
+    } catch (e) {
+      if (!bootGuard.current!.isCurrent(ticket)) return;
+      const nativeProjectId = nativeWindow?.context.initialProjectId;
+      if (nativeWindow && !nativeWindow.context.quitting && !importSession.current.leaseRevoked && isProjectWindowId(nativeProjectId)) {
+        setProjectOpening({phase: 'error', projectId: nativeProjectId, error: readableError(e), failure: projectWindowOpenFailure(e, nativeProjectId)});
+      }
+      if ((e as {code?: string; status?: number})?.code === 'UNAUTHORIZED' || (e as {status?: number})?.status === 401) setAuth(false);
+      else { setAuth('error'); notify(readableError(e), 'error'); }
+    }
   }
   useEffect(() => {
     const identity = projectEntryIdentityRef.current!;
@@ -3109,10 +3130,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       admission={historyView.admission} interactionBlocked={!historyView.admission.isCurrent()} nativeBackup={nativeBackup}
       onClose={() => {if (historyView.admission.isCurrent()) setHistoryView(null);}} onRestored={id => {if (historyView.admission.isCurrent() && currentProject.current === id) void refresh(id);}}
       onOpenProject={id => {if (!historyView.admission.isCurrent()) return; setHistoryView(null); if (nativeWindow) void nativeProjectEntry?.open(id); else void selectProject(id);}} />;
-  const backupRecovery = nativeBackup && backupFailure?.admission && projectOpening.phase === 'error' && projectOpening.projectId === backupFailure.projectId
-    ? <ProjectBackupRecovery key={backupFailure.projectId} projectId={backupFailure.projectId} admission={backupFailure.admission} interactionBlocked={!backupFailure.admission.isCurrent()} onRestore={() => {
-      if (!backupFailure.admission?.isCurrent()) return;
-      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', backupsOnly: true, admission: backupFailure.admission});
+  const backupRecovery = backupFailure && backupRecoveryAdmission
+    ? <ProjectBackupRecovery key={backupFailure.projectId} projectId={backupFailure.projectId} admission={backupRecoveryAdmission} interactionBlocked={!backupRecoveryAdmission.isCurrent()} onRestore={() => {
+      if (!backupRecoveryAdmission.isCurrent()) return;
+      setHistoryView({projectId: backupFailure.projectId, name: projects.find(project => project.id === backupFailure.projectId)?.name ?? backupFailure.name, tab: 'backups', backupsOnly: true, admission: backupRecoveryAdmission});
     }} /> : null;
   if (auth === false && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <Login onLogin={boot} />;
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;

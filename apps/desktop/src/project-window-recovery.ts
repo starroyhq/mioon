@@ -1,28 +1,45 @@
 type Listener = (...args: unknown[]) => void;
 interface Events { on(event: string, listener: Listener): unknown; removeListener(event: string, listener: Listener): unknown }
 interface EmptyWindow extends Events { isDestroyed(): boolean; close(): void; webContents: Events & { readonly mainFrame: object; getURL(): string; loadURL(url: string): Promise<unknown> } }
-/** Only an exact, never-committed empty document may bypass renderer admission.
- * Failed reloads and unresponsive/gone application documents retain P0. */
+/** Only an exact, never-committed empty document or a proven Chromium error
+ * page may close without executing renderer admission. */
 export function observeInitialProjectLoad(window: EmptyWindow, assignedURL: string, isCurrent: () => boolean) {
   const contents = window.webContents;
-  let generation = 0, committed = false, disposed = false, failed = false;
+  let generation = 0, startedAssigned = false, committed = false, disposed = false, failed = false;
+  let failedFrame: object | null = null;
   let closePermit: (() => boolean) | null = null;
-  const started: Listener = (details, _url, sameDocument, mainFrame) => {
+  const started: Listener = (details, url, sameDocument, mainFrame) => {
     const d = details && typeof details === 'object' ? details as Record<string, unknown> : null;
     if ((d && 'isMainFrame' in d ? d.isMainFrame : mainFrame) === false ||
         (d && 'isSameDocument' in d ? d.isSameDocument : sameDocument) === true) return;
-    generation++; failed = false; closePermit = null;
+    generation++; startedAssigned = (d && 'url' in d ? d.url : url) === assignedURL;
+    failed = false; failedFrame = null; closePermit = null;
   };
-  const navigated: Listener = () => { committed = true; failed = false; closePermit = null; };
-  const valid = () => { try { return !disposed && !committed && !window.isDestroyed() && isCurrent() && ['', 'about:blank'].includes(contents.getURL()); } catch { return false; } };
-  contents.on('did-start-navigation', started); contents.on('did-navigate', navigated);
+  const navigated: Listener = () => { committed = true; failed = false; failedFrame = null; closePermit = null; };
+  const failLoad: Listener = (_event, code, _description, url, mainFrame, processId, routingId) => {
+    if (!startedAssigned || committed || mainFrame !== true || url !== assignedURL ||
+        typeof code !== 'number' || !Number.isInteger(code) || code >= 0 || code === -3) return;
+    try {
+      const frame = contents.mainFrame as {processId?: number; routingId?: number};
+      if (typeof processId === 'number' && typeof routingId === 'number' &&
+          frame.processId === processId && frame.routingId === routingId && contents.getURL() === assignedURL) failedFrame = frame;
+    } catch { /* A disappearing or replaced frame cannot authorize closure. */ }
+  };
+  const valid = (candidate: boolean) => {
+    try {
+      if (disposed || committed || window.isDestroyed() || !isCurrent()) return false;
+      const url = contents.getURL();
+      return url === '' || url === 'about:blank' || candidate && url === assignedURL && failedFrame === contents.mainFrame;
+    } catch { return false; }
+  };
+  contents.on('did-start-navigation', started); contents.on('did-navigate', navigated); contents.on('did-fail-load', failLoad);
   const api = {
-    captureFailure() {
-      if (!valid()) return null;
+    captureFailure(candidate = false) {
+      if (!valid(candidate)) return null;
       failed = true;
       const epoch = generation, frame = contents.mainFrame;
       let consumed = false;
-      const current = () => !consumed && failed && generation === epoch && valid() && contents.mainFrame === frame;
+      const current = () => !consumed && failed && generation === epoch && valid(candidate) && contents.mainFrame === frame;
       return Object.freeze({
         isCurrent: current,
         async retry() { if (!current()) return false; consumed = true; failed = false; await contents.loadURL(assignedURL); return !disposed && isCurrent(); },
@@ -37,7 +54,7 @@ export function observeInitialProjectLoad(window: EmptyWindow, assignedURL: stri
     },
     consumeClose() { const permit = closePermit; closePermit = null; return permit?.() === true; },
     get failed() { return failed; },
-    dispose() { disposed = true; closePermit = null; contents.removeListener('did-start-navigation', started); contents.removeListener('did-navigate', navigated); },
+    dispose() { disposed = true; closePermit = null; contents.removeListener('did-start-navigation', started); contents.removeListener('did-navigate', navigated); contents.removeListener('did-fail-load', failLoad); },
   };
   window.on('closed', api.dispose);
   return api;

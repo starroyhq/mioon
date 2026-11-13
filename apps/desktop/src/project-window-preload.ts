@@ -1,5 +1,6 @@
 import { PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT, isProjectWindowContext, isProjectWindowOpenResult,
-  isProjectWindowId, isProjectWindowSettingsSlot, isProjectWindowEntryMode, isProjectWindowLocatorStatus, isProjectWindowLocatorAction } from './project-window-protocol.ts';
+  isProjectWindowId, isProjectWindowSettingsSlot, isProjectWindowEntryMode, isProjectWindowLocatorStatus, isProjectWindowLocatorAction,
+  isProjectWindowRequest, freezeProjectWindowContext, freezeProjectWindowOpenResult } from './project-window-protocol.ts';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowRequest } from './project-window-protocol.ts';
 interface WindowTransport {
   invoke(channel: typeof PROJECT_WINDOW_CHANNEL, request: ProjectWindowRequest): Promise<unknown>;
@@ -7,10 +8,6 @@ interface WindowTransport {
   removeListener(channel: typeof PROJECT_WINDOW_EVENT, listener: (event: unknown, value: unknown) => void): void;
 }
 const refused = () => new Error('Native window action is unavailable.');
-const frozen = (value: ProjectWindowContext): ProjectWindowContext => Object.freeze({ ...value,
-  entryReceipt: value.entryReceipt ? Object.freeze({ ...value.entryReceipt, result: Object.freeze({ ...value.entryReceipt.result }) }) : null,
-  locatorStatus: value.locatorStatus ? Object.freeze({ ...value.locatorStatus }) : null,
-  locatorIntent: value.locatorIntent ? Object.freeze({ ...value.locatorIntent }) : null });
 /** Transport and Electron events never cross into the page. */
 export function createProjectWindowBridge(transport: WindowTransport): ProjectWindowBridge {
   let identity: ProjectWindowContext | null = null;
@@ -18,7 +15,7 @@ export function createProjectWindowBridge(transport: WindowTransport): ProjectWi
     if (!isProjectWindowContext(value) || identity && (value.windowId !== identity.windowId || value.backendId !== identity.backendId ||
       value.contextId !== identity.contextId || value.role !== identity.role || value.initialProjectId !== identity.initialProjectId)) throw refused();
     identity ??= value;
-    return frozen(value);
+    return freezeProjectWindowContext(value);
   };
   const context = async (): Promise<ProjectWindowContext> => {
     const value = await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'describe' });
@@ -47,7 +44,13 @@ export function createProjectWindowBridge(transport: WindowTransport): ProjectWi
       const owner = await context();
       const value = await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'open', contextId: owner.contextId, projectId, remember, entryToken });
       if (!isProjectWindowOpenResult(value)) throw refused();
-      return Object.freeze({ ...value });
+      return freezeProjectWindowOpenResult(value);
+    },
+    async cancelOpen(entryToken) {
+      if (!isProjectWindowId(entryToken)) throw refused();
+      const owner = await context();
+      if (owner.entryPending?.entryToken !== entryToken) return false;
+      return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, {action: 'cancel-open', contextId: owner.contextId, entryToken}));
     },
     showProjects: () => requestProjectEntry('open'),
     async showSettings(slot) {
@@ -60,10 +63,11 @@ export function createProjectWindowBridge(transport: WindowTransport): ProjectWi
       if (owner.role !== 'settings') throw refused();
       return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'settings-close', contextId: owner.contextId }));
     },
-    async editorStatus(projectId, phase) {
-      if (!isProjectWindowId(projectId) || phase !== 'ready' && phase !== 'failed') throw refused();
+    async editorStatus(projectId, phase, failure) {
       const owner = await context();
-      return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'editor-status', contextId: owner.contextId, projectId, phase }));
+      const request = {action: 'editor-status', contextId: owner.contextId, projectId, phase, ...(failure === undefined ? {} : {failure})};
+      if (!isProjectWindowRequest(request)) throw refused();
+      return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, request));
     },
     subscribe(listener) {
       if (typeof listener !== 'function') throw refused();

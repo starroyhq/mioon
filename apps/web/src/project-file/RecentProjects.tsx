@@ -33,6 +33,17 @@ export interface RecentProjectActions {
   readonly onForget?: (projectId: string) => void;
 }
 export type RecentProjectsLayout = 'grid' | 'list';
+export interface PendingProjectOpen {
+  readonly projectId: string;
+  readonly onCancel: () => void;
+}
+export function PendingProjectOpenStatus({pending, name}: {readonly pending: PendingProjectOpen; readonly name?: string}): ReactElement {
+  const { t } = useI18n();
+  return <div className="pf-open-pending" data-testid="pf-open-pending">
+    <span role="status"><span className="wb-spinner" aria-hidden="true" />{name ? t('projects.openingNamed', {name}) : t('projects.opening')}</span>
+    <WorkbenchButton type="button" size="compact" data-testid="pf-open-cancel" onClick={pending.onCancel}>{t('shell.cancel')}</WorkbenchButton>
+  </div>;
+}
 export interface RecentProjectsViewProps extends RecentProjectActions {
   readonly state: ViewState<readonly RecentProjectItem[]>;
   readonly sort: RecentProjectsSort;
@@ -45,6 +56,7 @@ export interface RecentProjectsViewProps extends RecentProjectActions {
   readonly homeDirectory?: string | null;
   readonly query?: string;
   readonly busy?: boolean;
+  readonly pendingOpen?: PendingProjectOpen;
   readonly platform?: HostPlatform;
   /** Explicit host window ownership. Availability `open` can also be a task. */
   readonly openedProjectIds?: readonly string[];
@@ -71,6 +83,8 @@ export function RecentProjectsView(props: RecentProjectsViewProps): ReactElement
   const waitingById = new Map(waiting.map(entry => [entry.projectId, entry]));
   const customEmpty = props.nativeLayout && state.kind === 'ready' && registered.length === 0 && props.emptyContent != null;
   const layouts: readonly RecentProjectsLayout[] = props.nativeLayout ? ['list', 'grid'] : ['grid', 'list'];
+  const pending = props.pendingOpen;
+  const pendingInCatalog = pending && items.some(item => item.project.projectId === pending.projectId);
   return <section className="pf-home" data-native-layout={props.nativeLayout || undefined} data-state={state.kind} data-testid="pf-recent-projects" aria-labelledby={customEmpty ? undefined : `${id}-title`}>
     {!customEmpty && <header className="pf-home-heading">
       <h1 id={`${id}-title`}>{t('projectFile.home.title')}</h1>
@@ -87,6 +101,8 @@ export function RecentProjectsView(props: RecentProjectsViewProps): ReactElement
         })} />
       </div>}
     </header>}
+    {pending && !pendingInCatalog && <PendingProjectOpenStatus pending={pending}
+      name={registered.find(item => item.project.projectId === pending.projectId)?.project.name} />}
     {props.waiting?.kind === 'ready' && <ProjectWaitingNotice entries={waiting} busy={props.busy} onOpen={props.onOpen} onLocate={props.onLocate} onReveal={props.onReveal} onAccessHelp={props.onAccessHelp} platform={props.platform} />}
     {props.waiting?.kind === 'error' && <WorkbenchAlert tone="warning" data-testid="pf-waiting-error" actions={props.waiting.retryable && props.onRetryWaiting ? <WorkbenchButton size="compact" disabled={props.busy} onClick={() => { if (!current.current.busy) current.current.onRetryWaiting?.(); }}>{t('projectFile.common.retry')}</WorkbenchButton> : undefined}>{t('projectFile.home.waitingUnavailable')}</WorkbenchAlert>}
     {state.kind === 'loading' && <div className="pf-home-grid" data-layout={view} role="status" data-testid="pf-home-loading">
@@ -121,6 +137,7 @@ export interface RecentProjectCardProps extends RecentProjectActions {
   readonly nativeLayout?: boolean;
   readonly homeDirectory?: string | null;
   readonly busy?: boolean;
+  readonly pendingOpen?: PendingProjectOpen;
   readonly platform?: HostPlatform;
   readonly waitingProject?: WaitingProject;
   readonly waitingKnown?: boolean;
@@ -132,6 +149,8 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const display = useProjectFileDisplay();
   const current = useRef(props); current.current = props;
   const { project, availability, coverUrl } = item, summary = project.summary;
+  const pending = props.pendingOpen?.projectId === project.projectId ? props.pendingOpen : undefined;
+  const opening = pending && <PendingProjectOpenStatus pending={pending} />;
   const missing = availability.state === 'missing';
   const invalidLabel = availability.state === 'invalid' && availability.reason === 'format-newer' ? 'projectFile.open.newer.title'
     : availability.state === 'invalid' && availability.reason === 'read-only' ? 'projectFile.home.readOnly' : 'projectFile.home.invalid';
@@ -169,12 +188,13 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
     </WorkbenchButton>
     <RecentProjectMenu {...props} />
     {nativeList ? <div className="pf-card-list-details">
-      {missing ? waiting : (summary || when) && <div className="pf-card-list-info">{aspect}{duration}{date}</div>}
+      {opening || (missing ? waiting : (summary || when) && <div className="pf-card-list-info">{aspect}{duration}{date}</div>)}
       {missing ? locate : waiting}
     </div> : <div className="pf-card-body">
       <div className="pf-card-title">{title}{!nativeGrid && (missing ? locate : aspect)}</div>
       {nativeGrid ? <div className="pf-card-grid-meta">{metadata}{locate}</div> : metadata}
       {waiting}
+      {opening}
     </div>}
   </article>;
 }

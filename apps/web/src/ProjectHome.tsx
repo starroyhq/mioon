@@ -13,6 +13,7 @@ import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/wo
 import type { ProjectSummary } from '../../../packages/contracts/src/project-home.ts';
 import { Textarea } from '@mioon/ui/components/textarea';
 import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
+import {PendingProjectOpenStatus, type PendingProjectOpen} from './project-file/RecentProjects.tsx';
 import './launcher-home.css';
 
 export interface ProjectHomeProject {
@@ -44,6 +45,8 @@ export interface ProjectHomeProps {
   projects: readonly ProjectHomeProject[];
   phase: 'home' | 'opening' | 'error';
   openingName?: string;
+  deferOpeningFeedback?: boolean;
+  pendingOpen?: PendingProjectOpen;
   error?: string | DisplayMessage;
   notice?: string | DisplayMessage;
   busy: boolean;
@@ -69,7 +72,7 @@ export interface ProjectHomeProps {
   toolbar?: ReactNode;
   /** A verified catalog supplies its own loading and error views and admits the
    * launcher's empty content only when the directory is known to be empty. */
-  renderCatalog?: (emptyContent?: ReactNode) => ReactNode;
+  renderCatalog?: (emptyContent?: ReactNode, pendingOpen?: PendingProjectOpen) => ReactNode;
   launcher?: {readonly version?: string; readonly service: 'ready' | 'connecting' | 'unavailable'; readonly empty: boolean};
   projectMenu?: (project: ProjectHomeProject) => ReactNode;
   totalProjects?: number;
@@ -113,7 +116,7 @@ function ProjectTime({ value }: { value: string }) {
 
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
-export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
+export default function ProjectHome({ projects, phase, openingName, deferOpeningFeedback, pendingOpen, error, notice, busy, listBusy, listError,
   page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
@@ -267,7 +270,8 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
       </WorkbenchButton>}
     </div>}
   </div> : undefined;
-  const catalogContent = renderCatalog?.(launcherEmpty);
+  const catalogVisible = page === 'projects' && (!launcher || launcherPage === 'projects');
+  const catalogContent = renderCatalog?.(launcherEmpty, catalogVisible ? pendingOpen : undefined);
   const launcherLinks = launcher ? [
     {id: 'projects', label: t('launcher.projects'), icon: FolderOpen},
     {id: 'examples', label: t('launcher.examples'), icon: Clapperboard},
@@ -330,9 +334,11 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
       <main className="project-home-main" aria-labelledby={launcher && launcherPage !== 'projects' || !catalogContent ? `${prefix}-heading` : undefined}>
         {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
         {status && <div className="project-home-notice">{status}</div>}
-        {phase === 'opening' && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
+        {phase === 'opening' && !deferOpeningFeedback && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
           <div><strong>{openingName ? t('projects.openingNamed', { name: openingName }) : t('projects.opening')}</strong><p>{t('projects.loadingView')}</p></div>
         </section>}
+        {pendingOpen && (!catalogVisible || !catalogContent) &&
+          <PendingProjectOpenStatus pending={pendingOpen} name={projects.find(project => project.id === pendingOpen.projectId)?.name} />}
         {phase === 'error' && <section className="project-home-feedback" data-phase="error" role="alert">
           <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong><p>{error ? renderMessage(error) : t('projects.openRetryHint')}</p></div>
           {page === 'projects' && <Button type="button" variant="outline" data-testid="project-home-retry" disabled={busy || submitting}

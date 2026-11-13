@@ -472,13 +472,15 @@ async function openRestartSettings(runtime: Awaited<ReturnType<typeof harness>>,
   const host = runtime.get('windowHost');
   let parent = runtime.records.windows[0];
   if (editor) {
-    const opened = await host.openPath('/synthetic/projects/restart.mioon');
-    assert.equal(opened.ok, true);
+    const count = runtime.records.windows.length;
+    const opening = host.openPath('/synthetic/projects/restart.mioon');
+    await until(() => runtime.records.windows.length === count + 1);
     parent = runtime.records.windows.at(-1)!;
     await host.loadFor(parent);
     const context = host.contextFor(parent);
-    assert.equal(runtime.records.bridge!({sender: parent.webContents, senderFrame: parent.webContents.mainFrame},
+    assert.equal(await runtime.records.bridge!({sender: parent.webContents, senderFrame: parent.webContents.mainFrame},
       {action: 'editor-status', contextId: context.contextId, projectId: context.editorProjectId, phase: 'ready'}), true);
+    assert.equal((await opening).ok, true);
   }
   assert.equal(host.showSettings('video-tools', parent), true);
   const settings = runtime.records.windows.at(-1)!;

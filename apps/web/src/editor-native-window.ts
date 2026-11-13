@@ -3,6 +3,7 @@ import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { useEffect } from 'react';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import { isProjectWindowId } from '../../desktop/src/project-window-protocol.ts';
+import type { ProjectWindowOpenFailure } from '../../desktop/src/project-window-protocol.ts';
 export interface EditorWindowBinding { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge }
 /** Native launcher is the sole startup selector. Existing Web selection remains
  * the caller's original URL/locator/list result. No business action is added. */
@@ -16,24 +17,28 @@ export function editorInitialSelection(binding: EditorWindowBinding | null, webC
 export async function reportEditorWindowStatus(binding: EditorWindowBinding, projectId: string, phase: 'ready' | 'failed', options: {
   isCurrent?(): boolean;
   rememberProject?(projectId: string): unknown;
+  failure?: ProjectWindowOpenFailure;
 } = {}): Promise<boolean> {
   const captured = binding.context;
-  if (options.isCurrent?.() === false || captured.leaseRevoked === true || captured.role !== 'editor' || captured.initialProjectId !== projectId ||
+  if (options.isCurrent?.() === false || captured.quitting || captured.leaseRevoked === true || captured.role !== 'editor' || captured.initialProjectId !== projectId ||
       captured.editorProjectId !== projectId || !isProjectWindowId(projectId)) return false;
   const fresh = await binding.bridge.context();
   if (options.isCurrent?.() === false || fresh.contextId !== captured.contextId || fresh.windowId !== captured.windowId ||
-      fresh.backendId !== captured.backendId || fresh.role !== 'editor' || fresh.initialProjectId !== projectId || fresh.quitting || fresh.leaseRevoked === true) return false;
-  const accepted = await binding.bridge.editorStatus(projectId, phase);
+      fresh.backendId !== captured.backendId || fresh.role !== 'editor' || fresh.initialProjectId !== projectId ||
+      fresh.editorProjectId !== projectId || fresh.quitting || fresh.leaseRevoked === true) return false;
+  const accepted = phase === 'failed' && options.failure
+    ? await binding.bridge.editorStatus(projectId, phase, options.failure)
+    : await binding.bridge.editorStatus(projectId, phase);
   return accepted === true && options.isCurrent?.() !== false;
 }
 export function useEditorWindowStatus(binding: EditorWindowBinding | null, projectId: string | null, phase: string, ready: boolean,
-  _rememberProject?: (projectId: string) => unknown) {
+  failure?: ProjectWindowOpenFailure) {
   useEffect(() => {
     if (!binding || !projectId || !isProjectWindowId(projectId) || (!ready && phase !== 'error')) return;
     let active = true;
-    void reportEditorWindowStatus(binding, projectId, ready ? 'ready' : 'failed', { isCurrent: () => active }).catch(() => {});
+    void reportEditorWindowStatus(binding, projectId, ready ? 'ready' : 'failed', { isCurrent: () => active, failure }).catch(() => {});
     return () => { active = false; };
-  }, [binding?.bridge, binding?.context.contextId, binding?.context.quitting, binding?.context.leaseRevoked, projectId, phase, ready]);
+  }, [binding?.bridge, binding?.context.contextId, binding?.context.quitting, binding?.context.leaseRevoked, projectId, phase, ready, failure]);
 }
 /** Navigation to a separate settings owner preserves the composer. The current
  * consent is invalidated through its existing visibility method; no send/load is

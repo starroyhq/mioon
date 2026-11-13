@@ -36,11 +36,13 @@ function fixture(patch = {}) {
     creating: false, sealed: false, createUnknown: false, openUnknown: false, listBusy: false, listError: '',
     error: '', notice: '', formIntent: 0, ...patch };
   const calls: string[] = [];
-  const controller = { getState: () => state, getContext: () => ({ quitting: false }),
+  const context = {quitting: false, entryPending: null as {entryToken: string; projectId: string} | null};
+  const controller = { getState: () => state, getContext: () => context,
     dismiss: async () => { calls.push('dismiss'); return false; }, create: async () => { calls.push('create'); return false; },
     canMutate: () => state.shown, reportCreate() {}, open() { calls.push('open'); },
-    refresh() { calls.push('refresh'); }, interacted() { calls.push('interacted'); }, reconcileOpen() { calls.push('reconcile'); } };
-  return { state, calls, controller, render: (editor = true, presentation = {}) => ProjectEntry({ controller, editor, ...presentation, onSettings() { calls.push('settings'); } }) };
+    refresh() { calls.push('refresh'); }, interacted() { calls.push('interacted'); }, reconcileOpen() { calls.push('reconcile'); },
+    cancelOpen() { calls.push('cancel-open'); } };
+  return { state, context, calls, controller, render: (editor = true, presentation = {}) => ProjectEntry({ controller, editor, ...presentation, onSettings() { calls.push('settings'); } }) };
 }
 function dialogParts(tree: DialogNode) {
   assert.equal(tree.type, Dialog);
@@ -96,6 +98,26 @@ test('entry keeps recovery status visible and passes quiet workspace details to 
     assert.equal(home!.props.status, status); assert.equal(home!.props.help, help);
     const quiet = elements(f.render(editor, { help })).find((element: { type: unknown; }) => element.type === ProjectHome);
     assert.equal(quiet!.props.status, undefined); assert.equal(quiet!.props.help, help);
+  }
+});
+
+test('launcher and existing editor picker expose cancel only for the current pending candidate', () => {
+  const projectId = '77000000-0000-4000-8000-000000000001';
+  for (const editor of [false, true]) {
+    const f = fixture({phase: 'opening', sealed: true, pendingOpenProjectId: projectId});
+    const home = () => elements(f.render(editor)).find(element => element.type === ProjectHome)!.props;
+    assert.equal(home().deferOpeningFeedback, true);
+    assert.equal(home().pendingOpen, undefined);
+    f.context.entryPending = {projectId, entryToken: '77000000-0000-4000-8000-000000000002'};
+    const pending = home().pendingOpen as {readonly projectId: string; readonly onCancel: () => void} | undefined;
+    assert.ok(pending);
+    assert.equal(pending.projectId, projectId);
+    pending.onCancel();
+    f.context.entryPending = {...f.context.entryPending, entryToken: '77000000-0000-4000-8000-000000000003'};
+    pending.onCancel();
+    assert.deepEqual(f.calls, ['cancel-open']);
+    f.context.quitting = true;
+    assert.equal(home().pendingOpen, undefined);
   }
 });
 

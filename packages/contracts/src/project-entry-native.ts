@@ -23,9 +23,10 @@ export const projectEntryCreateInputSchema = z.object({
   parentDir: absolutePath.optional(),
   projectFile: absolutePath.refine(file => file.endsWith(PROJECT_FILE_EXTENSION), 'Choose a .mioon file.').optional(),
 }).strict().refine(value => value.parentDir === undefined || value.projectFile === undefined, 'Choose one project location.');
-export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePath, windowId}).strict();
+export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePath, windowId, deferRecent: z.literal(true).optional()}).strict();
 export const projectEntryPrepareAcquireInputSchema = z.object({projectId: projectIdSchema}).strict();
-export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional()}).strict();
+export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional(), deferRecent: z.literal(true).optional()}).strict();
+export const projectEntryMarkOpenedInputSchema = z.object({windowId, contextId: windowId}).strict();
 export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
 export const projectEntryWindowRevokedSchema = z.object({windowId, projectId: projectIdSchema}).strict();
@@ -55,6 +56,8 @@ export interface ProjectEntryControlPort {
   create(input: ProjectEntryCreateInput): Promise<RecentProject>;
   openPath(input: ProjectEntryOpenPathInput): Promise<ProjectEntryWindow>;
   acquire(input: ProjectEntryAcquireInput): Promise<ProjectEntryWindow>;
+  /** Main confirms readiness for a live window lease it opened provisionally. */
+  markOpened?(input: z.infer<typeof projectEntryMarkOpenedInputSchema>): Promise<true> | true;
   /** Resolve current registration before the native volume admission; no lease. */
   prepareAcquire?(input: {projectId:string}): Promise<RecentProject>;
   release(input: ProjectEntryReleaseInput): void;

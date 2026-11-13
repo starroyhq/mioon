@@ -51,12 +51,20 @@ test('an owned failure presentation completes before the next queued file is ope
 });
 
 
-test('native failures retain the bounded read-only reason without forwarding arbitrary error diagnostics',async()=>{
+test('native failures keep strict reasons and require verified version facts for an update instruction',async()=>{
  const observed:unknown[]=[];
  const opener=createProjectFileOpener({opened:()=>assert.fail('Must fail'),failed:(_file,code,reason)=>{observed.push([code,reason]);}});
- opener.add(['/readonly.mioon','/newer.mioon']);
- await opener.attach(async file=>{throw file==='/readonly.mioon'?Object.assign(new Error('PRIVATE'),{code:'PROJECT_INVALID',details:{reason:'read-only',private:'do not publish'}}):new ProjectFileOpenError('PROJECT_FORMAT_NEWER');});
- assert.deepEqual(observed,[['PROJECT_INVALID','read-only'],['PROJECT_FORMAT_NEWER',undefined]]);
+ const cases = new Map<string, unknown>([
+  ['/readonly.mioon', {code:'PROJECT_INVALID',details:{reason:'read-only',private:'do not publish'}}],
+  ['/incomplete.mioon', new ProjectFileOpenError('PROJECT_FORMAT_NEWER')],
+  ['/newer.mioon', {code:'PROJECT_UNAVAILABLE',details:{reason:'PROJECT_FORMAT_NEWER',database:'history',formatVersion:12,supportedFormatVersion:11}}],
+  ['/locked.mioon', {code:'PROJECT_UNAVAILABLE',details:{reason:'PROJECT_LOCKED'}}],
+  ['/denied.mioon', {code:'EACCES',details:{path:'/private/source.mioon'}}],
+ ]);
+ opener.add([...cases.keys()]);
+ await opener.attach(async file=>{throw cases.get(file);});
+ assert.deepEqual(observed,[['PROJECT_INVALID','read-only'],['UNAVAILABLE',undefined],['PROJECT_FORMAT_NEWER',undefined],
+  ['PROJECT_LOCKED',undefined],['PROJECT_ACCESS_DENIED',undefined]]);
 });
 
 // The U2-A temporary "system open unavailable" cases now exercise the trusted
@@ -99,7 +107,7 @@ test('deduplicated system intents stay parked while stopped and a retired port r
 });
 
 test('trusted system-open failure warnings have four translations and never offer a retired archive import retry',()=>{
- for(const key of ['native.openProjectFileAccessDenied','native.openProjectFileReadOnly','native.openProjectFileMissing','native.openProjectFileNewer','native.openProjectFileDamaged','native.openProjectFileUnavailable'] as const){
+ for(const key of ['native.openProjectFileAccessDenied','native.openProjectFileReadOnly','native.openProjectFileMissing','native.openProjectFileLocked','native.openProjectFileNewer','native.openProjectFileDamaged','native.openProjectFileUnavailable'] as const){
   const values=LOCALES.map(locale=>translate(locale,key,{name:'real.mioon'}));assert.equal(new Set(values).size,4);
   for(const value of values){assert.ok(value.includes('real.mioon'));assert.equal(value.includes('native.'),false);assert.doesNotMatch(value,/import|导入|匯入|プロジェクトホーム/iu);}
  }
