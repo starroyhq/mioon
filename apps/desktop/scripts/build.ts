@@ -21,7 +21,9 @@ await prepareBuilderConfig();
 const desktop = path.join(root, 'apps/desktop');
 const output = path.join(desktop, 'build');
 const web = path.join(root, 'apps/web/dist');
-await readFile(path.join(web, 'index.html')).catch(() => { throw new Error('Build the shared web UI first: pnpm build'); });
+await Promise.all(['index.html', 'settings.html'].map(file => readFile(path.join(web, file)))).catch(() => {
+  throw new Error('Build the shared web UI first: pnpm build');
+});
 const examples = path.join(web, 'project-examples');
 verifyProjectExampleResources(examples);
 await rm(output, { recursive: true, force: true });

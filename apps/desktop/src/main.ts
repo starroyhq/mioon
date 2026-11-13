@@ -502,7 +502,9 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     incident.assertAlive();
     ready = started;
     activeSession = session.fromPartition(`${identity.appId}-${randomUUID()}`, { cache: false });
-    installSessionPolicy(activeSession, started.url, contents => windowHost?.windowForContents(contents as ProjectWindowWebContents), { downloadsDirectory: app.getPath('downloads') });
+    const warmSettingsContents = new Set<number>();
+    installSessionPolicy(activeSession, started.url, contents => windowHost?.windowForContents(contents as ProjectWindowWebContents),
+      { downloadsDirectory: app.getPath('downloads') }, id => id !== undefined && warmSettingsContents.has(id));
     await activeSession.cookies.set(sessionCookie(started.url, token));
     startup.checkpoint();
     incident.assertAlive();
@@ -520,11 +522,21 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     let ownedRelinkHost:typeof assetRelinkHost=null;
     const launcherWindowState = createLauncherWindowState(paths.userData, () => screen.getAllDisplays().map(display => display.workArea));
     let restorationNoticesPending = false;
+    const warmOnFocus = app.isPackaged && process.platform === 'darwin';
+    let warmTimer: ReturnType<typeof setTimeout> | undefined;
+    function scheduleSettingsWarmup(window: BrowserWindow): void {
+      clearTimeout(warmTimer);
+      warmTimer = setTimeout(() => {
+        if (ownsWindow(window, context) && BrowserWindow.getFocusedWindow() === window && window.isVisible()) windowHost?.prewarmSettings(window);
+      }, 500);
+      warmTimer.unref();
+    }
+    if (warmOnFocus) startup.signal.addEventListener('abort', () => clearTimeout(warmTimer), {once: true});
     windowHost = createProjectWindowHost<BrowserWindow>({
       projectActionReservations,
       autoOpenLauncher: projectsToRestore === undefined,
       rendererPaused: () => projectsToRestore !== undefined && (restarting || restorationNoticesPending),
-      backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
+      backendId, projectEntries:ownedBackend.projectEntries, launcherUrl: `${started.url}/`, settingsUrl: `${started.url}/settings.html`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       canRestoreParentFocus: () => BrowserWindow.getFocusedWindow() !== null,
@@ -549,9 +561,27 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           });
           launcherWindowState.track(window);
         }
+        if (warmOnFocus && creation.role !== 'settings') {
+          const schedule = () => scheduleSettingsWarmup(window);
+          window.on('focus', schedule);
+          window.on('resize', () => { windowHost?.invalidateWarmSettings(window); schedule(); });
+          window.on('move', () => { windowHost?.invalidateWarmSettings(window); schedule(); });
+        }
         return window;
       },
-      prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
+      ...(warmOnFocus ? {
+        prepareWarmSettings(window: BrowserWindow, url: string) {
+          const contents = window.webContents, id = contents.id;
+          const release = installWindowPolicy(window, started.url, {url, isCurrent: () => warmSettingsContents.has(id)});
+          warmSettingsContents.add(id);
+          return () => { warmSettingsContents.delete(id); if (!contents.isDestroyed()) release?.(); };
+        },
+        discardWarmSettings(window: BrowserWindow) { if (!window.isDestroyed()) window.destroy(); },
+      } : {}),
+      prepareWindow: (window, owner) => {
+        if (warmOnFocus && owner.role === 'settings') window.setBackgroundColor(context.appearance.backgroundColor());
+        prepareOwnedWindow(window, context, owner);
+      },
       consumeProjectEntry: consumeNativeProjectEntry,
       admitProject:async(owner,projectId)=>{
         const project=await prepareRegisteredProject(projectId);
@@ -868,7 +898,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       host.candidateSourceWindow(window) === source ? response : cancel;
   };
   windowAdmissions.set(window, installNativeCloseAdmission(window, {
-    isCurrent: () => ownsWindow(window, context) && window.webContents.getURL() === owner.url && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
+    isCurrent: () => ownsWindow(window, context) && window.webContents.getURL() === owner.url && isAllowedNavigation(owner.url, context.ready.url, owner.role === 'settings'),
     canAct: () => {
       const settings = windowHost?.settingsForParent(window);
       if (!settings) return true;

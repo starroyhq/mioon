@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mioon</title>
+    <style>
+      #settings-boot {
+        color-scheme: light dark;
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template: 44px 1fr / min(188px, 30vw) 1fr;
+        background: light-dark(#f8f8fa, #141517);
+        color: light-dark(#272931, #e5e6e8);
+        font: 13px system-ui, sans-serif;
+      }
+      #settings-boot header {
+        grid-column: 1 / -1;
+        padding: 12px 20px;
+        font-weight: 600;
+        border-bottom: 1px solid light-dark(#dfe0e4, #303136);
+      }
+      #settings-boot aside {
+        border-right: 1px solid light-dark(#dfe0e4, #303136);
+        padding: 20px 12px;
+      }
+      #settings-boot aside span {
+        display: block;
+        height: 12px;
+        width: 72%;
+        margin-bottom: 20px;
+        border-radius: 6px;
+        background: light-dark(#e7e7ed, #2b2d32);
+      }
+      #settings-boot section { padding: 16px 24px; }
+      #settings-boot button { color: inherit; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <main id="settings-boot">
+        <header id="settings-boot-title">Settings</header>
+        <aside aria-hidden="true"><span></span><span></span><span></span><span></span></aside>
+        <section>
+          <p id="settings-boot-status" role="status">Loading settings…</p>
+          <button id="settings-boot-close" type="button" hidden>Close settings</button>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/settings-boot.ts"></script>
+  </body>
+</html>
