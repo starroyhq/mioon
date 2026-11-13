@@ -19,6 +19,7 @@ import {Readable} from 'node:stream';
 import type {IncomingMessage} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
@@ -766,6 +767,42 @@ for(const recordedDispatch of [false,true])test(recordedDispatch
  const marked=await f.action(reopened,'resolve_unknown',{stepId:step.id,resolution:'discard'});assert.equal(marked.steps.find(item=>item.id===step.id)?.status,'failed');
  await f.action(marked,'resume');const done=await f.settle(sent.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.requests.length,(2)+f.loadingRequests);assert.match(f.scriptRequest(2)!.body,/UNKNOWN_NOT_APPLIED/);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(f.effects.size,(1)+f.loadingEffects);
+});
+test('the default project format can discard an unknown local step after its target is deleted', async t => {
+ const f = await fixture(t), callId = randomUUID();
+ assert.equal(f.store.db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
+ f.beforeTool(async prepared => {
+  if (prepared.operation === 'shot.update') throw new Error('Synthetic interruption before saving the shot');
+ });
+ f.setScript(async function*(index) {
+  yield {type:'done', output:output('responses', index === 1 ?
+   [call('mioon_shot_update', {shotId:f.first.id, expectedRevision:f.first.revision, patch:{prompt:'Uncommitted edit'}}, callId)] : [])};
+ }, {loadGroups:['canvas']});
+ const sent = await f.send(), paused = await f.settle(sent.run.id);
+ const step = paused.steps.find(item => item.toolCall?.id === callId);
+ assert.ok(step);
+ assert.equal(paused.run.pauseReason, 'unknown_outcome');
+ assert.equal(step.status, 'unknown');
+ assert.equal(step.tier, 'local_reversible');
+ assert.equal(f.store.db.prepare('SELECT 1 FROM main.mutation_requests WHERE requestId=?').get(step.id), undefined);
+ assert.equal(f.store.tx(() => f.store.db.prepare('DELETE FROM project.shots WHERE id=?').run(f.first.id).changes), 1);
+ assert.equal(f.store.get('shots', f.first.id), null);
+ f.restart();
+ const restored = f.runtime.get(f.projectId, sent.run.id);
+ await assert.rejects(f.action(restored, 'resume'), {code:'AGENT_TASK_UNKNOWN_RESULT'});
+ const disposed = await f.action(restored, 'resolve_unknown', {stepId:step.id, resolution:'discard'});
+ const failed = disposed.steps.find(item => item.id === step.id);
+ assert.equal(failed?.status, 'failed');
+ assert.equal(object(failed?.result).reason, 'atomic_receipt_absent');
+ assert.equal(object(object(failed?.result).error).code, 'UNKNOWN_NOT_APPLIED');
+ assert.equal(f.requests.length, 1 + f.loadingRequests);
+ await f.action(disposed, 'resume');
+ const done = await f.settle(sent.run.id);
+ assert.equal(done.run.status, 'completed');
+ assert.deepEqual(done.changes, []);
+ assert.equal(f.store.get('shots', f.first.id), null);
+ assert.equal(f.effects.size, f.loadingEffects);
+ assert.match(f.scriptRequest(2).body, /UNKNOWN_NOT_APPLIED/u);
 });
 for(const safetyStepLimit of [5,30])for(const action of ['approve','deny'] as const)test(`paid direct disabled after acceptance supports one-time ${action} of the original queued job with safety window ${safetyStepLimit}`,async t=>{
  let posts=0;const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},

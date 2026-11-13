@@ -3,6 +3,7 @@ import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {assertProjectStore} from './store-runtime.ts';
+import {isCanvasArchived} from './canvas-active.ts';
 import {createProjectBackgroundState,pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from './background-task-state.ts';
 import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
@@ -388,7 +389,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const commit = () => tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:generatedVideoAssetName(store.db,j!,String(property(j!.snapshot,'title'))),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {

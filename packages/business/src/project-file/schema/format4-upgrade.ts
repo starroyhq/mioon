@@ -3,7 +3,10 @@ import {
   FORMAT4_ARCHIVE_SEQUENCE_TRIGGERS, FORMAT4_ARCHIVE_UPDATE_TRIGGERS,
   FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION,
 } from './databases.ts';
-import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, canvasArchiveColumnDefinitions} from './domains/canvas.ts';
+import {
+  CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, CANVAS_RECEIPT_ISSUED_AT,
+  CANVAS_RECEIPT_WINDOW_SCHEMA, FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION, canvasArchiveColumnDefinitions,
+} from './domains/canvas.ts';
 
 function requireVersion(db: DatabaseSync, schema: 'main' | 'project', version: number): void {
   if (!db.isTransaction) throw new TypeError('Format 4 requires an opening transaction');
@@ -41,6 +44,14 @@ export function upgradeProject3To4Inside(db: DatabaseSync, schema: 'main' | 'pro
 export function addFormat4HistoryStructureInside(db: DatabaseSync, sourceVersion: number): void {
   requireVersion(db, 'main', sourceVersion);
   for (const sql of CANVAS_HISTORY_SCHEMA) db.exec(qualify('main', sql));
+}
+
+/** The same connection has already checked the exact original candidate catalog. */
+export function addFormat4ReceiptExpiryInside(db: DatabaseSync): void {
+  requireVersion(db, 'main', FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION);
+  db.exec(`ALTER TABLE main.canvas_requests ADD COLUMN ${CANVAS_RECEIPT_ISSUED_AT}`);
+  db.exec('DROP TRIGGER main.retain_canvas_requests');
+  for (const sql of CANVAS_RECEIPT_WINDOW_SCHEMA) db.exec(qualify('main', sql));
 }
 
 export function writeFormat4HistoryVersionInside(db: DatabaseSync, sourceVersion: number): void {

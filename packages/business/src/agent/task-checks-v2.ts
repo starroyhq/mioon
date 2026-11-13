@@ -1,3 +1,4 @@
+import {canvasActiveCondition} from '../canvas-active.ts';
 import {hasStoreTable,storeDirectories} from '../store-layout.ts';
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
@@ -242,7 +243,7 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   if(valid)values={...geometry(timeline),durationFrames:Number(timeline.durationFrames)};
   else if(!exists)values={...freezeStoryboardOutputGeometry(store.db,projectId),durationFrames:0};
   const projectTarget:Target={kind:'project',id:projectId},runTarget:Target={kind:'run',id:run.id};
-  const shotCount=store.db.prepare('SELECT count(*) count FROM shots WHERE projectId=?').get(projectId)?.count;
+  const shotCount=store.db.prepare(`SELECT count(*) count FROM shots WHERE projectId=? AND ${canvasActiveCondition(store.db)}`).get(projectId)?.count;
   const subtitles=valid&&object(timeline.subtitles)&&Array.isArray(timeline.subtitles.cues)?timeline.subtitles.cues.length:valid?0:undefined;
   requirements=evaluateAgentTaskGoals(goals,{
    timeline:{target:timelineTarget,basis:timelineProof,values,...(valid?{clipCount:(timeline.clips as unknown[]).length,subtitleCount:subtitles}:!exists?{clipCount:0,subtitleCount:0}:{})},

@@ -3,6 +3,8 @@ import {AppError,schemas,isReferenceMutationResponse,isReferenceShotRecord,isRef
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {canvasActiveCondition,isCanvasArchived} from './canvas-active.ts';
+import {CANVAS_ARCHIVE_ORDER_FIELD, isCanvasOrderAnchor} from './canvas-patch.ts';
 
 type RefRecord = Record<string, unknown>;
 interface RefInput {
@@ -33,7 +35,7 @@ const object=(value: unknown): value is RefRecord=>value!==null&&typeof value===
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const bounded=(column: string,bytes: number): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${bytes} THEN ${column} END`;
 const identity=(column: string): string=>`${bounded(column,36)} AS ${column}`;
-const definite=new Set<string>(['REVISION_CONFLICT','REFERENCE_CONNECTED','REFERENCE_SELECTION_EXISTS','INVALID_REFERENCE_SOURCE','INVALID_REFERENCE_EDGE','REFERENCE_REVISION_LIMIT']);
+const definite=new Set<string>(['REVISION_CONFLICT','REFERENCE_CONNECTED','REFERENCE_SELECTION_EXISTS','INVALID_REFERENCE_SOURCE','INVALID_REFERENCE_EDGE','REFERENCE_REVISION_LIMIT','CANVAS_TARGET_ARCHIVED','CANVAS_HISTORY_DEPENDENCY']);
 export const invalidReference: ()=>never=()=>{throw new AppError('INVALID_REFERENCE_RECORD','参考连线或关联记录不可用，请先检查项目',409);};
 
 // A row's existence, not its decoded truthiness, reserves the historical key.
@@ -86,7 +88,17 @@ export function createReferenceRecoveryBoundary(db: DatabaseSync,input: RefInput
   if(record.selectedVersionId!==null)guarded(()=>project().version(record.selectedVersionId,record.id));
   return record;
  }
- function shot(id: unknown): RefShotRecord{return shotRelations(owned('shots',id));}
+ function shot(id: unknown): RefShotRecord{
+  const value=owned('shots',id)!;
+  if(typeof id==='string'&&Object.hasOwn(value,CANVAS_ARCHIVE_ORDER_FIELD)&&isCanvasArchived(db,'shots',id)){
+   // The on-disk order anchors support restore after losing local history.
+   // Historical receipts retain the original strict public shot shape.
+   const {[CANVAS_ARCHIVE_ORDER_FIELD]: _order,...retained}=value;
+   if(!isCanvasOrderAnchor(_order,id))invalidReference();
+   return shotRelations(retained);
+  }
+  return shotRelations(value);
+ }
  function managed(source: RefRecord): RefRecord{
   const value=asset(source.assetId);
   if(!['image/png','image/jpeg','image/webp'].includes(value.mimeType as string)||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256)||
@@ -122,9 +134,9 @@ export function createReferenceRecoveryBoundary(db: DatabaseSync,input: RefInput
   // Return at most two target candidates. A malformed project edge cannot be
   // silently skipped, and a foreign SQL row claiming this target is rejected.
   const safe=`CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND ${INSPECTION_ROW_LIMITS.edges} THEN CASE WHEN json_valid(data) AND json_type(data)='object' THEN data END END`;
-  const rows=db.prepare(`SELECT ${identity('id')} FROM edges WHERE
+  const rows=db.prepare(`SELECT ${identity('id')} FROM edges WHERE ${canvasActiveCondition(db)} AND (
    (projectId=? AND (${safe}) IS NULL) OR
-   (json_extract((${safe}),'$.kind')='reference' AND json_extract((${safe}),'$.target')=?) LIMIT 2`).all(projectId,value.id as string);
+   (json_extract((${safe}),'$.kind')='reference' AND json_extract((${safe}),'$.target')=?)) LIMIT 2`).all(projectId,value.id as string);
   return rows.map(row=>edge(row.id)).filter((value): value is RefRecord=>value!==null);
  }
  function response(operation: string,value: unknown,{historical=false}: {historical?: boolean}={}): unknown{
