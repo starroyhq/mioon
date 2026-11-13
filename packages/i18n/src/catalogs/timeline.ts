@@ -2,6 +2,84 @@ import type { MessageCatalog } from '../types.ts';
 import { assertNoDuplicateMessageKeys } from '../catalog-integrity.ts';
 import { timelineDeliveryMessages } from './timeline-delivery.ts';
 const timelineCoreMessages = {
+  "timeline.aspectFrame.label": {
+    "zh-Hans": "画面比例",
+    "zh-Hant": "畫面比例",
+    "en": "Aspect ratio",
+    "ja": "アスペクト比"
+  },
+  "timeline.aspectFrame.portrait": {
+    "zh-Hans": "{ratio} 竖屏",
+    "zh-Hant": "{ratio} 直向",
+    "en": "{ratio} portrait",
+    "ja": "{ratio} 縦"
+  },
+  "timeline.aspectFrame.landscape": {
+    "zh-Hans": "{ratio} 横屏",
+    "zh-Hant": "{ratio} 橫向",
+    "en": "{ratio} landscape",
+    "ja": "{ratio} 横"
+  },
+  "timeline.aspectFrame.square": {
+    "zh-Hans": "{ratio} 方形",
+    "zh-Hant": "{ratio} 方形",
+    "en": "{ratio} square",
+    "ja": "{ratio} 正方形"
+  },
+  "timeline.aspectFrame.menuHint": {
+    "zh-Hans": "改比例时，每段素材重新放进画框，你做过的缩放和偏移会保留",
+    "zh-Hant": "改比例時，每段素材重新放進畫框，你做過的縮放和偏移會保留",
+    "en": "Changing the aspect ratio reframes each clip and preserves your scale and offset edits",
+    "ja": "比率を変えると各クリップが画枠に収まり、調整した拡大率と位置は保持されます"
+  },
+  "timeline.aspectFrame.changed": {
+    "zh-Hans": "已改为 {frame} · {count} 个片段已重新放进画框",
+    "zh-Hant": "已改為 {frame} · {count} 個片段已重新放進畫框",
+    "en": "Changed to {frame} · Clips reframed: {count}",
+    "ja": "{frame} に変更 · {count} 個のクリップを画枠に再配置"
+  },
+  "timeline.aspectFrame.suggestion": {
+    "zh-Hans": "这段素材是 {ratio}，要把画框改成一样吗？",
+    "zh-Hant": "這段素材是 {ratio}，要把畫框改成一樣嗎？",
+    "en": "This source is {ratio}. Match the frame to it?",
+    "ja": "この素材は {ratio} です。画枠を合わせますか？"
+  },
+  "timeline.aspectFrame.accept": {
+    "zh-Hans": "改成 {ratio}",
+    "zh-Hant": "改成 {ratio}",
+    "en": "Change to {ratio}",
+    "ja": "{ratio} に変更"
+  },
+  "timeline.aspectFrame.keep": {
+    "zh-Hans": "保持 {ratio}",
+    "zh-Hant": "保持 {ratio}",
+    "en": "Keep {ratio}",
+    "ja": "{ratio} のまま"
+  },
+  "timeline.aspectFrame.exportHint": {
+    "zh-Hans": "（在剪辑中修改）",
+    "zh-Hant": "（在剪輯中修改）",
+    "en": "(change in Editing)",
+    "ja": "（編集で変更）"
+  },
+  "timeline.aspectFrame.locked": {
+    "zh-Hans": "先确认待处理的时间线编辑",
+    "zh-Hant": "先確認待處理的時間軸編輯",
+    "en": "Resolve pending timeline edits first",
+    "ja": "先に保留中のタイムライン編集を確認してください"
+  },
+  "timeline.aspectFrame.conflict": {
+    "zh-Hans": "项目或时间线已有新版本，请查看最新画面比例后重试",
+    "zh-Hant": "專案或時間軸已有新版本，請查看最新畫面比例後重試",
+    "en": "The project or timeline has changed. Check the current aspect ratio before trying again",
+    "ja": "プロジェクトまたはタイムラインが更新されました。最新の比率を確認してからやり直してください"
+  },
+  "timeline.aspectFrame.failed": {
+    "zh-Hans": "未能修改画面比例，请检查后重试",
+    "zh-Hant": "未能修改畫面比例，請檢查後重試",
+    "en": "Could not change the aspect ratio. Check the current state and try again",
+    "ja": "アスペクト比を変更できませんでした。状態を確認してからやり直してください"
+  },
   "colour.lut.title": {
     "zh-Hans": "Rec.709 SDR · 创意 LUT",
     "zh-Hant": "Rec.709 SDR · 創意 LUT",

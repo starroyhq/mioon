@@ -11,6 +11,7 @@ The version-1 state has a strict, complete whitelist, with narrowly optional add
 - Active Canvas/Editing mode
 - Canvas viewport, node/shot and edge selections, inspector tab, highlighted version, storyboard and minimap visibility
 - Editing clip/source selection, preview kind, playhead, timeline zoom, two-axis scroll, collapsed timeline, and timeline magnet (`snappingEnabled`, default `true`)
+- Optional `editing.aspectFrameSuggestionSeen: true` records that this installation has shown the first-media ratio suggestion for a format 4 project. Omission leaves the suggestion eligible. Existing views can omit the field, and the server rejects any explicit value other than `true`.
 - Shared asset type filter and legacy collapsed library/inspector flags
 - Independent Canvas and Editing panel widths and collapsed library/inspector flags, plus Editing timeline height
 

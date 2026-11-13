@@ -90,6 +90,7 @@ function createHarness(file: string, exportName = 'default') {
     './previs/PrevisNode.tsx': { default: 'PrevisNode', __esModule: true },
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
+    './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},

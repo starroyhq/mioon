@@ -484,6 +484,22 @@ test('12-02b shows only supplied location facts, blocks network/unknown location
   assert.ok(unknownService.includes('云同步服务')); assert.doesNotMatch(unknownService, /Dropbox|exFAT/u);
 });
 
+test('format 4 native creation keeps the name and save location without a direction or ratio selector', () => {
+  for (const locale of LOCALES) {
+    const format3 = controlled.render('create', {...newProjectProps, newProjectFormatVersion: 3}, locale);
+    assert.ok(tagOf(format3, 'pf-create-description'));
+    for (const id of ['portrait_1080', 'landscape_1080', 'square_1080']) assert.ok(tagOf(format3, 'pf-create-preset-' + id));
+    const format4 = controlled.render('create', {
+      ...newProjectProps, newProjectFormatVersion: 4,
+      values: {...newProjectProps.values, description: 'd'.repeat(501), presetId: 'landscape_1080'},
+      onChooseLocation: noAction,
+    }, locale);
+    for (const id of ['name', 'location', 'choose', 'folder', 'preview', 'submit']) assert.ok(tagOf(format4, 'pf-create-' + id));
+    assert.doesNotMatch(format4, /pf-create-description|pf-create-presets|type="radio"/u);
+    assert.equal(disabled(tagOf(format4, 'pf-create-submit')), false);
+  }
+});
+
 test('12-02 unknown creation never offers another create; a known created project offers only reopening', () => {
   for (const locale of LOCALES) {
     const unknown = controlled.render('create', {...newProjectProps, state: {kind: 'unknown'}, onRecheck: noAction}, locale);

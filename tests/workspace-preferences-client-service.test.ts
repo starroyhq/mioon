@@ -25,9 +25,16 @@ async function fixture(t: test.TestContext,{storageScope=undefined,loseFirstAck=
 }
 test('the actual preference client sends the strict service DTO and reloads confirmed view changes',async t=>{
   const f=await fixture(t);await f.client.load(f.project.id);const state=defaultWorkspaceState();state.canvas.viewport={x:160,y:316,zoom:1};state.layout.canvas.assetsWidth=288;
+  assert.equal(Object.hasOwn(state.editing, 'aspectFrameSuggestionSeen'), false);
+  state.editing.aspectFrameSuggestionSeen=true;
   f.client.update(f.project.id,state,{immediate:true});await f.client.flush();
   assert.deepEqual(Object.keys(f.writes[0]).sort(),['expectedRevision','state']);assert.equal(f.client.getStatus(f.project.id)!.phase,'saved');assert.equal(f.service.get(f.project.id).revision,1);assert.deepEqual(f.service.get(f.project.id).state,durableWorkspaceState(state));
   const reload=await f.client.load(f.project.id,{reload:true});assert.equal(reload!.layout.canvas.assetsWidth,288);assert.deepEqual(reload!.canvas.viewport,state.canvas.viewport);
+  assert.equal(reload!.editing.aspectFrameSuggestionSeen,true);
+  const malformed=durableWorkspaceState(state);
+  Reflect.set(malformed.editing,'aspectFrameSuggestionSeen',false);
+  await assert.rejects(async()=>f.service.put(f.project.id,{expectedRevision:1,state:malformed}),{code:'VALIDATION_ERROR'});
+  assert.equal(f.service.get(f.project.id).revision,1);
 });
 test('a lost acknowledgment replays the same strict CAS body before saving later view changes through the actual service',async t=>{
   const f=await fixture(t,{loseFirstAck:true});await f.client.load(f.project.id);const first=defaultWorkspaceState();first.editing.playhead=71;f.client.update(f.project.id,first,{immediate:true});await f.client.flush();

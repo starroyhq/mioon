@@ -6,6 +6,7 @@ import {createNativeProjectDesktopController, projectLocationRisks} from '../app
 import {createProjectEntryController} from '../apps/web/src/project-entry-state.ts';
 import {createLauncherClient} from '../apps/web/src/launcher-state.ts';
 import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
+import type {NewProjectFormatVersion} from '../packages/contracts/src/project-entry.ts';
 import {projectEntryFixture, projectEntryOwnerFixture, PROJECT_ENTRY_TEST_INSTANCE} from './helpers/project-entry-fixture.ts';
 import type {ProjectWindowBridge, ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
 const id = (n: number) => `71000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -15,11 +16,11 @@ const capabilities = {ready: true, create: true, open: true, saveAs: true, dupli
 const registered = projectEntryFixture([{id: projectId}, {id: createdId}]);
 const created = registered.registered[1].project;
 type Handler = (input: Record<string, unknown>) => unknown | Promise<unknown>;
-async function fixture(t: TestContext, handlers: Record<string, Handler> = {}, {now}: {now?: () => number} = {}) {
+async function fixture(t: TestContext, handlers: Record<string, Handler> = {}, {now, newProjectFormatVersion}: {now?: () => number; newProjectFormatVersion?: NewProjectFormatVersion} = {}) {
   const calls: Record<string, unknown>[] = [], directoryCalls: unknown[][] = [], opened: string[] = [], dispatched: string[] = [];
   const pendingListeners = new Set<(event: unknown, value: unknown) => void>();
   const owner = {backendId: id(90), windowId: id(91), contextId: id(92)};
-  let directory = registered;
+  let directory = newProjectFormatVersion === undefined ? registered : {...registered, newProjectFormatVersion};
   let heldRead: Promise<unknown> | null = null;
   const identity = projectEntryOwnerFixture(() => heldRead ?? directory, directoryCalls); t.after(() => identity.dispose());
   const preload = createProjectEntriesDesktopBridge(async (_channel, input) => {
@@ -49,6 +50,22 @@ test('strict native adapter accepts nullable RecentProject without inventing can
   const input = f.calls.find(call => call.action === 'createAtSelection'); assert.equal(input?.createFolder, false); assert.equal(input?.token, token);
   await assert.rejects(f.client.saveAs({token, projectId, requestId: id(10)}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
   assert.equal(f.calls.some(call => call.action === 'saveAs'), false);
+});
+test('native creation uses the verified creation format and starts format 4 in portrait', async t => {
+  for (const newProjectFormatVersion of [3, 4] as const) {
+    const f = await fixture(t, {}, {newProjectFormatVersion});
+    assert.equal(f.controller.getState().newProjectFormatVersion, newProjectFormatVersion);
+    assert.equal(f.controller.showCreate(), true);
+    f.controller.change({name: 'Native project', description: 'Retained direction', presetId: 'landscape_1080', createFolder: false});
+    assert.equal(await f.controller.chooseLocation(), true);
+    assert.equal(await f.controller.create(), true);
+    assert.deepEqual(f.calls.find(call => call.action === 'createAtSelection'), {
+      action: 'createAtSelection', token, name: 'Native project',
+      description: newProjectFormatVersion === 4 ? '' : 'Retained direction',
+      timelinePresetId: newProjectFormatVersion === 4 ? 'portrait_1080' : 'landscape_1080',
+      createFolder: false,
+    });
+  }
 });
 test('cancelled panels and cancelled departure dispatch no create/copy/open and retain form inputs', async t => {
   const f = await fixture(t, {chooseLocation: () => null}); f.controller.showCreate(); f.controller.change({name: 'Keep this', description: 'Draft'});

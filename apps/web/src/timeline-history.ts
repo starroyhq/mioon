@@ -20,6 +20,7 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.setGains': message('timeline.history.setGains'),
   'timeline.clip.setTransform': message('timeline.history.setTransform'),
   'timeline.clip.setTransition': message('timeline.history.setTransition'),
+  'timeline.format.set': message('timeline.aspectFrame.label'),
 };
 interface HistoryEntryView {id?: unknown; operation?: unknown}
 interface HistoryView {
