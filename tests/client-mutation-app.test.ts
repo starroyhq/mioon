@@ -175,10 +175,10 @@ test('late project A success cannot refresh or navigate project B and mutation l
   assert.equal(h.busy.size, 0); assert.equal(readPending('project-a', 'save:shot-a'), null);
 });
 
-interface StructureState {project:{id:string};shots:{id:string}[];nodes:{id:string}[];assets:unknown[];timeline?:GenerationFrame}
-interface StructureOptions {results?:({id:string}|null)[];timeline?:GenerationFrame;afterGuard?:(state:StructureState,project:{current:string})=>void;afterRun?:(state:StructureState,project:{current:string},count:number)=>void}
-function structureHarness({ results = [{ id: 'first' }, null], timeline, afterGuard, afterRun }:StructureOptions = {}) {
-  const state:StructureState = {project:{id:'project-a'},shots:[],nodes:[],assets:[],timeline};
+interface StructureState {project:{id:string};shots:{id:string}[];nodes:{id:string}[];assets:unknown[];timeline?:GenerationFrame;timelineFrameTransaction?:boolean}
+interface StructureOptions {results?:({id:string}|null)[];timeline?:GenerationFrame;timelineFrameTransaction?:boolean;afterGuard?:(state:StructureState,project:{current:string})=>void;afterRun?:(state:StructureState,project:{current:string},count:number)=>void}
+function structureHarness({ results = [{ id: 'first' }, null], timeline, timelineFrameTransaction, afterGuard, afterRun }:StructureOptions = {}) {
+  const state:StructureState = {project:{id:'project-a'},shots:[],nodes:[],assets:[],timeline,timelineFrameTransaction};
   const currentProject = { current: 'project-a' }, dataRef = { current: state }, calls:unknown[][] = [], notices:[string,...unknown[]][] = [];
   const scope = { data: state, dataRef, currentProject, timelineOutputRatio, isBusy: () => false, chooseCanvasPosition: () => ({ x: 0, y: 0 }),
     guardNavigation: async () => { afterGuard?.(state, currentProject); return true; },
@@ -195,16 +195,23 @@ test('actual structure action stops on first unacknowledged step and reports par
   assert.match(h.notices[0][0], /已确认 1\/3.*其余镜头不会自动创建/);
 });
 
-test('new canvas and structure shots use the current frame, including a non-orientation ratio', async () => {
+test('new canvas and structure shots use the current frame only in format 4', async () => {
   const portrait = { fps: 30, width: 1080, height: 1920, revision: 2 };
   const wide = { fps: 30, width: 2520, height: 1080, revision: 3 };
-  const h = structureHarness({ results: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], timeline: portrait,
+  const h = structureHarness({ results: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], timeline: portrait, timelineFrameTransaction: true,
     afterGuard: state => { state.timeline = wide; } });
   await h.addShot();
   assert.equal((h.calls[0]?.[2] as {aspectRatio?: string}).aspectRatio, '21:9');
   h.calls.length = 0;
   await h.run();
   assert.deepEqual(h.calls.map(call => (call[2] as {aspectRatio?: string}).aspectRatio), ['21:9', '21:9', '21:9']);
+  const legacy = structureHarness({ results: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], timelineFrameTransaction: false,
+    timeline: { fps: 30, width: 1920, height: 1080, revision: 4 } });
+  await legacy.addShot();
+  assert.equal((legacy.calls[0]?.[2] as {aspectRatio?: string}).aspectRatio, '9:16');
+  legacy.calls.length = 0;
+  await legacy.run();
+  assert.deepEqual(legacy.calls.map(call => (call[2] as {aspectRatio?: string}).aspectRatio), ['9:16', '9:16', '9:16']);
   const switched = structureHarness({ timeline: portrait, afterGuard: (_, owner) => { owner.current = 'project-b'; } });
   await switched.addShot();
   assert.equal(switched.calls.length, 0);

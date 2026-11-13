@@ -359,6 +359,20 @@ test('Mio inspects clip geometry in saved basis pixels while public inspection k
   assert.deepEqual(changeMarks(f.db), marks);
 });
 
+test('project snapshots advertise frame transactions only after opening the format 4 pair', async t => {
+  const f = await fixture(t);
+  const input = {projectId: f.projectId};
+  const legacy = await f.call('project.get', input) as {timelineFrameTransaction?: boolean; timeline: unknown};
+  assert.equal(legacy.timelineFrameTransaction, false);
+  const before = timelineRecord(legacy.timeline, f.projectId);
+  assert.equal(before.width, 1080);
+  assert.equal(before.height, 1920);
+  await f.activate();
+  const current = await f.call('project.get', input) as typeof legacy;
+  assert.equal(current.timelineFrameTransaction, true);
+  assert.deepEqual(current.timeline, legacy.timeline);
+});
+
 test('format admission uses the same transaction for Mio and direct callers in each kernel format', async t => {
   const f = await fixture(t);
   const mio = <T>(requestId: string, run: () => T) => withTaskEffectOrigin({runId: randomUUID(), stepId: randomUUID(),

@@ -7,7 +7,7 @@ import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {isTimelineFormatReadResponse,isTimelineRecord,TIMELINE_MUTATION_OPERATIONS} from '@mioon/contracts';
-import {agentTaskSnapshotSchema,type AgentTaskSnapshot,type AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskSnapshotSchema,type AgentTaskJson,type AgentTaskSnapshot,type AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
@@ -99,7 +99,7 @@ test('real Mio subtitle undo retains valid locked format history while unknown o
  }
 });
 
-test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native undo and redo history', async t=>{
+async function format4MioFixture(t: test.TestContext){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-format4-mio-'));
  const projectFile=path.join(root,'project.mioon'),projectId=createProjectFile(projectFile);
  const locate=()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')});
@@ -117,6 +117,12 @@ test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native un
  await authorizeTestScope(authorizations,'project_agent');
  const policy={...mioTestPolicy,policy:()=>{const base=mioTestPolicy.policy();return {...base,modes:{...base.modes,local_reversible:'confirm' as const}};}};
  const journal=createMioJournal(store,policy),tools=createAgentTaskTools({store,services,journal});
+ let runtime:ReturnType<typeof createMioRuntime>|undefined;
+ function startRuntime(gateway:TaskGateway){
+  runtime=createMioRuntime({store,journal,policy,tools,agentSettings:settings,authorizations,gateway,selfPort:()=>4318});
+  return runtime;
+ }
+ t.after(async()=>{runtime?.close();await runtime?.drain();tools.dispose();await services.drain();await settings.close();ports.close();store.close();await rm(root,{recursive:true,force:true});});
 
  const rpc=(operation:string,input:Record<string,unknown>={})=>services.call(operation,{projectId,...input});
  const read=async()=>timelineFormatResponseSchema.parse(await rpc('timeline.format.get'));
@@ -127,9 +133,24 @@ test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native un
  const initialized=await timeline(),track=initialized.tracks.find(item=>item.kind==='video')!;
  const dataBase64=png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]}).toString('base64');
  const asset=await rpc('asset.import',{name:'Synthetic source.png',mimeType:'image/png',dataBase64});assert.ok(object(asset)&&typeof asset.id==='string');
+ return {store,settings,journal,tools,startRuntime,rpc,read,timeline,frameArgs,initialized,track,assetId:asset.id,dataBase64,projectId};
+}
+
+async function waitForMioRun(runtime:ReturnType<typeof createMioRuntime>,projectId:string,runId:string,expected:AgentTaskSnapshot['run']['status']):Promise<AgentTaskSnapshot>{
+ for(let tries=0;tries<1000;tries++){
+  const saved=runtime.get(projectId,runId);
+  if(saved.run.status===expected)return saved;
+  assert.ok(!['completed','failed','paused'].includes(saved.run.status),JSON.stringify(saved));
+  await new Promise(resolve=>setTimeout(resolve,10));
+ }
+ assert.fail('Synthetic Mio frame run did not reach '+expected);
+}
+
+test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native undo and redo history', async t=>{
+ const {store,settings,journal,tools,startRuntime,rpc,read,timeline,frameArgs,initialized,track,assetId,dataBase64,projectId}=await format4MioFixture(t);
  const otherAsset=await rpc('asset.import',{name:'Unreferenced.png',mimeType:'image/png',dataBase64});
- assert.ok(object(otherAsset)&&typeof otherAsset.id==='string'&&otherAsset.id!==asset.id);
- const withClip=await timeline('timeline.clip.add',{requestId:randomUUID(),expectedRevision:initialized.revision,assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:90});
+ assert.ok(object(otherAsset)&&typeof otherAsset.id==='string'&&otherAsset.id!==assetId);
+ const withClip=await timeline('timeline.clip.add',{requestId:randomUUID(),expectedRevision:initialized.revision,assetId,trackId:track.id,startFrame:0,durationFrames:90});
  const initial=await timeline('timeline.subtitle.add',{requestId:randomUUID(),expectedRevision:withClip.revision,startFrame:0,durationFrames:30,text:'Kept subtitle'});
  const clip=initial.clips[0]!,staleGeometry=tools.prepare({projectId,operation:'timeline.clip.update',input:{
   clipId:clip.id,expectedRevision:withClip.revision,patch:{rect:{x:0,y:0,width:360,height:640}},
@@ -162,18 +183,9 @@ test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native un
    :requests===2?[{id:'set_frame',name:'mioon_timeline_format_set',arguments:args}]:[];
   yield {type:'done',output:output(calls)};
  };
- const runtime=createMioRuntime({store,journal,policy,tools,agentSettings:settings,authorizations,gateway,selfPort:()=>4318});
- t.after(async()=>{runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();ports.close();store.close();await rm(root,{recursive:true,force:true});});
+ const runtime=startRuntime(gateway);
  const accepted=await runtime.send(projectId,{requestId:randomUUID(),text:'Change the saved frame to ultrawide',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});
- async function waitForRun(expected:AgentTaskSnapshot['run']['status']):Promise<AgentTaskSnapshot>{
-  for(let tries=0;tries<1000;tries++){
-   const saved=runtime.get(projectId,accepted.run.id);
-   if(saved.run.status===expected)return saved;
-   assert.ok(!['completed','failed','paused'].includes(saved.run.status),JSON.stringify(saved));
-   await new Promise(resolve=>setTimeout(resolve,10));
-  }
-  assert.fail('Synthetic Mio frame run did not reach '+expected);
- }
+ const waitForRun=(expected:AgentTaskSnapshot['run']['status'])=>waitForMioRun(runtime,projectId,accepted.run.id,expected);
  const review=await waitForRun('awaiting_approval'),pending=review.steps.find(step=>step.toolCall?.id==='set_frame');
  assert.equal(pending?.status,'awaiting_approval');
  assert.deepEqual(await timeline(),initial,'confirmation has made no writes');
@@ -210,4 +222,93 @@ test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native un
  const redone=await timeline('timeline.redo',{requestId:randomUUID(),expectedRevision:reversed.revision});
  assert.deepEqual([redone.width,redone.height,redone.clips,redone.subtitles],[initial.width,initial.height,initial.clips,initial.subtitles]);
  assert.equal((await read()).eligible,true);
+});
+
+for(const edit of ['add','update'] as const)test(`format-4 Mio rereads and requests fresh approval after a stale clip.${edit} rectangle`,async t=>{
+ const {store,settings,journal,startRuntime,timeline,read,frameArgs,initialized,track,assetId,projectId}=await format4MioFixture(t);
+ const source={assetId,trackId:track.id,startFrame:0,durationFrames:90},operation=`timeline.clip.${edit}`,toolName=`mioon_timeline_clip_${edit}`;
+ const original=edit==='add'?initialized:await timeline('timeline.clip.add',{...source,requestId:randomUUID(),expectedRevision:initialized.revision});
+ const saved=edit==='add'
+  ?await timeline('timeline.format.set',{...frameArgs(await read(),'landscape_1080'),requestId:randomUUID()})
+  :await timeline('timeline.track.update',{requestId:randomUUID(),expectedRevision:original.revision,trackId:track.id,patch:{name:'Renamed by user'}});
+ const clipId=saved.clips[0]?.id;
+ const rectFor=(frame:{width:number;height:number})=>edit==='add'?{x:0,y:0,width:frame.width,height:frame.height}:{x:0,y:0,width:360,height:640};
+ const argsFor=(frame:{revision:number;width:number;height:number}):Record<string,AgentTaskJson>=>edit==='add'
+  ?{...source,expectedRevision:frame.revision,rect:rectFor(frame)}
+  :{clipId:clipId!,expectedRevision:frame.revision,patch:{rect:rectFor(frame)}};
+ if(edit==='add')assert.ok(rectFor(original).height>saved.height,'the stale rectangle is outside the new frame');
+ const history=()=>store.db.prepare('SELECT operation FROM main.timeline_history WHERE projectId=? ORDER BY position').all(projectId).map(({operation})=>operation);
+ const before=history(),receipt=(requestId:string)=>store.db.prepare('SELECT 1 FROM main.timeline_requests WHERE requestId=?').get(requestId);
+ let requests=0;
+ const gateway:TaskGateway=async function*(request){
+  request.beforeSubmit?.();requests++;
+  const body:unknown=JSON.parse(request.body);assert.ok(object(body));
+  const messages=body.messages;assert.ok(Array.isArray(messages));
+  const toolResult=(callId:string):unknown=>{
+   const message=messages.findLast((item:unknown)=>object(item)&&item.role==='tool'&&item.tool_call_id===callId);
+   assert.ok(object(message)&&typeof message.content==='string');
+   return JSON.parse(message.content);
+  };
+  let calls:AgentTaskToolCall[];
+  switch(requests){
+   case 1:
+    calls=[{id:'load_rect_edit',name:'mioon_tools_load',arguments:{names:[toolName]}}];
+    break;
+   case 2:
+    calls=[{id:'stale_rect',name:toolName,arguments:argsFor(original)}];
+    break;
+   case 3:{
+    const rejected=toolResult('stale_rect');
+    assert.ok(object(rejected)&&object(rejected.error));
+    assert.equal(rejected.error.code,'REVISION_CONFLICT');
+    assert.match(String(rejected.error.message),/重新讀取|重新读取/u);
+    calls=[{id:'read_timeline',name:'mioon_timeline_inspect',arguments:{}}];
+    break;
+   }
+   case 4:{
+    const observed=toolResult('read_timeline');
+    assert.ok(object(observed)&&typeof observed.revision==='number'&&typeof observed.width==='number'&&typeof observed.height==='number');
+    assert.deepEqual([observed.revision,observed.width,observed.height],[saved.revision,saved.width,saved.height]);
+    assert.ok(Array.isArray(observed.clips)&&observed.clips.length===saved.clips.length);
+    if(edit==='update')assert.ok(observed.clips.some((item:unknown)=>object(item)&&item.id===clipId));
+    calls=[{id:'fresh_rect',name:toolName,arguments:argsFor({revision:observed.revision,width:observed.width,height:observed.height})}];
+    break;
+   }
+   default:
+    assert.equal(requests,5);
+    calls=[];
+  }
+  yield {type:'done',output:output(calls)};
+ };
+ const runtime=startRuntime(gateway);
+ const started=await runtime.send(projectId,{requestId:randomUUID(),text:'Apply the clip rectangle',locale:'zh-Hans',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});
+ const approve=(snapshot:AgentTaskSnapshot,stepId:string)=>runtime.action(projectId,started.run.id,{requestId:randomUUID(),expectedRevision:snapshot.run.revision,action:'approve',stepId});
+ const pending=await waitForMioRun(runtime,projectId,started.run.id,'awaiting_approval');
+ const late=pending.steps.find(step=>step.toolCall?.id==='stale_rect');assert.equal(late?.status,'awaiting_approval');
+ assert.deepEqual(await timeline(),saved);
+ await approve(pending,late.id);
+ const replanned=await waitForMioRun(runtime,projectId,started.run.id,'awaiting_approval');
+ const stale=journal.step(late.id),fresh=replanned.steps.find(step=>step.toolCall?.id==='fresh_rect');
+ assert.equal(stale.status,'rejected');assert.equal(stale.error?.code,'REVISION_CONFLICT');
+ assert.ok(object(stale.data));assert.equal(stale.data.dispatchPrevented,true);
+ assert.equal(fresh?.status,'awaiting_approval');assert.notEqual(fresh.id,stale.id);
+ assert.equal(replanned.changes.length,0);
+ assert.equal(receipt(stale.id),undefined);
+ assert.deepEqual(await timeline(),saved);assert.deepEqual(history(),before);
+ await approve(replanned,fresh.id);
+ const done=await waitForMioRun(runtime,projectId,started.run.id,'completed'),after=await timeline();
+ assert.equal(requests,5);
+ assert.equal(done.steps.find(step=>step.id===fresh.id)?.status,'completed');
+ assert.equal(done.changes.length,1);
+ assert.equal(after.revision,saved.revision+1);
+ assert.deepEqual(after.tracks,saved.tracks);
+ assert.equal(after.clips.length,1);assert.deepEqual(after.clips[0]?.rect,rectFor(saved));
+ if(edit==='update')assert.deepEqual(after.clips,[{...saved.clips[0],rect:rectFor(saved)}]);
+ else for(const key of Object.keys(source) as (keyof typeof source)[])assert.equal(after.clips[0]?.[key],source[key]);
+ assert.deepEqual(history(),[...before,operation]);
+ assert.equal(receipt(stale.id),undefined);assert.ok(receipt(fresh.id));
+ if(edit==='add'){
+  await timeline('timeline.format.set',{...frameArgs(await read(),'portrait_1080'),requestId:randomUUID()});
+  assert.deepEqual(await timeline(operation,{...argsFor(saved),requestId:fresh.id}),after,'replay keeps the original frame and rectangle');
+ }
 });

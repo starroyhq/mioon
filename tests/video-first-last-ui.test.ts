@@ -2,14 +2,14 @@ interface ShotDraftView {title: string; prompt: string; referenceAssetIds: strin
 interface GenerationOptionState {providerId?: string; connectionId?: string; modelEntryId?: string; parameters?: Record<string, unknown>; model?: string; scenario?: string; inputMode?: string; videoInput?: GenerationVideoInput; [key: string]: unknown}
 interface GenerationReviewArgs {shot: VideoShot; providerId: string; connectionId?: string; configurationRevision?: number; modelEntryId?: string; model?: string; inputMode?: string; retryJobId?: string; referenceAssets?: typeof assets; [key: string]: unknown}
 interface RunOptions {replay?: boolean; returnAfterNavigation?: boolean}
-import type {GenerationProvider, GenerationVideoInput} from '../apps/web/src/generation-settings.ts';
+import type {GenerationFrame, GenerationProvider, GenerationVideoInput} from '../apps/web/src/generation-settings.ts';
 import type {GenerationSubmitInput} from '../packages/business/src/services.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
 import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 interface VideoShot {id: string; projectId: string; revision: number; title: string; prompt: string; referenceAssetIds: string[]; duration: number; aspectRatio: string; parameters: Record<string, unknown>; orderIndex: number; lastFrameAssetId?: string | null; [key: string]: unknown}
 type VideoOptions = GenerationOptionState;
 interface VideoProps {
- shot: VideoShot; project: {id: string}; assets: LibraryAsset[]; versions: unknown[]; jobs: unknown[]; providers: GenerationProvider[]; busy: Record<string, unknown>; tab: string; generationOptions: VideoOptions;
+ shot: VideoShot; project: {id: string}; assets: LibraryAsset[]; versions: unknown[]; jobs: unknown[]; providers: GenerationProvider[]; busy: Record<string, unknown>; tab: string; generationOptions: VideoOptions; generationFrame?: GenerationFrame | null;
  onDirtyChange(): void; setTab(): void; onOpenJobs(): void; onCompare(): void; onAddVersion(): void; onSelectVersion(): void;
  onGenerationOptionsChange(id: unknown, next: VideoOptions): void;
  onGenerate(shot: VideoShot, selection: VideoOptions): unknown;
@@ -152,13 +152,13 @@ function configuredConnectionFixture() {
   return { providers: settings.videoConnectionProviders(directories), options: { providerId: 'kling', connectionId: id(82), modelEntryId: model.id, model: model.modelId, inputMode: 'image', parameters: { resolution: '1080p', generateAudio: true } }, selectedShot: shot({ duration: 5 }) };
 }
 
-function appGenerationFlow({ providers, options, currentShot, frame }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot; frame?: settings.GenerationFrame}) {
+function appGenerationFlow({ providers, options, currentShot, frame, timelineFrameTransaction }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot; frame?: settings.GenerationFrame; timelineFrameTransaction?: boolean}) {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
   const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
     providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
     readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', editorSession: {current: 'normal'}, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
-    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [], timeline: frame ?? null } },
+    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [], timeline: frame ?? null, timelineFrameTransaction } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
     run: async (...args: [string, string, GenerationSubmitInput]) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
@@ -170,7 +170,7 @@ function appGenerationFlow({ providers, options, currentShot, frame }: {provider
 test('actual App confirms the reviewed project frame, refuses a changed frame and keeps its saved shot ratio', async () => {
   const f = configuredConnectionFixture();
   const initial = { fps: 30, width: 1080, height: 1920, revision: 3 };
-  const h = appGenerationFlow({ ...f, currentShot: f.selectedShot, frame: initial });
+  const h = appGenerationFlow({ ...f, currentShot: f.selectedShot, frame: initial, timelineFrameTransaction: true });
   await h.generate(f.selectedShot, f.options);
   assert.ok(h.state.review);
   assert.deepEqual(h.state.review.aspectSource, { kind: 'project', expectedTimelineRevision: 3, aspectRatio: '9:16' });
@@ -194,6 +194,33 @@ test('actual App confirms the reviewed project frame, refuses a changed frame an
   const wire = h.state.calls[0]![2];
   assert.deepEqual(wire.aspectSource, { kind: 'project', expectedTimelineRevision: 4, aspectRatio: '16:9' });
   assert.equal(Object.hasOwn(wire.parameters!, 'aspectRatio'), false);
+});
+
+test('format 3 keeps Mock generation available on a landscape project with saved portrait frames', async () => {
+  const mock = provider(), selectedShot = shot({ lastFrameAssetId: tailId });
+  const options = { providerId: mock.id, model: mock.models[0], inputMode: 'frames' };
+  const frame = { fps: 30, width: 1920, height: 1080, revision: 4 };
+  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const binding = /generationFrame=\{([^}]+)\}/u.exec(app);
+  assert.ok(binding);
+  const inspectorFrame = Function('data', `return ${binding[1]};`) as
+    (data: {timeline: GenerationFrame; timelineFrameTransaction?: boolean}) => GenerationFrame | null;
+  for (const timelineFrameTransaction of [false, undefined, true]) {
+    const flow = appGenerationFlow({ providers: [mock], options, currentShot: selectedShot, frame, timelineFrameTransaction });
+    const inspector = harness({ shot: selectedShot, providers: [mock], generationOptions: options,
+      generationFrame: inspectorFrame({ timeline: frame, timelineFrameTransaction }),
+      onGenerate: (selected, parameters) => flow.generate(selected, parameters) });
+    assert.equal(inspector.find('generate-shot')?.props.disabled, timelineFrameTransaction === true);
+    if (timelineFrameTransaction === true) {
+      assert.match(inspector.text(), /项目画幅 16:9.*可用画幅：9:16/);
+      continue;
+    }
+    await inspector.click('generate-shot');
+    assert.equal(flow.state.calls.length, 1);
+    assert.equal(Object.hasOwn(flow.state.calls[0]![2], 'aspectSource'), false);
+    assert.equal(flow.readReview(), null);
+    assert.equal(selectedShot.aspectRatio, '9:16');
+  }
 });
 
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {

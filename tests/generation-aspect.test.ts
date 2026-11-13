@@ -206,12 +206,23 @@ test('a configured model without request-level ratio receives only the effective
 });
 
 test('connected subject ACK and retry keep the chosen wide ratio and exact reviewed material', async t => {
-  const binding = configuredBinding('ark'), f = await fixture(t, binding), shot = await f.shot({duration: 2});
+  const binding = configuredBinding('ark', ['9:16', '16:9', '21:9']);
+  binding.model.durationResolutionMap = [{duration: [4, 8], resolution: ['720p']}];
+  const f = await fixture(t, binding), shot = await f.shot({duration: 2});
   const asset = await f.services.call('asset.import', {projectId: f.projectId, name: 'Paper model.png', mimeType: 'image/png',
     dataBase64: png({width: 512, height: 512, pixel: () => [20, 80, 160, 255]}).toString('base64')}) as {id: string; referenceRevision: number; sha256: string};
   const subject = await f.services.call('subject.create', {projectId: f.projectId, requestId: randomUUID(),
     name: 'Paper model', kind: 'product', assetId: asset.id}) as {headVersionId: string};
   const frame = await f.setFrame('ultrawide_1080');
+  const oldShot = await f.shot();
+  const oldInput = {...f.input(oldShot), subjectVersionId: subject.headVersionId};
+  const oldJob = await f.submit(oldInput);
+  assert.equal(oldJob.snapshot.aspectRatio, '9:16');
+  assert.equal(isSubjectGenerationResponse('generation.submit', oldInput, oldJob), true);
+  for (const base of [{aspectRatio: '21:9'}, {duration: 2}]) {
+    const legacy = {...oldJob, snapshot: {...oldJob.snapshot, ...base, parameters: {aspectRatio: '9:16', durationSeconds: 4}}};
+    assert.equal(isSubjectGenerationResponse('generation.submit', oldInput, legacy), false, 'Omission keeps its original base-profile checks');
+  }
   const input = {...f.input(shot, {kind: 'project', aspectRatio: '21:9', expectedTimelineRevision: frame.timelineRevision}),
     subjectVersionId: subject.headVersionId, parameters: {durationSeconds: 4},
     referenceRevisions: [{assetId: asset.id, referenceRevision: asset.referenceRevision, sha256: asset.sha256}]};
@@ -223,6 +234,10 @@ test('connected subject ACK and retry keep the chosen wide ratio and exact revie
   assert.equal(isSubjectGenerationResponse('generation.submit', input, {...job, snapshot: {...job.snapshot, aspectRatio: '16:9'}}), false);
   assert.equal(isSubjectGenerationResponse('generation.submit', input, {...job, snapshot: {...job.snapshot, duration: 21}}), false);
   assert.equal(isSubjectGenerationResponse('generation.submit', input, {...job, snapshot: {...job.snapshot, parameters: {...job.snapshot.parameters as ServiceRow, durationSeconds: 2}}}), false);
+  for (const region of [{providerRegion: 'global'}, {executionBinding: {...binding, region: 'global'}}]) {
+    const mismatched = {...job, snapshot: {...job.snapshot, ...region}};
+    assert.equal(isSubjectGenerationResponse('generation.submit', input, mismatched), false, 'The exact input profile and connection independently validate region');
+  }
   assert.deepEqual(await f.services.call('job.get', {jobId: job.id}), job);
   await f.setFrame('square_1080');
   assert.deepEqual(await f.submit(input), job);
@@ -231,6 +246,20 @@ test('connected subject ACK and retry keep the chosen wide ratio and exact revie
   const retry = await f.services.call('job.retry', retryInput) as JobRecord;
   assert.deepEqual(retry.snapshot, job.snapshot);
   assert.equal(isSubjectGenerationRetryResponse(retryInput, retry, {projectId: f.projectId, snapshot: job.snapshot}), true);
+  assert.equal(isSubjectGenerationRetryResponse(retryInput, retry), true);
+  for (const parameters of [{aspectRatio: '4:3'}, {durationSeconds: 6}]) {
+    const invalidRetry = {...retry, snapshot: {...retry.snapshot, parameters: {...retry.snapshot.parameters as ServiceRow, ...parameters}}};
+    assert.equal(isSubjectGenerationRetryResponse(retryInput, invalidRetry), false, 'The frozen binding still checks effective parameters without the original request');
+  }
+  const changedRetry = {...retry, snapshot: {...retry.snapshot, aspectRatio: '16:9',
+    parameters: {...retry.snapshot.parameters as ServiceRow, aspectRatio: '16:9'}}};
+  assert.equal(isSubjectGenerationRetryResponse(retryInput, changedRetry, {projectId: f.projectId, snapshot: job.snapshot}), false);
+  assert.deepEqual(await f.submit(oldInput), oldJob);
+  f.store.put('jobs', {...f.store.get('jobs', oldJob.id) as ServiceRow, status: 'failed'});
+  const oldRetryInput = {jobId: oldJob.id, requestId: randomUUID()};
+  const oldRetry = await f.services.call('job.retry', oldRetryInput) as JobRecord;
+  assert.deepEqual(oldRetry.snapshot, oldJob.snapshot);
+  assert.equal(isSubjectGenerationRetryResponse(oldRetryInput, oldRetry, {projectId: f.projectId, snapshot: oldJob.snapshot}), true);
   assert.equal(f.providerCalls(), 0);
 });
 

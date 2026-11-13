@@ -782,6 +782,11 @@ Requests that omit `aspectSource` keep their original shot and provider
 parameter semantics. Accepted jobs, exact replays and retries keep the frozen
 generation inputs.
 
+`project.get` includes the read-only `timelineFrameTransaction` capability
+from the opened project kernel. The web workbench uses the current frame for
+new shots and new generations when it is `true`. Otherwise it uses the
+previous shot settings for generation and defaults new shots to 9:16.
+
 ## Optional exact replay for local edits
 
 `shot.create`, `shot.update`, `shot.reorder`, `node.create`, `node.update` and

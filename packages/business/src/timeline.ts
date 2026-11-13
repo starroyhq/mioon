@@ -299,6 +299,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
    // Check explicit input before legacy ensure() can write an absent timeline.
    const current=submittedRect===undefined?undefined:boundary.read({legacyMissingProject:true});
+   // In format 4 a rectangle saved for a stale revision may fit its original
+   // frame but not the current frame. Give the caller a proven CAS rejection
+   // before validating the rectangle against the newer dimensions.
+   if(current&&current.revision!==input.expectedRevision&&format4())check(current,input.expectedRevision);
    if(operation==='timeline.clip.update'&&current?.clips.find(item=>item.id===input.clipId)?.layout){
     editable(current,input);
     throw new AppError('CLIP_LAYOUT_RECT_READ_ONLY','相对布局的片段请通过片段变换调整画面',409,{clipId:input.clipId});

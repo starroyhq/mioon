@@ -128,7 +128,7 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  const frozen = snapshot as Record<string, unknown>;
  if(frozen.shotId!==request.shotId||frozen.shotRevision!==request.expectedRevision||frozen.providerId!==job.providerId||frozen.model!==job.model||!text(frozen.title,1,150)||!text(frozen.prompt,0,5000)||!(connected?record(frozen.parameters):parameters(frozen.parameters))||!record(frozen.capabilities)||getSubjectGenerationSnapshotIssue(frozen,{projectId:job.projectId,requireProfilePin:true}))return false;
  let effectiveRatio=frozen.aspectRatio;
- if(connected){try{const binding=parseVideoBinding(frozen.executionBinding);if(binding.connectionId!==request.connectionId||binding.configurationRevision!==request.configurationRevision||binding.model.id!==request.modelEntryId||binding.region!==frozen.providerRegion)return false;validateVideoSnapshot(binding,frozen);effectiveRatio=effectiveVideoParameters(binding,frozen).aspectRatio;}catch{return false;}}
+ if(connected){try{const binding=parseVideoBinding(frozen.executionBinding);if(binding.connectionId!==request.connectionId||binding.configurationRevision!==request.configurationRevision||binding.model.id!==request.modelEntryId)return false;validateVideoSnapshot(binding,frozen);effectiveRatio=effectiveVideoParameters(binding,frozen).aspectRatio;}catch{return false;}}
  else if(own(frozen,'executionBinding'))return false;
  const aspect=aspectSource?.data;
  if(aspect&&(aspect.kind==='shot'?effectiveRatio!==frozen.aspectRatio:effectiveRatio!==aspect.aspectRatio||aspect.aspectRatio!=='adaptive'&&frozen.aspectRatio!==aspect.aspectRatio))return false;
@@ -145,8 +145,9 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  if(subjectVersionId!==request.subjectVersionId||inputParameters&&Object.keys(inputParameters).some(key=>snapshotParameters[key]!==inputParameters[key]))return false;
  if(own(options,'subjectReference')&&(!isSubjectReference(options.subjectReference)||!same(frozen.subjectReference,options.subjectReference)))return false;
  const profile=getCapabilityProfile(job.providerId,job.model,frozen.providerRegion,{profileId:frozen.inputProfileId,profileVersion:frozen.inputProfileVersion})!;
- // The exact connected binding checks the effective duration, which can be a
- // request override. The frozen base duration still follows the shot contract.
+ // The exact connected binding checks the effective ratio and duration. A
+ // retry has only the source job ID and must read the same snapshot without
+ // the original aspectSource. Keep base values inside the saved shot contract.
  if(connected&&(aspect||expectedRetryOfJobId!==null)){
   if(!generationFixedAspectRatioSchema.safeParse(frozen.aspectRatio).success||!integer(frozen.duration,1,20))return false;
  }else if(!profile.aspectRatios.includes(frozen.aspectRatio as string)||!profile.durationsSeconds.includes(frozen.duration as number))return false;
