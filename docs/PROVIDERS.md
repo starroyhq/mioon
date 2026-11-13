@@ -476,7 +476,7 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-For the environment-configured adapters listed here, set `MIOON_ENABLE_LIVE_PROVIDER=1` and supply the corresponding server key. This opt-in is separate from connections configured in [Generation Services](GENERATION-SERVICES.md), which each have their own enabled state. Image input also requires approved reference hashes; output-host and regional checks remain enforced. Installing the app or having a ChatGPT plan does not enable live calls.
+Supply the corresponding server key for each environment-configured adapter. Connections configured in [Generation Services](GENERATION-SERVICES.md) each have their own enabled state. Paid generation still follows the applicable confirmation flow. Image input requires approved reference hashes, and output-host and regional checks remain enforced.
 
 | ID | Credential name | Approved-image checksum list | Additional settings |
 | --- | --- | --- | --- |
@@ -538,12 +538,11 @@ The official `@runwayml/sdk@4.22.0` builds create and task-query requests using 
 
 Live calls require all applicable gates, configured only after separate user authorization:
 
-1. `MIOON_ENABLE_LIVE_PROVIDER=1`
-2. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
-3. `RUNWAY_APPROVED_ASSET_SHA256`: comma-separated hashes of the exact approved synthetic reference files
-4. Independently verified output hosts and the separately agreed scope and cost of the live call; the application has no generation-count or currency-spending cap
+1. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
+2. `RUNWAY_APPROVED_ASSET_SHA256` with comma-separated hashes of the exact approved synthetic reference files
+3. Independently verified output hosts and the separately agreed scope and cost of the live call. The application has no generation-count or currency-spending cap.
 
-The provider never reads credentials from browser input, project JSON or a URL. Construction, capability listing, reconciliation of an unknown request, and local-only cancellation make no network calls. A credential alone does not enable live calls. Capability `configured` reports presence only; `enabled` reflects the explicit enable switch and key, while per-reference approval is still mandatory.
+The provider reads credentials from the server environment. Construction, capability listing, reconciliation of an unknown request, and local-only cancellation make no network calls. The key makes the adapter available, and per-reference approval remains mandatory.
 
 Only managed local reference files are read. The adapter resolves symlinks beneath `root`, checks the snapshot checksum, accepts PNG/JPEG/WebP signatures, and sends an inline data URI to Runway. Arbitrary source URLs, GIFs and additional references are rejected. Encoded data URI length is capped at 5 MiB; large files fail before transmission. There is no separate upload POST. [Official input requirements](https://docs.dev.runwayml.com/assets/inputs/)
 

@@ -64,7 +64,7 @@ Mac 首次完整源码试用见 [Mac 源码试用指南](MAC-SOURCE-TRIAL.zh-CN.
 pnpm install --frozen-lockfile
 node scripts/tooling.ts doctor
 node scripts/tooling.ts build --channel=development
-MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
+pnpm desktop
 ```
 
 Electron 44 的 npm 分发会在需要时下载官方运行时。构建主机需要能访问 npm registry 及 Electron 官方下载，缓存目录需要可写。Electron npm 安装器实际读取 `electron_config_cache`；electron-builder 可使用自己的 `ELECTRON_CACHE`。受限 CI 还可明确设置 `XDG_CACHE_HOME`、`XDG_DATA_HOME` 和 pnpm store；不要因此关闭 Chromium 沙箱。
@@ -167,7 +167,7 @@ macOS 关闭最后一个窗口时保留应用与后端；Dock 激活重新打开
 
 MCP bridge 可以配置 `MIOON_CONNECTION_FILE` 指向所选渠道的 descriptor；每次工具调用重新读取，因此能跟随桌面端口和认证轮换。它通过同一 HTTP service 工作，不另开 SQLite、worker 或第二套业务服务。客户端配置和 Node CLI 要求见 `docs/MCP.md`。
 
-仅环境变量配置的视频适配器会接收明确列出的服务端配置，包括 `RUNWAYML_API_SECRET`、`MIOON_ENABLE_LIVE_PROVIDER`、授权素材哈希和输出域名；不会传到页面。「设置 › 生成服务」的连接各自启用，不受这个环境变量影响。首次源码试用只用模拟供应商与原创合成素材，不填写真实密钥，不启用 Mio、官方/自定义 Images 或 ComfyUI，也不点击会联网的连接检查。正式渠道不能新建模拟任务，已有模拟结果仍可读取。
+仅环境变量配置的视频适配器会接收明确列出的服务端配置，包括 `RUNWAYML_API_SECRET`、授权素材哈希和输出域名；不会传到页面。「设置 › 生成服务」的连接各自启用。首次源码试用只用模拟供应商与原创合成素材，使用未配置供应商密钥的终端，不启用 Mio、官方/自定义 Images 或 ComfyUI，也不点击会联网的连接检查。正式渠道不能新建模拟任务，已有模拟结果仍可读取。
 
 ## 本地打包
 

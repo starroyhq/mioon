@@ -9,7 +9,16 @@ import {createWorkspaceConfiguration} from '../packages/business/src/workspace-c
 import {workspaceConfigurationSchemas,workspaceSettingsSchema,workspaceSettingsUpdateSchema} from '../packages/contracts/src/workspace-configuration.ts';
 
 const FILE='workspace-settings-v1.json';
-const retired=['liveGeneration','automaticBackup','backupIntervalHours','backupLocation','backupDirectory','selectedDirectory'] as const;
+const retired=['automaticBackup','backupIntervalHours','backupLocation','backupDirectory','selectedDirectory'] as const;
+// The strict three-field schema used by v0.1.2 (a13d0687), including the
+// required boolean. Keep this fixture independent of the current RPC schema.
+function matchesV012WorkspaceSettings(value:unknown):boolean {
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const document=value as Record<string,unknown>;
+  return Object.keys(document).length===3&&document.formatVersion===1&&
+    typeof document.revision==='number'&&Number.isSafeInteger(document.revision)&&document.revision>=0&&
+    typeof document.liveGeneration==='boolean';
+}
 const code=(expected:string)=>(error:unknown)=>(error as {code?:string})?.code===expected;
 function fixture(t:TestContext,source:'app'|'file'='app') {
   const root=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-live-settings-'));
@@ -23,7 +32,7 @@ function fixture(t:TestContext,source:'app'|'file'='app') {
   return {root,library,configuration,documents,env,read,write};
 }
 
-test('legacy workspace RPC keeps the revision without changing adapter admission or persisting the retired flag',t=>{
+test('legacy workspace RPC keeps the revision and writes a true compatibility flag',t=>{
   const f=fixture(t),before=process.env.MIOON_ENABLE_LIVE_PROVIDER,environment=f.configuration.environment();
   assert.deepEqual(f.configuration.get(),{formatVersion:1,revision:0,liveGeneration:true});
   assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER,'0');
@@ -37,12 +46,23 @@ test('legacy workspace RPC keeps the revision without changing adapter admission
   assert.deepEqual(reopened.set({expectedRevision:1,liveGeneration:false}),{formatVersion:1,revision:2,liveGeneration:true});
   assert.equal(reopened.environment().MIOON_ENABLE_LIVE_PROVIDER,'1');
   assert.doesNotMatch(JSON.stringify(saved),/not-public|SYNTHETIC_PRIVATE_SECRET/);
-  assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:2});
+  assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:2,liveGeneration:true});
+});
+
+test('v0.1.2 accepts newly written workspace settings from both persistence stores',t=>{
+  for(const source of ['app','file'] as const){
+    const f=fixture(t,source);
+    f.write(JSON.stringify({formatVersion:1,revision:7,liveGeneration:false,selectedDirectory:'retired'}));
+    f.configuration.set({expectedRevision:7,liveGeneration:false});
+    const persisted:unknown=JSON.parse(String(f.read()));
+    assert.equal(matchesV012WorkspaceSettings(persisted),true,source);
+    assert.deepEqual(persisted,{formatVersion:1,revision:8,liveGeneration:true},source);
+  }
 });
 
 test('public settings reject all retired keys and arbitrary paths without accepting old backup operations',()=>{
   assert.deepEqual(Object.keys(workspaceConfigurationSchemas).sort(),['workspace.settings.get','workspace.settings.set']);
-  for(const key of retired.filter(key=>key!=='liveGeneration')){
+  for(const key of retired){
     assert.equal(workspaceSettingsUpdateSchema.safeParse({expectedRevision:0,liveGeneration:true,[key]:'/tmp/arbitrary'}).success,false,key);
     assert.equal(workspaceSettingsSchema.safeParse({formatVersion:1,revision:0,liveGeneration:true,[key]:'/tmp/arbitrary'}).success,false,key);
   }
@@ -52,7 +72,7 @@ test('public settings reject all retired keys and arbitrary paths without accept
   assert.equal(workspaceSettingsUpdateSchema.safeParse({expectedRevision:0,liveGeneration:true}).success,true);
 });
 
-test('retired setting names are ignored on read and never reach the next saved document',t=>{
+test('retired backup keys and legacy live values are ignored without rewriting on read',t=>{
   for(const source of ['app','file'] as const){
     const f=fixture(t,source),old=JSON.stringify({formatVersion:1,revision:7,liveGeneration:false,
       automaticBackup:{unusable:'discard'},backupIntervalHours:'discard',backupLocation:null,
@@ -63,15 +83,15 @@ test('retired setting names are ignored on read and never reach the next saved d
     assert.deepEqual(fs.readdirSync(f.root).sort(),files,'retired directory values have no filesystem effect');
     const result=f.configuration.set({expectedRevision:7,liveGeneration:false});
     assert.deepEqual(result,{formatVersion:1,revision:8,liveGeneration:true});
-    assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:8});
+    assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:8,liveGeneration:true});
     assert.doesNotMatch(String(f.read()),/automaticBackup|backupIntervalHours|backupLocation|backupDirectory|selectedDirectory|do-not-/);
   }
 });
 
-test('each retired key can be read independently but unrelated keys and malformed current fields remain INVALID',t=>{
+test('each tolerated legacy key can be read independently, while unrelated keys and malformed current fields remain INVALID',t=>{
   for(const source of ['app','file'] as const){
     const f=fixture(t,source),current={formatVersion:1,revision:2};
-    for(const key of retired){f.write(JSON.stringify({...current,[key]:null}));assert.deepEqual(f.configuration.get(),{...current,liveGeneration:true},key);}
+    for(const key of ['liveGeneration',...retired]){f.write(JSON.stringify({...current,[key]:null}));assert.deepEqual(f.configuration.get(),{...current,liveGeneration:true},key);}
     for(const key of ['unknown','backupDirectories','selectedDirectoryExtra','__proto__','constructor']){
       const raw=JSON.stringify({...current,[key]:true});f.write(raw);
       assert.throws(()=>f.configuration.get(),code('WORKSPACE_SETTINGS_INVALID'),key);
@@ -93,5 +113,5 @@ test('stale or invalid setting updates cannot clean up a legacy document or noti
   assert.equal(f.read(),raw);assert.equal(notifications,0);
   f.configuration.set({expectedRevision:3,liveGeneration:true});assert.equal(notifications,1);unsubscribe();
   f.configuration.set({expectedRevision:4,liveGeneration:false});assert.equal(notifications,1);
-  assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:5});
+  assert.deepEqual(JSON.parse(String(f.read())),{formatVersion:1,revision:5,liveGeneration:true});
 });

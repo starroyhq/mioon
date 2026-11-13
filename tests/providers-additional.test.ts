@@ -50,7 +50,7 @@ async function fixture(t: import('node:test').TestContext, kind: 'minimax' | 'vi
   const spec = specs[kind], root = await realpath(await mkdtemp(path.join(tmpdir(), 'additional-provider-'))); t.after(() => rm(root, { recursive: true, force: true }));
   const bytes = png(), file = path.join(root, 'reference.png'); await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const env: Record<string, string | undefined> = { [`${spec.prefix}_API_KEY`]: 'PRIVATE-KEY', MIOON_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...(kind === 'vidu' ? { VIDU_OUTPUT_HOSTS: spec.host } : {}), ...options.env };
+  const env: Record<string, string | undefined> = { [`${spec.prefix}_API_KEY`]: 'PRIVATE-KEY', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...(kind === 'vidu' ? { VIDU_OUTPUT_HOSTS: spec.host } : {}), ...options.env };
   const calls: [RequestInfo | URL, (RequestInit | undefined)?][] = [], queue: unknown[] = [...responses];
   const fetchImpl = async (...args: [RequestInfo | URL, RequestInit?]): Promise<Response> => { calls.push(args); const next = queue.shift(); if (next instanceof Error) throw next; if (typeof next === 'function') return (next as (...callArgs: [RequestInfo | URL, RequestInit?]) => Response)(...args); if (!next) throw new Error('Real fetch forbidden in offline test'); return next as Response; };
   const provider = spec.factory({ root, env, fetchImpl, ...(options.now ? { now: options.now } : {}) });
@@ -62,8 +62,12 @@ async function fixture(t: import('node:test').TestContext, kind: 'minimax' | 'vi
 
 for (const kind of Object.keys(specs) as ('minimax' | 'vidu')[]) {
   test(`${kind}: construction, capabilities, reconciliation and local stop use no network`, async t => {
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
-    assert.equal(provider.capabilities.status, 'disabled'); assert.equal(provider.capabilities.liveVerified, false);
+    const key=`${specs[kind].prefix}_API_KEY`;
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { [key]: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+    assert.equal(provider.capabilities.status, 'not_configured'); assert.equal(provider.capabilities.liveVerified, false);
+    assert.equal(provider.capabilities.configured, false);
+    assert.equal(provider.capabilities.enabled, false);
+    assert.deepEqual(provider.capabilities.configuration.missing, [key]);
     assert.equal(provider.validate(input), true);
     assert.equal(JSON.stringify(provider.capabilities).includes('PRIVATE-KEY'), false);
     await assert.rejects(provider.submit(input), { code: 'PROVIDER_DISABLED' });
@@ -74,7 +78,12 @@ for (const kind of Object.keys(specs) as ('minimax' | 'vidu')[]) {
   });
 
   for (const image of [false, true]) test(`${kind}: maps ${image ? 'first-frame' : 'text'} request with no hidden upload`, async t => {
-    const { provider, input, reference, calls, spec, bytes } = await fixture(t, kind, [json({ task_id: ID })]);
+    const { provider, input, reference, calls, spec, bytes } = await fixture(t, kind, [json({ task_id: ID })],
+      image ? {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}} : {});
+    assert.equal(provider.capabilities.status, 'available');
+    assert.equal(provider.capabilities.configured, true);
+    assert.equal(provider.capabilities.enabled, true);
+    assert.deepEqual(provider.capabilities.configuration.missing, []);
     assert.deepEqual(await provider.submit({ ...input, referenceAssets: image ? [reference] : [] }), { providerJobId: ID });
     assert.equal(calls.length, 1);
     const call = calls[0]; assert.ok(call); const [url, init] = call, body = JSON.parse(String(init?.body)) as Record<string, unknown>;

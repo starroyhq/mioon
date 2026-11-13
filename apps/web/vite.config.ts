@@ -32,5 +32,8 @@ export default defineConfig(() => ({
   plugins: [loopbackOnly, tailwindcss(), projectExamplesPlugin(fileURLToPath(new URL('../../examples/project-file-v1', import.meta.url)))],
   resolve: {alias: {'@': fileURLToPath(new URL('./src', import.meta.url))}},
   server: {host: '127.0.0.1',port,strictPort:true,cors:false,proxy:{'/api':proxy(),'/media':proxy(),'/health':proxy()}},
-  build: {outDir: 'dist', emptyOutDir:true},
+  build: {outDir: 'dist', emptyOutDir:true, rollupOptions: {input: {
+    main: fileURLToPath(new URL('./index.html', import.meta.url)),
+    settings: fileURLToPath(new URL('./settings.html', import.meta.url)),
+  }}},
 }));

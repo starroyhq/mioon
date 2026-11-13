@@ -15,6 +15,7 @@ import { createSettingsWindowNavigation } from './settings-window-state.ts';
 import { Button } from '@mioon/ui/components/button';
 import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
+import { retireSettingsBootClose } from './settings-boot-close.ts';
 export interface SettingsRenderProps {
   readonly selected: SettingsConnectionPage;
   readonly page: SettingsPage;
@@ -89,6 +90,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
     const visibility = () => setVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', visibility);
     const win = window as SettingsWindow;
+    retireSettingsBootClose(win);
     const cleanup = installNativeCloseAdmission(win as Parameters<typeof installNativeCloseAdmission>[0], { registry: native, settings: registry,
       onObservationPause: pauseObservation,
       readScope: () => JSON.stringify([context.backendId, context.contextId, navigation.version, identity.getState().appLibraryScope, identity.getState().instanceId, identity.getState().identityBlocked]), readDocumentURL: () => window.location.href });

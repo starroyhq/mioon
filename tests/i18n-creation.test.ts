@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { LOCALES, translate, renderMessage, validateCatalogs } from '../packages/i18n/src/index.ts';
 import { creationMessages } from '../packages/i18n/src/catalogs/creation.ts';
 import { imageTaskLabelDescriptor, imageTaskMessageDescriptor, imageInputIssue, imageInputIssueDescriptor } from '../apps/web/src/image-generation.ts';
-import { jobStatusDescriptor, taskErrorDescriptor, safeTaskErrorCode, providerDisplayName } from '../apps/web/src/creation-i18n.ts';
+import { jobStatusDescriptor, taskErrorDescriptor, safeTaskErrorCode, providerDisplayName, videoJobConnection } from '../apps/web/src/creation-i18n.ts';
 import { providerAvailabilityDescriptor, generationInputIssueDescriptor } from '../apps/web/src/generation-settings.ts';
 
 test('creation catalog has complete four-language templates with exact placeholder parity', () => {
@@ -30,6 +30,33 @@ test('creation diagnostics map only stable codes, handle prototype-shaped codes,
     assert.equal(imageTaskLabelDescriptor(code).key, 'image.state.statusUnconfirmed');
     assert.equal(imageTaskMessageDescriptor(code), null); assert.equal(safeTaskErrorCode({ code }), null);
   }
+});
+
+test('video connection diagnostics require the safe structured payload and an active credential phase', () => {
+  const legacy = {status: 'running', phase: 'connection_required', error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE'}};
+  const diagnostic = {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'};
+  const invalid = [
+    {...diagnostic, cause: 'UNTRUSTED_PRIVATE_DIAGNOSTIC'},
+    {...diagnostic, recovery: 'user_action'},
+    {...diagnostic, privateText: 'UNTRUSTED_PRIVATE_DIAGNOSTIC'},
+    {...diagnostic, kind: 'http'},
+  ];
+  for (const value of invalid) {
+    const display = videoJobConnection({...legacy, error: {...legacy.error, diagnostic: value}});
+    assert.equal(display?.detail.key, 'tasks.error.videoConnectionUnclassified');
+    assert.equal(display?.diagnosticCode, legacy.error.code);
+    assert.equal(display?.result, null);
+    assert.equal(display?.requiresAction, false);
+  }
+  const job = {...legacy, phase: 'connection_retrying', error: {...legacy.error, diagnostic}};
+  const original = structuredClone(job);
+  const waiting = videoJobConnection(job);
+  assert.equal(waiting?.detail.key, 'tasks.error.videoSecretStore');
+  assert.equal(waiting?.diagnosticCode, 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+  assert.deepEqual(job, original);
+  assert.equal(videoJobConnection({...job, phase: 'polling'}), null);
+  assert.equal(videoJobConnection({...job, status: 'cancelled'}), null);
+  assert.equal(jobStatusDescriptor({...job, status: 'succeeded'}).key, 'tasks.status.succeeded');
 });
 
 test('validation display sidecars preserve the old validation decision without translating or mutating drafts', () => {

@@ -57,9 +57,9 @@ const fixture = await seedDesktopQaProject(path.join(userData, 'data'));
 if (!path.isAbsolute(process.env.MIOON_FFMPEG_PATH || '') || !path.isAbsolute(process.env.MIOON_FFPROBE_PATH || '')) {
   throw new Error('Set explicit absolute MIOON_FFMPEG_PATH and MIOON_FFPROBE_PATH for packaged QA');
 }
-const env: NodeJS.ProcessEnv = { ...process.env, PATH: emptyPath, MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0' };
+const env: NodeJS.ProcessEnv = { ...process.env, PATH: emptyPath, MIOON_DESKTOP_USER_DATA: userData };
 for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'MIOON_DESKTOP_SMOKE_OUTPUT',
-  ...providerEnvironmentKeys.filter(name => name !== 'MIOON_ENABLE_LIVE_PROVIDER')]) delete env[name];
+  ...providerEnvironmentKeys]) delete env[name];
 const child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let tail = '', ended = false;
 for (const stream of [child.stdout, child.stderr] as readonly (Readable | null)[]) stream?.on('data', (bytes: Buffer) => { tail = (tail + bytes).slice(-10000); });

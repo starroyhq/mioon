@@ -28,9 +28,10 @@ export function isSameOrigin(value: string, origin: string): boolean {
   catch { return false; }
 }
 
-export function isAllowedNavigation(value: string, origin: string): boolean {
+export function isAllowedNavigation(value: string, origin: string, settings = false): boolean {
   if (!isSameOrigin(value, origin)) return false;
   const url = new URL(value);
+  if (settings && value === `${origin}/settings.html`) return true;
   const keys = [...url.searchParams.keys()];
   return url.pathname === '/' && !url.hash && (keys.length === 0 ||
     (keys.length === 1 && keys[0] === 'project' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(url.searchParams.get('project') ?? '')));
@@ -74,7 +75,7 @@ export function sessionCookie(origin: string, token: string): CookiesSetDetails 
 }
 
 export function installSessionPolicy(session: Session, origin: string, getWindow: (contents: WebContents | undefined) => BrowserWindow | null | undefined,
-  downloads: TimelineDownloadDirectory): void {
+  downloads: TimelineDownloadDirectory, isWarmSettings?: (id: number | undefined) => boolean): void {
   session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.setPermissionCheckHandler(() => false);
   session.setDevicePermissionHandler(() => false);
@@ -86,17 +87,25 @@ export function installSessionPolicy(session: Session, origin: string, getWindow
       contents === undefined ? undefined : getWindow(contents as WebContents);
     configureOwnedTimelineDeliveryDownload(event, item, webContents, resolver, origin, downloads, isAllowedNavigation);
   });
-  session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: details.resourceType === 'subFrame' || !isAllowedRequest(details.url, origin) }));
+  session.webRequest.onBeforeRequest((details, callback) => {
+    const blocked = details.resourceType === 'subFrame' || !isAllowedRequest(details.url, origin);
+    if (blocked || !isWarmSettings?.(details.webContentsId)) return callback({cancel: blocked});
+    const shell = details.resourceType === 'mainFrame' && details.url === `${origin}/settings.html`;
+    const script = details.resourceType === 'script' && isSameOrigin(details.url, origin) &&
+      /^\/assets\/(?:settings|settings-boot-close)-[\w-]{8}\.js$/.test(new URL(details.url).pathname);
+    callback({cancel: details.method !== 'GET' || !(shell || script)});
+  });
 }
 
 export function installWindowPolicy(win: BrowserWindow, origin: string, assignedNavigation?: AssignedProjectNavigation): (() => void) | undefined {
   const contents = win.webContents;
-  const blockNavigation = (event: Event & {readonly url?: string}, target: string) => { if (!isAllowedNavigation(event.url || target, origin)) event.preventDefault(); };
+  const settings = assignedNavigation?.url === `${origin}/settings.html`;
+  const blockNavigation = (event: Event & {readonly url?: string}, target: string) => { if (!isAllowedNavigation(event.url || target, origin, settings)) event.preventDefault(); };
   contents.on('will-navigate', blockNavigation);
   contents.on('will-redirect', blockNavigation);
   contents.on('will-frame-navigate', event => {
     // Subframes are never needed, including same-origin frames.
-    if (!event.isMainFrame || !isAllowedNavigation(event.url, origin)) event.preventDefault();
+    if (!event.isMainFrame || !isAllowedNavigation(event.url, origin, settings)) event.preventDefault();
   });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));

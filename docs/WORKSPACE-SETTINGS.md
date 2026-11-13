@@ -4,7 +4,7 @@
 
 为兼容旧客户端，`workspace.settings.get` 和按 `expectedRevision` 写入的 `workspace.settings.set` 保留原来的传输字段，其中返回的 `liveGeneration` 固定为 `true`，提交的布尔值不影响生成。修订检查和应用库事务照旧，不接受路径、密钥或备份字段。
 
-读取旧设置文档时，接受并忽略 `liveGeneration`、`automaticBackup`、`backupIntervalHours`、`backupLocation`、`backupDirectory`、`selectedDirectory` 这些退役键名。其他未知键仍报 `WORKSPACE_SETTINGS_INVALID`。下次写入只保存格式版本和修订。
+读取旧设置文档时，忽略 `liveGeneration` 的值以及旧备份字段 `automaticBackup`、`backupIntervalHours`、`backupLocation`、`backupDirectory`、`selectedDirectory`。其他未知键仍报 `WORKSPACE_SETTINGS_INVALID`。写入保存格式版本、修订和固定的 `liveGeneration: true`，让 0.1.2 仍能读取。
 
 旧工作区备份面板、原生目录选择器、离线备份 CLI 和整个工作区恢复分支已退役。五个 `workspace.backup.*` 操作和 `workspace.restore.inspect` 均为 404 `UNKNOWN_OPERATION`；旧 `/api/workspace-backups/…` 为 404 `NOT_FOUND`。CLI 退出 2，MCP 返回 `isError:true`，发现列表不再列出这些入口。
 

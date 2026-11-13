@@ -351,3 +351,21 @@ test('history growth at the envelope limit reports capacity while an unchanged s
   await assert.rejects(settings.put({action: 'save', expectedRevision: 1, configuration: {...current, enabled: false}, secret: keep}), {code: 'VIDEO_SETTINGS_CAPACITY', status: 507});
   assert.equal(await readFile(f.file, 'utf8'), bytes); assert.equal((await settings.get()).revision, 1);
 });
+
+test('a proven corrupt ciphertext is distinguished from temporary secure storage unavailability', async t => {
+  const vault = codec(), current = configuration();
+  let failure: 'VIDEO_SETTINGS_CORRUPT' | 'VIDEO_SECRET_CODEC_TIMEOUT' | null = null;
+  const secretCodec = {encrypt: vault.encrypt, decrypt(value: string) {
+    if (failure) throw Object.assign(Error('synthetic private native detail'), {code: failure});
+    return vault.decrypt(value);
+  }};
+  const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}});
+  await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
+  const binding = f.settings.select(current.id, 1, current.models[0]!.id);
+  failure = 'VIDEO_SETTINGS_CORRUPT';
+  await assert.rejects(f.settings.acquire(binding), {code: 'VIDEO_SETTINGS_CORRUPT'});
+  failure = 'VIDEO_SECRET_CODEC_TIMEOUT';
+  await assert.rejects(f.settings.acquire(binding), {code: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'});
+  failure = null;
+  assert.equal(await f.settings.acquire(binding), KEY);
+});

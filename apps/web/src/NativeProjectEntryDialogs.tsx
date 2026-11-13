@@ -26,7 +26,7 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
   const capabilities = state.capabilities, enabled = Boolean(capabilities?.ready) && !state.blocked;
   const failure = state.failure;
   return <>
-    <NewProjectFileDialog interactionBlocked={state.blocked} open={state.createOpen} values={state.values} onChange={desktop.change} state={state.createState}
+    <NewProjectFileDialog interactionBlocked={state.blocked} open={state.createOpen} values={state.values} onChange={desktop.change} state={state.createState} newProjectFormatVersion={state.newProjectFormatVersion}
       location={{display: state.selection?.displayPath ?? '', status: state.selectionInvalid ? 'unavailable' : state.selection ? 'ready' : 'unselected', ...(state.selectionInvalid ? {message: t('nativeEntry.selectionExpired')} : {}), risks: state.selection ? projectLocationRisks(state.selection.facts) : []}}
       onChooseLocation={enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}
       onSubmit={() => {void desktop.create();}} onClose={desktop.closeCreate}

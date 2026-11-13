@@ -11,6 +11,7 @@ import { ChevronRight, Clapperboard, FolderOpen, Info, WorkbenchIcon } from '@mi
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import type { ProjectSummary } from '../../../packages/contracts/src/project-home.ts';
+import type { NewProjectFormatVersion } from '../../../packages/contracts/src/project-entry.ts';
 import { Textarea } from '@mioon/ui/components/textarea';
 import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
 import {PendingProjectOpenStatus, type PendingProjectOpen} from './project-file/RecentProjects.tsx';
@@ -59,6 +60,7 @@ export interface ProjectHomeProps {
   onRetry: () => void;
   onRefresh: () => void;
   onCreate: (name: string, description: string, timelinePresetId?: string) => Promise<boolean>;
+  newProjectFormatVersion?: NewProjectFormatVersion;
   /** A native entry owns its retained create dialog and departure guard. */
   onRequestCreate?: () => void;
   /** A native entry opens its owned .mioon file picker. */
@@ -117,7 +119,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, deferOpeningFeedback, pendingOpen, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, newProjectFormatVersion, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -133,16 +135,18 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   const [formError, setFormError] = useState<string | DisplayMessage>('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
-  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
-  const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange });
+  const showProjectOptions = newProjectFormatVersion !== 4;
+  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
+  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
+  const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange, showProjectOptions });
   const publishCreate = (patch: Partial<{ name: string; description: string; preset: string; busy: boolean }> = {}) => {
     Object.assign(createMetadata.current, patch);
     const state = createMetadata.current;
-    onCreateStateChange?.(Object.freeze({ dirty: Boolean(state.name || state.description || state.preset !== 'portrait_1080'), busy: state.busy, version: ++state.version }));
+    onCreateStateChange?.(Object.freeze({ dirty: Boolean(state.name || current.current.showProjectOptions && (state.description || state.preset !== 'portrait_1080')), busy: state.busy, version: ++state.version }));
   };
-  if (createMetadata.current.version === 0 || createMetadata.current.callback !== onCreateStateChange) {
+  if (createMetadata.current.version === 0 || createMetadata.current.callback !== onCreateStateChange || createMetadata.current.showProjectOptions !== showProjectOptions) {
     createMetadata.current.callback = onCreateStateChange;
+    createMetadata.current.showProjectOptions = showProjectOptions;
     publishCreate({ name, description, preset: timelinePresetId, busy: submissionPending.current });
   }
   const locked = busy || submitting || phase === 'opening';
@@ -156,12 +160,12 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
     const control: MenuHelpControl = {available: () => {
       const state = current.current, form = createMetadata.current;
       return mounted && state.active && state.page === 'projects' && !state.busy && !submissionPending.current && state.phase !== 'opening' && !state.createOpen && !state.helpOpen &&
-        !form.name && !form.description && form.preset === 'portrait_1080' && state.canMutateEntry?.() !== false;
+        !form.name && (!state.showProjectOptions || !form.description && form.preset === 'portrait_1080') && state.canMutateEntry?.() !== false;
     }, open: () => { if (!control.available()) return false; changeHelp(true); onMenuHelpStateChange?.(); return true; }};
     const release = onRegisterMenuHelp?.(control);
     return () => {mounted = false; release?.();};
   }, [onRegisterMenuHelp]);
-  useEffect(() => { onMenuHelpStateChange?.(); }, [active, page, phase, busy, listBusy, createOpen, helpOpen, name, description, timelinePresetId, submitting, onMenuHelpStateChange]);
+  useEffect(() => { onMenuHelpStateChange?.(); }, [active, page, phase, busy, listBusy, createOpen, helpOpen, name, description, timelinePresetId, submitting, showProjectOptions, onMenuHelpStateChange]);
 
   useEffect(() => { helpAuthority.current = helpScope; return () => { helpAuthority.current = null; }; }, [helpScope]);
   useEffect(() => { if (!active || page !== 'projects') changeHelp(false); }, [active, page]);
@@ -202,7 +206,8 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canAct() || !current.current.createOpen || current.current.createDisabledReason) return;
-    const trimmedName = name.trim(), trimmedDescription = description.trim();
+    const optionsVisible = current.current.showProjectOptions;
+    const trimmedName = name.trim(), trimmedDescription = optionsVisible ? description.trim() : '';
     if (!trimmedName) { setFormError(msg('projects.nameRequired')); return; }
     if (trimmedName.length > 150 || trimmedDescription.length > 500) {
       setFormError(msg('redesign.projects.inputLimits'));
@@ -214,7 +219,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
     setSubmitting(true);
     setFormError('');
     try {
-      const accepted = await onCreate(trimmedName, trimmedDescription, timelinePresetId);
+      const accepted = await onCreate(trimmedName, trimmedDescription, optionsVisible ? timelinePresetId : 'portrait_1080');
       if (accepted === true) { publishCreate({ name: '', description: '', preset: 'portrait_1080' }); setName(''); setDescription(''); setTimelinePresetId('portrait_1080'); setCreateOpen(false); }
       else setFormError(msg('projects.createRetained'));
     } catch {
@@ -357,12 +362,12 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
                 placeholder={t('projects.namePlaceholder')} aria-invalid={Boolean(formError) && !name.trim()} aria-describedby={formError ? `${prefix}-form-error` : undefined}
                 onChange={event => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ name: event.target.value }); setName(event.target.value); setFormError(''); } }} />
             </div>
-            <div className="project-home-field"><Label htmlFor={`${prefix}-description`}>{t('projects.direction')}<span>{t('shell.optional')}</span></Label>
+            {showProjectOptions && <><div className="project-home-field"><Label htmlFor={`${prefix}-description`}>{t('projects.direction')}<span>{t('shell.optional')}</span></Label>
               <div className="project-home-direction"><Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={2} maxLength={500} disabled={locked || Boolean(createDisabledReason)}
-                placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
+                placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
             </div>
-            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || Boolean(createDisabledReason)} onChange={() => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
-            <p className="project-home-format-help">{t('redesign.projects.formatHelp')}</p>
+            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || Boolean(createDisabledReason)} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
+            <p className="project-home-format-help">{t('redesign.projects.formatHelp')}</p></>}
             {formError && <p id={`${prefix}-form-error`} className="project-home-form-error" role="alert">{renderMessage(formError)}</p>}
             <div className="project-home-form-actions">
               <WorkbenchButton type="button" size="large" data-testid="project-home-create-cancel" disabled={locked} onClick={() => { if (canAct()) setCreateOpen(false); }}>{t('shell.cancel')}</WorkbenchButton>

@@ -5,8 +5,8 @@ import {workspaceSettingsSchema,workspaceSettingsUpdateSchema,type WorkspaceSett
 import type {AppDocumentStore} from './app-db/stores.ts';
 
 const FILE='workspace-settings-v1.json',MAX_BYTES=16*1024;
-const RETIRED_KEYS=new Set(['liveGeneration','automaticBackup','backupIntervalHours','backupLocation','backupDirectory','selectedDirectory']);
-const CURRENT_KEYS=new Set(['formatVersion','revision']);
+const RETIRED_KEYS=new Set(['automaticBackup','backupIntervalHours','backupLocation','backupDirectory','selectedDirectory']);
+const CURRENT_KEYS=new Set(['formatVersion','revision','liveGeneration']);
 const failure=(code:string)=>new AppError(code,'Workspace settings could not be saved safely.',409);
 export function createWorkspaceConfiguration({root,env=process.env,documents}:{root:string;env?:NodeJS.ProcessEnv;documents?:Pick<AppDocumentStore,'read'|'write'>}) {
   root=path.resolve(root);validatePrivateDirectory(root);
@@ -19,13 +19,13 @@ export function createWorkspaceConfiguration({root,env=process.env,documents}:{r
     if(!value||typeof value!=='object'||Array.isArray(value))throw failure('WORKSPACE_SETTINGS_INVALID');
     const candidate=value as Record<string,unknown>;
     if(Object.keys(candidate).some(key=>!CURRENT_KEYS.has(key)&&!RETIRED_KEYS.has(key)))throw failure('WORKSPACE_SETTINGS_INVALID');
-    // Older documents can contain the retired backup settings and live flag.
-    // Keep the legacy RPC response shape while discarding those values.
+    // The live flag is retained on disk for v0.1.2 but no longer controls
+    // generation. Ignore the stored value and the retired backup settings.
     const parsed=workspaceSettingsSchema.safeParse({formatVersion:candidate.formatVersion,revision:candidate.revision,liveGeneration:true});
     if(!parsed.success)throw failure('WORKSPACE_SETTINGS_INVALID');
     return parsed.data;
   };
-  const save=(value:Omit<WorkspaceSettings,'liveGeneration'>)=>{const text=JSON.stringify(value);if(documents)documents.write(FILE,text);else writePrivateFileAtomic(file,text,{root,maxBytes:MAX_BYTES});return value;};
+  const save=(value:WorkspaceSettings)=>{const text=JSON.stringify(value);if(documents)documents.write(FILE,text);else writePrivateFileAtomic(file,text,{root,maxBytes:MAX_BYTES});return value;};
   const get=()=>read();
   const listeners=new Set<()=>void>();
   return {
@@ -33,11 +33,9 @@ export function createWorkspaceConfiguration({root,env=process.env,documents}:{r
     set(input:WorkspaceSettingsUpdate):WorkspaceSettings {
       const patch=workspaceSettingsUpdateSchema.parse(input),current=read();
       if(patch.expectedRevision!==current.revision)throw failure('WORKSPACE_SETTINGS_CONFLICT');
-      const result=save({formatVersion:1,revision:current.revision+1});
-      for(const listener of listeners)listener();return {...result,liveGeneration:true};
+      const result=save({formatVersion:1,revision:current.revision+1,liveGeneration:true});
+      for(const listener of listeners)listener();return result;
     },
-    // Only the explicitly provisioned server-side video adapter opt-in is
-    // inherited here. Settings-backed connections never consult it.
     environment:():NodeJS.ProcessEnv=>({...env}),
     subscribe(listener:()=>void):()=>void {listeners.add(listener);return()=>listeners.delete(listener);},
     root,

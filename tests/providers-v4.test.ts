@@ -39,7 +39,7 @@ async function fixture(t: test.TestContext, kind: keyof typeof specs, responses:
   const spec = specs[kind], root = await sandbox(t), bytes = png(), file = path.join(root, 'approved.png');
   await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const env = { [spec.key]: 'SECRET-DO-NOT-LEAK', MIOON_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...options.env };
+  const env = { [spec.key]: 'SECRET-DO-NOT-LEAK', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...options.env };
   const calls: [string, RequestInit & {body: string; headers: Record<string, string>}][] = [], queue = [...responses];
   const fetchImpl: typeof fetch = async (...args) => { calls.push(args as unknown as (typeof calls)[number]); const item = queue.shift(); if (item instanceof Error) throw item; if (typeof item === 'function') return (item as (...values: Parameters<typeof fetch>) => Response)(...args); if (!item) throw new Error('No real fetch is allowed in an offline test'); return item as Response; };
   const provider = spec.factory({ root, env, fetchImpl, ...(options.now ? { now: options.now } : {}) });
@@ -51,9 +51,9 @@ async function fixture(t: test.TestContext, kind: keyof typeof specs, responses:
 
 for (const kind of Object.keys(specs) as (keyof typeof specs)[]) {
   test(`${kind}: constructor/capabilities/reconcile/cancel are offline and secrets never appear`, async t => {
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
-    assert.equal(provider.capabilities.status, 'disabled');
-    assert.equal(provider.capabilities.configured, true);
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { [specs[kind].key]: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+    assert.equal(provider.capabilities.status, 'not_configured');
+    assert.equal(provider.capabilities.configured, false);
     assert.equal(provider.capabilities.enabled, false);
     assert.equal(provider.capabilities.modelCapabilities[0].id, specs[kind].model);
     assert.equal(JSON.stringify(provider.capabilities).includes('SECRET-DO-NOT-LEAK'), false);
@@ -65,7 +65,7 @@ for (const kind of Object.keys(specs) as (keyof typeof specs)[]) {
     assert.equal(calls.length, 0);
     const unconfigured = specs[kind].factory({ env: {}, fetchImpl: () => assert.fail('network') } as unknown as Parameters<typeof createArkProvider>[0]);
     assert.equal(unconfigured.capabilities.status, 'not_configured');
-    assert.ok(unconfigured.capabilities.configuration.missing.includes(specs[kind].key));
+    assert.deepEqual(unconfigured.capabilities.configuration.missing, [specs[kind].key]);
   });
 
   test(`${kind}: synchronous validation needs metadata only and rejects unsupported inputs`, async t => {
@@ -77,7 +77,12 @@ for (const kind of Object.keys(specs) as (keyof typeof specs)[]) {
   });
 
   for (const withImage of [false, true]) test(`${kind}: maps ${withImage ? 'first-frame image' : 'text'} to one fixed-origin POST`, async t => {
-    const { provider, spec, input, reference, calls, bytes } = await fixture(t, kind, [json(specs[kind].accepted())]);
+    const { provider, spec, input, reference, calls, bytes } = await fixture(t, kind, [json(specs[kind].accepted())],
+      withImage ? {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}} : {});
+    assert.equal(provider.capabilities.status, 'available');
+    assert.equal(provider.capabilities.configured, true);
+    assert.equal(provider.capabilities.enabled, true);
+    assert.deepEqual(provider.capabilities.configuration.missing, []);
     assert.deepEqual(await provider.submit({ ...input, referenceAssets: withImage ? [reference] : [] }, { requestId: 'once' }), { providerJobId: spec.id });
     assert.equal(calls.length, 1);
     const [url, init] = calls[0], body = JSON.parse(init.body);

@@ -36,7 +36,7 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
   const status = providerStatus(provider);
   const models = providerModels(provider);
   const configuration = record(provider?.configuration) ? provider.configuration : null;
-  const missing = uniqueConfiguration(configuration?.missing);
+  const missing = uniqueConfiguration(configuration?.missing).filter(name => name !== 'MIOON_ENABLE_LIVE_PROVIDER');
 
   const details = <>
     {capabilities && <div className="model-capabilities" data-testid="model-capabilities">

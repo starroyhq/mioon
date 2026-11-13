@@ -22,16 +22,15 @@ function isImage(bytes: Buffer, mime: unknown): boolean {
   return false;
 }
 
-/** Real adapter. Importing/constructing it never makes a request; network is off by default. */
+/** Real adapter. Importing or constructing it never makes a request. */
 export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
   const secret = typeof env.RUNWAYML_API_SECRET === 'string' ? env.RUNWAYML_API_SECRET.trim() : '';
   const configured = Boolean(secret);
-  const enabled = () => configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
   const approvedHashes = new Set((env.RUNWAY_APPROVED_ASSET_SHA256 ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^[0-9a-f]{64}$/.test(x)));
   // The documented output CDN is allowed by default. Additional verified CDN hosts
   // can be configured server-side, never by a request, prompt, or provider response.
   const outputHosts = new Set(['dnznrvs05pmza.cloudfront.net', ...(env.RUNWAY_OUTPUT_HOSTS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
-  const ensureEnabled = (): void => { if (!enabled()) throw error('PROVIDER_DISABLED', 'Runway live calls are disabled or its server credential is missing.'); };
+  const ensureEnabled = (): void => { if (!configured) throw error('PROVIDER_DISABLED', 'The Runway server credential is missing.'); };
   const assertTaskId = (id: unknown): void => {
     if (typeof id !== 'string' || !UUID.test(id)) throw error('INVALID_PROVIDER_TASK_ID', 'Runway task ID is invalid.');
   };
@@ -89,7 +88,7 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
     capabilities: {
       id: 'runway', name: 'Runway Gen-4 Turbo · live verification pending', models: ['gen4_turbo'], inputModes: ['image'],
       aspectRatios: Object.keys(RATIOS), durations: [2, 3, 4, 5, 6, 7, 8, 9, 10],
-      mock: false, configured, get enabled() { return enabled(); }, requiresApprovedReference: true, liveVerified: false,
+      mock: false, configured, enabled: configured, requiresApprovedReference: true, liveVerified: false,
       maxReferenceImages: 1, minPollIntervalMs: 5000, supportsRemoteCancel: false,
       reconciliation: 'known-task-id-only', verification: 'Contract-tested with injected HTTP; real submission pending authorization.',
     },

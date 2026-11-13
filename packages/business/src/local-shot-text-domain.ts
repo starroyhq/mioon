@@ -5,6 +5,7 @@ import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';
 import {LocalShotTextError} from './local-shot-text.ts';
 import {hasSubjectGeneration} from './generation-inputs.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
+import {isCanvasArchived} from './canvas-active.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value);
@@ -92,7 +93,10 @@ export function createLocalShotTextDomain({db,canonical,replay,updateShotInProje
     });
   }
   return {
-    readShot:(projectId:string,shotId:string):unknown|null=>snapshot(()=>shot(projectId,shotId)),
+    readShot:(projectId:string,shotId:string):unknown|null=>snapshot(()=>{
+      const value=shot(projectId,shotId);
+      return value&&!isCanvasArchived(db,'shots',shotId)?value:null;
+    }),
     readReceipt:receipt,
     async update(projectId:string,input:LocalShotTextUpdateInput):Promise<unknown>{
       try{return await updateShotInProject(projectId,input);}

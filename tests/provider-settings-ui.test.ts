@@ -13,7 +13,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     import ProviderSettings from './ProviderSettings.tsx';
     const capabilities = { id: 'local-model', name: 'Local model', inputModes: ['text'], durations: [4, 8], aspectRatios: ['9:16'] };
     const base = { id: 'example', name: 'Example', modelCapabilities: [capabilities], configuration: {
-      missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS '],
+      missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS ', 'MIOON_ENABLE_LIVE_PROVIDER'],
       requirements: ['Long server-only setup instructions', 'Long server-only setup instructions'],
     } };
     export const markup = Object.fromEntries(['not_configured', 'disabled', 'available', 'mock'].map(status => {
@@ -45,7 +45,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     assert.match(html, /data-testid="model-select"/);
     assert.match(html, /data-testid="model-capabilities"/);
     assert.doesNotMatch(html, /type="password"/);
-    assert.doesNotMatch(html, /MAX_GENERATIONS|生成次数上限/);
+    assert.doesNotMatch(html, /MIOON_ENABLE_LIVE_PROVIDER|MAX_GENERATIONS|生成次数上限/);
   }
   assert.match(markup.not_configured, /还需配置 2 项，完成后重启服务/);
   assert.match(markup.disabled, /此服务未启用/);

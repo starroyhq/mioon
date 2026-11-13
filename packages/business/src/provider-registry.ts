@@ -92,7 +92,7 @@ export const providerSettings = Object.freeze({
 type ProviderSettingsKey=keyof typeof providerSettings;
 const providerSetting=(id: string): {credential: string; prefix: string} | undefined =>
  Object.hasOwn(providerSettings,id)?providerSettings[id as ProviderSettingsKey]:undefined;
-export const providerEnvironmentKeys=Object.freeze(['MINIMAX_REGION','VIDU_REGION','MIOON_ENABLE_LIVE_PROVIDER',...Object.values(providerSettings).flatMap(({credential,prefix})=>[credential,`${prefix}_APPROVED_ASSET_SHA256`,`${prefix}_OUTPUT_HOSTS`])]);
+export const providerEnvironmentKeys=Object.freeze(['MINIMAX_REGION','VIDU_REGION',...Object.values(providerSettings).flatMap(({credential,prefix})=>[credential,`${prefix}_APPROVED_ASSET_SHA256`,`${prefix}_OUTPUT_HOSTS`])]);
 // Only the production registry opts into the reviewed profile policy. Trusted
 // embedded adapters keep the legacy extension contract; request DTOs cannot
 // opt a production registry out, including after a provider handle is replaced.
@@ -127,8 +127,8 @@ export function normalizedCapabilities(provider: ProviderMetadata,_env: NodeJS.P
   ...(c.mock?{parameters:['scenario','delayMs','seed']}:{parameters:['seed'],seed:{min:0,max:4294967295},promptRequired:true,maxPromptLength:1000}),
  }));
  const configured=Boolean(c.configured);
- const missing=settings?[...(!configured?[settings.credential]:[]),...(_env.MIOON_ENABLE_LIVE_PROVIDER!=='1'?['MIOON_ENABLE_LIVE_PROVIDER']:[])]:[];
- const enabled=settings&&usesInputProfiles(provider)?configured&&_env.MIOON_ENABLE_LIVE_PROVIDER==='1':Boolean(c.enabled);
+ const missing=c.configuration?.missing??(settings&&!configured?[settings.credential]:[]);
+ const enabled=Boolean(c.enabled);
  const status=!configured?'not_configured':enabled?'available':'disabled';
  const providerRegion=getGenerationProfileRegion(provider.id,c);
  const inputProfiles=(requireInputProfiles?c.models.map(model=>getCapabilityProfile(provider.id,typeof model==='string'?model:model.id,providerRegion)):[]).filter((profile): profile is CapabilityProfile=>profile!==null);
@@ -139,8 +139,7 @@ export function normalizedCapabilities(provider: ProviderMetadata,_env: NodeJS.P
  const publicCapabilities: Record<string, unknown>={...c};
  for(const key of ['inputProfiles','inputProfileVersion','providerRegion','profileEvaluationDate','inputProfileEvaluations'])delete publicCapabilities[key];
  return {...publicCapabilities,...profiles,id:provider.id,inputModes,modelCapabilities,configured,enabled,status,liveVerified:c.mock?false:Boolean(c.liveVerified),
-  configuration:{...(c.configuration||{}),missing:[...new Set([...(c.configuration?.missing||[]),...missing])],requirements:settings?[
-   'MIOON_ENABLE_LIVE_PROVIDER=1：在后端明确启用真实调用',
+  configuration:{...(c.configuration||{}),missing:[...new Set(missing)],requirements:settings?[
    `${settings.prefix}_APPROVED_ASSET_SHA256：图生视频仅发送已授权参考图`,
    ...(c.region?[`${settings.prefix}_REGION=global|cn：必须与密钥账户区域一致，不会跨区回退`]:[]),
    ...(provider.id==='vidu'?['VIDU_OUTPUT_HOSTS：必填，仅允许独立核实的精确输出域名']:[]),

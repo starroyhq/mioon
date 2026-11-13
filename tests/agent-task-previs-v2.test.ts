@@ -176,9 +176,9 @@ test('a stale scene revision fails as not applied, an editing claim stops the wr
  const input={nodeId:node.id,expectedSceneRevision:node.sceneRevision,scene},prepared=f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_scene_set',input});
  const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_previs_scene_set',arguments:input as unknown as AgentTaskJson}});
  f.journal.markDispatch(f.run.id,step.id);f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
- assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
+ assert.deepEqual(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
  await f.call('previs.scene.set',{projectId:f.projectId,nodeId:node.id,expectedSceneRevision:node.sceneRevision,scene:node.scene,requestId:step.id});
- assert.equal(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),null,'a retained save receipt keeps the step for inspection');
+ assert.equal(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),null,'a retained save receipt keeps the step for inspection');
 });
 
 test('a refused scene names the failing fields without echoing values, and nothing is prepared',async t=>{

@@ -1,6 +1,7 @@
 import {pauseUnavailableBackgroundTask} from './background-task-state.ts';
 import {markBackgroundTaskChanged,isBackgroundTaskIndexUncertain,safeBackgroundTaskIndexError} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
+import {canvasActiveCondition} from './canvas-active.ts';
 import {isProjectStore} from './project-file/store.ts';
 import {prepareProjectAssetFullHash, registerProjectMediaStore} from './project-media-storage.ts';
 import {mediaLocatorFields, sameMediaLocator, hasAssetReference, validAssetLocator} from './asset-reference-record.ts';
@@ -445,7 +446,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    check();if(isProjectStore(store))for(const file of published)if('publication' in file)assertPublishedProjectOutput(store,file.publication,{signal:attemptSignal,beforeEffect:check});
    const value=task(original.row.projectId,original.row.id);if(value.kind!=='shots')invalid();
    const timestamp=now(),projectId=original.row.projectId,snapshot=value.snapshot;
-   const order=Number(db.prepare("SELECT COALESCE(MAX(CASE WHEN json_valid(data) AND json_type(data,'$.orderIndex')='integer' THEN json_extract(data,'$.orderIndex') END),-1)+1 AS n FROM shots WHERE projectId=?").get(projectId)!.n);
+   const order=Number(db.prepare(`SELECT COALESCE(MAX(CASE WHEN json_valid(data) AND json_type(data,'$.orderIndex')='integer' THEN json_extract(data,'$.orderIndex') END),-1)+1 AS n FROM shots WHERE projectId=? AND ${canvasActiveCondition(db)}`).get(projectId)!.n);
    const shotIds=plan.map(()=>randomUUID());
    for(const [index,item] of plan.entries()){
     const keyframe=saved.keyframes[index]!,file=published[index]!;

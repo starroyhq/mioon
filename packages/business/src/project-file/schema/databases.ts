@@ -9,7 +9,7 @@ import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {VERSION_SCHEMA} from './domains/versions.ts';
 import {DRAFT_SCHEMA} from './domains/drafts.ts';
-import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, canvasArchiveColumnDefinitions, canvasArchiveRevisionStatements} from './domains/canvas.ts';
+import {CANVAS_ARCHIVE_INDEXES, CANVAS_ARCHIVE_TABLES, CANVAS_HISTORY_SCHEMA, FORMAT4_HISTORY_SCHEMA_VERSION, canvasArchiveColumnDefinitions, canvasArchiveRevisionStatements} from './domains/canvas.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
@@ -27,7 +27,7 @@ export const FORMAT4_PROJECT_SCHEMA_VERSION = 4;
 export type ProjectFileFormat = typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
 /** 3 replaced development task tables; 4 adds counters; 5 adds rule-write intents; 6 adds local project versions; 7 adds proven previs image-edit origins; 8 adds content tokens and recovery confirmation; 9 adds host-local drafts; 10 adds UUID-bound custom image reviews. */
 export const HISTORY_SCHEMA_VERSION = 10;
-export const FORMAT4_HISTORY_SCHEMA_VERSION = 11;
+export {FORMAT4_HISTORY_SCHEMA_VERSION} from './domains/canvas.ts';
 export const CACHE_SCHEMA_VERSION = 2;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
