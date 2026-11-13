@@ -8,7 +8,7 @@ import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {AGENT_TASK_STATUSES} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {isProjectFileHeld} from './held-files.ts';
-import {inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
+import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
 import type {Format4Options} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
 import {projectFileError,isSqliteBusy,isSqliteCorrupt} from './errors.ts';
@@ -162,6 +162,7 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
   const inspected=inspectProjectFileReadOnly(projectFile,options.format4),historyFile=options.historyFile(inspected.projectId);
   if(typeof historyFile!=='string'||!path.isAbsolute(historyFile))throw new TypeError('Closed project inspection requires an absolute history path');
   const history=path.resolve(historyFile),historyInfo=lstatSync(history,{bigint:true,throwIfNoEntry:false});
+  assertNoFormat4Restore(path.dirname(history),inspected.projectId);
   if(lstatSync(path.join(path.dirname(history),'history-switch-active.json'),{throwIfNoEntry:false}))
    throw new AppError('PROJECT_HISTORY_SWITCH_PENDING','本机记录切换尚未完成，未更改项目。',409,{projectId:inspected.projectId});
   let historyBefore:BigIntStats|undefined;
@@ -185,11 +186,13 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
    ||!('revision' in project)||typeof project.revision!=='number'||!Number.isSafeInteger(project.revision)||project.revision<1)throw invalid('project','metadata');
   let historyResult:ClosedProjectTrashHistory|null=null;
   if(historyBefore){active='history';historyResult={...validateHistory(db,'history',identity.projectId,options.format4),hasBlockingMio:hasBlockingMioRun(db,identity.projectId,'history')};}
+  assertNoFormat4Restore(path.dirname(history),identity.projectId);
   assertAllowed();
   checkTrashGeneration(projectFile,before,'project');if(historyBefore)checkTrashGeneration(history,historyBefore,'history');
   db.exec('COMMIT');connection.close();connection=undefined;
   // Recheck after releasing our own held identities; no handle escapes.
   checkTrashGeneration(projectFile,before,'project');if(historyBefore)checkTrashGeneration(history,historyBefore,'history');
+  assertNoFormat4Restore(path.dirname(history),identity.projectId);
   assertAllowed();
   return {projectFile,identity,revision:project.revision,generation:trashGeneration(before),history:historyResult};
  }catch(error){
@@ -219,6 +222,7 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   const inspected=inspectProjectFileReadOnly(project,options.format4);
   const history=path.resolve(options.historyFile(inspected.projectId));
   const historyInfo=lstatSync(history,{bigint:true,throwIfNoEntry:false});
+  assertNoFormat4Restore(path.dirname(history),inspected.projectId);
   if(lstatSync(path.join(path.dirname(history),'history-switch-active.json'),{throwIfNoEntry:false}))
    throw new AppError('PROJECT_HISTORY_SWITCH_PENDING','本机记录切换尚未完成，未复制项目。',409,{projectId:inspected.projectId});
   let historyBefore:BigIntStats|undefined;
@@ -237,6 +241,7 @@ export async function captureClosedProjectSnapshot(options:CaptureClosedProjectS
   if(identity.projectId!==inspected.projectId||identity.contentSequence!==inspected.contentSequence||identity.contentToken!==inspected.contentToken)throw invalid('project','metadata');
   if(historyBefore)active='history';
   const historyIdentity=historyBefore?validateHistory(source,'history',identity.projectId,options.format4):null;
+  assertNoFormat4Restore(path.dirname(history),identity.projectId);
   if(options.onBoundary)await options.onBoundary('locked');
   assertAllowed();
   ensurePrivateDirectory(directory,{create:true});

@@ -1,5 +1,9 @@
 import {isPrevisPublicationResponse, previsPublicationIdentity, previsPublicationInputSchema} from '../../../../packages/contracts/src/previs-publication.ts';
-import type {PrevisImportOutcome, PrevisImportRequest} from './previs-output.ts';
+import type {PrevisPublicationResponse} from '../../../../packages/contracts/src/previs-publication.ts';
+import type {PrevisImportOutcome, PrevisImportRequest, PrevisPublishedImage} from './previs-output.ts';
+
+const publishedImage = ({asset, projectId, nodeId, width, height, sha256}: PrevisPublicationResponse): PrevisPublishedImage =>
+  ({assetId: asset.id, projectId, nodeId, width, height, sha256});
 
 /** An uncertain publication is resolved only by its exact durable request.
  * A library image with equal bytes says nothing about this node or render. */
@@ -9,7 +13,7 @@ export async function publishPrevisOutput(input: PrevisImportRequest, rpc: (oper
     const value = await rpc('previs.output.publish', input);
     if (!isPrevisPublicationResponse('previs.output.publish', input, value) || value === null)
       throw Object.assign(new Error('Invalid previs publication acknowledgement'), {code: 'BACKEND_PROTOCOL_ERROR'});
-    return {status: 'imported', assetId: value.asset.id};
+    return {status: 'imported', image: publishedImage(value)};
   } catch (error) {
     const failure = error as {definitive?: boolean; status?: number; code?: string};
     if (failure.definitive === true && failure.code !== 'BACKEND_PROTOCOL_ERROR' && (failure.status ?? 0) >= 400 && (failure.status ?? 0) < 500)
@@ -17,7 +21,7 @@ export async function publishPrevisOutput(input: PrevisImportRequest, rpc: (oper
   }
   try {
     const identity = previsPublicationIdentity(input), value = await rpc('previs.output.lookup', identity);
-    if (value !== null && isPrevisPublicationResponse('previs.output.lookup', identity, value)) return {status: 'imported', assetId: value.asset.id};
+    if (value !== null && isPrevisPublicationResponse('previs.output.lookup', identity, value)) return {status: 'imported', image: publishedImage(value)};
   } catch { /* Keep the original uncertainty until this exact request is found. */ }
   return {status: 'unknown'};
 }

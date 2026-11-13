@@ -363,6 +363,47 @@ test('monitor and export settings keep the legacy UI unless authoritative aspect
   assert.ok(byTestId(current, 'export-resolution'));
 });
 
+test('a changed aspect frame uses the existing preview refresh action and keeps frozen playback metadata', () => {
+  const controls = loadFrameControls();
+  const Preview = component('Preview.tsx', {
+    './AspectFrameControls.tsx': controls,
+    './PreviewPlaybackControls.tsx': {default: 'PreviewPlaybackControls', __esModule: true},
+    './workspace-visibility.tsx': {useWorkspaceVisibility: () => true},
+    './api.ts': {assetUrl: () => '', mediaUrl},
+    './Timeline.tsx': {assetKind: () => 'video'},
+    './source-range-state.ts': sourceRange,
+  }).default;
+  const current = {...timeline('landscape_1080', 2), durationFrames: 90};
+  const frozen = {...timeline('portrait_1080', 1), durationFrames: 30};
+  const job = {id: id(7), projectId, assetId: id(8), mode: 'timeline', purpose: 'preview',
+    status: 'succeeded', timelineRevision: 1, snapshot: {timeline: frozen}};
+  const rendered: string[] = [];
+  const aspectFrame = {ratio: '16:9', shortEdge: 1080, onSelect() {},
+    changed: {ratio: '16:9', clips: 1, onUndo() {}, onDismiss() {}}};
+  const base = {kind: 'timeline', timeline: current, playhead: 75, aspectFrame,
+    onRender: (purpose: string) => rendered.push(purpose)};
+
+  const tree = Preview({...base, job});
+  const header = nodes(tree).find(node => node.props.className === 'edit-preview-format')!;
+  assert.equal(textOf(header), '1920×1080 · 30fps');
+  assert.match(String(header.props.title), /9:16 · 1080 × 1920 · 30 fps/);
+  const feedback = nodes(tree).find(node => node.type === controls.AspectFrameFeedback)!;
+  assert.ok(byTestId(controls.AspectFrameFeedback(feedback.props), 'aspect-frame-undo'));
+  const playback = nodes(tree).find(node => node.type === 'PreviewPlaybackControls')!;
+  assert.equal(playback.props.duration, 30);
+  assert.match(String(playback.props.metadata), /9:16 · 1080 × 1920 · 30 fps/);
+
+  const notices = nodes(tree).filter(node => node.props['data-testid'] === 'preview-stale');
+  assert.equal(notices.length, 1);
+  const actions = nodes(notices[0]).filter(node => textOf(node) === '更新预览' && typeof node.props.onClick === 'function');
+  assert.equal(actions.length, 1);
+  assert.deepEqual(rendered, []);
+  actions[0].props.onClick();
+  assert.deepEqual(rendered, ['preview']);
+  const updated = Preview({...base, job: {...job, timelineRevision: 2, snapshot: {timeline: current}}});
+  assert.equal(byTestId(updated, 'preview-stale'), undefined);
+});
+
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
   const Inspector = component('TimelineInspector.tsx', { './clip-audio-state.ts': audio, './Timeline.tsx': { assetKind: () => 'image', framesLabel: String }, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => async () => true }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './clip-draft-state.ts': clipDraft,
     './clip-draft-hook.ts': { useClipDraft: ({context}:{context:Parameters<typeof clipDraft.createClipDraftController>[0]["context"]}) => { const controller = clipDraft.createClipDraftController(({ context, client: { get: () => assert.fail('Static bounds inspection does not load persistence') } } as unknown as Parameters<typeof clipDraft.createClipDraftController>[0])); return { state: controller.getState(), controller }; } },

@@ -55,7 +55,9 @@ test('lost previs ACK uses only exact lookup and never retries publication or se
   const rpc = async (operation: string, value: Record<string, unknown>): Promise<unknown> => {
     calls.push({operation, input: value}); if (operation === 'previs.output.publish') throw new Error('lost acknowledgement'); return response;
   };
-  assert.deepEqual(await publishPrevisOutput(input, rpc), {status: 'imported', assetId});
+  const imported = {status: 'imported', image: {assetId, projectId, nodeId, width: 64, height: 96, sha256}};
+  assert.deepEqual(await publishPrevisOutput(input, rpc), imported);
+  assert.deepEqual(await publishPrevisOutput(input, async () => response), imported);
   assert.deepEqual(calls, [{operation: 'previs.output.publish', input}, {operation: 'previs.output.lookup', input: identity}]);
   assert.deepEqual(await publishPrevisOutput(input, async operation => operation === 'previs.output.publish' ? {...response, requestId: 'someone-else'} : null), {status: 'unknown'});
   assert.deepEqual(await publishPrevisOutput(input, async operation => operation === 'previs.output.publish' ? {...response, requestId: 'someone-else'} : {...response, keyframeId: 'k2'}), {status: 'unknown'});

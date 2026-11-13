@@ -1,10 +1,16 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
+import {once} from 'node:events';
+import {createServer} from 'node:http';
+import {readFile, rm} from 'node:fs/promises';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {AppError, hasRequestNotAppliedProof, isEditTaskEnvelope, isTimelineMutationResponse, isTimelineRecord, isTimelineRenderRecord} from '@mioon/contracts';
+import {AppError, TIMELINE_EXPORT_DEFAULT_SETTINGS, exportPreflightResponseSchema, hasRequestNotAppliedProof, isEditTaskEnvelope, isTimelineMutationResponse, isTimelineRecord, isTimelineRenderRecord} from '@mioon/contracts';
+import {createExportFileRecovery} from '../apps/server/src/export-file-recovery.ts';
+import {exportFileStatusSchema} from '../packages/contracts/src/export-file-recovery.ts';
+import {assetMediaDtoSchema, assetMediaPrepareResponseSchema} from '../packages/contracts/src/asset-media.ts';
 import type {EditTask} from '../packages/contracts/src/edit-tasks.ts';
 import {CLIP_LAYOUT_PROFILE} from '../packages/contracts/src/timeline-clip-layout.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
@@ -13,10 +19,17 @@ import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-f
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {withTaskEffectOrigin} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
+import {startWorker} from '../packages/business/src/jobs.ts';
+import {probe, run} from '../packages/business/src/media.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
+import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
+import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
+import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
+import type {FixtureCall} from './helpers/strict-timeline-core-types.ts';
 import {changeMarks, readProjectState} from './helpers/project-state.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
@@ -66,6 +79,8 @@ async function fixture(t: TestContext) {
     projectId, call, format, formatInput, mutation, timeline, versions, state, receipts,
     editTasks: () => createEditTasks({store, services}),
     get db() {return store.db;},
+    get store() {return store;},
+    startWorker: () => startWorker(store, services, new Map()),
     async activate() {
       assert.equal(store.db.prepare('PRAGMA project.user_version').get()!.user_version, 3);
       await services.drain();
@@ -307,4 +322,169 @@ test('Mio keeps pristine-format behavior on a format-4 project', async t => {
   const portrait = await f.timeline('timeline.format.set', portraitInput);
   assert.deepEqual([portrait.width, portrait.height, portrait.clips[0]?.id], [720, 1280, populated.clips[0]?.id]);
   assert.equal(portrait.clips[0]?.layout?.basisPresetId, 'landscape_720');
+});
+
+test('in-flight exports keep their old frame and published bytes after a format-4 change', {timeout: 60_000}, async t => {
+  const f = await fixture(t), {projectId} = f;
+  await f.timeline('timeline.format.set', await f.formatInput('landscape_720'));
+  await f.activate();
+
+  // A real local source serves both the timeline and the storyboard. The
+  // already-selected version is seeded so no generation adapter runs.
+  const sourceFile = path.join(f.store.tempDir, 'source.mp4');
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:r=30:d=0.5',
+    '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', sourceFile]);
+  const call = f.call as FixtureCall;
+  const imported = assetMediaDtoSchema.parse(await call('asset.import', {projectId, name: 'Frame source.mp4', mimeType: 'video/mp4',
+    dataBase64: (await readFile(sourceFile)).toString('base64')}));
+  const {assets: [source]} = assetMediaPrepareResponseSchema.parse(await call('asset.media.prepare',
+    {projectId, purpose: 'timeline', assets: [{assetId: imported.id, referenceRevision: imported.referenceRevision}]}));
+  assert.ok(source?.sha256);
+  const shot = await call('shot.create', {projectId, title: 'Frame source', prompt: 'Local fixture', duration: 2});
+  const version = {id: randomUUID(), jobId: randomUUID(), projectId, shotId: shot.id, assetId: source.id,
+    sha256: source.sha256, number: 1, createdAt: new Date().toISOString()};
+  f.store.put('jobs', {id: version.jobId, projectId, shotId: shot.id, status: 'succeeded', versionId: version.id});
+  f.store.put('versions', version);
+  await call('version.select', {shotId: shot.id, versionId: version.id, expectedRevision: shot.revision, requestId: randomUUID()});
+
+  const empty = await f.timeline(), track = empty.tracks.find(({kind}) => kind === 'video');
+  assert.ok(track);
+  const landscape = await f.timeline('timeline.clip.add', {...f.mutation(empty.revision),
+    trackId: track.id, assetId: source.id, startFrame: 0, durationFrames: 12});
+  const settings = {exportSettings: {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_360'},
+    exportRange: {startFrame: 2, endFrame: 10}, deliveryName: 'Original landscape'};
+  const preflight = async (expectedRevision: number, options = settings) =>
+    exportPreflightResponseSchema.parse(await call('timeline.export.preflight', {projectId, expectedRevision, ...options}));
+  const oldCheck = await preflight(landscape.revision);
+  assert.equal(oldCheck.status, 'ready');
+  assert.deepEqual([oldCheck.summary?.width, oldCheck.summary?.height], [1280, 720]);
+  assert.ok(oldCheck.snapshotHash);
+  const oldInput = {...f.mutation(landscape.revision), purpose: 'export', preflightSnapshotHash: oldCheck.snapshotHash, ...settings};
+  const previewInput = {...f.mutation(landscape.revision), purpose: 'preview'};
+  const storyboardInput = {projectId, requestId: randomUUID()};
+  const oldExport = await call('timeline.render', oldInput), oldPreview = await call('timeline.render', previewInput);
+  const storyboard = await call('export.create', storyboardInput);
+  assert.ok(isTimelineRenderRecord(oldExport, oldInput) && isTimelineRenderRecord(oldPreview, previewInput));
+  assert.deepEqual(storyboard.outputGeometry, {fps: 30, width: 1280, height: 720});
+  const oldReceipt = f.receipts(oldInput.requestId), previewReceipt = f.receipts(previewInput.requestId);
+  const storyboardReceipt = () => f.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(storyboardInput.requestId);
+  const oldStoryboardReceipt = storyboardReceipt();
+  assert.ok(oldReceipt.result && previewReceipt.result && oldStoryboardReceipt);
+
+  const formatInput = await f.formatInput('portrait_720'), oldJobs = [oldExport, oldPreview, storyboard];
+  const savedStatus = (id: string) => f.db.prepare("SELECT json_extract(data,'$.status') AS status FROM exports WHERE id=?").get(id)?.status;
+  assert.deepEqual(oldJobs.map(({id}) => savedStatus(id)), ['queued', 'queued', 'queued']);
+  const worker = f.startWorker();
+  let portrait;
+  try {
+    // Worker startup claims one export synchronously, then awaits local media.
+    // Enter the frame transaction in that turn while the other jobs are queued.
+    assert.deepEqual(oldJobs.map(({id}) => savedStatus(id)).sort(), ['queued', 'queued', 'running']);
+    portrait = await f.timeline('timeline.format.set', formatInput);
+    assert.deepEqual([portrait.width, portrait.height], [720, 1280]);
+    await worker.tick();
+  } finally {
+    await worker.stop();
+  }
+
+  const finished = async (id: string, width: number, height: number, frames: number) => {
+    const result = await call('export.get', {exportId: id});
+    assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
+    assert.ok(result.assetId);
+    const asset = readOwnedTimelineAsset(f.db, projectId, result.assetId);
+    assert.ok(asset);
+    const file = mediaFixturePath(f.store.root, asset), info = await probe(file);
+    const video = info.probe.streams.find(stream => stream.index === info.videoStreamIndex);
+    assert.equal(info.codec, 'h264');
+    assert.deepEqual([info.width, info.height, Number(video?.nb_frames)], [width, height, frames]);
+    return {result, asset, file};
+  };
+  const oldOutput = await finished(oldExport.id, 640, 360, 8);
+  const previewOutput = await finished(oldPreview.id, 1280, 720, 12);
+  const storyboardOutput = await finished(storyboard.id, 1280, 720, 15);
+  assert.deepEqual(oldOutput.result.snapshot, oldExport.snapshot);
+  assert.deepEqual(previewOutput.result.snapshot, oldPreview.snapshot);
+  assert.deepEqual(storyboardOutput.result.snapshot, storyboard.snapshot);
+  assert.equal(storyboardOutput.result.mode, undefined);
+  assert.deepEqual(storyboardOutput.result.outputGeometry, storyboard.outputGeometry);
+  const bytes = await readFile(oldOutput.file);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  assert.equal(oldOutput.asset.sha256, sha256);
+  const assertOldReceipts = async () => {
+    assert.equal(JSON.stringify(await call('timeline.render', oldInput)), JSON.stringify(oldExport));
+    assert.equal(JSON.stringify(await call('timeline.render', previewInput)), JSON.stringify(oldPreview));
+    assert.deepEqual(await call('export.create', storyboardInput), storyboardOutput.result);
+    assert.deepEqual(f.receipts(oldInput.requestId), oldReceipt);
+    assert.deepEqual(f.receipts(previewInput.requestId), previewReceipt);
+    assert.deepEqual(storyboardReceipt(), oldStoryboardReceipt);
+  };
+  await assertOldReceipts();
+
+  const stale = await preflight(landscape.revision);
+  assert.equal(stale.status, 'stale');
+  assert.equal(stale.timelineRevision, portrait.revision);
+  await f.rejected('timeline.render', {...oldInput, requestId: randomUUID()}, 'REVISION_CONFLICT');
+  await f.rejected('timeline.render', {...oldInput, ...f.mutation(portrait.revision)}, 'PREFLIGHT_STALE');
+  const nextSettings = {...settings, deliveryName: 'Current portrait'};
+  const checked = await preflight(portrait.revision, nextSettings);
+  assert.equal(checked.status, 'ready');
+  assert.deepEqual([checked.summary?.width, checked.summary?.height], [720, 1280]);
+  assert.ok(checked.snapshotHash);
+  assert.notEqual(checked.snapshotHash, oldCheck.snapshotHash);
+  const current = await call('timeline.render', {...f.mutation(portrait.revision), purpose: 'export',
+    preflightSnapshotHash: checked.snapshotHash, ...nextSettings});
+  assert.notEqual(current.id, oldExport.id);
+  const nextWorker = f.startWorker();
+  try {await nextWorker.tick();} finally {await nextWorker.stop();}
+  const newOutput = await finished(current.id, 360, 640, 8);
+  assert.notEqual(newOutput.result.assetId, oldOutput.result.assetId);
+  assert.deepEqual(await readFile(oldOutput.file), bytes);
+  await assertOldReceipts();
+
+  // The normal server opens format 3 by default. Exercise the production HTTP
+  // recovery handler with this already-open format-4 store and its real guards.
+  const guards = {isTimelineRenderRecord, readOwnedAsset: (id: string, assetId: string) => readOwnedTimelineAsset(f.db, id, assetId)};
+  const download = new URL(`http://localhost/media/${oldOutput.result.assetId}?download=1&exportId=${oldExport.id}`);
+  const originalDownload = readTimelineDeliveryDownload(f.db, download, guards);
+  assert.equal(originalDownload?.assetId, oldOutput.result.assetId);
+  const recovery = createExportFileRecovery({root: f.store.root, db: f.db, guards, signal: new AbortController().signal,
+    assertAvailable: () => assert.ok(ownsStoreLock(f.store)),
+    validateFile: () => assert.fail('Format 4 must use the owned publication'),
+    validateDirectory: () => assert.fail('Format 4 must use the owned publication')});
+  const server = createServer((req, res) => {
+    void recovery.handle(req, res, new URL(req.url!, 'http://localhost')).catch((error: AppError) => {
+      res.writeHead(error.status ?? 500, {'content-type': 'application/json'});
+      res.end(JSON.stringify({code: error.code}));
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const route = `http://127.0.0.1:${address.port}/api/export-files?projectId=${projectId}&exportId=${oldExport.id}`;
+    const recover = (body: Buffer) => fetch(route, {method: 'POST', headers: {'content-type': 'application/octet-stream'}, body: body as BodyInit});
+    await rm(oldOutput.file);
+    const before = f.state(), marks = changeMarks(f.db);
+    const identity = {projectId, exportId: oldExport.id, assetId: oldOutput.result.assetId, sizeBytes: bytes.length, sha256};
+    const get = async () => exportFileStatusSchema.parse((await (await fetch(route)).json()).data);
+    assert.deepEqual(await get(), {...identity, status: 'missing'});
+    for (const [wrong, code] of [[bytes.subarray(1), 'EXPORT_FILE_SIZE_MISMATCH'], [Buffer.alloc(bytes.length, 1), 'EXPORT_FILE_HASH_MISMATCH']] as const) {
+      const refused = await recover(wrong);
+      assert.equal(refused.status, 400);
+      assert.equal((await refused.json()).code, code);
+      assert.deepEqual(await get(), {...identity, status: 'missing'});
+    }
+    const restored = await recover(bytes);
+    assert.equal(restored.status, 200);
+    assert.deepEqual(exportFileStatusSchema.parse((await restored.json()).data), {...identity, status: 'present'});
+    assert.deepEqual(await readFile(oldOutput.file), bytes);
+    assert.deepEqual(readTimelineDeliveryDownload(f.db, download, guards), originalDownload);
+    await assertOldReceipts();
+    assert.deepEqual(f.state(), before);
+    assert.deepEqual(changeMarks(f.db), marks);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });

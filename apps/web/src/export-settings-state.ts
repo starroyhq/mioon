@@ -2,6 +2,7 @@ import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, timelineExportSettingsSchema, resolveTimelineExportDelivery, isTimelineExportDelivery } from '@mioon/contracts';
 import type { TimelineExportSettings } from '@mioon/contracts';
+import { timelineOutputPreset, timelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 
 export interface ExportTimelineView { width: number; height: number; durationFrames?: number; [key: string]: unknown }
 export interface ExportDeliveryDescription {
@@ -53,6 +54,34 @@ export function exportHistoryDelivery(item: Record<string, unknown> | null | und
   if (item?.mode !== 'timeline' || item?.purpose !== 'export' || !snapshot?.delivery) return null;
   return describeExportDelivery(snapshot.delivery, snapshot.timeline as ExportTimelineView | null | undefined);
 }
+/** Use the saved editing ratio and the accepted delivery dimensions. The
+ * legacy storyboard worker's absent-geometry fallback is portrait 720. */
+export function exportHistoryPicture(item: Record<string, unknown> | null | undefined) {
+  if (!item) return null;
+  if (item.mode === 'timeline') {
+    const snapshot = item.snapshot as Record<string, unknown> | null | undefined;
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;
+    const frame = timelineOutputPreset(snapshot.timeline), ratio = timelineOutputRatio(frame);
+    if (!frame || !ratio) return null;
+    const delivery = exportHistoryDelivery(item);
+    if (Object.hasOwn(snapshot, 'delivery') && !delivery) return null;
+    return { ratio, dimensions: delivery?.dimensions ?? `${frame.width} × ${frame.height}`, fps: frame.fps };
+  }
+  if (item.mode !== undefined || !Array.isArray(item.snapshot) || !Array.isArray(item.orderedVersionIds)) return null;
+  const frame = timelineOutputPreset(Object.hasOwn(item, 'outputGeometry') ? item.outputGeometry : 'portrait_720');
+  const ratio = timelineOutputRatio(frame);
+  return frame && ratio ? {ratio, dimensions: `${frame.width} × ${frame.height}`, fps: frame.fps} : null;
+}
+type PreviewFrame = {readonly id?: string; readonly revision?: number; readonly width?: number; readonly height?: number; readonly fps?: number};
+export function previewMatchesTimeline(job: {readonly projectId?: string | null; readonly timelineRevision?: number | null;
+  readonly snapshot?: {readonly timeline?: PreviewFrame | null} | null} | null | undefined,
+timeline: (PreviewFrame & {readonly projectId: string}) | null | undefined): boolean {
+  const frozen = job?.snapshot?.timeline;
+  return Boolean(timeline && frozen && timeline.id && timeline.revision && job?.projectId === timeline.projectId &&
+    job.timelineRevision === timeline.revision && frozen.id === timeline.id && frozen.revision === timeline.revision &&
+    frozen.width === timeline.width && frozen.height === timeline.height && frozen.fps === timeline.fps);
+}
+
 export function createExportSettingsController({ getContext, onChange = () => {} }: ExportSettingsControllerOptions = {}) {
   let version = 0, state: ExportSettingsState = { scope: null, enabled: false, version, exportSettings: TIMELINE_EXPORT_DEFAULT_SETTINGS };
   const emit = (patch: Partial<ExportSettingsState>): void => { state = { ...state, ...patch }; onChange(state); };

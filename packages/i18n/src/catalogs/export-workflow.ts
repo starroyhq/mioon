@@ -15,6 +15,7 @@ export const exportWorkflowMessages = {
   "redesign.export.audioCodec": {"zh-Hans": "AAC · 48 kHz · 128 kb/s", "zh-Hant": "AAC · 48 kHz · 128 kb/s", "en": "AAC · 48 kHz · 128 kb/s", "ja": "AAC · 48 kHz · 128 kb/s"},
   "redesign.export.codecFormat": {"zh-Hans": "MP4 · H.264 + AAC", "zh-Hant": "MP4 · H.264 + AAC", "en": "MP4 · H.264 + AAC", "ja": "MP4 · H.264 + AAC"},
   "redesign.export.pictureFormat": {"zh-Hans": "{dimensions} · {fps} fps", "zh-Hant": "{dimensions} · {fps} fps", "en": "{dimensions} · {fps} fps", "ja": "{dimensions} · {fps} fps"},
+  "redesign.export.frozenPictureFormat": {"zh-Hans": "{ratio} · {dimensions} · {fps} fps", "zh-Hant": "{ratio} · {dimensions} · {fps} fps", "en": "{ratio} · {dimensions} · {fps} fps", "ja": "{ratio} · {dimensions} · {fps} fps"},
   "redesign.export.secondsShort": {"zh-Hans": "{seconds} 秒", "zh-Hant": "{seconds} 秒", "en": "{seconds} s", "ja": "{seconds} 秒"},
   "redesign.export.cancelled": {"zh-Hans": "已取消导出", "zh-Hant": "已取消匯出", "en": "Export cancelled", "ja": "書き出しをキャンセルしました"},
   "redesign.export.cancelledHelp": {"zh-Hans": "任务已停止，源素材和原始导出记录仍保留", "zh-Hant": "任務已停止，來源素材和原始匯出記錄仍保留", "en": "The task stopped. Source media and the original export record are retained", "ja": "タスクを停止しました。素材と元の書き出し記録は保持されます"},

@@ -19,7 +19,7 @@ import { disposeMedia } from './Nodes.tsx';
 import { assetUrl, mediaUrl } from './api.ts';
 import { assetKind } from './Timeline.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
-import { exportHistoryDelivery } from './export-settings-state.ts';
+import { exportHistoryDelivery, exportHistoryPicture, previewMatchesTimeline } from './export-settings-state.ts';
 import { sourceFrameCount, sourcePositionFrame, sourceSeekMatchesTime, SOURCE_RANGE_FPS } from './source-range-state.ts';
 import type { AppAsset, AppTimeline, AppTimelineClip } from './App.tsx';
 import type { TimelineAudioPreviewView } from './use-timeline-audio-preview.ts';
@@ -31,10 +31,9 @@ export interface PreviewSeek {scope?: string | null; id: number | string; frame:
 export interface PreviewRenderJobView {
   id?: string; projectId?: string | null; status: string; url?: string | null; assetId?: string | null; timelineRevision?: number | null;
   purpose?: string; progress?: number; error?: unknown; providerId?: string;
-  snapshot?: {timeline?: {durationFrames?: number; width?: number; height?: number} | null} | null;
+  snapshot?: {timeline?: {id?: string; revision?: number; fps?: number; durationFrames?: number; width?: number; height?: number} | null} | null;
   [key: string]: unknown;
 }
-interface PreviewDeliveryView {dimensions: string; fps: string | number; rateMessage?: unknown; rate?: unknown; upscale?: boolean}
 interface SourceFrameCaptureControlProps {
   captureKey: string; inspect: () => PreviewCaptureIntent | null; subscribe: (update: () => void) => () => void;
   onCaptureFrame: (intent: PreviewCaptureIntent) => unknown; captureBusy: boolean;
@@ -123,7 +122,12 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const visibleRef = useRef<boolean>(visible);
   const rendered = kind === 'timeline';
   const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
-  const stale = Boolean(ready && job!.timelineRevision !== timeline?.revision);
+  const stale = Boolean(ready && !previewMatchesTimeline(job, timeline));
+  const frozenTimeline = rendered && ready ? job?.snapshot?.timeline : null;
+  const playbackDuration = frozenTimeline?.durationFrames ?? timeline?.durationFrames;
+  const playbackFps = frozenTimeline?.fps || timeline?.fps || SOURCE_RANGE_FPS;
+  const playbackFrame = (frame: number) => Math.max(0, Math.min(playbackDuration ?? frame, frame));
+  const renderedPosition = playbackFrame(playhead);
   const gate = useProjectMediaReadGate();
   const readIdentity = rendered ? {id: job?.assetId, projectId: job?.projectId} : asset;
   const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
@@ -138,7 +142,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const captureObserver = useRef<(() => void) | null>(null), captureContext = useRef<CaptureContext>({ key: '', visible, busy: captureBusy, scope: sourceScope });
   const captureKey = `${mediaKey}:${asset?.sha256 || ''}`;
   captureContext.current = { key: captureKey, visible, busy: captureBusy, scope: sourceScope };
-  const sourceSeconds = rendered ? playhead / SOURCE_RANGE_FPS : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : null;
+  const sourceSeconds = rendered ? renderedPosition / playbackFps : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : null;
   const seekRequest = !rendered && !clip ? `${sourceScope || ''}:${sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek.id : 'initial'}` : sourceSeconds;
   useLayoutEffect(() => {
     const element = media.current;
@@ -262,7 +266,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { if (!visibleRef.current) element.pause(); return; }
     if (!nativeSeek && (element.paused || element.seeking || activeMedia.current!.programmaticSeek !== null)) return;
-    if (rendered) onSeek(Math.round(element.currentTime * 30));
+    if (rendered) onSeek(playbackFrame(Math.round(element.currentTime * playbackFps)));
     else if (clip) {
       const frame = Math.round(element.currentTime * 30);
       const sourceIn = clip.sourceInFrame || 0;
@@ -272,14 +276,19 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     } else publishSourcePosition(element);
   }
   const deliveredArtifact = rendered && job?.purpose === 'export';
-  const delivery = exportHistoryDelivery(job) as PreviewDeliveryView | null;
+  const delivery = exportHistoryDelivery(job), frozenPicture = rendered && ready ? exportHistoryPicture(job) : null;
   const inProgress = Boolean(pendingJob && ['queued','running','pending','submitting'].includes(pendingJob.status));
   const cancelledExport = pendingJob?.status === 'failed' && safeTaskErrorCode(pendingJob.error) === 'EXPORT_CANCELLED';
-  const displayFormat = (rendered && ready ? job?.snapshot?.timeline : rendered || type === 'audio' ? timeline : asset) as {width?: number; height?: number; fps?: number; durationFrames?: number} | null | undefined;
-  const formatLabel = displayFormat?.width && displayFormat?.height ? `${displayFormat.width} × ${displayFormat.height} · ${displayFormat.fps || timeline?.fps || 30} fps` : !rendered && type === 'audio' ? '' : t('timeline.preview.formatUnavailable');
+  const displayFormat = (rendered && ready ? frozenTimeline : rendered || type === 'audio' ? timeline : asset) as {width?: number; height?: number; fps?: number; durationFrames?: number} | null | undefined;
+  const formatLabel = frozenPicture ? t('redesign.export.frozenPictureFormat', frozenPicture)
+    : rendered && ready && Object.hasOwn(job?.snapshot ?? {}, 'delivery') ? t('timeline.preview.formatUnavailable')
+    : displayFormat?.width && displayFormat?.height ? `${displayFormat.width} × ${displayFormat.height} · ${displayFormat.fps || timeline?.fps || 30} fps`
+    : !rendered && type === 'audio' ? '' : t('timeline.preview.formatUnavailable');
   const frameLabel = aspectFrame ? aspectFrameFormatLabel(aspectFrame) ?? formatLabel : formatLabel;
-  const previewMetadata = rendered ? ready ? `${renderMessage(statusDescriptor(job!.status))} · ${delivery ? `${delivery.dimensions} · ${delivery.fps} fps · ${renderMessage((delivery.rateMessage ?? delivery.rate) as string | null | undefined)}` : formatLabel}` : t('timeline.preview.persistent') : clip ? t('timeline.preview.clipPosition',{start:clip.startFrame,source:clip.sourceInFrame??0,duration:clip.durationFrames}) : t('timeline.preview.independent');
-  function stepPreview(delta: number): void {stepPreviewMedia({delta,media:media.current,current:isCurrentMedia(media.current),timelineMode:rendered || Boolean(clip),timelineDuration:timeline?.durationFrames || 0,playhead,sourcePosition,sourceCount:sourceFrameCount(asset?.duration),sourceFps:SOURCE_RANGE_FPS,binding:activeMedia.current,onSeek,notify:()=>captureObserver.current?.()});}
+  const previewMetadata = rendered ? ready ? [
+    renderMessage(statusDescriptor(job!.status)), formatLabel, delivery && renderMessage(delivery.rateMessage),
+  ].filter(Boolean).join(' · ') : t('timeline.preview.persistent') : clip ? t('timeline.preview.clipPosition',{start:clip.startFrame,source:clip.sourceInFrame??0,duration:clip.durationFrames}) : t('timeline.preview.independent');
+  function stepPreview(delta: number): void {stepPreviewMedia({delta,media:media.current,current:isCurrentMedia(media.current),timelineMode:rendered || Boolean(clip),timelineDuration:playbackDuration ?? 0,playhead:rendered ? renderedPosition : playhead,sourcePosition,sourceCount:sourceFrameCount(asset?.duration),sourceFps:SOURCE_RANGE_FPS,binding:activeMedia.current,onSeek,notify:()=>captureObserver.current?.()});}
 
   return <Tabs value={kind} onValueChange={onKind} className={`central-preview edit-preview ${visible ? '' : 'workspace-hidden'}`} aria-label={t('timeline.preview.main')} data-testid="central-preview">
     <div className="preview-mode-bar">
@@ -288,7 +297,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
         <TabsTrigger value="source" className={!rendered ? 'active' : ''} data-testid="preview-source-mode">{t('edit.preview.sourceTab')}</TabsTrigger>
         <TabsTrigger value="timeline" className={rendered ? 'active' : ''} data-testid="preview-timeline-mode">{t('edit.preview.timelineTab')}</TabsTrigger>
       </TabsList>
-      <span className="edit-preview-format" title={aspectFrame ? frameLabel : previewMetadata}>{frameLabel}</span>
+      <span className="edit-preview-format" title={aspectFrame && !(rendered && ready) ? frameLabel : previewMetadata}>{frameLabel}</span>
       {aspectFrame && <AspectFrameMenu {...aspectFrame} />}
     </div>
     {aspectFrame && <AspectFrameFeedback {...aspectFrame} />}
@@ -298,9 +307,9 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     {rendered && audioPreview && <details className="edit-preview-audio"><summary><Headphones size={14}/><span>{t('audio.preview.title')}</span><ChevronDown size={12}/></summary><TimelineAudioPreview audioPreview={audioPreview} startFrame={playhead} /></details>}
     {!rendered&&url&&<p className="preview-source-disclosure" data-testid="preview-source-unprocessed">{t('timeline.preview.sourceUnprocessed')}</p>}
     <TabsContent value={kind} className={`preview-stage ${type === 'audio' ? 'audio-stage' : ''}`}>
-      {blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : <video ref={media as unknown as React.Ref<HTMLVideoElement>} key={mediaKey} data-testid={rendered ? 'timeline-preview-video' : 'source-preview-video'} src={url} playsInline preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} onLoadedData={updateCapture} onCanPlay={updateCapture} onSeeking={updateCapture} onEmptied={updateCapture} />}<span className="preview-stage-label" title={!rendered ? t('timeline.preview.sourceUnprocessed') : undefined}>{rendered ? t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') }) : clip ? t('timeline.preview.clipOriginal') : t('timeline.preview.original')}</span>{rendered && type === 'video' && transformBox && timeline && <ClipTransformBox box={transformBox} playhead={playhead} timeline={timeline} media={media} mediaKey={mediaKey} />}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><p>{rendered ? t('timeline.preview.renderDetail') : t('timeline.preview.sourceDetail')}</p><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
+      {blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : <video ref={media as unknown as React.Ref<HTMLVideoElement>} key={mediaKey} data-testid={rendered ? 'timeline-preview-video' : 'source-preview-video'} src={url} playsInline preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} onLoadedData={updateCapture} onCanPlay={updateCapture} onSeeking={updateCapture} onEmptied={updateCapture} />}<span className="preview-stage-label" title={!rendered ? t('timeline.preview.sourceUnprocessed') : undefined}>{rendered ? t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') }) : clip ? t('timeline.preview.clipOriginal') : t('timeline.preview.original')}</span>{rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline && <ClipTransformBox key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`} box={transformBox} playhead={playhead} timeline={timeline} media={media} mediaKey={mediaKey} />}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><p>{rendered ? t('timeline.preview.renderDetail') : t('timeline.preview.sourceDetail')}</p><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
     </TabsContent>
     {aspectFrame && <AspectFrameSuggestion {...aspectFrame} />}
-    {kind === 'source' && !clip && type === 'video' && onCaptureFrame && <SourceFrameCaptureControl captureKey={captureKey} inspect={inspectCapture} subscribe={subscribeCapture} onCaptureFrame={onCaptureFrame} captureBusy={captureBusy || blocked} />}{kind === 'source' && !clip && type === 'video' && onDetectScenes && <div className="source-scene-detect"><Button type="button" variant="outline" size="sm" data-testid="source-detect-scenes" disabled={blocked || Boolean(sceneDetectIssue)} title={sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')} onClick={() => { if (!blocked) onDetectScenes(); }}><Icon name="scissors" size={13} />{t('scene.menu.detect')}</Button><span className="input-hint">{sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')}</span></div>}<PreviewPlaybackControls onRegisterMenuPlayback={onRegisterMenuPlayback} onMenuStateChange={onMenuStateChange} bindingKey={`${mediaKey}:${visible}`} getMedia={() => media.current} isCurrent={isCurrentMedia} position={!rendered && !clip ? sourcePosition : playhead} duration={!rendered && !clip ? sourceFrameCount(asset?.duration) || 0 : rendered && ready ? job!.snapshot?.timeline?.durationFrames || timeline?.durationFrames || 0 : timeline?.durationFrames || 0} fps={timeline?.fps || 30} format={preferences.timecodeFormat} standaloneSource={!rendered && !clip} onStep={stepPreview} metadata={previewMetadata} />
+    {kind === 'source' && !clip && type === 'video' && onCaptureFrame && <SourceFrameCaptureControl captureKey={captureKey} inspect={inspectCapture} subscribe={subscribeCapture} onCaptureFrame={onCaptureFrame} captureBusy={captureBusy || blocked} />}{kind === 'source' && !clip && type === 'video' && onDetectScenes && <div className="source-scene-detect"><Button type="button" variant="outline" size="sm" data-testid="source-detect-scenes" disabled={blocked || Boolean(sceneDetectIssue)} title={sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')} onClick={() => { if (!blocked) onDetectScenes(); }}><Icon name="scissors" size={13} />{t('scene.menu.detect')}</Button><span className="input-hint">{sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')}</span></div>}<PreviewPlaybackControls onRegisterMenuPlayback={onRegisterMenuPlayback} onMenuStateChange={onMenuStateChange} bindingKey={`${mediaKey}:${visible}`} getMedia={() => media.current} isCurrent={isCurrentMedia} position={!rendered && !clip ? sourcePosition : rendered ? renderedPosition : playhead} duration={!rendered && !clip ? sourceFrameCount(asset?.duration) || 0 : playbackDuration ?? 0} fps={playbackFps} format={preferences.timecodeFormat} standaloneSource={!rendered && !clip} onStep={stepPreview} metadata={previewMetadata} />
   </Tabs>;
 }

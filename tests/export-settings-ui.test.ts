@@ -289,10 +289,37 @@ test('history renders the actual frozen settings and output dimensions; old reco
   const custom = { ...legacy, id: id(41), assetId: id(51), url: `/media/${id(51)}`, snapshot: { timeline, delivery: resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 8000 } })) } };
   assert.equal(settingsState.exportHistoryDelivery(legacy), null);
   const oldTree = View({ orderedExports: [legacy], projectName: '作品', timelineRevision: 4 });
-  assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
+  assert.match(textOf(oldTree), /时间线导出 · 修订版 4 · 当前/); assert.match(textOf(oldTree), /9:16 · 720 × 1280/); assert.doesNotMatch(textOf(oldTree), /CRF|AAC|1080/);
   const tree = View({ orderedExports: [custom], projectName: '作品', timelineRevision: 4 });
-  assert.match(textOf(tree), /1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
+  assert.match(textOf(tree), /9:16 · 1080 × 1920/); assert.match(textOf(tree), /平均目标 8 Mb\/s/); assert.match(textOf(tree), /放大输出，不增加细节/);
   assert.equal(nodes(tree).find(node => node.props.exportId === custom.id && typeof node.props.downloadHref === 'string')!.props.downloadHref, `/api/projects/${projectId}/media/${custom.assetId}`);
+});
+
+test('history uses each frozen frame and offers a fresh export alongside the original file only for owned completed timeline exports', () => {
+  const View = component('ExportHistoryList.tsx'), requests: unknown[] = [];
+  const wide = { ...timeline, width: 1680, height: 720 };
+  const output = { id: id(60), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', createdAt: '2026-10-11T18:00:00.000Z', assetId: id(61),
+    snapshot: { timeline: wide, delivery: resolveTimelineExportDelivery(wide, settings({ resolution: 'short_360' })) } };
+  const foreign = { ...output, id: id(62), projectId: id(63) };
+  const preview = { ...output, id: id(64), purpose: 'preview', snapshot: { timeline: wide } };
+  const storyboard = { id: id(65), projectId, status: 'succeeded', createdAt: output.createdAt, snapshot: [], orderedVersionIds: [] };
+  const recordedStoryboard = { ...storyboard, id: id(66), outputGeometry: { fps: 30, width: 960, height: 720 } };
+  const invalidStoryboard = { ...storyboard, id: id(67), outputGeometry: null };
+  const props = { orderedExports: [output, foreign, preview, storyboard, recordedStoryboard, invalidStoryboard], projectId, timelineRevision: 9, onReexport: (id: unknown) => requests.push(id) };
+  const before = structuredClone(props.orderedExports), tree = View(props);
+  const summaries = nodes(tree).filter(node => node.props['data-testid'] === 'export-history-settings').map(textOf);
+  assert.match(summaries[0]!, /21:9 · 840 × 360/);
+  assert.match(summaries[2]!, /21:9 · 1680 × 720/);
+  assert.match(summaries[3]!, /9:16 · 720 × 1280/);
+  assert.match(summaries[4]!, /4:3 · 960 × 720/);
+  assert.equal(summaries.length, 5);
+  const actions = nodes(tree).filter(node => node.props['data-testid'] === 'export-history-reexport');
+  assert.equal(actions.length, 1);
+  (actions[0]!.props.onClick as () => void)();
+  assert.deepEqual(requests, [output.id]);
+  const original = nodes(tree).find(node => node.props.exportId === output.id && typeof node.props.downloadHref === 'string');
+  assert.equal(original?.props.downloadHref, `/api/projects/${projectId}/media/${output.assetId}`);
+  assert.deepEqual(props.orderedExports, before);
 });
 
 test('successful timeline preview keeps its original download and never probes the export-only recovery endpoint', () => {
@@ -312,15 +339,32 @@ test('successful timeline preview keeps its original download and never probes t
 
 
 test('actual playback plays the produced artifact at its project and shows its frozen dimensions instead of editor preview dimensions', () => {
-  const View = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String, mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 } });
+  const View = component('Preview.tsx', { './ClipTransformBox.tsx': { __esModule: true, default: 'ClipTransformBox' }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String, mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 } });
   const delivery = resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_360', rateControl: { mode: 'crf', quality: 'compact' } }));
   const job = { id: id(90), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', assetId: id(91), url: `/media/${id(91)}`, snapshot: { timeline, delivery } };
-  const tree = View({ kind: 'timeline', timeline: { ...timeline, revision: 5 }, job, playhead: 0 });
+  const transformBox = {clip: {id: id(3)}};
+  const tree = View({ kind: 'timeline', timeline: { ...timeline, revision: 5, width: 1280, height: 720 }, job, playhead: 0, transformBox });
   assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'timeline-preview-video')!.props.src, `/api/projects/${projectId}/media/${job.assetId}`);
   const metadata = nodes(tree).find(node => typeof node.props.metadata === 'string')!.props.metadata as string;
   assert.match(textOf(tree), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.final')))); assert.match(metadata, /360 × 640/); assert.match(metadata, /CRF 28/); assert.doesNotMatch(metadata, /720 × 1280/);
-  const preview = View({ kind: 'timeline', timeline, job: { ...job, purpose: 'preview', snapshot: { timeline } }, playhead: 0 });
-  assert.match(textOf(preview), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.editing')))); assert.match(nodes(preview).find(node => typeof node.props.metadata === 'string')!.props.metadata as string, /720 × 1280/);
+  assert.match(metadata, /9:16/);
+  const freshJob = { ...job, purpose: 'preview', snapshot: { timeline } };
+  const preview = View({ kind: 'timeline', timeline, job: freshJob, playhead: 0, transformBox });
+  assert.match(textOf(preview), new RegExp(String(i18n.translate('zh-Hans', 'timeline.preview.editing'))));
+  assert.match(nodes(preview).find(node => typeof node.props.metadata === 'string')!.props.metadata as string, /9:16 · 720 × 1280/);
+  assert.ok(nodes(preview).some(node => node.type === 'ClipTransformBox'));
+  for (const patch of [
+    { timeline: { ...timeline, revision: 5 } },
+    { timeline: { ...timeline, width: 1280, height: 720 } },
+    { job: { ...freshJob, projectId: id(99) } },
+    { job: { ...freshJob, snapshot: { timeline: { ...timeline, id: id(99) } } } },
+    { job },
+    { visible: false },
+  ]) {
+    const result = View({ kind: 'timeline', timeline, job: freshJob, playhead: 0, transformBox, ...patch });
+    assert.ok(nodes(result).some(node => node.props['data-testid'] === 'timeline-preview-video'));
+    assert.ok(!nodes(result).some(node => node.type === 'ClipTransformBox'));
+  }
 });
 
 
