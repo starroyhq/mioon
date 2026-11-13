@@ -17,7 +17,7 @@ import {clearProjectProcessRevisions} from './schema/history-upgrades.ts';
 import {isProjectStore, openStagedProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
 import type {Format4Options, ProjectLocation} from './connection.ts';
-import {inspectProjectFormatReadOnly, recoverProjectFile} from './connection.ts';
+import {assertNoFormat4Restore, inspectProjectFormatReadOnly, recoverProjectFile} from './connection.ts';
 import {projectFileError} from './errors.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
 import {syncCopiedDirectory, syncCopiedFile} from './backup.ts';
@@ -166,6 +166,7 @@ export function recoverHistorySwitch(options: HistorySwitchOptions): ProjectHist
   if (requestId === null) return null;
   const intent = readIntent(root, requestId);
   if (!intent) throw failure('缺少未完成处置的记录，已保留所有文件。');
+  assertNoFormat4Restore(root, intent.input.projectId);
   checkProject(options, intent);
   // This entry runs before the normal opener. Preserve the same format gate
   // even for a prepared switch: replacing the file with an old/forged format

@@ -27,7 +27,8 @@ import type {SchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
 import {historyManifestForVersion, projectManifestForVersion} from './schema/format-manifests.ts';
 import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, writeFormat4HistoryVersionInside, writeFormat4ProjectVersionInside} from './schema/format4-upgrade.ts';
-import {createFormat4UpgradeBackup} from './format4-backup.ts';
+import {createFormat4UpgradeBackup, FORMAT4_RESTORE_ACTIVE} from './format4-backup.ts';
+import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {clearProjectProcessRevisions, HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import type {HistoryUpgrade} from './schema/history-upgrades.ts';
@@ -87,6 +88,12 @@ export interface Format4Options {
    * v4 projects and new private destinations do not need this callback. */
   readonly approveUpgrade?: (preview: Format4UpgradePreview) => boolean;
   readonly onUpgradeBoundary?: (phase: Format4UpgradeBoundary, observed: Readonly<{projectVersion: number; historyVersion: number | null}>) => void;
+}
+
+export function assertNoFormat4Restore(localDir: string, projectId: string): void {
+  if (lstatSync(path.join(localDir, FORMAT4_RESTORE_ACTIVE), {throwIfNoEntry: false})) {
+    throw new AppError('PROJECT_FORMAT_RESTORE_PENDING', '旧格式配对恢复尚未完成。', 409, {projectId});
+  }
 }
 
 /** Internal S5 reader capability. The caller validates both closed sources
@@ -605,6 +612,85 @@ function pinBackupDescriptor(file: string, key: string, database: 'history' | 'p
   } catch (error) {closeSync(fd); throw error;}
 }
 
+export interface Format4RestoreLockInput {
+  readonly file: string;
+  readonly database: DatabaseKind;
+  readonly identity: BigIntStats;
+}
+
+/** Lock every admitted inode, including staged files that will be renamed
+ * into service. Pin byte-copy descriptors before taking any native lock. */
+export function withFormat4RestoreLocks<T>(inputs: readonly Format4RestoreLockInput[],
+  run: (files: ReadonlyMap<string, {readonly db: DatabaseSync; readonly fd: number}>) => T): T {
+  const keys = inputs.map(({file, identity}) => identityOf(identity, file));
+  if (new Set(keys).size !== keys.length) throw invalid('project', 'unusable');
+  const descriptors = new Map<string, number>();
+  const handles = new Map<string, {db: DatabaseSync; fd: number}>();
+  const registered: {db: DatabaseSync; files: readonly HeldFile[]}[] = [];
+  let active: DatabaseKind = 'project';
+  try {
+    for (const [index, {file, database, identity}] of inputs.entries()) {
+      active = database;
+      if (projectFileOwnerKind(keys[index]!) !== undefined ||
+        isAppLibraryHeld({dev: String(identity.dev), ino: String(identity.ino)})) throw projectFileError('PROJECT_LOCKED', describe(database, 'locked'));
+      if (!identity.isFile() || identity.nlink !== 1n) throw invalid(database, 'not-a-regular-file');
+      const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+      descriptors.set(file, fd);
+      const actual = fstatSync(fd, {bigint: true});
+      if (!actual.isFile() || identityOf(actual, file) !== keys[index] || actual.nlink !== 1n ||
+        actual.size !== identity.size || actual.mtimeNs !== identity.mtimeNs || actual.ctimeNs !== identity.ctimeNs ||
+        actual.birthtimeNs !== identity.birthtimeNs) throw invalid(database, 'unusable');
+    }
+    for (const [index, {file, database, identity}] of inputs.entries()) {
+      active = database;
+      const db = openDatabase(existingFile(file));
+      handles.set(file, {db, fd: descriptors.get(file)!});
+      lock(db);
+      const actual = lstatSync(file, {bigint: true});
+      if (identityOf(actual, file) !== keys[index] || actual.size !== identity.size || actual.mtimeNs !== identity.mtimeNs || actual.ctimeNs !== identity.ctimeNs ||
+        actual.birthtimeNs !== identity.birthtimeNs) throw invalid(database, 'unusable');
+      const files = [[keys[index]!, database]] as const;
+      registerProjectFiles(db, files, false);
+      registered.push({db, files});
+    }
+  } catch (error) {
+    try { close(); } finally { throw openFailure(error, active); }
+  }
+  try { return run(handles); } finally { close(); }
+
+  function close(): void {
+    try {
+      for (const {db} of handles.values()) db.close();
+    } finally {
+      for (const {db, files} of registered) releaseProjectFiles(db, files);
+      for (const fd of descriptors.values()) closeSync(fd);
+    }
+  }
+}
+
+/** Restore admits exact source profiles without opening the project as a
+ * store. A manually restored v3 project may still have v11 local records. */
+export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'project' | 'history', projectId: string): ProjectFormatIdentity | null {
+  if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid(database, 'encoding', projectId);
+  if (database === 'project') {
+    const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), FORMAT4_PROJECT_SCHEMA_VERSION);
+    checkProjectStructure(db, 'main', formatVersion, projectId);
+    const identity = readProjectIdentity(db, 'main');
+    if (identity.projectId !== projectId) throw invalid(database, 'project-mismatch', projectId);
+    return {...identity, formatVersion};
+  }
+  checkHistoryStructure(db, projectId, true);
+  const row = db.prepare('SELECT projectId FROM main.history_state WHERE singleton=1').get();
+  if (row?.projectId !== projectId) throw invalid(database, 'project-mismatch', projectId);
+  return null;
+}
+
+export function clearLockedFormat4RestoreCache(db: DatabaseSync): void {
+  if (isEmpty(db, 'main')) return;
+  checkStructure(db, 'main', 'cache');
+  inTransaction(db, () => db.exec('DELETE FROM previs_thumbnails; DELETE FROM waveform_cache'));
+}
+
 function attachDatabases(
   projectFile: string, projectKey: string, identity: ProjectFormatIdentity, historyFile: string, cacheFile: string,
   staged?: StagedProjectConnectionOptions, format4?: Format4Options, approvedWithoutHistory?: Format4UpgradePreview,
@@ -623,6 +709,7 @@ function attachDatabases(
     const historySource = mayUpgrade && priorHistory && priorHistory.size > 0n
       ? pinBackupDescriptor(historyFile, identityOf(priorHistory, historyFile), 'history') : undefined;
     if (historySource !== undefined) backupDescriptors.push(historySource);
+    if (!staged) assertNoFormat4Restore(path.dirname(historyFile), projectId);
     const db = openDatabase(historyFile);
     opened = db;
     lock(db);
@@ -642,6 +729,8 @@ function attachDatabases(
     if (projectSource !== undefined) backupDescriptors.push(projectSource);
     db.prepare(`ATTACH DATABASE ? AS ${PROJECT}`).run(existingFile(projectFile));
     lock(db);
+    if (!staged) assertNoFormat4Restore(path.dirname(historyFile), projectId);
+    if (identityOf(lstatSync(projectFile, {bigint: true}), projectFile) !== projectKey) throw projectFileMovedError(projectId);
     // Checked again under this connection's lock: the file was unlocked since step 1.
     checkProjectStructure(db, PROJECT, identity.formatVersion, projectId);
     const current = readProjectIdentity(db, PROJECT);
@@ -841,6 +930,7 @@ function openConnection({projectFile: requested, locate, checkCopy, format4}: Op
   checkCopy?.({projectId: identity.projectId, projectFile});
   const location = locate(identity.projectId);
   const localDir = path.resolve(location.localDir), cacheDir = path.resolve(location.cacheDir), tempDir = path.resolve(location.tempDir);
+  assertNoFormat4Restore(localDir, identity.projectId);
   if (!staged && lstatSync(path.join(localDir,'history-switch-active.json'),{throwIfNoEntry:false})) throw new AppError('PROJECT_HISTORY_SWITCH_PENDING','本机记录切换尚未完成。',409,{projectId:identity.projectId});
   const historyFile = staged?.historyFile ?? path.join(localDir, PROJECT_HISTORY_FILE);
   let approvedWithoutHistory: Format4UpgradePreview | undefined;
