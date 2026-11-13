@@ -64,11 +64,9 @@ export default function ClipTransformBox({ box, playhead, timeline, media, media
   const sourceUrl = needsDisplaySize && (!gate || gate.canRead(source)) ? assetUrl(source) : '';
   const sourceKey = sourceUrl ? JSON.stringify([sourceUrl, source?.sha256, source?.referenceRevision]) : '';
   const display = sourceKey && displaySize?.key === sourceKey ? displaySize : null;
-  const clipSource = needsDisplaySize
-    ? display && typeof source?.width === 'number' && source.width > 0 && typeof source.height === 'number' && source.height > 0
-      ? {...source, sampleAspectRatio: display.width / display.height / (source.width / source.height)}
-      : null
-    : source;
+  // The browser's intrinsic video size is in square-pixel display units after
+  // rotation. FFmpeg's v2 fit uses the DAR of its autorotated frame.
+  const clipSource = needsDisplaySize ? display : source;
   const frame = boxFrame(box.clip, playhead);
   useLayoutEffect(() => {
     const element = media.current as HTMLVideoElement | null, host = layer.current;

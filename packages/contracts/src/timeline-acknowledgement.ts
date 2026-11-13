@@ -15,7 +15,8 @@ import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
 import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES} from './timeline-export-profile.ts';
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.ts';
-import {timelineFormatSchemas,timelineOutputPreset} from './timeline-format.ts';
+import {timelineFormatSchemas,timelineFrameSetSchema,timelineOutputPreset} from './timeline-format.ts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
 import {isTimelineRecord, isTimelineReplacementResponse, type TimelineRecord, type TimelineClipRecord} from './timeline-replacement.ts';
 import {sourceFrameCount} from './source-range.ts';
 import {SUBJECT_MUTATION_OPERATIONS} from './subjects.ts';
@@ -90,9 +91,14 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
   if(operation===TIMELINE_CLIP_GAINS_OPERATION)return clipGainsContracts.isTimelineClipGainsResponse(value,input);
   if(operation===TIMELINE_CLIP_TRANSFORM_OPERATION)return clipTransformContracts.isTimelineClipTransformResponse(value,input);
   if(operation===TIMELINE_CLIP_TRANSITION_OPERATION)return clipTransitionContracts.isTimelineClipTransitionResponse(value,input);
-  if(operation==='timeline.format.set') return (timelineFormatSchemas as Record<string, z.ZodTypeAny>)['timeline.format.set'].safeParse(input).success &&
-    isTimelineRecord(value,{projectId:request.projectId}) && (value as Rec).revision===((request.expectedRevision as number)+1) &&
-    timelineOutputPreset(value)?.id===request.presetId && (value as TimelineRecord).clips.length===0 && (value as Rec).durationFrames===0;
+  if(operation==='timeline.format.set'){
+    if(!timelineFrameSetSchema.safeParse(input).success || !isTimelineRecord(value,{projectId:request.projectId}) ||
+       value.revision!==(request.expectedRevision as number)+1 || timelineOutputPreset(value)?.id!==request.presetId) return false;
+    if(value.clips.length===0 && value.durationFrames===0 && timelineFormatSchemas['timeline.format.set'].safeParse(input).success) return true;
+    if(request.expectedRevision===0 && value.clips.length!==0) return false;
+    const subtitles=value.subtitles as {profileId?: unknown}|undefined;
+    return value.clips.every(clip=>Object.hasOwn(clip,'layout')) && (!subtitles || subtitles.profileId===TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID);
+  }
   if (!(TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation as string) || !baseInput(input)) return false;
   if (operation === 'timeline.render') return operationInput(input, ['purpose'], ['preflightSnapshotHash','exportSettings','deliveryName','exportRange']) && isTimelineRenderRecord(value, input);
   if (request.expectedRevision === Number.MAX_SAFE_INTEGER || !isTimelineRecord(value, {projectId: request.projectId}) || value.revision !== (request.expectedRevision as number) + 1) return false;
@@ -136,7 +142,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
     case 'timeline.clip.split':
       if (!operationInput(input, ['clipId', 'atFrame']) || !uuid(request.clipId) || !integer(request.atFrame, 0, 18000) || !target || target.startFrame + target.durationFrames !== request.atFrame || (target.fadeOutFrames ?? 0) !== 0) return false;
       return timeline.clips.some(right => right.id !== target.id && right.startFrame === request.atFrame && splitEnvelopeMatches(target,right) &&
-        ['trackId', 'assetId', 'name', 'rect', 'gain', 'colour', 'audioRole', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
+        ['trackId', 'assetId', 'name', 'rect', 'layout', 'gain', 'colour', 'audioRole', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
         (right.sourceInFrame === target.sourceInFrame + target.durationFrames || right.sourceInFrame === 0 && target.sourceInFrame === 0) &&
         (right.fadeInFrames ?? 0) === 0 && ['fadeInFrames', 'fadeOutFrames', 'transform'].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key)) &&
         // The new inner cut is plain: a transition stays at the outer cut only.
@@ -265,9 +271,13 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash)) && object(details) &&
     (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true) &&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
-  if(operation==='timeline.format.set') return Boolean((timelineFormatSchemas as Record<string, z.ZodTypeAny>)['timeline.format.set'].safeParse(input).success && object(details) &&
+  if(operation==='timeline.format.set') return Boolean(timelineFrameSetSchema.safeParse(input).success && object(details) &&
     (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true) &&
-    ['REVISION_CONFLICT','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_UNCHANGED','TIMELINE_REVISION_LIMIT'].includes(failure.code as string) &&
+    ['REVISION_CONFLICT','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_UNCHANGED','TIMELINE_FORMAT_TIER_MISMATCH','TIMELINE_FORMAT_SNAPSHOT_LIMIT','TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_REVISION_LIMIT'].includes(failure.code as string) &&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
+  if(failure?.code==='CLIP_LAYOUT_RECT_READ_ONLY')return Boolean(operation==='timeline.clip.update' && baseInput(input) &&
+    object(request.patch) && Object.hasOwn(request.patch,'rect') && object(details) &&
+    (failure.status===409 || failure.status===undefined&&failure.definitive===true) &&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   if ((TIMELINE_SUBTITLE_OPERATIONS as readonly string[]).includes(operation as string)) return Boolean((timelineSubtitleSchemas as Record<string, z.ZodTypeAny>)[operation as string].safeParse(input).success && object(details) &&
     (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true) &&

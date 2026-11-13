@@ -68,3 +68,13 @@ export function projectClipLayout(clip: StoredClipPlacement, frame: {readonly fp
     basisScaleY: scaleY,
   };
 }
+
+/** Raster placement for an untransformed v2 layer. Center the even-sized layer
+ * on the projected rectangle, then apply the 4:2:0 overlay origin grid in both
+ * compositing modes so the RGB path and the editor use the same placement. */
+export function rasterClipRect(rect: ClipTransformRect): ClipTransformRect {
+  const width = Math.max(2, 2 * Math.round(rect.width / 2));
+  const height = Math.max(2, 2 * Math.round(rect.height / 2));
+  const alignOrigin = (position: number) => 2 * Math.floor(Math.trunc(position) / 2) + 0;
+  return {x: alignOrigin(rect.x + (rect.width - width) / 2), y: alignOrigin(rect.y + (rect.height - height) / 2), width, height};
+}

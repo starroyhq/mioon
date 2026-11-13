@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boxFields, boxFrame, boxValues, containedPicture, movedBoxValues, sameBoxValues, scaledBoxValues, transformBoxView } from '../apps/web/src/clip-transform-box-state.ts';
 import { transformIssue } from '../apps/web/src/clip-transform-state.ts';
+import { clipRenderPlacement } from '../packages/business/src/timeline-transform-filter.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const profileId = 'mioon-clip-transform-v1', crop = { left: 0, top: 0, right: 0, bottom: 0 };
@@ -72,6 +73,20 @@ test('a relative-layout box uses the source display aspect and translates drags 
   const shifted = transformBoxView(clip, source, frame, picture, 0, moved)!;
   near(shifted.center.x-view.center.x,96);
   near(shifted.center.y-view.center.y,-54);
+});
+
+test('the relative box and overlay share the even raster placement for fractional projected origins', () => {
+  const frame = {fps:30,width:1920,height:1080};
+  const picture = {left:0,top:0,width:1920,height:1080};
+  const clip = {startFrame:0,durationFrames:60,rect:{x:182,y:138,width:252,height:640},
+    layout:{profileId:'mioon-clip-layout-v2',basisPresetId:'portrait_720'}};
+  const identity = {profileId,keyframes:[{frame:0,x:0,y:0,scale:1}],rotation:0,crop};
+  for (const item of [clip, {...clip, transform:identity}]) {
+    const {x,y,width,height,transform} = clipRenderPlacement(item, frame);
+    assert.deepEqual({x,y,width,height,transform}, {x:484,y:116,width:672,height:540,transform:null});
+    const view = transformBoxView(item, {width:160,height:90}, frame, picture, 0)!;
+    assert.deepEqual([view.center.x,view.center.y,view.width,view.height], [820,386,672,378]);
+  }
 });
 
 test('the box renders in percent of the layer, with handles only when editable', () => {

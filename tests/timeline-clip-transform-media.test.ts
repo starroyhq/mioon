@@ -10,6 +10,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {clipTransformGeometry,CLIP_TRANSFORM_PROFILE,type ClipTransform} from '../packages/contracts/src/timeline-clip-transform.ts';
+import {transformBoxView} from '../apps/web/src/clip-transform-box-state.ts';
 
 // Real FFmpeg acceptance of the shared preview/export renderer with a known
 // pattern: a white 16:9 film on black. Each checked frame's bright bounding box
@@ -130,4 +131,27 @@ test('relative picture-in-picture renders anamorphic content and an unbounded pr
  const box=rendered(6)!;
  const expected={x0:630,y0:363,x1:1890,y1:717};
  for(const edge of ['x0','y0','x1','y1'] as const)assert.ok(Math.abs(box[edge]-expected[edge])<=4,`${edge}: ${box[edge]} vs ${expected[edge]}`);
+});
+
+test('relative picture-in-picture matches Chromium display geometry for a 90-degree rotated anamorphic video',{timeout:120_000},async t=>{
+ const f=await fixture(t),[track]=f.videoTracks();
+ const unrotated=path.join(f.root,'wide-pixels.mp4'),source=path.join(f.root,'display-matrix.mp4');
+ await f.ffmpeg(['-f','lavfi','-i','color=c=white:s=160x90:r=30:d=1,setsar=2','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-threads','1',unrotated]);
+ await f.ffmpeg(['-display_rotation:v:0','90','-i',unrotated,'-map','0:v:0','-c','copy',source]);
+ const {stdout}=await exec('ffprobe',['-v','error','-show_entries','stream=width,height,sample_aspect_ratio:stream_side_data=rotation','-of','json',source]);
+ assert.deepEqual(JSON.parse(stdout).streams,[{width:160,height:90,sample_aspect_ratio:'2:1',side_data_list:[{rotation:90}]}]);
+
+ const asset=await f.services.call('asset.import',{projectId:f.project.id,name:'Rotated anamorphic',mimeType:'video/mp4',dataBase64:readFileSync(source).toString('base64')});
+ f.assets.set('rotated',{...asset,path:source});
+ await f.call('timeline.clip.add',{trackId:track.id,assetId:asset.id,name:'Rotated',startFrame:0,durationFrames:8});
+ const clip={...clipNamed(f.timeline,'Rotated'),rect:{x:120,y:102,width:246,height:1024},
+  layout:{profileId:'mioon-clip-layout-v2',basisPresetId:'portrait_720'}};
+ const composition={...f.timeline,clips:[clip]};
+ const rendered=await f.render('relative-display-matrix',composition);
+ // Chromium's videoWidth/videoHeight includes both the pixel aspect and the
+ // rotation: 320x90 square-pixel units before rotation, 90x320 after rotation.
+ const view=transformBoxView(clip,{width:90,height:320},{width:SIZE,height:SIZE},{left:0,top:0,width:SIZE,height:SIZE},0)!;
+ const {center,width,height}=view,edges={x0:center.x-width/2,y0:center.y-height/2,x1:center.x+width/2,y1:center.y+height/2};
+ assert.deepEqual(rendered(6),{x0:162,y0:56,x1:324,y1:632});
+ assert.deepEqual(edges,rendered(6));
 });

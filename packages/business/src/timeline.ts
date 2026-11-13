@@ -2,7 +2,7 @@ import {recordOutputLocale} from './output-asset-names.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {registeredProjectStoreForDatabase} from './project-media-storage.ts';
 import {prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
-import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
+import {bindAgentTaskJobInside,taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './store-runtime.ts';
@@ -12,9 +12,11 @@ import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './t
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
+import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,TIMELINE_SUBTITLE_PROFILE_ID,timelineFormatSchemas} from '@mioon/contracts';
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.ts';
 import {canonicalFormatValue} from './timeline-format-receipts.ts';
+import {CLIP_LAYOUT_PROFILE} from '../../contracts/src/timeline-clip-layout.ts';
+import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from '../../contracts/src/timeline-subtitle-profile.ts';
 import {freezeTimelineSnapshot} from './timeline-inputs.ts';
 import {removeTimelineClipWithRipple} from './timeline-ripple-remove.ts';
 import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
@@ -80,8 +82,13 @@ interface TimelineWriteOptions {sourceSemantics?: boolean}
 export interface AgentTimelineCompensation {kind:string;id:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null}
 
 const defaultRect=(timeline: {width: number;height: number}): TimelineRectInput=>({x:0,y:0,width:timeline.width,height:timeline.height});
-const editableTimelineSnapshot=(timeline: TimelineRecord)=>clone({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{})});
-function recordTimelineEditInside(db: DatabaseSync, operation: TimelineHistoryOperation, timeline: TimelineRecord, before: unknown, after: unknown = editableTimelineSnapshot(timeline)): void {
+const timelineFrame=({fps,width,height}: TimelineRecord)=>({fps,width,height});
+const editableTimelineSnapshot=(timeline: TimelineRecord,includeFormat=false)=>clone({
+ tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames,
+ ...(Object.hasOwn(timeline,'subtitles')?{subtitles:timeline.subtitles}:{}),
+ ...(includeFormat?{format:timelineFrame(timeline)}:{}),
+});
+function recordTimelineEditInside(db: DatabaseSync, operation: TimelineHistoryOperation, timeline: TimelineRecord, before: unknown, after: unknown): void {
  if(!db.isTransaction)throw new TypeError('Timeline history requires its content transaction');
  const position=Number(db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(timeline.projectId)?.position??0)+1;
  db.prepare('DELETE FROM timeline_history WHERE projectId=? AND position>=?').run(timeline.projectId,position);
@@ -137,9 +144,8 @@ export function restoreProjectTimelineInside(store: ProjectStore, desired: Timel
  const timeline={...desired,revision:revision+1,updatedAt:now,...(current?{createdAt:current.createdAt}:{})};
  const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});
  boundary.validate(timeline);legacyAdmitImageResponse(timeline);
- const format=(value:TimelineRecord)=>({fps:value.fps,width:value.width,height:value.height});
- const before=current?{...editableTimelineSnapshot(current),format:format(current)}:{tracks:[],clips:[],durationFrames:0,format:format(timeline)};
- const after={...editableTimelineSnapshot(timeline),format:format(timeline)};
+ const before=current?editableTimelineSnapshot(current,true):{tracks:[],clips:[],durationFrames:0,format:timelineFrame(timeline)};
+ const after=editableTimelineSnapshot(timeline,true);
  admitTimelineVolumeEnvelopeWrite(timeline,{before,after,related:{projectId:store.projectId,requestId}});
  const raw=current?restoredTimelineJson(store.db,String(row!.data),timeline):canonicalJson(timeline);
  if(current&&current.id!==timeline.id)store.db.prepare('DELETE FROM project.timelines WHERE id=?').run(current.id);
@@ -164,6 +170,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=legacyMutationResponse;
  const admitTimelineImageResponse=(value: unknown): void=>{legacyAdmitImageResponse(value as TimelineRecord);};
  const {db,put,tx}=store;
+ // The trusted host opens the actual project format. No RPC input can opt a
+ // format-3 project into writing the new geometry.
+ const format4=()=>isProjectStore(store)&&db.prepare('PRAGMA project.user_version').get()?.user_version===4;
+ const frameTransactionEnabled=()=>format4()&&!taskEffectOrigin();
  function find(projectId: string): TimelineRecord|null{
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
   if(!row)return null;
@@ -231,7 +241,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  }
  // History owns only editable timeline state. Revisions, IDs/timestamps of the
  // aggregate, media, selected versions, jobs and exports are never restored.
- const snapshot=editableTimelineSnapshot;
+ const snapshot=(timeline: TimelineRecord)=>editableTimelineSnapshot(timeline,format4());
  const cursor=(projectId: string): number=>(db.prepare('SELECT position FROM timeline_history_cursors WHERE projectId=?').get(projectId)?.position as number|undefined)??0;
  const setCursor=(projectId: string,position: number): void=>{db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET position=excluded.position').run(projectId,position);};
  function history(projectId: string): TimelineHistoryResult{
@@ -248,7 +258,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    undoEntry:row.undoEntry?JSON.parse(row.undoEntry as string):null,redoEntry:row.redoEntry?JSON.parse(row.redoEntry as string):null};
  }
  function recordEdit(operation: TimelineHistoryOperation,timeline: TimelineRecord,before: unknown): void{
-  recordTimelineEditInside(db,operation,timeline,before);
+  recordTimelineEditInside(db,operation,timeline,before,snapshot(timeline));
  }
  function travel(operation: string,input: TimelineMutationInput,direction: number): unknown{
   return transaction(operation,input,({boundary,requestHash,write})=>{
@@ -257,10 +267,13 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    if(!timeline)throw empty();
    editable(timeline,input);
    const position=cursor(input.projectId),column=direction<0?'beforeSnapshot':'afterSnapshot';
-   const entry=db.prepare(`SELECT CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${TIMELINE_RESPONSE_BYTES} THEN ${column} END AS snapshot FROM timeline_history WHERE projectId=? AND position=?`).get(input.projectId,position+(direction>0?1:0));
+   const entry=db.prepare(`SELECT operation, CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB)) BETWEEN 1 AND ${TIMELINE_RESPONSE_BYTES} THEN ${column} END AS snapshot,
+    CASE WHEN operation='project.version.restore' AND typeof(afterSnapshot)='text' AND length(CAST(afterSnapshot AS BLOB)) BETWEEN 1 AND ${TIMELINE_RESPONSE_BYTES} THEN afterSnapshot END AS versionRestoreAfter
+    FROM timeline_history WHERE projectId=? AND position=?`).get(input.projectId,position+(direction>0?1:0));
    if(!entry)throw empty();
    const before=snapshot(timeline);
-   timeline=boundary.restored(timeline!,entry.snapshot as string);
+   const restoreAfter=direction<0&&entry.operation==='project.version.restore'?entry.versionRestoreAfter:undefined;
+   timeline=boundary.restored(timeline,entry.snapshot as string,entry.operation==='timeline.format.set',restoreAfter);
    timeline.revision++;
    timeline.updatedAt=now();
    admitTimelineImageResponse(timeline);
@@ -277,6 +290,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
    // Check explicit input before legacy ensure() can write an absent timeline.
    const current=submittedRect===undefined?undefined:boundary.read({legacyMissingProject:true});
+   if(operation==='timeline.clip.update'&&current?.clips.find(item=>item.id===input.clipId)?.layout){
+    editable(current,input);
+    throw new AppError('CLIP_LAYOUT_RECT_READ_ONLY','相对布局的片段请通过片段变换调整画面',409,{clipId:input.clipId});
+   }
    if(submittedRect!==undefined)validateSubmittedRect((current??timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET))!,submittedRect,operation==='timeline.clip.add'?['rect']:['patch','rect']);
    const timeline=specialBoundary?boundary.read()!:(current??currentOrEnsure(input,boundary,write));
    editable(timeline,input);
@@ -375,20 +392,42 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const handlers: Record<string, (input: TimelineMutationInput,options?: unknown)=>unknown>={
   // Handlers share one aggregate transaction and receipt boundary.
   ...(createSubtitleMutations(mutate) as unknown as Record<string, (input: TimelineMutationInput,options?: unknown)=>unknown>),
-  'timeline.format.get':(input: TimelineMutationInput)=>getTimelineFormat(db,input,{store}),
+  'timeline.format.get':(input: TimelineMutationInput)=>getTimelineFormat(db,input,{store,frameTransaction:frameTransactionEnabled()}),
   'timeline.format.set':(input: TimelineMutationInput)=>transaction('timeline.format.set',input,({boundary,requestHash,write})=>{
    const context=readTimelineFormatOwner(db,input);
    check(context.project,input.expectedProjectRevision as number);
    const revision=context.timeline?.revision??0;
    if(revision!==input.expectedRevision)throw new AppError('REVISION_CONFLICT','时间线已有新版本，请重新读取后再修改',409,{expectedRevision:input.expectedRevision,currentRevision:revision});
    if(revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
-   assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context,store}));
-   const preset=timelineOutputPreset(input.presetId as string)!;
-   if(context.timeline&&timelineOutputPreset(context.timeline)?.id===preset.id)throw new AppError('TIMELINE_FORMAT_UNCHANGED','时间线已使用此输出规格',409);
-   const timeline=context.timeline??newTimeline(input.projectId,preset);
-   if(context.timeline){timeline.fps=preset.fps;timeline.width=preset.width;timeline.height=preset.height;timeline.revision++;timeline.updatedAt=now();}
+   const frameTransaction=frameTransactionEnabled();
+   if(!frameTransaction&&!timelineFormatSchemas['timeline.format.set'].safeParse(input).success)
+    throw new AppError('TIMELINE_FORMAT_LOCKED','此项目的画框修改需要格式 4',409);
+   assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context,store,frameTransaction}),frameTransaction);
+   const preset=timelineOutputPreset(input.presetId)!;
+   const basis=timelineOutputPreset(context.timeline??DEFAULT_TIMELINE_OUTPUT_PRESET)!;
+   if((context.timeline||frameTransaction)&&basis.id===preset.id)
+    throw new AppError('TIMELINE_FORMAT_UNCHANGED','时间线已使用此输出规格',409);
+   if(frameTransaction&&Math.min(basis.width,basis.height)!==Math.min(preset.width,preset.height))
+    throw new AppError('TIMELINE_FORMAT_TIER_MISMATCH','修改比例时必须保留当前画框的短边档位',409);
+   const timeline=context.timeline??newTimeline(input.projectId,frameTransaction?basis:preset);
+   const before=frameTransaction?snapshot(timeline):undefined;
+   if(frameTransaction){
+    for(const clip of timeline.clips)clip.layout??={profileId:CLIP_LAYOUT_PROFILE,basisPresetId:basis.id};
+    if(timeline.subtitles?.profileId===TIMELINE_SUBTITLE_PROFILE_ID){
+     timeline.subtitles={...timeline.subtitles,profileId:TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID,basisPresetId:basis.id};
+    }
+   }
+   timeline.fps=preset.fps;timeline.width=preset.width;timeline.height=preset.height;
+   if(context.timeline){timeline.revision++;timeline.updatedAt=now();}
+   if(frameTransaction){
+    admitTimelineImageResponse(timeline);
+    admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
+    if(Buffer.byteLength(JSON.stringify(timeline))>TIMELINE_RESPONSE_BYTES)
+     throw new AppError('TIMELINE_FORMAT_SNAPSHOT_LIMIT','修改画框会超过时间线保存上限',409);
+   }
    boundary.validate(timeline);
    write();put('timelines',timeline);
+   if(frameTransaction)recordEdit('timeline.format.set',timeline,before);
    return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
   }),
   'timeline.get':(input: TimelineMutationInput)=>ensure(input.projectId),

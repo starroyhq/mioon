@@ -1,5 +1,5 @@
 import {isAnimatedClipTransform,isIdentityClipTransform,validateClipTransform,type ClipTransform,type ClipTransformKeyframe,type ClipTransformRect} from '../../contracts/src/timeline-clip-transform.ts';
-import {projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
+import {projectClipLayout,rasterClipRect} from '../../contracts/src/timeline-clip-layout.ts';
 
 // FFmpeg graph pieces for clip transforms, shared by preview and export. A clip
 // without a transform, or with the identity, keeps the historical chain exactly.
@@ -46,8 +46,7 @@ export function clipRenderPlacement(clip: PlanClip,frame: {fps: number;width: nu
  const projected=relative?projectClipLayout(clip,frame):null;
  const rect=projected?.rect??clip.rect;
  const transform=projected?projectedTransformPlan(rect,projected.transform,maxFactor,true):clipTransformRenderPlan(clip,{maxFactor});
- const width=relative?even(rect.width):rect.width,height=relative?even(rect.height):rect.height;
- const x=rect.x+(rect.width-width)/2,y=rect.y+(rect.height-height)/2;
+ const {x,y,width,height}=relative?rasterClipRect(rect):rect;
  return {rect,transform,width,height,x,y,relative};
 }
 

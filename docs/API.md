@@ -1300,7 +1300,8 @@ The strict public response contains only:
 - `status`: `ready`, `blocked`, `incomplete`, or `stale`
 - `summary` (null or the bounded counts below; optional frozen `delivery` when requested)
 - `checks:{totalAssets,checkedAssets,bytesHashed,fullDecode:false,subtitles?}`;
-  only nonempty captions can add `subtitles:{profileId:"bottom_cjk_v1",fontVerified,inkMeasured:false}`.
+  nonempty captions add `subtitles:{profileId,fontVerified,inkMeasured:false}` with
+  the saved `bottom_cjk_v1` or `bottom_cjk_relative_v2` profile.
   `bytesHashed` counts managed-media bytes, excluding the separately fixed font read.
 - `issues`: at most 128 `{code,severity,message,assetId?,clipId?}` entries;
   codes are 1–64 uppercase letters/digits/underscores beginning with a letter,
@@ -1411,7 +1412,7 @@ reference recovery now also validates operation-bound acknowledgements and retai
 The authenticated `/api/tasks` route family has an explicit twenty-operation
 allowlist: fifteen timeline metadata edits (all timeline mutations except
 `timeline.render`), `reference.attach` / `reference.detach`, and the three subject
-writes listed below. The sixteenth entry is `timeline.format.set`, with its own pristine-state and dual-revision gates; three `timeline.subtitle.*` writes append to the same timeline lane. The twentieth entry is `timeline.loudness.apply`, which remeasures a bound fixed-gain candidate and atomically writes the audible clip group; see [the apply contract](TIMELINE-LOUDNESS-APPLY.md). The subject extension is implemented; focused checks, builds
+writes listed below. The sixteenth entry is `timeline.format.set`, with project and timeline revision gates; three `timeline.subtitle.*` writes append to the same timeline lane. The twentieth entry is `timeline.loudness.apply`, which remeasures a bound fixed-gain candidate and atomically writes the audible clip group; see [the apply contract](TIMELINE-LOUDNESS-APPLY.md). The subject extension is implemented; focused checks, builds
 and Linux native acceptance passed, with the independent full release gate passed.
 See [its current gate](SUBJECT-LIBRARY.md). It is a UI recovery control plane, not
 an additional generic RPC, MCP tool or Agent capability. The underlying shared
@@ -1617,13 +1618,33 @@ keyframe's `exports` with `scene.set`, and sets a shot's first or last frame
 with `shot.update`.
 
 
-## Timeline output presets (schema 21)
+## Timeline output frame
 
-`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+`timeline.format.get` returns the effective preset, project and timeline
+revisions, and eligibility without creating a timeline. `timeline.format.set`
+requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means
+there is no timeline), a stable `requestId`, and `presetId`. The acknowledgement
+is the complete saved timeline. An exact replay returns the original timeline
+before evaluating either current revision.
 
-This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
+On a project opened by a trusted host in format 4, the setter changes the
+ratio within the current 720 or 1080 short-edge tier at 30 fps. The supported
+ratios are 9:16, 16:9, 1:1, 4:3, 3:4 and 21:9. The public operation schema
+enumerates the preset IDs for both tiers. A different tier or another pending
+timeline edit rejects before writing. The transaction adds one undo step and
+retains the existing clip and subtitle geometry on its original basis. A new
+edit after undo replaces the redo branch. Earlier acknowledgements remain
+replayable, and already accepted exports keep their frozen frame.
 
-Use the returned revisions, keep the exact input/key after ambiguity, and recover explicitly. Do not issue a new request merely because an acknowledgement was lost. Read/get/list and restart never apply a prepared intent. See [full scope, recovery and acceptance](TIMELINE-OUTPUT-FORMATS.md).
+A migrated clip's stored `rect` uses basis pixels. `timeline.inspect` reports
+its projection in the current frame for observation. Direct `rect` updates
+to migrated clips return `CLIP_LAYOUT_RECT_READ_ONLY`. Use
+`timeline.clip.setTransform` with the clip's stored basis units.
+
+The default format-3 host and built-in Mio tools keep the original
+pristine-timeline rules. Storyboard output remains 9:16. After an ambiguous
+response, retain the exact input and request ID for recovery. See the
+[format-3 recovery rules](TIMELINE-OUTPUT-FORMATS.md).
 
 ## Manual timeline subtitles
 
@@ -1636,7 +1657,9 @@ CLI discovery/commands are `timeline subtitle add|update|remove`; MCP names are
 `timeline_subtitle_add`, `timeline_subtitle_update`, `timeline_subtitle_remove`.
 Use live schema discovery, retain exact input/key on unknown outcomes, and never
 automatically retry under a new key. Each successful write returns the complete
-saved timeline. IDs and the fixed `bottom_cjk_v1` profile are backend-owned.
+saved timeline. IDs and the layout profile are backend-owned. New subtitle
+tracks start with `bottom_cjk_v1`. Edits keep the existing profile, including
+`bottom_cjk_relative_v2` after a frame change.
 Full subtitle state is available through `timeline.get` or `project.get`;
 `timeline.inspect` deliberately omits subtitle cues from its bounded DTO. No new
 built-in Agent tool or automatic project-context category is added.
