@@ -86,6 +86,23 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
+test('Mio generation reports the accepted ratio from the frozen job only for aspect-aware submits',async t=>{
+ const f=await acceptedGeneratedShot(t),legacy=f.journal.snapshot(f.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')!;
+ assert.ok(record(legacy.result));
+ assert.equal(Object.hasOwn(legacy.result,'aspectRatio'),false);
+ const shot=await f.execute('shot.create',{title:'Aspect-aware generation',duration:2,aspectRatio:'16:9'});
+ assert.ok(record(shot.outcome.result)&&typeof shot.outcome.result.id==='string');
+ const {outcome,step}=await f.execute('generation.submit',{...f.generation,shotId:shot.outcome.result.id,aspectSource:{kind:'explicit',aspectRatio:'9:16'}});
+ assert.equal((f.store.get('shots',shot.outcome.result.id) as Record<string,unknown>).aspectRatio,'16:9');
+ const job=f.store.get('jobs',String(record(step.result)&&step.result.id));
+ assert.ok(record(job)&&record(job.snapshot));
+ assert.ok(record(step.result)&&record(outcome.result));
+ assert.equal(step.result.id,job.id);
+ assert.equal(step.result.aspectRatio,job.snapshot.aspectRatio);
+ assert.equal(outcome.result.aspectRatio,'9:16');
+ assert.equal(Object.hasOwn(step.result,'snapshot'),false);
+ assert.equal(Object.hasOwn(outcome.result,'snapshot'),false);
+});
 test('Mio provider observations expose the workspace live generation gate',async t=>{
  const provider:Provider={
   id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},

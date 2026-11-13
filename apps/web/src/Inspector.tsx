@@ -34,7 +34,7 @@ import ShotSubjectBindings from './ShotSubjectBindings.tsx';
 import { imageEditSourceIssueDescriptor } from './image-generation.ts';
 import { ReferenceSourcePanel, BoundReference } from './ReferenceConnections.tsx';
 import { referenceForShot } from './reference-connections.ts';
-import { generationSelection, generationParameters, generationVideoInput, wanGenerationCapabilities, seedanceGenerationCapabilities, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationVideoInput, wanGenerationCapabilities, seedanceGenerationCapabilities, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor, prepareGenerationAspect } from './generation-settings.ts';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { schemas } from '@mioon/contracts';
 import { useLocalShotText, mergeFreshShotTextAck } from './local-shot-text-state.ts';
@@ -52,7 +52,7 @@ interface GenerationCapabilitiesView {
 }
 type AnnotationTargetView = {id: string; projectId: string; name: string; mimeType?: string};
 interface VersionSnapshotView {prompt?: string; model?: string; duration?: string | number; aspectRatio?: string; referenceAssetIds?: unknown[]; subjectReference?: unknown}
-import type { GenerationProvider, GenerationVideoInput } from './generation-settings.ts';
+import type { GenerationFrame, GenerationProvider, GenerationVideoInput } from './generation-settings.ts';
 import type { LocalShotTextContext } from './local-shot-text-state.ts';
 
 export interface ShotDraftView {
@@ -99,6 +99,7 @@ export interface InspectorProps {
   onDirtyChange: (dirty: boolean) => unknown;
   onAddVersion: (assetId: string) => unknown;
   generationOptions?: Record<string, unknown> & {subjectReference?: SubjectReference | null};
+  generationFrame?: GenerationFrame | null;
   onGenerationOptionsChange?: (shotId: string | undefined, options: Record<string, unknown>) => unknown;
   shots?: AppShot[];
   nodes?: AppNode[];
@@ -124,7 +125,7 @@ function ShotSegments({ id, value, options, label, disabled, onChange, 'data-tes
 }): React.ReactElement {
   return <div id={id} data-testid={testId} className="shot-segments"><WorkbenchTabs value={value} label={label} options={options.map(option => ({ ...option, disabled }))} onValueChange={next => onChange({ target: { value: next } })} /></div>;
 }
-export default function Inspector({ timelineStatus = null, onViewInEditing, protectEditing = content => content, onEditImage, annotations, annotationAsset = null, assetSections = null, annotationBlocked = false,  onShowTasks, subjects, subjectBlocked, shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onCancelJob, onRetryJob, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId, actionScopeKey = '', shotTextContext = null, onShotTextController, onShotTextAccepted }: InspectorProps): React.ReactElement | null {
+export default function Inspector({ timelineStatus = null, onViewInEditing, protectEditing = content => content, onEditImage, annotations, annotationAsset = null, assetSections = null, annotationBlocked = false,  onShowTasks, subjects, subjectBlocked, shot, node, project, assets, versions, jobs, providers, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onCancelJob, onRetryJob, onDirtyChange, onAddVersion, generationOptions = {}, generationFrame, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId, actionScopeKey = '', shotTextContext = null, onShotTextController, onShotTextAccepted }: InspectorProps): React.ReactElement | null {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const confirm = useConfirmation();
   const initial: ShotDraftView = shot ? editable(shot) : nodeDraft(node);
@@ -342,7 +343,7 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
     if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return;
     const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey;
     const latest = (dirty ? await save() : shot) as AppShot | null | undefined;
-    if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationParameters(latest, provider, generationOptions), ...(videoInput ? { videoInput: generationVideoInput(latest, generationOptions as { videoInput?: GenerationVideoInput }, provider) } : {}) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) });
+    if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationFrame ? generationOptions.parameters as Record<string, unknown> | undefined : generationParameters(latest, provider, generationOptions), ...(videoInput ? { videoInput: generationVideoInput(latest, generationOptions as { videoInput?: GenerationVideoInput }, provider) } : {}) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) });
   }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
   function frozenVersionSpecs(version: AppVersion): React.ReactNode {
@@ -387,10 +388,12 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
   }
   const generating = Boolean(running || busy[`generate:${shot?.id}`]);
   const referenceAssets = assets.filter(a => a.mimeType?.startsWith('image/'));
-  const effectiveParameters = generationParameters(draft, provider, generationOptions);
-  const generationDraft = provider?.connectionId ? { ...draft, parameters: effectiveParameters, ...(videoInput ? { videoInput } : {}) } : draft;
-  const capabilityIssue = shot ? generationInputIssue(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
-  const capabilityIssueDisplay = shot ? generationInputIssueDescriptor(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
+  const aspect = generationFrame && shot ? prepareGenerationAspect(generationFrame, draft, provider, model, generationOptions) : null;
+  const effectiveParameters = aspect?.shot.parameters ?? generationParameters(draft, provider, generationOptions);
+  const basis = aspect?.shot ?? draft;
+  const generationDraft = provider?.connectionId ? { ...basis, parameters: effectiveParameters, ...(videoInput ? { videoInput } : {}) } : basis;
+  const capabilityIssue = shot ? aspect?.issue || generationInputIssue(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
+  const capabilityIssueDisplay = shot ? aspect?.issue || generationInputIssueDescriptor(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
   const availabilityIssue = providerAvailabilityIssue(provider);
   const availabilityIssueDisplay = providerAvailabilityDescriptor(provider);
   const inputModes = [...new Set([...(capabilities?.inputModes || []), inputMode])];

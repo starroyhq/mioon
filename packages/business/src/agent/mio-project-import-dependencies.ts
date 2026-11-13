@@ -9,6 +9,9 @@ import {isAssetAnnotationResponse} from '../../../contracts/src/asset-annotation
 import {isAssetDispositionResponse} from '../../../contracts/src/asset-disposition.ts';
 import {isSourceRangeResponse} from '../../../contracts/src/source-range.ts';
 import {isTimelineRecord} from '../../../contracts/src/timeline-replacement.ts';
+import type {TimelineRecord} from '../timeline-inputs.ts';
+import {isClipLayoutRect} from '../../../contracts/src/timeline-clip-layout.ts';
+import {timelineFrameSetSchema} from '../../../contracts/src/timeline-format.ts';
 import {isTimelineRenderRecord} from '../../../contracts/src/timeline-acknowledgement.ts';
 import {timelineRenderDeliveryFields} from '../../../contracts/src/timeline-delivery.ts';
 import {isReferenceShotRecord, isReferenceEdgeRecord} from '../../../contracts/src/reference-acknowledgement.ts';
@@ -27,8 +30,10 @@ import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {INSPECTION_ROW_LIMITS} from '../inspection-query.ts';
-import {projectRetainedTimelineReceipt} from '../timeline-retained-receipts.ts';
+import {projectRetainedTimelineReceipt,readWrappedTimelineReceipt,TIMELINE_RECEIPT_WRAPPER_OPERATIONS} from '../timeline-retained-receipts.ts';
+import {walkTimelineFormatHistory} from '../timeline-format.ts';
 import {restoreTimelineEditableSnapshot} from '../timeline-recovery.ts';
+import {usesTimelineFrameTransaction} from '../store-capabilities.ts';
 import {decodeProjectDocument} from '../project-versions/codec.ts';
 import {clipDraftSlotSchema, LOCAL_DRAFT_LIMITS} from '../../../contracts/src/local-drafts.ts';
 
@@ -117,7 +122,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
   assertProjectStore(store);
   if (!store.db.isTransaction) throw new TypeError('Import dependency proof requires the live project transaction');
   if (!uuid(assetId)) throw new TypeError('Import dependency proof requires an asset identity');
-  const db = store.db, limits = MIO_PROJECT_IMPORT_DEPENDENCY_LIMITS;
+  const db = store.db, limits = MIO_PROJECT_IMPORT_DEPENDENCY_LIMITS, frameTransaction=usesTimelineFrameTransaction(db);
   let rows = 0, cells = 0, bytes = 0, nodes = 0;
   const referenced = (source: string): never => {throw new Refusal({status: 'referenced', source});};
   const countRow = (): void => {if (++rows > limits.rows) deny('limit');};
@@ -226,6 +231,11 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     tree(value, source);
   }
   function receipt(value: unknown, source: string, identity: unknown): void {
+    if (frameTransaction && object(value) && TIMELINE_RECEIPT_WRAPPER_OPERATIONS.includes(value.operation as string)) {
+      if (typeof identity !== 'string' || !readWrappedTimelineReceipt(value, store.projectId, identity)) deny('invalid');
+      tree(value, source);
+      return;
+    }
     const projected = projectRetainedTimelineReceipt(value, identity);
     if (object(projected) && object(projected.snapshot)) {
       if (!isTimelineRenderRecord(projected, {projectId: store.projectId, requestId: identity,
@@ -268,7 +278,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         tree(before.value, source);
       else if (before.table === 'clips') {
         if (!fields(before.value, ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain',
-          'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'hidden', 'muted', 'versionId', 'shotId', 'jobId'])) deny('unsupported');
+          'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform', 'transitionIn', 'hidden', 'muted', 'versionId', 'shotId', 'jobId','layout'])) deny('unsupported');
+        if(Object.hasOwn(before.value,'layout')&&!isClipLayoutRect(before.value,null))deny('invalid');
         tree(before.value, source);
       } else deny('unsupported');
     }
@@ -309,7 +320,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (db.prepare(`SELECT 1 FROM ${relation.child.schema}.${quote(relation.child.table)} WHERE ${quote(column)} IS ? LIMIT 1`).get(assetId))
         referenced(`${relation.child.schema}.${relation.child.table}.${column}`);
     }
-    let currentTimeline: unknown;
+    let currentTimeline: TimelineRecord|null=null;
     for (const schema of ['project', 'main'] as const) for (const [table, columns] of Object.entries(consumerCells[schema])) {
       const info = db.prepare(`PRAGMA ${schema}.table_info(${quote(table)})`).all(), columnNames = new Set(info.map(row => row.name));
       const metadata = ['id', 'projectId', 'operation', 'requestId', 'kind', 'runId', 'stepId',
@@ -329,7 +340,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
           const value = decode(row[column], source, maximum);
           if (schema === 'project' && ['projects', 'assets', 'shots', 'nodes', 'edges', 'versions', 'timelines', 'subject_versions', 'image_versions'].includes(table)) {
             content(table, value, source, row.id);
-            if (table === 'timelines') currentTimeline = value;
+            // content() has already validated the full timeline here.
+            if (table === 'timelines') currentTimeline = value as TimelineRecord;
           } else if (table === 'local_clip_drafts') {
             const slot = clipDraftSlotSchema.safeParse(value);
             if (!slot.success || slot.data.projectId !== store.projectId
@@ -342,13 +354,15 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
           else if (table === 'timeline_requests') receipt(value, source, row.requestId);
           else if (table === 'timeline_history') {
             if (!currentTimeline) deny('invalid');
-            timeline(restoreTimelineEditableSnapshot(currentTimeline as Parameters<typeof restoreTimelineEditableSnapshot>[0], value), source);
+            if (!frameTransaction) timeline(restoreTimelineEditableSnapshot(currentTimeline,value),source);
+            // For format 4, decode above still enforces the proof budget and detects duplicate keys.
+            // Read both sides together below, using the frame at the saved cursor.
           } else if (column === 'canonicalInput' || column === 'input') {
             const operation = table === 'image_tasks' || table === 'image_reviews' ? 'image.generate' : table === 'frame_tasks' ? 'frame.extract'
               : table === 'scene_tasks' ? row.kind === 'detect' ? 'scene.detect' : 'scene.shots.create'
                 : table === 'subject_variant_batches' ? 'subject.variants.create' : row.operation;
             if (typeof operation !== 'string' || !Object.hasOwn(schemas, operation)) deny('unsupported');
-            const schema = (schemas as Readonly<Record<string, Schema>>)[operation];
+            const schema = frameTransaction && operation === 'timeline.format.set' ? timelineFrameSetSchema : (schemas as Readonly<Record<string, Schema>>)[operation];
             if (!schema) deny('unsupported');
             parseWith(schema, value);
             originalInput = value;
@@ -392,6 +406,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
         }
       }
     }
+    if (frameTransaction) walkTimelineFormatHistory(db, store.projectId, currentTimeline, (value, _position, side) => timeline(value, `main.timeline_history.${side}Snapshot`));
     const blobs = new Map<string, number>(); let compressedBytes = 0;
     for (const row of db.prepare(`SELECT v.projectId,v.contentSequence,v.blobHash,b.profile,b.codec,b.rawBytes,b.compressedBytes,
       typeof(b.payload) AS payloadType,length(b.payload) AS payloadBytes

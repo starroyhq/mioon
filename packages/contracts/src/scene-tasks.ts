@@ -3,6 +3,7 @@ import type {MediaReference} from './media-reference.ts';
 import {z} from 'zod';
 import {SOURCE_RANGE_FPS, sourceFrameCount} from './source-range.ts';
 import {FRAME_LIMITS, FRAME_PROFILE_ID, FRAME_SELECTION_RULE, frameProbeSchema} from './frame-extraction.ts';
+import {TIMELINE_OUTPUT_RATIOS} from './timeline-output-geometry.ts';
 
 type Rec = Record<string, unknown>;
 // Reference-film scene detection: a local background task over one owned
@@ -27,7 +28,8 @@ export const SCENE_STORED_OPERATIONS = SCENE_MUTATION_OPERATIONS;
 export const SCENE_KEYFRAME_PROVENANCE = 'scene-keyframe';
 export const SCENE_SHOT_TITLE_PREFIX = '参考';
 // New shots follow the project's format, never the reference film's.
-export const SCENE_SHOT_ASPECT_RATIOS = Object.freeze(['9:16', '16:9', '1:1'] as const);
+export const SCENE_SHOT_ASPECT_RATIOS = TIMELINE_OUTPUT_RATIOS;
+const legacyWorkspaceSceneShotAspectRatios = ['9:16', '16:9', '1:1'] as const;
 // Rows of six at the canvas pitch of a shot card. Without a position the batch
 // starts below the existing canvas content.
 export const SCENE_SHOT_LAYOUT = Object.freeze({columns: 6, columnSpacing: 340, rowSpacing: 300, left: 80, top: 100, gap: 360});
@@ -149,7 +151,7 @@ export const legacyWorkspaceSceneShotsSnapshotSchema = bounded(z.object({
   source: z.object({...legacyWorkspaceSourceFields, width: sourceDimension, height: sourceDimension}).strict(),
   resultId: id, frameCount,
   frame: z.object({profileId: z.literal(FRAME_PROFILE_ID), selectionRule: z.literal(FRAME_SELECTION_RULE), fps: z.literal(SOURCE_RANGE_FPS)}).strict(),
-  aspectRatio: z.enum(SCENE_SHOT_ASPECT_RATIOS), titlePrefix, origin: position,
+  aspectRatio: z.enum(legacyWorkspaceSceneShotAspectRatios), titlePrefix, origin: position,
   segments: z.array(z.tuple([segmentNumber, editFrame, editFrame])).min(1).max(SCENE_LIMITS.shotsPerTask),
 }).strict()
   .refine(value => increasing(value.segments.map(([segment]) => segment)), 'Segments must be strictly increasing')

@@ -18,7 +18,8 @@ import type {AgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskTools,PreparedAgentTaskTool} from './task-tools-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL,mioProjectFileImportResultSchema} from '../../../contracts/src/mio-project-import.ts';
 import type {ProjectAssetImportLookup} from '../referenced-asset-project-import.ts';
-import {agentTaskExplicitTargets,agentTaskChangeWasModified,projectAgentTaskUndo} from './task-tools-v2.ts';
+import {agentTaskExplicitTargets,agentTaskChangeWasModified,agentTaskUndoTargets,projectAgentTaskUndo} from './task-tools-v2.ts';
+import {agentTaskGenerationAspectFeedback} from './task-tool-errors-v2.ts';
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
 import type {AgentSettingsService} from './settings.ts';
@@ -251,7 +252,7 @@ function safeSnapshot(value:AgentTaskSnapshot,store:Store):AgentTaskSnapshot {
   const skippedSteps=new Set(copy.run.skippedTargets?.map(item=>item.stepId)??[]);
   copy.steps=copy.steps.map(step=>{if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
   const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
-  copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
+  copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;delete change.frameDependencies;return change;});return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
 export interface AgentTaskRuntimeOptions {store:Store;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;rules?:MioProjectRules;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
@@ -372,13 +373,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     };
     try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
   }
-  /** X4 follow-up: a stale revision the domain rejected as not applied is
-   * returned to Mio like a rejected parameter set, and the run continues. */
-  function rejectStaleRevision(runId:string,stepId:string):AgentTaskStep {
+  /** A proven domain admission rejection lets the run continue. Persist the
+   * dispatch prevention and the model-facing result in the same transaction. */
+  function rejectNotApplied(runId:string,stepId:string,error:{code:string;message:string}):AgentTaskStep {
     const apply=():AgentTaskStep=>{
       if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
-      const message=revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)];
-      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:{code:'REVISION_CONFLICT',message}},error:{code:'REVISION_CONFLICT',message}});
+      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:json(error)},error:{code:error.code,message:error.message}});
     };
     try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
   }
@@ -527,8 +527,13 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       }
       // C3: a question waits for the user's answer; nothing is dispatched.
       if(prepared.operation===AGENT_TASK_ASK_OPERATION){journal.updateStep(runId,step.id,{status:'awaiting_answer'});changeStatus(runId,'awaiting_answer');return null;}
+      const reconfirmAspect=prepared.operation==='generation.submit'&&journal.snapshot(runId).steps.some(previous=>
+        previous.id!==step!.id&&previous.status==='rejected'&&previous.toolCall?.name===call.name
+        &&record(previous.toolCall.arguments)&&previous.toolCall.arguments.shotId===prepared!.input.shotId
+        &&record(previous.result)&&record(previous.result.error)&&previous.result.error.mutationOutcome==='not_applied'
+        &&['PROJECT_ASPECT_CHANGED','PROJECT_ASPECT_UNSUPPORTED','GENERATION_ASPECT_UNSUPPORTED'].includes(String(previous.result.error.code)));
       // Loosening the modes later never approves a confirmation already shown.
-      if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
+      if((prepared.forceApproval||reconfirmAspect||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
         journal.updateStep(runId,step.id,{status:'awaiting_approval',...(prepared.proposal===undefined?{}:{result:{rulesProposal:prepared.proposal}})});changeStatus(runId,'awaiting_approval');return null;
       }
       toolFence(runId,step.id,prepared);journal.markDispatch(runId,step.id);
@@ -587,8 +592,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:failure,...feedback}},error:{code:failure,message:feedback.message}});
         }
       }
-      if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')return rejectStaleRevision(runId,step.id);
-      const uncertain=current.status==='dispatch_started'&&(!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
+      if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')
+        return rejectNotApplied(runId,step.id,{code:failure,message:revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)]});
+      const aspectRejection=prepared?.operation==='generation.submit'&&['PROJECT_ASPECT_CHANGED','PROJECT_ASPECT_UNSUPPORTED','GENERATION_ASPECT_UNSUPPORTED'].includes(failure);
+      if(current.status==='dispatch_started'&&prepared&&aspectRejection){
+        const feedback=agentTaskGenerationAspectFeedback({operation:prepared.operation,projectId:prepared.projectId,input:{...prepared.input,requestId:step.id},error});
+        if(feedback)return rejectNotApplied(runId,step.id,feedback);
+      }
+      const uncertain=current.status==='dispatch_started'&&(aspectRejection||!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
@@ -899,8 +910,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(change.status!=='applied'||!change.reversible||request.action==='undo_change'&&change.id!==request.changeId)continue;
         // A saved compensation revision only bridges adjacent AI changes. It
         // must not jump across an intervening external edit, including ABA.
-        const expectedTargets=change.targets.map(target=>{const next=chain.get(`${target.kind}:${target.id}`);return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
-        if(request.action==='undo_change'&&change.targets.some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+        const expectedTargets=agentTaskUndoTargets(change,chain);
+        if(request.action==='undo_change'&&agentTaskUndoTargets(change,new Map()).some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
         if(request.action==='undo_all'&&store.tx(()=>{if(!agentTaskChangeWasModified(store,change,expectedTargets))return false;journal.markChangeSupersededInside(change.id);return true;})){retainedChangeIds.push(change.id);continue;}
         const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},beforeCompensation:()=>{if(undoChangeIds&&!undoChangeIds.has(change.id))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');},recordInside:()=>{
           journal.markChangeRevertedInside(change.id);

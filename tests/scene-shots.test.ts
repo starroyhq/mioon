@@ -22,6 +22,7 @@ import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.t
 import {validateImageConsumption} from '../packages/business/src/image-consumption.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createProjectAssetReferenceServices} from '../packages/business/src/project-asset-references.ts';
+import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import {projectOutputPublicationReceiptSchema} from '../packages/contracts/src/project-output-publication.ts';
 import {createPngStreamSplitter,keyframeTargets,decodeSceneKeyframes, type DecodeSceneKeyframesOptions, type SceneKeyframe} from '../packages/business/src/scene-keyframe-decoder.ts';
@@ -249,6 +250,36 @@ test('without a position the batch goes below the canvas content and continues t
  const ack=await f.call('scene.shots.create',f.input(resultId,{segments:[2]})),done=await f.state(ack.id,'succeeded');
  const shot=f.store.get('shots',(done.shots)![0].shotId);
  assert.deepEqual([(shot)!.title,(shot)!.position,(shot)!.orderIndex,(shot)!.aspectRatio],['参考 02',{x:80,y:1360},5,'9:16']);
+});
+
+test('storyboards freeze each exact project frame ratio at acceptance and replay the original ratio', async t=>{
+ const decoding=deferred(),continueDecode=deferred();
+ const f=fixture(t,{decode:async input=>{decoding.resolve();await continueDecode.promise;return keyframes(input);}}),resultId=await f.detected();
+ const setFrame=(presetId:string)=>{
+  const preset=timelineOutputPreset(presetId);assert.ok(preset);
+  const {fps,width,height}=preset;
+  f.store.db.prepare('INSERT INTO timelines(id,projectId,data) VALUES(?,?,?) ON CONFLICT(projectId) DO UPDATE SET data=excluded.data')
+   .run(randomUUID(),f.project.id,JSON.stringify({projectId:f.project.id,fps,width,height}));
+ };
+ setFrame('ultrawide_1080');
+ const first=f.input(resultId,{segments:[1]}),wide=await f.call('scene.shots.create',first);
+ try{
+  await decoding.promise;
+  assert.equal(wide.aspectRatio,'21:9');
+  setFrame('portrait_3_4_720');
+  assert.deepEqual(await f.call('scene.shots.create',first),wide);
+ }finally{continueDecode.resolve();}
+ const wideDone=await f.state(wide.id,'succeeded');
+ assert.equal(wideDone.aspectRatio,'21:9');
+ assert.equal(f.store.get('shots',wideDone.shots![0]!.shotId)!.aspectRatio,'21:9');
+ for(const [presetId,ratio] of [['portrait_3_4_720','3:4'],['landscape_4_3_1080','4:3']]){
+  setFrame(presetId!);
+  const ack=await f.call('scene.shots.create',f.input(resultId,{segments:[1]})),done=await f.state(ack.id,'succeeded');
+  assert.equal(ack.aspectRatio,ratio);
+  assert.equal(f.store.get('shots',done.shots![0]!.shotId)!.aspectRatio,ratio);
+ }
+ assert.deepEqual(await f.call('scene.shots.create',first),wide);
+ assert.equal(f.decodes,3);
 });
 
 test('cancelling a storyboard leaves no shots, images or staged files', async t=>{

@@ -8,7 +8,8 @@ import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.t
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {taskDisplayEntries,taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {translate} from '../packages/i18n/src/index.ts';
 
 const now='2026-10-21T00:00:00.000Z';
 test('the model-only loading step uses the actual four-language panel caption without requiring model prose',()=>{
@@ -127,6 +128,34 @@ test('pending tools use exact retained arguments, one-sided global creation para
   const submitted=step('mioon_generation_submit',{shotId:id,expectedRevision:2,providerId:'mock',model:'mock-video',parameters:{resolution:'1080p'}},{kind:'shot',id});
   const fresh=projectAgentTaskStepDisplay(submitted,()=>({title:'Scene',revision:2,duration:4,aspectRatio:'9:16',referenceAssetIds:[randomUUID()]}));assert.equal(fresh?.fields.find(field=>field.property==='mode')?.after,'image_to_video');assert.equal(fresh?.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(fresh?.fields.find(field=>field.property==='versionNumber'),undefined);
   const stale=projectAgentTaskStepDisplay(submitted,()=>({title:'Scene',revision:3,duration:8,aspectRatio:'16:9',referenceAssetIds:[]}));assert.ok(stale);assert.equal(stale.fields.find(field=>field.property==='durationSeconds'),undefined);assert.equal(stale.fields.find(field=>field.property==='mode'),undefined);
+});
+test('generation approval displays the requested project or explicit ratio and revision-checked shot ratio',()=>{
+  const id=randomUUID(),target={kind:'shot',id};
+  const args={shotId:id,expectedRevision:2,providerId:'wan',model:'wan3.0',parameters:{resolution:'720P',aspectRatio:'9:16'}};
+  const read=(revision:number)=>()=>({title:'Scene',revision,duration:4,aspectRatio:'9:16',referenceAssetIds:[]});
+  for(const [source,ratio] of [
+    [{kind:'project',expectedTimelineRevision:7,aspectRatio:'21:9'},'21:9'],
+    [{kind:'explicit',aspectRatio:'adaptive'},'adaptive'],
+    [{kind:'explicit',aspectRatio:'1:1'},'1:1'],
+    [{kind:'shot'},'9:16'],
+    [{kind:'project',expectedTimelineRevision:-1,aspectRatio:'16:9'},undefined],
+    [{kind:'explicit',aspectRatio:'PRIVATE_RATIO'},undefined],
+  ] as const){
+    const pending=step('mioon_generation_submit',{...args,aspectSource:source},target);
+    const display=projectAgentTaskStepDisplay(pending,read(2));
+    assert.ok(agentTaskDisplaySchema.safeParse(display).success);
+    assert.equal(display?.fields.find(field=>field.property==='aspectRatio')?.after,ratio);
+    assert.doesNotMatch(JSON.stringify(display),/PRIVATE_RATIO|expectedTimelineRevision|aspectSource/u);
+  }
+  const legacy=projectAgentTaskStepDisplay(step('mioon_generation_submit',args,target),read(2));
+  assert.equal(legacy?.fields.find(field=>field.property==='aspectRatio')?.after,'9:16');
+  const stale=projectAgentTaskStepDisplay(step('mioon_generation_submit',{...args,aspectSource:{kind:'shot'}},target),read(3));
+  assert.equal(stale?.fields.find(field=>field.property==='aspectRatio'),undefined);
+  const adaptive=projectAgentTaskStepDisplay(step('mioon_generation_submit',{...args,aspectSource:{kind:'explicit',aspectRatio:'adaptive'}},target),read(2));
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+    const ratioLabel=translate(locale,'agent.display.field.aspectRatio');
+    assert.equal(taskDisplayEntries(adaptive,locale).find(entry=>entry.label===ratioLabel)?.value,translate(locale,'video.wan.adaptive'));
+  }
 });
 test('strict shared display schema rejects arbitrary properties, object values, invalid targets and oversized or nonfinite values',()=>{
   const valid=projectAgentTaskChangeDisplay(change('shot.update','shot',{duration:2},{duration:3}));assert.ok(agentTaskDisplaySchema.safeParse(valid).success);assert.ok(agentTaskDisplaySchema.safeParse({...valid,conflict:true}).success);assert.equal(agentTaskDisplaySchema.safeParse({...valid,conflict:false}).success,false);assert.equal(projectAgentTaskStepDisplay(step('mioon_shot_update',{conflict:true}))?.conflict,undefined);

@@ -15,6 +15,16 @@ import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer,type InspectProject} from '../apps/server/src/index.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
+import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
+import {mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
+import {createMioTestAppPorts} from './helpers/mio-runtime-app-ports.ts';
+import {authorizeTestScope} from './helpers/agent-authorizations.ts';
+import {readMioProjectImportDependencies} from '../packages/business/src/agent/mio-project-import-dependencies.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function cues(value:unknown):unknown[]{if(value===undefined)return [];assert.ok(object(value)&&Array.isArray(value.cues));return value.cues;}
@@ -87,4 +97,117 @@ test('real Mio subtitle undo retains valid locked format history while unknown o
  for(const [operation,input] of [['timeline.format.get',{projectId}],['timeline.format.set',{...formatInput,requestId:randomUUID()}]] as const){
   const invalid=await rpc(operation,input);assert.equal(invalid.status,409,JSON.stringify(invalid.body));assert.ok(object(invalid.body.error));assert.equal(invalid.body.error.code,'INVALID_TIMELINE_SNAPSHOT');
  }
+});
+
+test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native undo and redo history', async t=>{
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-format4-mio-'));
+ const projectFile=path.join(root,'project.mioon'),projectId=createProjectFile(projectFile);
+ const locate=()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')});
+ const initialStore=openServerTestStore({projectFile,locate},path.join(root,'tool-app'));
+ const initialPorts=createMioTestAppPorts(initialStore);
+ await initialPorts.services.call('project.create',{name:'Mio frame transaction'});
+ await initialPorts.services.drain();initialPorts.close();initialStore.close();
+ const store=openServerTestStore({projectFile,locate,format4:{approveUpgrade:()=>true}},path.join(root,'tool-app'));
+ assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version,FORMAT4_PROJECT_SCHEMA_VERSION);
+ const ports=createMioTestAppPorts(store),{services}=ports;
+
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_FRAME_TRANSACTION_KEY'}});
+ const authorizations=ports.createAuthorizations(settings);
+ await authorizeTestScope(authorizations,'project_agent');
+ const policy={...mioTestPolicy,policy:()=>{const base=mioTestPolicy.policy();return {...base,modes:{...base.modes,local_reversible:'confirm' as const}};}};
+ const journal=createMioJournal(store,policy),tools=createAgentTaskTools({store,services,journal});
+
+ const rpc=(operation:string,input:Record<string,unknown>={})=>services.call(operation,{projectId,...input});
+ const read=async()=>timelineFormatResponseSchema.parse(await rpc('timeline.format.get'));
+ const timeline=async(operation='timeline.get',input:Record<string,unknown>={})=>{
+  const value=await rpc(operation,input);assert.ok(isTimelineRecord(value,{projectId}));return value;
+ };
+ const frameArgs=(frame:Awaited<ReturnType<typeof read>>,presetId:string)=>({expectedProjectRevision:frame.projectRevision,expectedRevision:frame.timelineRevision,presetId});
+ const initialized=await timeline(),track=initialized.tracks.find(item=>item.kind==='video')!;
+ const dataBase64=png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]}).toString('base64');
+ const asset=await rpc('asset.import',{name:'Synthetic source.png',mimeType:'image/png',dataBase64});assert.ok(object(asset)&&typeof asset.id==='string');
+ const otherAsset=await rpc('asset.import',{name:'Unreferenced.png',mimeType:'image/png',dataBase64});
+ assert.ok(object(otherAsset)&&typeof otherAsset.id==='string'&&otherAsset.id!==asset.id);
+ const withClip=await timeline('timeline.clip.add',{requestId:randomUUID(),expectedRevision:initialized.revision,assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:90});
+ const initial=await timeline('timeline.subtitle.add',{requestId:randomUUID(),expectedRevision:withClip.revision,startFrame:0,durationFrames:30,text:'Kept subtitle'});
+ const clip=initial.clips[0]!,staleGeometry=tools.prepare({projectId,operation:'timeline.clip.update',input:{
+  clipId:clip.id,expectedRevision:withClip.revision,patch:{rect:{x:0,y:0,width:360,height:640}},
+ }});
+ assert.deepEqual(staleGeometry.targets.map(({kind})=>kind),['timeline_clip','timeline']);
+ await assert.rejects(tools.execute(staleGeometry,{runId:randomUUID(),stepId:randomUUID(),requestId:randomUUID(),beforeEffect(){},recordInside(){assert.fail('Stale geometry must not write a receipt');}}),{code:'REVISION_CONFLICT'});
+ assert.deepEqual(await timeline(),initial);
+ const frame=await read(),args=frameArgs(frame,'ultrawide_1080');
+ assert.equal(frame.eligible,true);
+ const operation='timeline.format.set';
+ for(const stale of [{...args,expectedProjectRevision:args.expectedProjectRevision+1},{...args,expectedRevision:args.expectedRevision-1}]){
+  const prepared=tools.prepare({projectId,operation,input:stale});
+  await assert.rejects(tools.execute(prepared,{runId:randomUUID(),stepId:randomUUID(),requestId:randomUUID(),beforeEffect(){},recordInside(){assert.fail('Stale format must not write a receipt');}}),{code:'REVISION_CONFLICT'});
+  assert.deepEqual(await timeline(),initial);
+ }
+ const atomicRequestId=randomUUID(),recordFailure=new Error('Synthetic journal write failure');
+ const prepared=tools.prepare({projectId,operation,input:args});
+ const receiptCount=()=>store.db.prepare('SELECT count(*) AS total FROM main.timeline_requests WHERE requestId=?').get(atomicRequestId)?.total;
+ const historyCount=()=>store.db.prepare('SELECT count(*) AS total FROM main.timeline_history WHERE projectId=?').get(projectId)?.total;
+ const historyBefore=historyCount();
+ await assert.rejects(tools.execute(prepared,{runId:randomUUID(),stepId:randomUUID(),requestId:atomicRequestId,beforeEffect(){},recordInside(){throw recordFailure;}}),error=>error===recordFailure);
+ assert.deepEqual(await timeline(),initial);
+ assert.equal(historyCount(),historyBefore);
+ assert.equal(receiptCount(),0);
+ assert.equal(store.db.prepare('SELECT 1 FROM main.timeline_format_requests WHERE requestId=?').get(atomicRequestId),undefined);
+ let requests=0;
+ const gateway:TaskGateway=async function*(request){
+  request.beforeSubmit?.();requests++;
+  const calls:AgentTaskToolCall[]=requests===1?[{id:'load_frame',name:'mioon_tools_load',arguments:{names:['mioon_timeline_format_set']}}]
+   :requests===2?[{id:'set_frame',name:'mioon_timeline_format_set',arguments:args}]:[];
+  yield {type:'done',output:output(calls)};
+ };
+ const runtime=createMioRuntime({store,journal,policy,tools,agentSettings:settings,authorizations,gateway,selfPort:()=>4318});
+ t.after(async()=>{runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();ports.close();store.close();await rm(root,{recursive:true,force:true});});
+ const accepted=await runtime.send(projectId,{requestId:randomUUID(),text:'Change the saved frame to ultrawide',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});
+ async function waitForRun(expected:AgentTaskSnapshot['run']['status']):Promise<AgentTaskSnapshot>{
+  for(let tries=0;tries<1000;tries++){
+   const saved=runtime.get(projectId,accepted.run.id);
+   if(saved.run.status===expected)return saved;
+   assert.ok(!['completed','failed','paused'].includes(saved.run.status),JSON.stringify(saved));
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.fail('Synthetic Mio frame run did not reach '+expected);
+ }
+ const review=await waitForRun('awaiting_approval'),pending=review.steps.find(step=>step.toolCall?.id==='set_frame');
+ assert.equal(pending?.status,'awaiting_approval');
+ assert.deepEqual(await timeline(),initial,'confirmation has made no writes');
+ await runtime.action(projectId,accepted.run.id,{requestId:randomUUID(),expectedRevision:review.run.revision,action:'approve',stepId:pending.id});
+ const completed=await waitForRun('completed');
+ assert.equal(requests,3);
+ const set=completed.steps.find(step=>step.toolCall?.id==='set_frame')!;
+ assert.equal(set.tier,'local_reversible');
+ assert.deepEqual(set.targets?.map(item=>item.kind),['timeline','project','timeline_clip','timeline_subtitle']);
+ assert.deepEqual(set.result,{timelineId:initial.id,revision:initial.revision+1,
+  before:{presetId:frame.presetId,width:frame.width,height:frame.height},after:{presetId:'ultrawide_1080',width:2520,height:1080},affectedClips:1});
+ assert.equal(completed.changes.length,1);
+ const changed=await timeline(),retained=journal.snapshot(accepted.run.id).changes[0]!;
+ assert.equal(changed.clips[0]?.layout?.basisPresetId,frame.presetId);
+ assert.notDeepEqual(changed.subtitles,initial.subtitles);
+ assert.deepEqual(retained.frameDependencies?.map(({kind})=>kind),['timeline_subtitle']);
+ assert.equal(Object.hasOwn(completed.changes[0]!,'frameDependencies'),false);
+ assert.deepEqual(await rpc(operation,{...args,requestId:set.id}),changed,'replay returns the frozen acceptance');
+ assert.deepEqual(readMioProjectImportDependencies(store,otherAsset.id),{status:'clear'},'bound clip and format evidence does not make a different asset unprovable');
+ const ownerId=randomUUID(),subtitle=retained.frameDependencies![0]!;
+ journal.claim({projectId,ownerId,targets:[subtitle]});
+ const undo=()=>runtime.action(projectId,accepted.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,accepted.run.id).run.revision,action:'undo_all'});
+ await assert.rejects(undo(),{code:'AGENT_TASK_TARGET_CLAIMED'});
+ assert.deepEqual(await timeline(),changed,'the unchanged cue still fences frame compensation');
+ journal.releaseClaims(projectId,ownerId);
+ const undone=await undo();
+ assert.equal(undone.run.status,'reverted');
+ const restored=await timeline();
+ assert.deepEqual([restored.width,restored.height,restored.clips,restored.subtitles],[initial.width,initial.height,initial.clips,initial.subtitles]);
+ const operations=store.db.prepare('SELECT operation FROM main.timeline_history WHERE projectId=? ORDER BY position').all(projectId);
+ assert.deepEqual(operations.slice(-2).map(({operation})=>operation),['timeline.format.set','agent.task.undo']);
+ const reversed=await timeline('timeline.undo',{requestId:randomUUID(),expectedRevision:restored.revision});
+ assert.deepEqual([reversed.width,reversed.height,reversed.clips,reversed.subtitles],[changed.width,changed.height,changed.clips,changed.subtitles]);
+ const redone=await timeline('timeline.redo',{requestId:randomUUID(),expectedRevision:reversed.revision});
+ assert.deepEqual([redone.width,redone.height,redone.clips,redone.subtitles],[initial.width,initial.height,initial.clips,initial.subtitles]);
+ assert.equal((await read()).eligible,true);
 });

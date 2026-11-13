@@ -14,7 +14,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import {isAsyncFunction} from 'node:util/types';
 import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
-import {AppError,schemas,descriptions,operationEffect,parse,canonicalPrevisValue,isPrevisNodeRecord,isPrevisScene} from '@mioon/contracts';
+import {AppError,schemas,descriptions,operationEffect,parse,canonicalPrevisValue,isPrevisNodeRecord,isPrevisScene,isTimelineMutationResponse,isTimelineFormatReadResponse,timelineOutputPreset} from '@mioon/contracts';
+import {timelineFrameSetSchema} from '../../../contracts/src/timeline-format.ts';
+import {readGenerationAspectResponseRatio} from '../../../contracts/src/generation-aspect.ts';
 import type {PrevisScene} from '@mioon/contracts';
 import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
@@ -41,13 +43,14 @@ import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
-import {createMioRecords} from './mio-records.ts';
+import {createMioRecords,assertMioChangeFits} from './mio-records.ts';
 import {createMioJournal} from './mio-journal.ts';
 import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioAssembly} from './mio-assembly.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
+import {restoreTimelineFrameSubtitles} from '../timeline.ts';
 import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
-import {usesPrevisSchema} from '../store-capabilities.ts';
+import {usesPrevisSchema,usesTimelineFrameTransaction} from '../store-capabilities.ts';
 import {AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
 import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
@@ -58,6 +61,13 @@ const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item:unknown)
 const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value??null)) as AgentTaskJson;
 function fail(code:string,message:string):never{throw new AppError(code,message,409);}
 const goalParameterMessage='目标参数无效：conditions 须为最多20条可判定条件，使用列出的条件类型和字段；空数组清空本轮目标。目标不是授权或确认。';
+const FRAME_SET='timeline.format.set';
+const hasGenerationAspectSource=(prepared:PreparedAgentTaskTool):boolean=>
+ prepared.operation==='generation.submit'&&Object.hasOwn(prepared.input,'aspectSource');
+const framePresetIds=timelineFrameSetSchema.shape.presetId.options;
+const frameSetDescription='按当前项目和时间线双版本修改画框，必须保留当前画框的短边档位。先读取 timeline.format.get；已保存的片段和字幕按原基准适应新画框。这是一次可撤销编辑。';
+const needsFrameFence=(operation:string,input:Value):boolean=>
+ operation==='timeline.clip.add'&&Object.hasOwn(input,'rect')||operation==='timeline.clip.update'&&object(input.patch)&&Object.hasOwn(input.patch,'rect');
 
 // Every public RPC is reviewed here. New operations fail discovery until this
 // list is deliberately extended; advisory operationEffects never grant access.
@@ -128,8 +138,8 @@ function rejectHostFields(value:unknown):void{
  if(!object(value))return;
  for(const [key,child] of Object.entries(value)){if(hostFields.has(key))fail('AGENT_TASK_INVALID_TOOL','工具不能指定宿主身份、文件或授权');rejectHostFields(child);}
 }
-function hydrateInput(operation:string,input:Value,projectId:string,requestId:string):Value{
- const schema=schemas[operation as OperationName];
+function hydrateInput(operation:string,input:Value,projectId:string,requestId:string,frameTransaction=false):Value{
+ const schema=frameTransaction&&operation===FRAME_SET?timelineFrameSetSchema:schemas[operation as OperationName];
  const source=operation==='image.review.prepare'&&object(input.input)?{...input,input:hydrateInput('image.generate',input.input,projectId,requestId)}:input;
  for(const candidate of [{...source,projectId,requestId},{...source,projectId},{...source,requestId},source]){
   const result=schema.safeParse(candidate);if(result.success&&object(result.data))return result.data;
@@ -179,12 +189,13 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(operation==='image.generate'&&object(input.inputImage))add('asset',input.inputImage.assetId);
  if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.images))for(const image of input.videoInput.images)if(object(image))add('asset',image.assetId);
  if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.audios))for(const audio of input.videoInput.audios)if(object(audio))add('asset',audio.assetId);
+ if(operation==='generation.submit'&&object(input.aspectSource)&&input.aspectSource.kind==='project')add('timeline',projectId);
  const assetKind=operation.startsWith('asset.range.')?'asset_range':operation.startsWith('asset.annotation.')?'asset_annotation':operation.startsWith('asset.disposition.')?'asset_disposition':undefined;
  if(assetKind){add(assetKind,input.assetId);if(Array.isArray(input.assetIds))for(const id of input.assetIds)add(assetKind,id);}
  return [...references.values()];
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -195,6 +206,15 @@ const extraTables:Readonly<Record<string,{kind:string;id:string}>>={asset_ranges
 const key=(kind:string,id:string):string=>`${kind}:${id}`;
 function readRevision(store:Store,projectId:string,kind:string,id:string):number{
  return readMioTargetRevision(store.db,projectId,kind,id)??0;
+}
+function timelineSnapshotValue(value:Value,frameTransaction:boolean):Value{
+ const frame=Object.fromEntries(['fps','width','height'].map(field=>[field,value[field]]));
+ if(frameTransaction){
+  frame.timelineId=value.id;
+  frame.subtitleProfile=object(value.subtitles)?Object.fromEntries(
+   Object.entries(value.subtitles).filter(([field])=>field==='profileId'||field==='basisPresetId')):null;
+ }
+ return frame;
 }
 function snapshot(store:Store,projectId:string):Snapshot{
  const result:Snapshot={};
@@ -210,11 +230,18 @@ function snapshot(store:Store,projectId:string):Snapshot{
  const timeline=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
  if(timeline){const value:unknown=JSON.parse(String(timeline.data));if(!object(value)||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','时间线记录无法验证');
   for(const [field,kind] of [['clips','timeline_clip'],['tracks','timeline_track'],['subtitles','timeline_subtitle']] as const){const children=field==='subtitles'&&object(value.subtitles)?value.subtitles.cues:value[field];if(Array.isArray(children))for(const child of children)if(object(child)&&typeof child.id==='string')insert(kind,child.id,field,child);}
-  insert('timeline',projectId,'timeline_format',Object.fromEntries(['fps','width','height'].map(field=>[field,value[field]])));
+  insert('timeline',projectId,'timeline_format',timelineSnapshotValue(value,usesTimelineFrameTransaction(store.db)));
  }
  return result;
 }
 function comparable(value:Value):Value{return Object.fromEntries(Object.entries(value).filter(([field])=>!['revision','updatedAt','createdAt'].includes(field)));}
+function comparableUndo(value:Value|undefined,saved:SnapshotEntry|undefined):Value|null{
+ if(!value)return null;
+ const result=comparable(value);
+ // A format-3 change retained through upgrade did not own the subtitle container.
+ if(saved?.kind==='timeline'&&!Object.hasOwn(saved.value,'subtitleProfile')){delete result.subtitleProfile;delete result.timelineId;}
+ return result;
+}
 type UndoDisposition=NonNullable<AgentTaskChange['undoDisposition']>;
 const reversibleMetadata=new Set(['asset_range','asset_disposition','asset_annotation','subject_binding']);
 function defaultMetadataCompensation(kind:string,value:Value):Value|null{
@@ -237,14 +264,30 @@ function undoEntries(change:AgentTaskChange):Array<{before?:SnapshotEntry;after?
 }
 function undoDisposition(change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[],revision:(target:AgentTaskTarget)=>number,claimed:(target:AgentTaskTarget)=>boolean):UndoDisposition{
  if(change.status!=='applied'||!change.reversible)return 'retain';
- const entries=undoEntries(change);if(!entries||expected.some(claimed))return 'blocked';
- const unchanged=entries.every(entry=>{const identity=(entry.after??entry.before)!,found=current[key(identity.kind,identity.id)];return canonical(found?comparable(found.value):null)===canonical(entry.after?comparable(entry.after.value):null);});
+ const entries=undoEntries(change);if(!entries||!frameDependenciesMatch(change,current,expected)||expected.some(claimed))return 'blocked';
+ const unchanged=entries.every(entry=>{const identity=(entry.after??entry.before)!,found=current[key(identity.kind,identity.id)];return canonical(comparableUndo(found?.value,entry.after))===canonical(comparableUndo(entry.after?.value,entry.after));});
  if(expected.every(target=>revision(target)===target.revision))return unchanged?'undo':'blocked';
  // A revision mismatch alone also describes ABA or an incomplete compound
  // change. Only one exact target with a different saved value proves that it
  // can be kept intact while independent earlier changes are compensated.
  const target=expected.length===1?expected[0]:undefined;
  return target&&entries.length===1&&target.revisionAfter!==undefined&&revision(target)>target.revision&&!unchanged?'retain':'blocked';
+}
+const frameChild=(kind:string):boolean=>kind==='timeline_clip'||kind==='timeline_subtitle';
+function frameDependenciesMatch(change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[]):boolean{
+ if(!change.frameDependencies)return true;
+ if(change.operation!==FRAME_SET||change.frameDependencies.some(target=>!frameChild(target.kind)||target.revision!==target.revisionAfter||
+  !expected.some(candidate=>candidate.kind===target.kind&&candidate.id===target.id)))return false;
+ const affected=[...change.targets.filter(target=>frameChild(target.kind)),...change.frameDependencies];
+ const identities=new Set(affected.map(target=>key(target.kind,target.id)));
+ const present=Object.values(current).filter(entry=>frameChild(entry.kind));
+ return affected.length===identities.size&&present.length===identities.size&&present.every(entry=>identities.has(key(entry.kind,entry.id)));
+}
+export function agentTaskUndoTargets(change:AgentTaskChange,chain:ReadonlyMap<string,AgentTaskTarget>):AgentTaskTarget[]{
+ return [...change.targets,...(change.frameDependencies??[])].map(target=>{
+  const next=chain.get(key(target.kind,target.id));
+  return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;
+ });
 }
 /** This is ownership of one new row, never a generic asset deletion permit.
  * Its original revision is checked even after another AI change was undone:
@@ -276,7 +319,11 @@ function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,en
   try{
    const boundary=createTimelineRecoveryBoundary(db,{projectId:change.projectId}),base=boundary.read();if(!base)return 'blocked';
    const values=(kind:string):Value[]=>Object.values(next).filter(item=>item.kind===kind).map(item=>structuredClone(item.value));
-   const timeline={...base,...next[key('timeline',change.projectId)]?.value,tracks:values('timeline_track') as unknown as TimelineTrackRecord[],clips:values('timeline_clip') as unknown as TimelineClipRecord[],...(base.subtitles?{subtitles:{...base.subtitles,cues:values('timeline_subtitle') as unknown as TimelineSubtitleCueRecord[]}}:{})} satisfies TimelineRecord;
+   const frame=next[key('timeline',change.projectId)]?.value??{};
+   const {fps=base.fps,width=base.width,height=base.height}=frame;
+   if(typeof fps!=='number'||typeof width!=='number'||typeof height!=='number')return 'blocked';
+   const timeline={...base,fps,width,height,tracks:values('timeline_track') as unknown as TimelineTrackRecord[],clips:values('timeline_clip') as unknown as TimelineClipRecord[],...(base.subtitles?{subtitles:{...base.subtitles,cues:values('timeline_subtitle') as unknown as TimelineSubtitleCueRecord[]}}:{})} satisfies TimelineRecord;
+   if(change.frameDependencies){if(frame.timelineId!==base.id)return 'blocked';restoreTimelineFrameSubtitles(timeline,frame.subtitleProfile);}
    boundary.validate(timeline);
   }catch(error){if(error instanceof AppError)return 'blocked';throw error;}
  }
@@ -322,10 +369,10 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
  assertProjectStore(store);
  const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
  for(const change of [...changes].reverse()){
-  const modifiedAfter=change.targets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
+  const modifiedAfter=[...change.targets,...(change.frameDependencies??[])].some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
   if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   if(change.status!=='applied'||!change.reversible){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
-  const expected=change.targets.map(target=>{const next=chain.get(key(target.kind,target.id));return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
+  const expected=agentTaskUndoTargets(change,chain);
   let disposition=blocked?'blocked':undoDisposition(change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
   if(disposition==='blocked'){blocked=true;continue;}
   if(disposition!=='undo')continue;
@@ -339,13 +386,20 @@ export function agentTaskChangeWasModified(store:Store,change:AgentTaskChange,ex
  assertProjectStore(store);
  return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
 }
-function differences(before:Snapshot,after:Snapshot):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
+function differences(before:Snapshot,after:Snapshot,frameTransaction=false):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
  const result:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
- for(const id of new Set([...Object.keys(before),...Object.keys(after)]))if(canonical(before[id]?comparable(before[id]!.value):null)!==canonical(after[id]?comparable(after[id]!.value):null))result.push({before:before[id],after:after[id]});
+ for(const id of new Set([...Object.keys(before),...Object.keys(after)])){
+  const previous=before[id],next=after[id];
+  if(!frameTransaction&&(previous??next)?.kind==='timeline'){
+   const strip=(entry:SnapshotEntry|undefined)=>entry&&{...entry,value:comparableUndo(entry.value,{...entry,value:{}})!};
+   const left=strip(previous),right=strip(next);
+   if(canonical(left?.value??null)!==canonical(right?.value??null))result.push({before:left,after:right});
+  }else if(canonical(previous?comparable(previous.value):null)!==canonical(next?comparable(next.value):null))result.push({before:previous,after:next});
+ }
  return result;
 }
 function changes(prepared:PreparedAgentTaskTool,after:Snapshot,{backgroundGeneration=false}:{backgroundGeneration?:boolean}={}):TaskChangeInput[]{
- const diff=differences(prepared.before,after).filter(entry=>{
+ const diff=differences(prepared.before,after,prepared.frameTransaction).filter(entry=>{
   if(!backgroundGeneration||entry.before?.kind!=='job'||entry.after?.kind!=='job'||entry.before.id!==entry.after.id||entry.before.value.requestId!==prepared.input.requestId||entry.after.value.requestId!==prepared.input.requestId)return true;
   // Progress and scheduling remain durable in the job itself. They are not
   // separate business effects and must not consume the assistant audit quota.
@@ -358,7 +412,13 @@ function changes(prepared:PreparedAgentTaskTool,after:Snapshot,{backgroundGenera
  const autoSelections=prepared.operation==='generation.submit'?diff.filter(entry=>entry.before?.kind==='shot'&&entry.after?.kind==='shot'&&entry.before.value.selectedVersionId!==entry.after.value.selectedVersionId):[];
  const remaining=diff.filter(entry=>!autoSelections.includes(entry)),jobUpdates=backgroundGeneration?remaining.filter(entry=>(entry.after??entry.before)?.kind==='job'):[];
  const outputs=remaining.filter(entry=>!jobUpdates.includes(entry));
- return [...(jobUpdates.length?[build(jobUpdates,'generation.status',false)]:[]),...(outputs.length?[build(outputs,backgroundGeneration?'generation.publish':prepared.operation,prepared.risk==='local_reversible')]:[]),...autoSelections.map(entry=>build([entry],'version.select',true))];
+ const output=outputs.length?build(outputs,backgroundGeneration?'generation.publish':prepared.operation,prepared.risk==='local_reversible'):undefined;
+ if(output&&prepared.frameTransaction){
+  const identities=new Set(output.targets.map(target=>key(target.kind,target.id)));
+  output.frameDependencies=prepared.targets.filter(target=>['timeline_clip','timeline_subtitle'].includes(target.kind)&&!identities.has(key(target.kind,target.id)))
+   .map(target=>({...target,revisionAfter:target.revision}));
+ }
+ return [...(jobUpdates.length?[build(jobUpdates,'generation.status',false)]:[]),...(output?[output]:[]),...autoSelections.map(entry=>build([entry],'version.select',true))];
 }
 
 /** Paths and raw bytes are never sent to the model. Local task results retain
@@ -401,8 +461,15 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
 /** Diagnostics retain their reviewed byte-level catalog. Conversation tools
  * expose AGENTS.md authority only through the host approval protocol. */
-export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
- const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>tool.name===AGENT_TASK_TOOLS_LOAD_NAME?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
+export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition[]=>{
+ const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
+  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+  if(frameTransaction&&tool.operation===FRAME_SET){
+   const parameters=tool.parameters as {properties:Value};
+   return {...tool,description:frameSetDescription,parameters:{...parameters,properties:{...parameters.properties,presetId:{type:'string',enum:framePresetIds}}}};
+  }
+  return tool;
+ });
  definitions.push({name:'mioon_project_rules_set',operation:'project.rules.set',description:'提议修改当前项目 AGENTS.md 规范。expectedHash 是刚读取的原文件 SHA-256（不存在时为 null），proposedText 是完整新内容，最多8192 UTF-8字节。宿主展示原文与修改并始终等待用户审批。规范不是授权，修改只从下一轮用户请求生效。',parameters:{type:'object',properties:{expectedHash:{anyOf:[{type:'string',minLength:64,maxLength:64,pattern:'^[a-f0-9]{64}$'},{type:'null'}]},proposedText:{type:'string',maxLength:8192}},required:['expectedHash','proposedText'],additionalProperties:false},risk:'local_irreversible',receipt:'durable rules publication intent and original approval',recovery:'inspect the same request; never repeat uncertain publication',undo:'unavailable'});
  definitions.push({name:MIO_PROJECT_MEDIA_LIST_TOOL,operation:MIO_PROJECT_MEDIA_LIST_OPERATION,description:'分页列出当前项目目录内的文件夹和媒体元信息，仅返回相对名称、类型、大小和时长。directory 默认为项目根目录的空串，可用返回的文件夹名导航；只读有界文件头及当前页时长，不递归、解码、采样、全读、哈希、写缓存或导入。',parameters:{type:'object',properties:{directory:{type:'string',maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes,description:'Project-relative directory; omit or use an empty string for the project root. No absolute paths, dot entries or parent traversal.'},limit:{type:'integer',minimum:1,maximum:MIO_PROJECT_MEDIA_LIMITS.maxLimit},cursor:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.cursorBytes,pattern:'^[A-Za-z0-9_-]+$'}},additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read the retained metadata result; never rescan while rebuilding a request',undo:'unavailable'});
  definitions.push({name:MIO_PROJECT_FILE_IMPORT_TOOL,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,description:'将当前项目目录内的媒体文件登记为素材。path 仅接受可见项目相对路径，不能读取项目外或未完成发布的文件；按本地可撤销档执行，撤销只移除本步骤新建、未改过且零消费者的登记，始终保留文件和审计。',parameters:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes},name:{type:'string',minLength:1,maxLength:200}},required:['path'],additionalProperties:false},risk:'local_reversible',receipt:'S1 original-request registration and atomic task step',recovery:'look up the original request; never repeat an unknown import',undo:'remove only this unchanged unconsumed new registration'});
@@ -412,7 +479,8 @@ export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
 export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const catalogProfile='native';
- const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
+ const frameProject=usesTimelineFrameTransaction(store.db);
+ const list=()=>listAgentTaskTools(frameProject);
  const liveGenerationEnabled=()=>services.configuration.liveEnabled();
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
@@ -420,7 +488,22 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const importRoot=storeDirectories(store).localDir,importDirectory='imports';
  const journal=injectedJournal??(policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}));
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
- const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
+ function taskResult(prepared:PreparedAgentTaskTool,value:unknown,requestId:string):AgentTaskJson{
+  const {operation,projectId}=prepared;
+  if(prepared.frameTransaction){
+   const prior=prepared.before[key('timeline',projectId)]?.value,before=timelineOutputPreset(prior);
+   const after=timelineOutputPreset(value);
+   if(!before||!after||!object(value)||value.id!==prior?.timelineId||!Array.isArray(value.clips)||!isTimelineMutationResponse(operation,{...prepared.input,projectId,requestId},value))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框修改没有返回与本次请求匹配的结果');
+   return json({timelineId:value.id,revision:value.revision,before:{presetId:before.id,width:before.width,height:before.height},
+    after:{presetId:after.id,width:after.width,height:after.height},affectedClips:value.clips.length});
+  }
+  if(previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId)return previsTaskView(store,projectId,value);
+  const projected=transactionResult(operation,projectId,value);
+  if(!hasGenerationAspectSource(prepared))return projected;
+  const aspectRatio=readGenerationAspectResponseRatio({...prepared.input,requestId},value,projectId);
+  if(!aspectRatio||!object(projected))fail('AGENT_TASK_INVALID_TOOL_RESULT','生成回执没有返回与本次请求匹配的画幅');
+  return {...projected,aspectRatio};
+ }
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();
  const backgroundOrigins=new WeakSet<AgentTaskEffectOrigin>();
  const transactionSnapshots=new WeakMap<AgentTaskEffectOrigin,Snapshot>();
@@ -438,11 +521,11 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    // Same-value local mutations can still commit a revision and immutable RPC
    // receipt. Their task receipt must share that transaction as well. Paid
    // review preparation and file-import intent markers are deliberately excluded.
-   if(!origin.recorded&&active.risk==='local_reversible'&&Number(db.prepare('SELECT total_changes() AS n').get()!.n)>(transactionCounts.get(origin)??Number.MAX_SAFE_INTEGER)){origin.recordInside(taskResult(active.operation,active.projectId,result),[]);origin.recorded=true;}
+   if(!origin.recorded&&active.risk==='local_reversible'&&Number(db.prepare('SELECT total_changes() AS n').get()!.n)>(transactionCounts.get(origin)??Number.MAX_SAFE_INTEGER)){origin.recordInside(taskResult({...active,before},result,origin.requestId),[]);origin.recorded=true;}
    return;
   }
   if(origin.recorded){if(!origin.appendChangesInside)throw Error('Late task changes require a durable origin recorder');origin.appendChangesInside(captured);}
-  else{origin.recordInside(taskResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
+  else{origin.recordInside(taskResult({...active,before},result,origin.requestId),captured);origin.recorded=true;}
  });
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
  const removeTargetGate=setAgentTaskJobTargetGate(db,(binding,target)=>{
@@ -572,12 +655,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   const schema=Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:null;
   // Whether identity exists in the exact input is discovered from the generated
   // schema, while authoritative validation remains the shared runtime schema.
-  if(schema){const hydrated=hydrateInput(operation,hostInput,projectId,'00000000-0000-4000-8000-000000000000');hostInput={...hydrated};delete hostInput.requestId;}
+  if(schema){const hydrated=hydrateInput(operation,hostInput,projectId,'00000000-0000-4000-8000-000000000000',frameProject);hostInput={...hydrated};delete hostInput.requestId;}
   // A persisted skip is checked from validated explicit identities before
   // looking up the target. Deleting it must not turn a skip into another read.
   const references=agentTaskExplicitTargets(operation,hostInput,projectId);for(const target of references)beforeTargetRead?.(target);
   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
   const before=snapshot(store,projectId),targets:AgentTaskTarget[]=[];
+  const frameTransaction=frameProject&&operation===FRAME_SET;
+  if(frameTransaction&&!before[key('timeline',projectId)])fail('TIMELINE_FORMAT_LOCKED','请先打开时间线，再修改画框');
   if(risk==='local_reversible'&&operation.startsWith('timeline.')&&!before[key('timeline',projectId)])risk='local_irreversible';
   const add=(kind:string,id:string):void=>{const target={kind,id,revision:readRevision(store,projectId,kind,id)};if(!targets.some(value=>value.kind===kind&&value.id===id))targets.push(target);};
   if(operation==='task.wait'){
@@ -621,7 +706,11 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const scene=previsSceneForNode(hostInput.scene as PrevisScene,node.scene,previsRequestedKeyframe(input));
    hostInput={...hostInput,scene:(parse('previs.scene.set',{...hostInput,scene,requestId:'00000000-0000-4000-8000-000000000000'}) as Value).scene};
   }
-  if(operation==='timeline.format.set')add('timeline',projectId);
+  if(operation===FRAME_SET||frameProject&&needsFrameFence(operation,hostInput))add('timeline',projectId);
+  if(frameTransaction){
+   add('project',projectId);
+   for(const entry of Object.values(before))if(frameChild(entry.kind))add(entry.kind,entry.id);
+  }
   if(operation==='project.rename'||operation==='project.notes.set')add('project',projectId);
   if(operation==='shot.reorder')for(const item of Object.values(before).filter(item=>item.kind==='shot'))add(item.kind,item.id);
   // Aggregate operations genuinely affect all these targets. A single clip or
@@ -636,7 +725,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   // Reference revisions carry no mutation authority. Preserve the exact
   // footprint above, and use these extra identities only for skip checks.
   const referencedTargets=[...targets];for(const reference of references)if(!referencedTargets.some(target=>target.kind===reference.kind&&target.id===reference.id))referencedTargets.push({...reference,revision:0});
-  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before};
+  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before,...(frameTransaction?{frameTransaction:true}:{})};
  }
  async function prepareProjectFileImport(prepared:PreparedAgentTaskTool,context:{requestId:string;retained?:unknown;signal?:AbortSignal;beforeEffect:()=>void}):Promise<PreparedAgentTaskTool>{
   if(prepared.operation!==MIO_PROJECT_FILE_IMPORT_OPERATION)return prepared;
@@ -676,7 +765,31 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     if(canonical(expected)!==canonical(current))fail('AGENT_TASK_TARGET_CHANGED','镜头集合已变化，请重新规划排序');
    }
   };
-  const origin:AgentTaskEffectOrigin={...context,beforeEffect,projectId:prepared.projectId,operation:prepared.operation,recorded:false};
+  const beforeTimelineFrameWrite=prepared.frameTransaction?(timeline:unknown):void=>{
+   if(!object(timeline)||!Array.isArray(timeline.clips))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框修改候选无法核对');
+   const before=transactionSnapshots.get(origin);
+   if(!before)fail('AGENT_TASK_INVALID_TOOL_RESULT','画框修改缺少事务基线');
+   const after={...before};
+   const update=(kind:string,id:string,value:Value):void=>{
+    const entry=before[key(kind,id)];
+    if(!entry)fail('AGENT_TASK_INVALID_TOOL_RESULT','画框修改候选包含未经确认的目标');
+    if(canonical(entry.value)!==canonical(value))after[key(kind,id)]={...entry,value,revision:entry.revision+1};
+   };
+   update('timeline',prepared.projectId,timelineSnapshotValue(timeline,true));
+   for(const clip of timeline.clips){
+    if(!object(clip)||typeof clip.id!=='string')fail('AGENT_TASK_INVALID_TOOL_RESULT','画框修改候选的片段无效');
+    update('timeline_clip',clip.id,clip);
+   }
+   const changesToStore=changes({...prepared,before},after);
+   const at=new Date().toISOString();
+   for(const change of changesToStore){
+    const identity='00000000-0000-4000-8000-000000000000';
+    // Leave room for an exact later compensation receipt as well as the forward row.
+    assertMioChangeFits({...change,id:identity,runId:context.runId,stepId:context.stepId,status:'reverted',createdAt:at,revertedAt:at,
+     revertedTargets:change.targets.map(target=>({...target,revision:Number.MAX_SAFE_INTEGER}))});
+   }
+  }:undefined;
+  const origin:AgentTaskEffectOrigin={...context,beforeEffect,projectId:prepared.projectId,operation:prepared.operation,recorded:false,...(beforeTimelineFrameWrite?{beforeTimelineFrameWrite}:{})};
   preparedOrigins.set(origin,prepared);
   return withTaskEffectOrigin(origin,async()=>{
    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
@@ -753,11 +866,11 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(prepared.operation===AGENT_TASK_PREVIS_INSPECT_OPERATION)return {result:previsTaskView(store,prepared.projectId,createPrevisReaders(db).node(prepared.projectId,String(prepared.input.nodeId))),changes:[],recorded:false};
    if(prepared.operation==='task.wait')return {result:await waitTask(prepared.projectId,prepared.input,context.signal,context.beforeEffect),changes:[],recorded:false};
    if(['asset.importSelected','lut.importSelected'].includes(prepared.operation))return executeImport(prepared,context,origin);
-   const input=hydrateInput(prepared.operation,prepared.input,prepared.projectId,context.requestId);
+   const input=hydrateInput(prepared.operation,prepared.input,prepared.projectId,context.requestId,frameProject);
    // Aggregate CAS must not mistake another clip's edit for a target conflict.
    // The host has just checked the model's exact target revisions and will check
    // them again after BEGIN; only synchronous target-local edits use this CAS.
-   if(prepared.risk==='local_reversible'&&/^(timeline\.(clip|track|subtitle)\.)/u.test(prepared.operation)){
+   if(prepared.risk==='local_reversible'&&/^(timeline\.(clip|track|subtitle)\.)/u.test(prepared.operation)&&!(frameProject&&needsFrameFence(prepared.operation,input))){
     const row=db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(prepared.projectId);
     if(typeof row?.revision==='number')input.expectedRevision=row.revision;
    }
@@ -780,7 +893,10 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     }else if(prepared.operation==='provider.list'&&Array.isArray(value)){
      const enabled=liveGenerationEnabled();
      result=projectResult(value.map(provider=>object(provider)?{...provider,liveGenerationEnabled:enabled}:provider));
-    }else result=previsWrite(prepared.operation)?taskResult(prepared.operation,prepared.projectId,value):projectResult(value);
+    }else if(prepared.operation==='timeline.format.get'){
+     if(!isTimelineFormatReadResponse(value,input))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框读取不属于当前项目');
+     result=projectResult(value);
+    }else result=prepared.frameTransaction||previsWrite(prepared.operation)||hasGenerationAspectSource(prepared)?taskResult(prepared,value,context.requestId):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
  }
@@ -903,12 +1019,13 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     context.recordInside(change);
     return {targets:[{...target,revision:readRevision(store,change.projectId,'asset',owned.proof.assetId)}]};
    }
-   context.beforeEffect();const current=snapshot(store,change.projectId),expected=context.expectedTargets??change.targets;
+   context.beforeEffect();const current=snapshot(store,change.projectId),expected=context.expectedTargets??agentTaskUndoTargets(change,new Map());
+   if(!frameDependenciesMatch(change,current,expected))fail('AGENT_TASK_TARGET_CHANGED','画框依赖的片段或字幕已变化');
    for(const target of expected){if(readRevision(store,change.projectId,target.kind,target.id)!==target.revision)fail('AGENT_TASK_TARGET_CHANGED','目标在此项变化后已被修改');if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))fail('AGENT_TASK_TARGET_CLAIMED','目标仍有未保存草稿');}
    const entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
    for(const item of undoEntries){if(!object(item))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');const before=item.before,after=item.after;if(before!==undefined&&!object(before)||after!==undefined&&!object(after))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');
     const entry={...(before?{before:before as unknown as SnapshotEntry}:{}),...(after?{after:after as unknown as SnapshotEntry}:{})},identity=entry.after??entry.before;if(!identity||typeof identity.kind!=='string'||typeof identity.id!=='string'||typeof identity.table!=='string')fail('AGENT_TASK_INVALID_TARGET','撤销目标无效');
-    const found=current[key(identity.kind,identity.id)];if(canonical(found?comparable(found.value):null)!==canonical(entry.after?comparable(entry.after.value):null))fail('AGENT_TASK_TARGET_CHANGED','目标已变化，无法覆盖当前编辑');entries.push(entry);
+    const found=current[key(identity.kind,identity.id)];if(canonical(comparableUndo(found?.value,entry.after))!==canonical(comparableUndo(entry.after?.value,entry.after)))fail('AGENT_TASK_TARGET_CHANGED','目标已变化，无法覆盖当前编辑');entries.push(entry);
    }
    const dependencies=undoDependencies(store,change,current,entries);
    if(dependencies==='blocked')fail('AGENT_TASK_TARGET_CHANGED','目标已有新的依赖，无法撤销');

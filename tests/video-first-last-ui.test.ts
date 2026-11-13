@@ -152,20 +152,49 @@ function configuredConnectionFixture() {
   return { providers: settings.videoConnectionProviders(directories), options: { providerId: 'kling', connectionId: id(82), modelEntryId: model.id, model: model.modelId, inputMode: 'image', parameters: { resolution: '1080p', generateAudio: true } }, selectedShot: shot({ duration: 5 }) };
 }
 
-function appGenerationFlow({ providers, options, currentShot }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot}) {
+function appGenerationFlow({ providers, options, currentShot, frame }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot; frame?: settings.GenerationFrame}) {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
   const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
     providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
     readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', editorSession: {current: 'normal'}, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
-    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [] } },
+    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [], timeline: frame ?? null } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
     run: async (...args: [string, string, GenerationSubmitInput]) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
     captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}) };
   const methods = Function(...Object.keys(scope), `${functions}; return { generate, submitGeneration, confirmGeneration };`)(...Object.values(scope)) as Pick<GenerationMethods, 'generate' | 'submitGeneration' | 'confirmGeneration'>;
-  return { ...methods,generate:async(...args:Parameters<GenerationMethods['generate']>)=>{methods.generate(...args);await new Promise<void>(resolve=>setImmediate(resolve));}, state, scope };
+  return { ...methods,generate:async(...args:Parameters<GenerationMethods['generate']>)=>{methods.generate(...args);await new Promise<void>(resolve=>setImmediate(resolve));}, readReview: () => state.review, state, scope };
 }
+
+test('actual App confirms the reviewed project frame, refuses a changed frame and keeps its saved shot ratio', async () => {
+  const f = configuredConnectionFixture();
+  const initial = { fps: 30, width: 1080, height: 1920, revision: 3 };
+  const h = appGenerationFlow({ ...f, currentShot: f.selectedShot, frame: initial });
+  await h.generate(f.selectedShot, f.options);
+  assert.ok(h.state.review);
+  assert.deepEqual(h.state.review.aspectSource, { kind: 'project', expectedTimelineRevision: 3, aspectRatio: '9:16' });
+  const first = h.state.review;
+  h.scope.dataRef.current.timeline = { fps: 30, width: 1920, height: 1080, revision: 4 };
+  await h.confirmGeneration(first);
+  assert.equal(h.state.calls.length, 0);
+  assert.deepEqual(h.state.notices.at(-1), [msg('shell.generationFrameChanged'), 'warning']);
+  // The first-frame check still rejects a portrait source for this landscape generation.
+  await h.generate(f.selectedShot, f.options);
+  assert.equal(h.readReview(), null);
+  assert.equal(h.state.calls.length, 0);
+  h.scope.dataRef.current.assets = h.scope.dataRef.current.assets.map(asset => ({ ...asset, width: 1280, height: 720 }));
+  await h.generate(f.selectedShot, f.options);
+  const second = h.readReview();
+  assert.ok(second);
+  assert.equal(second.shot.aspectRatio, '16:9');
+  assert.equal(h.scope.dataRef.current.shots[0]!.aspectRatio, f.selectedShot.aspectRatio);
+  await h.confirmGeneration(second);
+  assert.equal(h.state.calls.length, 1);
+  const wire = h.state.calls[0]![2];
+  assert.deepEqual(wire.aspectSource, { kind: 'project', expectedTimelineRevision: 4, aspectRatio: '16:9' });
+  assert.equal(Object.hasOwn(wire.parameters!, 'aspectRatio'), false);
+});
 
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {
   for (const dirty of [false, true]) {

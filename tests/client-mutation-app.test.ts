@@ -4,12 +4,16 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import { transformSync } from 'esbuild';
 import { TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { isGenerationAspectNotApplied, isGenerationAspectResponse } from '../packages/contracts/src/generation-aspect.ts';
+import { timelineOutputRatio } from '../packages/contracts/src/timeline-output-geometry.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripSourceTypes } from './helpers/eval-source.ts';
 import { prepareMutation, isMutationOperation, assertMutationOwner, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
-import { prepareSubmission, readPending, clearPending, pendingForProject } from '../apps/web/src/submissions.ts';
+import { prepareSubmission, prepareRequestReplay, readPending, clearPending, pendingForProject, reconcilePending } from '../apps/web/src/submissions.ts';
 import { ApiError } from '../apps/web/src/api.ts';
+import { generationAspectError } from '../apps/web/src/generation-settings.ts';
+import type { GenerationFrame } from '../apps/web/src/generation-settings.ts';
 import type { DisplayMessage } from '../packages/i18n/src/types.ts';
 const taskIntentModule = {exports:{} as {captureTaskWorkspaceIntent:typeof CapturedIntent}};
 Function('module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/task-workspace-intent.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' }).code)(taskIntentModule, taskIntentModule.exports);
@@ -17,6 +21,7 @@ const { captureTaskWorkspaceIntent } = taskIntentModule.exports;
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const section = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end));
 const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
+const addShotSource = section('async function addShot()', 'async function addStructure()');
 const structureSource = section('async function addStructure()', 'async function addNode(');
 function compile(code: string, name: string, scope: { [s: string]: unknown; }|ArrayLike<unknown>) { scope = { msg, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${stripSourceTypes(code,{loader:'tsx'})}; return ${name};`)(...Object.values(scope)); }
 function storage(t: { after: (arg0: () => boolean|typeof globalThis) => void; }) {
@@ -35,7 +40,8 @@ function harness(t:test.TestContext,dispatch:(operation:string,input:Record<stri
     isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === currentProject.current && captured.epoch === state.epoch,
     isBusy: (key:string,id:string) => busy.has(`${id}:${key}`), markBusy: (id:string,key:string,value:boolean) => value ? busy.add(`${id}:${key}`) : busy.delete(`${id}:${key}`),
     TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof,
-    isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, clearPending, pendingForProject,
+    isMutationOperation, assertMutationOwner, prepareMutation, mutationNotApplied, validateMutationResponse, prepareSubmission, prepareRequestReplay, clearPending, pendingForProject,
+    generationAspectError, isGenerationAspectNotApplied, isGenerationAspectResponse,
     isReferenceOperation: () => false, setPending: (value:PendingEntry[]) => { state.pending = value; },
     rpc: async (operation:string,input:Record<string,unknown>,options?:{outputLocale?:string}) => { state.calls.push({ operation, input: structuredClone(input), ...(options?.outputLocale?{outputLocale:options.outputLocale}:{}) }); return dispatch(operation, input, state); },
     refresh: async (id:string) => { state.refreshes.push(id); }, notify: (message:DisplayMessage|string,type:string) => state.notices.push({ message: renderCoreMessage('zh-Hans', message), type }),
@@ -65,6 +71,54 @@ test('lost output response retains the original locale separately from the exact
   await h.run(legacy.key,legacy.operation,legacy.input,undefined,{replay:true,outputLocale:'en'});
   assert.deepEqual(h.state.calls.at(-1),{operation:'export.create',input});
   assert.deepEqual(readPending(input.projectId,'export'),legacy);
+});
+
+test('a new frame confirmation cannot replay an uncertain generation; exact recovery reports the stale frame', async t => {
+  let error: Error = new Error('Response lost');
+  const h = harness(t, () => { throw error; });
+  const key = 'generate:shot-a', operation = 'generation.submit';
+  const original = { shotId: 'shot-a', requestId: 'confirmed-portrait', aspectSource: { kind: 'project', expectedTimelineRevision: 2, aspectRatio: '9:16' } };
+  const current = { ...original, requestId: 'confirmed-landscape', aspectSource: { kind: 'project', expectedTimelineRevision: 3, aspectRatio: '16:9' } };
+  await h.run(key, operation, original);
+  await h.run(key, operation, current);
+  assert.deepEqual(h.state.calls, [{ operation, input: original }]);
+  assert.equal(h.state.notices.at(-1)?.message, translate('zh-Hans', 'shell.error.generationRequestPending'));
+  await h.run(key, operation, current, undefined, { replay: true });
+  await h.run(key, operation, { shotId: original.shotId, requestId: 'an-older-legacy-key' }, undefined, { replay: true });
+  assert.equal(h.state.calls.length, 1, 'Only the exact saved request can be replayed');
+  assert.deepEqual(readPending('project-a', key)?.input, original);
+  error = new ApiError('Frame changed', 'PROJECT_ASPECT_CHANGED', {
+    mutationOutcome: 'not_applied', projectId: 'other-project', shotId: original.shotId, requestId: original.requestId, timelineRevision: 3, projectAspectRatio: '16:9',
+  }, true, 409);
+  await h.run(key, operation, original, undefined, { replay: true });
+  assert.deepEqual(readPending('project-a', key)?.input, original, 'An unrelated 409 does not release this confirmation');
+  error = new ApiError('Frame changed', 'PROJECT_ASPECT_CHANGED', {
+    ...((error as ApiError).details as Record<string, unknown>), projectId: 'project-a',
+  }, true, 409);
+  await h.run(key, operation, original, undefined, { replay: true });
+  assert.deepEqual(h.state.calls.slice(1), [{ operation, input: original }, { operation, input: original }]);
+  assert.equal(h.state.notices.at(-1)?.message, translate('zh-Hans', 'shell.generationFrameChanged'));
+  assert.equal(readPending('project-a', key), null);
+});
+
+test('aspect-aware generation requires an owned job with the confirmed frame before releasing its request', async t => {
+  const key = 'generate:shot-a', operation = 'generation.submit', projectId = 'project-a';
+  const input = { shotId: 'shot-a', expectedRevision: 3, requestId: 'confirmed-portrait', providerId: 'mock',
+    aspectSource: { kind: 'project', expectedTimelineRevision: 2, aspectRatio: '9:16' } };
+  const accepted = { id: '00000000-0000-4000-8000-000000000021', projectId, shotId: input.shotId,
+    requestId: input.requestId, providerId: input.providerId, model: 'mock-motion-v1', retryOfJobId: null,
+    snapshot: { shotId: input.shotId, shotRevision: 3, providerId: input.providerId, model: 'mock-motion-v1', aspectRatio: '9:16' } };
+  const otherRatio = { ...accepted, snapshot: { ...accepted.snapshot, aspectRatio: '16:9' } };
+  const h = harness(t, () => otherRatio);
+  await h.run(key, operation, input);
+  const pending = readPending(projectId, key);
+  assert.deepEqual(pending?.input, input);
+  for (const jobs of [[{ requestId: input.requestId }], [otherRatio], [{ ...accepted, projectId: 'project-b' }], [accepted, accepted]]) {
+    reconcilePending(projectId, { jobs });
+    assert.deepEqual(readPending(projectId, key), pending);
+  }
+  reconcilePending(projectId, { jobs: [accepted] });
+  assert.equal(readPending(projectId, key), null);
 });
 
 test('actual App legacy session runner keeps changed draft blocked until explicit original replay, with no automatic POST', async t => {
@@ -121,24 +175,39 @@ test('late project A success cannot refresh or navigate project B and mutation l
   assert.equal(h.busy.size, 0); assert.equal(readPending('project-a', 'save:shot-a'), null);
 });
 
-interface StructureState {project:{id:string};shots:{id:string}[];nodes:{id:string}[];assets:unknown[]}
-interface StructureOptions {results?:({id:string}|null)[];afterGuard?:(state:StructureState,project:{current:string})=>void;afterRun?:(state:StructureState,project:{current:string},count:number)=>void}
-function structureHarness({ results = [{ id: 'first' }, null], afterGuard, afterRun }:StructureOptions = {}) {
-  const state:StructureState = {project:{id:'project-a'},shots:[],nodes:[],assets:[]};
+interface StructureState {project:{id:string};shots:{id:string}[];nodes:{id:string}[];assets:unknown[];timeline?:GenerationFrame}
+interface StructureOptions {results?:({id:string}|null)[];timeline?:GenerationFrame;afterGuard?:(state:StructureState,project:{current:string})=>void;afterRun?:(state:StructureState,project:{current:string},count:number)=>void}
+function structureHarness({ results = [{ id: 'first' }, null], timeline, afterGuard, afterRun }:StructureOptions = {}) {
+  const state:StructureState = {project:{id:'project-a'},shots:[],nodes:[],assets:[],timeline};
   const currentProject = { current: 'project-a' }, dataRef = { current: state }, calls:unknown[][] = [], notices:[string,...unknown[]][] = [];
-  const scope = { data: state, dataRef, currentProject, isBusy: () => false,
+  const scope = { data: state, dataRef, currentProject, timelineOutputRatio, isBusy: () => false, chooseCanvasPosition: () => ({ x: 0, y: 0 }),
     guardNavigation: async () => { afterGuard?.(state, currentProject); return true; },
     context: () => ({ projectId: currentProject.current }), isCurrent: (captured: { projectId: string; }) => captured.projectId === currentProject.current,
     markBusy: () => {}, run: async (...args:unknown[]) => { calls.push(args); const result = results[calls.length - 1]; afterRun?.(state, currentProject, calls.length); return result; },
     notify: (value:DisplayMessage|string,...args:unknown[]) => notices.push([renderCoreMessage('zh-Hans', value), ...args]), refresh: async () => state, inspect: async () => true, revealCanvas: () => {}, readableError: (error:Error) => error.message,
   };
-  return { run: compile(structureSource, 'addStructure', scope), calls, notices, currentProject, state };
+  return { run: compile(structureSource, 'addStructure', scope), addShot: compile(addShotSource, 'addShot', scope), calls, notices, currentProject, state };
 }
 
 test('actual structure action stops on first unacknowledged step and reports partial count', async () => {
   const h = structureHarness(); await h.run();
   assert.equal(h.calls.length, 2); assert.equal(h.calls.every(call => call[1] === 'shot.create'), true);
   assert.match(h.notices[0][0], /已确认 1\/3.*其余镜头不会自动创建/);
+});
+
+test('new canvas and structure shots use the current frame, including a non-orientation ratio', async () => {
+  const portrait = { fps: 30, width: 1080, height: 1920, revision: 2 };
+  const wide = { fps: 30, width: 2520, height: 1080, revision: 3 };
+  const h = structureHarness({ results: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], timeline: portrait,
+    afterGuard: state => { state.timeline = wide; } });
+  await h.addShot();
+  assert.equal((h.calls[0]?.[2] as {aspectRatio?: string}).aspectRatio, '21:9');
+  h.calls.length = 0;
+  await h.run();
+  assert.deepEqual(h.calls.map(call => (call[2] as {aspectRatio?: string}).aspectRatio), ['21:9', '21:9', '21:9']);
+  const switched = structureHarness({ timeline: portrait, afterGuard: (_, owner) => { owner.current = 'project-b'; } });
+  await switched.addShot();
+  assert.equal(switched.calls.length, 0);
 });
 
 test('actual structure action rejects stale, now-nonempty and late-navigation continuations', async () => {

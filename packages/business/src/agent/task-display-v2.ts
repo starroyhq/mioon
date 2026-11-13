@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {AGENT_TASK_DISPLAY_TARGET_KINDS} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskChange,AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
+import {generationAspectSourceSchema} from '../../../contracts/src/generation-aspect.ts';
 import type { Store } from '../store-contract.ts';
 
 type Value=Record<string,unknown>;
@@ -138,7 +139,14 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,input);
     // A gain batch plans one gain for each clip it lists.
     if(display.operation==='timeline.clip.setGains'){const listed=Array.isArray(args.gains)?args.gains.find(entry=>object(entry)&&entry.clipId===item.id):undefined;planned=object(listed)?fields(display.operation,item.kind,{gain:listed.gain}):{};}
-    if(display.operation==='generation.submit'&&item.kind==='shot')planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
+    if(display.operation==='generation.submit'&&item.kind==='shot'){
+      planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
+      if(Object.hasOwn(args,'aspectSource')){
+        const source=generationAspectSourceSchema.safeParse(args.aspectSource);
+        if(!source.success)delete planned.aspectRatio;
+        else if(source.data.kind!=='shot')planned.aspectRatio={unit:'ratio',value:source.data.aspectRatio};
+      }
+    }
     appendFields(display,index,{},planned,true);
     // Conflict values are read from this snapshot's saved project state, never
     // from the browser cache or the model's parameters. Only already planned

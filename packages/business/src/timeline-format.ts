@@ -47,20 +47,19 @@ export function readTimelineFormatOwner(db: DatabaseSync,input: TimelineRecovery
  if(project.id!==input.projectId||projectRow!.id!==project.id||!integer(project.revision,1))invalidTimeline();
  return {project,timeline,boundary};
 }
-export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecoveryInput,{admission=false,frameTransaction=false,context=readTimelineFormatOwner(db,input),store}: TimelineFormatStateOptions={}): TimelineFormatStateResult{
- const {project,timeline,boundary}=context;
- const reasons: string[]=[];
- if(!frameTransaction&&timeline&&(timeline.clips.length||timeline.durationFrames))reasons.push('CLIPS_PRESENT');
- const history=rows(db,`SELECT id,projectId,position,operation,createdAt,${bounded('beforeSnapshot',TIMELINE_RESPONSE_BYTES)} AS beforeSnapshot,${bounded('afterSnapshot',TIMELINE_RESPONSE_BYTES)} AS afterSnapshot FROM timeline_history WHERE projectId=? ORDER BY position`,input.projectId);
- const cursor=db.prepare('SELECT projectId,position FROM timeline_history_cursors WHERE projectId=?').get(input.projectId);
- if(cursor&&(!timeline||cursor.projectId!==input.projectId||!integer(cursor.position)||(cursor.position as number)>history.length)||history.length&&!cursor)invalidTimeline();
+/** Both format admission and dependency proof must read legacy history in its
+ * original frame epoch, rather than interpret old rectangles in today's frame. */
+export function walkTimelineFormatHistory(db: DatabaseSync,projectId: string,timeline: TimelineRecord|null,visit?: (value: TimelineRecord,position:number,side:'before'|'after')=>void): boolean {
+ const history=rows(db,`SELECT id,projectId,position,operation,createdAt,${bounded('beforeSnapshot',TIMELINE_RESPONSE_BYTES)} AS beforeSnapshot,${bounded('afterSnapshot',TIMELINE_RESPONSE_BYTES)} AS afterSnapshot FROM timeline_history WHERE projectId=? ORDER BY position`,projectId);
+ const cursor=db.prepare('SELECT projectId,position FROM timeline_history_cursors WHERE projectId=?').get(projectId);
+ if(cursor&&(!timeline||cursor.projectId!==projectId||!integer(cursor.position)||(cursor.position as number)>history.length)||history.length&&!cursor)invalidTimeline();
  for(const [index,entry] of history.entries()){
-  if(!timeline||!uuid(entry.id)||entry.projectId!==input.projectId||entry.position!==index+1||!(TIMELINE_HISTORY_OPERATIONS as readonly unknown[]).includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
+  if(!timeline||!uuid(entry.id)||entry.projectId!==projectId||entry.position!==index+1||!(TIMELINE_HISTORY_OPERATIONS as readonly unknown[]).includes(entry.operation)||typeof entry.createdAt!=='string'||entry.createdAt.length>64||!Number.isFinite(Date.parse(entry.createdAt)))invalidTimeline();
  }
  if(timeline){
   const restored=(frame: TimelineRecord,snapshot: unknown,requireFormat: boolean): TimelineRecord=>{
    const saved=restoreTimelineEditableSnapshot(frame,snapshot,requireFormat);
-   if(!isTimelineRecord(saved,{projectId:input.projectId}))invalidTimeline();
+   if(!isTimelineRecord(saved,{projectId}))invalidTimeline();
    return saved;
   };
   const before=(entry: Record<string,unknown>): unknown=>{
@@ -75,16 +74,26 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
   for(let index=position-1;index>=0;index--){
    const entry=history[index]!;
    const requireFormat=entry.operation==='timeline.format.set';
-   frame=restored(restored(frame,parse(entry.afterSnapshot),requireFormat),before(entry),requireFormat);
+   const after=restored(frame,parse(entry.afterSnapshot),requireFormat);
+   frame=restored(after,before(entry),requireFormat);
+   visit?.(after,index+1,'after');visit?.(frame,index+1,'before');
   }
   frame=timeline;
   for(let index=position;index<history.length;index++){
    const entry=history[index]!;
    const requireFormat=entry.operation==='timeline.format.set';
-   frame=restored(restored(frame,before(entry),requireFormat),parse(entry.afterSnapshot),requireFormat);
+   const previous=restored(frame,before(entry),requireFormat);
+   frame=restored(previous,parse(entry.afterSnapshot),requireFormat);
+   visit?.(previous,index+1,'before');visit?.(frame,index+1,'after');
   }
  }
- if(!frameTransaction&&(history.length||cursor))reasons.push('HISTORY_PRESENT');
+ return Boolean(history.length||cursor);
+}
+export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecoveryInput,{admission=false,frameTransaction=false,context=readTimelineFormatOwner(db,input),store}: TimelineFormatStateOptions={}): TimelineFormatStateResult{
+ const {project,timeline,boundary}=context;
+ const reasons: string[]=[];
+ if(!frameTransaction&&timeline&&(timeline.clips.length||timeline.durationFrames))reasons.push('CLIPS_PRESENT');
+ if(walkTimelineFormatHistory(db,input.projectId,timeline)&&!frameTransaction)reasons.push('HISTORY_PRESENT');
  // Unscopable corrupt receipts cannot safely be declared unrelated to this project.
  for(const owner of rows(db,`SELECT DISTINCT (${TIMELINE_RECEIPT_PROJECT_EXPRESSION}) AS projectId FROM timeline_requests`)){
   if(!uuid(owner.projectId)||!db.prepare('SELECT 1 FROM projects WHERE id=?').get(owner.projectId))invalidTimeline();

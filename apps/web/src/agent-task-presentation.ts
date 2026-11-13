@@ -151,11 +151,12 @@ function enumText(property:DisplayProperty,value:string,locale:Locale):string|un
   if(property==='background'&&['opaque','transparent','auto'].includes(value))key=`agent.display.enum.background.${value}` as EnumKey;
   return key&&Object.hasOwn(mioPanelMessages,key)?translate(locale,key):undefined;
 }
-function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions):string|undefined {
+function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions,operation?:string):string|undefined {
   if(value===null)return translate(locale,'agent.display.empty');
   if(typeof value==='boolean')return field.unit==='boolean'?translate(locale,value?'agent.display.on':'agent.display.off'):undefined;
   if(typeof value==='string'){
     if(field.property==='gainDb'&&value==='muted')return translate(locale,'agent.display.muted');
+    if(operation==='generation.submit'&&field.property==='aspectRatio'&&value==='adaptive')return translate(locale,'video.wan.adaptive');
     if(field.property==='description'||field.property==='subtitleText')return projectText(value)??translate(locale,'agent.display.empty');
     return enumText(field.property,value,locale);
   }
@@ -191,8 +192,8 @@ function formattedFields(display:AgentTaskDisplay,locale:Locale,options:TaskDisp
     // unchanged input is absent from changed fields; either changed input is
     // sufficient evidence not to repeat its derived out-point in this row.
     if(field.property==='sourceOutFrame'&&rangeChangeTargets.has(field.targetIndex))continue;
-    const before=field.before===undefined?undefined:displayValue(field,field.before,locale,options);
-    const after=field.after===undefined?undefined:displayValue(field,field.after,locale,options);
+    const before=field.before===undefined?undefined:displayValue(field,field.before,locale,options,operation);
+    const after=field.after===undefined?undefined:displayValue(field,field.after,locale,options,operation);
     if(field.before!==undefined&&before===undefined||field.after!==undefined&&after===undefined||before===undefined&&after===undefined)continue;
     const target=field.targetIndex===undefined?undefined:display.targets[field.targetIndex],fieldKey=`agent.display.field.${field.property}` as FieldKey;
     const prefix=target&&display.targets.length>1?`${targetTitle(target,locale,options.lookup)} · `:'';
