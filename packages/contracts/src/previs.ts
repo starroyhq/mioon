@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {TIMELINE_OUTPUT_PRESETS} from './timeline-output-geometry.ts';
 
 type Rec = Record<string, unknown>;
 // Camera previs (schema 64). A previs node is a canvas node of type 'previs'
@@ -121,8 +122,10 @@ const edge = z.number().int().min(1).max(PREVIS_LIMITS.thumbnailEdge);
 export const previsThumbnailSchema = z.object({slot, sceneRevision: revision, width: edge, height: edge,
   byteLength: z.number().int().min(1).max(PREVIS_LIMITS.thumbnailBytes), updatedAt: timestamp}).strict();
 export type PrevisThumbnail = z.infer<typeof previsThumbnailSchema>;
-const thumbnailSetResponseSchema = previsThumbnailSchema.extend({projectId: id, nodeId: id}).strict();
-const thumbnailGetResponseSchema = z.object({projectId: id, nodeId: id,
+const framePresetId = z.enum(TIMELINE_OUTPUT_PRESETS.map(preset => preset.id) as [string, ...string[]]);
+const thumbnailFrame = {framePresetId: framePresetId.optional()};
+const thumbnailSetResponseSchema = previsThumbnailSchema.extend({projectId: id, nodeId: id, ...thumbnailFrame}).strict();
+const thumbnailGetResponseSchema = z.object({projectId: id, nodeId: id, ...thumbnailFrame,
   items: z.array(previsThumbnailSchema.extend({dataBase64: base64}).strict()).max(PREVIS_LIMITS.thumbnailsPerNode)}).strict();
 export type PrevisThumbnailSetResponse = z.infer<typeof thumbnailSetResponseSchema>;
 export type PrevisThumbnailGetResponse = z.infer<typeof thumbnailGetResponseSchema>;
@@ -132,6 +135,13 @@ export const previsSchemas = Object.freeze({
   'previs.scene.set': z.object({projectId: id, nodeId: id, expectedSceneRevision: revision, scene: previsSceneSchema, requestId: key}).strict(),
   'previs.thumbnail.set': z.object({projectId: id, nodeId: id, slot, sceneRevision: revision, dataBase64: base64}).strict(),
   'previs.thumbnail.get': z.object({projectId: id, nodeId: id, slots: z.array(slot).min(1).max(PREVIS_LIMITS.thumbnailsPerNode)}).strict()
+    .refine(value => distinct(value.slots), 'Slots must be distinct'),
+});
+// Ordinary clients carry the captured frame. The fixed model catalog keeps
+// its existing diagnostics and does not expose thumbnail operations to Mio.
+export const previsThumbnailPublicSchemas = Object.freeze({
+  'previs.thumbnail.set': previsSchemas['previs.thumbnail.set'].extend(thumbnailFrame),
+  'previs.thumbnail.get': previsSchemas['previs.thumbnail.get'].innerType().extend(thumbnailFrame)
     .refine(value => distinct(value.slots), 'Slots must be distinct'),
 });
 export const previsDescriptions = Object.freeze({
@@ -168,20 +178,22 @@ export function isPrevisMutationResponse(operation: unknown, input: unknown, res
 }
 const decodedBytes = (value: string): number => value.length / 4 * 3 - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
 export function isPrevisThumbnailSetResponse(input: unknown, result: unknown): boolean {
-  if (!previsSchemas['previs.thumbnail.set'].safeParse(input).success) return false;
+  const request = previsThumbnailPublicSchemas['previs.thumbnail.set'].safeParse(input);
+  if (!request.success) return false;
   const parsed = thumbnailSetResponseSchema.safeParse(result);
   if (!parsed.success) return false;
-  const request = input as Rec, value = parsed.data;
-  return value.projectId === request.projectId && value.nodeId === request.nodeId && value.slot === request.slot &&
-    value.sceneRevision === request.sceneRevision && value.byteLength === decodedBytes(request.dataBase64 as string);
+  const value = parsed.data, intent = request.data;
+  return value.projectId === intent.projectId && value.nodeId === intent.nodeId && value.slot === intent.slot &&
+    value.sceneRevision === intent.sceneRevision && value.framePresetId === intent.framePresetId && value.byteLength === decodedBytes(intent.dataBase64);
 }
 /** Items come in the requested slot order; a slot without a thumbnail is left out. */
 export function isPrevisThumbnailGetResponse(input: unknown, result: unknown): boolean {
-  if (!previsSchemas['previs.thumbnail.get'].safeParse(input).success) return false;
+  const request = previsThumbnailPublicSchemas['previs.thumbnail.get'].safeParse(input);
+  if (!request.success) return false;
   const parsed = thumbnailGetResponseSchema.safeParse(result);
   if (!parsed.success) return false;
-  const request = input as {projectId: string; nodeId: string; slots: string[]}, value = parsed.data;
-  const positions = value.items.map(item => request.slots.indexOf(item.slot));
-  return value.projectId === request.projectId && value.nodeId === request.nodeId && positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1]!)) &&
+  const value = parsed.data, intent = request.data;
+  const positions = value.items.map(item => intent.slots.indexOf(item.slot));
+  return value.projectId === intent.projectId && value.nodeId === intent.nodeId && value.framePresetId === intent.framePresetId && positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1]!)) &&
     value.items.every(item => item.byteLength === decodedBytes(item.dataBase64));
 }

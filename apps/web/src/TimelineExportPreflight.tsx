@@ -38,7 +38,7 @@ import { namedTimelineDeliveryHistory } from './export-delivery-state.ts';
 import type {ExportActivity,ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
 import { exportRangeDescription } from './export-range-state.ts';
 import { selectedExportDelivery } from './export-settings-state.ts';
-import { exportHistoryDelivery } from './export-settings-state.ts';
+import { exportHistoryDelivery, exportHistoryPicture } from './export-settings-state.ts';
 import { displayTimelineFrame } from './timeline-removal.ts';
 import './export-content-choice.css';
 
@@ -51,8 +51,8 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
   const canExport = Boolean(state?.binding && ['ready', 'incomplete'].includes(phase) && !exportBusy && !pendingExport && !state.attempted);
   const canExportUnchecked = Boolean(state?.uncheckedIntent && phase === 'incomplete' && !exportBusy && !pendingExport && !state.attempted);
   const resultRecord = renderRecord && typeof renderRecord === 'object' && !Array.isArray(renderRecord) ? renderRecord as Record<string, unknown> : null;
-  const completedOutput = exportHistoryDelivery(resultRecord);
-  const completedDelivery = namedTimelineDeliveryHistory(resultRecord, completedOutput);
+  const completedPicture = exportHistoryPicture(resultRecord);
+  const completedDelivery = namedTimelineDeliveryHistory(resultRecord, exportHistoryDelivery(resultRecord));
   const draftOutput=selectedExportDelivery(timeline,exportSettings),range=exportRangeDescription({exportRange},timeline?.durationFrames);
   const durationSeconds=range?range.frames/30:(timeline?.durationFrames??0)/30;
   const estimatedSize=exportSettings?.rateControl.mode==='bitrate'&&durationSeconds>0?t('redesign.export.estimatedSize',{size:formatNumber((exportSettings.rateControl.targetKbps+128)*1000/8*durationSeconds/1024/1024,{maximumFractionDigits:1})}):t('redesign.export.sizeUnknown');
@@ -68,7 +68,7 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
     {option('storyboard',<><strong>{t('export.content.storyboard')}<span className="export-content-tag">{t('export.content.storyboardTag')}</span></strong><span>{t('export.content.storyboardDetail')}</span>{storyboard&&<small className={contentChoice.storyboardDisabledReason?'is-blocked':''}>{contentChoice.storyboardDisabledReason||t('export.content.storyboardNote')}</small>}</>)}
   </div>;
   const storyboardAction=contentChoice&&<Button variant="ghost" className="button primary" data-testid="export-storyboard-draft" disabled={Boolean(contentChoice.storyboardDisabledReason)||Boolean(contentChoice.storyboardBusy)} title={contentChoice.storyboardDisabledReason??undefined} onClick={()=>contentChoice.onStoryboardExport()}><Icon name="download" size={14} />{t('export.content.storyboardAction')}</Button>;
-  return <ExportWorkflow nextAction={storyboard?storyboardAction:undefined} checkAction={storyboard?<ExportWorkflowSection steps={[1]}>{checkAction}</ExportWorkflowSection>:checkAction} settingsEstimate={storyboard?null:settingsEstimate} projectId={projectId} activity={activity} output={output} onCancel={onCancel} cancelBusy={cancelBusy} onClose={onClose} onHistory={onHistory} onReexport={onReexport} preview={preview} phase={phase} attempted={state?.attempted} exportBusy={exportBusy} pendingExport={pendingExport} record={pass(renderRecord)} resultDetails={resultRecord && <><strong>{completedDelivery?.name || t('recovery.delivery.defaultName')}</strong>{completedOutput && <span>{t('redesign.export.resultFormat', { dimensions: `${completedOutput.width} × ${completedOutput.height}`, fps: completedOutput.fps })}</span>}</>} onTasks={onTasks} downloadEnabled={downloadEnabled} fileRecoveryEnabled={fileRecoveryEnabled} reviewVersion={pass(reviewVersion)}><aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label={t('export.preflight.label')}>
+  return <ExportWorkflow nextAction={storyboard?storyboardAction:undefined} checkAction={storyboard?<ExportWorkflowSection steps={[1]}>{checkAction}</ExportWorkflowSection>:checkAction} settingsEstimate={storyboard?null:settingsEstimate} projectId={projectId} activity={activity} output={output} onCancel={onCancel} cancelBusy={cancelBusy} onClose={onClose} onHistory={onHistory} onReexport={onReexport} preview={preview} phase={phase} attempted={state?.attempted} exportBusy={exportBusy} pendingExport={pendingExport} record={pass(renderRecord)} resultDetails={resultRecord && <><strong>{completedDelivery?.name || t('recovery.delivery.defaultName')}</strong>{completedPicture && <span>{completedPicture.ratio} · {t('redesign.export.resultFormat', completedPicture)}</span>}</>} onTasks={onTasks} downloadEnabled={downloadEnabled} fileRecoveryEnabled={fileRecoveryEnabled} reviewVersion={pass(reviewVersion)}><aside className="export-preflight" data-testid="export-preflight" data-phase={phase} aria-label={t('export.preflight.label')}>
     <header className="export-preflight-heading"><div><h2>{t('export.preflight.title')}</h2><p title={projectName ?? undefined}>{projectName || t('export.preflight.selectProject')}</p></div><Icon name="info" size={15} /></header>
     <div className="export-preflight-body">
       <ExportWorkflowSection steps={[2]} className="export-settings-primary">{choice}<div className="export-timeline-settings" hidden={storyboard} inert={storyboard}><TimelineDeliveryName value={deliveryName} error={pass(deliveryNameError)} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
