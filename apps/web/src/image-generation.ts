@@ -17,7 +17,7 @@ export { IMAGE_FIXED_OPTIONS, IMAGE_MODELS };
 const PREFIX = 'mioon.image-intent.v1:';
 const ACTIVE: ReadonlySet<string> = new Set(['queued', 'dispatching', 'receiving', 'persisting']);
 const CANCELABLE: ReadonlySet<string> = new Set(['queued', 'interrupted_before_dispatch']);
-const REJECTION_CODES: ReadonlySet<string> = new Set(['IMAGE_LIVE_DISABLED', 'IMAGE_CAPACITY', 'IMAGE_QUEUE_FULL', 'IMAGE_GROUP_BUSY', 'IMAGE_REVISION_CONFLICT', 'IMAGE_STATE_CONFLICT', 'IMAGE_RESULT_INVALID']);
+const REJECTION_CODES: ReadonlySet<string> = new Set(['IMAGE_LIVE_DISABLED', 'GENERATION_SERVICE_UNAVAILABLE', 'IMAGE_CAPACITY', 'IMAGE_QUEUE_FULL', 'IMAGE_GROUP_BUSY', 'IMAGE_REVISION_CONFLICT', 'IMAGE_STATE_CONFLICT', 'IMAGE_RESULT_INVALID']);
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const failureCode = (error: unknown): string | undefined => record(error) && typeof error.code === 'string' ? error.code : undefined;
 const copy = <T>(value: T): T => structuredClone(value);
@@ -82,6 +82,7 @@ export interface ImageGenerationState {
   inputImage: ImageInputImage | null;
   sourcePreview: ImageSourcePreview | null;
   providerId: ImageProviderId;
+  mockAvailable: boolean;
   settings: ImageSettingsView | null;
   customSettings: ImageSettingsView | null;
   customServices?: CustomImageConnectionV2[];
@@ -126,6 +127,7 @@ export interface ImageReviewClient {
 export interface ImageApi { (operation: string, input: Record<string, unknown>, options?: { signal?: AbortSignal; outputLocale?: Locale }): Promise<unknown> }
 export interface ImageGenerationSessionOptions {
   projectId: string;
+  mockAvailable?: boolean;
   api?: ImageApi;
   reviewClient?: ImageReviewClient;
   settings?: unknown; settingsReader?: () => Promise<unknown>;
@@ -195,7 +197,7 @@ export function imageTaskConnectionMessage(task: ImageTaskView | null | undefine
   if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchMessages, task.errorCode ?? '')) return '';
   return `${customPreDispatchMessages[task.errorCode ?? '']}本次未发送生成 POST；任何新请求都需要重新明确批准，不会自动重试。`;
 }
-const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错。', IMAGE_LIVE_DISABLED: '真实图像调用尚未启用，本次未被接受。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
+const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错。', IMAGE_LIVE_DISABLED: '暂没有可用的图像生成服务，请在设置里配置并启用。', GENERATION_SERVICE_UNAVAILABLE: '暂没有可用的图像生成服务，请在设置里配置并启用。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
 const rejectionMessage = (code: string): string => Object.hasOwn(rejectionMessages, code) ? rejectionMessages[code] : '请求未被接受，草稿保留。请重新读取并核对后再提交。';
 export function imageInputIssue(draft: ImageDraft): string {
   if (!draft.name.trim()) return '请填写图像名称。';
@@ -205,8 +207,8 @@ export function imageInputIssue(draft: ImageDraft): string {
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(draft.prompt)) return '描述中含有不支持的控制字符。';
   return '';
 }
-export function initialImageGenerationState(): ImageGenerationState {
-  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: 'mock', settings: null, customSettings: null, customServices: [], comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', displayMessage: null, storageBlocked: false, pollPaused: false, actionTaskId: null };
+export function initialImageGenerationState(mockAvailable = false): ImageGenerationState {
+  return { draft: { name: '', prompt: '' }, mode: 'text', inputImage: null, sourcePreview: null, providerId: mockAvailable ? 'mock' : 'openai', mockAvailable, settings: null, customSettings: null, customServices: [], comfySettings: null, comfyAvailability: null, comfyAvailabilityPhase: 'idle', remotes: {}, remotePending: null, remoteActionTaskId: null, remoteStorageBlocked: false, reviews: [], reviewCursor: null, reviewTrail: [], nextReviewCursor: null, reviewActionId: null, target: null, targetRequest: null, tasks: [], groups: [], versions: [], selectedGroupId: null, groupCursor: null, groupTrail: [], nextGroupCursor: null, versionCursor: null, versionTrail: [], nextVersionCursor: null, historyPhase: 'idle', pending: null, phase: 'idle', loaded: false, message: '', displayMessage: null, storageBlocked: false, pollPaused: false, actionTaskId: null };
 }
 export const imageDraftDirty = (state: ImageGenerationState): boolean => Boolean(state.draft.name || state.draft.prompt || state.target || state.mode === 'edit' || state.inputImage);
 // Metadata only: eligibility here is a chooser hint. The backend alone verifies
@@ -219,7 +221,7 @@ export function imageEditSourceIssue(asset: ImageEditAsset | null | undefined, p
   if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return '每边最多 4096 像素。';
   return '';
 }
-export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !['mock', 'openai'].includes(state.providerId) ? '图像编辑仅支持 Mock 和 OpenAI 官方连接。' : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张源图。' : '';
+export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !(state.providerId === 'openai' || state.providerId === 'mock' && state.mockAvailable) ? '图像编辑需要 OpenAI 官方连接。' : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张源图。' : '';
 const editInput = (state: ImageGenerationState): Record<string, unknown> => state.mode === 'edit' ? { purpose: 'edit', inputImage: copy(state.inputImage) } : {};
 /** An edit's output follows its source's ratio within the model's edit profile;
  * null until a source with known dimensions is chosen. Text-to-image stays fixed. */
@@ -267,9 +269,21 @@ export function imagePaidAuthorization(state: ImageGenerationState): ImageTarget
   return { providerId: state.providerId, draft: copy(state.draft), target: copy(state.target), mode: state.mode, inputImage: copy(state.inputImage), configuration: copy(settings.configuration), settingsRevision: settings.revision, ...(typeof settings.connectionId === 'string' ? {connectionId: settings.connectionId, configurationRevision: settings.revision} : {}),
     destination: state.providerId === 'openai-compatible' ? completeCustom(settings.configuration) ? getCustomImageDestination(settings.configuration.baseUrl) : null : `${settings.configuration.baseUrl}/images/${state.mode === 'edit' ? 'edits' : 'generations'}` };
 }
+function imageSettingsAvailable(providerId: ImageProviderId, settings: ImageSettingsView | null, comfyAvailability: unknown): boolean {
+  if (!settings || settings.configuration.enabled !== true || settings.revision <= 0) return false;
+  if (providerId === 'comfy-local') return comfyConnectorAvailable(comfyAvailability) && settings.readiness?.checked === true && isCompleteComfyImageConfiguration(settings.configuration);
+  return paidProvider(providerId) && settings.secret.configured === true && (providerId !== 'openai-compatible' || completeCustom(settings.configuration));
+}
+export function imageGenerationServiceAvailable(state: ImageGenerationState): boolean {
+  if (state.mockAvailable || imageSettingsAvailable('openai', state.settings, null)) return true;
+  return state.mode !== 'edit' && (imageSettingsAvailable('comfy-local', state.comfySettings, state.comfyAvailability)
+    || imageSettingsAvailable('openai-compatible', state.customSettings, null)
+    || (state.customServices ?? []).some(service => imageSettingsAvailable('openai-compatible', serviceSettings(service), null)));
+}
 export function imageCanGenerate(state: ImageGenerationState): boolean {
-  const group = state.target && state.groups.find(item => item.id === state.target?.groupId), settings = imageSelectedSettings(state);
-  return Boolean(state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && (state.providerId === 'mock' || state.providerId === 'comfy-local' && comfyConnectorAvailable(state.comfyAvailability) && settings?.configuration.enabled === true && settings.readiness?.checked === true && settings.revision > 0 && isCompleteComfyImageConfiguration(settings.configuration) || paidProvider(state.providerId) && settings?.configuration.enabled === true && settings.secret.configured === true && settings.revision > 0 && (state.providerId !== 'openai-compatible' || completeCustom(settings.configuration))) && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision)));
+  const group = state.target && state.groups.find(item => item.id === state.target?.groupId);
+  const serviceAvailable = state.providerId === 'mock' ? state.mockAvailable : imageSettingsAvailable(state.providerId, imageSelectedSettings(state), state.comfyAvailability);
+  return Boolean(state.loaded && !state.pending && !state.storageBlocked && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && !state.remotePending && !state.remoteStorageBlocked && !['loading', 'submitting', 'targeting'].includes(state.phase) && !imageInputIssue(state.draft) && !imageEditDraftIssue(state) && serviceAvailable && (!state.target || (group && !group.activeTaskId && group.revision === state.target.expectedRevision)));
 }
 const pendingMatchesReview = (pending: ImagePending, review: ImageReviewView): boolean => (!pending.sourceImage || canonicalImageInput(pending.sourceImage) === canonicalImageInput(review.sourceImage)) && canonicalImageInput(pending.input) === canonicalImageInput(review.input) && pending.settingsRevision === review.settingsRevision &&
   (pending.input.providerId !== 'openai-compatible' || (pending.version === 2 && review.connectionId === undefined || pending.version === 4 && pending.connectionId === review.connectionId && pending.configurationRevision === review.configurationRevision) && canonicalImageInput(pending.configuration) === canonicalImageInput(review.configuration) && pending.destination === review.destination) &&
@@ -313,8 +327,8 @@ async function notAccepted(error: unknown, operation: string, input: ImageMutati
 }
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
-export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, generationServices, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, getOutputLocale, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
-  let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0, focusedTaskId: string | null = null;
+export function createImageGenerationSession({ projectId, mockAvailable = false, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, generationServices, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, getOutputLocale, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
+  let state: ImageGenerationState = initialImageGenerationState(mockAvailable), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0, focusedTaskId: string | null = null;
   if (settings) state.settings = safeImageSettings(settings) as ImageSettingsView;
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom') as ImageSettingsView;
   if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings) as unknown as ImageSettingsView;
@@ -386,7 +400,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
       const parsed: unknown = JSON.parse(serialized); if (!fixedIntent(projectId, parsed)) throw problem('LOCAL_STORAGE_INVALID');
       const pending = parsed as ImagePending;
       state.pending = pending; state.phase = 'unknown';
-      if (pending.operation === 'image.generate') { state.draft = { name: pending.input.name ?? '', prompt: pending.input.prompt ?? '' }; state.providerId = pending.input.providerId as ImageProviderId; state.mode = pending.input.purpose === 'edit' ? 'edit' : 'text'; state.inputImage = record(pending.input.inputImage) ? copy(pending.input.inputImage as unknown as ImageInputImage) : null; state.sourcePreview = record(pending.sourceImage) ? copy(pending.sourceImage as unknown as ImageSourcePreview) : null; state.target = pending.input.groupId ? { groupId: pending.input.groupId, expectedRevision: pending.input.expectedRevision ?? 0 } : null; }
+      if (pending.operation === 'image.generate') { state.draft = { name: pending.input.name ?? '', prompt: pending.input.prompt ?? '' }; state.providerId = pending.input.providerId === 'mock' && !state.mockAvailable ? 'openai' : pending.input.providerId as ImageProviderId; state.mode = pending.input.purpose === 'edit' ? 'edit' : 'text'; state.inputImage = record(pending.input.inputImage) ? copy(pending.input.inputImage as unknown as ImageInputImage) : null; state.sourcePreview = record(pending.sourceImage) ? copy(pending.sourceImage as unknown as ImageSourcePreview) : null; state.target = pending.input.groupId ? { groupId: pending.input.groupId, expectedRevision: pending.input.expectedRevision ?? 0 } : null; }
     }
   } catch { state.storageBlocked = true; state.message = '无法读取本地请求记录。为避免重复生成，暂不能提交。'; state.displayMessage = localizedMessage('image.state.requestStorageBlocked'); }
   function mergeTask(taskValue: unknown): ImageTaskView {
@@ -460,7 +474,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
       }
       if (settingsReader) {
         try { const latest = safeImageSettings(await settingsReader()) as ImageSettingsView; if (!owned(epoch)) return false; emit({ settings: latest }); }
-        catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用。', displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
+        catch { if (!owned(epoch)) return false; emit({ settings: null, message: '暂时无法核验图像设置。付费生成已暂停，仍可查看已保存记录。', displayMessage: localizedMessage('image.state.settingsUnverifiable') }); }
       }
       if (generationServices) {
         try { const services = safeCustomServices(await serviceCall(signal => generationServices.list(projectId, signal))); if (!owned(epoch)) return false;
@@ -688,6 +702,11 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
   }
   return {
     getState: (): ImageGenerationState => copy(state), getNativeCloseState: rejectionClose.getState, load, generatePaid, prepareComfy,
+    setMockAvailable(available: boolean): void {
+      if (disposed || available === state.mockAvailable) return;
+      interactionEpoch++;
+      emit({mockAvailable: available, ...(!available && state.providerId === 'mock' ? {providerId: 'openai'} : {})});
+    },
     setSettings(value: unknown): boolean { if (disposed) return false; const settings = safeImageSettings(value) as ImageSettingsView; if (canonicalImageInput(state.settings) !== canonicalImageInput(settings)) interactionEpoch++; emit({ settings }); return true; },
     selectCustomService(connectionId: string): boolean {if (!composerEditable()) return false; const selected = state.customServices?.find(item => item.connectionId === connectionId); if (!selected) return false; interactionEpoch++; emit({customSettings: serviceSettings(selected), providerId: 'openai-compatible'}); return true;},
     setCustomSettings(value: unknown): boolean { if (disposed) return false; const customSettings = safeImageSettings(value, 'custom') as ImageSettingsView; if (canonicalImageInput(state.customSettings) !== canonicalImageInput(customSettings)) interactionEpoch++; emit({ customSettings }); return true; },
@@ -701,7 +720,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
       emit({ inputImage: asset ? { assetId: asset.id as string, sha256: asset.sha256 as string } : null, sourcePreview: asset ? { assetId: asset.id as string, sha256: asset.sha256, name: asset.name, mimeType: asset.mimeType, width: asset.width, height: asset.height, byteLength: asset.sizeBytes } : null, targetRequest: null, message: '', displayMessage: null }); return true;
     },
     requestEditReview(review: unknown): boolean { if (!composerEditable() || !state.reviews.some(item => item.id === (record(review) ? review.id : undefined) && canonicalImageInput(item) === canonicalImageInput(review))) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { reviewId: record(review) && typeof review.id === 'string' ? review.id : '' } }); return false; } return chooseEditReview(record(review) && typeof review.id === 'string' ? review.id : ''); },
-    selectProvider(providerId: string): boolean { if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || !['mock', 'openai', 'openai-compatible', 'comfy-local'].includes(providerId)) return false; interactionEpoch++; emit({ providerId: providerId as ImageProviderId }); return true; },
+    selectProvider(providerId: string): boolean { if (disposed || !visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId || providerId === 'mock' && !state.mockAvailable || !['mock', 'openai', 'openai-compatible', 'comfy-local'].includes(providerId)) return false; interactionEpoch++; emit({ providerId: providerId as ImageProviderId }); return true; },
     async approveReview(review: unknown): Promise<boolean> {
       if (!isImageReviewResponse(review)) return false;
       const reviewValue = reviewViewOf(review);
@@ -804,7 +823,7 @@ const customPreDispatchDescriptors: Record<string, DisplayMessage> = Object.free
   IMAGE_SETTINGS_DISABLED: localizedMessage('image.state.customDisabled'),
 } as Record<string, DisplayMessage>);
 
-const rejectionDescriptors: Record<string, DisplayMessage> = { IMAGE_SOURCE_INVALID: localizedMessage('image.state.sourceRejected'), IMAGE_LIVE_DISABLED: localizedMessage('image.state.liveDisabled'), IMAGE_GROUP_BUSY: localizedMessage('image.state.groupBusy'), IMAGE_REVISION_CONFLICT: localizedMessage('image.state.revisionConflict'), IMAGE_QUEUE_FULL: localizedMessage('image.state.queueFull'), IMAGE_CAPACITY: localizedMessage('image.state.capacityReached'), IMAGE_STATE_CONFLICT: localizedMessage('image.state.stateConflict'), IMAGE_RESULT_INVALID: localizedMessage('image.state.invalidLocalResult') };
+const rejectionDescriptors: Record<string, DisplayMessage> = { IMAGE_SOURCE_INVALID: localizedMessage('image.state.sourceRejected'), IMAGE_LIVE_DISABLED: localizedMessage('image.state.liveDisabled'), GENERATION_SERVICE_UNAVAILABLE: localizedMessage('image.state.liveDisabled'), IMAGE_GROUP_BUSY: localizedMessage('image.state.groupBusy'), IMAGE_REVISION_CONFLICT: localizedMessage('image.state.revisionConflict'), IMAGE_QUEUE_FULL: localizedMessage('image.state.queueFull'), IMAGE_CAPACITY: localizedMessage('image.state.capacityReached'), IMAGE_STATE_CONFLICT: localizedMessage('image.state.stateConflict'), IMAGE_RESULT_INVALID: localizedMessage('image.state.invalidLocalResult') };
 const rejectionDescriptor = (code: string): DisplayMessage => Object.hasOwn(rejectionDescriptors, code) ? rejectionDescriptors[code] : localizedMessage('image.state.notAcceptedFallback');
 
 export function imageInputIssueDescriptor(draft: ImageDraft): DisplayMessage | null {
@@ -825,7 +844,7 @@ export function imageEditSourceIssueDescriptor(asset: ImageEditAsset | null | un
   return null;
 }
 
-export const imageEditDraftIssueDescriptor = (state: ImageGenerationState): DisplayMessage | null => state.mode !== 'edit' ? null : !['mock', 'openai'].includes(state.providerId) ? localizedMessage('image.state.editProvidersOnly') : !imageEditInputImageSchema.safeParse(state.inputImage).success ? localizedMessage('image.state.sourceRequired') : null;
+export const imageEditDraftIssueDescriptor = (state: ImageGenerationState): DisplayMessage | null => state.mode !== 'edit' ? null : !(state.providerId === 'openai' || state.providerId === 'mock' && state.mockAvailable) ? localizedMessage('image.state.editProvidersOnly') : !imageEditInputImageSchema.safeParse(state.inputImage).success ? localizedMessage('image.state.sourceRequired') : null;
 
 export function imageTaskConnectionDescriptors(task: ImageTaskView | null | undefined): DisplayMessage[] {
   if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchDescriptors, task.errorCode ?? '')) return [];

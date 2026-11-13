@@ -119,7 +119,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
     }
     if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
+    if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, mockAvailable: true, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
     if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (name === './image-settings.ts') return { createImageSettingsClient: () => fixture.settingsClient };
     if (name === './generation-image-services.ts') return {createGenerationImageServicesClient: () => ({list: async () => []})};

@@ -74,7 +74,7 @@ test('app companions use B1 documents and app identity without creating legacy J
   const configuration = createWorkspaceConfiguration({root: f.dataDir, documents: common.documents, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   const before = configuration.get();
   configuration.set({expectedRevision: before.revision, liveGeneration: true});
-  assert.equal(configuration.environment().MIOON_ENABLE_LIVE_PROVIDER, '1');
+  assert.equal(configuration.environment().MIOON_ENABLE_LIVE_PROVIDER, '0');
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
   for (const name of [UI_PREFERENCES_FILENAME, LAST_PROJECT_FILENAME, 'workspace-settings-v1.json', 'workbench.sqlite']) assert.equal(existsSync(path.join(f.dataDir, name)), false);
   assert.ok(checked.length > 0); assert.ok(checked.every(file => file === f.library.databaseFile));

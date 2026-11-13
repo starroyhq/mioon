@@ -67,7 +67,7 @@ function variants(t: TestContext, f: Services, {read, write, image, approve, set
   };
   const controller = variantState.createSubjectVariantController({
     read: through('read', read), write: through('write', write), image: through('image', image),
-    approve: approve ?? (async () => assert.fail('A mock batch needs no approval')), settings: settings ?? (async () => ({})),
+    approve: approve ?? (async () => assert.fail('A mock batch needs no approval')), settings: settings ?? (async () => ({})), mockAvailable: () => true,
     requestId: () => `variant-request-${++serial}`,
     onVersions: (subjectId, hidden) => { changes.push({subjectId, hidden: [...hidden]}); },
   });
@@ -357,7 +357,8 @@ test('a subject shows its newest batch and any unfinished one, at most three', (
 });
 
 test('GPT Image needs an enabled connection with a saved key, and outputs follow the source ratio', () => {
-  const [openai, mock] = variantState.subjectVariantModels(null);
+  assert.deepEqual(variantState.subjectVariantModels(null).map(model => model.providerId), ['openai']);
+  const [openai, mock] = variantState.subjectVariantModels(null, true);
   assert.deepEqual([openai!.available, mock!.available, mock!.paid, openai!.paid], [false, true, false, true]);
   assert.deepEqual(variantState.subjectVariantModels({revision: 4, configuration: {enabled: true}, secret: {configured: true}})[0], {providerId: 'openai', model: contracts.IMAGE_MODELS.openai, available: true, paid: true, settingsRevision: 4});
   for (const settings of [{revision: 4, configuration: {enabled: false}, secret: {configured: true}}, {revision: 4, configuration: {enabled: true}, secret: {configured: false}}, {configuration: {enabled: true}, secret: {configured: true}}])
@@ -402,7 +403,7 @@ function harness(file: string) {
     useState: (value: unknown) => { const index = cursor++; if (!slots[index]) slots[index] = {value: typeof value === 'function' ? (value as () => unknown)() : value}; const slot = slots[index]!; return [slot.value, (next: unknown) => { slot.value = typeof next === 'function' ? (next as (value: unknown) => unknown)(slot.value) : next; }]; },
     useMemo: (fn: () => unknown, deps: readonly unknown[]) => { const index = cursor++; if (!slots[index] || deps.some((value, at) => value !== slots[index]!.deps![at])) slots[index] = {value: fn(), deps}; return slots[index]!.value; },
     useLayoutEffect: (fn: () => void | (() => void), deps: readonly unknown[]) => { const index = cursor++; if (!slots[index] || deps.some((value, at) => value !== slots[index]!.deps![at])) { slots[index] = {fn, deps, cleanup: slots[index]?.cleanup}; effects.push(index); } },
-    useEffect: () => { cursor++; },
+    useEffect: (fn: () => void | (() => void), deps: readonly unknown[]) => { const index = cursor++; if (!slots[index] || deps.some((value, at) => value !== slots[index]!.deps![at])) { slots[index] = {fn, deps, cleanup: slots[index]?.cleanup}; effects.push(index); } },
   };
   const modules: Record<string, Row> = {};
   function load(name: string): Row {
@@ -436,12 +437,12 @@ function harness(file: string) {
   return {h, module: component, render};
 }
 
-function fakeVariants(patch: Partial<SubjectVariantState> = {}) {
+function fakeVariants(patch: Partial<SubjectVariantState> = {}, mockAvailable = true) {
   const calls: unknown[][] = [];
   const state: SubjectVariantState = {scope: `${projectId}:1`, projectId, lists: {}, live: {}, busy: null, pending: null, notice: null, issues: {}, ...patch};
   const record = (name: string) => (...args: unknown[]): Promise<null> => { calls.push([name, ...args]); return Promise.resolve(null); };
   const controller = {getState: () => state, watch: record('watch'), setVisible: record('setVisible'), readBatch: record('readBatch'), readSubject: record('readSubject'),
-    readSettings: async () => variantState.subjectVariantModels(null), create: record('create'), submit: record('submit'), retry: record('retry'), undo: record('undo'),
+    readSettings: async () => variantState.subjectVariantModels(null, mockAvailable), create: record('create'), submit: record('submit'), retry: record('retry'), undo: record('undo'),
     reconcile: record('reconcile'), resend: record('resend'), clearNotice: record('clearNotice'), setContext: record('setContext'), dispose: record('dispose')} as unknown as SubjectVariantController;
   return {state, controller, calls, named: (name: string) => calls.filter(call => call[0] === name)};
 }
@@ -462,7 +463,7 @@ test('the dialog builds one camera batch from the chosen source and confirms it 
   const {h, render} = harness('SubjectVariantDialog.tsx');
   const fake = fakeVariants(), versions = [versionOf(1), versionOf(2, {variant: variantOf('left')})];
   let closed = 0;
-  const props = {subject: subjectOf('character', 2), versions, initialSourceId: versionId(1), assets: [imageInfo(1), imageInfo(2)], controller: fake.controller, blocked: false, notice: null, onClose: () => { closed++; }};
+  const props = {subject: subjectOf('character', 2), versions, initialSourceId: versionId(1), assets: [imageInfo(1), imageInfo(2)], controller: fake.controller, mockAvailable: true, blocked: false, notice: null, onClose: () => { closed++; }};
   let tree = render(props);
   assert.equal(text(byId(tree, 'subject-variant-source-check')), `JPEG · 1024×1536 · ${zh('subjects.variants.sourceUsable')}`);
   assert.match(text(tree), /每张 1024×1536，跟随源图比例 · 不会成为默认版本/);
@@ -489,7 +490,7 @@ test('the dialog builds one camera batch from the chosen source and confirms it 
 test('the dialog explains an unusable source and makes lighting one image', async () => {
   const {render} = harness('SubjectVariantDialog.tsx');
   const fake = fakeVariants(), exported = versionOf(1, {provenance: {kind: 'export', versionId: null, shotId: null, jobId: null}});
-  const props = {subject: subjectOf('product', 1), versions: [exported], initialSourceId: versionId(1), assets: [imageInfo(1)], controller: fake.controller, blocked: false, onClose: () => {}};
+  const props = {subject: subjectOf('product', 1), versions: [exported], initialSourceId: versionId(1), assets: [imageInfo(1)], controller: fake.controller, mockAvailable: true, blocked: false, onClose: () => {}};
   let tree = render(props);
   assert.match(text(byId(tree, 'subject-variant-source-issue')), /不能用于图片编辑.*视频生成结果和导出素材不能用于图片编辑/);
   click(byId(tree, 'subject-variant-position-back'));
@@ -508,6 +509,22 @@ test('the dialog explains an unusable source and makes lighting one image', asyn
   click(byId(tree, 'subject-variant-generate')); await flush();
   assert.deepEqual(usable.h.confirmations, [i18nIndex.message('subjects.variants.confirmMock', {count: 1, name: '林夏'})]);
   assert.deepEqual(fake.named('create').at(-1)?.[1], {subjectId, sourceVersionId: versionId(1), kind: 'light', items: [{kind: 'light', azimuth: 180, elevation: 30, quality: 'soft', kelvin: 4800}], providerId: 'mock', model: contracts.IMAGE_MODELS.mock});
+});
+
+test('a stable edition without image settings exposes the configuration entry and cannot offer Mock', async () => {
+  const {h, render} = harness('SubjectVariantDialog.tsx'), fake = fakeVariants({}, false);
+  let opened = 0;
+  const props = {subject: subjectOf('character', 1), versions: [versionOf(1)], initialSourceId: versionId(1), assets: [imageInfo(1)],
+    controller: fake.controller, blocked: false, onClose() {}, onConfigureGeneration() {opened++;}};
+  render(props); await flush();
+  const tree = render(props);
+  assert.ok(!nodes(tree).some(node => node.type === 'option' && node.props?.value === 'mock'));
+  assert.equal(byId(tree, 'subject-variant-generate')!.props.disabled, true);
+  click(byId(tree, 'subject-variant-configure'));
+  await flush();
+  assert.equal(opened, 1);
+  assert.deepEqual(h.confirmations, []);
+  assert.deepEqual(fake.named('create'), []);
 });
 
 test('camera choices keep at most eight positions and the light sphere maps back to its angles', () => {
@@ -575,7 +592,7 @@ test('row and tile actions confirm once and act on the batch that was shown', as
   tree = row(waiting, {disabled: true});
   assert.equal(byId(tree, `subject-variant-undo-${waiting.id}`)!.props.disabled, true);
   const failed = batchOf({items: [itemOf(1, angle('left', 'wide'), 'failed'), itemOf(2, angle('right'), 'cancelled'), itemOf(3, angle('back'), 'running'), itemOf(4, angle('high'), 'running', {image: {taskId: id(8, 4), state: 'queued', dispatched: false, errorCode: null}}), itemOf(5, angle('low'), 'pending')]});
-  const tile = (position: number, patch: Row = {}): ElementTree => render({batch: failed, item: failed.items[position - 1], submitting: false, controller: fake.controller, versions: {}, disabled: false, admit, ...patch}, 'SubjectVariantItemTile');
+  const tile = (position: number, patch: Row = {}): ElementTree => render({batch: failed, item: failed.items[position - 1], submitting: false, mockAvailable: true, controller: fake.controller, versions: {}, disabled: false, admit, ...patch}, 'SubjectVariantItemTile');
   tree = tile(1);
   assert.equal(text(tree), '失败重试左 · 广角服务商拒绝了请求');
   assert.match(text(tree), /服务商拒绝了请求/);

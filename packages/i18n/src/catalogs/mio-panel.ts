@@ -407,10 +407,10 @@ export const mioPanelMessages = {
     "ja": "モデルリクエストは送信済みの可能性があります。失敗として記録してから続行してください"
   },
   "agent.panel.generationNotSubmitted": {
-    "zh-Hans": "真实生成未开启，这次请求未提交",
-    "zh-Hant": "真實生成未開啟，這次請求未送出",
-    "en": "Live generation was off, so this request was not submitted",
-    "ja": "実サービス生成がオフだったため、今回のリクエストは送信されていません"
+    "zh-Hans": "这次请求未提交，未产生费用",
+    "zh-Hant": "這次請求未送出，未產生費用",
+    "en": "The request was not submitted and no charges were incurred",
+    "ja": "今回のリクエストは送信されていません。料金は発生していません"
   },
   "agent.panel.markFailed": {
     "zh-Hans": "标记为失败",

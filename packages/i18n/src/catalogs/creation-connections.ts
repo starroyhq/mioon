@@ -1677,10 +1677,10 @@ export const connectionMessages = {
     "ja": "サーバーの入力プロファイル評価を取得できていないため、現在送信できるか確認できません。更新して確認してください"
   },
   "connections.generation.subjectProvider": {
-    "zh-Hans": "主体图片视频仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商",
-    "zh-Hant": "主體圖片影片僅接入 Mock 與 Ark 的 doubao-seedance-2-5-260628，不會自動切換至其他模型或服務商",
-    "en": "Subject-image video is integrated only with Mock and Ark’s doubao-seedance-2-5-260628. Models and providers will not switch automatically",
-    "ja": "被写体画像からの動画生成は、Mock と Ark の doubao-seedance-2-5-260628 にのみ対応しています。他のモデルやプロバイダーに自動で切り替えることはありません"
+    "zh-Hans": "主体图片视频仅接入 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商",
+    "zh-Hant": "主體圖片影片僅接入 Ark 的 doubao-seedance-2-5-260628，不會自動切換至其他模型或服務商",
+    "en": "Subject-image video is integrated only with Ark’s doubao-seedance-2-5-260628. Models and providers will not switch automatically",
+    "ja": "被写体画像からの動画生成は、Ark の doubao-seedance-2-5-260628 にのみ対応しています。他のモデルやプロバイダーに自動で切り替えることはありません"
   },
   "connections.generation.subjectProfile": {
     "zh-Hans": "主体输入配置尚未确认，请刷新服务商信息",
@@ -1773,10 +1773,10 @@ export const connectionMessages = {
     "ja": "選択した参照の役割の数が、現在の Mioon アダプターの上限を超えています"
   },
   "connections.generation.issue.count": {
-    "zh-Hans": "参考图数量不符合当前模型限制；首尾帧组合仅接入 Ark 与 Mock",
-    "zh-Hant": "參考圖數量不符合目前模型限制；首尾影格組合僅接入 Ark 與 Mock",
-    "en": "The reference image count does not meet this model’s limits. First-and-last-frame combinations are supported only by Ark and Mock",
-    "ja": "参照画像の数が現在のモデルの制限を満たしていません。最初と最後のフレームの組み合わせは Ark と Mock のみ対応しています"
+    "zh-Hans": "参考图数量不符合当前模型限制；首尾帧组合需要支持首尾帧的模型",
+    "zh-Hant": "參考圖數量不符合目前模型限制；首尾影格組合需要支援首尾影格的模型",
+    "en": "The reference image count does not meet this model’s limits. Choose a model that supports first and last frames for this combination",
+    "ja": "参照画像の数が現在のモデルの制限を満たしていません。この組み合わせには最初と最後のフレームに対応するモデルを選んでください"
   },
   "connections.generation.issue.mime": {
     "zh-Hans": "当前 Mioon 适配器未接入此参考图片格式",
@@ -2042,8 +2042,9 @@ export const connectionMessages = {
   "generation.services.availableCount": {"zh-Hans":"{count} 家可用","zh-Hant":"{count} 家可用","en":"{count} available","ja":"{count} 件利用可能"},
   "generation.services.generalIntro": {"zh-Hans":"已填写密钥、启用且具有可用模型的本机服务。点击名称跳到详情；绿点不代表联网检查或生成已验证。","zh-Hant":"已填寫金鑰、啟用且具有可用模型的本機服務。點選名稱前往詳細資料；綠點不代表連線檢查或生成已驗證。","en":"Local services with an available key, enabled configuration and usable model. Select a name for details. A green dot does not verify connectivity or generation.","ja":"利用可能なキー、有効な設定、使用可能なモデルがあるローカルサービスです。名前を選ぶと詳細に移動します。緑の点は接続や生成の検証を意味しません。"},
   "generation.services.noneAvailable": {"zh-Hans":"暂没有可用的服务，请先配置并启用。","zh-Hant":"目前沒有可用的服務，請先設定並啟用。","en":"No services are available yet. Configure and enable a service first.","ja":"利用可能なサービスはまだありません。設定して有効にしてください。"},
+  "generation.services.configureFirst": {"zh-Hans":"暂没有可用的生成服务，请先在设置里配置并启用。","zh-Hant":"目前沒有可用的生成服務，請先在設定中設定並啟用。","en":"No generation services are available. Configure and enable one in Settings first.","ja":"利用可能な生成サービスがありません。先に設定でサービスを設定し、有効にしてください。"},
+  "generation.services.openSettings": {"zh-Hans":"打开生成服务设置","zh-Hant":"開啟生成服務設定","en":"Open generation service settings","ja":"生成サービス設定を開く"},
   "generation.services.unavailableCount": {"zh-Hans":"其他 {count} 家尚不可用","zh-Hant":"其他 {count} 家尚無法使用","en":"{count} other services are not yet available","ja":"他の {count} 件はまだ利用できません"},
-  "generation.services.simulationHint": {"zh-Hans":"生成占位视频和图片，用来走流程。真实生成关闭时，所有生成都用它。","zh-Hant":"生成預留影片和圖片，用來測試流程。真實生成關閉時，所有生成都使用它。","en":"Creates placeholder videos and images for trying the workflow. All generation uses it while live generation is off.","ja":"ワークフロー確認用の仮の動画と画像を作成します。実生成がオフの間は、すべての生成に使用します。"},
   "generation.services.separateKeys": {"zh-Hans":"每家服务的密钥分开填写：同一家公司的视频和图片服务也要分别填，和 Mio 的密钥互不相通。","zh-Hant":"每家服務的金鑰分開填寫：同一家公司的影片和圖片服務也須分別填寫，與 Mio 的金鑰不互通。","en":"Enter a separate key for each service, including video and image services from the same company. Mio uses its own keys.","ja":"同じ会社の動画と画像サービスも含め、サービスごとにキーを入力してください。Mio のキーとも共有されません。"},
   "generation.services.environment": {"zh-Hans":"环境变量 · 已配置","zh-Hant":"環境變數 · 已設定","en":"Environment variable · configured","ja":"環境変数 · 設定済み"},
   "generation.services.saved": {"zh-Hans":"已保存","zh-Hant":"已儲存","en":"Saved","ja":"保存済み"},

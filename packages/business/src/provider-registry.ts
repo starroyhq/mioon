@@ -1,4 +1,4 @@
-import {INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,evaluateCapabilityLifecycle} from '@mioon/contracts';
+import {AppError,INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,evaluateCapabilityLifecycle} from '@mioon/contracts';
 import {createMockProvider,createMockProviderCapabilities} from './providers/mock.ts';
 import {createRunwayProvider} from './providers/runway.ts';
 import {createArkProvider} from './providers/ark.ts';
@@ -75,6 +75,11 @@ export interface Provider {
   cancel?(providerJobId: string, context: ProviderContext): Promise<unknown>;
 }
 export type ProviderMetadata=Pick<Provider,'id'|'capabilities'>;
+export const isMockGenerationProvider=({id,capabilities}:ProviderMetadata):boolean=>id==='mock'||capabilities.mock===true;
+export const GENERATION_SERVICE_UNAVAILABLE='GENERATION_SERVICE_UNAVAILABLE';
+export function generationServiceUnavailable():AppError {
+ return new AppError(GENERATION_SERVICE_UNAVAILABLE,'暂没有可用的服务，请先在设置里配置并启用生成服务。',409,{mutationOutcome:'not_applied'});
+}
 type CapabilityProfile=NonNullable<ReturnType<typeof getCapabilityProfile>>;
 
 export const providerSettings = Object.freeze({
@@ -151,8 +156,8 @@ export function createProviderRegistry({db,root,env=process.env}: {db: DatabaseS
 /** Application discovery needs no project connection or Mock ledger. Live
  * factories perform no I/O at construction; retain only their public metadata,
  * never any submit/poll/download methods or their mutable caches. */
-export function createProviderCatalog({root,env=process.env}: {root:string;env?:NodeJS.ProcessEnv}) {
- const entries: ProviderMetadata[]=[{id:'mock',capabilities:createMockProviderCapabilities()},
+export function createProviderCatalog({root,env=process.env,mockAllowed=true}: {root:string;env?:NodeJS.ProcessEnv;mockAllowed?:boolean}) {
+ const entries: ProviderMetadata[]=[...(mockAllowed?[{id:'mock',capabilities:createMockProviderCapabilities()}]:[]),
   ...[createRunwayProvider({root,env}),createArkProvider({root,env}),createVeoProvider({root,env}),createMinimaxProvider({root,env}),createViduProvider({root,env})]
    .map(({id,capabilities})=>({id,capabilities}))];
  for(const entry of entries)profileProviders.add(entry);

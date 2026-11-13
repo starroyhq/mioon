@@ -60,7 +60,6 @@ export interface RootControlledModules {
   'PendingSubmission.tsx': typeof import('../../apps/web/src/PendingSubmission.tsx');
   'TimelineSourceBanner.tsx': typeof import('../../apps/web/src/TimelineSourceBanner.tsx');
   'TimelineExportPreflight.tsx': typeof import('../../apps/web/src/TimelineExportPreflight.tsx');
-  'GenerationLiveGateNotice.tsx': typeof import('../../apps/web/src/GenerationLiveGateNotice.tsx');
   'SettingsExtraPages.tsx': typeof import('../../apps/web/src/SettingsExtraPages.tsx');
   'SettingsVideoTools.tsx': typeof import('../../apps/web/src/SettingsVideoTools.tsx');
   'SettingsMediaToolsDownload.tsx': typeof import('../../apps/web/src/SettingsMediaToolsDownload.tsx');

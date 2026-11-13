@@ -48,8 +48,8 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     assert.doesNotMatch(html, /MAX_GENERATIONS|生成次数上限/);
   }
   assert.match(markup.not_configured, /还需配置 2 项，完成后重启服务/);
-  assert.match(markup.disabled, /真实调用未启用/);
-  assert.match(markup.available, /真实生成可能计费/);
+  assert.match(markup.disabled, /此服务未启用/);
+  assert.match(markup.available, /使用此服务生成可能产生费用/);
   assert.match(markup.mock, /不调用付费 AI 服务/);
   assert.match(markup.mock, /输出为测试图案，不会呈现参考图片或提示词描述的内容/);
   assert.match(markup.mock, /data-testid="generation-input-summary"/);

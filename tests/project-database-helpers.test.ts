@@ -650,7 +650,7 @@ test('the assembled application configuration acknowledges only its own committe
   assert.equal(saved.revision, before.revision + 1);
   assert.equal(saved.liveGeneration, true);
   assert.deepEqual(JSON.parse(library.documents.read('workspace-settings-v1.json')!), {
-    formatVersion: 1, revision: saved.revision, liveGeneration: true,
+    formatVersion: 1, revision: saved.revision,
   });
 });
 

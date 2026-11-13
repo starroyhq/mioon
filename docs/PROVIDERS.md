@@ -282,10 +282,10 @@ row accepts the same object with up to 30 images and no `prompt`; see
 [Seedance 2.5 connections](#seedance-25-connections-reviewed-2026-10-30).
 
 Enter the API key, choose its storage scope and explicitly enable the connection.
-The workspace **Real generation** switch must also be enabled in Model services.
-It is checked again immediately before dispatch; disabling it prevents new paid
-submissions and explicit retries, while accepted tasks can still be observed and
-downloaded with their original binding.
+New submissions check the enabled connection and its exact model and credential.
+The UI still requires a paid confirmation. Existing tasks keep their frozen
+binding for querying, downloading and explicit retry; a retry is a new paid
+attempt and needs confirmation.
 Web keys last for the backend lifetime. Desktop can use the existing supported OS
 encrypted storage; unavailable secure storage has no plaintext fallback. Settings
 reads disclose only configuration and storage status. Video keys are isolated from
@@ -405,7 +405,7 @@ The production registry now publishes and enforces [exact model input limits](GE
 ## Separate image profiles
 
 Images remain independent of the video registry. `image.profile.list` returns
-local Mock `mock-image-v1`, the fixed OpenAI `gpt-image-2.5-flare-2026-09-08`
+local Mock `mock-image-v1` in development and tests, the fixed OpenAI `gpt-image-2.5-flare-2026-09-08`
 preset, and the custom `openai-compatible` profile when its base URL/model are
 complete. All use fixed 1024×1024, low quality, opaque PNG, one result. Mock creates
 deterministic visibly labeled local bytes and is not prompt-conditioned. At the accepted first-slice checkpoint `82c70f3` on
@@ -476,7 +476,7 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-Every real provider needs `MIOON_ENABLE_LIVE_PROVIDER=1` and the corresponding server key. Image input also requires approved reference hashes; output-host and regional checks remain enforced. Installing the app or having a ChatGPT plan does not enable live calls.
+For the environment-configured adapters listed here, set `MIOON_ENABLE_LIVE_PROVIDER=1` and supply the corresponding server key. This opt-in is separate from connections configured in [Generation Services](GENERATION-SERVICES.md), which each have their own enabled state. Image input also requires approved reference hashes; output-host and regional checks remain enforced. Installing the app or having a ChatGPT plan does not enable live calls.
 
 | ID | Credential name | Approved-image checksum list | Additional settings |
 | --- | --- | --- | --- |
@@ -499,6 +499,8 @@ Only managed files resolving beneath `root` are read; checksum approval is check
 Downloads are private temporary files followed by atomic rename, with an HTTPS exact-host check, no URL credentials/non-default ports, a 128 MiB streamed size limit, and MP4 `ftyp` verification. The service subsequently probes/decodes the result before publication. Output path checks reject symlinks escaping managed storage before creating directories. CDN requests receive no provider authentication. Failed downloads clear the task cache so the next attempt can GET a fresh output URL without another create POST. Ark/MiniMax/Vidu reject redirects. Veo supports at most three explicitly allowlisted redirects, stripping credentials after the first response, including same-origin hops.
 
 ## Durable simulated provider
+
+Development and test builds can create simulated outputs. Stable builds hide Mock from generation discovery and do not allow new Mock requests; existing simulated media and versions remain usable.
 
 Mock creates independent provider-ledger tables in the supplied Node 24 SQLite database:
 

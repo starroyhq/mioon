@@ -93,7 +93,7 @@ S6-C 2b 消费原生桥：重新指向直接使用 `__mioonAssetMediaNative` 的
 | V4 | 打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
 | S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 404 `UNKNOWN_OPERATION`（旧文件地址为 `NOT_FOUND`） |
 
-`workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置仅保留真实生成开关和修订号，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
+`workspace.restore.inspect` 已完全退役，返回 404 `UNKNOWN_OPERATION`。音频角色和音量包络直接按普通编辑条件使用，不再发能力探测。工作区设置的旧生成字段为客户端兼容保留，不再控制生成，详见 [工作区设置](WORKSPACE-SETTINGS.md)。
 
 项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变；S3-A只限制应用任务索引4096/单项目512条，跨应用运行总量调度留0.1.x，历史/LUT/Mio存量硬限另卡。
 
@@ -492,8 +492,8 @@ The same `image.generate` accepts paired `purpose:"edit"` and
 backend validates one project-owned managed PNG (8 MiB, maximum 1024 per edge,
 opaque 8-bit RGB/RGBA) and derives immutable source provenance. Omit both fields
 for the existing text-generation shape. Custom-compatible/Comfy editing, masks
-and identity/pixel guarantees are outside this profile. Mock remains a static
-test card. Official edits require the existing private user review; preparation
+and identity/pixel guarantees are outside this profile. The static Mock card is
+available for new requests in development and tests. Official edits require the existing private user review; preparation
 also performs bounded local source-byte validation. Keep the exact request key
 through uncertain outcomes. See [single-PNG editing](IMAGE-EDITING.md) for the
 strict source/output contract, disclosure and current verification status.
@@ -1169,7 +1169,7 @@ downloads, while `export.create`/`timeline.render` can later run local FFmpeg.
 Metadata and MCP annotations are not authorization, budget approval or automatic
 retry permission. Exact stable-request replay behavior is unchanged.
 
-`provider.list` includes `modelCapabilities`, `status` (`available`, `disabled`, `not_configured`), `configuration.missing`, `configuration.requirements`, `liveVerified` and the local generation-count budget. Provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, `vidu`. Configuration values and credentials are never returned. Capabilities can change as local count limits are consumed; re-read before new work.
+`provider.list` includes `modelCapabilities`, `status` (`available`, `disabled`, `not_configured`), `configuration.missing`, `configuration.requirements` and `liveVerified`. Provider IDs are `runway`, `ark`, `veo`, `minimax`, `vidu`, plus `mock` in development and tests. Stable builds omit Mock from video and image discovery and reject new Mock tasks with `GENERATION_SERVICE_UNAVAILABLE`; previously published media, versions and original receipts remain readable. Configuration values and credentials are never returned.
 
 Zero references means text input; one approved image means first-frame input. Each model controls which mode, MIME types, dimensions, aspect ratios, durations and advanced parameters are accepted. Unsupported inputs fail before creating a job. Seed is not accepted for Ark/Veo/MiniMax/Vidu in this version; inspect each model's `parameters` array.
 
