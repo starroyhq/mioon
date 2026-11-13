@@ -20,9 +20,13 @@ function nodes(value: unknown): Element[] {return Array.isArray(value) ? value.f
 function invoke(element: Element, method: string, ...args: unknown[]) {const callback = element.props[method]; assert.equal(typeof callback, 'function'); return (callback as (...args: unknown[]) => unknown)(...args);}
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 const flush = async () => {for (let index = 0; index < 6; index++) await new Promise<void>(resolve => setImmediate(resolve));};
-function fixture({check, write}: Partial<VideoSettingsClient> = {}) {
+function fixture({check, write, storage}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']} = {}) {
   const a = newVideoConnection('compatible'), b = newVideoConnection('compatible'); a.name = 'A'; b.name = 'B'; a.baseUrl = b.baseUrl = 'https://api.example.com/v1';
   let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'session'}})), storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
+  if (storage) {
+    snapshot.storage = storage;
+    snapshot.connections[0]!.secret.storage = 'persistent';
+  }
   const keyA = `video:${a.id}`, keyB = `video:${b.id}`;
   const hooks = new Map<string, Hook[]>(), inputs = new Map<string, {value: string}>(), trees = new Map<string, unknown>(), reports: navigation.SettingsNavigationState[] = [];
   let context = 'domain', cursor = 0, effects: Array<() => void> = [], pageVisible = true, selected = keyA, locale = 'zh-Hans', confirmValue: boolean | Promise<boolean> = true, interaction = true, domain: GenerationServiceDomain;
@@ -95,6 +99,24 @@ test('an address edit clears only its own password and old detail callbacks cann
   const f = fixture(); await flush(); f.render(); f.type(f.keyA, 'synthetic-dom-A'); const stale = f.find(f.keyA, 'video-connection-name');
   f.select(f.keyB); f.type(f.keyB, 'synthetic-dom-B'); invoke(stale, 'onChange', {target: {value: 'Hidden mutation'}}); f.render(); assert.equal(f.domain().services.find(service => service.key === f.keyA)!.label, 'A');
   invoke(f.find(f.keyB, 'video-connection-base-url'), 'onChange', {target: {value: 'https://other.example.com/v1'}}); f.render(); assert.equal(f.inputs.get(f.keyA)!.value, 'synthetic-dom-A'); assert.equal(f.inputs.get(f.keyB)!.value, ''); f.unmount();
+});
+
+test('only a saved persistent video key blocked by system storage displays Keychain guidance', async () => {
+  for (const storage of [
+    {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'},
+    {persistentAvailable: true, sessionScope: 'app', reasonCode: null},
+    {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'},
+  ] as const) {
+    const f = fixture({storage}); await flush(); f.render();
+    const keychain = (key: string) => f.all(key).find(node => node.props['data-testid'] === 'video-key-storage-unavailable');
+    for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+      f.locale(locale);
+      assert.deepEqual(keychain(f.keyA)?.props.children, storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' ? [`${locale}:tasks.error.videoSecretStore`] : undefined);
+      assert.equal(keychain(f.keyB), undefined);
+      assert.equal(f.inputs.get(f.keyA)?.value, '');
+    }
+    f.unmount();
+  }
 });
 
 test('every built-in and custom detail has one derived read-only endpoint that updates locally without a provider request', async () => {

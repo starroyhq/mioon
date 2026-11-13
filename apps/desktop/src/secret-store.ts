@@ -65,7 +65,7 @@ interface NativeInvoke {
   decryptStringAsync(value: Buffer): Promise<{result: string; shouldReEncrypt: boolean}>;
 }
 
-// Shared by Agent, Images and replacement codecs for the same Electron module.
+// Shared by Agent, Images, Video and replacement codecs for the same Electron module.
 // A caller deadline never releases a slot owned by an unsettled native Promise.
 const vaultStates = new WeakMap<object, VaultState>();
 
@@ -120,7 +120,8 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
     state.inFlight++;
     return new Promise<T>((resolve, reject) => {
       let settled = false;
-      const current = () => !settled && !signal.aborted && state.epoch === epoch && options.isActive?.() !== false;
+      const current = () => !settled && !signal.aborted && performance.now() < deadline &&
+        state.epoch === epoch && options.isActive?.() !== false;
       const failVault = () => {
         // Cancellation belongs to one request. Only a current native failure
         // may invalidate the shared initializer and other owners' operations.
@@ -132,7 +133,9 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
         if (error) reject(error);
         else resolve(value as T);
       };
-      const expired = () => { if (!settled) { failVault(); finish(vaultError()); } };
+      // The Keychain prompt can remain open after this request expires. A fresh
+      // request may prove the vault is usable once the user grants access.
+      const expired = () => finish(vaultError());
       const aborted = () => finish(vaultError());
       const timer = setTimeout(expired, timeout);
       signal.addEventListener('abort', aborted, {once: true});

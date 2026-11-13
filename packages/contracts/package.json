@@ -48,6 +48,7 @@
     "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts",
     "./agent-provider-catalog": "./src/agent-provider-catalog.ts",
     "./agent-connection-settings": "./src/agent-connection-settings.ts",
+    "./video-credential-diagnostic": "./src/video-credential-diagnostic.ts",
     "./agent-model-list": "./src/agent-model-list.ts"
   },
   "dependencies": {
