@@ -8,7 +8,7 @@ import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.t
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {taskDisplayEntries,taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {taskCurrentEntries,taskDisplayEntries,taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
 import {translate} from '../packages/i18n/src/index.ts';
 
 const now='2026-10-21T00:00:00.000Z';
@@ -68,6 +68,48 @@ test('clip display exposes only changed timing, transform, audio values and a ba
   assert.doesNotMatch(JSON.stringify(display),/DO_NOT_EXPOSE|PRIVATE_TABLE|MODEL_SUMMARY|UNDO_MUST|private\/project/u);assert.deepEqual(original,copy);
   const muted=projectAgentTaskChangeDisplay(change('timeline.clip.update','timeline_clip',{gain:1},{gain:0}));assert.equal(muted.fields[0]?.after,'muted');
   const tiny=projectAgentTaskChangeDisplay(change('timeline.clip.update','timeline_clip',{gain:1},{gain:1.0001}));assert.equal(tiny.fields.length,1);assert.notEqual(tiny.fields[0]?.before,tiny.fields[0]?.after);
+});
+test('clip previews and audit retain the valid ultrawide basis values and reject out-of-range axes',()=>{
+  const rect={x:0,y:0,width:2520,height:1080},id=randomUUID();
+  const pending=projectAgentTaskStepDisplay(step('mioon_timeline_clip_add',{rect}));
+  assert.equal(pending?.fields.find(field=>field.property==='width')?.after,2520);
+  const audit=projectAgentTaskChangeDisplay(change('timeline.clip.add','timeline_clip',null,{rect}));
+  assert.equal(audit.fields.find(field=>field.property==='width')?.after,2520);
+  const atEdge=projectAgentTaskStepDisplay(step('mioon_timeline_clip_update',{clipId:id,patch:{rect:{x:2518,y:1918,width:2,height:2}}}));
+  assert.deepEqual(atEdge?.fields.map(({property,after})=>[property,after]),[['positionX',2518],['positionY',1918],['width',2],['height',2]]);
+  for(const rect of [{x:2520,y:1920,width:2522,height:1922},{x:-2,y:1.5,width:NaN,height:Infinity}]){
+    const invalid=projectAgentTaskStepDisplay(step('mioon_timeline_clip_add',{rect}));
+    assert.deepEqual(invalid?.fields,[]);
+  }
+});
+test('canvas format confirmation and audit display only canonical dimensions on the retained timeline target',()=>{
+  const id=randomUUID(),target={kind:'timeline',id},portrait={fps:30,width:1080,height:1920},wide={fps:30,width:2520,height:1080};
+  const command=step('mioon_timeline_format_set',{presetId:'ultrawide_1080',expectedRevision:4,expectedProjectRevision:5,width:9999,aspectRatio:'PRIVATE_RATIO'},target);
+  const planned=projectAgentTaskStepDisplay(command,()=>portrait,true);assert.ok(planned);
+  assert.deepEqual(planned.fields,[
+    {targetIndex:0,property:'aspectRatio',unit:'ratio',after:'21:9',current:'9:16'},
+    {targetIndex:0,property:'width',unit:'pixels',after:2520,current:1080},
+    {targetIndex:0,property:'height',unit:'pixels',after:1080,current:1920},
+  ]);
+  const audit=projectAgentTaskChangeDisplay(change('timeline.format.set','timeline',{...portrait,aspectRatio:'PRIVATE_RATIO'},wide));
+  assert.deepEqual(audit.fields.map(({property,before,after})=>[property,before,after]),[['aspectRatio','9:16','21:9'],['width',1080,2520],['height',1920,1080]]);
+  for(const display of [planned,audit]){
+    assert.ok(agentTaskDisplaySchema.safeParse(display).success);
+    assert.doesNotMatch(JSON.stringify(display),/9999|PRIVATE_RATIO|expectedRevision|presetId/u);
+    for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+      const entries=taskDisplayEntries(display,locale);
+      const px=(value:number)=>translate(locale,'agent.display.unit.pixels',{value:new Intl.NumberFormat(locale).format(value)});
+      const labels=['agent.display.field.aspectRatio','agent.display.field.width','agent.display.field.height'] as const;
+      assert.deepEqual(entries.map(entry=>entry.label),labels.map(label=>translate(locale,label)));
+      assert.deepEqual(entries.map(entry=>entry.value),display===planned?['21:9',px(2520),px(1080)]:['9:16 → 21:9',`${px(1080)} → ${px(2520)}`,`${px(1920)} → ${px(1080)}`]);
+    }
+  }
+  assert.equal(taskCurrentEntries(planned,'en')[0]?.value,'9:16');
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:'PRIVATE_PRESET',...wide},target))?.fields,[]);
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:wide},target))?.fields,[]);
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:'ultrawide_1080'}))?.fields,[]);
+  assert.deepEqual(projectAgentTaskChangeDisplay(change('timeline.format.set','timeline',{...wide,width:9999,presetId:'ultrawide_1080'},{...portrait,fps:60})).fields,[]);
+  assert.deepEqual(taskDisplayEntries({...planned,fields:[{targetIndex:0,property:'width',unit:'pixels',after:9999},{property:'height',unit:'pixels',after:1080}]},'en'),[]);
 });
 test('shot description and subtitle are the only prose fields, normalized and bounded; other operations have no field values',()=>{
   const targetId=randomUUID(),prose=`A scene\u202e /private/hidden.mov ${targetId} bearer SYNTHETIC_LONG_VALUE apiKey=SYNTHETIC_VALUE ${'景'.repeat(300)}`;
