@@ -39,7 +39,7 @@ export type VideoSettingsUpdateV2 = z.infer<typeof videoSettingsUpdateV2Schema>;
 
 export const videoStorageV2Schema = z.object({
   persistentAvailable: z.boolean(), sessionScope: z.enum(['app', 'server']),
-  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT']).nullable(),
+  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable(),
 }).strict().superRefine((storage, context) => {
   if (storage.persistentAvailable !== (storage.reasonCode === null)) context.addIssue({code: 'custom', message: 'Storage availability and reason must agree.'});
 });

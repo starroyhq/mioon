@@ -32,6 +32,12 @@ export const connectionMessages = {
     "en": "The system provides only basic_text, which cannot securely persist keys. Keys remain only for this app session",
     "ja": "システムでは basic_text のみ利用でき、安全に永続保存できません。キーは今回のアプリ実行中のみ保持されます"
   },
+  "connections.storage.keychainPending": {
+    "zh-Hans": "正在等待钥匙串。如果 macOS 弹出授权窗口，请允许 Mioon 访问钥匙串。",
+    "zh-Hant": "正在等待鑰匙圈。如果 macOS 顯示授權視窗，請允許 Mioon 存取鑰匙圈。",
+    "en": "Waiting for Keychain. If macOS prompts you, allow Mioon to access Keychain.",
+    "ja": "キーチェーンへのアクセスを待っています。macOSで確認が表示されたら、Mioonによるキーチェーンへのアクセスを許可してください。"
+  },
   "connections.storage.unavailableReason": {
     "zh-Hans": "系统安全存储不可用，不能持久保存；可选择仅本次运行",
     "zh-Hant": "系統安全儲存無法使用，不能持久儲存；可選擇僅本次執行",

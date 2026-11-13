@@ -75,7 +75,9 @@ const arrayValue=(value: unknown): unknown[]=>Array.isArray(value)?value:[];
 const isThenable=(value: unknown): value is PromiseLike<unknown>=>value!==null&&(typeof value==='object'||typeof value==='function')&&typeof (value as {then?: unknown}).then==='function';
 const isKnownAgentTaskBlock=(error: unknown): boolean=>isAgentTaskEffectBlocked(error)&&['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??'');
 
-export function startWorker(inputStore: ServiceStore,services: Services,providers: ReadonlyMap<string,Provider>,{signal:ownerSignal}: {signal?: AbortSignal}={}): Worker {
+export function startWorker(inputStore: ServiceStore,services: Services,providers: ReadonlyMap<string,Provider>,{
+ signal:ownerSignal,subscribeVideoStorageAvailable,
+}: {signal?: AbortSignal;subscribeVideoStorageAvailable?:(listener:()=>void)=>()=>void}={}): Worker {
  const store: JobsStore=inputStore as unknown as JobsStore;
  assertProjectStore(inputStore);
  const ownerProjectId=inputStore.projectId;
@@ -83,6 +85,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  const backgroundTasks=createProjectBackgroundState(inputStore);
  let stopped=Boolean(ownerSignal?.aborted),cycle: Promise<void>|null=null,stopping: Promise<void>|undefined,shutdownFailure: unknown;
  const operations=new Set<AbortController>(),floatClaims=createFloatTimelineAttemptRegistry();
+ const credentialRetries=new Map<string,{cause:string;delay:number;storageEpoch:number}>();
+ let storageEpoch=0;
  const invalidCandidates=new Map<string,{ref:BackgroundTaskRef;frozenJob?:string}>();
  const frozenJobIdentity=(job: Record<string,unknown>): string=>createHash('sha256').update(JSON.stringify([
   ...['id','projectId','shotId','providerId','model','requestId','requestHash','retryOfJobId'].map(name=>[name,typeof job[name],job[name]??null]),['snapshot',job.snapshot],
@@ -222,7 +226,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    continue;
   }
   if(job&&job.status==='submitting')saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});
-  else if(job&&(job.status==='submission_unknown'||['connection_required','connection_retrying'].includes(job.phase??'')&&['queued','running','downloading'].includes(job.status)))services.saveJob(job,{nextPollAt:0});
+  else if(job&&['queued','running','downloading','submission_unknown'].includes(job.status)){
+   const cause=property(property(job.error,'diagnostic'),'cause');
+   // Restart can reload an uncertain settings save or classify a legacy error once.
+   const resume=job.phase==='connection_required' ? cause===undefined||cause==='VIDEO_SETTINGS_SAVE_FAILED'
+    : job.phase==='connection_retrying' ? cause==='VIDEO_CREDENTIAL_UNAVAILABLE' : job.status==='submission_unknown';
+   if(resume)services.saveJob(job,{nextPollAt:0});
+  }
  }
  for(const ref of backgroundTasks.snapshot().filter(task=>task.kind==='export')){const e=workerExport(ref.taskId);if(e?.status==='running')tx(()=>{
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
@@ -239,7 +249,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   let acceptedProviderId: string|null=null,guardJob=j,postPermitted=false,blockedGate=false;
   const submissionCount=numberValue(j.submissionCount)??0;
   const nextPollAt=numberValue(j.nextPollAt);
-  if(nextPollAt&&Date.now()<nextPollAt)return;
+  const retry=credentialRetries.get(j.id);
+  const attemptStorageEpoch=storageEpoch;
+  const waitingOnStorage=j.phase==='connection_retrying'&&property(property(j.error,'diagnostic'),'cause')==='VIDEO_SETTINGS_STORAGE_UNAVAILABLE';
+  if(nextPollAt&&Date.now()<nextPollAt){
+   if(!waitingOnStorage||(retry?.storageEpoch??0)>=attemptStorageEpoch)return;
+   const woken=saveGenerationGuarded(j,{nextPollAt:0});
+   if(!woken)return;
+   j=woken as JobRecord;guardJob=j;
+  }
   try {
    const localOwner=registeredProjectStore(root),localComplete=j.status==='downloading'&&localOwner?readOutputArtifact(localOwner,{kind:'generation',id:j.id,requestId:j.requestId,inputHash:j.requestHash},'generation',outputArtifactDigest(JSON.stringify([j.projectId,j.id,j.requestId,j.requestHash,j.providerId,j.providerJobId,j.model,j.snapshot]))):null;
    provider=localComplete?providers.get(j.providerId):services.resolveGenerationProvider?services.resolveGenerationProvider(j):providers.get(j.providerId);
@@ -306,6 +324,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     (context as unknown as {validateReferenceState: ()=>void}).validateReferenceState=assertClaim;
     const accepted: unknown=await awaitProvider(()=>provider!.submit({...j!.snapshot,referenceAssets,...(referenceAudios.length?{referenceAudios}:{})},context as never),signal,{submit:true});
     acceptedProviderId=stringValue(property(recordValue(accepted),'providerJobId'))??null;
+    credentialRetries.delete(j.id);
     // Receipt persistence is the sole intentional write permitted after abort.
     // awaitProvider only delivers receipts inside its bounded settlement window.
     const latest=recordValue(get('jobs',j.id)) as JobRecord|null;
@@ -322,6 +341,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
    if(j.status==='running') {
     const remote=await awaitProvider(()=>provider!.poll(String(j!.providerJobId),context as never),signal);checkpoint(signal);
+    credentialRetries.delete(j.id);
     const latestStatus=stringValue(property(get('jobs',j.id),'status'));
     if(latestStatus==='cancelled')return;
     if(remote.status==='failed'){services.saveJob(j,{status:'failed',phase:'provider_failed',error:typeof remote.error==='object'?remote.error:{code:'GENERATION_FAILED',message:remote.error||'供应商任务失败',retryable:true}});return;}
@@ -397,6 +417,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
         return markProjectOutputRegistered(projectOwner, published.publication, {signal});
       });
     } else commit();
+    credentialRetries.delete(j.id);
    }
   } catch(error) {
    if(isBackgroundTaskIndexUncertain(error))return;
@@ -412,23 +433,29 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const cancelled=isAgentTaskJobStopped(store.db,'job',j.id);if(j.status==='submitting'||j.status==='queued'&&cancelled)saveGenerationGuarded(guardJob,{status:cancelled?'cancelled':'queued',phase:cancelled?'cancelled_before_dispatch':'waiting',submissionCount,error:null,nextPollAt:0});
     return;
    }
-   const credentialDiagnostic=videoCredentialDiagnostic(error);
-   if(credentialDiagnostic||errorCode?.startsWith('VIDEO_SETTINGS_')){
+   const recordedDiagnostic=videoCredentialDiagnostic(error);
+   const credentialDiagnostic=recordedDiagnostic??(errorCode?.startsWith('VIDEO_SETTINGS_')
+    ? videoCredentialDiagnostic({code:'VIDEO_CREDENTIAL_UNAVAILABLE'}) : undefined);
+   if(credentialDiagnostic){
     if(signal.aborted&&j.status!=='submitting')return;
     // A paused user-action task releases its background lease. A transient
     // failure must retain that lease so the scheduled observation can run.
-    const automatic=credentialDiagnostic?.recovery==='automatic';
+    const automatic=credentialDiagnostic.recovery==='automatic';
     const definitelyUnsubmitted=j.status==='submitting'&&!postPermitted&&!acceptedProviderId
      &&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
     const unconfirmedSubmit=j.status==='submitting'&&!definitelyUnsubmitted;
-    if(latest)saveGenerationGuarded(latest,{
+    const delay=retry?.cause===credentialDiagnostic.cause?Math.min(retry.delay*2,300_000):5_000;
+    const scheduledAt=credentialDiagnostic.cause==='VIDEO_SETTINGS_STORAGE_UNAVAILABLE'&&attemptStorageEpoch<storageEpoch?0:Date.now()+delay;
+    if(latest&&saveGenerationGuarded(latest,{
      ...(definitelyUnsubmitted?{status:'queued',submissionCount}:unconfirmedSubmit?{status:'submission_unknown',...(acceptedProviderId?{providerJobId:acceptedProviderId}:{})}:{}),
      phase:unconfirmedSubmit?'reconciliation_required':automatic?'connection_retrying':'connection_required',
-     error:credentialDiagnostic?{code:errorCode??credentialDiagnostic.cause,message:'视频任务无法使用原连接。',retryable:automatic,diagnostic:credentialDiagnostic}:safeError(error),
-     nextPollAt:Date.now()+5000,
-    });
+     error:{code:recordedDiagnostic&&errorCode?errorCode:'VIDEO_CREDENTIAL_UNAVAILABLE',message:'视频任务无法使用原连接。',retryable:automatic,diagnostic:credentialDiagnostic},
+     nextPollAt:automatic||unconfirmedSubmit?scheduledAt:Number.MAX_SAFE_INTEGER,
+    })&&automatic&&!unconfirmedSubmit)credentialRetries.set(j.id,{cause:credentialDiagnostic.cause,delay,storageEpoch:attemptStorageEpoch});
+    else credentialRetries.delete(j.id);
     return;
    }
+   credentialRetries.delete(j.id);
    if(j.status==='submitting') {
     if(isGenerationPreflightFailure(error)&&!acceptedProviderId){
      // This fence ran before fetch, so no attempt was dispatched. Do not
@@ -639,21 +666,26 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  function tick(): Promise<void> {
   if(stopped)return Promise.resolve();
   if(cycle)return cycle;
-  cycle=(async()=>{
+  cycle=Promise.resolve().then(async()=>{
    try {
     // Projection does not grant authority or classify failures of its gate.
     // Recheck only agent-blocked queued candidates through the original gate:
     // ordinary denials skip one candidate; audit/storage faults stop the cycle.
     verifyInvalidCandidates();
+    for(const id of credentialRetries.keys()){
+     const row=recordValue(get('jobs',id));
+     if(row?.phase!=='connection_retrying'||!['queued','running','downloading','submission_unknown'].includes(String(row.status)))credentialRetries.delete(id);
+    }
     for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='job'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const job=recordValue(get('jobs',ref.taskId)) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status)&&(ref.keepAlive||job.status==='queued'))await advance(job,processJob as WorkerOperation);verifyInvalidCandidates();}
     if(stopped)return;
     for(const ref of backgroundTasks.snapshot()){if(ref.kind!=='export'||!ref.keepAlive&&!ref.reason?.startsWith('AGENT_'))continue;const e=workerExport(ref.taskId);if(e&&!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);verifyInvalidCandidates();}
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
-  })().finally(()=>{cycle=null;});
+  }).finally(()=>{cycle=null;});
   return cycle;
  }
  const timer=setInterval(tick,200);
- const abort=(): void=>{stopped=true;clearInterval(timer);for(const controller of operations)controller.abort();};
+ const unsubscribeStorage=stopped?undefined:subscribeVideoStorageAvailable?.(()=>{storageEpoch++;void tick();});
+ const abort=(): void=>{if(!stopped)unsubscribeStorage?.();stopped=true;clearInterval(timer);for(const controller of operations)controller.abort();};
  ownerSignal?.addEventListener('abort',abort,{once:true});
  if(stopped)clearInterval(timer);else void tick();
  return {

@@ -206,13 +206,17 @@ for (const platform of ['linux', 'darwin'] as const) test('Images utility client
   assert.deepEqual(pair.port.sent.map(value => value.operation), ['status', 'status', 'encrypt', 'status', 'decrypt']);
   const detached = pair.client.storage(); (detached as {persistentAvailable: boolean}).persistentAvailable = false;
   assert.equal(pair.client.storage().persistentAvailable, true);
-  safeStorage.isEncryptionAvailable = () => false;
-  await assert.rejects(async () => pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.equal(pair.port.sent.at(-1)?.operation, 'status');
-  assert.equal(pair.client.storage().persistentAvailable, false);
-  safeStorage.isEncryptionAvailable = () => true;
-  if (platform === 'darwin') await assert.rejects(async () => pair.client.decrypt(encrypted), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  else assert.equal(await pair.client.decrypt(encrypted), plaintext, 'Linux availability recovery preserves the same ciphertext');
+  if (platform === 'darwin') {
+    safeStorage.isAsyncEncryptionAvailable = async () => { assert.fail('A ready vault must not issue another probe'); };
+    assert.equal(await pair.client.decrypt(encrypted), plaintext);
+  } else {
+    safeStorage.isEncryptionAvailable = () => false;
+    await assert.rejects(async () => pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+    assert.equal(pair.port.sent.at(-1)?.operation, 'status');
+    assert.equal(pair.client.storage().persistentAvailable, false);
+    safeStorage.isEncryptionAvailable = () => true;
+    assert.equal(await pair.client.decrypt(encrypted), plaintext, 'Linux availability recovery preserves the same ciphertext');
+  }
   const restarted = connected(fakeVault(), platform); t.after(() => restarted.close());
   assert.equal(await restarted.client.decrypt(encrypted), plaintext);
 });
@@ -271,11 +275,12 @@ function fakeChild(): FakeChild {
   return child;
 }
 
-test('supervisor serves Images startup status and fences crypto across child replacement', async () => {
+test('supervisor serves Images startup status and fences crypto across child replacement', async t => {
   const first = fakeChild(), second = fakeChild(), codec = imageCodec(); let next = first;
   const supervisor = new BackendSupervisor({fork: (() => next) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: {}, imageSecretCodec: codec} as unknown as SupervisorOptions);
+  t.after(() => supervisor.stop());
   const starting = supervisor.start({} as Parameters<typeof supervisor.start>[0]);
-  first.emit('message', request()); await nextTurn(); await starting;
+  first.emit('message', request()); await nextTurn(); await starting; await nextTurn();
   assert.equal((first.sent.find(value => value.type === 'image-secret-codec-response')?.data as {sessionScope?: string} | undefined)?.sessionScope, 'server');
   const encrypted = await codec.encrypt(plaintext), before = first.sent.length;
   first.emit('message', request('decrypt', {input: encrypted})); first.emit('exit', 1);
@@ -285,7 +290,6 @@ test('supervisor serves Images startup status and fences crypto across child rep
   first.emit('message', request('decrypt', {input: encrypted}));
   second.emit('message', request()); await nextTurn();
   assert.equal(second.sent.at(-1)?.ok, true); assert.equal(first.sent.length, before);
-  await supervisor.stop();
 });
 
 for (const platform of ['linux', 'darwin'] as const) test('utility engine persists only ciphertext and drops session Images credentials at utility close (' + platform + ')', async t => {
@@ -302,7 +306,11 @@ for (const platform of ['linux', 'darwin'] as const) test('utility engine persis
   await engine.close();
   engine = await createImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage} as unknown as Parameters<typeof createImageSettings>[0]);
   assert.equal((await engine[IMAGE_CREDENTIAL_ACQUIRE]({expectedRevision: saved.revision, configuration: saved.configuration})).apiKey, SENTINEL);
-  safeStorage.isEncryptionAvailable = () => false;
+  if (platform === 'linux') safeStorage.isEncryptionAvailable = () => false;
+  else {
+    safeStorage.encryptStringAsync = async () => { throw Error('Synthetic vault failure'); };
+    await assert.rejects(pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  }
   const locked = await engine.get(); assert.equal(locked.storage.persistentAvailable, false);
   const session = await engine.put({expectedRevision: locked.revision, configuration: locked.configuration,
     secret: {action: 'replace', storage: 'session', value: SENTINEL}});

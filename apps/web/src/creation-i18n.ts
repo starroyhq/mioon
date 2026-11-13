@@ -35,7 +35,8 @@ const videoConnectionDetails = {
   VIDEO_SETTINGS_DELETED: 'tasks.error.videoConnectionDeleted',
   VIDEO_SETTINGS_UNAVAILABLE: 'tasks.error.videoSettingsUnavailable',
   VIDEO_BINDING_INVALID: 'tasks.error.videoBindingInvalid',
-  VIDEO_CREDENTIAL_UNAVAILABLE: 'tasks.error.videoCredentialTemporary',
+  VIDEO_CREDENTIAL_UNAVAILABLE: 'tasks.error.videoCredentialUnavailable',
+  VIDEO_CREDENTIAL_INVALID: 'tasks.error.videoCredentialInvalid',
 } as const;
 
 export function videoJobConnection(job: JobDisplay | null | undefined) {
@@ -52,7 +53,8 @@ export function videoJobConnection(job: JobDisplay | null | undefined) {
     status: message(requiresAction ? 'tasks.status.videoConnectionRequired' : 'tasks.status.videoConnectionWaiting'),
     detail: message(cause ? videoConnectionDetails[cause] : 'tasks.error.videoConnectionUnclassified'),
     continuation: cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' ? message('tasks.error.videoKeychainContinues') : null,
-    result: hasProviderTask ? message(cause === 'VIDEO_SETTINGS_NOT_CONFIGURED' || cause === 'VIDEO_SETTINGS_DELETED'
+    canCheckAgain: hasProviderTask && (job.status === 'running' || job.status === 'downloading'),
+    result: hasProviderTask ? message(cause === 'VIDEO_SETTINGS_CORRUPT' || cause === 'VIDEO_SETTINGS_NOT_CONFIGURED' || cause === 'VIDEO_SETTINGS_DELETED'
       ? 'tasks.error.videoResultAtProvider' : 'tasks.error.videoOriginalTaskRetained') : null,
   };
 }

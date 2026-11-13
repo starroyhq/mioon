@@ -134,6 +134,7 @@ function VideoServiceDetail(props: DetailProps) {
         {check.draft && <p className="helper muted">{t('settings.draftKey.resultHint')}</p>}
       </div>}
       <p>{t(saved?.secret.configured ? 'video.providers.configured' : 'video.providers.unconfigured')}</p>
+      {state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING' && <p className="helper muted" role="status" data-testid="video-keychain-pending">{t('connections.storage.keychainPending')}</p>}
       {saved?.secret.storage === 'persistent' && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' && <p className="helper muted" role="status" data-testid="video-key-storage-unavailable">{t('tasks.error.videoSecretStore')}</p>}
       {draft.secretAction === 'replace' && !draft.hasKey && <p role="status" data-testid="video-key-required">{t('generation.services.video.keyRequired')}</p>}
       <label>{t('video.providers.storage')}<WorkbenchSelect data-testid="video-key-storage" value={draft.storage} onChange={event => {if (usable()) session?.setStorage(draft.key, event.target.value as GenerationVideoDraft['storage']);}}><option value="">{t('video.providers.chooseStorage')}</option><option value="session">{t('video.providers.session')}</option><option value="persistent" disabled={!state.snapshot?.storage.persistentAvailable}>{t('video.providers.persistent')}</option></WorkbenchSelect></label><p className="helper muted">{t('connections.sessionLoss')}</p>

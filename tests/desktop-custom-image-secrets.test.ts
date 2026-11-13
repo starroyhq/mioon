@@ -129,7 +129,8 @@ for (const platform of ['linux', 'darwin'] as const) test('two utility engines s
   assert.equal((await official[IMAGE_CREDENTIAL_ACQUIRE](expected(a))).apiKey, 'synthetic-official');
   await custom.close(); custom = await createCustomImageSettingsV2({persistence: customFile, ...options});
   assert.equal((await custom.acquire(customExpected(b))).apiKey, SENTINEL);
-  vault.isEncryptionAvailable = () => false;
+  if (platform === 'linux') vault.isEncryptionAvailable = () => false;
+  else vault.encryptStringAsync = async () => { throw Error('Synthetic vault failure'); };
   const update={expectedRevision:1,connectionId,expectedConfigurationRevision:1,name:'Custom',configuration:config};
   await assert.rejects(async () => custom.put({...update,secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.equal((await custom.get()).connections[0].secret.storage, 'persistent'); assert.deepEqual(officialFile.value, savedOfficial);
