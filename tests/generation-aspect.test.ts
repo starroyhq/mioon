@@ -322,5 +322,11 @@ test('project-addressed HTTP preserves the aspect conflict proof in web and CLI 
   const job = await cli.rpc<JobRecord>('generation.submit', acceptedInput, {projectId});
   assert.equal(job.snapshot.aspectRatio, '9:16');
   assert.equal(job.requestId, acceptedInput.requestId);
-  assert.deepEqual(await cli.rpc('generation.submit', acceptedInput, {projectId}), job);
+  // The worker can advance the job between HTTP requests.
+  const replayed = await cli.rpc<JobRecord>('generation.submit', acceptedInput, {projectId});
+  const acceptedIdentity = ({id, projectId, shotId, requestId, requestHash, providerId, model, snapshot}: JobRecord) =>
+    ({id, projectId, shotId, requestId, requestHash, providerId, model, snapshot});
+  assert.deepEqual(acceptedIdentity(replayed), acceptedIdentity(job));
+  const jobs = await cli.rpc<JobRecord[]>('job.list', {projectId});
+  assert.deepEqual(jobs.map(acceptedIdentity), [acceptedIdentity(job)]);
 });
