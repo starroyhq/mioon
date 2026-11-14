@@ -1,5 +1,5 @@
 import {randomBytes, randomUUID} from 'node:crypto';
-import {closeSync, constants, copyFileSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, realpathSync, renameSync, rmSync} from 'node:fs';
+import {closeSync, constants, copyFileSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, realpathSync, renameSync, rmSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -372,13 +372,19 @@ function checkProjectVersion(format: unknown, maximum: ProjectFileFormat): Proje
 const projectFormatMaximum = (format4?: Format4Options): ProjectFileFormat =>
   format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
 
+type AssertProjectFileObservation = (info: BigIntStats) => void;
+
 /** Reads the 100-byte SQLite header without SQLite, so a file that is not a
  * project file (history.db and cache.db included) is never opened as one and
  * SQLite never rolls back a journal out of order. */
-function checkHeader(projectFile: string, maximum: ProjectFileFormat): ProjectFileFormat {
+function checkHeader(projectFile: string, maximum: ProjectFileFormat, assertObservation?: AssertProjectFileObservation): ProjectFileFormat {
   const fd = openSync(projectFile, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
-    if (!fstatSync(fd).isFile()) throw invalid('project', 'not-a-regular-file');
+    if (assertObservation) {
+      const info = fstatSync(fd, {bigint: true});
+      if (!info.isFile()) throw invalid('project', 'not-a-regular-file');
+      assertObservation(info);
+    } else if (!fstatSync(fd).isFile()) throw invalid('project', 'not-a-regular-file');
     const header = Buffer.alloc(100);
     const length = readSync(fd, header, 0, header.length, 0);
     if (length < header.length || header.toString('latin1', 0, 16) !== SQLITE_MAGIC || header.readUInt32BE(68) !== PROJECT_FILE_APPLICATION_ID) {
@@ -404,19 +410,20 @@ export function inspectProjectFormatReadOnly(requested: string, format4?: Format
   return inspectProjectFile(requested, projectFormatMaximum(format4));
 }
 
-function checkReadableProjectHeader(projectFile: string, before: BigIntStats, maximum: ProjectFileFormat): ProjectFileFormat {
+function checkReadableProjectHeader(projectFile: string, before: BigIntStats, maximum: ProjectFileFormat, assertObservation?: AssertProjectFileObservation): ProjectFileFormat {
   if (!before.isFile()) throw invalid('project','not-a-regular-file');
   const held = projectFileOwnerKind(identityOf(before,projectFile));
   if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED',describe('project','locked')) : invalid('project','not-a-project-file');
-  return checkHeader(projectFile, maximum);
+  assertObservation?.(before);
+  return checkHeader(projectFile, maximum, assertObservation);
 }
 
 /** A bounded hint for the recent-project list. Opening still checks the
  * manifest and content under the normal SQLite admission path. */
-export function inspectProjectFormatHeader(requested: string, format4?: Format4Options): ProjectFileFormat {
+export function inspectProjectFormatHeader(requested: string, format4?: Format4Options, assertObservation?: AssertProjectFileObservation): ProjectFileFormat {
   const projectFile = path.resolve(requested);
   try {
-    return checkReadableProjectHeader(projectFile, lstatSync(projectFile,{bigint:true}), projectFormatMaximum(format4));
+    return checkReadableProjectHeader(projectFile, lstatSync(projectFile,{bigint:true}), projectFormatMaximum(format4), assertObservation);
   } catch (error) {throw openFailure(error,'project');}
 }
 
@@ -442,13 +449,16 @@ function inspectProjectFile(requested: string, maximum: ProjectFileFormat): Proj
 
 /** Validate recovery on a disconnected clone. Its journal never names a source
  * super-journal, so SQLite cannot delete or write any original companion. */
-function validateRecoveryInIsolation(projectFile: string, maximum: ProjectFileFormat): ProjectFormatIdentity {
+function validateRecoveryInIsolation(projectFile: string, maximum: ProjectFileFormat, observation?: ProjectRecoveryObservation): ProjectFormatIdentity {
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-recovery-preflight-'));
   const file = path.join(directory,'project.mioon');
   let db: DatabaseSync | undefined;
   try {
-    copyFileSync(projectFile,file);
-    copyIsolatedRecoveryJournal(`${projectFile}-journal`,`${file}-journal`);
+    if (observation) copyObservedRecoveryFile(projectFile, file, observation.project);
+    else copyFileSync(projectFile, file);
+    copyIsolatedRecoveryJournal(`${projectFile}-journal`, `${file}-journal`, observation
+      ? (source, destination) => copyObservedRecoveryFile(source, destination, observation.journal)
+      : undefined);
     db = openDatabase(existingFile(file));
     lock(db);
     const formatVersion = checkProjectVersion(pragmaValue(db, 'user_version'), maximum);
@@ -457,6 +467,29 @@ function validateRecoveryInIsolation(projectFile: string, maximum: ProjectFileFo
     if (db.prepare('PRAGMA main.foreign_key_check').get() !== undefined) throw invalid('project','foreign-key');
     return {...identity, formatVersion};
   } finally {db?.close();rmSync(directory,{recursive:true,force:true});}
+}
+
+/** The catalog process has no live project connections. Copy from the verified
+ * descriptor rather than re-opening a path that may now name another inode. */
+function copyObservedRecoveryFile(source: string, destination: string, assertObservation: AssertProjectFileObservation): void {
+  const input = openSync(source, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    assertObservation(fstatSync(input, {bigint: true}));
+    const output = openSync(destination, 'wx', 0o600);
+    try {
+      const block = Buffer.allocUnsafe(64 * 1024);
+      let read: number;
+      while ((read = readSync(input, block, 0, block.length, null)) > 0) {
+        let written = 0;
+        while (written < read) {
+          const length = writeSync(output, block, written, read - written);
+          if (length <= 0) throw invalid('project', 'unusable');
+          written += length;
+        }
+      }
+      assertObservation(fstatSync(input, {bigint: true}));
+    } finally {closeSync(output);}
+  } finally {closeSync(input);}
 }
 
 /** history.db and cache.db must be plain files where they exist. */
@@ -1046,6 +1079,21 @@ const recoveryOf = (error: unknown): ProjectFileRecovery => {
   return {state: 'invalid', reason: reason === 'missing' || reason === 'locked' || reason === 'format-newer' || reason === 'exists' || reason === 'access-denied' ? 'unusable' : reason};
 };
 
+/** Observe the server process's own connections before sending a catalog
+ * probe to a helper process, whose connection registry is independent. */
+export function projectFileRecoveryForHeld(identity: ProjectFileIdentity): ProjectFileRecovery | undefined {
+  if (identity.ino === '0') return undefined;
+  const held = projectFileOwnerKind(`${identity.dev}:${identity.ino}`);
+  if (held === 'project') return {state: 'open-here'};
+  if (held !== undefined) return {state: 'invalid', reason: 'not-a-project-file'};
+  return undefined;
+}
+
+interface ProjectRecoveryObservation {
+  readonly project: AssertProjectFileObservation;
+  readonly journal: (info: BigIntStats | undefined) => void;
+}
+
 /** Step 1 of the opening order and nothing else: when the project file has a
  * hot journal beside it, checks its current header and validates the exact
  * recovered structure on an isolated copy before taking the source write lock
@@ -1059,8 +1107,9 @@ const recoveryOf = (error: unknown): ProjectFileRecovery => {
  * The journal is looked at before the project file: without a hot journal
  * (none, 0 bytes, or a zero first byte) nothing of the project file is read by
  * recovery. A newer header beside a hot journal raises PROJECT_FORMAT_NEWER
- * before replay. */
-export function recoverProjectFile(requested: string, format4?: Format4Options): ProjectFileRecovery {
+ * before replay. An isolated catalog process pins its parent-observed file
+ * and journal identities throughout preflight. */
+export function recoverProjectFile(requested: string, format4?: Format4Options, observation?: ProjectRecoveryObservation): ProjectFileRecovery {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
   try {
@@ -1074,14 +1123,24 @@ export function recoverProjectFile(requested: string, format4?: Format4Options):
   if (held !== undefined) return held === 'project' ? {state: 'open-here'} : {state: 'invalid', reason: 'not-a-project-file'};
   let db: DatabaseSync | undefined;
   try {
-    if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};
+    const journal = `${projectFile}-journal`;
+    observation?.project(info);
+    if (!isHotJournal(journal, observation?.journal)) return {state: 'clean'};
     const maximum = projectFormatMaximum(format4);
-    checkHeader(projectFile, maximum);
+    checkHeader(projectFile, maximum, observation?.project);
     const before = lstatSync(projectFile,{bigint:true});
-    const recovered = validateRecoveryInIsolation(projectFile, maximum);
+    observation?.project(before);
+    if (observation) observation.journal(lstatSync(journal, {bigint: true, throwIfNoEntry: false}));
+    const recovered = validateRecoveryInIsolation(projectFile, maximum, observation);
     const after = lstatSync(projectFile,{bigint:true});
     if (before.dev!==after.dev || before.ino!==after.ino || before.size!==after.size || before.mtimeNs!==after.mtimeNs) throw invalid('project','unusable');
+    observation?.project(after);
+    if (observation) observation.journal(lstatSync(journal, {bigint: true, throwIfNoEntry: false}));
     db = openDatabase(existingFile(projectFile));
+    if (observation) {
+      observation.project(lstatSync(projectFile, {bigint: true}));
+      observation.journal(lstatSync(journal, {bigint: true, throwIfNoEntry: false}));
+    }
     lock(db);
     checkProjectStructure(db, 'main', recovered.formatVersion);
     if (!sameContentStamp(readProjectIdentity(db,'main'),recovered)) throw invalid('project','metadata');

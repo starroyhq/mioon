@@ -216,7 +216,7 @@ test('the default web build resources create two new identities with intact time
   }
   for (let index = 0; index < mediaIdentities[0]!.length; index++) assert.notEqual(mediaIdentities[0]![index], mediaIdentities[1]![index]);
   assert.deepEqual(await f.instantiate(firstInput), first); assert.deepEqual(tree(f.installed), f.original);
-  assert.deepEqual(f.native().listRecent().registered.map(value => value.project.projectId).sort(), [first.project.projectId, second.project.projectId].sort());
+  assert.deepEqual((await f.native().listRecent()).registered.map(value => value.project.projectId).sort(), [first.project.projectId, second.project.projectId].sort());
   const oldLocation = projectLocation(serverAppDirectories(f.dataDir, {projectsDir: f.projectsDir}), f.content.identity.projectId);
   assert.equal(existsSync(oldLocation.localDir), false);
 });
@@ -402,14 +402,14 @@ test('a newly instantiated shipped example passes strict readers and real previe
 });
 
 test('real-example target conflicts preserve both empty and populated existing folders and add no registration', async t => {
-  const f = await fixture(t), originalRegistry = f.native().listRecent();
+  const f = await fixture(t), originalRegistry = await f.native().listRecent();
   for (const name of ['Existing empty', 'Existing populated']) {
     const input = f.input(name), target = path.join(f.targets, name); mkdirSync(target);
     if (name === 'Existing populated') writeFileSync(path.join(target, 'user.txt'), 'keep user content');
     const before = tree(target), response = await f.rpc('project.template.instantiate', input);
     assert.equal(response.status, 409); assert.equal(response.body.error?.code, 'PROJECT_FILE_EXISTS'); assert.deepEqual(tree(target), before);
   }
-  assert.deepEqual(f.native().listRecent(), originalRegistry); assert.deepEqual(tree(f.installed), f.original);
+  assert.deepEqual(await f.native().listRecent(), originalRegistry); assert.deepEqual(tree(f.installed), f.original);
   assert.equal(f.application(db => db.prepare("SELECT count(*) n FROM app_operation_receipts WHERE operation='project.template.instantiate'").get()!.n), 0);
 });
 

@@ -90,7 +90,7 @@ export function createDesktopHarnessProjectEntries():ProjectEntryControlPort {
  registration('79000000-0000-4000-8000-000000000001');
  registration('79000000-0000-4000-8000-000000000002');
  return {
-  listRecent:()=>({version:1,appLibraryScope:'a'.repeat(64),instanceId:'11111111-1111-4111-8111-111111111111',registered:[...registrations.values()].map(project=>({project,availability:{state:'available'},coverUrl:null}))}),
+  listRecent:async()=>({version:1,appLibraryScope:'a'.repeat(64),instanceId:'11111111-1111-4111-8111-111111111111',registered:[...registrations.values()].map(project=>({project,availability:{state:'available'},coverUrl:null}))}),
   create:async()=>registration('22222222-2222-4222-8222-222222222222'),
   prepareAcquire:async({projectId})=>registration(projectId),
   acquire:async({projectId,windowId})=>{leases.add(windowId);return {windowId,project:registration(projectId)};},

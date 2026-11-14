@@ -1,4 +1,5 @@
 import {lstatSync, readdirSync} from 'node:fs';
+import {lstat, readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {isAsyncFunction} from 'node:util/types';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
@@ -17,7 +18,7 @@ export function validateApplicationStorage(directories: AppDirectories): void {
   ensurePrivateDirectory(dataDir, {create: true});
 }
 
-interface ApplicationFileMetadata {
+export interface ApplicationFileMetadata {
   readonly dev: bigint;
   readonly ino: bigint;
   readonly birthtimeNs?: bigint;
@@ -29,37 +30,69 @@ interface ApplicationFileGuardOptions {
   /** Trusted metadata-only test seam for filesystems that reuse inode IDs.
    * Never supplied by HTTP or environment configuration; it opens no files. */
   readonly metadata?: (file: string) => ApplicationFileMetadata | undefined;
+  readonly catalogMetadata?: (file: string) => Promise<ApplicationFileMetadata | undefined>;
 }
 const metadata = (file: string): ApplicationFileMetadata | undefined => {
   try {return lstatSync(file, {bigint: true, throwIfNoEntry: false});}
   catch (error) {if ((error as {code?: unknown}).code === 'ENOTDIR') return undefined; throw error;}
 };
 const generation = (info: ApplicationFileMetadata): bigint => typeof info.birthtimeNs === 'bigint' && info.birthtimeNs > 0n ? info.birthtimeNs : 0n;
+const catalogMetadata = async (file: string): Promise<ApplicationFileMetadata | undefined> => {
+  try {return await lstat(file, {bigint: true});}
+  catch (error) {
+    const code = (error as {code?: unknown}).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
+    throw error;
+  }
+};
 
 /** One synchronous inspection or recovery sweep. Do not create or move private
  * files in the callback, and never retain a snapshot across an await. */
 export interface ApplicationFileGuard {
   (file: string): void;
   withSnapshot<T>(inspect: () => T): T;
+  catalogSnapshot(signal: AbortSignal): Promise<(file: string, info: ApplicationFileMetadata | undefined) => void>;
 }
 
 /** Remember identities as private files appear, including files subsequently
  * renamed outside the app directory. Metadata only: never open/close a live DB.
  * The default projects subtree is deliberately exempt. */
-export function createApplicationFileGuard(directories: AppDirectories, {metadata: readMetadata = metadata}: ApplicationFileGuardOptions = {}): ApplicationFileGuard {
+export function createApplicationFileGuard(directories: AppDirectories, {
+  metadata: readMetadata = metadata, catalogMetadata: readCatalogMetadata = catalogMetadata,
+}: ApplicationFileGuardOptions = {}): ApplicationFileGuard {
   // A deleted private inode may be reused for a newly created project on ext4.
   // Birth time survives rename/hard links, unlike ctime, and distinguishes that
   // new generation when both observations provide it. Unknown time stays
   // conservative; it cannot erase a private file's retained identity.
-  const identities = new Map<string, bigint>();
+  const identities = new Map<string, {birthtime: bigint; observation: number}>();
+  let observation = 0;
   const {dataDir, projectsDir, cacheDir, tempDir} = directories;
   const protectedRoots = [path.join(dataDir, 'records'), cacheDir, tempDir];
+  const scanRoots = [dataDir, ...protectedRoots.filter(root => !within(dataDir, root))];
+  const isPrivatePath = (file: string): boolean =>
+    protectedRoots.some(root => within(root, file)) || within(dataDir, file) && !within(projectsDir, file);
+  const remember = (info: ApplicationFileMetadata, order: number): void => {
+    if (info.ino === 0n) return;
+    const key = `${info.dev}:${info.ino}`;
+    const previous = identities.get(key);
+    // A scan that yielded cannot overwrite an observation from a newer scan.
+    if (!previous || previous.observation <= order) identities.set(key, {birthtime: generation(info), observation: order});
+  };
+  const assertAllowed = (file: string, info: ApplicationFileMetadata | undefined): void => {
+    const previous = info?.isFile() && info.ino !== 0n ? identities.get(`${info.dev}:${info.ino}`)?.birthtime : undefined;
+    const current = info?.isFile() ? generation(info) : undefined;
+    const samePrivateFile = previous !== undefined && (previous === 0n || current === 0n || previous === current);
+    if (isPrivatePath(file) || samePrivateFile) {
+      throw new AppError('PROJECT_LOCATION_INVALID', '不能把应用私有文件作为项目打开。', 400);
+    }
+  };
   const refresh = (): void => {
     // Directory timestamps are not entry versions: even positive ns values can
     // stay equal across creation or same-size replacement in one filesystem
     // clock tick. A synchronous sweep can share this scan. There is no
     // count/depth cutoff that loses private identities.
-    const pending = [dataDir, ...protectedRoots.filter(root => !within(dataDir, root))];
+    const order = ++observation;
+    const pending = [...scanRoots];
     const visited = new Set<string>();
     while (pending.length) {
       const file = pending.pop()!;
@@ -68,7 +101,7 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
       const info = readMetadata(file);
       if (!info || info.isSymbolicLink()) continue;
       if (info.isFile()) {
-        if (info.ino !== 0n) identities.set(`${info.dev}:${info.ino}`, generation(info));
+        remember(info, order);
       } else if (info.isDirectory()) {
         for (const name of readdirSync(file)) pending.push(path.join(file, name));
       }
@@ -79,22 +112,35 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
   const guard = (requested: string): void => {
     const file = path.resolve(requested);
     if (snapshotDepth === 0) refresh();
-    const privatePath = protectedRoots.some(root => within(root, file)) || within(dataDir, file) && !within(projectsDir, file);
     let info: ApplicationFileMetadata | undefined;
     try {info = readMetadata(file);}
     catch (error) {
       const code = (error as {code?:unknown}|null)?.code;
-      if (!privatePath && (code === 'EACCES' || code === 'EPERM')) {
+      if (!isPrivatePath(file) && (code === 'EACCES' || code === 'EPERM')) {
         throw new AppError('PROJECT_ACCESS_DENIED', '系统没有允许访问项目所在的位置', 403, {database:'project',reason:'access-denied'});
       }
       throw error;
     }
-    const previous = info?.isFile() && info.ino !== 0n ? identities.get(`${info.dev}:${info.ino}`) : undefined;
-    const current = info?.isFile() ? generation(info) : undefined;
-    const samePrivateFile = previous !== undefined && (previous === 0n || current === 0n || previous === current);
-    if (privatePath || samePrivateFile) {
-      throw new AppError('PROJECT_LOCATION_INVALID', '不能把应用私有文件作为项目打开。', 400);
+    assertAllowed(file, info);
+  };
+  guard.catalogSnapshot = async (signal: AbortSignal) => {
+    const order = ++observation;
+    const pending = [...scanRoots];
+    const visited = new Set<string>();
+    while (pending.length) {
+      signal.throwIfAborted();
+      const file = pending.pop()!;
+      if (visited.has(file) || within(projectsDir, file)) continue;
+      visited.add(file);
+      const info = await readCatalogMetadata(file);
+      if (!info || info.isSymbolicLink()) continue;
+      if (info.isFile()) remember(info, order);
+      else if (info.isDirectory()) {
+        for (const name of await readdir(file)) pending.push(path.join(file, name));
+      }
     }
+    signal.throwIfAborted();
+    return (file: string, info: ApplicationFileMetadata | undefined) => assertAllowed(path.resolve(file), info);
   };
   guard.withSnapshot = <T>(inspect: () => T): T => {
     if (typeof inspect !== 'function' || isAsyncFunction(inspect)) throw new TypeError('Application file snapshots require a synchronous callback');

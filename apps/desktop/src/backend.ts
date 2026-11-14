@@ -16,6 +16,9 @@ import path from 'node:path';
 import {createProjectEntryControlBroker} from './project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
 import {createSettingsEventLoopMonitor} from './settings-event-loop.ts';
+import {createProjectCatalogClient} from '../../server/src/project-catalog-client.ts';
+import type {ProjectCatalogClient} from '../../server/src/project-catalog-client.ts';
+import {desktopProjectCatalogPort} from './project-catalog-port.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -49,6 +52,7 @@ let server: BackendServer | undefined, starting = false, startFailed = false, cl
 let projectControl: ReturnType<typeof createProjectEntryControlBroker> | undefined;
 let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
+let projectCatalog: ProjectCatalogClient | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
 const videoSecretCodec = createVideoSecretClient({ port: process.parentPort });
@@ -64,6 +68,7 @@ async function shutdown(reason: ExitDiagnosticReason) {
   parentLease.close();
   clearInterval(lease);
   let exitCode = 0;
+  try { projectCatalog?.close(); } catch { exitCode = 1; }
   try { await initialization; await server?.close(); if (startFailed) exitCode = 1; }
   catch { exitCode = 1; }
   try { agentSettings.close(); } catch { exitCode = 1; }
@@ -84,7 +89,7 @@ const parentLease = createBackendLease({now: () => performance.now(),
   probe: probeId => process.parentPort!.postMessage({type: 'lease-probe', probeId}),
   expire: () => { void shutdown('lease-expired'); }});
 const lease = setInterval(() => parentLease.check(), BACKEND_LEASE_TIMING.checkIntervalMs);
-process.parentPort.on('message', ({ data }) => {
+process.parentPort.on('message', ({ data, ports }) => {
   if (data?.type === 'ping') { parentLease.ping(); return; }
   if (data?.type === 'lease-probe-ack') {
     if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 2 &&
@@ -112,6 +117,10 @@ process.parentPort.on('message', ({ data }) => {
         throw new TypeError('Invalid backend examples directory');
       }
       if (data.projectTrashAvailable !== undefined && typeof data.projectTrashAvailable !== 'boolean') throw new TypeError('Invalid project trash capability');
+      if (ports?.length !== 1) throw new TypeError('Missing desktop project catalog channel');
+      const [catalogPort] = ports;
+      projectCatalog = createProjectCatalogClient(desktopProjectCatalogPort(catalogPort));
+      catalogPort.start();
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
@@ -122,6 +131,7 @@ process.parentPort.on('message', ({ data }) => {
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
       server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir,
         projectTemplatesDir: data.projectTemplatesDir,
+        projectCatalogClient: projectCatalog,
         projectTrash: data.projectTrashAvailable === true ? projectTrash : undefined,
         token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (typeof data.backendId !== 'string' || data.backendId !== data.nativeAudioPreview?.backendId) throw new TypeError('Invalid backend project owner');
@@ -142,6 +152,7 @@ process.parentPort.on('message', ({ data }) => {
       imageSecretCodec.close();
       videoSecretCodec.close();
       projectTrash.close();
+      projectCatalog?.close();
       process.exitCode = 1;
       setImmediate(() => process.exit(1));
     }

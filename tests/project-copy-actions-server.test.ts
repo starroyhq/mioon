@@ -69,7 +69,7 @@ async function fixture(t: TestContext) {
   const sourceFiles = () => ({source: readFileSync(source.projectFile).toString('base64'), selected: readFileSync(selected).toString('base64'), records: tree(local.localDir)});
   return {root, dataDir, targets, server, rpc, source, selected, directories, local, stamp, input, versions, manualId: saved.body.data.version.id,
     sourceFiles, application, setBoundary: (value: typeof boundary) => {boundary = value;},
-    registrations: () => server.projectEntries.listRecent().registered.map(value => value.project)};
+    registrations: async () => (await server.projectEntries.listRecent()).registered.map(value => value.project)};
 }
 function denied(result: {status: number; body: Wire<unknown>}, status: number, code: string): void {
   assert.equal(result.status, status, JSON.stringify(result.body)); assert.equal(result.body.ok, false); assert.equal(result.body.error?.code, code);
@@ -80,11 +80,11 @@ for (const [systemCode, status, code] of [
   ['ENOSPC', 507, 'PROJECT_COPY_CAPACITY'], ['EDQUOT', 507, 'PROJECT_COPY_CAPACITY'],
   ['ENOENT', 400, 'PROJECT_LOCATION_INVALID'], ['ENOTDIR', 400, 'PROJECT_LOCATION_INVALID'], ['EEXIST', 409, 'PROJECT_FILE_EXISTS'],
 ] as const) test(`copy-to reports ${systemCode} precisely without source writes or a published outcome`, async t => {
-  const f = await fixture(t), input = f.input(), before = f.sourceFiles(), registered = f.registrations();
+  const f = await fixture(t), input = f.input(), before = f.sourceFiles(), registered = await f.registrations();
   f.setBoundary(phase => {if (phase === 'prepared') throw Object.assign(Error('synthetic filesystem failure'), {code: systemCode});});
   const result = await f.rpc('project.copy-to', input); denied(result, status, code);
   if (systemCode === 'EROFS') assert.deepEqual(result.body.error?.details, {database: 'project', reason: 'read-only'});
-  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(f.registrations(), registered); assert.deepEqual(readdirSync(f.targets), []);
+  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(await f.registrations(), registered); assert.deepEqual(readdirSync(f.targets), []);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
 });
 async function occupyHistory(file: string): Promise<() => Promise<void>> {
@@ -116,11 +116,11 @@ for (const state of ['current', 'diverged'] as const) test(`copy-to reads all ${
     try {input.sourceStamp = readProjectContentStamp(raw, 'main');} finally {raw.close();}
     assert.notDeepEqual(input.sourceStamp, f.stamp);
   }
-  const before = f.sourceFiles(), registrations = f.registrations();
+  const before = f.sourceFiles(), registrations = await f.registrations();
   const result = await f.rpc<ProjectCopyResponse>('project.copy-to', input);
   assert.equal(result.status, 200, JSON.stringify(result.body)); const copy = projectCopyResponseSchema.parse(result.body.data);
   assert.equal(copy.versions, f.versions.length); assert.deepEqual(f.sourceFiles(), before);
-  assert.deepEqual(f.registrations().find(value => value.projectId === f.source.projectId), registrations[0]);
+  assert.deepEqual((await f.registrations()).find(value => value.projectId === f.source.projectId), registrations[0]);
   const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(f.directories, id)});
   try {
     assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
@@ -189,18 +189,18 @@ for (const damage of ['corrupt', 'occupied'] as const) test(`copy-to with ${dama
   const f = await fixture(t), history = path.join(f.local.localDir, 'history.db'), input = f.input();
   if (damage === 'corrupt') writeFileSync(history, 'corrupt local history');
   const recordsRoot = path.dirname(f.local.localDir);
-  const before = f.sourceFiles(), registered = f.registrations(), recordsBefore = readdirSync(recordsRoot).sort();
+  const before = f.sourceFiles(), registered = await f.registrations(), recordsBefore = readdirSync(recordsRoot).sort();
   let release: (() => Promise<void>) | undefined, result: Awaited<ReturnType<typeof f.rpc>>;
   if (damage === 'occupied') release = await occupyHistory(history);
   try {result = await f.rpc('project.copy-to', input);} finally {await release?.();}
   denied(result, damage === 'corrupt' ? 422 : 409, damage === 'corrupt' ? 'PROJECT_INVALID' : 'PROJECT_LOCKED');
-  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(f.registrations(), registered); assert.deepEqual(readdirSync(f.targets), []);
+  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(await f.registrations(), registered); assert.deepEqual(readdirSync(f.targets), []);
   assert.deepEqual(readdirSync(recordsRoot).sort(), recordsBefore);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
 });
 
 test('copy-to rechecks selected inode after preparation even when a replacement has the exact same project and content pair', async t => {
-  const f = await fixture(t), input = f.input(), before = f.sourceFiles(), registered = f.registrations();
+  const f = await fixture(t), input = f.input(), before = f.sourceFiles(), registered = await f.registrations();
   const recordsRoot = path.dirname(f.local.localDir), recordsBefore = readdirSync(recordsRoot).sort();
   f.setBoundary(phase => {
     if (phase !== 'prepared') return;
@@ -209,7 +209,7 @@ test('copy-to rechecks selected inode after preparation even when a replacement 
   });
   denied(await f.rpc('project.copy-to', input), 409, 'PROJECT_COPY_SOURCE_CHANGED');
   assert.notEqual(lstatSync(f.selected, {bigint: true}).ino.toString(), input.sourceIdentity.ino);
-  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(f.registrations(), registered);
+  assert.deepEqual(f.sourceFiles(), before); assert.deepEqual(await f.registrations(), registered);
   assert.deepEqual(readdirSync(f.targets), []); assert.deepEqual(readdirSync(recordsRoot).sort(), recordsBefore);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
 });
@@ -224,7 +224,7 @@ test('copy-to refuses a source host opened after preparation without closing its
     assert.ok(opened); assert.deepEqual(await f.server.projectEntries.acquire({projectId: f.source.projectId, windowId}), opened);
     assert.equal(isProjectFileHeld(f.source.fileIdentity), true);
     assert.equal(existsSync(input.projectFile), false); assert.deepEqual(readdirSync(f.targets), []);
-    assert.deepEqual(f.registrations().map(value => value.projectId), [f.source.projectId]);
+    assert.deepEqual((await f.registrations()).map(value => value.projectId), [f.source.projectId]);
     assert.equal(readFileSync(f.selected).toString('base64'), selectedBefore);
     assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
   } finally {f.server.projectEntries.release({windowId});}

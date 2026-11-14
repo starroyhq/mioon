@@ -77,7 +77,7 @@ for (const code of ['EACCES', 'EPERM']) test(`a closed project denied by ${code}
   const taskId = randomUUID();
   app.taskIndex.upsert({projectId, projectFile, kind: 'job', taskId, indexedAt: new Date().toISOString()});
   app.close();
-  const original = fs.lstatSync;
+  const original = fs.lstatSync, originalAsync = fs.promises.lstat;
   let deniedInspections = 0;
   const replacement = (...args: unknown[]) => {
     if (String(args[0]) === projectFile) {
@@ -87,13 +87,17 @@ for (const code of ['EACCES', 'EPERM']) test(`a closed project denied by ${code}
     return Reflect.apply(original, fs, args);
   };
   const mocked = t.mock.method(fs, 'lstatSync', replacement as typeof original);
+  const mockedAsync = t.mock.method(fs.promises, 'lstat', (async (...args: unknown[]) => {
+    if (String(args[0]) === projectFile) throw Object.assign(new Error('SYNTHETIC_PRIVATE_OS_DIAGNOSTIC'), {code});
+    return Reflect.apply(originalAsync, fs.promises, args);
+  }) as typeof originalAsync);
   syncBuiltinESMExports();
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   try {
     let inspect!: InspectApplication;
     server = await startServer({dataDir: root, port: 0, token, inspectApplication: read => {inspect = read;}});
     assert.ok(deniedInspections > 0, 'startup actually inspected the selected closed project');
-    assert.deepEqual(server.projectEntries.listRecent().registered.find(entry => entry.project.projectId === projectId)!.availability,
+    assert.deepEqual((await server.projectEntries.listRecent()).registered.find(entry => entry.project.projectId === projectId)!.availability,
       {state: 'access-denied'}, 'the permission failure did not compose a project runtime');
     const changes = inspect(db => db.prepare('SELECT total_changes() AS n').get()!.n);
     for (let read = 0; read < 2; read++) {
@@ -111,7 +115,7 @@ for (const code of ['EACCES', 'EPERM']) test(`a closed project denied by ${code}
   } finally {
     try {await server?.close();}
     finally {
-      mocked.mock.restore(); syncBuiltinESMExports();
+      mockedAsync.mock.restore(); mocked.mock.restore(); syncBuiltinESMExports();
       assert.deepEqual(fs.readFileSync(projectFile), before);
       rmSync(root, {recursive: true, force: true});
     }

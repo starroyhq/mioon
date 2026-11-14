@@ -81,3 +81,34 @@ test('zero or missing birth generation remains conservative for a reused private
     assert.throws(() => guard(candidate), denied);
   }
 });
+
+test('an older catalog scan cannot discard a newer private-file generation', async t => {
+  const f = fixture(t), privateFile = path.join(f.directories.dataDir, 'private.json');
+  writeFileSync(privateFile, '{}', {mode: 0o600});
+  const physical = lstatSync(privateFile, {bigint: true});
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  let birthtimeNs = 10n;
+  const guard = createApplicationFileGuard(f.directories, {
+    metadata(file) {
+      return file === privateFile ? {...physical, birthtimeNs, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false}
+        : lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    },
+    async catalogMetadata(file) {
+      if (file !== privateFile) return lstatSync(file, {bigint: true, throwIfNoEntry: false});
+      entered.resolve();
+      await resume.promise;
+      return {...physical, birthtimeNs: 10n, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false};
+    },
+  });
+  const snapshot = guard.catalogSnapshot(new AbortController().signal);
+  await entered.promise;
+  birthtimeNs = 20n;
+  const moved = path.join(f.outside, 'private.mioon');
+  assert.throws(() => guard(privateFile), denied);
+  renameSync(privateFile, moved);
+  resume.resolve();
+  const check = await snapshot;
+  const relocated = {...physical, birthtimeNs, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false};
+  assert.throws(() => check(moved, relocated), denied);
+  assert.doesNotThrow(() => check(moved, {...relocated, birthtimeNs: 30n}));
+});

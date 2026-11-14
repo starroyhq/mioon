@@ -49,6 +49,8 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。读取会刷新已打开宿主的登记摘要，不取得新租约；封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
 
+完整目录读取和单项目登记描述共用进行中的检查。服务异步刷新应用私有文件身份，再由独立进程检查关闭项目的文件头和热日志；慢文件检查期间，设置和已打开项目的请求仍可处理。文件头提示只在路径及文件代次复验通过时使用。轻量的 `/api/project-entries/identity` 直接返回应用库和实例身份。
+
 仅 GET，不接受查询参数、GET 请求体或原生路径控制；其它方法 405，未知子路径 404。路由沿用 Host/Origin 与令牌/会话认证，Cache-Control: no-store。网页不显示未登记文件，手工放入文件须先经明确打开流程登记；本轮未增加网页任意路径打开、目录扫描或 window-session。
 
 目录最多 8192 条，沿用 B1；本资源完整 JSON 上限 384 MiB，超过报 PROJECT_ENTRY_LIMIT（413），不截断。这是传输边界，不是应用库配额或全部理论数据都能列出的承诺。身份改变报 PROJECT_ENTRY_SCOPE_MISMATCH（409），应用库持有权/生命周期不可用报 PROJECT_ENTRY_UNAVAILABLE（503），标准认证错误不变。

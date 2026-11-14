@@ -589,6 +589,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
     publicKey:'302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};
   const nativeAuthority = {command:async () => {throw Error('No audition command is expected in this lifecycle fixture');}};
   const trashClient = {close: trashClose, reserve: async () => {throw Error('No trash is expected in this lifecycle fixture');}};
+  const catalogPort = {start() {}};
   let enterStart!: (value: LaunchView) => void; const started = new Promise<LaunchView>(resolve => { enterStart = resolve; });
   port.postMessage = (message: DesktopHarnessMessage) => { messages.push(message); };
   const sandbox = { createProjectEntryControlBroker, path, comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, createSettingsEventLoopMonitor, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
@@ -600,10 +601,12 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
     createVideoSecretClient: () => ({close: videoClose, refreshStorage: videoRefresh}),
     createProjectTrashClient: () => trashClient,
+    desktopProjectCatalogPort: () => catalogPort,
+    createProjectCatalogClient: () => ({close() {}}),
     createNativeAudioPreviewAuthority: (config: unknown) => {assert.equal(config,nativeConfig);return nativeAuthority;},
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
-  return { messages, exits, port, started, trashClient, start: () => port.emit('message', { data: { type: 'start',backendId:nativeConfig.backendId,dataDir:'/synthetic/data',cacheDir:'/synthetic/cache',projectsDir:'/synthetic/projects',subtitleResourcesDir:'/synthetic/trusted/subtitles',projectTemplatesDir:'/synthetic/trusted/examples',nativeAudioPreview:nativeConfig,projectTrashAvailable:trashAvailable } }),
+  return { messages, exits, port, started, trashClient, start: () => port.emit('message', { ports: [catalogPort], data: { type: 'start',backendId:nativeConfig.backendId,dataDir:'/synthetic/data',cacheDir:'/synthetic/cache',projectsDir:'/synthetic/projects',subtitleResourcesDir:'/synthetic/trusted/subtitles',projectTemplatesDir:'/synthetic/trusted/examples',nativeAudioPreview:nativeConfig,projectTrashAvailable:trashAvailable } }),
     stop: () => port.emit('message', { data: { type: 'stop' } }) };
 }
 

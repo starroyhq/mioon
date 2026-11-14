@@ -17,17 +17,17 @@ import {randomUUID} from 'node:crypto';
 import {createProjectEntryControlClient} from './project-entry-control.ts';
 import type {DesktopProjectEntryControl} from './project-entry-control.ts';
 import {createSettingsEventLoopClient} from './settings-event-loop.ts';
+import type {MessageChannelMain, MessagePortMain} from 'electron';
 
 /** Electron utilityProcess surface used by the supervisor (structural for tests). */
 export interface BackendUtilityProcess {
   readonly pid: number | undefined;
-  postMessage(message: unknown): void;
+  postMessage(message: unknown, transfer?: MessagePortMain[]): void;
   kill(): boolean;
   on(event: 'error', listener: () => void): unknown;
   on(event: 'message', listener: (message: unknown) => void): unknown;
   on(event: 'exit', listener: (code: number) => void): unknown;
   once(event: 'exit', listener: (code: number) => void): unknown;
-  removeListener(event: 'exit', listener: (code: number) => void): unknown;
 }
 export interface BackendForkOptions {
   env: NodeJS.ProcessEnv;
@@ -70,6 +70,7 @@ export interface BackendSupervisorOptions {
   fork: BackendFork;
   modulePath: string;
   environment: NodeJS.ProcessEnv;
+  projectCatalog?: {readonly modulePath: string; createChannel(): MessageChannelMain};
   startupTimeout?: number;
   stopTimeout?: number;
   terminateTimeout?: number;
@@ -105,14 +106,18 @@ const forceOwnedUtility = (child: BackendUtilityProcess) => {
 };
 const backendExitReasons = new Set(['stop-requested', 'lease-expired', 'signal-term', 'signal-int',
   'uncaught-exception', 'unhandled-rejection', 'shutdown-failed', 'startup-failed']);
+const projectCatalogEnvironmentKeys = ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR',
+  'MIOON_DESKTOP_PRIVATE_STORAGE_HELPER'];
 
 // Normal worker drains finish inside the first phase. A signal being accepted
 // is not proof of exit: keep the owned handle until Electron reports its exit.
 export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateMs: 2000, confirmMs: 1000 });
+const CATALOG_DISCONNECT_GRACE_MS = 100;
 
 export class BackendSupervisor extends EventEmitter {
   private projectControl: ReturnType<typeof createProjectEntryControlClient> | null = null;
   private settingsEventLoop: ReturnType<typeof createSettingsEventLoopClient> | null = null;
+  private exitedChild: BackendUtilityProcess | null = null;
   get projectEntries(): DesktopProjectEntryControl {
     if(!this.projectControl || this.state!=='running') throw new Error('Project entry control is unavailable');
     return this.projectControl.api;
@@ -120,6 +125,7 @@ export class BackendSupervisor extends EventEmitter {
   readonly fork: BackendFork;
   readonly modulePath: string;
   readonly environment: NodeJS.ProcessEnv;
+  readonly projectCatalog: BackendSupervisorOptions['projectCatalog'];
   readonly startupTimeout: number;
   readonly stopTimeout: number;
   readonly terminateTimeout: number;
@@ -151,7 +157,7 @@ export class BackendSupervisor extends EventEmitter {
 
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
     terminateTimeout = BACKEND_STOP_BUDGET.terminateMs, exitTimeout = BACKEND_STOP_BUDGET.confirmMs,
-    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec, videoSecretCodec, projectTrash }: BackendSupervisorOptions) {
+    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec, videoSecretCodec, projectTrash, projectCatalog }: BackendSupervisorOptions) {
     super();
     for (const value of [startupTimeout, stopTimeout, terminateTimeout, exitTimeout]) {
       if (!Number.isSafeInteger(value) || value < 0 || value > 60000) throw new Error('Invalid backend lifecycle budget');
@@ -159,6 +165,7 @@ export class BackendSupervisor extends EventEmitter {
     this.fork = fork;
     this.modulePath = modulePath;
     this.environment = environment;
+    this.projectCatalog = projectCatalog;
     this.startupTimeout = startupTimeout;
     this.stopTimeout = stopTimeout;
     this.terminateTimeout = terminateTimeout;
@@ -188,6 +195,8 @@ export class BackendSupervisor extends EventEmitter {
     this.recordDiagnostic('start');
     return new Promise<BackendReady>((resolve, reject) => {
       let settled = false;
+      let catalogReady = !this.projectCatalog;
+      let pendingBackendReady: Record<string, unknown> | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       const fail = (error: Error) => {
@@ -207,7 +216,7 @@ export class BackendSupervisor extends EventEmitter {
         });
       } catch (error) { this.exitReason = 'startup-error'; this.recordDiagnostic('spawn-failed', { classification: 'abnormal' }); fail(error as Error); return; }
       const kill = (reason: string) => {
-        if (this.child !== child) return;
+        if (this.child !== child || this.exitedChild === child) return;
         this.settingsEventLoop?.close();
         this.noteExitReason(reason);
         this.termination = 'utility-kill';
@@ -247,14 +256,14 @@ export class BackendSupervisor extends EventEmitter {
         this.noteExitReason(reason);
         fail(new Error('本地服务运行时错误')); kill(reason);
       });
-      child.on('message', (message: unknown) => {
+      const acceptBackendMessage = (message: unknown) => {
+        if (this.child !== child || this.exitedChild === child) return;
         if (projectControl.handle(message)) return;
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
         if (videoSecretBroker.handle(message)) return;
         if (nativeAudioBroker?.handle(message)) return;
         if (projectTrashBroker.handle(message)) return;
-        if (this.child !== child) return;
         if (settingsEventLoop.handle(message)) return;
         if (isBackendLeaseProbe(message)) {
           // A suspended utility must prove its parent is still this live
@@ -293,6 +302,8 @@ export class BackendSupervisor extends EventEmitter {
           fail(new Error('本地服务启动失败。请检查数据目录和应用文件')); return;
         }
         if (notice?.type !== 'ready' || settled || this.state !== 'starting') return;
+        if (!catalogReady) { pendingBackendReady = notice; return; }
+        pendingBackendReady = undefined;
         let origin: string;
         try { origin = trustedOrigin(notice.url); }
         catch (error) { this.noteExitReason('invalid-origin'); fail(error as Error); kill('invalid-origin'); return; }
@@ -309,23 +320,17 @@ export class BackendSupervisor extends EventEmitter {
           }
         }, 10000);
         resolve({ url: origin, runtime: notice.runtime as BackendRuntime });
-      });
-      child.once('exit', (code: number) => {
-        projectControl.close();
-        if(this.projectControl===projectControl)this.projectControl=null;
-        settingsEventLoop.close();
-        if (this.settingsEventLoop === settingsEventLoop) this.settingsEventLoop = null;
-        settingsBroker.close();
-        imageSecretBroker.close();
-        videoSecretBroker.close();
-        nativeAudioBroker?.close();
-        projectTrashBroker.close();
-        clearTimeout(timer);
-        clearInterval(heartbeat);
+      };
+      child.on('message', acceptBackendMessage);
+      let catalog: BackendUtilityProcess | undefined;
+      let catalogTerminateTimer: ReturnType<typeof setTimeout> | undefined;
+      let catalogForceTimer: ReturnType<typeof setTimeout> | undefined;
+      let backendExitCode: number | undefined;
+      const finishExit = (code: number) => {
         if (this.child !== child) return;
         const exitState = this.state;
-        if (!settled) fail(new Error(`本地服务退出 (${code})`));
         this.child = null;
+        this.exitedChild = null;
         this.stopFailure = null;
         const outcome: StopOutcome = { exitConfirmed: true, forced: this.stopForced, code };
         this.stopOutcome = outcome;
@@ -342,9 +347,71 @@ export class BackendSupervisor extends EventEmitter {
         this.state = this.hasUnconfirmedMedia ? 'media-unconfirmed' : this.expectedExit ? 'stopped' : 'failed';
         this.emit('exit', { code, expected: this.expectedExit,
           ...(this.hasUnconfirmedMedia ? { mediaExitConfirmed: false } : {}) });
+      };
+      child.once('exit', (code: number) => {
+        projectControl.close();
+        if(this.projectControl===projectControl)this.projectControl=null;
+        settingsEventLoop.close();
+        if (this.settingsEventLoop === settingsEventLoop) this.settingsEventLoop = null;
+        settingsBroker.close();
+        imageSecretBroker.close();
+        videoSecretBroker.close();
+        nativeAudioBroker?.close();
+        projectTrashBroker.close();
+        clearTimeout(timer);
+        clearInterval(heartbeat);
+        if (this.child !== child) return;
+        if (!settled) fail(new Error(`本地服务退出 (${code})`));
+        this.exitedChild = child;
+        backendExitCode = code;
+        const ownedCatalog = catalog;
+        if (!ownedCatalog) { finishExit(code); return; }
+        // The peer port closes when the backend exits. Reap the helper even
+        // if a cold filesystem call prevents it from handling that close.
+        catalogTerminateTimer = setTimeout(() => {
+          try { ownedCatalog.kill(); } catch { /* Keep the exact child until it reports exit. */ }
+        }, CATALOG_DISCONNECT_GRACE_MS);
+        catalogForceTimer = setTimeout(() => {
+          try { this.forceKill(ownedCatalog); } catch { /* Keep waiting for the exit event. */ }
+        }, CATALOG_DISCONNECT_GRACE_MS + this.terminateTimeout);
       });
-      try { child.postMessage({ type: 'start', ...config, backendId, projectTrashAvailable: this.projectTrash !== undefined }); }
-      catch { this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed'); }
+      const startMessage = { type: 'start', ...config, backendId, projectTrashAvailable: this.projectTrash !== undefined };
+      let catalogChannel: MessageChannelMain | undefined;
+      try {
+        if (!this.projectCatalog) { child.postMessage(startMessage); return; }
+        catalogChannel = this.projectCatalog.createChannel();
+        const environment: NodeJS.ProcessEnv = {};
+        for (const key of projectCatalogEnvironmentKeys) {
+          if (this.environment[key] !== undefined) environment[key] = this.environment[key];
+        }
+        catalog = this.fork(this.projectCatalog.modulePath, [], {
+          env: environment, stdio: 'ignore', serviceName: 'Mioon Project Catalog',
+          allowLoadingUnsignedLibraries: false, execArgv: [],
+        });
+        // Electron reports the subsequent exit even after a fatal V8 error.
+        catalog.on('error', () => {});
+        catalog.on('message', message => {
+          if (message !== 'project-catalog-ready' || catalogReady || settled || this.child !== child || this.exitedChild === child) return;
+          catalogReady = true;
+          if (pendingBackendReady) acceptBackendMessage(pendingBackendReady);
+        });
+        catalog.once('exit', () => {
+          clearTimeout(catalogTerminateTimer);
+          clearTimeout(catalogForceTimer);
+          catalog = undefined;
+          if (backendExitCode !== undefined) finishExit(backendExitCode);
+          else if (!settled) {
+            fail(new Error('本地项目目录服务启动失败'));
+            kill('startup-communication-failed');
+          }
+        });
+        catalog.postMessage('start-project-catalog', [catalogChannel.port1]);
+        child.postMessage(startMessage, [catalogChannel.port2]);
+      } catch {
+        catalogChannel?.port1.close();
+        catalogChannel?.port2.close();
+        this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed');
+      }
     });
   }
 
@@ -391,7 +458,7 @@ export class BackendSupervisor extends EventEmitter {
         if (done) return;
         done = true;
         clearTimeout(timer); clearTimeout(forceTimer); clearTimeout(confirmTimer);
-        child.removeListener('exit', exited);
+        this.removeListener('exit', exited);
         if (error) {
           if (!error.exitConfirmed) {
             this.stopFailure = error; this.state = 'stop-unconfirmed';
@@ -400,7 +467,7 @@ export class BackendSupervisor extends EventEmitter {
           reject(error);
         } else { this.stopOutcome = outcome ?? null; resolve(outcome!); }
       };
-      const exited = (code: number) => {
+      const exited = ({code}: {code: number}) => {
         const outcome: StopOutcome = { exitConfirmed: true, forced, code,
           ...(this.hasUnconfirmedMedia ? { mediaExitConfirmed: false } : {}) };
         this.stopOutcome = outcome;
@@ -411,7 +478,7 @@ export class BackendSupervisor extends EventEmitter {
         else finish(null, outcome);
       };
       const terminate = () => {
-        if (done || this.child !== child) return;
+        if (done || this.child !== child || this.exitedChild === child) return;
         clearTimeout(timer);
         forced = true;
         this.stopForced = true;
@@ -420,21 +487,23 @@ export class BackendSupervisor extends EventEmitter {
         try { child.kill(); } catch { /* Continue to the owned hard-stop phase. */ }
         if (done) return;
         forceTimer = setTimeout(() => {
-          if (done || this.child !== child) return;
+          if (done || this.child !== child || this.exitedChild === child) return;
           this.termination = 'owned-sigkill';
           this.recordDiagnostic('termination-requested', { classification: 'terminated', exitConfirmed: false });
           try { this.forceKill(child); } catch { /* Exit confirmation remains mandatory. */ }
           if (done) return;
         }, this.terminateTimeout);
       };
-      child.once('exit', exited);
+      this.once('exit', exited);
       // One absolute deadline covers all phases, even if signal delivery throws
       // or a delayed event-loop callback shortens the confirmation interval.
       confirmTimer = setTimeout(() => finish(stopError('BACKEND_STOP_UNCONFIRMED', false)),
         this.stopTimeout + this.terminateTimeout + this.exitTimeout);
       timer = setTimeout(terminate, this.stopTimeout);
-      try { child.postMessage({ type: 'stop' }); }
-      catch { terminate(); }
+      if (this.exitedChild !== child) {
+        try { child.postMessage({ type: 'stop' }); }
+        catch { terminate(); }
+      }
     }).finally(() => { this.stopping = null; });
     this.stopping = stopping;
     return stopping;

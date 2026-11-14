@@ -59,12 +59,13 @@ test('MCP discovery uses private rotating files and cleanup', async () => {
 
 type SupervisorOptions = ConstructorParameters<typeof BackendSupervisor>[0];
 type FakeMessage = {type: string; token?: string} & Record<string, unknown>;
-interface FakeChild extends EventEmitter {pid: number | undefined; messages: FakeMessage[]; postMessage(message: FakeMessage): void; kill(): boolean}
+interface FakeChild extends EventEmitter {pid: number | undefined; messages: FakeMessage[]; transfer: unknown[] | undefined; postMessage(message: FakeMessage, transfer?: unknown[]): void; kill(): boolean}
 function fakeChild(mode = 'ready'): FakeChild {
   const child = new EventEmitter() as FakeChild;
   child.pid = 12345;
   child.messages = [];
-  child.postMessage = message => {
+  child.postMessage = (message, transfer) => {
+    if (transfer) child.transfer = transfer;
     child.messages.push(message);
     if (message.type === 'start' && mode === 'ready') setImmediate(() => child.emit('message', {
       type: 'ready', url: 'http://127.0.0.1:49123', runtime: { electron: '44.7.0', node: '24.21.0', pid: child.pid } }));
@@ -86,6 +87,58 @@ test('supervisor starts only a bundled utility and stops gracefully without host
   assert.equal(child.messages[0]?.cacheDir, '/cache'); assert.equal(child.messages[0]?.projectsDir, '/films');
   await supervisor.stop(); assert.equal(supervisor.state, 'stopped');
   assert.equal(child.messages.at(-1)?.type, 'stop');
+});
+
+test('supervisor transfers a dedicated catalog channel without exposing backend credentials', async () => {
+  const backend = fakeChild(), catalog = fakeChild('idle');
+  catalog.pid = 23456;
+  const channel = {port1: {close() {}}, port2: {close() {}}};
+  const launches: Array<{modulePath: string; args: string[]; options: Parameters<SupervisorOptions['fork']>[2]}> = [];
+  const supervisor = new BackendSupervisor({fork: (modulePath, args, options) => {
+    launches.push({modulePath, args, options});
+    return modulePath === '/app/backend.cjs' ? backend : catalog;
+  }, modulePath: '/app/backend.cjs', environment: {HOME: '/home/u', MIOON_FFMPEG_PATH: '/bin/ffmpeg', RUNWAYML_API_SECRET: 'secret'},
+  projectCatalog: {modulePath: '/app/project-catalog.cjs', createChannel: () => channel as ReturnType<NonNullable<SupervisorOptions['projectCatalog']>['createChannel']>}});
+  const starting = supervisor.start({token: 'private'} as Parameters<typeof supervisor.start>[0]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(supervisor.state, 'starting');
+  catalog.emit('message', 'project-catalog-ready');
+  await starting;
+  assert.deepEqual(launches.map(launch => launch.modulePath), ['/app/backend.cjs', '/app/project-catalog.cjs']);
+  assert.deepEqual(launches[1].args, []);
+  assert.deepEqual(launches[1].options, {env: {HOME: '/home/u'}, stdio: 'ignore', serviceName: 'Mioon Project Catalog',
+    allowLoadingUnsignedLibraries: false, execArgv: []});
+  assert.deepEqual(catalog.messages, ['start-project-catalog']);
+  assert.deepEqual(catalog.transfer, [channel.port1]);
+  assert.deepEqual(backend.transfer, [channel.port2]);
+
+  const stopping = supervisor.stop();
+  await new Promise(resolve => backend.once('exit', resolve));
+  assert.equal(supervisor.state, 'stopping');
+  assert.throws(() => supervisor.start({} as Parameters<typeof supervisor.start>[0]), /already active/);
+  // Real Electron disconnects the transferred port when the backend exits.
+  catalog.emit('exit', 0);
+  assert.deepEqual(await stopping, {exitConfirmed: true, forced: false, code: 0});
+  assert.equal(supervisor.state, 'stopped');
+});
+
+test('failed catalog transfer terminates and reaps both utility processes', async () => {
+  const backend = fakeChild('idle'), catalog = fakeChild('idle');
+  catalog.pid = 23456;
+  catalog.postMessage = () => {throw new Error('private transfer error');};
+  let closedPorts = 0;
+  const port = {close: () => {closedPorts++;}};
+  const supervisor = new BackendSupervisor({fork: file => file === '/app/backend.cjs' ? backend : catalog,
+    modulePath: '/app/backend.cjs', environment: {},
+    projectCatalog: {modulePath: '/app/project-catalog.cjs', createChannel: () =>
+      ({port1: port, port2: port}) as ReturnType<NonNullable<SupervisorOptions['projectCatalog']>['createChannel']>}});
+  const exited = new Promise(resolve => supervisor.once('exit', resolve));
+  await assert.rejects(supervisor.start({} as Parameters<typeof supervisor.start>[0]), /启动通信失败/);
+  assert.equal(closedPorts, 2);
+  await exited;
+  assert.equal(backend.pid, undefined);
+  assert.equal(catalog.pid, undefined);
+  assert.equal(supervisor.child, null);
 });
 
 test('supervisor rejects wrong-origin handshakes and terminates that child', async () => {
