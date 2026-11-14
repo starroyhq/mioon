@@ -178,6 +178,29 @@ test('a delayed clipboard read cannot write after its owning document changes', 
   assert.deepEqual(f.createdSelections, []);
 });
 
+test('a paste with an unknown outcome blocks a fresh paste or duplicate until the document is reloaded', async t => {
+  const f = fixture(t), node = f.addNode(), {controller} = f;
+  f.activate();
+  const documentId = randomUUID(), viewport = {x: 0, y: 0, width: 1200, height: 900};
+  const snapshot = await controller.copySnapshot(documentId, [node]);
+  assert.ok(snapshot);
+  f.decorateRpc(next => async (op, input) => {
+    const reply = await next(op, input);
+    if (op === 'canvas.apply') throw new Error('Synthetic acknowledgement loss');
+    return reply;
+  });
+  const paste = () => controller.paste(documentId, viewport, async () => snapshot.snapshotId, () => true);
+  assert.equal(await paste(), false);
+  assert.equal(controller.getSnapshot().clipboardWriteUnknown, true);
+  assert.deepEqual(f.errors, ['CANVAS_REQUEST_OUTCOME_UNKNOWN']);
+  assert.equal(await paste(), false);
+  assert.equal(await controller.duplicate(documentId, viewport, [node], () => true), false);
+  assert.equal(f.writeCount(), 2);
+  assert.equal(f.receiptCount(), 1);
+  controller.setContext({...f.context(), scope: 'reopened document'});
+  assert.equal(controller.getSnapshot().clipboardWriteUnknown, false);
+});
+
 test('simple archive writes once, reports the selected count and restores single and multi-page items', async t => {
   const f = fixture(t), nodes = [f.addNode('one'), f.addNode('two'), f.addNode('three'), f.addNode('four')];
   const {controller} = f;
