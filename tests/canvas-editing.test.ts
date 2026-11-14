@@ -112,6 +112,79 @@ test('archive of a first-frame source preserves the manual asset and hides both 
   } finally { try { await services.drain(); } finally { library.close(); } }
 });
 
+test('archive pages share a read-only snapshot stamp and project-scoped preview metadata', t => {
+  const f = fixture(t), hash = 'a'.repeat(64);
+  function asset(mimeType: 'image/png' | 'video/mp4') {
+    const id = f.id(), extension = mimeType === 'image/png' ? 'png' : 'mp4';
+    return f.store.put('assets', {id, projectId: f.projectId, mimeType, name: 'Fixture asset', sha256: hash,
+      sizeBytes: 100, referenceRevision: 1, reference: {pathForm: 'relative', path: `media/${id}.${extension}`,
+        volume: null, sizeBytes: 100, mtimeMs: 1, sampledSha256: hash, fullSha256: hash}});
+  }
+  const image = asset('image/png'), movie = asset('video/mp4'), formerMovie = asset('video/mp4');
+  const selectedVersionId = f.id(), otherVersionId = f.id();
+  const generated = f.shot(0, {title: 'Generated', selectedVersionId});
+  const unfinished = f.shot(1, {title: 'Unfinished', selectedVersionId: otherVersionId});
+  const third = f.shot(2, {referenceAssetIds: [image.id]});
+  for (const [id, shotId, assetId] of [
+    [selectedVersionId, generated.id, movie.id], [f.id(), generated.id, formerMovie.id], [otherVersionId, third.id, movie.id],
+  ] as const) f.store.put('versions', {id, projectId: f.projectId, jobId: f.id(), shotId, assetId, sha256: hash});
+  const imageNode = f.node('image', {label: '', assetId: image.id});
+  const text = f.node('text', {label: '', text: 'Opening line'});
+  const orphan = f.node('image', {assetId: f.id()});
+  const connection = f.edge(imageNode, third, {kind: 'reference', role: 'first_frame', sourceAssetId: image.id});
+  const hidden = f.node('text');
+  f.store.db.prepare(`UPDATE project.nodes SET archivedAt=?,archiveBatchId=?,archiveReason='undo-create' WHERE id=?`).run(date, f.id(), hidden.id);
+
+  const selected = [generated, unfinished, imageNode, text, orphan];
+  f.edit('archive', selected);
+  assert.ok(f.archived(connection));
+  const before = readProjectContentStamp(f.store.db);
+  const changes = () => f.store.db.prepare('SELECT total_changes() AS value').get()?.value;
+  const changesBefore = changes();
+  const first = f.call('canvas.archive.list', {limit: 2});
+  assert.equal(first.total, selected.length);
+  assert.deepEqual({contentSequence:first.contentSequence,contentToken:first.contentToken}, before);
+  assert.ok(first.next);
+  const last = f.call('canvas.archive.list', {after: first.next});
+  assert.equal(last.total, first.total);
+  assert.equal(last.contentToken, first.contentToken);
+  assert.equal(last.contentSequence, first.contentSequence);
+  assert.equal(last.next, null);
+  assert.equal(changes(), changesBefore);
+  assert.equal(f.store.db.isTransaction, false);
+
+  const items = [...first.items, ...last.items];
+  assert.deepEqual(items.map(item => item.id), selected.map(item => item.id).sort());
+  for (const item of items) {
+    assert.equal(item.archive.at, date);
+    assert.equal(item.archive.reason, 'user-delete');
+    assert.equal(item.revision, f.expectTarget(item).revision);
+  }
+  const byId = new Map(items.map(item => [item.id, item]));
+  assert.deepEqual(byId.get(generated.id)?.preview, {assetId: movie.id, mimeType: 'video/mp4'});
+  assert.equal(byId.get(generated.id)?.versions, 2);
+  assert.equal(byId.get(generated.id)?.shotNumber, 1);
+  assert.equal(byId.get(unfinished.id)?.preview, null, 'a different shot cannot supply a selected version');
+  assert.equal(byId.get(unfinished.id)?.versions, 0);
+  assert.equal(byId.get(unfinished.id)?.shotNumber, 2);
+  assert.equal(byId.get(imageNode.id)?.shotNumber, null);
+  assert.equal(byId.get(imageNode.id)?.nodeType, 'image');
+  assert.equal(byId.get(imageNode.id)?.label, image.name);
+  assert.deepEqual(byId.get(imageNode.id)?.preview, {assetId: image.id, mimeType: 'image/png'});
+  assert.equal(byId.get(text.id)?.nodeType, 'text');
+  assert.equal(byId.get(text.id)?.label, 'Opening line');
+  assert.equal(byId.get(text.id)?.preview, null);
+  assert.equal(byId.get(orphan.id)?.preview, null);
+  assert.doesNotMatch(JSON.stringify(items), /media\//);
+  assert.throws(() => f.call('canvas.archive.list', {projectId: f.id()}), {code: 'VALIDATION_ERROR'});
+
+  f.edit('restore', [text]);
+  const after = f.call('canvas.archive.list');
+  assert.notEqual(after.contentToken, first.contentToken);
+  assert.equal(after.total, first.total - 1);
+  assert.ok(!after.items.some(item => item.id === text.id));
+});
+
 test('shot archive undo restores exact story order, explicit recovery uses surviving anchors', t => {
   const f = fixture(t), shots = [f.shot(0), f.shot(1), f.shot(2), f.shot(3), f.shot(4)];
   f.edit('archive', [shots[2]!,shots[1]!]);
@@ -128,6 +201,24 @@ test('shot archive undo restores exact story order, explicit recovery uses survi
     {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'edge-endpoint', id: decoration.id}});
   f.edit('restore', [shots[1]!,decoration]);
   assert.equal(f.archived(decoration), false);
+});
+
+test('archives and history without saved shot numbers remain readable and recoverable', t => {
+  const f = fixture(t), first = f.shot(0), second = f.shot(1);
+  f.edit('archive', [second]);
+  f.store.db.prepare(`UPDATE main.canvas_history_entries
+    SET beforePatch=json_remove(beforePatch,'$.anchors[0].number'),afterPatch=json_remove(afterPatch,'$.anchors[0].number')
+    WHERE projectId=?`).run(f.projectId);
+  f.reopen();
+  f.undo();
+  assert.deepEqual(f.order(), [first.id, second.id]);
+  f.redo();
+  assert.equal(f.store.db.prepare("SELECT json_extract(data,'$.canvasArchiveOrder.number') AS number FROM project.shots WHERE id=?")
+    .get(second.id)?.number, null);
+  f.reopen();
+  assert.equal(f.call('canvas.archive.list').items[0]?.shotNumber, 2);
+  f.edit('restore', [second]);
+  assert.deepEqual(f.order(), [first.id, second.id]);
 });
 
 test('restoring a deletion batch requires every remaining member and keeps an archived shot source binding', t => {
@@ -299,6 +390,71 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
   f.undo();
   assert.equal(f.archived(shot), false);
   assert.deepEqual(f.store.get('timelines', timeline.id), timeline);
+});
+
+test('archive preview lists the first three affected shots by displayed order and preserves their numbers across reopen and redo', t => {
+  const f = fixture(t), ordered = [5, 10, 18, 27, 31].map(index => f.shot(index));
+  const trackId = f.id();
+  const asset = () => {
+    const id = f.id();
+    f.store.put('assets', {id, projectId: f.projectId, name: 'Video'});
+    return id;
+  };
+  const [first, second, third, fourth, fifth] = ordered as [CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget];
+  const firstAsset = asset(), fourthAsset = asset();
+  for (const shot of [first, third, third, fifth]) {
+    f.store.put('versions', {id: f.id(), projectId: f.projectId, jobId: f.id(), shotId: shot.id,
+      assetId: shot === first ? firstAsset : asset(), sha256: 'a'.repeat(64)});
+  }
+  f.store.put('timelines', {id:f.id(), projectId:f.projectId, fps:30, width:1920, height:1080, revision:1, durationFrames:30,
+    createdAt:date, updatedAt:date, tracks:[{id:trackId,name:'Track',kind:'video',orderIndex:0,hidden:true,muted:false}],
+    clips:[{id:f.id(),trackId,assetId:firstAsset,name:'Generated',startFrame:0,durationFrames:15,sourceInFrame:0,gain:1,
+      rect:{x:0,y:0,width:1920,height:1080}},
+    {id:f.id(),trackId,assetId:fourthAsset,shotId:fourth.id,name:'Linked',startFrame:15,durationFrames:15,sourceInFrame:0,gain:1,
+      rect:{x:0,y:0,width:1920,height:1080}}]});
+  const clipsOnly = f.call('canvas.archive.preview', {operation:'archive', targets:[f.expectTarget(fourth)]});
+  assert.ok(clipsOnly.confirmation);
+  assert.deepEqual(clipsOnly.shotImpacts, [{number:4,versions:0,clips:1,usedVersions:0}]);
+  const selection = [fifth, second, fourth, third, first, f.node()];
+  const targets = selection.map(f.expectTarget);
+  const preview = f.call('canvas.archive.preview', {operation: 'archive', targets});
+  assert.ok(preview.confirmation);
+  assert.equal(f.store.db.isTransaction, false);
+  assert.deepEqual({clips: preview.clips, versions: preview.versions, count: preview.impactedShotCount, impacts: preview.shotImpacts},
+    {clips: 2, versions: 4, count: 4, impacts: [{number:1,versions:1,clips:1,usedVersions:1}, {number:3,versions:2,clips:0,usedVersions:0},
+      {number:4,versions:0,clips:1,usedVersions:0}]});
+  f.apply({operation: 'archive', targets, requestId: f.requestId(), historyRevision: preview.historyRevision, confirmation: preview.confirmation});
+  const assertNumbers = () => {
+    const page = f.call('canvas.archive.list');
+    for (const [index, {id}] of ordered.entries()) assert.equal(page.items.find(item => item.id === id)?.shotNumber, index + 1);
+  };
+  f.reopen();
+  assertNumbers();
+  f.undo();
+  assert.equal(f.call('canvas.archive.list').total, 0);
+  f.redo();
+  assertNumbers();
+});
+
+test('history reports an active operation separately from a conflicting edit', t => {
+  const f = fixture(t), shot = f.shot(0);
+  const move = () => f.call('canvas.apply', {operation:'move', requestId:f.requestId(), historyRevision:0,
+    moves:[{...f.expectTarget(shot), position:{x:12,y:24}}]});
+  const addJob = () => f.store.put('jobs', {id:f.id(), projectId:f.projectId, shotId:shot.id, status:'queued', snapshot:{shotId:shot.id}, revision:1});
+  move();
+  const job = addJob();
+  let history = f.call('canvas.history.get');
+  assert.deepEqual([history.undoConflict, history.undoBlocked, history.redoConflict, history.redoBlocked, history.conflict],
+    [false, true, false, false, true]);
+  assert.throws(f.undo, {code:'CANVAS_EDIT_BLOCKED'});
+  f.store.put('jobs', {...job, status:'failed'});
+  history = f.call('canvas.history.get');
+  assert.deepEqual([history.undoBlocked, history.undoConflict], [false, false]);
+  f.undo();
+  addJob();
+  history = f.call('canvas.history.get');
+  assert.deepEqual([history.redoBlocked, history.redoConflict, history.conflict], [true, false, true]);
+  assert.throws(f.redo, {code:'CANVAS_EDIT_BLOCKED'});
 });
 
 test('expired or lost-history request keys cannot execute again, including after clock rollback', t => {

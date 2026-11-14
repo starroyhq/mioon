@@ -55,6 +55,11 @@ test('the digest identifies retained versions and explicit and asset-derived cli
   assert.deepEqual(f.inspect([otherShot, shot]), first);
   assert.deepEqual(inspectCanvasDependencies(store, [otherShot, shot], [otherShot]).versions, 0);
   assert.deepEqual(inspectCanvasDependencies(store, [otherShot, shot], [otherShot]).clips, 0);
+  const byShot = inspectCanvasDependencies(store, [shot, otherShot], [otherShot, shot], {reportShotImpacts: true});
+  assert.deepEqual(byShot.shotImpacts, new Map([[shot.id, {versions: 1, clips: 2, usedVersions: 1}]]),
+    'clips sharing the same version count as one version even when provenance differs');
+  assert.equal(byShot.digest, first.digest);
+
   store.put('timelines', {...timeline, revision: 2, clips: [visibleClip, {...hiddenClip, id: randomUUID()}]});
   const replaced = f.inspect([shot, otherShot]);
   assert.equal(replaced.clips, 2);
@@ -62,6 +67,39 @@ test('the digest identifies retained versions and explicit and asset-derived cli
   store.put('timelines', {...timeline, revision: 3, clips: [visibleClip, hiddenClip, {
     ...clip(randomUUID(), video, otherAssetId), startFrame: 30}], durationFrames: 60});
   assert.deepEqual(f.inspect([shot, otherShot]), first, 'unrelated clip and aggregate revision do not invalidate the proof');
+});
+
+test('shot impact uses explicit, job or unambiguous asset provenance but never counts a shot-only reference as a version', t => {
+  const {store, projectId, shot, otherShot} = fixture(t);
+  const assetId = randomUUID(), importedAssetId = randomUUID(), otherAssetId = randomUUID(), trackId = randomUUID();
+  const version = {id: randomUUID(), projectId, jobId: randomUUID(), shotId: shot.id, assetId, sha256: hash};
+  const otherVersion = {...version, id: randomUUID(), jobId: randomUUID(), assetId: otherAssetId};
+  for (const id of [assetId, importedAssetId, otherAssetId]) store.put('assets', {id, projectId, name: 'Video', sha256: hash});
+  store.put('versions', version);
+  store.put('versions', otherVersion);
+  const timeline = {id: randomUUID(), projectId, fps: 30, width: 1920, height: 1080, revision: 1, durationFrames: 30,
+    tracks: [{id: trackId, name: 'Video', kind: 'video', orderIndex: 0, hidden: false, muted: false}], createdAt: at, updatedAt: at};
+  const clip = {id: randomUUID(), trackId, assetId, name: 'Clip', startFrame: 0, durationFrames: 30, sourceInFrame: 0,
+    gain: 1, rect: {x: 0, y: 0, width: 1920, height: 1080}};
+  const read = (clips: readonly object[]) => {
+    store.put('timelines', {...timeline, clips});
+    return inspectCanvasDependencies(store, [shot], [shot], {reportShotImpacts: true});
+  };
+  for (const source of [{versionId: version.id}, {jobId: version.jobId}, {shotId: shot.id}, {}]) {
+    assert.deepEqual(read([{...clip, ...source}]).shotImpacts.get(shot.id), {versions: 2, clips: 1, usedVersions: 1});
+  }
+  assert.deepEqual(read([{...clip, assetId: importedAssetId, shotId: shot.id}]).shotImpacts.get(shot.id),
+    {versions: 2, clips: 1, usedVersions: 0});
+  assert.deepEqual(read([{...clip, jobId: otherVersion.jobId}]).shotImpacts.get(shot.id), {versions: 2, clips: 1, usedVersions: 0});
+  const known = read([{...clip, durationFrames: 15, versionId: version.id},
+    {...clip, id: randomUUID(), startFrame: 15, durationFrames: 15, assetId: otherAssetId, versionId: otherVersion.id}]);
+  assert.deepEqual(known.shotImpacts.get(shot.id), {versions: 2, clips: 2, usedVersions: 2});
+
+  // Legacy storage can contain multiple versions for the same asset. An
+  // asset-only reference cannot identify a version, even with the other shot omitted.
+  store.put('versions', {...version, id: randomUUID(), jobId: randomUUID(), shotId: otherShot.id});
+  assert.deepEqual(read([clip]).shotImpacts.get(shot.id), {versions: 2, clips: 1, usedVersions: 0});
+  assert.deepEqual(read([{...clip, versionId: version.id}]).shotImpacts.get(shot.id), {versions: 2, clips: 1, usedVersions: 1});
 });
 
 test('all matching owners, unresolved generation and persisted drafts are blockers', t => {

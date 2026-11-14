@@ -700,7 +700,7 @@ test('candidate import proof accepts private anchors only on valid archived shot
   canvas.call('canvas.apply', {projectId, requestId, operation: 'archive', historyRevision: 0,
     targets: [{kind: 'shot', id: first.id, revision: readMioTargetRevision(store.db, projectId, 'shot', first.id)}]});
   const saved = store.get('shots', first.id) as Record<string, unknown>;
-  assert.deepEqual(saved[CANVAS_ARCHIVE_ORDER_FIELD], {previous: null, next: second.id});
+  assert.deepEqual(saved[CANVAS_ARCHIVE_ORDER_FIELD], {previous: null, next: second.id, number: 1});
   store.tx(() => {
     const document = captureProjectDocumentInside(store);
     storeManualVersionInside(store.db, projectId, 'Before import', document.evidence.contentSequence, encodeProjectDocument(document));
@@ -714,6 +714,8 @@ test('candidate import proof accepts private anchors only on valid archived shot
 
   store.put('shots', {...saved, [CANVAS_ARCHIVE_ORDER_FIELD]: {previous: null, next: second.id, assetId: f.assetId}});
   assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'}, 'unknown anchor fields fail closed');
+  store.put('shots', {...saved, [CANVAS_ARCHIVE_ORDER_FIELD]: {previous: null, next: second.id, number: 0}});
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'}, 'the saved shot number is one-based');
   store.put('shots', {...saved, referenceAssetIds: [f.assetId]});
   assert.deepEqual(f.read(), {status: 'referenced', source: 'project.shots.data'}, 'the archived shot still owns its real asset references');
 });
