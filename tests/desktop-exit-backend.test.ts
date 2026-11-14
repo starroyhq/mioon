@@ -9,6 +9,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/backend-lease.ts';
 import {createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
+import {createSettingsEventLoopMonitor} from '../apps/desktop/src/settings-event-loop.ts';
 import {createDesktopHarnessProjectEntries} from './helpers/strict-desktop-harness-types.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
@@ -27,7 +28,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     if (diagnosticFailure && message.type === 'exit-diagnostic') throw new Error(privateData);
     messages.push(JSON.parse(JSON.stringify(message)));
   };
-  const sandbox = { path, createProjectEntryControlBroker,
+  const sandbox = { path, createProjectEntryControlBroker, createSettingsEventLoopMonitor,
     comfyModuleModeFromEnvironment,
     createBackendLease, BACKEND_LEASE_TIMING, performance: {now: () => now},
     process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
@@ -192,6 +193,7 @@ for (const [origin, trigger] of [
     const script = `
       import vm from 'node:vm';
       import {createBackendLease, BACKEND_LEASE_TIMING} from ${JSON.stringify(new URL('../apps/desktop/src/backend-lease.ts', import.meta.url).href)};
+      import {createSettingsEventLoopMonitor} from ${JSON.stringify(new URL('../apps/desktop/src/settings-event-loop.ts', import.meta.url).href)};
       const sandboxProcess = {
         parentPort: { on() {}, postMessage(message) {
           if (message.type === 'exit-diagnostic') process.stdout.write(JSON.stringify(message) + '\\n');
@@ -200,7 +202,7 @@ for (const [origin, trigger] of [
         pid: process.pid, on: process.on.bind(process), exit: process.exit.bind(process)
       };
       vm.runInNewContext(${JSON.stringify(source)}, {
-        createBackendLease, BACKEND_LEASE_TIMING, performance,
+        createBackendLease, BACKEND_LEASE_TIMING, createSettingsEventLoopMonitor, performance,
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
         createVideoSecretClient: () => ({}), createProjectTrashClient: () => ({close() {}}), initializeDesktopPrivateStorage() {},

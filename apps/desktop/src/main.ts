@@ -54,6 +54,9 @@ import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.ts';
 import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
 import type { RendererHealthContents } from './renderer-diagnostics.ts';
+import { exportDesktopDiagnostics } from './diagnostics-export.ts';
+import { SETTINGS_DIAGNOSTICS_CHANNEL, parseSettingsDiagnosticRequest } from './settings-diagnostics-protocol.ts';
+import { createSettingsOpeningDiagnostics } from './settings-opening-diagnostics.ts';
 import { windowChromeOptions } from './window-chrome.ts';
 import { createLauncherWindowState } from './launcher-window-state.ts';
 import { settingsWindowOptions } from './settings-window.ts';
@@ -192,6 +195,7 @@ function trayCanHide(): boolean {
     !windowHost!.windows().some(window => windowAdmissions.get(window)?.pending);
 }
 function performTrayAction(action: TrayAction, settingsSlot: ProjectWindowSettingsSlot = 'general'): Promise<void> {
+  const receivedAt = Date.now();
   if (action === 'quit') { trayIntent++; app.quit(); return Promise.resolve(); }
   if (!trayCanInteract(action)) return Promise.resolve();
   if (action === 'show' && nativeDialogs.size !== 0) {
@@ -218,7 +222,7 @@ function performTrayAction(action: TrayAction, settingsSlot: ProjectWindowSettin
     const document = await host.loadDocumentFor(target);
     if (!current() || !document?.isCurrent()) return;
     if (!host.activate(target)) return;
-    if (action === 'settings') host.showSettings(settingsSlot, target);
+    if (action === 'settings') host.showSettings(settingsSlot, target, receivedAt);
     else if (action === 'new-project' || action === 'open-project') host.requestProjectEntry(action === 'new-project' ? 'new' : 'open', target);
   })().finally(() => { if (trayOperation?.promise === operation) trayOperation = null; trayHost?.refresh(); refreshApplicationMenu(); });
   trayOperation = {action, settingsSlot, intent, promise: operation};
@@ -523,6 +527,16 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     const launcherWindowState = createLauncherWindowState(paths.userData, () => screen.getAllDisplays().map(display => display.workArea));
     let restorationNoticesPending = false;
     const warmOnFocus = app.isPackaged && process.platform === 'darwin';
+    const settingsDiagnostics = typeof createSettingsOpeningDiagnostics === 'function' ? createSettingsOpeningDiagnostics<BrowserWindow>({
+      record: value => { rendererDiagnostics?.recordSettings(value); },
+      sample: (from, to, signal, onTimeout) => ownedBackend.sampleSettingsEventLoop(from, to, signal, onTimeout),
+      signal: startup.signal,
+    }) : undefined;
+    const settingsAppearance = () => ({
+      locale: languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()),
+      theme: context.appearance.backgroundColor().toLowerCase() === desktopWindowBackground('dark', nativeTheme).toLowerCase() ? 'dark' : 'light',
+    });
+    const warmedAppearance = new WeakMap<BrowserWindow, ReturnType<typeof settingsAppearance>>();
     let warmTimer: ReturnType<typeof setTimeout> | undefined;
     function scheduleSettingsWarmup(window: BrowserWindow): void {
       clearTimeout(warmTimer);
@@ -540,9 +554,11 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
       canRestoreParentFocus: () => BrowserWindow.getFocusedWindow() !== null,
+      settingsDiagnostics, settingsBootAckTimeoutMs: 1500,
       createWindow: creation => {
         const launcher = creation.role === 'launcher';
         const title = launcher ? 'Mioon' : identity.productName;
+        const settingsBoot = creation.role === 'settings' ? settingsAppearance() : undefined;
         const window = new BrowserWindow({
           title,
           ...(launcher ? launcherWindowState.options() : {width: 1500, height: 960, minWidth: 1050, minHeight: 680}),
@@ -552,7 +568,8 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
           webPreferences: {
             ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs'),
-            ...(creation.role !== 'settings' ? {additionalArguments: [`--mioon-home-directory=${homeDirectory}`]} : {}),
+            additionalArguments: settingsBoot ? [`--mioon-settings-locale=${settingsBoot.locale}`, `--mioon-settings-theme=${settingsBoot.theme}`] :
+              [`--mioon-home-directory=${homeDirectory}`],
           },
         });
         if (launcher) {
@@ -561,6 +578,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           });
           launcherWindowState.track(window);
         }
+        if (warmOnFocus && settingsBoot) warmedAppearance.set(window, settingsBoot);
         if (warmOnFocus && creation.role !== 'settings') {
           const schedule = () => scheduleSettingsWarmup(window);
           window.on('focus', schedule);
@@ -577,6 +595,10 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
           return () => { warmSettingsContents.delete(id); if (!contents.isDestroyed()) release?.(); };
         },
         discardWarmSettings(window: BrowserWindow) { if (!window.isDestroyed()) window.destroy(); },
+        warmSettingsMatches(window: BrowserWindow) {
+          const warm = warmedAppearance.get(window), current = settingsAppearance();
+          return warm?.locale === current.locale && warm.theme === current.theme;
+        },
       } : {}),
       prepareWindow: (window, owner) => {
         if (warmOnFocus && owner.role === 'settings') window.setBackgroundColor(context.appearance.backgroundColor());
@@ -1097,7 +1119,33 @@ function readApplicationMenuState(): ApplicationMenuState {
     canClose: available, canResize: available && owner?.role !== 'settings', canReload: available,
     canRestart: quitRouter.allowsWindows && !restarting && !quitting && nativeDialogs.size === 0 && !pending,
     canEditText: available && trusted, canCommand: available && trusted && owner?.role !== 'settings',
+    canExportDiagnostics: available && trusted && typeof exportDesktopDiagnostics === 'function',
     business, windows};
+}
+
+async function saveDesktopDiagnostics(window: BrowserWindow, context: DesktopWindowContext): Promise<void> {
+  const host = windowHost, owner = host?.ownerForContents(window.webContents);
+  if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) return;
+  const current = () => ownsWindow(window, context) && owner.isCurrent() && quitRouter.allowsWindows;
+  const token = {window};
+  nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
+  let notice: 'native.diagnosticsExportEmpty' | 'native.diagnosticsExportFailed' | undefined;
+  try {
+    const result = await dialog.showSaveDialog(window, {title: nt('native.menuExportDiagnostics'),
+      defaultPath: 'mioon-diagnostics.jsonl', filters: [{name: 'JSONL', extensions: ['jsonl']}],
+      properties: ['showOverwriteConfirmation', 'createDirectory']});
+    if (!current() || result.canceled || !result.filePath) return;
+    rendererDiagnostics?.flushSettings();
+    const saved = await exportDesktopDiagnostics({dataDir: paths.dataDir, destination: result.filePath,
+      check: () => { if (!current()) throw new Error('Diagnostic export owner unavailable'); }});
+    if (saved === 'empty') notice = 'native.diagnosticsExportEmpty';
+  } catch { notice = 'native.diagnosticsExportFailed'; }
+  finally {
+    nativeDialogs.delete(token);
+    if (ownsWindow(window, context)) finishNativePresentation(window, host, owner.contextId);
+    trayHost?.refresh(); refreshApplicationMenu();
+  }
+  if (notice && current()) await showOwnedDialog(window, context, {type: 'info', message: nt(notice)}).catch(() => {});
 }
 function executeMenuCommand(command: MenuCommandId): void {
   const window = focusedMenuWindow();
@@ -1120,6 +1168,10 @@ function performApplicationMenuAction(action: ApplicationMenuAction): unknown {
     return performTrayAction('settings', action === 'shortcuts' ? 'shortcuts' : 'general').catch(fatal);
   }
   const window = focusedMenuWindow();
+  if (action === 'export-diagnostics') {
+    if (window && windowContext && readApplicationMenuState().canExportDiagnostics) return saveDesktopDiagnostics(window, windowContext);
+    return;
+  }
   if (action === 'close-window') { if (readApplicationMenuState().canClose) window?.close(); return; }
   if (action === 'full-screen') { if (window && readApplicationMenuState().canResize) window.setFullScreen(!window.isFullScreen()); return; }
   if (action === 'reload') {
@@ -1253,6 +1305,10 @@ ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (result === true && isProjectWindowRequest(request) && ['settings', 'projects', 'project-entry'].includes(request.action)) trayIntent++;
   refreshApplicationMenu();
   return result;
+});
+if (typeof SETTINGS_DIAGNOSTICS_CHANNEL === 'string') ipcMain.handle(SETTINGS_DIAGNOSTICS_CHANNEL, (event, input) => {
+  const request = parseSettingsDiagnosticRequest(input);
+  return request ? windowHost?.recordSettingsDiagnostic(event, request) === true : false;
 });
 
 async function quitFailed(error: unknown): Promise<void> {

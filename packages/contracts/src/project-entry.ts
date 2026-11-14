@@ -30,10 +30,16 @@ export const projectEntrySchema = z.object({
   'The cover address must match this project and its cached summary.');
 export type ProjectEntry = z.infer<typeof projectEntrySchema>;
 
-export const projectEntriesResponseSchema = z.object({
-  version: z.literal(1),
+/** Identity of the active application library and the process serving it. */
+export const projectEntryIdentitySchema = z.object({
   appLibraryScope: z.string().regex(/^[a-f0-9]{64}$/u),
   instanceId: z.string().uuid(),
+}).strict();
+export type ProjectEntryIdentity = z.infer<typeof projectEntryIdentitySchema>;
+
+export const projectEntriesResponseSchema = z.object({
+  version: z.literal(1),
+  ...projectEntryIdentitySchema.shape,
   /** Omitted by earlier servers. This describes creation, independent of the registered files. */
   newProjectFormatVersion: z.union([z.literal(3), z.literal(4)]).optional(),
   registered: z.array(projectEntrySchema).max(PROJECT_ENTRY_LIMITS.maxEntries),
@@ -45,7 +51,7 @@ export type NewProjectFormatVersion = NonNullable<ProjectEntriesResponse['newPro
 /** One authenticated registration for a native result action. Reading this
  * descriptor does not acquire a project or grant a file/window capability. */
 export const projectEntryResponseSchema = z.object({
-  version: z.literal(1), appLibraryScope: z.string().regex(/^[a-f0-9]{64}$/u), instanceId: z.string().uuid(),
+  version: z.literal(1), ...projectEntryIdentitySchema.shape,
   entry: projectEntrySchema,
 }).strict();
 export type ProjectEntryResponse = z.infer<typeof projectEntryResponseSchema>;

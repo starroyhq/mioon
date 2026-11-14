@@ -12,6 +12,7 @@ import type {NativeProjectDesktopController} from './native-project-desktop-stat
 import {NativeProjectEntryDialogs} from './NativeProjectEntryDialogs.tsx';
 import {browserRpc} from './browser-rpc.ts';
 import type {ProjectHomeProps} from './ProjectHome.tsx';
+import {markSettingsClick} from './settings-diagnostics.ts';
 
 /** A scoped workspace catalog and new-project form. It remains mounted when
  * hidden so its inputs and unknown request always retain their exact owner. */
@@ -65,7 +66,7 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
       onOpenNativeResult={controller.openNativeResult}
       nativeActions={desktop && capability?.ready ? {trash: input => browserRpc('project.delete', input),
         ...(capability.templates?.length && desktop.bridge.instantiateTemplate ? {example: {bridge: desktop.bridge, templates: capability.templates}} : {})} : undefined}
-      page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => controller.open(id)}
+      page="projects" onPage={(page, click) => { if (page === 'settings') { markSettingsClick(click); onSettings('agent'); } }} onOpen={id => controller.open(id)}
       onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}
       onRefresh={async () => { controller.interacted(); const ready = await controller.refresh(); if (ready) await desktop?.initialize(editor); return ready; }} onCreate={controller.create} settings={null} status={status} help={help}
       createDisabledReason={disabled} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={desktop ? 0 : state.formIntent} />

@@ -1,3 +1,5 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
+import type {SettingsReadPurpose} from './settings-diagnostics.ts';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage,MessageKey,MessageArguments} from '../../../packages/i18n/src/index.ts';
 import {AGENT_PROTOCOLS,deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
@@ -23,7 +25,7 @@ export interface AgentSettingsState {
  phase:AgentSettingsPhase;snapshot:AgentSettingsSnapshot|null;draft:AgentSettingsDraft|null;
  serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];recovery:'conflict'|'unknown'|null;
 }
-export interface AgentSettingsClient {read:(signal?:AbortSignal)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
+export interface AgentSettingsClient {read:(signal?:AbortSignal,purpose?:SettingsReadPurpose)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
 export interface AgentSettingsSessionOptions {client?:AgentSettingsClient;onChange?:(state:AgentSettingsState)=>void;newServiceKey?:()=>string}
 export interface AgentSettingsSecretSource {read:(serviceKey:string)=>string;clear:()=>void}
 const fields=['presetId','platformId','baseUrl','model','protocol'] as const;
@@ -114,7 +116,8 @@ export function createAgentSettingsClient({ fetchImpl = (input: RequestInfo | UR
     } catch (error) { const code = failureCode(error); throw failure(code && (codes.has(code) || code === 'INVALID_RESPONSE') ? code : 'NETWORK'); }
     finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); }
   }
-  return { read: (signal?: AbortSignal) => request('GET', undefined, signal), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
+  return { read: (signal?: AbortSignal, purpose?: SettingsReadPurpose) => measureSettingsRead('agent-settings', () => request('GET', undefined, signal), purpose),
+    write: (input: unknown) => request('PUT', JSON.stringify(input)) };
 }
 
 
@@ -151,7 +154,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
  let state=initialAgentSettingsState(),active=true,visible=true,epoch=0;
  const watchStorage=watchPendingSecretStorage(async signal=>{
   const before=state.snapshot;if(!before)return;
-  const {storage}=safeAgentSettings(await client.read(signal));
+  const {storage}=safeAgentSettings(await client.read(signal,'keychain-poll'));
   if(!signal.aborted&&state.snapshot===before&&storage.reasonCode!=='OS_SECRET_STORE_PENDING')publish({snapshot:{...before,storage}});
  });
  const observeStorage=()=>watchStorage(active&&visible&&state.snapshot?.storage.reasonCode==='OS_SECRET_STORE_PENDING');

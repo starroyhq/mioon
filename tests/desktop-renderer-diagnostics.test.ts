@@ -6,9 +6,14 @@ import assert from 'node:assert/strict';
 import { chmod, link, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { classifyRendererEvent, createRendererDiagnostics, installRendererHealthDiagnostics, RENDERER_DIAGNOSTIC_LIMITS } from '../apps/desktop/src/renderer-diagnostics.ts';
+import { classifyRendererEvent, createRendererDiagnostics, installRendererHealthDiagnostics, RENDERER_DIAGNOSTIC_LIMITS, SLOW_SETTINGS_DIAGNOSTIC_FILE } from '../apps/desktop/src/renderer-diagnostics.ts';
+import {exportDesktopDiagnostics} from '../apps/desktop/src/diagnostics-export.ts';
+import {settingsOpenPhases} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
+import type {SettingsDiagnosticRecord} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
 
 const metadata = { version: '2.3.4-rc.1+build.01', mioonDesktop: { channel: 'production' } };
+const settingsRead: SettingsDiagnosticRecord = {schemaVersion: 1, at: '2026-01-02T03:04:05.000Z',
+  event: 'settings-page-read', attempt: 1, page: 'appearance', startedMs: 0, endedMs: 30, durationMs: 30, utilityMaxDelayMs: null};
 
 async function fixture(t: TestContext, manifest: Record<string, unknown> | null = metadata) {
   const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-renderer-diagnostics-'));
@@ -117,6 +122,177 @@ test('capacity and rotation stay bounded to fileCount files and maxBytes per fil
   assert.ok(total <= perFile * RENDERER_DIAGNOSTIC_LIMITS.fileCount, 'the family never exceeds its bounded capacity');
   assert.ok(total < needed, 'rotation drops the oldest records instead of growing without bound');
   assert.ok(total >= perFile * (RENDERER_DIAGNOSTIC_LIMITS.fileCount - 1), 'the bounded family retains the most recent evidence');
+});
+
+test('settings diagnostics coalesce into one delayed append and may flush for export', async t => {
+  const f = await fixture(t);
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let writes = 0;
+  const diagnostics = f.create({directoryPolicy: {validatePrivateDirectory,
+    ensurePrivateDirectory(directory: string, options: {create: true}) {writes++; return ensurePrivateDirectory(directory, options);}}});
+  assert.equal(diagnostics.recordSettings(settingsRead), true);
+  assert.equal(diagnostics.recordSettings({...settingsRead, attempt: 2}), true);
+  assert.equal(writes, 0);
+  t.mock.timers.tick(199);
+  assert.equal(writes, 0);
+  t.mock.timers.tick(1);
+  assert.equal(writes, 1);
+  assert.deepEqual(await records(f.file), [settingsRead, {...settingsRead, attempt: 2}]);
+
+  assert.equal(diagnostics.recordSettings({...settingsRead, attempt: 3}), true);
+  diagnostics.flushSettings();
+  t.mock.timers.tick(200);
+  assert.equal(writes, 2);
+  assert.deepEqual((await records(f.file)).map(row => row.attempt), [1, 2, 3]);
+});
+
+test('settings diagnostics retain a bounded batch without delaying renderer health writes', async t => {
+  const f = await fixture(t);
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const diagnostics = f.create();
+  for (let attempt = 1; attempt <= 150; attempt++) assert.equal(diagnostics.recordSettings({...settingsRead, attempt}), true);
+  assert.equal(diagnostics.record('unresponsive'), true);
+  assert.deepEqual((await records(f.file)).map(row => row.event), ['unresponsive']);
+  t.mock.timers.tick(200);
+  const result = await records(f.file);
+  assert.equal(result.length, 65);
+  assert.deepEqual(result.slice(1).map(row => row.attempt), Array.from({length: 64}, (_, index) => index + 87));
+  const bytesBefore = (await stat(f.file)).size;
+  const phases = Object.fromEntries(settingsOpenPhases.map(phase => [phase, 120_000]));
+  for (let attempt = 151; attempt <= 214; attempt++) {
+    assert.equal(diagnostics.recordSettings({schemaVersion: 1, at: settingsRead.at, attempt, event: 'settings-open-timing',
+      mode: 'cold', outcome: 'ready', elapsedMs: 120_000, utilityMaxDelayMs: null, phases}), true);
+  }
+  t.mock.timers.tick(200);
+  const largeRows = (await records(f.file)).slice(result.length);
+  assert.ok(largeRows.length > 0 && largeRows.length < 64);
+  assert.equal(largeRows.at(-1)?.attempt, 214);
+  assert.ok((await stat(f.file)).size - bytesBefore <= 16 * 1024);
+});
+
+test('slow opening and page read evidence survive normal settings queue and file rotation', async t => {
+  const f = await fixture(t);
+  const diagnostics = f.create();
+  const slow: SettingsDiagnosticRecord = {schemaVersion: 1, at: settingsRead.at, attempt: 1, event: 'settings-open-slow',
+    mode: 'warm', outcome: 'pending', elapsedMs: 3_100, utilityMaxDelayMs: null, phases: {mainReceived: 4, show: 310}};
+  const slowRead: SettingsDiagnosticRecord = {...settingsRead, event: 'settings-page-read-slow',
+    startedMs: 3_100, endedMs: 6_200, durationMs: 3_100, utilityMaxDelayMs: 2_900};
+  const filled = {...slow, utilityMaxDelayMs: 3_000};
+  const slowFile = path.join(f.logDirectory, SLOW_SETTINGS_DIAGNOSTIC_FILE);
+  assert.equal(diagnostics.recordSettings(slow), true);
+  assert.equal(diagnostics.recordSettings(slowRead), true);
+  for (let attempt = 2; attempt <= 100; attempt++) {
+    assert.equal(diagnostics.recordSettings({...settingsRead, attempt}), true);
+  }
+  diagnostics.flushSettings();
+  assert.ok((await records(f.file)).every(row => row.event === 'settings-page-read'));
+  await rm(f.file);
+  // Reuse a full ordinary slot to cross the real rotation boundary without
+  // making thousands of individual disk syncs.
+  const line = Buffer.from(JSON.stringify(settingsRead) + '\n');
+  const full = Buffer.concat(Array.from({length: Math.floor(RENDERER_DIAGNOSTIC_LIMITS.maxBytes / line.length)}, () => line));
+  for (let rotation = 0; rotation < RENDERER_DIAGNOSTIC_LIMITS.fileCount + 1; rotation++) {
+    await writeFile(f.file, full, {mode: 0o600});
+    assert.equal(diagnostics.recordSettings({...settingsRead, attempt: 101 + rotation}), true);
+    assert.equal(diagnostics.recordSettings({ ...settingsRead, attempt: 201 + rotation }), true);
+    diagnostics.flushSettings();
+  }
+  assert.equal(diagnostics.recordSettings(filled), true);
+  diagnostics.flushSettings();
+  assert.deepEqual(await records(slowFile), [slow, slowRead, filled]);
+  if (process.platform !== 'win32') assert.equal((await stat(slowFile)).mode & 0o777, 0o600);
+  const destination = path.join(f.directory, 'support.jsonl');
+  assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'saved');
+  const output = await records(destination);
+  assert.deepEqual(output.filter(row => row.event === 'settings-open-slow'), [slow, filled]);
+  assert.deepEqual(output.filter(row => row.event === 'settings-page-read-slow'), [slowRead]);
+  assert.ok(output.some(row => row.event === 'settings-page-read'));
+});
+
+test('Help export includes only the sanitized diagnostics family in rotation order', async t => {
+  const f = await fixture(t);
+  assert.equal(f.create().record('responsive'), true);
+  const [current] = await records(f.file);
+  const privateValue = 'synthetic-private-string';
+  await writeFile(f.file + '.2', JSON.stringify({...current, event: 'unresponsive', privateValue}) + '\n', {mode: 0o600});
+  const timing = {schemaVersion: 1, at: current.at, event: 'settings-open-slow', attempt: 1,
+    mode: 'warm', outcome: 'ready', elapsedMs: 3200, utilityMaxDelayMs: 3000, phases: {mainReceived: 0, show: 150, bootReady: 3200}};
+  const page = {schemaVersion: 1, at: current.at, event: 'settings-page-read', attempt: 1, page: 'appearance',
+    startedMs: 3100, endedMs: 3150, durationMs: 50, utilityMaxDelayMs: 9};
+  const slowPage = {...page, event: 'settings-page-read-slow', endedMs: 6_200, durationMs: 3_100};
+  const slowFile = path.join(f.logDirectory, SLOW_SETTINGS_DIAGNOSTIC_FILE);
+  const rotated = [
+    {...current, event: 'render-process-gone', reason: 'crashed', exitCode: 19, classification: privateValue, token: privateValue},
+    {...timing, phases: {...timing.phases, [privateValue]: 1}, token: privateValue},
+    {...page, url: privateValue},
+    {...page, page: privateValue},
+    {...slowPage, url: privateValue},
+  ];
+  await writeFile(f.file + '.1', rotated.map(record => JSON.stringify(record)).join('\n') + '\ninvalid-json\n', {mode: 0o600});
+  await writeFile(slowFile + '.1', JSON.stringify({...timing, attempt: 2, token: privateValue}) + '\n', {mode: 0o600});
+  await writeFile(slowFile, [{...slowPage, attempt: 2, token: privateValue}, {...page, attempt: 2}, {...slowPage, attempt: 2, page: privateValue}]
+    .map(record => JSON.stringify(record)).join('\n') + '\n', {mode: 0o600});
+  await writeFile(f.file + '.3', JSON.stringify(current) + '\n', {mode: 0o600});
+  await writeFile(path.join(f.logDirectory, 'unrelated.jsonl'), privateValue, {mode: 0o600});
+  const destination = path.join(f.directory, 'support.jsonl');
+  await writeFile(destination, 'previous export');
+  assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'saved');
+  const result = await records(destination);
+  assert.deepEqual(result.map(record => record.event), ['unresponsive', 'render-process-gone', 'settings-open-slow', 'settings-page-read',
+    'settings-page-read-slow', 'responsive', 'settings-open-slow', 'settings-page-read-slow']);
+  assert.deepEqual(result.filter(record => 'classification' in record).map(record => record.classification), ['unresponsive', 'crashed', 'responsive']);
+  assert.deepEqual(result[2], timing);
+  assert.deepEqual(result[3], page);
+  assert.deepEqual(result[4], slowPage);
+  assert.deepEqual(result.slice(6), [{...timing, attempt: 2}, {...slowPage, attempt: 2}]);
+  assert.equal(result[1].exitCode, 19);
+  const output = await readFile(destination, 'utf8');
+  assert.ok(!output.includes(privateValue));
+  assert.ok(!output.includes(f.directory));
+  if (process.platform !== 'win32') assert.equal((await stat(destination)).mode & 0o777, 0o600);
+  assert.deepEqual(await records(f.file), [current]);
+});
+
+test('Help export rejects unsafe and oversized sources without altering the selected destination', async t => {
+  const f = await fixture(t);
+  const destination = path.join(f.directory, 'support.jsonl');
+  assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'empty');
+  await assert.rejects(stat(destination), {code: 'ENOENT'});
+  assert.equal(f.create().record('responsive'), true);
+  await writeFile(destination, 'previous export');
+  const source = f.file + '.1';
+  const other = path.join(f.directory, 'unrelated.jsonl');
+  await writeFile(other, 'untouched');
+  await symlink(other, source);
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination}));
+  assert.equal(await readFile(other, 'utf8'), 'untouched');
+  await rm(source);
+  await writeFile(source, Buffer.alloc(RENDERER_DIAGNOSTIC_LIMITS.maxBytes + 1), {mode: 0o600});
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination}));
+  assert.equal(await readFile(destination, 'utf8'), 'previous export');
+  await rm(source);
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination: f.file}));
+  const privateFile = path.join(f.dataDir, 'local-data.jsonl');
+  await writeFile(privateFile, 'unrelated private data', {mode: 0o600});
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination: privateFile}));
+  assert.equal(await readFile(privateFile, 'utf8'), 'unrelated private data');
+  const redirect = path.join(f.directory, 'symlink.jsonl');
+  await symlink(other, redirect);
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination: redirect}));
+  assert.equal(await readFile(other, 'utf8'), 'untouched');
+  assert.deepEqual((await records(f.file)).map(record => record.event), ['responsive']);
+});
+
+test('Help export rechecks the native owner before publication and removes the staged file on refusal', async t => {
+  const f = await fixture(t);
+  assert.equal(f.create().record('responsive'), true);
+  const destination = path.join(f.directory, 'support.jsonl');
+  const expired = Error('Native save owner expired');
+  let checks = 0;
+  const before = (await readdir(f.directory)).sort();
+  await assert.rejects(exportDesktopDiagnostics({dataDir: f.dataDir, destination,
+    check: () => {if (++checks === 3) throw expired;}}), expired);
+  assert.deepEqual((await readdir(f.directory)).sort(), before);
 });
 
 test('write, rotation and permission failures are tolerated and never throw', async t => {

@@ -4,11 +4,12 @@ import {MENU_COMMAND_ACCELERATORS} from './menu-command-protocol.ts';
 import type {MenuCommandId, MenuCommandState} from './menu-command-protocol.ts';
 
 export type ApplicationMenuAction = 'new-project' | 'open-project' | 'settings' | 'shortcuts' | 'show' | 'hide' |
-  'close-window' | 'full-screen' | 'reload' | 'restart' | 'quit';
+  'close-window' | 'full-screen' | 'reload' | 'restart' | 'export-diagnostics' | 'quit';
 export interface ApplicationMenuState {
   readonly canProject: boolean; readonly canSettings: boolean; readonly canShow: boolean; readonly canHide: boolean;
   readonly canFocusProjects: boolean;
   readonly canClose: boolean; readonly canResize: boolean; readonly canReload: boolean; readonly canRestart: boolean;
+  readonly canExportDiagnostics?: boolean;
   readonly canEditText: boolean; readonly canCommand: boolean;
   readonly business: MenuCommandState | null;
   readonly windows: readonly {readonly id: string; readonly label: string}[];
@@ -24,6 +25,7 @@ function allowed(action: ApplicationMenuAction, state: ApplicationMenuState): bo
   if (action === 'quit') return true;
   if (action === 'new-project' || action === 'open-project') return state.canProject;
   if (action === 'settings' || action === 'shortcuts') return state.canSettings;
+  if (action === 'export-diagnostics') return state.canExportDiagnostics === true;
   if (action === 'show') return state.canShow;
   if (action === 'hide') return state.canHide;
   if (action === 'close-window') return state.canClose;
@@ -100,6 +102,7 @@ export function applicationMenuTemplate(options: ApplicationMenuOptions): MenuIt
     })) : [{label: nt('native.menuNoWindows'), enabled: false}]},
   ]}, {id: 'menu-help', role: 'help', label: nt('native.menuHelp'), submenu: [
     command('show-help', nt('native.menuGuide')), item('shortcuts', nt('native.menuShortcuts')), separator,
+    item('export-diagnostics', nt('native.menuExportDiagnostics')),
     {label: nt('native.menuTroubleshooting'), submenu: [item('reload', nt('native.reload'), 'CmdOrCtrl+R'), item('restart', nt('native.restartService'))]},
     ...(!mac ? [separator, {role: 'about' as const, label: nt('native.about')}] : []),
   ]});

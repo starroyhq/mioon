@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import {isLocalRecordResponse, LOCAL_RECORDS_LIMITS, localRecordSchemas, localRecordsDeleteResponseSchema, localRecordsListResponseSchema} from '../../../packages/contracts/src/local-record-operations.ts';
 import type {LocalRecordOperation, LocalRecordsDeleteInput, LocalRecordsDeleteResponse, LocalRecordsListResponse} from '../../../packages/contracts/src/local-record-operations.ts';
 import {readBoundedJsonResponse} from './project-entry-directory-client.ts';
@@ -58,7 +59,7 @@ export function createLocalRecordsClient({fetcher = (...args: Parameters<typeof 
     } finally {clearTimeout(timer); options.signal?.removeEventListener('abort',abort);}
   }
   return {
-    async list(options = {}) {return localRecordsListResponseSchema.parse(await call('local.records.list',{},options));},
+    list(options = {}) {return measureSettingsRead('workspace-records',async()=>localRecordsListResponseSchema.parse(await call('local.records.list',{},options)));},
     async delete(input,options = {}) {return localRecordsDeleteResponseSchema.parse(await call('local.records.delete',input,options));},
   };
 }

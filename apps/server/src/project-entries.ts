@@ -6,7 +6,7 @@ import type {BigIntStats} from 'node:fs';
 import {inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
-import {projectEntriesResponseSchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
+import {projectEntriesResponseSchema, projectEntryIdentitySchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
@@ -24,11 +24,13 @@ import {newProjectFormatVersion} from './project-host/manager.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
+import type {ApplicationFileGuard} from './project-host/application-storage.ts';
 import {projectFileMoved, projectHostError} from './project-host/errors.ts';
 import type {ProjectCopies} from './project-host/copies.ts';
 import type {NativeAssetMediaPort,NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {ProjectTrashActions} from './project-host/trash.ts';
 import {projectDeleteInputSchema} from '../../../packages/contracts/src/project-lifecycle.ts';
+import {json} from './http-json.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -65,7 +67,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly markRecentOpened?: (projectId: string, lastOpenedAt: string) => void;
   readonly templates?: readonly ProjectDesktopTemplate[];
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
-  readonly assertProjectFile?: (file:string) => void;
+  readonly assertProjectFile?: ApplicationFileGuard;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
@@ -74,6 +76,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   let establishedScope: string | undefined;
   const windows = new Map<string, WindowSlot<Runtime>>();
   const listeners = new Set<(event: ProjectEntryWindowRevoked) => void>();
+  const formatHints = new Map<string, {generation: string; newer: boolean}>();
   const active = (): void => {if (signal.aborted) throw projectHostError('PROJECT_HOST_STOPPED');};
   const scope = (): string => {
     active();
@@ -84,31 +87,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     establishedScope = observed;
     return observed;
   };
-  const list = (all: boolean): ProjectEntriesResponse => {
-    const before = scope();
-    refreshSummaries();
-    const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
-      .map(({project, availability}) => {
-        if (availability.state === 'available') {
-          // Recovery leaves cold files alone. Check just the header for the
-          // newer-format hint, without opening the project or local records.
-          try {
-            assertProjectFile?.(project.projectFile);
-            sourceMetadata(project.projectFile);
-            inspectProjectFormatHeader(project.projectFile);
-          } catch (error) {
-            if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') availability = {state: 'invalid', reason: 'format-newer'};
-          }
-        }
-        return {project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null};
-      });
-    if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
-    const result = projectEntriesResponseSchema.safeParse({
-      version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion, registered,
-    });
-    if (!result.success) throw unavailable();
-    return result.data;
-  };
+  const readIdentity = () => ({appLibraryScope: scope(), instanceId});
   const generation = (info:BigIntStats):string => [info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':');
   // Before any descriptor is opened (including journal/header reads), refuse
   // every held SQLite inode. Closing an alias would drop the owner's POSIX lock.
@@ -117,6 +96,56 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     if(isProjectFileHeld(identity)||isAppLibraryHeld(identity))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
     return info;
+  };
+  const hasNewerFormat = (file: string): boolean => {
+    // The private guard and live SQLite ownership check still run for every
+    // use. Only the format hint can outlive a synchronous catalog sweep.
+    assertProjectFile?.(file);
+    const before = sourceMetadata(file), observed = generation(before);
+    const previous = before.ino === 0n ? undefined : formatHints.get(file);
+    if (previous?.generation === observed) return previous.newer;
+    formatHints.delete(file);
+    let newer = false;
+    try { inspectProjectFormatHeader(file); }
+    catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
+      newer = true;
+    }
+    // Keep cold open, read and close in the same turn: closing a raw
+    // descriptor after SQLite opens the same inode can drop its POSIX locks.
+    if (generation(sourceMetadata(file)) !== observed) return false;
+    if (before.ino !== 0n) {
+      if (formatHints.size >= PROJECT_ENTRY_LIMITS.maxEntries) formatHints.delete(formatHints.keys().next().value!);
+      formatHints.set(file, {generation: observed, newer});
+    }
+    return newer;
+  };
+  const list = (all: boolean): ProjectEntriesResponse => {
+    const before = scope();
+    refreshSummaries();
+    const registered = manager.list().filter(entry => all || projectEntryWithinRoot(projectsDir, entry.project.projectFile))
+      .map(({project, availability}) => ({project, availability, coverUrl: project.summary?.cover ? '/api/project-covers/' + project.projectId : null}));
+    const inspectFormats = () => {
+      for (const entry of registered) {
+        if (entry.availability.state !== 'available') continue;
+        // Recovery leaves cold files alone. Check just the header for the
+        // newer-format hint, without opening the project or local records.
+        try {
+          if (hasNewerFormat(entry.project.projectFile)) entry.availability = {state: 'invalid', reason: 'format-newer'};
+        } catch { /* Unavailable header hints do not change catalog metadata. */ }
+      }
+    };
+    if (!assertProjectFile) inspectFormats();
+    else if (registered.some(entry => entry.availability.state === 'available')) {
+      try { assertProjectFile.withSnapshot(inspectFormats); }
+      catch { /* An unavailable private-tree refresh leaves only catalog metadata. */ }
+    }
+    if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
+    const result = projectEntriesResponseSchema.safeParse({
+      version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion, registered,
+    });
+    if (!result.success) throw unavailable();
+    return result.data;
   };
   const observeFile = (file:string) => {
     assertProjectFile?.(file);
@@ -373,12 +402,11 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     listeners.clear();
   }, {once: true});
   return {control,
-    // Trusted composition metadata only; does not enumerate the catalog or
-    // lend a native window/project capability to application RPC callers.
-    readIdentity: () => ({appLibraryScope: scope(), instanceId}),
+    readIdentity,
     handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
-    const single = url.pathname.startsWith('/api/project-entries/');
-    if (url.pathname !== '/api/project-entries' && !single) return false;
+    const identity = url.pathname === '/api/project-entries/identity';
+    const single = !identity && url.pathname.startsWith('/api/project-entries/');
+    if (url.pathname !== '/api/project-entries' && !identity && !single) return false;
     const projectId = single ? url.pathname.slice('/api/project-entries/'.length) : null;
     if (projectId !== null && (!isProjectId(projectId) || projectId !== projectId.toLowerCase())) return false;
     if (req.method !== 'GET') {
@@ -390,6 +418,10 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       req.headers['content-length'] !== undefined && req.headers['content-length'] !== '0') {
       res.setHeader('Connection', 'close');
       throw invalid();
+    }
+    if (identity) {
+      json(res, 200, {ok: true, data: projectEntryIdentitySchema.parse(readIdentity())});
+      return true;
     }
     const catalog = list(channel !== 'web');
     const entry = projectId === null ? null : catalog.registered.find(item => item.project.projectId === projectId);

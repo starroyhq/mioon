@@ -1,3 +1,5 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
+import type {SettingsReadPurpose} from './settings-diagnostics.ts';
 import {canonicalImageInput} from '../../../packages/contracts/src/images.ts';
 import {imageSettingsResultSchema, imageSettingsUpdateSchema} from '../../../packages/contracts/src/image-settings.ts';
 import {normalizeCustomImageBaseUrl} from '../../../packages/contracts/src/image-compatible.ts';
@@ -17,7 +19,7 @@ import {watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 export type GenerationImageDomainKind = 'official' | 'custom' | 'comfy';
 export interface GenerationImageServicesClient {
-  read(signal?: AbortSignal): Promise<unknown>;
+  read(signal?: AbortSignal, purpose?: SettingsReadPurpose): Promise<unknown>;
   write(input: unknown, signal?: AbortSignal): Promise<unknown>;
   readAvailability?(signal?: AbortSignal): Promise<unknown>;
   check?(input: {baseUrl: string; model: string}, signal?: AbortSignal): Promise<unknown>;
@@ -75,8 +77,10 @@ export function createGenerationImageServicesClient(kind: GenerationImageDomainK
       throw Object.assign(new Error('Image settings request did not complete.'), {code: code === 'UNAUTHORIZED' || /^(?:IMAGE_SETTINGS|COMFY_[A-Z_]+)_[A-Z_]+$/.test(code) ? code : 'NETWORK'});
     } finally {clearTimeout(timer); signal?.removeEventListener('abort', abort);}
   }
-  return {read: signal => request(routeFor(kind), 'GET', undefined, signal), write: (input, signal) => request(routeFor(kind), 'PUT', input, signal),
-    readAvailability: signal => request('/api/images/comfy-availability', 'GET', undefined, signal),
+  const readStage = kind === 'comfy' ? 'generation-comfy' : kind === 'official' ? 'generation-image-official' : 'generation-image-custom';
+  return {read: (signal, purpose) => measureSettingsRead(readStage, () => request(routeFor(kind), 'GET', undefined, signal), purpose),
+    write: (input, signal) => request(routeFor(kind), 'PUT', input, signal),
+    readAvailability: signal => measureSettingsRead('generation-comfy-availability', () => request('/api/images/comfy-availability', 'GET', undefined, signal)),
     ...(kind === 'comfy'
       ? {check: (input, signal) => request('/api/images/comfy-check', 'POST', input, signal)}
       : {probe: (input, signal) => request(routeFor(kind), 'POST', input, signal)})};
@@ -104,7 +108,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   const watchStorage = watchPendingSecretStorage(async signal => {
     const before = state.snapshot;
     if (!before || !('storage' in before)) return;
-    const next = safeSnapshot(kind, await client.read(signal));
+    const next = safeSnapshot(kind, await client.read(signal, 'keychain-poll'));
     if (!signal.aborted && state.snapshot === before && 'storage' in next && next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') {
       publish({snapshot: {...before, storage: next.storage}});
     }

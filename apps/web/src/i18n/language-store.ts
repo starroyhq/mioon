@@ -1,15 +1,16 @@
-import { isLanguagePreference, resolveLocale } from '../../../../packages/i18n/src/locale.ts';
+import { isLanguagePreference, isLocale, resolveLocale } from '../../../../packages/i18n/src/locale.ts';
 import { LANGUAGE_STORAGE_KEY, isLanguageSnapshot, parseLanguagePreference, serializeLanguagePreference } from '../../../../packages/i18n/src/preference.ts';
 import type { LanguageBridge, LanguageSnapshot } from '../../../../packages/i18n/src/preference.ts';
 import type { LanguagePreference } from '../../../../packages/i18n/src/types.ts';
 export interface LanguageStoreState extends LanguageSnapshot { readonly ready: boolean; readonly saving: boolean }
-interface Options { systemLanguages: readonly string[]; storage?: () => Pick<Storage, 'getItem' | 'setItem'>; bridge?: LanguageBridge | null }
-export function createLanguageStore({ systemLanguages, storage, bridge = null }: Options) {
+interface Options { systemLanguages: readonly string[]; storage?: () => Pick<Storage, 'getItem' | 'setItem'>; bridge?: LanguageBridge | null; bootLocale?: unknown }
+export function createLanguageStore({ systemLanguages, storage, bridge = null, bootLocale }: Options) {
   systemLanguages = [...systemLanguages];
   let preference: LanguagePreference = 'system', persistence: LanguageSnapshot['persistence'] = 'saved';
   if (!bridge) try { const raw = storage?.().getItem(LANGUAGE_STORAGE_KEY); if (raw != null) preference = parseLanguagePreference(raw); }
   catch { persistence = 'read-failed'; }
-  let state: LanguageStoreState = Object.freeze({ version: 1, revision: 0, preference, locale: resolveLocale(preference, systemLanguages), persistence, ready: !bridge, saving: false });
+  const locale = bridge && isLocale(bootLocale) ? bootLocale : resolveLocale(preference, systemLanguages);
+  let state: LanguageStoreState = Object.freeze({ version: 1, revision: 0, preference, locale, persistence, ready: !bridge, saving: false });
   const listeners = new Set<() => void>(); let disposed = false, initialized = false, generation = 0, pending = 0, release: (() => void) | null = null;
   const publish = (next: LanguageStoreState) => { if (disposed) return; state = Object.freeze(next); for (const listener of listeners) listener(); };
   const accept = (next: LanguageSnapshot) => { if (isLanguageSnapshot(next) && next.revision >= state.revision) publish({ ...next, ready: true, saving: pending > 0 }); };

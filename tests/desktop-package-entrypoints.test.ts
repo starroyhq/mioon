@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArguments, buildCommands } from '../scripts/lib/local-tooling.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
+import { verifySettingsWarmAssets } from '../apps/desktop/scripts/settings-warm-assets.ts';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -127,4 +128,48 @@ test('other desktop entrypoints retain their existing behavior', () => {
 test('root Linux package aliases forward directly to the checked workspace scripts', () => {
   assert.equal(rootManifest.scripts['desktop:package:linux'], 'pnpm --filter @mioon/desktop package:linux');
   assert.equal(rootManifest.scripts['desktop:package:linux:dev'], 'pnpm --filter @mioon/desktop package:linux:dev');
+});
+
+const settingsEntry = 'assets/settings-aBc12_De.js';
+const settingsHelper = 'assets/settings-boot-close-Xyz34_Fg.js';
+const settingsHtml = `<style>body { background: #fff; }</style>
+<script type="module" crossorigin src="/${settingsEntry}"></script>`;
+const settingsPreload = `<link rel="modulepreload" crossorigin href="/${settingsHelper}">`;
+const settingsAssets = {
+  'settings.html': settingsHtml,
+  [settingsEntry]: `import './${path.posix.basename(settingsHelper)}'; export * from '/${settingsHelper}';
+    export const activate = () => import('./main-Qwe56_Rt.js');`,
+  [settingsHelper]: 'export const ready = true;',
+};
+
+const readSettingsAssets = (files: Record<string, string>) => (file: string): string => {
+  if (!Object.hasOwn(files, file)) throw new Error('Fixture asset unavailable');
+  return files[file];
+};
+
+test('settings package guard follows the warm module graph and leaves deferred application imports alone', async () => {
+  const read = readSettingsAssets(settingsAssets), accessed: string[] = [];
+  await verifySettingsWarmAssets(file => { accessed.push(file); return read(file); });
+  assert.deepEqual(accessed.sort(), ['settings.html', settingsEntry, settingsHelper].sort());
+  await verifySettingsWarmAssets(readSettingsAssets({...settingsAssets, 'settings.html': `${settingsHtml}\n${settingsPreload}`}));
+});
+
+test('settings package guard rejects resources the warm renderer would be denied', async () => {
+  for (const [element, message] of [
+    ['<link rel="stylesheet" href="/assets/main-Qwe56_Rt.css">', /Unexpected link resource/],
+    ['<link rel="preload" as="script" href="/assets/main-Qwe56_Rt.js">', /Unexpected link resource/],
+    ['<link rel="modulepreload" href="/assets/main-Qwe56_Rt.js">', /Unexpected link resource/],
+    ['<link rel="modulepreload" href="/assets/settings-boot-close-Xyz34_Fg.js?debug=1">', /Unexpected link resource/],
+    ['<script type="module">import "/assets/settings-aBc12_De.js";</script>', /Unexpected script resource/],
+    ['<script type="module" src="https://example.com/assets/settings-aBc12_De.js"></script>', /Unexpected script resource/],
+    ['<style>@import "/assets/main-Qwe56_Rt.css";</style>', /Unexpected style resource/],
+  ] as const) {
+    await assert.rejects(verifySettingsWarmAssets(readSettingsAssets({...settingsAssets, 'settings.html': `${settingsHtml}\n${element}`})), message);
+  }
+  for (const dependency of ['./main-Qwe56_Rt.js', './main-Qwe56_Rt.css', './settings-boot-close-short.js']) {
+    await assert.rejects(verifySettingsWarmAssets(readSettingsAssets({...settingsAssets, [settingsHelper]: `import '${dependency}';`})),
+      /Unexpected static dependency in settings warm asset/);
+  }
+  await assert.rejects(verifySettingsWarmAssets(readSettingsAssets({'settings.html': settingsHtml, [settingsEntry]: settingsAssets[settingsEntry]})),
+    /Missing settings warm asset: assets\/settings-boot-close-Xyz34_Fg\.js/);
 });

@@ -21,6 +21,7 @@ import CustomImageServicesSettings from './CustomImageServicesSettings.tsx';
 import {createGenerationImageServicesClient} from './generation-image-services.ts';
 import type {GenerationImageServicesClient} from './generation-image-services.ts';
 import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
+import {markSettingsClick, type SettingsClick} from './settings-diagnostics.ts';
 import { createImageGenerationCloseReporter } from './native-close-sources.ts';
 import ComfyImageSettings from './ComfyImageSettings.tsx';
 import { ComfyImageReviewDetails, ComfyImageTaskDetails } from './ComfyImageDetails.tsx';
@@ -71,7 +72,7 @@ interface ImageGenerationProps {
   revealTask?: AgentTaskRecoveryIntent | null;
   editIntent?: ImageEditIntent | null;
   isEditIntentCurrent?: ((intent: ImageEditIntent) => boolean | undefined) | undefined;
-  onOpenSettings?: ((slot: string) => unknown) | undefined;
+  onOpenSettings?: ((slot: string, click?: SettingsClick) => unknown) | undefined;
   settingsOverlayOpen?: boolean;
   nativeSettingsScope?: EditorSettingsScope | undefined;
   nativeCloseRegistry?: NativeCloseSourceRegistry | undefined;
@@ -182,7 +183,7 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
   const observeRemote = (task: ImageTaskView): unknown => session.current?.observeRemote(task as never);
   const settingsDirtyChanged = (slot: SettingsSlot, dirty: boolean) => { settingsDirty.current[slot] = dirty; callbacks.current.onDirtyChange(generationDirty.current || Object.values(settingsDirty.current).some(Boolean)); };
   function run(action: (current: Session | null) => unknown) { if (usable()) void action(session.current); }
-  const openSettings = (slot: SettingsSlot) => run(current => {
+  const openSettings = (slot: SettingsSlot, click?: SettingsClick) => run(current => {
     if (onOpenSettings) {
       current?.setVisible(false); interactionRef.current = null;
       const restoreRejectedSettings = (accepted?: unknown) => {
@@ -190,15 +191,15 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
           interactionRef.current = interaction; current?.setVisible(typeof document === 'undefined' || document.visibilityState !== 'hidden');
         }
       };
-      void Promise.resolve().then(() => onOpenSettings(slot)).then(restoreRejectedSettings, () => restoreRejectedSettings(false));
+      void Promise.resolve().then(() => onOpenSettings(slot, click)).then(restoreRejectedSettings, () => restoreRejectedSettings(false));
       return;
     }
-    if (nativeSettingsScope) { void nativeSettingsScope.open(slot); return; }
+    if (nativeSettingsScope) { markSettingsClick(click); void nativeSettingsScope.open(slot); return; }
     current?.setVisible(false); interactionRef.current = null; setSettingsSlot(slot); setPage('settings');
   });
   return <section ref={recoveryRoot} className="image-generation-page" data-testid="image-generation-page" data-project-id={projectId || ''} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label={t('image.studio.imageGeneration')}>
     <div className="image-generation-workbench" hidden={page !== 'compose'} inert={page !== 'compose'}>
-    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">{t('image.studio.studioEyebrow')}</span><h2>{t('image.studio.workshopTitle')}</h2><p>{projectName || t('image.studio.currentProject')}</p></div><div className="image-generation-heading-actions"><Badge className="small-badge neutral">{state.providerId === 'mock' ? t('image.studio.mockTest') : comfy ? t('image.studio.localComfy') : custom ? t('image.studio.customPaid') : t('image.studio.openaiPaid')}</Badge><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-open" disabled={!composerVisible} onClick={() => openSettings(comfy ? 'comfy' : custom ? 'custom' : 'official')}><Icon name="settings" size={13} />{t('image.studio.settings')}</Button></div></header>
+    <header className="image-generation-heading"><div><span className="image-generation-eyebrow">{t('image.studio.studioEyebrow')}</span><h2>{t('image.studio.workshopTitle')}</h2><p>{projectName || t('image.studio.currentProject')}</p></div><div className="image-generation-heading-actions"><Badge className="small-badge neutral">{state.providerId === 'mock' ? t('image.studio.mockTest') : comfy ? t('image.studio.localComfy') : custom ? t('image.studio.customPaid') : t('image.studio.openaiPaid')}</Badge><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-open" disabled={!composerVisible} onClick={event => openSettings(comfy ? 'comfy' : custom ? 'custom' : 'official', event?.nativeEvent)}><Icon name="settings" size={13} />{t('image.studio.settings')}</Button></div></header>
     {!projectId ? <p className="image-generation-empty">{t('image.studio.selectProject')}</p> : <div className="image-generation-scroll">
       <form className="image-generation-composer" onSubmit={event => { event.preventDefault(); run(current => current?.generate()); }} noValidate>
         <div className="image-generation-target"><strong>{state.target ? t('image.studio.groupNewVersion', { expectedRevision: creationParameter(state.target.expectedRevision) }) : t('image.studio.newImageGroup')}</strong>{state.target && <span>{targetGroup?.name || state.draft.name}</span>}<Button type="button" variant="ghost" className="button quiet" data-testid="image-new-group" disabled={busy} onClick={() => run(current => current?.requestTarget(null))}>{t('image.studio.newImageGroup')}</Button></div>
@@ -221,7 +222,7 @@ export default function ImageGeneration({ revealTask = null, editIntent = null, 
         {state.providerId === 'openai' && editing && <p className="image-generation-charge" data-testid="image-edit-paid-warning">{t('image.studio.editApprovalDisclosure')}</p>}
         {state.loaded && !imageGenerationServiceAvailable(state) && <div className="image-generation-notice" data-testid="image-generation-no-service">
           <p role="status">{t('generation.services.configureFirst')}</p>
-          <Button type="button" variant="ghost" data-testid="image-generation-configure" disabled={!composerVisible} onClick={() => openSettings('official')}>{t('generation.services.openSettings')}</Button>
+          <Button type="button" variant="ghost" data-testid="image-generation-configure" disabled={!composerVisible} onClick={event => openSettings('official', event?.nativeEvent)}>{t('generation.services.openSettings')}</Button>
         </div>}
         <Button type={paid || comfy ? 'button' : 'submit'} variant="ghost" className="button primary image-generation-submit" data-testid="image-generate" disabled={!composerVisible || !imageCanGenerate(state)} onClick={comfy ? () => run(current => current?.prepareComfy()) : paid ? () => run(current => current?.generatePaid(paidAuthorization)) : undefined}>{state.phase === 'submitting' ? <span className="spinner" /> : <Icon name="image" size={14} />}{state.phase === 'submitting' ? t('image.studio.confirmingRequest') : comfy ? t('image.studio.prepareLocalRequest') : paid ? editing ? t('image.studio.prepareEditApproval') : t('image.studio.paidGenerateOne') : editing ? t('image.studio.generateMockEdit') : t('image.studio.generateMockImage')}</Button>
         {(state.draft.name || state.draft.prompt || editing) && issue && <p className="image-generation-input-help">{issue}</p>}
