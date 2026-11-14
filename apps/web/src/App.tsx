@@ -40,9 +40,9 @@ import {CanvasArchivePopover, CanvasDeleteDialog, CanvasEditToast, CanvasSelecti
 import {useCanvasEditing} from './use-canvas-editing.ts';
 import type {CanvasSelectionItem} from './CanvasEditingControls.tsx';
 import {canvasEditErrorCode} from './canvas-editing-state.ts';
-import {canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import {canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
 import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src/canvas-editing.ts';
-import type {CanvasLayoutInput} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
+import type {CanvasLayoutInput, CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import CanvasEmptyState from './CanvasEmptyState.tsx';
 import StoryboardStrip from './StoryboardStrip.tsx';
 import SettingsWorkspace from './SettingsWorkspace.tsx';
@@ -669,6 +669,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     setRenderedCanvasSelection(++canvasSelectionRevision.current);
   }
   const canvasBox = useRef<Set<string> | null>(null);
+  const canvasArea = useRef<HTMLElement | null>(null);
+  const canvasDrag = useRef<{
+    scope: string; base: CanvasEditBase; selectionRevision: number;
+    targets: readonly Pick<CanvasLayoutMove, 'kind' | 'id'>[];
+    serial: number; anchorId: string; positions: ReadonlyMap<string, CanvasLayoutMove['position']>;
+  } | 'blocked' | null>(null);
   const canvasComposing = useRef(false);
   const [shotDirty, setShotDirty] = useState(false);
   const [clipDirty, setClipDirty] = useState(false);
@@ -3213,6 +3219,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const canvasEditing = useCanvasEditing({scope: canvasEditingScope, projectId: data.project?.id ?? null, enabled: canvasEditingEnabled && Boolean(canvasOwner),
     writable: canvasEditingWritable, base: data.canvasEditBase, rpc, refresh, isCurrent: canvasOwner?.isCurrent,
     onError: error => notify(canvasErrorMessage(error), 'error'),
+    onNotice: notice => notify(notice.kind === 'restored'
+      ? msg('canvas.edit.restored', {count: notice.count})
+      : msg(notice.kind === 'undone' ? 'canvas.edit.undone' : 'canvas.edit.redone')),
     onArchived: targets => {
       const removed = new Set(targets.map(target => target.id));
       setCanvasGroup(group => group?.scope === canvasEditingScope ? {
@@ -3228,6 +3237,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
 
   function canvasErrorMessage(error: unknown): AppMessage {
     switch (canvasEditErrorCode(error)) {
+      case 'CANVAS_UI_UNDO_BLOCKED': return msg('canvas.edit.error.undoBlocked');
+      case 'CANVAS_UI_REDO_BLOCKED': return msg('canvas.edit.error.redoBlocked');
       case 'CANVAS_UI_UNDO_CONFLICT': return msg('canvas.edit.error.undoConflict');
       case 'CANVAS_UI_REDO_CONFLICT': return msg('canvas.edit.error.redoConflict');
       case 'CANVAS_UI_ARCHIVE_BLOCKED': return msg('canvas.edit.error.archiveBlocked');
@@ -3288,6 +3299,61 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }
 
+  function startCanvasDrag(node: FlowNode, moved: FlowNode[]): void {
+    dragging.current = true;
+    canvasDrag.current = null;
+    if (!canvasEditingEnabled || canvasSelectedIds.size < 2) return;
+    canvasDrag.current = 'blocked';
+    const base = data.canvasEditBase;
+    if (!base || !canvasEditingWritable || canvasEditing.busy || !canvasSelectionIsReady() ||
+        !canvasOwner?.isCurrent() || !canvasSelectedIds.has(node.id)) return;
+    const items = new Map(moved.map(({id, position}) => [id, position]));
+    const targets = canvasTargets.filter((target): target is Pick<CanvasLayoutMove, 'kind' | 'id'> => target.kind !== 'edge');
+    if (targets.length !== canvasSelectedIds.size || items.size !== targets.length || !targets.every(target => items.has(target.id))) return;
+    canvasDrag.current = {scope: canvasEditingScope, base, targets, positions: items, anchorId: node.id, serial: navigationEpoch.current,
+      selectionRevision: renderedCanvasSelection};
+  }
+
+  async function stopCanvasDrag(event: MouseEvent | TouchEvent, node: FlowNode, moved: FlowNode[]): Promise<void> {
+    const drag = canvasDrag.current;
+    if (!drag && (!canvasEditingEnabled || canvasSelectedIds.size < 2 && moved.length <= 1)) {
+      await savePosition(event as unknown as React.MouseEvent, node);
+      return;
+    }
+    canvasDrag.current = null;
+    const sameCanvas = () => canvasOwner?.isCurrent() && viewRef.current!.activeMode === 'canvas';
+    const captured = drag === 'blocked' ? null : drag;
+    const gestureCurrent = () => captured !== null && captured.scope === canvasEditingScope && Boolean(sameCanvas()) &&
+      captured.serial === navigationEpoch.current && captured.selectionRevision === canvasSelectionRevision.current &&
+      canvasSelectionPending.current === null;
+    try {
+      if (!captured || !gestureCurrent() || !canvasEditingWritable || !canvasSelectionIsReady() || event.type.endsWith('cancel')) return;
+      const moves = canvasGroupMoves(captured.targets, captured.positions, moved, captured.anchorId);
+      if (moves.length) await canvasEditing.move(moves, captured.base, gestureCurrent);
+    } finally {
+      if (sameCanvas()) restoreCanvasDragPositions();
+    }
+  }
+
+  function restoreCanvasDragPositions(): void {
+    dragging.current = false;
+    // Replace optimistic positions with the last observed server snapshot,
+    // including when a blocked or cancelled move makes no content change.
+    const latest = dataRef.current!;
+    const positions = new Map([...latest.shots, ...latest.nodes].map(({id, position}) => [id, position]));
+    setNodes(list => list.map(item => {
+      const position = positions.get(item.id);
+      return position ? {...item, position, dragging: false} : item;
+    }));
+  }
+
+  function cancelCanvasPointer(): void {
+    cancelCanvasBox();
+    if (!canvasDrag.current) return;
+    canvasDrag.current = 'blocked';
+    restoreCanvasDragPositions();
+  }
+
   function canvasNodesChange(changes: NodeChange<FlowNode>[]): void {
     const selected = canvasBox.current;
     if (selected) {
@@ -3296,7 +3362,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       setBoxSelection(new Set(selected));
     }
-    const geometryChanges = changes.filter(change => change.type !== 'select');
+    const geometryChanges = changes.filter(change => change.type !== 'select' &&
+      !(change.type === 'position' && canvasDrag.current === 'blocked'));
     if (geometryChanges.length) setNodes(value => applyNodeChanges(geometryChanges, value));
   }
 
@@ -3315,6 +3382,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(() => {
     cancelCanvasBox();
     setCanvasContextMenu(null);
+    if (canvasDrag.current) {
+      canvasDrag.current = null;
+      dragging.current = false;
+    }
   }, [canvasEditingScope, canvasEditingEnabled]);
 
   async function openCanvasMenu(event: React.MouseEvent, id?: string): Promise<void> {
@@ -3326,7 +3397,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
 
   async function archiveCanvasSelection(): Promise<void> {
-    if (!canvasEditingWritable || !canvasOwner?.isCurrent() || !canvasSelectionIsReady()) return;
+    if (!canvasEditingWritable || !canvasOwner?.isCurrent() || !canvasSelectionIsReady() || dragging.current) return;
     if (selectedCanvasEdge && !selectedDecorEdge) { notify(msg('shell.referenceDisconnectHint'), 'warning'); return; }
     if (!canvasTargets.length) return;
     await canvasEditing.archiveSelection(canvasTargets);
@@ -3371,7 +3442,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const menuOpen = canvasContextMenu?.scope === canvasEditingScope || Array.from(document.querySelectorAll('[data-slot="dropdown-menu-content"]'))
         .some(menu => !menu.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'));
       const command = canvasShortcut(event, {blocked: !canvasOwner.isCurrent() || viewRef.current!.activeMode !== 'canvas' ||
-        menuOpen || hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen),
+        !canvasOwnsShortcutFocus(canvasArea.current, document) || menuOpen || hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen),
         composing: canvasComposing.current, textFocus: canvasShortcutInText(event, document.activeElement), nativeHistory: Boolean(nativeMenuBridge)});
       if (!command) return;
       event.preventDefault();
@@ -3437,10 +3508,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       assetsVisible: !assetsCollapsed, inspectorVisible: !inspectorCollapsed, timelineVisible: !viewRef.current!.editing.timelineCollapsed,
       canImport: !isBusy('import') && online && auth === true,
       canExport: canOpenExport, canChangeMode: true,
-      canUndoCanvas: mode === 'canvas' && canvasEditingEnabled ? canvasEditing.canUndo : Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
+      canUndoCanvas: mode === 'canvas' && canvasEditingEnabled ? canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canUndo : Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
         canvasScene?.phase === 'idle' && !canvasScene.readOnly && !canvasScene.pending && canvasTask?.state === 'succeeded' && canvasTask.shots?.length &&
         canvasScene.undo[canvasToast.taskId]?.undo?.available !== false && !toastBlocked && online && auth === true),
-      canRedoCanvas: mode === 'canvas' && canvasEditingEnabled && canvasEditing.canRedo,
+      canRedoCanvas: mode === 'canvas' && canvasEditingEnabled && canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canRedo,
       canUndo: historyState.canUndo && locks.size === 0, canRedo: historyState.canRedo && locks.size === 0,
       canSplit: splitState.canSplit && Boolean(selected && !locks.has(selected.trackId)),
       canRemove: Boolean(menuRemoval.current?.available('remove')), canRippleRemove: Boolean(menuRemoval.current?.available('ripple')),
@@ -3579,7 +3650,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
-    <section className="canvas-area" data-canvas-editing={canvasEditingEnabled || undefined} aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <CanvasToolbar editing={canvasEditingEnabled ? {tidy: () => { void tidyCanvas(); }, tidyDisabled: !canTidyCanvas, hasSelection: canvasSelectedIds.size > 0,
+    <section ref={canvasArea} className="canvas-area" data-canvas-editing={canvasEditingEnabled || undefined} aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <CanvasToolbar editing={canvasEditingEnabled ? {tidy: () => { void tidyCanvas(); }, tidyDisabled: !canTidyCanvas, hasSelection: canvasSelectedIds.size > 0,
       archive: <CanvasArchivePopover scope={canvasEditingScope} visible={panelVisible('canvas')} count={canvasEditing.archive.count}
         items={canvasEditing.archive.items} loading={canvasEditing.archive.loading} busy={canvasEditing.busy} readOnly={!canvasEditingWritable}
         error={canvasEditing.archive.error ? t('canvas.edit.error.loadArchive') : null} canRestoreAll={canvasEditing.archive.canRestoreAll}
@@ -3591,9 +3662,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
           return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
         }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasBox : undefined}>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
         ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
-        draggable: (!canvasEditingEnabled || canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.size < 2) && agentEditingTargetActive(data.project?.id || '', canvasShotIds.has(node.id) ? 'shot' : 'node', node.id),
+        draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
+          ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)
+          : (!canvasEditingEnabled || canvasEditingWritable && !canvasEditing.busy) &&
+            agentEditingTargetActive(data.project?.id || '', canvasShotIds.has(node.id) ? 'shot' : 'node', node.id),
       }))} edges={edges as never} nodeTypes={nodeTypes} onNodesChange={canvasEditingEnabled ? canvasNodesChange : changes => setNodes(ns => applyNodeChanges(changes, ns))}
       onNodeClick={(event, node) => canvasEditingEnabled && event.shiftKey
         ? void selectCanvasCards(toggleCanvasSelection(canvasSelectedIds, node.id))
@@ -3603,7 +3677,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onSelectionStart={canvasEditingEnabled ? () => { canvasBox.current = new Set(); setBoxSelection(canvasBox.current); } : undefined}
       onSelectionEnd={canvasEditingEnabled ? finishCanvasBox : undefined}
       selectionOnDrag={canvasEditingEnabled} selectionMode={canvasEditingEnabled ? SelectionMode.Partial : undefined}
-      panOnDrag={canvasEditingEnabled ? [1, 2] : true} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={(event, node) => { void savePosition(event as unknown as React.MouseEvent, node); }}
+      panOnDrag={canvasEditingEnabled ? [1, 2] : true} selectNodesOnDrag={canvasEditingEnabled ? false : undefined} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={(_, node, moved) => startCanvasDrag(node, moved)} onNodeDragStop={(event, node, moved) => { void stopCanvasDrag(event, node, moved); }}
       onConnect={connect} onEdgeClick={(_, edge) => { if (canvasEditingEnabled) void selectCanvasCards(new Set(), edge.id); else setSelectedEdgeId(edge.id); }}
       onPaneClick={() => { if (canvasEditingEnabled) void selectCanvasCards(new Set()); else { setSelectedEdgeId(null); setStoryboardBatch(null); } }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current!.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current!.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: flowFitPadding(canvasFitPadding(.16)), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={CANVAS_INITIAL_FIT} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen || canvasEditingEnabled ? null : ['Backspace', 'Delete']} disableKeyboardA11y={canvasEditingEnabled} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />
       {canvasEditingEnabled && !boxSelection && canvasSelectedIds.size > 1 && <CanvasSelectionFrame ids={canvasSelectedIds} />}
@@ -3615,7 +3689,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       </div> : <div className="preview-tab-panel"><Preview aspectFrame={aspectFrame} onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!sourceAsset || !projectSessionReady() || !online || auth !== true || loading ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} transformBox={clipTransformBox()} /></div>}</div>
     {workspaceMode === 'canvas' && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots as never[]} versions={data.versions} selectedId={selectedId || null} selectedIds={canvasEditingEnabled ? canvasSelectedIds : undefined} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: flowFitPadding(canvasFitPadding(.1)), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} timelineStatuses={shotStatuses} append={timeline ? { count: appendCandidates.length, disabledReason: !projectSessionReady() || !online || auth !== true || loading ? t('timeline.history.offline') : null, busy: timelineBusy, onAppend: () => { void appendShotsToTimeline(); } } : undefined} onViewInEditing={shotId => { void viewShotInEditing(shotId); }} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === (shot as {referenceAssetIds?: string[]}).referenceAssetIds?.[0])} />} />}
     {canvasEditingEnabled && canvasEditing.toast && <CanvasEditToast kind={canvasEditing.toast.kind} count={canvasEditing.toast.count}
-      placement={workspaceMode} canUndo={canvasEditing.canUndoToast} onUndo={() => { void canvasEditing.undoToast(); }} onClose={canvasEditing.dismissToast} />}
+      placement={workspaceMode} undoConflict={canvasEditing.history?.undoConflict} canUndo={canvasEditing.canUndoToast} onUndo={() => { void canvasEditing.undoToast(); }} onClose={canvasEditing.dismissToast} />}
     {canvasEditingEnabled && canvasSelectedItems.length > 1 && !canvasEditing.toast && <CanvasSelectionSummary items={canvasSelectedItems} placement={workspaceMode} scope={canvasEditingScope} />}
     {canvasEditingEnabled && canvasContextMenu?.scope === canvasEditingScope && <CanvasSelectionMenu anchor={canvasContextMenu}
       canArchive={canvasEditingWritable && !canvasEditing.busy && canvasTargets.length > 0} canTidy={canTidyCanvas}

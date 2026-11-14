@@ -1,12 +1,13 @@
-import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
+import React, {useCallback, useId, useLayoutEffect, useRef, useState} from 'react';
 import {getNodesBounds, useStore, ViewportPortal, type ReactFlowState, type Rect} from '@xyflow/react';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {DropdownMenuItem, DropdownMenuSeparator} from '@mioon/ui/components/dropdown-menu';
 import {WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
 import {WorkbenchContextMenu, type WorkbenchPointerAnchor} from '@mioon/ui/components/workbench-context-menu';
+import {WorkbenchTooltip} from '@mioon/ui/components/workbench-tooltip';
 import {WorkbenchPopover, WorkbenchPopoverContent, WorkbenchPopoverTitle, WorkbenchPopoverTrigger} from '@mioon/ui/components/workbench-popover';
 import {Clapperboard, Grid2X2, Image, Info, Layers, Link, MousePointer2, Plus, RotateCcw, Trash2, Type, X} from '@mioon/ui/components/workbench-icons';
-import type {CanvasArchiveItem} from '../../../packages/contracts/src/canvas-editing.ts';
+import type {CanvasArchiveItem, CanvasArchiveShotImpact} from '../../../packages/contracts/src/canvas-editing.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import Icon from './icons.tsx';
 import {useWorkspaceVisibility} from './workspace-visibility.tsx';
@@ -146,7 +147,7 @@ export function CanvasSelectionMenu({anchor, onClose, onArchive, onTidy, canArch
 }
 
 export function CanvasDeleteDialog({review, busy, onCancel, onConfirm}: {
-  readonly review: {readonly count: number; readonly versions: number; readonly clips: number} | null;
+  readonly review: {readonly count: number; readonly shotImpacts: readonly CanvasArchiveShotImpact[]; readonly impactedShotCount: number} | null;
   readonly busy: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
@@ -158,10 +159,17 @@ export function CanvasDeleteDialog({review, busy, onCancel, onConfirm}: {
     <WorkbenchDialogContent data-testid="canvas-delete-dialog" size="confirm" className="canvas-delete-dialog" initialFocus={cancel} showCloseButton={false}
       title={<><span className="canvas-delete-icon"><Trash2 size={18} aria-hidden="true" /></span>{t('canvas.edit.deleteTitle', {count: review.count})}</>}
       description={[
-        review.versions ? t('canvas.edit.deleteVersions', {count: review.versions}) : '',
-        review.clips ? t('canvas.edit.deleteClips', {count: review.clips}) : '',
+        ...review.shotImpacts.map(({number, versions, clips}) => {
+          const shot = t('canvas.edit.shotNumber', {number: String(number).padStart(2, '0')});
+          if (!versions) return t('canvas.edit.deleteShotClipOnly', {shot, count: clips});
+          const generated = t('canvas.edit.deleteVersions', {count: versions});
+          return clips
+            ? t('canvas.edit.deleteShotAndClips', {shot, versions: generated, clips: t('canvas.edit.deleteClips', {count: clips})})
+            : t('canvas.edit.deleteShotVersionsOnly', {shot, versions: generated});
+        }),
+        ...(review.impactedShotCount > review.shotImpacts.length ? [t('canvas.edit.deleteMoreShots', {count: review.impactedShotCount})] : []),
         t('canvas.edit.deleteEffect'),
-      ].filter(Boolean).join(' ')}
+      ].join(' ')}
       footer={<><WorkbenchButton ref={cancel} disabled={busy} data-testid="canvas-delete-cancel" onClick={onCancel}>{t('common.cancel')}</WorkbenchButton>
         <WorkbenchButton variant="danger" loading={busy} data-testid="canvas-delete-confirm" onClick={onConfirm}>{t('canvas.edit.delete')}</WorkbenchButton></>}
     />
@@ -224,7 +232,9 @@ export function CanvasArchivePopover({scope, visible: requestedVisible, count, i
       <ul className="canvas-archive-items" aria-busy={loading}>
         {items.map(item => {
           const type = itemType({kind: item.kind, type: item.nodeType}), TypeIcon = itemIcons[type];
-          const label = item.label.trim() || t(itemLabels[type]);
+          const name = item.label.trim();
+          const prefix = item.shotNumber !== null ? t('canvas.edit.shotNumber', {number: String(item.shotNumber).padStart(2, '0')}) : '';
+          const label = prefix ? [prefix, name].filter(Boolean).join(' · ') : name || t(itemLabels[type]);
           const time = formatDate(item.archive.at, {hour: 'numeric', minute: '2-digit'});
           return <li key={`${item.kind}:${item.id}`} data-testid={`canvas-archived-${item.id}`}>
             <div className="canvas-archive-preview" aria-hidden="true">{renderPreview?.(item) ?? <TypeIcon size={16} />}</div>
@@ -247,23 +257,29 @@ export function CanvasArchivePopover({scope, visible: requestedVisible, count, i
   </WorkbenchPopover></>;
 }
 
-export function CanvasEditToast({kind, count, placement, canUndo, onUndo, onClose}: {
+export function CanvasEditToast({kind, count, placement, canUndo, undoConflict = false, onUndo, onClose}: {
   readonly kind: 'archive'|'layout';
   readonly count: number;
   readonly placement: string;
   readonly canUndo: boolean;
+  readonly undoConflict?: boolean;
   readonly onUndo: () => void;
   readonly onClose: () => void;
 }) {
   const {t} = useI18n();
   const {ref, style} = useStoryboardClearance(placement);
-  const mac = canvasEditMacShortcuts();
+  const mac = canvasEditMacShortcuts(), reasonId = useId();
+  const reason = undoConflict ? t('canvas.edit.error.undoConflict') : '';
+  const undo = <WorkbenchButton variant="ghost" size="compact" data-testid="canvas-edit-toast-undo" disabled={!canUndo}
+    aria-keyshortcuts={mac ? 'Meta+Z' : 'Control+Z'} aria-describedby={reason ? reasonId : undefined} onClick={onUndo}>
+    {t('scene.toast.undo')}
+  </WorkbenchButton>;
   return <div ref={ref} style={style} className="canvas-edit-floating canvas-edit-toast" data-testid="canvas-edit-toast">
     {kind === 'archive' ? <Trash2 size={15} aria-hidden="true" /> : <Grid2X2 size={15} aria-hidden="true" />}
     <span role="status">{t(kind === 'archive' ? 'canvas.edit.archivedToast' : 'canvas.edit.tidiedToast', {count})}</span>
-    <WorkbenchButton variant="ghost" size="compact" data-testid="canvas-edit-toast-undo" disabled={!canUndo} aria-keyshortcuts={mac ? 'Meta+Z' : 'Control+Z'} onClick={onUndo}>
-      {t('scene.toast.undo')}
-    </WorkbenchButton>
+    {reason ? <WorkbenchTooltip content={reason}><span tabIndex={0} aria-describedby={reasonId}>
+      {undo}<span id={reasonId} className="sr-only">{reason}</span>
+    </span></WorkbenchTooltip> : undo}
     <WorkbenchButton variant="icon" size="compact" aria-label={t('common.close')} data-testid="canvas-edit-toast-close" onClick={onClose}><X size={14} aria-hidden="true" /></WorkbenchButton>
   </div>;
 }

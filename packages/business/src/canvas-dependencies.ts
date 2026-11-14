@@ -11,7 +11,9 @@ import {pendingPrevisPublications} from './previs-publication.ts';
 import {assertProjectStore} from './store-runtime.ts';
 
 interface CanvasBlocker {readonly kind: string; readonly id: string; readonly reason: string}
+interface ShotImpact {versions: number; clips: number}
 interface CanvasDependencies {
+  readonly shotImpacts: ReadonlyMap<string, Readonly<ShotImpact>>;
   readonly versions: number;
   readonly clips: number;
   readonly blocked: readonly CanvasBlocker[];
@@ -83,7 +85,7 @@ function generationStatus(job: Record<string, unknown>): string | null {
 /** Snapshot only what can affect the admitted selection. The caller supplies
  * the full write closure and repeats this check in the write transaction. */
 export function inspectCanvasDependencies(store: ProjectStore, targets: readonly CanvasTarget[],
-  impactTargets: readonly CanvasTarget[] = targets): CanvasDependencies {
+  impactTargets: readonly CanvasTarget[] = targets, {reportShotImpacts = false} = {}): CanvasDependencies {
   assertProjectStore(store);
   const {db, projectId} = store;
   const keys = new Set(targets.map(identityKey));
@@ -110,6 +112,25 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
   const impactVersions = versions.filter(row => impactShots.has(row.shotId));
   const impactVersionIds = new Set(impactVersions.map(row => row.id)), impactAssetIds = new Set(impactVersions.map(row => row.assetId));
   const impactJobIds = new Set(impactVersions.map(row => row.jobId));
+  const shotImpacts = new Map<string, ShotImpact>();
+  const jobShots = new Map<string, Set<string>>(), assetShots = new Map<string, Set<string>>();
+  function countFor(shotId: string): ShotImpact {
+    const existing = shotImpacts.get(shotId);
+    if (existing) return existing;
+    const point = {versions: 0, clips: 0};
+    shotImpacts.set(shotId, point);
+    return point;
+  }
+  function addOwner(index: Map<string, Set<string>>, id: string, shotId: string): void {
+    const owners = index.get(id) ?? new Set<string>();
+    owners.add(shotId);
+    index.set(id, owners);
+  }
+  if (reportShotImpacts) for (const {shotId, jobId, assetId} of impactVersions) {
+    countFor(shotId).versions++;
+    addOwner(jobShots, jobId, shotId);
+    addOwner(assetShots, assetId, shotId);
+  }
   for (const version of versions) evidence(['version', version]);
 
   const versionOwners = new Map(versions.map(version => [version.id, version]));
@@ -125,10 +146,22 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
         if (!(has('shot', clip.shotId) || clip.versionId && versionIds.has(clip.versionId) ||
               clip.jobId && jobIds.has(clip.jobId) || assetIds.has(clip.assetId))) continue;
         clipIds.add(clip.id);
-        if (clip.shotId && impactShots.has(clip.shotId) || clip.versionId && impactVersionIds.has(clip.versionId) ||
-            clip.jobId && impactJobIds.has(clip.jobId) || impactAssetIds.has(clip.assetId)) impactClips++;
-        evidence(['clip', timeline.id, clip.id, clip.assetId, clip.shotId, clip.versionId, clip.jobId, clip.trackId, hidden.get(clip.trackId)]);
         const explicit = clip.versionId ? versionOwners.get(clip.versionId) : undefined;
+        const linkedShot = clip.shotId && impactShots.has(clip.shotId) ? clip.shotId : undefined;
+        if (linkedShot || clip.versionId && impactVersionIds.has(clip.versionId) ||
+            clip.jobId && impactJobIds.has(clip.jobId) || impactAssetIds.has(clip.assetId)) {
+          impactClips++;
+          if (reportShotImpacts) {
+            // A clip may mention the same shot through several identifiers.
+            // Match existing aggregate evidence and count once per shot.
+            const consumers = new Set(assetShots.get(clip.assetId));
+            if (clip.jobId) for (const id of jobShots.get(clip.jobId) ?? []) consumers.add(id);
+            if (linkedShot) consumers.add(linkedShot);
+            if (explicit && impactShots.has(explicit.shotId)) consumers.add(explicit.shotId);
+            for (const id of consumers) countFor(id).clips++;
+          }
+        }
+        evidence(['clip', timeline.id, clip.id, clip.assetId, clip.shotId, clip.versionId, clip.jobId, clip.trackId, hidden.get(clip.trackId)]);
         if (explicit && (explicit.assetId !== clip.assetId || clip.shotId && explicit.shotId !== clip.shotId ||
             clip.jobId && explicit.jobId !== clip.jobId)) unverified('clip', clip.id);
       }
@@ -267,5 +300,5 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
     for (const item of previs) block('previs', item.nodeId, item.state === 'running' ? 'PREVIS_RUNNING' : 'PREVIS_OUTCOME_UNKNOWN', item);
   } catch {unverified('previs', projectId);}
   if (overflow) blockers.push({kind: 'dependency', id: projectId, reason: 'CANVAS_DEPENDENCY_LIMIT'});
-  return {versions: impactVersions.length, clips: impactClips, blocked: blockers, digest: hash.digest('hex')};
+  return {versions: impactVersions.length, clips: impactClips, shotImpacts, blocked: blockers, digest: hash.digest('hex')};
 }

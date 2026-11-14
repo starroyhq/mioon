@@ -18,7 +18,7 @@ import {inspectCanvasDependencies} from './canvas-dependencies.ts';
 import {
   activeShotOrder, applyCanvasPatch, canvasError, canvasKey, canvasLimit, compareCanvasTargets, decodeCanvasPatch, encodeCanvasPatch, expectCanvasRows,
   isCanvasGuardEvidence, isCanvasOrderOnlyRow,
-  previousFields, readCanvasRow,
+  previousFields, readCanvasOrderAnchor, readCanvasRow,
 } from './canvas-patch.ts';
 import type {CanvasGuardEvidence, CanvasPatch} from './canvas-patch.ts';
 import {readProjectContentStamp, sameContentStamp} from './project-file/content-stamp.ts';
@@ -100,22 +100,23 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   function history(current = state()) {
     const undo = entryAt(current.position), redo = entryAt(current.position + 1);
     const action = (entry: HistoryEntry | null) => entry && ({id: entry.id, operation: entry.operation, count: entry.after.rows.length});
-    function conflicted(entry: HistoryEntry | null, backward: boolean): boolean {
-      if (!entry) return false;
-      if (!evidenceCurrent(current, entry)) return true;
+    function availability(entry: HistoryEntry | null, backward: boolean): 'ready' | 'blocked' | 'conflict' {
+      if (!entry) return 'ready';
+      if (!evidenceCurrent(current, entry)) return 'conflict';
       const patch = backward ? entry.after : entry.before;
-      if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return true;
       const impact = patchEvidence(patch);
-      return Boolean(impact.blocked.length || impact.digest !== patch.dependencyDigest);
+      if (impact.blocked.length) return 'blocked';
+      if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return 'conflict';
+      return impact.digest !== patch.dependencyDigest ? 'conflict' : 'ready';
     }
-    const undoConflict = conflicted(undo, true), redoConflict = conflicted(redo, false);
-    return {view: {revision: current.revision, undo: action(undo), redo: action(redo), conflict: undoConflict || redoConflict},
-      undoConflict, redoConflict};
+    const undoState = availability(undo, true), redoState = availability(redo, false);
+    return {view: {revision: current.revision, undo: action(undo), redo: action(redo), conflict: undoState !== 'ready' || redoState !== 'ready'},
+      undoConflict: undoState === 'conflict', redoConflict: redoState === 'conflict', undoBlocked: undoState === 'blocked', redoBlocked: redoState === 'blocked'};
   }
-  function archivePlan(input: CanvasArchivePreviewInput, at: string) {
+  function archivePlan(input: CanvasArchivePreviewInput, at: string, reportShotImpacts = false) {
     const {operation, targets} = input;
     const plan = planCanvasArchive(store, operation, targets, at, operation === 'restore' ? input.batchId : undefined);
-    const effect = inspectCanvasDependencies(store, plan.before.guards, plan.selected);
+    const effect = inspectCanvasDependencies(store, plan.before.guards, plan.selected, {reportShotImpacts});
     const closure = plan.before.guards.map(target => {
       return [target.kind, target.id, readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target)];
     });
@@ -133,12 +134,23 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     }
   }
   function preview(input: CanvasArchivePreviewInput) {
-    const {plan, effect, facts} = archivePlan(input, now());
-    const historyRevision = state().revision, expires = time() + CONFIRMATION_MS;
-    const confirmation = input.operation === 'archive' && (effect.versions || effect.clips) && !effect.blocked.length
-      ? `${expires}.${sign(expires, facts, historyRevision)}` : null;
-    return {projectId, targets: plan.selected.map(({kind,id,revision}) => ({kind,id,revision})), affected: plan.after.rows.length,
-      versions: effect.versions, clips: effect.clips, blocked: effect.blocked, confirmation, historyRevision};
+    const outer = db.isTransaction;
+    if (!outer) db.exec('BEGIN DEFERRED');
+    try {
+      const {plan, effect, facts} = archivePlan(input, now(), input.operation === 'archive');
+      const historyRevision = state().revision, expires = time() + CONFIRMATION_MS;
+      const confirmation = input.operation === 'archive' && (effect.versions || effect.clips) && !effect.blocked.length
+        ? `${expires}.${sign(expires, facts, historyRevision)}` : null;
+      const shotImpacts = (plan.before.order ?? []).flatMap((id, index) => {
+        const impact = effect.shotImpacts.get(id);
+        return impact ? [{number: index + 1, ...impact}] : [];
+      });
+      return {projectId, targets: plan.selected.map(({kind,id,revision}) => ({kind,id,revision})), affected: plan.after.rows.length,
+        versions: effect.versions, clips: effect.clips, shotImpacts: shotImpacts.slice(0, CANVAS_EDIT_LIMITS.previewShots),
+        impactedShotCount: shotImpacts.length, blocked: effect.blocked, confirmation, historyRevision};
+    } finally {
+      if (!outer && db.isTransaction) db.exec('COMMIT');
+    }
   }
   function archived(input: CanvasArchiveListInput) {
     const outer = db.isTransaction;
@@ -170,8 +182,11 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
         const media = kind === 'shot' ? archiveMedia(shot?.assetId, 'video') :
           nodeType === 'image' || nodeType === 'video' ? archiveMedia(data.assetId, nodeType) : null;
         const label = nodeType === 'text' ? data.label || data.text : data.title ?? (data.label || media?.name);
+        // Early format-4 archives retain only their stored order index.
+        const savedNumber = isRevision(data.orderIndex) && data.orderIndex < Number.MAX_SAFE_INTEGER ? data.orderIndex + 1 : null;
+        const shotNumber = kind === 'shot' ? readCanvasOrderAnchor({kind, id, archive, revision, data}).number ?? savedNumber : null;
         return {kind, id, archive, revision, label: typeof label === 'string' ? label.slice(0, 512) : '',
-          nodeType, versions: kind === 'shot' ? shot?.versions ?? 0 : 0, preview: media?.preview ?? null};
+          nodeType, shotNumber, versions: kind === 'shot' ? shot?.versions ?? 0 : 0, preview: media?.preview ?? null};
       });
       const last = items.at(-1);
       return {projectId, total, items, ...readProjectContentStamp(db),
@@ -420,8 +435,8 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       if (operation === 'canvas.archive.preview') return canvasEditingResponses[operation].parse(preview(parsed.data as CanvasArchivePreviewInput));
       if (operation === 'canvas.archive.list') return canvasEditingResponses[operation].parse(archived(parsed.data as CanvasArchiveListInput));
       if (operation === 'canvas.history.get') {
-        const {view, undoConflict, redoConflict} = history(), {epoch, floor} = receiptWindow();
-        return {...view, undoConflict, redoConflict, requestEpoch: epoch, requestAfter: cutoff(floor, time())};
+        const {view, ...availability} = history(), {epoch, floor} = receiptWindow();
+        return {...view, ...availability, requestEpoch: epoch, requestAfter: cutoff(floor, time())};
       }
       return mutation(operation, parsed.data as CanvasEditInput | CanvasHistoryInput, authorize);
     },

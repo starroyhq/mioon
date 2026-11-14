@@ -113,7 +113,7 @@ function canvasStoryboardApp() {
     assetsCollapsed: false, inspectorCollapsed: false, isBusy: () => false, online: true, auth: true,
     canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
     menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
-    canvasEditingEnabled: false, storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
+    canvasEditingEnabled: false, canvasArea: {current: {}}, canvasOwnsShortcutFocus: () => true, storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
     projectEpoch: {current: 1}, navigationEpoch: {current: 1}, panelIntent: {current: 1},
     propertiesPage: 'inspector', menuPlaybackEpoch: {current: 1}, menuRemovalEpoch: {current: 1},
     audioPreview: {state: {plan: null, continuousPlan: null, phase: 'idle', positionFrame: null}}, timelineAudioPreviewPosition,

@@ -3,12 +3,13 @@ import {CANVAS_GRID} from './canvas-position.ts';
 import {projectIdSchema} from './project-file.ts';
 
 export const CANVAS_EDIT_LIMITS = Object.freeze({
-  targets: 4096, effects: 16384, archivedPage: 100, historyEntries: 100,
+  targets: 4096, effects: 16384, archivedPage: 100, previewShots: 3, historyEntries: 100,
   historyBytes: 8 * 1024 * 1024, receiptRows: 65536, receiptBytes: 32 * 1024 * 1024,
   receiptLifetimeMs: 7 * 24 * 60 * 60_000, requestClockSkewMs: 2 * 60_000,
 });
 
 const revision = z.number().int().safe().nonnegative();
+const shotNumber = z.number().int().safe().positive();
 const id = projectIdSchema;
 const requestId = z.string().min(8).max(200).refine(value =>
   !value.includes('\u0000') && [...value].length >= 8 && (value as string & {isWellFormed(): boolean}).isWellFormed());
@@ -84,20 +85,24 @@ export const canvasArchiveMediaSchema = z.object({
   assetId: id, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm']),
 }).strict();
 const archiveItem = target.extend({archive: archiveInfo, revision, label: z.string().max(512),
-  nodeType: canvasArchiveNodeTypeSchema.nullable(), versions: revision, preview: canvasArchiveMediaSchema.nullable(),
+  nodeType: canvasArchiveNodeTypeSchema.nullable(), shotNumber: shotNumber.nullable(), versions: revision, preview: canvasArchiveMediaSchema.nullable(),
 });
 export type CanvasArchiveItem = z.infer<typeof archiveItem>;
+const shotImpact = z.object({number: shotNumber, versions: revision, clips: revision}).strict();
+export type CanvasArchiveShotImpact = z.infer<typeof shotImpact>;
 const result = z.object({projectId: id, actionId: id.nullable(), affected: z.number().int().nonnegative(),
   history: historyResponse, contentSequence: revision, contentToken: token}).strict();
 export const canvasEditingResponses = Object.freeze({
   'canvas.archive.preview': z.object({projectId: id, targets: selected, affected: z.number().int().nonnegative(),
     versions: z.number().int().nonnegative(), clips: z.number().int().nonnegative(),
+    shotImpacts: z.array(shotImpact).max(CANVAS_EDIT_LIMITS.previewShots), impactedShotCount: revision,
     blocked: z.array(blocked), confirmation: confirmation.nullable(), historyRevision: revision}).strict(),
   'canvas.archive.list': z.object({projectId: id, total: revision, next: archiveCursor.nullable(),
     contentSequence: revision, contentToken: token,
     items: z.array(archiveItem).max(CANVAS_EDIT_LIMITS.archivedPage)}).strict(),
   'canvas.apply': result,
-  'canvas.history.get': historyResponse.extend({requestEpoch, requestAfter: revision, undoConflict: z.boolean(), redoConflict: z.boolean()}),
+  'canvas.history.get': historyResponse.extend({requestEpoch, requestAfter: revision, undoConflict: z.boolean(), redoConflict: z.boolean(),
+    undoBlocked: z.boolean(), redoBlocked: z.boolean()}),
   'canvas.history.undo': result,
   'canvas.history.redo': result,
 });

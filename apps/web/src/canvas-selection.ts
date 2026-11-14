@@ -1,4 +1,5 @@
 import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src/canvas-editing.ts';
+import type {CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import {nativeMenuTextFocus} from './desktop-menu-client.ts';
 
 export function supportsCanvasEditing(version: number | undefined, base: CanvasEditBase | undefined): boolean {
@@ -40,4 +41,33 @@ export function canvasShortcut(
 
 export function canvasShortcutInText(event: KeyboardEvent, activeElement: Element | null): boolean {
   return nativeMenuTextFocus(activeElement) || event.composedPath().some(target => target instanceof Element && nativeMenuTextFocus(target));
+}
+
+// The archive popover is portalled, so its presence blocks commands even when
+// focus temporarily returns to the document during an open or close animation.
+export function canvasOwnsShortcutFocus(area: HTMLElement | null, document: Document): boolean {
+  if (!area || [...document.querySelectorAll('[data-testid="canvas-archive-popover"]')]
+    .some(dialog => !dialog.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'))) return false;
+  const focused = document.activeElement;
+  return !focused || focused === document.body || focused === document.documentElement || area.contains(focused);
+}
+
+export function canvasGroupMoves(
+  targets: readonly Pick<CanvasLayoutMove, 'kind' | 'id'>[],
+  positions: ReadonlyMap<string, CanvasLayoutMove['position']>,
+  moved: readonly Pick<CanvasLayoutMove, 'id' | 'position'>[],
+  anchorId: string,
+): CanvasLayoutMove[] {
+  const next = new Map(moved.map(({id, position}) => [id, position]));
+  const anchorStart = positions.get(anchorId), anchorEnd = next.get(anchorId);
+  if (next.size !== targets.length || !anchorStart || !anchorEnd) return [];
+  const dx = anchorEnd.x - anchorStart.x, dy = anchorEnd.y - anchorStart.y;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || !dx && !dy) return [];
+  const moves: CanvasLayoutMove[] = [];
+  for (const target of targets) {
+    const before = positions.get(target.id);
+    if (!before || !next.has(target.id)) return [];
+    moves.push({...target, position: {x: before.x + dx, y: before.y + dy}});
+  }
+  return moves;
 }

@@ -6,13 +6,14 @@ import path from 'node:path';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import {canvasEditErrorCode, createCanvasEditingController} from '../apps/web/src/canvas-editing-state.ts';
-import type {CanvasEditingContext, CanvasEditRpc} from '../apps/web/src/canvas-editing-state.ts';
+import type {CanvasEditingContext, CanvasEditingNotice, CanvasEditRpc} from '../apps/web/src/canvas-editing-state.ts';
 import {createCanvasEditing} from '../packages/business/src/canvas-editing.ts';
+import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {readMioTargetRevision} from '../packages/business/src/agent/mio-target-revisions.ts';
 import {createProjectStore, readProjectContentStamp} from '../packages/business/src/project-file/index.ts';
 import {canvasEditingSchemas, createCanvasRequestId, readCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import type {CanvasTarget, CanvasTargetExpectation} from '../packages/contracts/src/canvas-editing.ts';
-import type {CanvasLayoutInput, CanvasLayoutShot} from '../packages/contracts/src/canvas-tidy-layout.ts';
+import type {CanvasLayoutInput, CanvasLayoutMove, CanvasLayoutShot} from '../packages/contracts/src/canvas-tidy-layout.ts';
 
 const date = '2026-11-13T01:02:03.000Z';
 
@@ -29,6 +30,7 @@ function fixture(t: TestContext, enabled = true) {
   const time = () => Date.parse(date);
   const cb = createCanvasEditing(store, {now: () => date, time});
   const errors: string[] = [], archivedSelections: CanvasTarget[][] = [];
+  const notices: CanvasEditingNotice[] = [];
   const shots: CanvasLayoutShot[] = [], targets: CanvasTarget[] = [];
   const calls: {operation: string; input: unknown}[] = [];
   let decorate: (next: CanvasEditRpc) => CanvasEditRpc = next => next;
@@ -58,6 +60,7 @@ function fixture(t: TestContext, enabled = true) {
     },
     refresh: async () => controller.setContext(context()), now: time,
     onError: failure => errors.push(canvasEditErrorCode(failure)),
+    onNotice: notice => notices.push(notice),
     onArchived: selection => archivedSelections.push(selection.map(({kind,id}) => ({kind,id}))),
   });
   function addNode(text = '') {
@@ -76,7 +79,10 @@ function fixture(t: TestContext, enabled = true) {
     return target;
   }
   function positions() {
-    return shots.map(({id}) => (store.get('shots', id) as {position: CanvasLayoutShot['position']}).position);
+    return shots.map(({id}) => position({kind: 'shot', id}));
+  }
+  function position({id, kind}: Omit<CanvasLayoutMove, 'position'>): CanvasLayoutShot['position'] {
+    return (store.get(kind === 'shot' ? 'shots' : 'nodes', id) as {position: CanvasLayoutShot['position']}).position;
   }
   function layout(selectedIds?: ReadonlySet<string>): CanvasLayoutInput {
     const saved = positions();
@@ -96,12 +102,22 @@ function fixture(t: TestContext, enabled = true) {
     return () => { if (clip) assert.deepEqual(store.get('timelines', timeline.id), timeline); };
   }
   return {
-    controller, context, errors, calls, archived, archivedSelections, addNode, addShot, addClipEvidence, layout, positions,
+    controller, context, errors, notices, calls, archived, archivedSelections, addNode, addShot, addClipEvidence, layout, position, positions,
     activate() {controller.setContext(context());},
     decorateRpc(hook: (next: CanvasEditRpc) => CanvasEditRpc) {decorate = hook;},
     smallPages() {pageLimit = 2;},
     writeCount: () => calls.filter(call => call.operation === 'canvas.apply').length,
     receiptCount: () => store.db.prepare('SELECT count(*) AS n FROM main.canvas_requests').get()?.n,
+    protectTarget(target: CanvasTarget) {
+      const records = createMioRecords(store);
+      const claim = store.tx(() => records.saveClaim({id: randomUUID(), ownerId: randomUUID(),
+        kind: target.kind, targetId: target.id, state: 'active', revision: 1, createdAt: date, updatedAt: date}));
+      return () => store.tx(() => records.removeClaim(claim.id, claim.ownerId));
+    },
+    externalNodeUpdate(target: {kind: 'node'; id: string}) {
+      const current = store.get('nodes', target.id) as object;
+      store.put('nodes', {...current, id: target.id, projectId, label: 'External change', revision: 3});
+    },
     externalMove(target: CanvasTarget) {
       assert.notEqual(target.kind, 'edge');
       const {revision, requestAfter, requestEpoch} = cb.call('canvas.history.get', {projectId}) as {
@@ -137,6 +153,7 @@ test('simple archive writes once, reports the selected count and restores single
   assert.deepEqual(nodes.map(f.archived), [false, false, false, false]);
   assert.equal(controller.getSnapshot().archive.count, 0);
   assert.deepEqual(f.errors, []);
+  assert.deepEqual(f.notices, [{kind: 'restored', count: 1}, {kind: 'restored', count: 3}]);
 });
 
 for (const [withVersion, withClip] of [[true, true], [true, false], [false, true]] as const) {
@@ -147,7 +164,8 @@ for (const [withVersion, withClip] of [[true, true], [true, false], [false, true
     const {controller} = f;
     f.activate();
     assert.equal(await controller.archiveSelection([shot, node]), false);
-    assert.deepEqual(controller.getSnapshot().review, {count: 2, versions: Number(withVersion), clips: Number(withClip)});
+    assert.deepEqual(controller.getSnapshot().review, {count: 2, versions: Number(withVersion), clips: Number(withClip),
+      shotImpacts: [{number: 1, versions: Number(withVersion), clips: Number(withClip)}], impactedShotCount: 1});
     assert.equal(f.writeCount(), 0);
     assert.deepEqual([f.archived(shot), f.archived(node)], [false, false]);
     controller.cancelArchive();
@@ -185,6 +203,114 @@ test('layout all and layout selected are each one atomic write with independent 
   assert.equal(await controller.undoToast(), true);
   assert.deepEqual(f.positions(), original);
   assert.deepEqual(f.errors, []);
+  assert.deepEqual(f.notices.map(item => item.kind), ['undone', 'redone', 'undone', 'undone']);
+});
+
+test('move saves a mixed selection as one action, recovers a lost acknowledgement, and undoes every position', async t => {
+  const f = fixture(t), shot = f.addShot({x: 440, y: 300}), node = f.addNode();
+  const {controller} = f;
+  f.activate();
+  const initial = [f.position(shot), f.position(node)];
+  const moves = [
+    {...shot, position: {x: 480, y: 250}},
+    {...node, position: {x: 40, y: -50}},
+  ] satisfies CanvasLayoutMove[];
+  let interrupted = false;
+  f.decorateRpc(next => async (op, input) => {
+    const value = await next(op, input);
+    if (op === 'canvas.apply' && !interrupted) {
+      interrupted = true;
+      throw new TypeError('Synthetic lost move acknowledgement');
+    }
+    return value;
+  });
+  assert.equal(await controller.move(moves, f.context().base!), true);
+  const writes = f.calls.filter(call => call.operation === 'canvas.apply');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+  assert.equal(f.receiptCount(), 1);
+  assert.equal(controller.getSnapshot().history?.undo?.operation, 'move');
+  assert.equal(controller.getSnapshot().history?.undo?.count, 2);
+  assert.deepEqual([f.position(shot), f.position(node)], moves.map(item => item.position));
+  assert.equal(await controller.undo(), true);
+  assert.deepEqual([f.position(shot), f.position(node)], initial);
+});
+
+test('a group move stops when the selected gesture changes or its base has been superseded', async t => {
+  const f = fixture(t), shot = f.addShot({x: 440, y: 300}), node = f.addNode();
+  const {controller} = f;
+  f.activate();
+  const base = f.context().base!;
+  const moves = [{...shot, position: {x: 480, y: 250}}, {...node, position: {x: 40, y: -50}}];
+  let stillSelected = true;
+  f.decorateRpc(next => async (op, input) => {
+    if (op === 'canvas.history.get') stillSelected = false;
+    return next(op, input);
+  });
+  assert.equal(await controller.move(moves, base, () => stillSelected), false);
+  assert.equal(f.writeCount(), 0);
+  assert.deepEqual(f.errors, []);
+
+  f.externalMove(node);
+  f.activate();
+  assert.equal(await controller.move(moves, base), false);
+  assert.equal(f.writeCount(), 0);
+  assert.equal(f.errors.at(-1), 'CANVAS_EDIT_CONFLICT');
+  assert.deepEqual(f.position(shot), {x: 440, y: 300});
+  assert.deepEqual(f.position(node), {x: 370, y: 678});
+});
+
+test('pending writes produce retryable undo messages before and during dispatch', async t => {
+  const f = fixture(t), shot = f.addShot({x: 440, y: 300});
+  const {controller} = f;
+  f.activate();
+  assert.equal(await controller.tidy(f.layout()), true);
+  const unprotect = f.protectTarget(shot);
+  await controller.loadHistory();
+  const waiting = controller.getSnapshot();
+  assert.equal(waiting.history?.undoConflict, false);
+  assert.equal(waiting.history?.undoBlocked, true);
+  assert.equal(waiting.canUndo, true);
+  assert.equal(await controller.undoToast(), false);
+  assert.equal(f.errors.at(-1), 'CANVAS_UI_UNDO_BLOCKED');
+  assert.equal(f.calls.some(call => call.operation === 'canvas.history.undo'), false);
+  assert.deepEqual(f.notices, []);
+
+  unprotect();
+  await controller.loadHistory();
+  assert.equal(await controller.undoToast(), true);
+  assert.deepEqual(f.notices, [{kind: 'undone'}]);
+  assert.equal(await controller.redo(), true);
+  const redo = controller.getSnapshot();
+  let race = true;
+  f.decorateRpc(next => async (op,input) => {
+    if (op === 'canvas.history.undo' && race) {
+      race = false;
+      f.protectTarget(shot);
+    }
+    return next(op, input);
+  });
+  assert.equal(await controller.undo(), false);
+  assert.equal(f.errors.at(-1), 'CANVAS_UI_UNDO_BLOCKED');
+  assert.equal(controller.getSnapshot().history?.undo?.id, redo.history?.undo?.id);
+  assert.deepEqual(f.notices, [{kind: 'undone'}, {kind: 'redone'}]);
+});
+
+test('known external revisions disable all undo entry points without another RPC', async t => {
+  const f = fixture(t), node = f.addNode();
+  const {controller} = f;
+  f.activate();
+  assert.equal(await controller.archiveSelection([node]), true);
+  f.externalNodeUpdate(node);
+  await controller.loadHistory();
+  assert.equal(controller.getSnapshot().history?.undoConflict, true);
+  assert.equal(controller.getSnapshot().history?.undoBlocked, false);
+  assert.equal(controller.getSnapshot().canUndo, false);
+  assert.equal(controller.getSnapshot().canUndoToast, false);
+  f.calls.length = 0;
+  assert.equal(await controller.undo(), false);
+  assert.equal(await controller.undoToast(), false);
+  assert.deepEqual(f.calls, []);
 });
 
 test('a lost response replays only the exact request and an older toast cannot undo a later edit', async t => {

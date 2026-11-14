@@ -18,7 +18,8 @@ type HistoryDirection = 'undo' | 'redo';
 type WriteOperation = 'canvas.apply' | 'canvas.history.undo' | 'canvas.history.redo';
 type Stamp = Pick<CanvasEditBase, 'contentSequence' | 'contentToken'>;
 type Flight = {generation: number; projectId: string; dispatched: boolean};
-type ArchiveReview = {count: number; versions: number; clips: number};
+type ArchiveReview = Pick<Preview, 'versions' | 'clips' | 'shotImpacts' | 'impactedShotCount'> & {count: number};
+export type CanvasEditingNotice = {kind: 'restored'; count: number} | {kind: 'undone' | 'redone'};
 type ArchiveState = {
   items: readonly CanvasArchiveItem[];
   count: number;
@@ -54,6 +55,7 @@ interface ControllerOptions {
   refresh: (projectId: string) => Promise<unknown>;
   isCurrent?: () => boolean;
   onError?: (error: unknown) => void;
+  onNotice?: (notice: CanvasEditingNotice) => void;
   onArchived?: (targets: readonly CanvasTarget[]) => void;
   createNonce?: () => string;
   now?: () => number;
@@ -75,7 +77,7 @@ const toExpectation = ({kind, id, revision}: CanvasTargetExpectation): CanvasTar
 const sameStamp = (a: Stamp | undefined, b: Stamp | undefined) => Boolean(a && b &&
   a.contentSequence === b.contentSequence && a.contentToken === b.contentToken);
 const contentStamp = ({contentSequence, contentToken}: Stamp): ContentStamp => ({contentSequence, contentToken});
-const conflict = (failure: unknown) => ['CANVAS_EDIT_CONFLICT', 'CANVAS_EDIT_BLOCKED', 'CANVAS_CONFIRMATION_REQUIRED',
+const conflict = (failure: unknown) => ['CANVAS_EDIT_CONFLICT', 'CANVAS_CONFIRMATION_REQUIRED',
   'CANVAS_UI_UNDO_CONFLICT', 'CANVAS_UI_REDO_CONFLICT'].includes(canvasEditErrorCode(failure));
 
 function expectations<T extends CanvasTarget>(base: CanvasEditBase, targets: readonly T[]): (T & CanvasTargetExpectation)[] {
@@ -140,7 +142,7 @@ function validFirstPage(page: Page): Page {
   return page;
 }
 
-export function createCanvasEditingController({rpc, refresh, isCurrent = () => true, onError = () => {}, onArchived = () => {},
+export function createCanvasEditingController({rpc, refresh, isCurrent = () => true, onError = () => {}, onNotice = () => {}, onArchived = () => {},
   createNonce = () => globalThis.crypto.randomUUID(), now = Date.now}: ControllerOptions) {
   let context: CanvasEditingContext = {scope: '', projectId: null, enabled: false, writable: false, base: undefined};
   let generation = 0, historySerial = 0, archiveSerial = 0;
@@ -155,11 +157,11 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     const next = {...state, ...patch};
     const {history, toast} = next;
     const ready = context.enabled && context.writable && !next.busy && !next.review;
-    const canUndo = Boolean(ready && history?.undo);
-    const canRedo = Boolean(ready && history?.redo);
+    const canUndo = Boolean(ready && history?.undo && !history.undoConflict);
+    const canRedo = Boolean(ready && history?.redo && !history.redoConflict);
     state = {...next, canUndo, canRedo, canUndoToast: Boolean(canUndo && toast && history?.undo?.id === toast.actionId),
       historyScope: JSON.stringify([context.scope, history?.requestEpoch, history?.revision, history?.undo?.id, history?.redo?.id,
-        history?.undoConflict, history?.redoConflict])};
+        history?.undoConflict, history?.redoConflict, history?.undoBlocked, history?.redoBlocked])};
     for (const listener of listeners) listener();
   }
   const owned = (flight: Flight) => generation === flight.generation && context.projectId === flight.projectId && isCurrent();
@@ -246,10 +248,12 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     return {projectId, historyRevision: revision, requestId: createCanvasRequestId(history.requestEpoch, createNonce(), issuedAt)};
   }
 
-  async function mutate(flight: Flight, operation: WriteOperation, input: CanvasEditInput | CanvasHistoryInput): Promise<CanvasEditResult | null> {
-    if (!writable(flight)) return null;
+  async function mutate(flight: Flight, operation: WriteOperation, input: CanvasEditInput | CanvasHistoryInput,
+    canApply = () => true): Promise<CanvasEditResult | null> {
+    const canWrite = () => writable(flight) && canApply();
+    if (!canWrite()) return null;
     flight.dispatched = true;
-    const ack = await write(rpc, operation, input, () => writable(flight));
+    const ack = await write(rpc, operation, input, canWrite);
     if (!owned(flight)) return null;
     appliedStamp = contentStamp(ack);
     emit({history: null});
@@ -267,10 +271,14 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     try {
       return await action(flight);
     } catch (failure) {
-      refreshNeeded = conflict(failure);
+      const code = canvasEditErrorCode(failure);
+      refreshNeeded = conflict(failure) || code === 'CANVAS_EDIT_BLOCKED';
       if (visible(flight)) {
-        if (direction && conflict(failure)) onError(error(direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT'));
-        else onError(canvasEditErrorCode(failure) === 'CANVAS_EDIT_CAPACITY' ? error('CANVAS_UI_COUNT_LIMIT') : failure);
+        if (direction && code === 'CANVAS_EDIT_BLOCKED') {
+          onError(error(direction === 'undo' ? 'CANVAS_UI_UNDO_BLOCKED' : 'CANVAS_UI_REDO_BLOCKED'));
+        } else if (direction && conflict(failure)) {
+          onError(error(direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT'));
+        } else onError(code === 'CANVAS_EDIT_CAPACITY' ? error('CANVAS_UI_COUNT_LIMIT') : failure);
       }
       return false;
     } finally {
@@ -319,6 +327,7 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
       emit({toast: {kind: 'archive', count: review.targets.length, actionId: result.actionId}});
     } else {
       emit({toast: null});
+      if (visible(flight)) onNotice({kind: 'restored', count: review.targets.length});
     }
     return true;
   }
@@ -343,7 +352,8 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
         if (review.versions || review.clips) {
           if (!review.confirmation) throw error('BACKEND_PROTOCOL_ERROR');
           reviewing = review;
-          emit({review: {count: review.targets.length, versions: review.versions, clips: review.clips}});
+          const {versions, clips, shotImpacts, impactedShotCount} = review;
+          emit({review: {count: review.targets.length, versions, clips, shotImpacts, impactedShotCount}});
           return false;
         }
         return commitArchive(flight, 'archive', review);
@@ -396,8 +406,12 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
         const result = layoutCanvas(layout);
         if (result.status === 'no-fit') throw error('CANVAS_UI_LAYOUT_NO_FIT');
         if (result.status !== 'moved') return false;
-        return applyLayout(flight, base, result.moves);
+        return applyPositions(flight, base, result.moves, 'layout');
       });
+    },
+    move(moves: readonly CanvasLayoutMove[], base: CanvasEditBase, canApply?: () => boolean) {
+      if (reviewing || !moves.length) return Promise.resolve(false);
+      return act(flight => applyPositions(flight, base, moves, 'move', canApply));
     },
     undo: () => travel('undo'),
     redo: () => travel('redo'),
@@ -405,30 +419,37 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     dismissToast: () => emit({toast: null}),
   };
 
-  async function applyLayout(flight: Flight, base: CanvasEditBase, moves: readonly CanvasLayoutMove[]): Promise<boolean> {
+  async function applyPositions(flight: Flight, base: CanvasEditBase, moves: readonly CanvasLayoutMove[],
+    operation: 'layout' | 'move', canApply = () => true): Promise<boolean> {
+    if (!canApply()) return false;
     const history = await read(rpc, 'canvas.history.get', {projectId: flight.projectId});
+    if (!canApply()) return false;
     if (!sameStamp(base, context.base) || appliedStamp && base.contentSequence < appliedStamp.contentSequence) {
       throw error('CANVAS_EDIT_CONFLICT');
     }
-    const input = {...commitInput(history, flight.projectId), moves: expectations(base, moves),
-      operation: 'layout' as const, ...contentStamp(base)};
-    const result = await mutate(flight, 'canvas.apply', input);
+    const input = {...commitInput(history, flight.projectId), moves: expectations(base, moves)};
+    const result = await mutate(flight, 'canvas.apply', operation === 'layout'
+      ? {...input, operation, ...contentStamp(base)} : {...input, operation}, canApply);
     if (!result?.actionId) return false;
-    emit({toast: {kind: 'layout', count: result.affected, actionId: result.actionId}});
+    emit({toast: operation === 'layout' ? {kind: 'layout', count: result.affected, actionId: result.actionId} : null});
     return true;
   }
 
   function travel(direction: HistoryDirection, actionId = state.history?.[direction]?.id): Promise<boolean> {
-    if (reviewing || !actionId) return Promise.resolve(false);
+    const conflictFlag = direction === 'undo' ? 'undoConflict' : 'redoConflict';
+    const blockedFlag = direction === 'undo' ? 'undoBlocked' : 'redoBlocked';
+    if (reviewing || !actionId || state.history?.[conflictFlag]) return Promise.resolve(false);
     return act(async flight => {
       const history = await read(rpc, 'canvas.history.get', {projectId: flight.projectId});
       const target = history[direction];
-      if (!target || target.id !== actionId || history[direction === 'undo' ? 'undoConflict' : 'redoConflict']) {
+      if (!target || target.id !== actionId || history[conflictFlag]) {
         throw error(direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT');
       }
+      if (history[blockedFlag]) throw error('CANVAS_EDIT_BLOCKED');
       const ack = await mutate(flight, direction === 'undo' ? 'canvas.history.undo' : 'canvas.history.redo', commitInput(history, flight.projectId));
       if (!ack?.actionId) return false;
       emit({toast: null});
+      if (visible(flight)) onNotice({kind: direction === 'undo' ? 'undone' : 'redone'});
       return true;
     }, direction);
   }

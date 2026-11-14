@@ -163,8 +163,11 @@ test('archive pages share a read-only snapshot stamp and project-scoped preview 
   const byId = new Map(items.map(item => [item.id, item]));
   assert.deepEqual(byId.get(generated.id)?.preview, {assetId: movie.id, mimeType: 'video/mp4'});
   assert.equal(byId.get(generated.id)?.versions, 2);
+  assert.equal(byId.get(generated.id)?.shotNumber, 1);
   assert.equal(byId.get(unfinished.id)?.preview, null, 'a different shot cannot supply a selected version');
   assert.equal(byId.get(unfinished.id)?.versions, 0);
+  assert.equal(byId.get(unfinished.id)?.shotNumber, 2);
+  assert.equal(byId.get(imageNode.id)?.shotNumber, null);
   assert.equal(byId.get(imageNode.id)?.nodeType, 'image');
   assert.equal(byId.get(imageNode.id)?.label, image.name);
   assert.deepEqual(byId.get(imageNode.id)?.preview, {assetId: image.id, mimeType: 'image/png'});
@@ -198,6 +201,24 @@ test('shot archive undo restores exact story order, explicit recovery uses survi
     {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'edge-endpoint', id: decoration.id}});
   f.edit('restore', [shots[1]!,decoration]);
   assert.equal(f.archived(decoration), false);
+});
+
+test('archives and history without saved shot numbers remain readable and recoverable', t => {
+  const f = fixture(t), first = f.shot(0), second = f.shot(1);
+  f.edit('archive', [second]);
+  f.store.db.prepare(`UPDATE main.canvas_history_entries
+    SET beforePatch=json_remove(beforePatch,'$.anchors[0].number'),afterPatch=json_remove(afterPatch,'$.anchors[0].number')
+    WHERE projectId=?`).run(f.projectId);
+  f.reopen();
+  f.undo();
+  assert.deepEqual(f.order(), [first.id, second.id]);
+  f.redo();
+  assert.equal(f.store.db.prepare("SELECT json_extract(data,'$.canvasArchiveOrder.number') AS number FROM project.shots WHERE id=?")
+    .get(second.id)?.number, null);
+  f.reopen();
+  assert.equal(f.call('canvas.archive.list').items[0]?.shotNumber, 2);
+  f.edit('restore', [second]);
+  assert.deepEqual(f.order(), [first.id, second.id]);
 });
 
 test('restoring a deletion batch requires every remaining member and keeps an archived shot source binding', t => {
@@ -369,6 +390,59 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
   f.undo();
   assert.equal(f.archived(shot), false);
   assert.deepEqual(f.store.get('timelines', timeline.id), timeline);
+});
+
+test('archive preview lists the first three affected shots by displayed order and preserves their numbers across reopen and redo', t => {
+  const f = fixture(t), ordered = [5, 10, 18, 27, 31].map(index => f.shot(index));
+  const assetId = f.id(), trackId = f.id();
+  f.store.put('assets', {id: assetId, projectId: f.projectId, name: 'Video'});
+  const [first, second, third, fourth, fifth] = ordered as [CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget];
+  for (const shot of [first, third, third, fifth]) {
+    f.store.put('versions', {id: f.id(), projectId: f.projectId, jobId: f.id(), shotId: shot.id, assetId, sha256: 'a'.repeat(64)});
+  }
+  f.store.put('timelines', {id:f.id(), projectId:f.projectId, fps:30, width:1920, height:1080, revision:1, durationFrames:30,
+    createdAt:date, updatedAt:date, tracks:[{id:trackId,name:'Track',kind:'video',orderIndex:0,hidden:true,muted:false}],
+    clips:[{id:f.id(),trackId,assetId,shotId:fourth.id,name:'Retained',startFrame:0,durationFrames:30,sourceInFrame:0,gain:1,
+      rect:{x:0,y:0,width:1920,height:1080}}]});
+  const selection = [fifth, second, fourth, third, first, f.node()];
+  const targets = selection.map(f.expectTarget);
+  const preview = f.call('canvas.archive.preview', {operation: 'archive', targets});
+  assert.ok(preview.confirmation);
+  assert.equal(f.store.db.isTransaction, false);
+  assert.deepEqual({clips: preview.clips, versions: preview.versions, count: preview.impactedShotCount, impacts: preview.shotImpacts},
+    {clips: 1, versions: 4, count: 4, impacts: [{number:1,versions:1,clips:1}, {number:3,versions:2,clips:1}, {number:4,versions:0,clips:1}]});
+  f.apply({operation: 'archive', targets, requestId: f.requestId(), historyRevision: preview.historyRevision, confirmation: preview.confirmation});
+  const assertNumbers = () => {
+    const page = f.call('canvas.archive.list');
+    for (const [index, {id}] of ordered.entries()) assert.equal(page.items.find(item => item.id === id)?.shotNumber, index + 1);
+  };
+  f.reopen();
+  assertNumbers();
+  f.undo();
+  assert.equal(f.call('canvas.archive.list').total, 0);
+  f.redo();
+  assertNumbers();
+});
+
+test('history reports an active operation separately from a conflicting edit', t => {
+  const f = fixture(t), shot = f.shot(0);
+  const move = () => f.call('canvas.apply', {operation:'move', requestId:f.requestId(), historyRevision:0,
+    moves:[{...f.expectTarget(shot), position:{x:12,y:24}}]});
+  const addJob = () => f.store.put('jobs', {id:f.id(), projectId:f.projectId, shotId:shot.id, status:'queued', snapshot:{shotId:shot.id}, revision:1});
+  move();
+  const job = addJob();
+  let history = f.call('canvas.history.get');
+  assert.deepEqual([history.undoConflict, history.undoBlocked, history.redoConflict, history.redoBlocked, history.conflict],
+    [false, true, false, false, true]);
+  assert.throws(f.undo, {code:'CANVAS_EDIT_BLOCKED'});
+  f.store.put('jobs', {...job, status:'failed'});
+  history = f.call('canvas.history.get');
+  assert.deepEqual([history.undoBlocked, history.undoConflict], [false, false]);
+  f.undo();
+  addJob();
+  history = f.call('canvas.history.get');
+  assert.deepEqual([history.redoBlocked, history.redoConflict, history.conflict], [true, false, true]);
+  assert.throws(f.redo, {code:'CANVAS_EDIT_BLOCKED'});
 });
 
 test('expired or lost-history request keys cannot execute again, including after clock rollback', t => {

@@ -55,6 +55,10 @@ test('the digest identifies retained versions and explicit and asset-derived cli
   assert.deepEqual(f.inspect([otherShot, shot]), first);
   assert.deepEqual(inspectCanvasDependencies(store, [otherShot, shot], [otherShot]).versions, 0);
   assert.deepEqual(inspectCanvasDependencies(store, [otherShot, shot], [otherShot]).clips, 0);
+  const byShot = inspectCanvasDependencies(store, [shot, otherShot], [otherShot, shot], {reportShotImpacts: true});
+  assert.deepEqual(byShot.shotImpacts, new Map([[shot.id, {versions: 1, clips: 2}]]), 'one clip counts once even when it names the shot, version, job and asset');
+  assert.equal(byShot.digest, first.digest);
+
   store.put('timelines', {...timeline, revision: 2, clips: [visibleClip, {...hiddenClip, id: randomUUID()}]});
   const replaced = f.inspect([shot, otherShot]);
   assert.equal(replaced.clips, 2);

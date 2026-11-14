@@ -1,6 +1,6 @@
 import {useEffect, useLayoutEffect, useRef, useSyncExternalStore} from 'react';
 import {createCanvasEditingController} from './canvas-editing-state.ts';
-import type {CanvasEditRpc, CanvasEditingContext} from './canvas-editing-state.ts';
+import type {CanvasEditRpc, CanvasEditingContext, CanvasEditingNotice} from './canvas-editing-state.ts';
 import type {CanvasTarget} from '../../../packages/contracts/src/canvas-editing.ts';
 
 interface UseCanvasEditingOptions extends CanvasEditingContext {
@@ -8,6 +8,7 @@ interface UseCanvasEditingOptions extends CanvasEditingContext {
   refresh: (projectId: string) => Promise<unknown>;
   isCurrent?: () => boolean;
   onError?: (error: unknown) => void;
+  onNotice?: (notice: CanvasEditingNotice) => void;
   onArchived?: (targets: readonly CanvasTarget[]) => void;
 }
 
@@ -24,6 +25,7 @@ export function useCanvasEditing(options: UseCanvasEditingOptions) {
       refresh: id => callbacks.current.refresh(id),
       isCurrent: () => callbacks.current.isCurrent?.() ?? true,
       onError: error => callbacks.current.onError?.(error),
+      onNotice: notice => callbacks.current.onNotice?.(notice),
       onArchived: targets => callbacks.current.onArchived?.(targets),
     });
   }
