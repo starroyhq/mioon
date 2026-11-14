@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -61,6 +62,7 @@ before(() => {
     process.exit(0);
   `;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], {
+      env: testEnv(),
     cwd: root, input: script, encoding: 'utf8', timeout: 30_000,
   }));
 });

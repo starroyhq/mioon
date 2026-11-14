@@ -46,7 +46,7 @@ export function readShotTextState(db: DatabaseSync){
 }
 async function main(){
  const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
- const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});let armed: string|null=null,inOutcome=false,closing=false;const dispatches: {projectId: string; input: unknown}[]=[];
+ const store=openStore(root),services=createServices(store,new Map(),{env:{}});let armed: string|null=null,inOutcome=false,closing=false;const dispatches: {projectId: string; input: unknown}[]=[];
  function boundary(phase: string): void {if(armed!==phase)return;writeSync(1,JSON.stringify({type:'boundary',phase,dispatches:dispatches.length})+'\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);throw Error('A crash-only boundary resumed');}
  const {local}=shotTextForStore(store,services,{dispatches,afterCommit:()=>boundary('afterBusinessReceiptCommit'),fault:(point: string)=>{if(point==='beforeOutcomePersist')inOutcome=true;boundary(inOutcome&&point==='afterConfirm'?'afterOutcomePersist':point);}});
  const first=store.db.prepare('SELECT id,projectId FROM shots ORDER BY rowid LIMIT 1').get() as {id: string; projectId: string}|undefined;assert.ok(first);const instanceId=(local.get({projectId:first.projectId,shotId:first.id}) as {instanceId?: string}).instanceId;

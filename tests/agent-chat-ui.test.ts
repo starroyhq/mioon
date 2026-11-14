@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ElementType, ElementProps, Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.ts';
 import { createI18nTestContext, message } from './helpers/i18n.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
@@ -45,7 +46,7 @@ test('real shared Input preserves accessible native checkbox markup, checked sta
     for (const expected of ['for="consent-runtime"', 'id="consent-runtime"', 'data-slot="input"', 'type="checkbox"', 'checked=""', 'disabled=""', 'Confirm sending typed chat']) assert.ok(html.includes(expected), 'Missing shared checkbox markup: ' + expected);
     process.stdout.write('Shared consent checkbox verified'); process.exit(0);
   `;
-  assert.match((execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }) as string), /Shared consent checkbox verified/);
+  assert.match((execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 }) as string), /Shared consent checkbox verified/);
 });
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');

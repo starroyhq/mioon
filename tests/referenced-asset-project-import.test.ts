@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -201,7 +202,7 @@ for (const mutation of ['digest', 'owner', 'phase', 'asset', 'extra'] as const) 
 });
 
 function childWrite(file: string): unknown {
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {DatabaseSync} from 'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');console.log(JSON.stringify({ok:true}));}catch(error){console.log(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`, file], {encoding: 'utf8', timeout: 60000});
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {DatabaseSync} from 'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');console.log(JSON.stringify({ok:true}));}catch(error){console.log(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`, file], {env: testEnv(), encoding: 'utf8', timeout: 60000});
   assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout.trim()) as unknown;
 }
 for (const kind of ['project', 'history', 'cache', 'application'] as const) test(`held ${kind} cannot be opened as a source or receipt, preserving its interprocess write lock`, async t => {

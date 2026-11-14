@@ -32,7 +32,7 @@ async function fixture(t: TestContext): Promise<{requests: unknown[]; env: Recor
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Expected a bound TCP address');
   Object.assign(env, {MIOON_BASE_URL: `http://127.0.0.1:${address.port}`,
-    MIOON_TOKEN: 'synthetic-cli-mcp-recovery-token-only', MIOON_ENABLE_LIVE_PROVIDER: '0'});
+    MIOON_TOKEN: 'synthetic-cli-mcp-recovery-token-only',});
   return {requests, env};
 }
 

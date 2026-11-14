@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -102,6 +103,7 @@ function assertDisplacedPair(f: Fixture, before: ReturnType<Fixture['liveBytes']
 
 function killRestore(f: Fixture, phase: Format4RestoreBoundary): void {
   const killed = spawnSync(process.execPath, [worker, JSON.stringify(f.restoreOptions), phase], {
+      env: testEnv(),
     stdio: 'ignore', timeout: 60_000,
   });
   assert.equal(killed.error, undefined);
@@ -233,7 +235,7 @@ test('the restore holds both native writer locks while publishing the ready inte
         try {assert.throws(() => db.exec('BEGIN IMMEDIATE'), {errcode: 5});}
         finally {db.close();}
       }
-    `, f.projectFile, f.historyFile], {stdio: 'ignore', timeout: 10_000});
+    `, f.projectFile, f.historyFile], {env: testEnv(), stdio: 'ignore', timeout: 10_000});
     assert.equal(probe.error, undefined);
     assert.equal(probe.status, 0, 'a different process cannot acquire either SQLite write lock');
     checked = true;

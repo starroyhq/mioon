@@ -156,7 +156,7 @@ test('every advertised provider ratio is representable in the shared shot schema
 
 
 test('manual reconciliation and explicit retry preserve the original regional account boundary',async t=>{
- const f=await fixture(t,{MIOON_ENABLE_LIVE_PROVIDER:'1',MINIMAX_API_KEY:'synthetic-fixture-only',MINIMAX_REGION:'global'});
+ const f=await fixture(t,{MINIMAX_API_KEY:'synthetic-fixture-only',MINIMAX_REGION:'global'});
  const shot=await f.shot({duration:4});
  const job=await f.services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),providerId:'minimax'});
  const original=f.providers.get('minimax')!;let seen;

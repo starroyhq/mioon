@@ -6,7 +6,7 @@ import {isProjectId} from '../../packages/contracts/src/project-file.ts';
 // second connection. No production endpoint or environment variable is added.
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {startServer} from '../../apps/server/src/index.ts';
+import {startServer} from '../helpers/test-server.ts';
 import type {InspectProject} from '../../apps/server/src/index.ts';
 import {comfyModuleModeFromEnvironment} from '../../apps/server/src/comfy-module.ts';
 import {createHeadlessAgentSecretCodec} from '../../apps/server/src/headless-agent-secret-codec.ts';

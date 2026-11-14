@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -93,7 +94,7 @@ test('normal stop and SIGKILL restart recover the same accepted task without a s
   const f = await fixture(t), current = await f.start();
   current.window.release(); await current.host.close();
   const config = path.join(f.root, 'child.json'); await writeFile(config, JSON.stringify({dataDir: f.dataDir, remote: f.url, projectId: current.project.projectId}), {mode: 0o600});
-  const before = f.calls.poll, child = fork('tests/fixtures/project-background-lifecycle-worker.ts', [config], {cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  const before = f.calls.poll, child = fork('tests/fixtures/project-background-lifecycle-worker.ts', [config], {env: testEnv(), cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   f.children.add(child);
   const message = await Promise.race([once(child, 'message'), once(child, 'exit').then(() => {throw new Error('Recovery child exited before ready');})]);
   assert.deepEqual(message[0], {type: 'ready', taskLeases: 1});
@@ -151,7 +152,7 @@ test('initial real-history repair retires 512 stale hints before discovering and
   const noDispatch = async (): Promise<never> => {throw new Error('Cold seed has no worker');};
   const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4],
     configured: true, enabled: true, mock: false}, submit: noDispatch, poll: noDispatch, reconcile: noDispatch, download: noDispatch};
-  const services = createServices(seed.store, new Map([['ark', provider]]), {env: {MIOON_ENABLE_LIVE_PROVIDER: '1'}});
+  const services = createServices(seed.store, new Map([['ark', provider]]), {env: {}});
   const shot = object(await services.call('shot.create', {projectId: seed.projectId, title: 'Cold repair', prompt: 'A blue rectangle', duration: 4}));
   const requestId = randomUUID(), job = object(await services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId}));
   const source = backgroundHistorySource(seed.store), projectFile = seed.store.projectFile;

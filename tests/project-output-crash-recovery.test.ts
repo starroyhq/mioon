@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -26,7 +27,7 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} preserves project fi
  const stages=path.join(root,'tmp','artifacts');ensurePrivateDirectory(stages,{create:true});
  const bytes=png({extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]}),stageFile=path.join(stages,'complete.png');writeFileSync(stageFile,bytes,{mode:0o600});
  const publication:ProjectOutputInput={owner:{kind:scenario.forceCopy?'image':'import',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},assetId:randomUUID(),stageFile,targetKind:scenario.forceCopy?'generated':'assets',mimeType:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length};
- const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/project-output-crash-worker.ts',import.meta.url)),JSON.stringify({root,projectFile,publication,...scenario})],{stdio:'ignore',timeout:30000});
+ const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/project-output-crash-worker.ts',import.meta.url)),JSON.stringify({root,projectFile,publication,...scenario})],{env: testEnv(), stdio:'ignore',timeout:30000});
  assert.equal(child.error,undefined);assert.equal(child.status,null);assert.equal(child.signal,'SIGKILL');
  const targetDir=path.join(projectDir,scenario.forceCopy?'生成':'素材'),prior=readdirSync(targetDir).map(name=>({file:path.join(targetDir,name),bytes:readFileSync(path.join(targetDir,name)),ino:statSync(path.join(targetDir,name),{bigint:true}).ino}));
  const store=openProjectStore({projectFile,locate}),release=registerProjectMediaStore(store);dispose=()=>{release();store.close();};

@@ -5,7 +5,7 @@ import promises, {mkdtemp, mkdir, readFile, rm, writeFile} from 'node:fs/promise
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {syncBuiltinESMExports} from 'node:module';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
 

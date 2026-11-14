@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -502,7 +503,7 @@ async function atWorker(t: TestContext, value: Fixture, point: string): Promise<
   // A file is a synchronous barrier inside SQLite's opening transaction; no
   // worker stdout/stderr bytes are parsed as control messages.
   const child = spawn(process.execPath, [WORKER], {cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'], env: {
-    ...process.env, MIO_UPGRADE_PROJECT: value.projectFile, MIO_UPGRADE_LOCAL: value.localDir,
+    ...testEnv(), MIO_UPGRADE_PROJECT: value.projectFile, MIO_UPGRADE_LOCAL: value.localDir,
     MIO_UPGRADE_CACHE: value.cacheDir, MIO_UPGRADE_TMP: value.tempDir, MIO_UPGRADE_POINT: point, MIO_UPGRADE_MARKER: marker,
   }});
   const closed = once(child, 'close');

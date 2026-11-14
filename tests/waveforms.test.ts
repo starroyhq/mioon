@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 
@@ -371,7 +372,7 @@ test('a second process cannot open the active project to reconcile, steal, queue
  const f=await fixture(t,{decode:async()=>{entered=true;await gate.promise;return decoded();}}),asset=await f.asset();
  const initial=f.request(asset);await waitFor(()=>({status:entered?'started':'queued'}));const before=rows(f);
  const helper=fileURLToPath(new URL('./helpers/waveform-readonly-owner.ts',import.meta.url));
- const {stdout}=await promisify(execFile)(process.execPath,[helper,f.root,JSON.stringify(f.input(asset))],{timeout:10000,maxBuffer:128*1024});
+ const {stdout}=await promisify(execFile)(process.execPath,[helper,f.root,JSON.stringify(f.input(asset))],{env: testEnv(), timeout:10000,maxBuffer:128*1024});
  const result=JSON.parse(stdout);assert.deepEqual(result,{code:'PROJECT_LOCKED',spawns:0});
  assert.equal(f.get(asset).status,'running');assert.equal(f.get(asset).attemptId,initial.attemptId);assert.deepEqual(rows(f),before);
  (gate.resolve)!();assert.equal((await waitFor((()=>f.get(asset)))).status,'ready');

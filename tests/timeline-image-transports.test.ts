@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
@@ -132,12 +132,12 @@ async function bounded<T>(promise: Promise<T>, label: string, ms: number|undefin
 
 function childEnvironment(root: string, origin: unknown, audit: string) {
   return {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-    MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_BASE_URL: origin, MIOON_TOKEN: token,
+    MIOON_BASE_URL: origin, MIOON_TOKEN: token,
     MIOON_INSPECTION_WIRE_GUARD: '1', MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: origin,
     MIOON_INSPECTION_WIRE_AUDIT: audit};
 }
 
-async function cli(args: string[], env: { PATH: string; HOME: unknown; TMPDIR: unknown; LANG: string; NODE_ENV: string; MIOON_ENABLE_LIVE_PROVIDER: string; MIOON_BASE_URL: unknown; MIOON_TOKEN: string; MIOON_INSPECTION_WIRE_GUARD: string; MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: unknown; MIOON_INSPECTION_WIRE_AUDIT: unknown; }) {
+async function cli(args: string[], env: { PATH: string; HOME: unknown; TMPDIR: unknown; LANG: string; NODE_ENV: string;  MIOON_BASE_URL: unknown; MIOON_TOKEN: string; MIOON_INSPECTION_WIRE_GUARD: string; MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: unknown; MIOON_INSPECTION_WIRE_AUDIT: unknown; }) {
   const child = spawn(process.execPath, ['--import', wireGuard, 'apps/cli/src/index.ts', ...args],
     (({cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']}) as unknown as Parameters<typeof spawn>[2]));
   let stdout = '', stderr = '', failure;

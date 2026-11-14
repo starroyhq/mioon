@@ -5,7 +5,7 @@ import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/templates.ts';

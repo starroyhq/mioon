@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {RootTree, RootNode, RootProps} from './helpers/strict-root-ui-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -68,6 +69,6 @@ test('brand markup appears in the trigger with the real React and Base UI compon
     process.exit(0);
   `;
   const bundle = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: root }, absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', jsx: 'transform', write: false, logLevel: 'silent' }).outputFiles[0].text;
-  const output = execFileSync(process.execPath, ['--input-type=commonjs', '-'], { input: bundle, encoding: 'utf8', timeout: 30_000 });
+  const output = execFileSync(process.execPath, ['--input-type=commonjs', '-'], { env: testEnv(), input: bundle, encoding: 'utf8', timeout: 30_000 });
   assert.match(output, /Select renderer verified/);
 });

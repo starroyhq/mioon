@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // SIGKILL during a store transaction that writes the project file and the
 // local records together. A child process (helpers/project-file-child.ts)
 // writes a counter k to both files and is killed at a chosen moment; the files
@@ -159,7 +160,7 @@ interface ChildRun {
  * only once the project file is there. */
 function startChild(t: TestContext, project: Project, mode: string, payloadMiB: number, onLine: (line: string) => void, movedProjectFile?: string): ChildRun {
   const env: NodeJS.ProcessEnv = {
-    ...process.env, MODE: mode, PAYLOAD_MIB: String(payloadMiB),
+    ...testEnv(), MODE: mode, PAYLOAD_MIB: String(payloadMiB),
     PROJECT_FILE: project.projectFile, LOCAL_DIR: project.localDir, CACHE_DIR: project.cacheDir, TEMP_DIR: project.tempDir,
   };
   delete env.ROOT;

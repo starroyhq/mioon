@@ -30,14 +30,14 @@ import type { BinaryLike } from 'crypto';
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-subject-video-transport-token';
 const sleep=(ms: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms));
 const sha=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
-const env=(extra: NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
+const env=(extra: Record<string, string>)=>({...mediaEnvironment(),...extra});
 // The backend stays a child process: the wire guard patches its process-wide
 // network and process APIs. While it holds the project the parent cannot open
 // a second connection, so the parent asks it over IPC to count rows on its own.
 const serverSource=`
 import {installWireGuard} from './tests/helpers/inspection-wire-fixture.ts';
 installWireGuard({auditPath:process.env.MIOON_WIRE_AUDIT});
-const {startServer}=await import('./apps/server/src/index.ts');
+const {startServer}=await import('./tests/helpers/test-server.ts');
 let inspect;
 const server=await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:process.env.MIOON_TOKEN,inspectProject:received=>{inspect=received;}});
 process.on('message',({id,projectId,table})=>{let reply;try{if(!['jobs','mock_provider_submissions'].includes(table))throw Error('Unsupported fixture count');reply={id,count:inspect(projectId,db=>db.prepare('SELECT COUNT(*) AS n FROM '+table).get().n)};}catch(error){reply={id,error:String(error?.message??error)};}if(process.connected)process.send(reply);});

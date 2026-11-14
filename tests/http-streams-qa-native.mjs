@@ -78,8 +78,7 @@ async function launch() {
     'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'XDG_DATA_DIRS', 'XDG_CONFIG_DIRS', 'DBUS_SESSION_BUS_ADDRESS']) {
     if (typeof process.env[key] === 'string') env[key] = process.env[key];
   }
-  Object.assign(env, {MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0',
-    MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH || '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH || '/usr/bin/ffprobe'});
+  Object.assign(env, {MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH || '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH || '/usr/bin/ffprobe'});
   const mainSha256 = await hash(path.join(repo, 'apps/desktop/build/main.cjs')), backendSha256 = await hash(path.join(repo, 'apps/desktop/build/backend.cjs'));
   const child = spawn(createRequire(import.meta.url)('electron'), [path.join(repo, 'apps/desktop/build')], {
     cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});

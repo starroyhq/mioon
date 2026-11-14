@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createAgentModelListHttp} from '../apps/server/src/agent-model-list-http.ts';
 import {agentSettingsSnapshotSchema, agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {AGENT_MODEL_LIST_LIMITS, agentModelListResultSchema, agentModelListCacheResultSchema} from '../packages/contracts/src/agent-model-list.ts';

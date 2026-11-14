@@ -161,7 +161,7 @@ test('mock rejects unsupported capabilities and unsafe output paths', async t =>
 });
 
 test('Runway requires its credential and construction never fetches', async t => {
-  const { provider, input, calls } = await runway(t, [], { env: { RUNWAYML_API_SECRET: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+  const { provider, input, calls } = await runway(t, [], { env: { RUNWAYML_API_SECRET: '',  } });
   assert.equal(provider.capabilities.configured, false);
   assert.equal(provider.capabilities.enabled, false);
   assert.equal(provider.capabilities.liveVerified, false);
@@ -171,7 +171,7 @@ test('Runway requires its credential and construction never fetches', async t =>
 });
 
 test('Runway sends exactly one documented POST with approved data URI, server auth, ratio and seed', async t => {
-  const { provider, input, calls } = await runway(t, [json({ id: ID })], {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  const { provider, input, calls } = await runway(t, [json({ id: ID })], {env: {}});
   assert.equal(provider.capabilities.configured, true);
   assert.equal(provider.capabilities.enabled, true);
   assert.deepEqual(await provider.submit(input, { requestId: 'contract-test' }), { providerJobId: ID });

@@ -18,7 +18,7 @@ const fixture = fileURLToPath(new URL('./helpers/http-file-shutdown-process.ts',
 async function isolated(t: test.TestContext, mode: string) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-q4-fs-stall-'));
   const child = spawn(process.execPath, [fixture, mode, root], {stdio: ['ignore', 'pipe', 'pipe'], env: {
-    PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', MIOON_ENABLE_LIVE_PROVIDER: '0',
+    PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8',
   }});
   let output = '', errors = '';
   child.stdout.setEncoding('utf8').on('data', chunk => {output = (output + chunk).slice(-16384);});

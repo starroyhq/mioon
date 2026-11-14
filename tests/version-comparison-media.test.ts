@@ -35,7 +35,7 @@ import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {safePath} from '../packages/business/src/media.ts';
 
 
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createVersionComparisonMediaHttp, readVersionComparisonMedia, versionComparisonMediaIdentity, type VersionComparisonMediaOptions} from '../apps/server/src/version-comparison-media.ts';
 import {captureComparison} from '../apps/web/src/version-comparison-state.ts';
@@ -68,7 +68,7 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
   let projectDir:string,project:{id:string;name:string},foreign:{id:string;name:string};
   const other=createServerProject(root,{name:'Foreign project'});foreign=other.store.get('projects',other.projectId) as {id:string;name:string};other.store.close();
   const created=createServerProject(root,{name:'Comparison source'});store=created.store as unknown as TypedStore;projectDir=created.store.projectDir;project=store.get('projects',created.projectId)!;
-  const providers = createProviderRegistry({db: store.db, root:projectDir, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  const providers = createProviderRegistry({db: store.db, root:projectDir, env: {}});
   services = (createServices(store, providers) as unknown as TypedServices);
   const shot = await services.call('shot.create', {projectId: project.id, title: 'Immutable source', prompt: 'Synthetic offline shape', duration: 2});
   const otherShot = await services.call('shot.create', {projectId: project.id, title: 'Other shot'});

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -138,7 +139,7 @@ for(const protocol of protocols)test(`${protocol}: status and SSE keep usage pri
     const controller=new AbortController(),stream=await fetch(base+path+'/events?after=0',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});assert.equal(stream.status,200);const reader=stream.body!.getReader();
     try{const frame=await reader.read();assert.equal(frame.done,false);const wire=new TextDecoder().decode(frame.value);assert.match(wire,/event: changed/u);assert.doesNotMatch(wire,/usage|inputTokens|outputTokens|cacheReadTokens|cacheWriteTokens/u);}
     finally{controller.abort();await reader.cancel().catch(()=>{});}
-    const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task','status','--input',JSON.stringify({projectId:f.projectId,runId:sent.run.id})],{env:{...process.env,MIOON_BASE_URL:base,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+    const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task','status','--input',JSON.stringify({projectId:f.projectId,runId:sent.run.id})],{env:{...testEnv(),MIOON_BASE_URL:base,MIOON_TOKEN:token,},stdio:['ignore','pipe','pipe']});
     let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(part:string)=>{stdout+=part;});child.stderr.setEncoding('utf8').on('data',(part:string)=>{stderr+=part;});
     await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Offline usage CLI timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Offline usage CLI failed'));});});
     assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);assert.doesNotMatch(stdout+stderr,/inputTokens|cacheReadTokens|cacheWriteTokens/u);

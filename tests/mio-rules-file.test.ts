@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -435,7 +436,7 @@ for (const phase of publicationPhases) {
   test(`SIGKILL at ${phase} retains durable intent evidence without late cleanup`, t => {
     const f = fixture(t); writeFileSync(f.target, 'before');
     const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/mio-rules-file-crash.ts', import.meta.url)),
-      f.projectDir, phase, f.candidateName, f.backupName], {timeout: 15_000});
+      f.projectDir, phase, f.candidateName, f.backupName], {env: testEnv(), timeout: 15_000});
     assert.equal(child.signal, 'SIGKILL');
     const evidence = JSON.parse(readFileSync(path.join(f.root, 'evidence.json'), 'utf8')) as RulesPublicationEvidence;
     assert.equal(evidence.phase, phase); assert.equal(evidence.beforeHash, hash('before'));
@@ -455,7 +456,7 @@ for (const effect of ['candidate_opened', 'candidate_synced', 'original_renamed'
   test(`SIGKILL after ${effect} leaves its preceding durable evidence for conservative recovery`, t => {
     const f = fixture(t); writeFileSync(f.target, 'before');
     const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/mio-rules-file-crash.ts', import.meta.url)),
-      f.projectDir, effect, f.candidateName, f.backupName], {timeout: 15_000});
+      f.projectDir, effect, f.candidateName, f.backupName], {env: testEnv(), timeout: 15_000});
     assert.equal(child.signal, 'SIGKILL');
     const evidence = JSON.parse(readFileSync(path.join(f.root, 'evidence.json'), 'utf8')) as RulesPublicationEvidence;
     if (effect === 'target_linked') {

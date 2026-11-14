@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
@@ -34,7 +35,7 @@ function scope(dataDir: string, projectId: string) {
 
 async function startBackend(t: TestContext, dataDir: string) {
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
-    import { startServer } from '@mioon/server';
+    import { startServer } from './tests/helpers/test-server.ts';
     const service = await startServer({dataDir:process.env.LUT_TEST_DATA,
       distDir:process.env.LUT_TEST_DATA+'/unused-dist',port:0,
       token:${JSON.stringify(token)},localDraftChannel:${JSON.stringify(channel)}});
@@ -44,7 +45,7 @@ async function startBackend(t: TestContext, dataDir: string) {
     process.send({url:service.url});
   `], {
     cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, LUT_TEST_DATA: dataDir },
+    env: { ...testEnv(), LUT_TEST_DATA: dataDir },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let diagnostics = '';

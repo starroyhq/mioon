@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ServiceResponse, MediaJob, MediaShot, GenerationSnapshot} from './helpers/strict-service-responses.ts';
 import type {FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 import type {AddressInfo} from 'node:net';
@@ -34,7 +35,7 @@ const sha = (bytes: BinaryLike|Buffer<ArrayBuffer>) => createHash('sha256').upda
 const records: Evidence = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/integration.test.ts'] }, commands: [], assertions: [], processEvents: [], http: [] };
 async function command(file: string, args?: readonly string[]|null|undefined) {
   const startedAt = new Date().toISOString();
-  try { const result = await exec(file, args, { maxBuffer: 8 * 1024 * 1024 }); records.commands.push({ file, args, startedAt, exitCode: 0, stdout: result.stdout, stderr: result.stderr }); return result.stdout; }
+  try { const result = await exec(file, args, { env: testEnv(), maxBuffer: 8 * 1024 * 1024 }); records.commands.push({ file, args, startedAt, exitCode: 0, stdout: result.stdout, stderr: result.stderr }); return result.stdout; }
   catch (error) { records.commands.push({ file, args, startedAt, exitCode: (error as {code: unknown}).code, stdout: (error as {stdout: unknown}).stdout, stderr: (error as {stderr: unknown}).stderr }); throw error; }
 }
 async function freePort() { const server = net.createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening'); const port = (server.address() as AddressInfo).port; await new Promise(resolve => server.close(resolve)); return port; }
@@ -46,7 +47,7 @@ async function fixture(t: test.TestContext) {
   async function start() {
     const number = ++processNumber;
     // The backend starts as the CLI starts it and, over IPC, answers ledger questions on its own connection.
-    processHandle = spawn(process.execPath, [serverEntry], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    processHandle = spawn(process.execPath, [serverEntry], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     let stdout = '', stderr = ''; processHandle.stdout!.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr!.setEncoding('utf8').on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     processHandle.on('message', (message: LedgerReply) => { const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined; if (!reply) return; if (message.error) reply.reject(Object.assign(Error(message.error.message), { code: message.error.code })); else reply.resolve(message.data); });

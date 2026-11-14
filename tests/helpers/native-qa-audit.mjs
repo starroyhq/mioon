@@ -190,7 +190,7 @@ export function nativeQaDomain(cold){
 /** Actual CLI HTTP paths. Warm the manager before the byte baseline: a cold
  * host open legitimately updates B1 lastOpenedAt/summary. No table is excluded. */
 export async function verifyNativeQaCliInspections(layout,{connectionFile,ownerPids,cliFile=path.resolve('apps/cli/src/index.ts')}={}){
-  validateLayout(layout);const projectId=layout.projects[0].projectId,execute=promisify(execFile),env={PATH:process.env.PATH||'',HOME:path.dirname(connectionFile),MIOON_CONNECTION_FILE:connectionFile,MIOON_ENABLE_LIVE_PROVIDER:'0'};
+  validateLayout(layout);const projectId=layout.projects[0].projectId,execute=promisify(execFile),env={PATH:process.env.PATH||'',HOME:path.dirname(connectionFile),MIOON_CONNECTION_FILE:connectionFile};
   const invoke=async operation=>{const input={projectId,...(['asset.inspect','shot.inspect'].includes(operation)?{limit:2}:{})};
     const{stdout}=await execute(process.execPath,[cliFile,...operation.split('.'),'--input',JSON.stringify(input)],{env,encoding:'utf8',timeout:10000,maxBuffer:256*1024});
     const result=JSON.parse(stdout);assert.equal(result.ok,true,operation);return{operation,input,result};};

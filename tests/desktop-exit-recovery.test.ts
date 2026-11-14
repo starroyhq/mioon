@@ -46,7 +46,7 @@ type Utility = EventEmitter & {pid: number | undefined; startup: WorkerMessage['
 function utilityWorker(root: string) {
   const utility = new EventEmitter() as Utility;
   const child = spawn(process.execPath, [workerPath, root], {cwd: repo, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-    env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+    env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',}});
   const pending = new Map<string,PromiseWithResolvers<unknown>>(), exited = Promise.withResolvers<{code: number | null;signal: NodeJS.Signals | null}>();
   let stopped: {code: number | null;signal: NodeJS.Signals | null} | undefined, stderr = '';
   utility.pid = child.pid;

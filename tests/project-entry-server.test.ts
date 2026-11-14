@@ -9,7 +9,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {createProjectEntries} from '../apps/server/src/project-entries.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
@@ -24,7 +25,7 @@ const preload = 'data:text/javascript,' + encodeURIComponent(`
 `);
 
 function environment(directory: string) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|NODE_OPTIONS$|NODE_PATH$)/u.test(key)) delete env[key];
   env.MIOON_CONNECTION_FILE = path.join(directory, 'connection-must-not-be-read.json');
   env.MIOON_TOKEN_FILE = path.join(directory, 'token-must-not-be-read');

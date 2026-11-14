@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -202,7 +203,7 @@ for (const action of ['continue', 'restore-version'] as const) test(`whole-histo
       lease.release(); await f.manager.close(f.projectId);
       const config = path.join(f.root, 'crash.json');
       writeFileSync(config, JSON.stringify({root: f.root, registration: f.registration, input, boundary}), {mode: 0o600});
-      const killed = spawnSync(process.execPath, ['tests/fixtures/project-history-switch-worker.ts', config], {cwd: process.cwd(), encoding: 'utf8', timeout: 30_000});
+      const killed = spawnSync(process.execPath, ['tests/fixtures/project-history-switch-worker.ts', config], {env: testEnv(), cwd: process.cwd(), encoding: 'utf8', timeout: 30_000});
       assert.equal(killed.signal, 'SIGKILL', killed.stderr);
       const opened = await f.manager.acquire(f.projectId, 'window');
       if (opened.host.recovery) assert.ok(['prepared', 'copy-started'].includes(boundary), 'an unpublished prepared stage remains explicitly recoverable');

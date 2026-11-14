@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,6 +31,7 @@ function tryWriteInChild(file: string): unknown {
     } finally { db?.close(); }
   `;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, file], {
+      env: testEnv(),
     encoding: 'utf8', timeout: 60_000,
   });
   assert.equal(result.status, 0, result.stderr);

@@ -11,7 +11,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import type {Readable} from 'node:stream';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
@@ -136,7 +136,7 @@ async function bounded<T>(promise: Promise<T>, label: string, ms = 10_000): Prom
 
 function childEnvironment(root: string, origin: string, audit: string): Record<string, string> {
   return {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-    MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_BASE_URL: origin, MIOON_TOKEN: token,
+    MIOON_BASE_URL: origin, MIOON_TOKEN: token,
     MIOON_INSPECTION_WIRE_GUARD: '1', MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN: origin,
     MIOON_INSPECTION_WIRE_AUDIT: audit};
 }

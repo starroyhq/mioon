@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp, rm, readFile, writeFile, mkdir, readdir} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';

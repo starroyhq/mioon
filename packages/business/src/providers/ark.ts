@@ -1,5 +1,6 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView } from './live-common.ts';
+import { providerSettings } from './environment.ts';
 import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 import {createArkSdkClient} from '../video/ark-sdk.ts';
 import type {VideoAdapterImage} from '../video/adapters.ts';
@@ -34,9 +35,10 @@ function validateSubjectImage(asset: Dimensions): void {
 
 /** Fixed-origin Seedance adapter. No request, upload, or credential use at construction. */
 export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
-  const config = liveConfiguration(env, 'ARK_API_KEY', 'ARK');
-  const approvedHashes = approvedAssetHashes(env.ARK_APPROVED_ASSET_SHA256);
-  const outputHosts = approvedOutputHosts(env.ARK_OUTPUT_HOSTS, ['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com', 'ark-acg-cn-beijing.tos-cn-beijing.volces.com']);
+  const settings = providerSettings.ark;
+  const config = liveConfiguration(env, settings.credential, settings.prefix);
+  const approvedHashes = approvedAssetHashes(env[settings.approvedAssetSha256]);
+  const outputHosts = approvedOutputHosts(env[settings.outputHosts], ['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com', 'ark-acg-cn-beijing.tos-cn-beijing.volces.com']);
   const request = createJsonRequest({ api: API, headers: { Authorization: `Bearer ${config.secret}` }, fetchImpl, ensureEnabled: config.ensureEnabled, name: 'Seedance' });
   const sdk = createArkSdkClient({api:API,model:MODEL.id,send:request});
   function validate(snapshot: unknown): true {

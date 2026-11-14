@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './test-server.ts';
 import {serverAppDirectories, projectLocation} from '../../apps/server/src/project-host/directories.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createProjectVersions} from '../../packages/business/src/project-versions/service.ts';

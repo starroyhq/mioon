@@ -4,7 +4,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {mkdtemp,mkdir,writeFile,readFile,rm,stat} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {validateWorkspaceStorage} from '../packages/business/src/application-storage.ts';
 import {customImageCredentialBindingV2} from '../packages/business/src/images/custom-settings-v2.ts';
 import {CUSTOM_IMAGE_SETTINGS_NAMESPACE,IMAGE_SETTINGS_NAMESPACE,IMAGE_SETTINGS_LIMITS,DEFAULT_CUSTOM_IMAGE_CONFIGURATION,DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';

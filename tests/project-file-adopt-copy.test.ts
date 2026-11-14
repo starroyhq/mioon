@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -82,7 +83,7 @@ test('the original SQLite write lock and held-inode guard survive native backup 
   t.mock.method(fs,'openSync',(...args:Parameters<typeof fs.openSync>)=>{if(String(args[0])===f.selected)fsAttempts++;return originalOpen(...args);});syncBuiltinESMExports();
   assert.throws(()=>inspectProjectFileReadOnly(f.selected),code('PROJECT_LOCKED'));
   const program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.selected)},{timeout:0});try{try{db.exec('BEGIN IMMEDIATE');process.stdout.write('unlocked');}catch(error){if(error.errcode!==5)throw error;process.stdout.write('locked');}}finally{db.close();}`;
-  assert.equal(execFileSync(process.execPath,['--input-type=module','-e',program],{encoding:'utf8'}),'locked');
+  assert.equal(execFileSync(process.execPath,['--input-type=module','-e',program],{env: testEnv(), encoding:'utf8'}),'locked');
   assert.equal(fsAttempts,0);t.mock.restoreAll();syncBuiltinESMExports();probes++;
  };
  await withLockedProjectCopy({...f.options,onBoundary:phase=>{if(phase==='locked'||phase==='captured')probe();}},async copy=>{

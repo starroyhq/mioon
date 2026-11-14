@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -112,7 +113,7 @@ test('the box renders in percent of the layer, with handles only when editable',
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   assert.match(markup.editable, /data-editable="true" role="group" aria-label="变换框" title="变换框" style="left:50%;top:50%;width:40%;height:37.5%;transform:translate\(-50%, -50%\) rotate\(30deg\)"/);
   assert.deepEqual([...markup.editable.matchAll(/data-testid="clip-transform-handle-(\w+)"/g)].map(match => match[1]), ['nw', 'ne', 'se', 'sw']);
   assert.match(markup.editable, /<output class="clip-transform-box-readout" data-testid="clip-transform-box-readout">X 10 · Y -20 · 50%<\/output>/);

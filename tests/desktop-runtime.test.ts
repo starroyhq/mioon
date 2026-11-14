@@ -18,7 +18,7 @@ test('desktop data location is stable and independent of working directory', () 
 
 test('utility process inherits only required provider configuration and explicit tools', () => {
   const env = utilityEnvironment({ PATH: '/poison', NODE_OPTIONS: '--require evil', ELECTRON_RUN_AS_NODE: '1',
-    UNRELATED_API_KEY: 'secret', HOME: '/home/u', RUNWAYML_API_SECRET: 'provider-secret', MIOON_ENABLE_LIVE_PROVIDER: '0' },
+    UNRELATED_API_KEY: 'secret', HOME: '/home/u', RUNWAYML_API_SECRET: 'provider-secret', },
   { ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe' });
   assert.equal(env.MIOON_FFMPEG_PATH, '/tools/ffmpeg'); assert.equal(env.MIOON_FFPROBE_PATH, '/tools/ffprobe');
   assert.equal(env.HOME, '/home/u'); assert.equal(env.RUNWAYML_API_SECRET, 'provider-secret');

@@ -12,7 +12,7 @@ import {promisify} from 'node:util';
 import {createClient} from '@mioon/client';
 import {isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 
@@ -35,7 +35,7 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  const root=await mkdtemp(path.join(tmpdir(),'mioon-loudness-apply-media-'));let backend: Awaited<ReturnType<typeof startServer>> | undefined,inspect!: InspectProject;
  t.after(async()=>{await backend?.close();await rm(root,{recursive:true,force:true});});
  backend=await startServer({dataDir:root,port:0,inspectProject:received=>{inspect=received;}});
- const client=createClient({env:{...mediaEnvironment(),MIOON_BASE_URL:backend.url,MIOON_TOKEN:backend.token,MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+ const client=createClient({env:{...mediaEnvironment(),MIOON_BASE_URL:backend.url,MIOON_TOKEN:backend.token,}});
  const project=await client.rpc('project.create',{name:'固定增益 应用撤销与真实成片'}) as {id: string},bytes=wav();
  const projectRoot=projectDirFor(root,project.id);
  const source=await client.rpc('asset.import',{projectId:project.id,name:'Known stereo 997 Hz.wav',mimeType:'audio/wav',dataBase64:bytes.toString('base64')}) as {id: string};

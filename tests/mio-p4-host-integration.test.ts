@@ -7,7 +7,7 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject} from './helpers/test-server.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
 import {agentTaskPolicySchema, agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentDiagnosticSummarySchema} from '../packages/contracts/src/agent-diagnostic-summary.ts';

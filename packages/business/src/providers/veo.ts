@@ -1,5 +1,6 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderSnapshotView, ProviderModelSpec } from './live-common.ts';
+import { providerSettings } from './environment.ts';
 import {createVeoSdkClient} from '../video/veo-sdk.ts';
 
 const ORIGIN = 'https://generativelanguage.googleapis.com';
@@ -31,9 +32,10 @@ function resultOf(operation: Record<string, unknown>) {
 
 /** Gemini Developer API, deliberately separate from Vertex AI and its credentials. */
 export function createVeoProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
-  const config = liveConfiguration(env, 'GEMINI_API_KEY', 'VEO');
-  const approvedHashes = approvedAssetHashes(env.VEO_APPROVED_ASSET_SHA256);
-  const outputHosts = approvedOutputHosts(env.VEO_OUTPUT_HOSTS, ['generativelanguage.googleapis.com']);
+  const settings = providerSettings.veo;
+  const config = liveConfiguration(env, settings.credential, settings.prefix);
+  const approvedHashes = approvedAssetHashes(env[settings.approvedAssetSha256]);
+  const outputHosts = approvedOutputHosts(env[settings.outputHosts], ['generativelanguage.googleapis.com']);
   const request = createJsonRequest({ api: API, headers: { 'x-goog-api-key': config.secret }, fetchImpl, ensureEnabled: config.ensureEnabled, name: 'Veo' });
   const sdk = createVeoSdkClient({api: API,model: MODEL.id,send: request});
   const validate = (snapshot: unknown): true => validateModelSnapshot(snapshot, MODEL);

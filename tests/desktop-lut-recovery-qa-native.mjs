@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Synthetic preparation and read-only audits for manual native recovery QA.
  * This is NOT a native lost-ACK capture. No GUI launch, control, kill, RPC after
@@ -24,6 +25,7 @@ import * as storage from '@mioon/contracts/private-storage';
 import { calculateWorkspaceScope } from '@mioon/contracts/workspace-scope';
 import {prepareNativeQaProject,closeQaProject,captureNativeQa,prepareNativeQaLiveLayout,captureNativeQaLive} from './helpers/native-local-qa-fixture.ts';
 import { createWorkspacePreferences } from '../packages/business/src/workspace-preferences.ts';
+import { providerEnvironmentKeys } from '../packages/business/src/providers/environment.ts';
 import { defaultWorkspaceState } from '../apps/web/src/workspace-state.ts';
 import { createDesktopLutRecoveryStore } from '../apps/desktop/src/lut-recovery-store.ts';
 import { saveToolConfig, writeAppLanguagePreference } from '../apps/desktop/src/config.ts';
@@ -44,7 +46,7 @@ function scope(workspace) {
 }
 async function media(source) {
   await new Promise((resolve, reject) => {
-    const child = spawn(mediaTool('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=3', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', '-movflags', '+faststart', '-n', source], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(mediaTool('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=3', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', '-movflags', '+faststart', '-n', source], { env: testEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
     const stderrLimit = 16 * 1024;
     let errors = Buffer.alloc(0), timedOut = false, settled = false, exitTimer;
     const finish = error => {
@@ -102,7 +104,8 @@ async function prepare(kind) {
   } finally { await closeQaProject(prepared); }
   await save(path.join(root,'native-audit-layout.json'),await prepareNativeQaLiveLayout(workspace));
   await save(path.join(root, 'fixture.json'), fixture);
-  const launch = `cd ${shellQuote(repo)}\nenv -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS -u NODE_PATH MIOON_DESKTOP_USER_DATA=${shellQuote(userData)} MIOON_ENABLE_LIVE_PROVIDER=0 MIOON_FFMPEG_PATH=${shellQuote(mediaTool('ffmpeg'))} MIOON_FFPROBE_PATH=${shellQuote(mediaTool('ffprobe'))} ${shellQuote(path.join(repo, 'node_modules/electron/dist/electron'))} ${shellQuote(path.join(repo, 'apps/desktop/build'))}`;
+  const unset = ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', ...providerEnvironmentKeys].map(name => `-u ${shellQuote(name)}`).join(' ');
+  const launch = `cd ${shellQuote(repo)}\nenv ${unset} MIOON_DESKTOP_USER_DATA=${shellQuote(userData)} MIOON_FFMPEG_PATH=${shellQuote(mediaTool('ffmpeg'))} MIOON_FFPROBE_PATH=${shellQuote(mediaTool('ffprobe'))} ${shellQuote(path.join(repo, 'node_modules/electron/dist/electron'))} ${shellQuote(path.join(repo, 'apps/desktop/build'))}`;
   await writeFile(path.join(root, 'README.txt'), `SYNTHETIC FIXTURE ONLY. NOT A NATIVE LOST-ACK CAPTURE.\nNo GUI has been launched by this helper.\nManual native launch, parent-controlled, sandbox unchanged, no CDP/debug flags:\n${launch}\nClose the application normally. Do not force kill. Audit only after normal close and backend lock release:\nnode tests/desktop-lut-recovery-qa-native.mjs audit ${kind} after-close\nOpen the sole project if the home screen appears; editing preferences already select the synthetic clip.\nExact recovery file: ${lutFile}\nOriginal request UUID: ${fixture.originalRequestId}\n`, { mode: 0o600, flag: 'wx' });
   await audit(kind, 'prepared'); return fixture;
 }

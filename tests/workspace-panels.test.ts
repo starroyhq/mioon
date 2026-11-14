@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {Tree as UiTree,Element as UiElement,Hook as UiHook,Props as UiProps,Module as UiModule} from './helpers/strict-workspace-ui-types.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
@@ -368,7 +369,7 @@ test('real React and Base UI render separator, inert boundary, recall button, an
     const { html } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(html); process.exit(0);
   `;
-  const html = execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 });
+  const html = execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 });
   assert.match(html, /id="dock-inspector"[^>]*inert=""[^>]*aria-hidden="true"/);
   assert.match(html, /value="Retained draft"/);
   assert.match(html, /aria-label="展开属性"[^>]*aria-controls="dock-inspector"[^>]*aria-expanded="false"/);

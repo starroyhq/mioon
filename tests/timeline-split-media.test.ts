@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
@@ -31,7 +32,7 @@ const records:{startedAt:string;runtime?:string;fixturePolicy:string;commands:Re
 
 async function command<B extends boolean=false>(file: string, args?: unknown[]|readonly string[]|null|undefined, binary:B=false as B):Promise<B extends true ? Buffer : string> {
   try {
-    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
+    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { env: testEnv(), encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
     records.commands.push((({ file, args, exitCode: 0, stdout: binary ? { bytes: result.stdout.length, sha256: sha(result.stdout) } : result.stdout, stderr: String(result.stderr) }) as unknown as Parameters<typeof records.commands.push>[0]));
     return (result.stdout as B extends true ? Buffer : string);
   } catch (error) {
@@ -51,7 +52,7 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-media-'));
   await mkdir(evidence, { recursive: true });
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
   records.server = { pid: child.pid, port, stdout: '', stderr: '' };
   child.stdout.setEncoding('utf8').on('data', bytes => records.server.stdout += bytes);
   child.stderr.setEncoding('utf8').on('data', bytes => records.server.stderr += bytes);

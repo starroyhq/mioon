@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import { formatDate } from './helpers/i18n.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -73,7 +74,7 @@ before(() => {
     }}]});
     const result = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     await new Promise(resolve=>process.stdout.write(JSON.stringify(result.result),resolve)); process.exit(0);`;
-  ({html: rendered, actions, fileActions, unchanged} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
+  ({html: rendered, actions, fileActions, unchanged} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
 });
 
 test('actual shared Input is controlled, labelled and explicit about blank legacy omission', () => {

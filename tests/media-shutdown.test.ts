@@ -5,7 +5,7 @@ import {mkdtemp,readFile, realpath} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import {openProjectDatabase,projectDirFor} from './helpers/project-database.ts';
 import {onMediaProcess} from '@mioon/business/media-processes';
 const pause=(ms: number): Promise<void>=>new Promise(resolve=>setTimeout(resolve,ms));

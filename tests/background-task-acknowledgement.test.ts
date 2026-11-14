@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {startServer, type InspectProject} from '../apps/server/src/index.ts';
+import {startServer, type InspectProject} from './helpers/test-server.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {subscribeBackgroundTaskChanges} from '../packages/business/src/background-task-events.ts';
 import {createServerProject} from './helpers/project-database.ts';

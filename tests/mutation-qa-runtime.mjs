@@ -6,7 +6,7 @@ import path from 'node:path';
 import {mkdir, readFile, writeFile, appendFile, unlink, readdir, access} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {openServerProject} from './helpers/project-database.ts';
 import {createQaProject, closeQaProject, auditQaDatabases, hashQaSnapshot} from './helpers/kernel-qa-fixture.mjs';
@@ -66,8 +66,6 @@ export async function mutationQaAudit(workspace,{inspectProject,inspectApplicati
 const invokedDirectly=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(invokedDirectly&&process.argv.includes('--prepare'))console.log(JSON.stringify(await prepareMutationQaFixture(process.argv.includes('--native')?path.join(mutationQaRoot,'native-runtime'):mutationRuntime),null,2));
 if(invokedDirectly&&process.argv.includes('--serve')) {
-  process.env.MIOON_ENABLE_LIVE_PROVIDER='0';
-  for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_)/.test(key))delete process.env[key];
   const fixture=await prepareMutationQaFixture();
   let inspectProject,inspectApplication;
   const startBackend=()=>startServer({dataDir:fixture.workspace,port:0,token:mutationQaToken,distDir:path.resolve('apps/web/dist'),inspectProject:value=>{inspectProject=value;},inspectApplication:value=>{inspectApplication=value;}});

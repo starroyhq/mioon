@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
@@ -13,7 +14,7 @@ import {operationMessages} from '../packages/i18n/src/catalogs/operations.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const round2Operations = ['export.cancel', 'export.activity.get', 'export.output.get', 'workspace.settings.get', 'workspace.settings.set', 'task.disposition.list', 'task.disposition.markFailed', 'task.disposition.archiveCompleted'] as const;
 const retiredOperations = ['workspace.backup.status', 'workspace.backup.list', 'workspace.backup.create', 'workspace.backup.restore.stage', 'workspace.backup.inspect', 'workspace.restore.inspect'] as const;
-const cleanEnv = (): Record<string, string | undefined> => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MIOON_')));
+const cleanEnv = (): Record<string, string | undefined> => Object.fromEntries(Object.entries(testEnv()).filter(([key]) => !key.startsWith('MIOON_')));
 interface CliResult { status: number | null; stdout: string; stderr: string; json: Record<string, unknown> }
 interface McpToolView { name: string; description: string; [key: string]: unknown }
 interface McpResultView { result: Record<string, unknown> & { tools?: McpToolView[]; instructions?: string } }

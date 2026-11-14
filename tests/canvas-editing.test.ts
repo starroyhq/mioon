@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -428,6 +429,7 @@ for (const boundary of ['before-commit','after-commit'] as const) {
     const input = {projectId: f.projectId, operation:'archive', requestId: f.requestId(), historyRevision: 0, targets: [f.expectTarget(shot)]};
     f.store.close();
     const killed = spawnSync(process.execPath, [worker, JSON.stringify({projectFile:f.projectFile, location:f.location,input,boundary,clock:Date.parse(date)})], {
+      env: testEnv(),
       stdio:'ignore', timeout:60000,
     });
     assert.equal(killed.error, undefined);

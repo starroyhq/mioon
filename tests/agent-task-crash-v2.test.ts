@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {putTestAgentConfiguration} from './helpers/agent-settings-fixture.ts';
 import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test,{type TestContext} from 'node:test';
@@ -17,7 +18,7 @@ import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 async function crashFixture(t:TestContext,protocol:string,boundary:string){
  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-v2-sigkill-'));
- const child=spawn(process.execPath,[fileURLToPath(new URL('./helpers/agent-task-v2-crash-process.ts',import.meta.url))],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,FIXTURE_ROOT:root,FIXTURE_PROTOCOL:protocol,FIXTURE_BOUNDARY:boundary},stdio:['ignore','ignore','pipe']});
+ const child=spawn(process.execPath,[fileURLToPath(new URL('./helpers/agent-task-v2-crash-process.ts',import.meta.url))],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...testEnv(),FIXTURE_ROOT:root,FIXTURE_PROTOCOL:protocol,FIXTURE_BOUNDARY:boundary},stdio:['ignore','ignore','pipe']});
  let stderr='';child.stderr.setEncoding('utf8').on('data',(value:string)=>{stderr+=value;});
  t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');rmSync(root,{recursive:true,force:true});});
  const result=await new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>resolve({code,signal}));});

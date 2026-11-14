@@ -109,8 +109,7 @@ function nativeEnvironment() {
     'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'XDG_DATA_DIRS', 'XDG_CONFIG_DIRS', 'DBUS_SESSION_BUS_ADDRESS']) {
     if (typeof process.env[key] === 'string') env[key] = process.env[key];
   }
-  return {...env, MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0',
-    MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH || '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH || '/usr/bin/ffprobe'};
+  return {...env, MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: process.env.MIOON_FFMPEG_PATH || '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: process.env.MIOON_FFPROBE_PATH || '/usr/bin/ffprobe'};
 }
 
 async function launch() {

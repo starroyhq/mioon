@@ -5,7 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import {validateWorkspaceStorage} from '@mioon/business/application-storage';
 import {DatabaseSync} from 'node:sqlite';
 

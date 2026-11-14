@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -115,7 +116,7 @@ function withoutTrigger(db: DatabaseSync, schema: string, name: string, change: 
 }
 
 function childEnv(mode: string, extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {...process.env, ...extra, MODE: mode};
+  const env: NodeJS.ProcessEnv = {...testEnv(), ...extra, MODE: mode};
   if (!('ROOT' in extra)) delete env.ROOT;
   return env;
 }

@@ -15,7 +15,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createClient} from '../packages/client/src/index.ts';
@@ -25,7 +25,7 @@ import {writeStubMediaFixture} from './helpers/media-reference-fixtures.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const token='timeline-recovery-public-synthetic-token';
-const environment=(extra: { MIOON_BASE_URL: string; MIOON_TOKEN: string; })=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
+const environment=(extra: { MIOON_BASE_URL: string; MIOON_TOKEN: string; })=>({...mediaEnvironment(),...extra});
 async function command(args: string[],env: { MIOON_BASE_URL: string; MIOON_TOKEN: string; }){
  const child=spawn(process.execPath,(([path.join(repo,'apps/cli/src/index.ts'),...args]) as unknown as Parameters<typeof spawn>[1]),{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';for(const [stream,append] of ([[child.stdout,(b: string)=>stdout+=b],[child.stderr,(b: string)=>stderr+=b]] as const))stream.setEncoding('utf8').on('data',(b?: unknown)=>{append(((b) as unknown as StrictIntersection<Parameters<NonNullable<typeof append>>[0]>));if(stdout.length+stderr.length>1024*1024)child.kill('SIGKILL');});

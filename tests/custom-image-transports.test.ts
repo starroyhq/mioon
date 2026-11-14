@@ -18,7 +18,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
@@ -56,7 +56,7 @@ function childEnvironment(env: NodeJS.ProcessEnv) {
   // connection descriptors, proxy variables, NODE_OPTIONS, or print the child env.
   const clean = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC']
     .filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));
-  return {...clean, TZ: 'UTC', MIOON_ENABLE_LIVE_PROVIDER: '0', ...env};
+  return {...clean, TZ: 'UTC', ...env};
 }
 async function cli(args: string[], env: NodeJS.ProcessEnv, expectedCode?: string|undefined) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args],

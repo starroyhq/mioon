@@ -5,7 +5,7 @@ import {existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathS
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {openAppLibrary, MAX_RECENT_PROJECTS} from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
 import {APP_LIBRARY_HTTP_ERROR_CODES, APP_LIBRARY_HTTP_ERROR_STATUS, appLibraryHttpFailureSchema,

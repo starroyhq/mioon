@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -47,6 +48,6 @@ test('image, frame and complete scene stages route directory sync through the Wi
   assert.deepEqual(scene.readReceipt(sceneTask),receipt);
  }finally{Object.defineProperty(process,'platform',{value:platform});store.close();rmSync(root,{recursive:true,force:true});}
  `;
- const child=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:30_000});
+ const child=spawnSync(process.execPath,['--input-type=module','-e',script],{env: testEnv(), encoding:'utf8',timeout:30_000});
  assert.equal(child.status,0,child.stderr||child.stdout||String(child.error));
 });

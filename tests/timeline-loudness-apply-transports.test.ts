@@ -19,7 +19,7 @@ import {createClient,discoverSchema,schemas} from '@mioon/client';
 import {effectAnnotations,operationEffect,isTimelineMutationResponse,EXPORT_LOUDNESS_PROFILE,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest,isTimelineLoudnessApplicableReport} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineLoudnessApplyEnvelope} from '@mioon/client/timeline-loudness-apply';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -41,7 +41,7 @@ type LifetimeListener = (...args: unknown[]) => void;
 interface Fixture {root: string; backend: Awaited<ReturnType<typeof startServer>>; mcp: OfficialClient; client: ReturnType<typeof createClient>; requests: {request: http.IncomingMessage; response: http.ServerResponse; baseline: {request: number; response: number}; lifetimeGuards: Map<string,LifetimeListener>}[]; cleanups: (() => void | Promise<void>)[]; project: {id: string}; source: {id: string}; before: TimelineWire; sourceRecord: {sha256:string;reference:MediaReference;referenceRevision:number}; prepareInput: Record<string, unknown>; report: ReportWire; input: Record<string, unknown>; http(op: string, input: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<WireEnvelope>; call(channel: string, input: Record<string, unknown>): Promise<WireEnvelope>; rows(): Record<string, Record<string, unknown>[]>; receipt(requestId: string): ReceiptRow | undefined; timeline(): TimelineWire}
 const sha=(bytes: Uint8Array): string=>createHash('sha256').update(bytes).digest('hex');
 const pause=(ms: number): Promise<void>=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
-const environment=(url?: string): Record<string, string | undefined>=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
+const environment=(url?: string): Record<string, string | undefined>=>({...mediaEnvironment(),
   ...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 async function bounded<T>(promise: Promise<T>,label: string,ms=20000): Promise<T> {let timer: ReturnType<typeof setTimeout> | undefined;try{
   return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);

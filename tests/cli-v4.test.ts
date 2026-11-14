@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 type CommandData<O extends string>=O extends 'job.watch'|'generation.submit'|'job.get'?import('./helpers/strict-service-responses.ts').MediaJob & {submissionCount:number;requestId:string}:O extends 'export.watch'?import('./helpers/strict-timeline-core-types.ts').FixtureExport:ServiceResponse<O>;
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData} from './helpers/strict-timeline-transport-types.ts';
@@ -17,7 +18,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '@mioon/server';
 import {schemas} from '@mioon/contracts';
 import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
@@ -28,9 +29,9 @@ const exec = promisify(execFile);
 const token = 'synthetic-v4-cli-token-never-live';
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 function environment(extra: {}|undefined = {}) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra};
+  return {...env, ...extra};
 }
 function startCli<const A extends readonly string[]>(args: A, env: {}|undefined = {}, stdin: string|undefined = '') {
   const child = spawn(process.execPath, [cliPath, ...args], {cwd:repo, env:environment(env), stdio:['pipe','pipe','pipe']});
@@ -188,7 +189,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   });
 
   const imagePath = path.join(root, 'reference.png');
-  await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath]);
+  await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath], {env: testEnv()});
   const image = await command('asset.import', {projectId:project.id}, ['--file',imagePath,'--upload']);
   assert.equal(image.name, 'reference.png');
   assert.equal(image.mimeType, 'image/png');
@@ -243,7 +244,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const media = await fetch(service.url + projectMediaPath(project.id, rendered.assetId), {headers:{authorization:`Bearer ${token}`}});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'video/mp4');
     const file = path.join(root, 'verified-export.mp4'); await writeFile(file, Buffer.from(await media.arrayBuffer()));
-    const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
+    const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file], {env: testEnv()})).stdout);
     const downloadPath = path.join(root, 'cli-export.mp4');
     succeeded(await cli(['export','download','--input',JSON.stringify({projectId:project.id, exportId:queued.id}),'--output',downloadPath], env));
     const exportedBytes = await readFile(file);

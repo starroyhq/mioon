@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -108,12 +109,12 @@ for(const phase of ['prepared','published','before_trust','trusted','completed']
 });
 for(const phase of ['prepared','published','before_trust','trusted','completed'] as const)test(`SIGKILL upper-layer ${phase} preserves coherent B1/history/file evidence`,t=>{
  const f=fixture(t),requestId=randomUUID(),worker=fileURLToPath(new URL('./fixtures/mio-project-rules-crash.ts',import.meta.url));f.store.close();
- const child=spawnSync(process.execPath,[worker,f.root,requestId,phase],{stdio:'ignore',timeout:30000});assert.equal(child.signal,'SIGKILL');f.reopen();const rules=f.service(),before=changes(f),lookup=rules.lookup(requestId);assert.equal(lookup.status,phase==='completed'?'applied':'uncertain');assert.deepEqual(changes(f),before);
+ const child=spawnSync(process.execPath,[worker,f.root,requestId,phase],{env: testEnv(), stdio:'ignore',timeout:30000});assert.equal(child.signal,'SIGKILL');f.reopen();const rules=f.service(),before=changes(f),lookup=rules.lookup(requestId);assert.equal(lookup.status,phase==='completed'?'applied':'uncertain');assert.deepEqual(changes(f),before);
  const recovered=rules.reconcile(requestId);assert.equal(recovered.status,phase==='prepared'?'not_applied':'applied');assert.equal(row(f,requestId)?.state,phase==='prepared'?'not_applied':'completed');
 });
 for(const phase of ['prepared','published','before_trust','trusted','completed'] as const)test(`SIGKILL Mio ${phase} recovers the same approved tool and never republishes`,t=>{
  const f=fixture(t),a=approved(f,f.service()),worker=fileURLToPath(new URL('./fixtures/mio-project-rules-crash.ts',import.meta.url));f.store.close();
- const child=spawnSync(process.execPath,[worker,f.root,a.input.requestId,phase,JSON.stringify(a.approval)],{stdio:'ignore',timeout:30000});assert.equal(child.signal,'SIGKILL');f.reopen();const rules=f.service(),before=changes(f);assert.equal(rules.lookup(a.input.requestId).status,phase==='completed'?'applied':'uncertain');assert.deepEqual(changes(f),before);
+ const child=spawnSync(process.execPath,[worker,f.root,a.input.requestId,phase,JSON.stringify(a.approval)],{env: testEnv(), stdio:'ignore',timeout:30000});assert.equal(child.signal,'SIGKILL');f.reopen();const rules=f.service(),before=changes(f);assert.equal(rules.lookup(a.input.requestId).status,phase==='completed'?'applied':'uncertain');assert.deepEqual(changes(f),before);
  assert.equal(rules.reconcile(a.input.requestId).status,phase==='prepared'?'not_applied':'applied');
  const journal=createMioProjectJournal(f.store,f.app.agentPolicy);assert.equal(journal.step(a.approval.stepId).status,'completed');
  if(phase==='prepared'){

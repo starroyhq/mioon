@@ -5,6 +5,7 @@ import {access, appendFile, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {ensureQaProject,closeQaProject} from './helpers/kernel-qa-fixture.mjs';
 import {prepareNativeQaAuditLayout} from './helpers/native-qa-audit.mjs';
+import {testEnv} from './helpers/test-env.ts';
 
 const root = path.resolve('evidence/agent-inspection/native-runtime');
 const userData = path.join(root, 'user-data'), workspace = path.join(userData, 'data');
@@ -14,13 +15,9 @@ await writeFile(path.join(root,'native-audit-layout.json'),JSON.stringify(await 
 if (process.argv.includes('--prepare')) { console.log(workspace); process.exit(0); }
 
 const require = createRequire(import.meta.url);
-const env = {...process.env, MIOON_DESKTOP_USER_DATA: userData,
-  MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe',
-  MIOON_ENABLE_LIVE_PROVIDER: '0'};
-for (const name of Object.keys(env)) {
-  if (/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_)/.test(name) ||
-      ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'MIOON_DESKTOP_SMOKE_OUTPUT'].includes(name)) delete env[name];
-}
+const env = {...testEnv(), MIOON_DESKTOP_USER_DATA: userData,
+  MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
+for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH', 'MIOON_DESKTOP_SMOKE_OUTPUT']) delete env[name];
 const startedAt = new Date().toISOString();
 const child = spawn(require('electron'), [path.resolve('apps/desktop/build')],
   {env, stdio: ['ignore', 'pipe', 'pipe']});

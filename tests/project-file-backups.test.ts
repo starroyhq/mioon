@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -369,7 +370,7 @@ test('real SIGKILL hot-journal backups remain byte-identical on current and old-
  for(const version of [2,3]){
    const file=path.join(root,`hot-${version}.mioon`);copyFileSync(backupFile,file);
    const program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(file)});db.exec('PRAGMA cache_size=1; PRAGMA cache_spill=ON; BEGIN IMMEDIATE');db.prepare("UPDATE projects SET data=json_set(data,'$.note',?)").run('x'.repeat(2*1024*1024));process.kill(process.pid,'SIGKILL');`;
-   assert.throws(()=>execFileSync(process.execPath,['--input-type=module','--eval',program],{stdio:'ignore'}),(error:unknown)=>!!error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL');
+   assert.throws(()=>execFileSync(process.execPath,['--input-type=module','--eval',program],{env: testEnv(), stdio:'ignore'}),(error:unknown)=>!!error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL');
    const journal=file+'-journal';assert.ok(existsSync(journal));assert.equal(readFileSync(journal).subarray(0,8).toString('hex'),'d9d505f920a163d7','spilled rollback pages have a real hot header');
    if(version===2){const fd=fs.openSync(file,'r+');try{const marker=Buffer.alloc(4);marker.writeUInt32BE(2);fs.writeSync(fd,marker,0,4,60);}finally{fs.closeSync(fd);}}
    const before=readFileSync(file),evidence=readFileSync(journal),target=destination(root,`hot-target-${version}`),entries=readdirSync(root).sort();

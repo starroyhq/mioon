@@ -18,7 +18,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createClient} from '../packages/client/src/index.ts';
@@ -26,7 +26,7 @@ import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {createServerProject, foreignKeyCheck, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='reference-recovery-public-synthetic-token';
-const environment=(extra: NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
+const environment=(extra: Record<string, string>)=>({...mediaEnvironment(),...extra});
 const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
 function png(color: string|number|Uint8Array<ArrayBufferLike>|undefined){
  const chunk=(name: string,data:Buffer)=>{const bytes=Buffer.concat([Buffer.from(name),data]),header=Buffer.alloc(4),tail=Buffer.alloc(4);header.writeUInt32BE(data.length);tail.writeUInt32BE(crc32(bytes));return Buffer.concat([header,bytes,tail]);};

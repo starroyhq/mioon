@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -103,7 +104,7 @@ test('explicit domain task notifications inside a failed transaction are discard
 test('SIGKILL between project COMMIT and index callback leaves the exact task available for opening-time admission', {timeout: 30000}, async t => {
   const f = fixture(t), taskId = randomUUID(), projectId = f.store.projectId;
   f.store.close();
-  const child = fork(new URL('./fixtures/background-task-commit-worker.ts', import.meta.url), [f.root, taskId], {execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  const child = fork(new URL('./fixtures/background-task-commit-worker.ts', import.meta.url), [f.root, taskId], {env: testEnv(), execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   t.after(() => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');});
   const [message] = await once(child, 'message', {signal: AbortSignal.timeout(20000)});
   assert.deepEqual(message, {type: 'project-committed', taskId});

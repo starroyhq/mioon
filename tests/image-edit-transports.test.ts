@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -18,7 +19,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
@@ -39,12 +40,12 @@ const inputFor = <T extends Record<string,unknown> = {}>(projectId: string, chan
 
 // No inherited provider credential, activation flag, custom endpoint or proxy is
 // passed to the owned CLI and MCP processes. Only loopback HTTP is exercised.
-function environment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+function environment(extra: Record<string, string> = {}) {
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
 
 function noPrivate(value: unknown, root: string) {
@@ -64,7 +65,7 @@ function noPrivate(value: unknown, root: string) {
   walk(value);
 }
 
-async function cli(args: string[], env: NodeJS.ProcessEnv, expectedError?: string|undefined) {
+async function cli(args: string[], env: Record<string, string>, expectedError?: string|undefined) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {
     cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -204,7 +205,7 @@ async function fixture(t: test.TestContext) {
   };
 }
 
-async function mcpFixture(t: test.TestContext, env: NodeJS.ProcessEnv) {
+async function mcpFixture(t: test.TestContext, env: Record<string, string>) {
   const client = new Client({name: 'image-edit-transport-acceptance', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath,
     args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(env), stderr: 'pipe'});

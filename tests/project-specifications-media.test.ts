@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {FixtureProject,FixtureExport,FixtureTimeline,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {SQLOutputValue} from 'node:sqlite';
@@ -33,7 +34,7 @@ const pause=(ms: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms))
 const records:MediaEvidence={startedAt:new Date().toISOString(),runtime:process.version,fixturePolicy:'Local lavfi sources; shared services and real worker; zero providers',commands:[],checks:[]};
 async function command<B extends boolean=false>(file:string,args:readonly string[]|null|undefined,binary:B=false as B):Promise<B extends true?NonSharedBuffer:string>{
  try{
-  const {stdout,stderr}=await exec(file,args,{encoding:binary?'buffer':'utf8',maxBuffer:32*1024*1024,timeout:120000});
+  const {stdout,stderr}=await exec(file,args,{env: testEnv(), encoding:binary?'buffer':'utf8',maxBuffer:32*1024*1024,timeout:120000});
   records.commands.push({file,args,exitCode:0,stdout:binary?{bytes:stdout.length,sha256:sha(stdout)}:stdout,stderr:String(stderr)});return stdout as B extends true?NonSharedBuffer:string;
  }catch(error){records.commands.push({file,args,exitCode:(error as Failure).code,stderr:String((error as Error & {stderr:unknown}).stderr)});throw error;}
 }
@@ -53,7 +54,7 @@ async function makeFixtures(root: string){
 }
 async function fixture(t: test.TestContext,sourceRoot?:string){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-output-presets-')),store=(openStore(path.join(root,'data')) as TypedStore),providers=new Map();
- const services=(createServices(store,providers,{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}}) as TypedServices),worker=startWorker(store,services,providers);
+ const services=(createServices(store,providers,{env:{}}) as TypedServices),worker=startWorker(store,services,providers);
  await mkdir(evidence,{recursive:true});
  t.after(async()=>{
   await worker.stop();await services.drain();store.close();

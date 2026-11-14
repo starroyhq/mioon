@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {TypedStore, TypedServices, TypedCall} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -260,9 +261,9 @@ for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 
   });
 
 function childEnvironment() {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0'};
+  return {...env,};
 }
 async function child(script: string, args: string[], expectedCode: number|undefined = 0) {
   const process = spawn(globalThis.process.execPath, ['--input-type=module', '-e', script, ...args],

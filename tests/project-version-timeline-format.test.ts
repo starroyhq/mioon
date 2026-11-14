@@ -9,7 +9,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {projectVersionSaveResponseSchema,projectVersionPreviewResponseSchema,projectVersionRestoreResponseSchema} from '../packages/contracts/src/project-version-operations.ts';
-import {startServer,type InspectProject} from '../apps/server/src/index.ts';
+import {startServer,type InspectProject} from './helpers/test-server.ts';
 import type {TimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {TIMELINE_HISTORY_OPERATIONS} from '../packages/business/src/timeline-history-operations.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -29,7 +30,7 @@ const request=(timeline: FixtureTimeline)=>({projectId:timeline.projectId,expect
 
 test('ripple HTTP durable tasks, actual CLI and official MCP agree on strict schema, undo and exact replay', {timeout:90000},async t=>{
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-ripple-transports-'));
- const env={...mediaEnvironment(process.env),MIOON_ENABLE_LIVE_PROVIDER:'0'};
+ const env={...mediaEnvironment(testEnv()),};
  const created=createServerProject(root,{name:'Ripple transports'}),store=(created.store as unknown as FixtureStore),library=openAppLibrary({dataDir:root}),services=(createServices(created.store,new Map(),{application:createProjectServiceApplication(library)}) as FixtureServices);
  const projectId=created.projectId,assetId=randomUUID();
  store.put('assets',{id:assetId,projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${assetId}.fixture`});

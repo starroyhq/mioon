@@ -33,7 +33,7 @@ async function save(name, value) { assert.match(name, /^[a-z0-9-]+\.json$/); awa
 async function fileHash(file) { const stat = await lstat(file); assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size < 512 * 1024 * 1024); return { bytes: stat.size, sha256: sha(await readFile(file)) }; }
 function environment() {
   return { ...Object.fromEntries(['PATH', 'HOME', 'LANG', 'LC_ALL', 'DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'TMPDIR'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
-    MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_FFMPEG_PATH: mediaTool('ffmpeg'), MIOON_FFPROBE_PATH: mediaTool('ffprobe') };
+    MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: mediaTool('ffmpeg'), MIOON_FFPROBE_PATH: mediaTool('ffprobe') };
 }
 async function command(binary, args, label) {
   const stdout = await open(path.join(runtime, label + '.stdout'), 'wx', 0o600), stderr = await open(path.join(runtime, label + '.stderr'), 'wx', 0o600);

@@ -220,7 +220,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const dataRoot: string = root;
   const newlySeeded = !fs.existsSync(path.join(dataRoot, 'app-library.db'));
   if (newlySeeded) await seedInspectionStore(dataRoot);
-  const {startServer} = await import('../../apps/server/src/index.ts');
+  const {startServer} = await import('./test-server.ts');
   const {readProjectState, changeMarks} = await import('./project-state.ts');
   let inspect: InspectProject|undefined,application:InspectApplication|undefined;
   let retain: ((projectId: string) => Promise<() => void>) | undefined;

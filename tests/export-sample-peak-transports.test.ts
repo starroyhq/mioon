@@ -16,7 +16,7 @@ import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {samplePeakOperation as operation,samplePeakInput as input,samplePeakToken as token,readySamplePeak,incompleteSamplePeak} from './helpers/export-sample-peak-fixture.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
-const env=(url: string|undefined)=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const env=(url: string|undefined)=>({PATH:process.env.PATH||'',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const deferred=<T = unknown>()=>{let resolve!: (value?: T | PromiseLike<T>) => void;const promise=new Promise<T>(r=>{resolve=(r as (value?: T | PromiseLike<T>) => void);});return {promise,resolve};};
 async function bounded<T>(promise: Promise<T>,label: string,ms=10000){let timer;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function cli(t: test.TestContext,url: string|undefined,args: string[]){

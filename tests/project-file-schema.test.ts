@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -182,7 +183,7 @@ test('schema generation in a fresh process cannot import legacy constructors, op
     const source = await import(${JSON.stringify(helper)});
     const files = source.renderDerivedFiles();
     console.log(JSON.stringify({blocked, files:[...files], roles:Object.keys(source.declaredSchema().tables), manifests:['project','history','cache'].map(kind=>source.buildManifest(kind))}));
-  `], {encoding: 'utf8', maxBuffer: 8 * 1024 * 1024});
+  `], {env: testEnv(), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024});
   assert.equal(child.error, undefined);
   assert.equal(child.signal, null);
   assert.equal(child.status, 0, child.stderr);

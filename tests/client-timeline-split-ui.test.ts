@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import { message } from '../packages/i18n/src/index.ts';
 import {timelineAudioPreviewPosition} from '../apps/web/src/use-timeline-audio-preview.ts';
 import test from 'node:test';
@@ -69,7 +70,7 @@ test('lost split responses preserve original clip, integer playhead, revision an
 test('shared split button renders accessible target, frame, shortcut and disabled reasons',()=>{
  const source=`import React from 'react';import {renderToStaticMarkup} from 'react-dom/server.browser';import Controls from './src/TimelineSplitControls.tsx';export const ready=renderToStaticMarkup(<Controls state={${JSON.stringify(splitState(fixture()))}} onSplit={()=>{}}/>);export const blocked=renderToStaticMarkup(<Controls state={${JSON.stringify(splitState({...fixture(),dirty:true}))}} onSplit={()=>{}}/>);`;
  const script=`import {build} from 'esbuild';import assert from 'node:assert/strict';const {outputFiles}=await build({stdin:{contents:${JSON.stringify(source)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,define:{'process.env.NODE_ENV':'"production"'}});const {ready,blocked}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));assert.ok(ready.includes('data-slot="button"'));assert.ok(ready.includes('分割所选片段：Frozen source，播放头 30 帧'));assert.ok(ready.includes('Control+B Meta+B'));assert.ok(ready.includes('20 + 30 帧'));assert.ok(!ready.includes(' disabled=""'));assert.ok(blocked.includes(' disabled=""'));assert.ok(blocked.includes('保存或放弃'));process.stdout.write('split controls verified');process.exit(0);`;
- assert.match(execFileSync(process.execPath,['--input-type=module'],{input:script,cwd:root,encoding:'utf8',timeout:30000}),/verified/);
+ assert.match(execFileSync(process.execPath,['--input-type=module'],{env: testEnv(), input:script,cwd:root,encoding:'utf8',timeout:30000}),/verified/);
 });
 test('App rechecks current view and current aggregate before the shared durable mutation',()=>{
  const app=readFileSync(path.join(root,'apps/web/src/App.tsx'),'utf8');assert.match(app,/selectedClipId: propertiesPage === 'subtitle' \? null : viewRef\.current!\.editing\.selectedClipId, playhead: timelineAudioPreviewPosition\(audioPreview, viewRef\.current!\.editing\.playhead\), mode: viewRef\.current!\.activeMode/);assert.match(app,/if \(!latest\.canSplit\) return null/);assert.match(app,/mutateTimeline\('timeline\.clip\.split', \{ clipId: latest\.clipId, atFrame: latest\.atFrame \}\)/);assert.match(app,/if \(viewRef\.current!\.activeMode !== 'editing'\) return/);
