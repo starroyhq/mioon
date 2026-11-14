@@ -20,6 +20,7 @@ import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-
 import { createProjectFileOpener, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/backend-lease.ts';
+import {createSettingsEventLoopMonitor} from '../apps/desktop/src/settings-event-loop.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -590,7 +591,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   const trashClient = {close: trashClose, reserve: async () => {throw Error('No trash is expected in this lifecycle fixture');}};
   let enterStart!: (value: LaunchView) => void; const started = new Promise<LaunchView>(resolve => { enterStart = resolve; });
   port.postMessage = (message: DesktopHarnessMessage) => { messages.push(message); };
-  const sandbox = { createProjectEntryControlBroker, path, comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
+  const sandbox = { createProjectEntryControlBroker, path, comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, createSettingsEventLoopMonitor, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {}, startServer: async (options: LaunchView) => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); assert.equal(options.projectTemplatesDir,'/synthetic/trusted/examples'); enterStart(options); const server=await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server&&typeof server==='object'); return {...server,projectEntries:createDesktopHarnessProjectEntries()}; },

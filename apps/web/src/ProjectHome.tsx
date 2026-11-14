@@ -55,7 +55,7 @@ export interface ProjectHomeProps {
   listBusy: boolean;
   listError?: string | DisplayMessage;
   page: 'projects' | 'settings';
-  onPage: (page: 'projects' | 'settings') => void;
+  onPage: (page: 'projects' | 'settings', click?: import('./settings-diagnostics.ts').SettingsClick) => void;
   onOpen: (id: string) => void;
   onRetry: () => void;
   onRefresh: () => void;
@@ -307,7 +307,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
         </div>
         <WorkbenchButton type="button" variant="ghost" className="launcher-home-nav-button" data-testid="project-home-page-settings"
           aria-label={t('settings.title')} title={t('settings.title')} disabled={launcherNavigationLocked}
-          onClick={() => { if (canNavigateLauncher()) onPage('settings'); }}>
+          onClick={event => { if (canNavigateLauncher()) onPage('settings', event?.nativeEvent); }}>
           <WorkbenchIcon name="settings" size={17} /><span>{t('settings.title')}</span>
         </WorkbenchButton>
       </div>
@@ -318,7 +318,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
       <div className="project-home-header-spacer" />
       <Button type="button" variant="ghost" data-testid="project-home-page-projects" className="sr-only" onClick={() => { if (page !== 'projects') onPage('projects'); }}>{t('projects.list')}</Button>
       <WorkbenchButton type="button" variant="icon" className="project-home-help-button" data-testid="project-home-help" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} disabled={locked || !active || page !== 'projects'} onClick={() => { if (current.current.active && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening') changeHelp(true); }}><HelpSymbol /></WorkbenchButton>
-      <Button type="button" variant="ghost" data-testid="project-home-page-settings" className="project-home-settings-button" aria-label={t('settings.title')} title={t('settings.title')} disabled={locked} onClick={() => { if (current.current.phase !== 'opening' && !current.current.busy) onPage('settings'); }}><WorkbenchIcon name="settings" /></Button>
+      <Button type="button" variant="ghost" data-testid="project-home-page-settings" className="project-home-settings-button" aria-label={t('settings.title')} title={t('settings.title')} disabled={locked} onClick={event => { if (current.current.phase !== 'opening' && !current.current.busy) onPage('settings', event?.nativeEvent); }}><WorkbenchIcon name="settings" /></Button>
       {totalProjects > 0 && onImport && <WorkbenchButton type="button" data-testid="project-home-import" disabled={locked} onClick={() => { if (canAct()) onImport(); }}><WorkbenchIcon name="upload" />{t('projectPackage.menu.import')}</WorkbenchButton>}
       {totalProjects > 0 && onStartExample && <WorkbenchButton type="button" data-testid="project-home-example" disabled={locked || !active} onClick={startExample}>{t('projectHomeNative.example')}</WorkbenchButton>}
       {totalProjects > 0 && <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate(true)}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>}

@@ -69,20 +69,35 @@ test('shell component controllers are not keyed or reconstructed by locale', () 
   }
 });
 
+test('the native settings language handoff keeps the boot locale until the authoritative read', async () => {
+  const read = Promise.withResolvers<languagePreference.LanguageSnapshot>();
+  const store = createLanguageStore({systemLanguages: ['en-US'], bootLocale: 'ja', bridge: {
+    read: () => read.promise, subscribe: () => () => {}, set: () => assert.fail('A boot preference cannot write language'),
+  }});
+  const initializing = store.initialize();
+  assert.equal(store.getSnapshot().ready, false);
+  assert.equal(store.getSnapshot().locale, 'ja');
+  read.resolve({version: 1, revision: 2, preference: 'zh-Hant', locale: 'zh-Hant', persistence: 'saved'});
+  await initializing;
+  assert.equal(store.getSnapshot().ready, true);
+  assert.equal(store.getSnapshot().locale, 'zh-Hant');
+  store.dispose();
+});
+
 test('header actions and native settings remain reachable without locale or resize remount keys', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const header = app.slice(app.indexOf('<WorkbenchTopbar'), app.indexOf('{showGuide && <section'));
   const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8');
   const task = readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8');
   const delivery = readFileSync(new URL('../apps/web/src/DeliveryWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(header, /data-testid="global-settings-open"[^>]+onClick=\{\(\) => openGlobalSettings\(\)\}/u);
+  assert.match(header, /data-testid="global-settings-open"[^>]+onClick=\{event => openGlobalSettings\('general', event\?\.nativeEvent\)\}/u);
   assert.doesNotMatch(header, /<LanguageControl \/>/u);
   const settingsCenter = readFileSync(new URL('../apps/web/src/ProjectHomeConnections.tsx', import.meta.url), 'utf8');
   assert.match(settingsCenter, /data-testid="settings-general"/u);
   assert.match(settingsCenter, /t\('settings\.languageHint'\).*<LanguageControl visible=\{active && page === 'general'\} \/>/u);
   const home = readFileSync(new URL('../apps/web/src/ProjectHome.tsx', import.meta.url), 'utf8');
   assert.match(home, /data-testid="project-home-page-settings"/u);
-  assert.match(home, /onPage\('settings'\)/u); assert.doesNotMatch(home, /<LanguageControl \/>/u);
+  assert.match(home, /onPage\('settings', event\?\.nativeEvent\)/u); assert.doesNotMatch(home, /<LanguageControl \/>/u);
   for (const id of ['agent-chat-open', 'agent-settings-open', 'region-guide-toggle', 'jobs-button', 'export-history', 'export-button', 'export-timeline']) assert.ok((app + shell + task + delivery).includes(`data-testid="${id}"`), id);
   assert.match(app, /if \(value === 'agent'\) \{ setRightDockTab\('agent'\); setAgentPage\('chat'\);/);
   assert.match(shell, /data-testid="agent-chat-open"/);

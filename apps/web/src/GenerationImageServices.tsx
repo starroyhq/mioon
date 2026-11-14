@@ -6,9 +6,10 @@ import {Switch} from '@mioon/ui/components/switch';
 import {useConfirmation} from '@mioon/ui/components/workbench-confirm';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
-import {getCustomImageDestination, normalizeCustomImageBaseUrl} from '../../../packages/contracts/src/image-compatible.ts';
+import {customImageModelSchema, getCustomImageDestination, normalizeCustomImageBaseUrl} from '../../../packages/contracts/src/image-compatible.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {WorkbenchSelect} from './WorkspaceControls.tsx';
+import ModelPickerDialog from './ModelPickerDialog.tsx';
 import {useSettingsServicesPanel} from './SettingsServicesLayout.tsx';
 import {imageStorageReason} from './ImageSettings.tsx';
 import {comfyConnectorAvailabilityDescriptor, comfyImageCheckDescriptor} from './comfy-image-settings.ts';
@@ -78,24 +79,66 @@ export const useGenerationComfyService = (options: GenerationImageServiceOptions
 /** Detail-only content: the shared parent owns title, navigation and Save. */
 function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: string; kind: GenerationImageDomainKind; owner: GenerationImageServicesOwner; state: GenerationImageDomainState; onSelect: (key: string) => void}) {
   const {t, renderMessage} = useI18n(), confirm = useConfirmation(), visibility = useSettingsServicesPanel();
-  const inputRef = useMemo(() => (input: HTMLInputElement | null) => owner.registerKey(id, input), [owner, id]);
+  const [picker, setPicker] = useState<{usesDraftKey: boolean} | null>(null);
+  const activePicker = useRef<typeof picker>(null), pickerTrigger = useRef<HTMLElement | null>(null);
+  const password = useRef<HTMLInputElement | null>(null);
+  const inputRef = useMemo(() => (input: HTMLInputElement | null) => {
+    password.current = input;
+    owner.registerKey(id, input);
+  }, [owner, id]);
   const interaction = useMemo(() => ({id, active: visibility.active, version: state.version}), [id, visibility.active, state.version]);
   const current = useRef(interaction); current.current = interaction;
   const usable = () => current.current === interaction && visibility.active && documentVisible() && owner.interactionAllowed();
-  useLayoutEffect(() => {if (!visibility.selected) owner.cancelCheck(id);}, [id, owner, visibility.selected]);
+  function closePicker() {
+    if (!activePicker.current) return;
+    activePicker.current = null;
+    setPicker(null);
+    owner.cancelCheck(id);
+  }
+  useLayoutEffect(() => {
+    if (!visibility.active) {
+      closePicker();
+      if (!visibility.selected) owner.cancelCheck(id);
+    }
+  }, [id, owner, visibility.active, visibility.selected]);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibility = () => {if (!documentVisible()) closePicker();};
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [id, owner]);
   const draft = state.drafts.find(item => item.id === id), busy = ['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
   const editable = visibility.active && !busy && !state.recovery, snapshot = state.snapshot, secret = owner.savedSecret(id);
   const storage = snapshot && 'storage' in snapshot ? snapshot.storage : null;
   const probe = state.probe?.id === id ? state.probe : null;
+  const listing = probe?.operation === 'models' ? probe.result : null;
+  const pickerStatus = !listing ? 'loading' : listing.result === 'ok'
+    ? listing.models?.length ? 'ready' : 'empty' : listing.result === 'unsupported' ? 'empty' : 'error';
   const probeable = editable && owner.canProbe(id);
   const probeMessage = probe?.result.result === 'ok'
-    ? probe.result.models ? t('settings.draftKey.modelCount', {count: probe.result.models.length}) : t('settings.draftKey.success')
+    ? t('settings.draftKey.success')
     : probe?.result.result === 'unauthorized' ? t('settings.draftKey.unauthorized')
       : probe?.result.result === 'unsupported' ? t(probe.operation === 'models' ? 'settings.draftKey.listUnsupported' : 'settings.draftKey.unavailable')
         : t('settings.draftKey.failed');
   let destination = '';
   try {if (draft?.configuration.baseUrl) destination = kind === 'custom' ? getCustomImageDestination(normalizeCustomImageBaseUrl(draft.configuration.baseUrl)) : `${draft.configuration.baseUrl}/images/generations`;} catch {}
   const prefix = id.replaceAll(':', '-'), edit = (patch: Parameters<typeof owner.edit>[1], configuration: Parameters<typeof owner.edit>[2] = {}) => {if (usable()) owner.edit(id, patch, configuration);};
+  function openPicker(trigger: HTMLElement) {
+    if (!usable() || !probeable || activePicker.current || !draft) return;
+    const next = {usesDraftKey: Boolean(password.current?.value)};
+    activePicker.current = next;
+    pickerTrigger.current = trigger;
+    setPicker(next);
+    void owner.checkCredential(id, 'models');
+  }
+  function chooseModel(ids: readonly string[]) {
+    if (!usable() || !picker || activePicker.current !== picker || kind !== 'custom' || ids.length !== 1) return;
+    const model = ids[0];
+    const result = owner.getState().probe;
+    if (result?.id !== id || result.operation !== 'models' || !result.result.models?.some(item => item.id === model)
+        || !customImageModelSchema.safeParse(model).success) return;
+    if (owner.edit(id, {}, {model})) closePicker();
+  }
   const remove = async () => {
     if (!usable() || !editable || !draft) return;
     const version = owner.getState().version;
@@ -123,12 +166,19 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
       <Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><Input ref={inputRef} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={4096} disabled={!editable || draft.secretAction === 'remove'} placeholder={secret?.configured ? t('image.settings.keepPlaceholder') : t(kind === 'official' ? 'image.settings.openaiKeyPlaceholder' : 'image.settings.customKeyPlaceholder')} onChange={() => {if (usable()) owner.keyChanged(id);}} />
       <div className="image-generation-actions">
         <Button type="button" data-testid={`${prefix}-key-check`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'check');}}>{t('settings.draftKey.check')}</Button>
-        <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'models');}}>{t('settings.draftKey.list')}</Button>
+        <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={event => openPicker(event.currentTarget)}>{t('settings.draftKey.list')}</Button>
       </div>
-      {state.phase === 'checking' && <p role="status">{t('settings.draftKey.checking')}</p>}
-      {probe && <p role={probe.result.result === 'ok' ? 'status' : 'alert'} data-testid={`${prefix}-probe-result`}>
+      {state.phase === 'checking' && !picker && <p role="status">{t('settings.draftKey.checking')}</p>}
+      {probe?.operation === 'check' && <p role={probe.result.result === 'ok' ? 'status' : 'alert'} data-testid={`${prefix}-probe-result`}>
         {probeMessage}
       </p>}
+      {visibility.active && picker && <ModelPickerDialog mode="single"
+        serviceName={kind === 'official' ? t('image.settings.official') : draft.name} usesDraftKey={picker.usesDraftKey}
+        status={pickerStatus} statusMessage={listing?.result === 'unsupported' || pickerStatus === 'error' ? probeMessage
+          : pickerStatus === 'ready' && kind === 'official' ? t('settings.modelPicker.officialModel') : undefined}
+        items={(listing?.models ?? []).map(item => ({id: item.id, added: item.id === draft.configuration.model,
+          unavailable: kind === 'official' ? item.id !== draft.configuration.model : !customImageModelSchema.safeParse(item.id).success}))}
+        triggerRef={pickerTrigger} onClose={closePicker} onAdd={chooseModel} />}
       {owner.isDirty(id) && <p className="image-settings-help">{t('settings.draftKey.resultHint')}</p>}
       <p className="image-settings-help">{t('image.settings.keyHelp')}</p><Label htmlFor={`${prefix}-storage`}>{t('image.settings.keyStorage')}</Label><WorkbenchSelect id={`${prefix}-storage`} data-testid={`${prefix}-storage`} value={draft.storage} disabled={!editable || draft.secretAction === 'remove'} onChange={event => {if (event.target.value === 'session' || event.target.value === 'persistent') edit({storage: event.target.value});}}><option value="" disabled>{t('image.settings.storageChoose')}</option><option value="session">{t('image.settings.storageSession')}</option><option value="persistent" disabled={!storage?.persistentAvailable}>{t('connections.storage.persistent')}</option></WorkbenchSelect>
       {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}

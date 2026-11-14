@@ -13,6 +13,7 @@ import type {ProjectDesktopSelection, ProjectEntriesDesktopBridge} from '../pack
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import {BrowserRpcError, browserRpc} from '../apps/web/src/browser-rpc.ts';
 import {rpc as legacyRpc} from '../apps/web/src/api.ts';
+import {markSettingsClick} from '../apps/web/src/settings-diagnostics.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {RECENT_PROJECTS} from './fixtures/project-file-ui/fixtures.ts';
 import {tagOf, escapeHtml} from './helpers/project-file-ui.ts';
@@ -323,7 +324,7 @@ function projectEntryHomeBindings(controller:ReturnType<typeof createProjectEntr
  const dependencies:Record<string,unknown>={react:createRequire(new URL('../apps/web/package.json',import.meta.url))('react'),
   './i18n/I18nProvider.tsx':i18nTestModule(),'@mioon/ui/components/button':{Button:'button'},'@mioon/ui/components/dialog':{Dialog:'dialog',DialogContent:'dialog-content',DialogDescription:'dialog-description',DialogTitle:'dialog-title'},
   './ProjectHomeDirectoryScreen.tsx':{__esModule:true,default:'project-home'},'./NativeProjectEntryDialogs.tsx':{NativeProjectEntryDialogs:'native-dialogs'},
-  './project-entry-identity.ts':{readProjectEntryIdentity},'./api.ts':{rpc:legacyRpc},'./browser-rpc.ts':{browserRpc}};
+  './project-entry-identity.ts':{readProjectEntryIdentity},'./api.ts':{rpc:legacyRpc},'./browser-rpc.ts':{browserRpc},'./settings-diagnostics.ts':{markSettingsClick}};
  Function('require','module','exports',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)((name:string)=>{assert.ok(Object.hasOwn(dependencies,name),name);return dependencies[name];},module,module.exports);
  const desktop={getState:()=>({capabilities:{ready:true,create:true},busy:false}),readCloseSnapshot:()=>({unknown:false})};
  const tree=module.exports.default!({controller:{...controller,desktop},onSettings(){}});

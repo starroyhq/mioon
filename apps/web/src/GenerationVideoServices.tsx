@@ -5,12 +5,13 @@ import {Textarea} from '@mioon/ui/components/textarea';
 import {useConfirmation} from '@mioon/ui/components/workbench-confirm';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
-import {VIDEO_PROVIDER_NAMES, VIDEO_REGIONS, defaultVideoModels} from '../../../packages/contracts/src/video-providers.ts';
+import {VIDEO_PROVIDER_NAMES, VIDEO_REGIONS, VIDEO_SETTINGS_LIMITS, defaultVideoModels, videoModelEntrySchema} from '../../../packages/contracts/src/video-providers.ts';
 import type {DraftServiceProbeResult} from '../../../packages/contracts/src/draft-service-probe.ts';
 import type {VideoModelsListInput} from '../../../packages/contracts/src/generation-video-settings.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {WorkbenchSelect} from './WorkspaceControls.tsx';
 import {ModelEditor} from './VideoProviderSettings.tsx';
+import ModelPickerDialog from './ModelPickerDialog.tsx';
 import {useSettingsServicesPanel} from './SettingsServicesLayout.tsx';
 import {createSettingsNavigationReporter} from './settings-navigation-state.ts';
 import {compatibleServiceHost, createVideoSettingsClient, videoDraftProbeInput, videoSettingsRequestEndpoint} from './video-settings.ts';
@@ -24,6 +25,12 @@ const regions: Record<string, MessageKey> = {global: 'video.providers.region.glo
 const documentVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
 type ProbeOperation = VideoModelsListInput['operation'];
 interface ProbeDisplay {operation: ProbeOperation; draft: boolean; result: DraftServiceProbeResult}
+interface VideoModelPicker {
+  token: number;
+  version: number;
+  usesDraftKey: boolean;
+  result: DraftServiceProbeResult | null;
+}
 interface DetailProps {
   draft: GenerationVideoDraft;
   state: GenerationVideoState;
@@ -41,7 +48,10 @@ function VideoServiceDetail(props: DetailProps) {
   const {t} = useI18n(), confirm = useConfirmation(), panel = useSettingsServicesPanel();
   const {draft, state, session} = props, configuration = draft.configuration;
   const keyInput = useRef<HTMLInputElement | null>(null), mounted = useRef(false), current = useRef(props), active = useRef(false), checkEpoch = useRef(0), abort = useRef<AbortController | null>(null);
+  const fetchModelsButton = useRef<HTMLButtonElement | null>(null), picker = useRef<VideoModelPicker | null>(null);
   const [checking, setChecking] = useState(false), [check, setCheck] = useState<ProbeDisplay | null>(null);
+  const [modelPicker, setModelPicker] = useState<VideoModelPicker | null>(null);
+  const publishPicker = (value: VideoModelPicker | null) => {picker.current = value; setModelPicker(value);};
   const checkText = ({operation, result}: ProbeDisplay): string => {
     const status = String(result.httpStatus ?? '');
     switch (result.result) {
@@ -58,10 +68,20 @@ function VideoServiceDetail(props: DetailProps) {
   current.current = props; active.current = panel.active;
   const interactionAllowed = () => mounted.current && active.current && documentVisible() && current.current.session === session && current.current.interactionAllowed();
   const usable = () => interactionAllowed() && Boolean(current.current.session?.canEdit());
-  const invalidate = () => {++checkEpoch.current; abort.current?.abort(); abort.current = null; setChecking(false); setCheck(null); current.current.onCheckBusy(draft.key, false);};
-  useLayoutEffect(() => {mounted.current = true; props.registerCheckCancel(draft.key, invalidate); return () => {mounted.current = false; ++checkEpoch.current; abort.current?.abort(); current.current.registerCheckCancel(draft.key, null); current.current.onCheckBusy(draft.key, false);};}, []);
+  const cancelProbe = () => {++checkEpoch.current; abort.current?.abort(); abort.current = null; setChecking(false); current.current.onCheckBusy(draft.key, false);};
+  const closePicker = (token: number) => {
+    if (picker.current?.token !== token) return;
+    publishPicker(null);
+    cancelProbe();
+  };
+  const invalidate = () => {cancelProbe(); publishPicker(null); setCheck(null);};
+  useLayoutEffect(() => {mounted.current = true; props.registerCheckCancel(draft.key, invalidate); return () => {mounted.current = false; ++checkEpoch.current; abort.current?.abort(); picker.current = null; current.current.registerCheckCancel(draft.key, null); current.current.onCheckBusy(draft.key, false);};}, []);
   useLayoutEffect(() => {if (!panel.active) invalidate();}, [panel.active]);
-  useLayoutEffect(() => {invalidate();}, [state.phase, state.editorEpoch, configuration.region, configuration.workspaceId, configuration.baseUrl]);
+  useLayoutEffect(() => {invalidate();}, [session, props.client, state.phase, state.editorEpoch, configuration.region, configuration.workspaceId, configuration.baseUrl]);
+  useLayoutEffect(() => {
+    const open = picker.current;
+    if (open && open.version !== state.version) closePicker(open.token);
+  }, [state.version]);
   const change = (patch: Partial<typeof configuration>) => {
     if (!usable()) return; invalidate();
     if (patch.region !== undefined || patch.workspaceId !== undefined || patch.baseUrl !== undefined) props.clearKey(draft.key);
@@ -74,7 +94,7 @@ function VideoServiceDetail(props: DetailProps) {
   const canCheck = Boolean(props.client.modelsList || configuration.providerId === 'compatible' && props.client.check);
   const runProbe = async (operation: ProbeOperation): Promise<DraftServiceProbeResult | null> => {
     const latest = current.current, owner = latest.session;
-    if (!usable() || abort.current || !owner) return null;
+    if (!usable() || abort.current || picker.current || !owner) return null;
     const observed = owner.getState();
     const selected = observed.drafts.find(entry => entry.key === latest.draft.key);
     if (!selected) return null;
@@ -87,23 +107,41 @@ function VideoServiceDetail(props: DetailProps) {
     if (!probe && !legacy) return null;
     const token = ++checkEpoch.current, controller = new AbortController();
     abort.current = controller;
-    setCheck(null); setChecking(true); props.onCheckBusy(draft.key, true);
-    const publishable = () => interactionAllowed() && current.current.session === owner && token === checkEpoch.current && abort.current === controller;
+    const requestedPicker = operation === 'models' ? {token, version: observed.version, usesDraftKey: input.source === 'draft', result: null} : null;
+    if (requestedPicker) publishPicker(requestedPicker);
+    else setCheck(null);
+    setChecking(true); current.current.onCheckBusy(draft.key, true);
+    const publishable = () => interactionAllowed() && current.current.session === owner && token === checkEpoch.current && abort.current === controller
+      && (!requestedPicker || owner.getState().version === requestedPicker.version);
+    const publish = (result: DraftServiceProbeResult) => {
+      if (requestedPicker) publishPicker({...requestedPicker, result});
+      else setCheck({operation, draft: input.source === 'draft', result});
+    };
     try {
       const result = probe ? await probe(input, controller.signal) : await legacy!(input.source === 'draft'
         ? {source: 'draft', baseUrl: input.baseUrl!, value: input.value}
         : {source: 'saved', connectionId: input.connectionId, configurationRevision: input.configurationRevision}, controller.signal);
       if (!publishable()) return null;
-      setCheck({operation, draft: input.source === 'draft', result});
+      publish(result);
       return result;
     } catch {
-      if (publishable()) setCheck({operation, draft: input.source === 'draft', result: {result: 'failed'}});
+      if (publishable()) publish({result: 'failed'});
       return null;
     } finally {
       if (abort.current === controller) {
         abort.current = null; setChecking(false); current.current.onCheckBusy(draft.key, false);
       }
     }
+  };
+  const pickerResult = modelPicker?.result;
+  const listedModels = pickerResult?.models ?? [];
+  const draftModels = new Set(configuration.models.map(model => model.modelId));
+  const addListedModels = (token: number, ids: readonly string[]) => {
+    const open = picker.current;
+    if (!usable() || !open || open.token !== token || open.result?.result !== 'ok') return;
+    const offered = new Set(open.result.models?.map(model => model.id));
+    if (ids.some(id => !offered.has(id))) return;
+    if (current.current.session?.stageModels(current.current.draft.key, open.version, ids)) closePicker(token);
   };
   const remove = async () => {
     if (!usable() || configuration.providerId !== 'compatible') return;
@@ -141,12 +179,27 @@ function VideoServiceDetail(props: DetailProps) {
       <label className="video-check"><input type="checkbox" data-testid="video-remove-key" checked={draft.secretAction === 'remove'} onChange={event => {if (usable()) {invalidate(); props.clearKey(draft.key); session?.removeKey(draft.key, event.target.checked);}}}/>{t('video.providers.removeKey')}</label>
       <label className="video-check"><input type="checkbox" data-testid="video-connection-enabled" checked={configuration.enabled} onChange={event => change({enabled: event.target.checked})}/>{t('video.providers.enabled')}</label>
       <details className="generation-video-models"><summary data-testid="video-models-summary">{t('generation.services.video.modelsCount', {count: configuration.models.length})}</summary>
-        <div className="video-catalog-heading"><h3>{t('video.providers.models')}</h3>{props.client.modelsList && <Button type="button" data-testid="video-fetch-models" disabled={!checkable} onClick={() => {void runProbe('models');}}>{t('settings.draftKey.list')}</Button>}<Button type="button" data-testid="video-add-model" onClick={() => {const base = defaultVideoModels(configuration.providerId)[0]!; change({models: [...configuration.models, {...base, id: crypto.randomUUID(), modelId: '', name: ''}]});}}>{t('video.providers.addModel')}</Button></div>
+        <div className="video-catalog-heading"><h3>{t('video.providers.models')}</h3>{props.client.modelsList && <Button ref={fetchModelsButton} type="button" data-testid="video-fetch-models" disabled={!checkable} onClick={() => {void runProbe('models');}}>{t('settings.draftKey.list')}</Button>}<Button type="button" data-testid="video-add-model" onClick={() => {const base = defaultVideoModels(configuration.providerId)[0]!; change({models: [...configuration.models, {...base, id: crypto.randomUUID(), modelId: '', name: ''}]});}}>{t('video.providers.addModel')}</Button></div>
         {configuration.models.map((model, index) => <ModelEditor key={model.id} menuActions resetEpoch={state.editorEpoch} model={model} providerId={configuration.providerId} index={index} count={configuration.models.length} onChange={patch => change({models: configuration.models.map(item => item.id === model.id ? {...item, ...patch} : item)})} onMove={offset => {const models = [...configuration.models]; [models[index], models[index + offset]] = [models[index + offset]!, models[index]!]; change({models});}}/>)}
       </details>
       <details><summary>{t('video.providers.advanced')}</summary>{configuration.providerId === 'compatible' && <p data-testid="video-compatible-service-host">{compatibleServiceHost(configuration) ? t('video.providers.serviceHost', {host: compatibleServiceHost(configuration)}) : t('video.providers.serviceHostPending')}</p>}<label>{t(configuration.providerId === 'compatible' ? 'video.providers.extraHosts' : 'video.providers.hosts')}<Textarea data-testid="video-output-hosts" value={configuration.outputHosts.join('\n')} onChange={event => change({outputHosts: event.target.value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean)})}/></label><p className="helper muted">{t('video.providers.extraHostsHint')}</p></details>
       {configuration.providerId === 'compatible' && <><p role="note" className="notice warning">{t('video.providers.compatibleCost')}</p><Button type="button" data-testid="video-delete-connection" onClick={() => {void remove();}}>{t('video.providers.delete')}</Button></>}
     </fieldset>
+    {panel.active && modelPicker && <ModelPickerDialog key={modelPicker.token}
+      serviceName={configuration.providerId === 'compatible' ? configuration.name : VIDEO_PROVIDER_NAMES[configuration.providerId]}
+      items={listedModels.map(({id}) => {
+        const added = draftModels.has(id);
+        return {id, added, unavailable: !added && !videoModelEntrySchema.shape.modelId.safeParse(id).success};
+      })}
+      status={!pickerResult ? 'loading' : pickerResult.result === 'ok' || pickerResult.result === 'unsupported'
+        ? listedModels.length ? 'ready' : 'empty' : 'error'}
+      statusMessage={pickerResult && (pickerResult.result !== 'ok' || !listedModels.length)
+        ? checkText({operation: 'models', draft: modelPicker.usesDraftKey, result: pickerResult}) : undefined}
+      usesDraftKey={modelPicker.usesDraftKey}
+      maxAdditions={Math.max(0, VIDEO_SETTINGS_LIMITS.models - configuration.models.length)}
+      triggerRef={fetchModelsButton}
+      onClose={() => closePicker(modelPicker.token)}
+      onAdd={ids => addListedModels(modelPicker.token, ids)}/>}
   </div>;
 }
 

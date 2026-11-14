@@ -1,3 +1,5 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
+import type {SettingsReadPurpose} from './settings-diagnostics.ts';
 import { defaultVideoModels, VIDEO_REGIONS, VIDEO_PROVIDER_NAMES, videoConnectionEndpoint, normalizeCompatibleVideoBaseUrl, isVideoCatalogProvider } from '../../../packages/contracts/src/video-providers.ts';
 import type { CompatibleVideoCheck, CompatibleVideoCheckResult, VideoModelEntry, VideoProviderId } from '../../../packages/contracts/src/video-providers.ts';
 import {compatibleVideoCheckResultV2Schema, compatibleVideoCheckV2Schema, videoModelsListEndpoint, videoModelsListInputSchema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
@@ -17,7 +19,7 @@ export function safeVideoSettings(value: unknown): VideoSettingsSnapshotV2 {
   return parsed.data;
 }
 export interface VideoSettingsClient {
-  read(signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>;
+  read(signal?: AbortSignal, purpose?: SettingsReadPurpose): Promise<VideoSettingsSnapshotV2>;
   write(input: VideoSettingsUpdateV2, signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>;
   check?(input: CompatibleVideoCheck, signal?: AbortSignal): Promise<CompatibleVideoCheckResult>;
   modelsList?(input: VideoModelsListInput, signal?: AbortSignal): Promise<DraftServiceProbeResult>;
@@ -91,7 +93,8 @@ export function createVideoSettingsClient({ fetchImpl = globalThis.fetch, timeou
       external?.removeEventListener('abort', abort);
     }
   }
-  return { read: signal => request('GET', undefined, signal), write: (input, signal) => request('PUT', input, signal), check, modelsList };
+  return { read: (signal, purpose) => measureSettingsRead('generation-video', () => request('GET', undefined, signal), purpose),
+    write: (input, signal) => request('PUT', input, signal), check, modelsList };
 }
 export interface VideoSettingsState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'load_error' | 'review' | 'blocked' | 'reconciling';

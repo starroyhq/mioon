@@ -954,7 +954,9 @@ test('actual main centers and titles the launcher with its own window state', as
   const host = f.get('windowHost');
   assert.equal(host.showSettings('agent', editor), true);
   assert.equal(f.r.windows.length, 3);
-  assert.equal(f.r.windows[2]?.config.webPreferences.additionalArguments, undefined);
+  const settingsArgs = f.r.windows[2]?.config.webPreferences.additionalArguments;
+  assert.ok(Array.isArray(settingsArgs));
+  assert.deepEqual(Array.from(settingsArgs), ['--mioon-settings-locale=en', '--mioon-settings-theme=dark']);
   assert.deepEqual(f.trackedLaunchers.map(window => window.index), [launcher.index]);
 });
 

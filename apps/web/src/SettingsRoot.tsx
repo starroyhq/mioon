@@ -5,11 +5,11 @@ import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from './native-close-state.ts';
-import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
+import type { LauncherContractChecks } from './launcher-state.ts';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import ProjectEntryIdentityStatus from './ProjectEntryIdentityStatus.tsx';
-import {createProjectEntryIdentityOwner} from './project-entry-identity.ts';
+import {createSettingsWorkspaceIdentityOwner} from './project-entry-identity.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { createSettingsWindowNavigation } from './settings-window-state.ts';
 import { Button } from '@mioon/ui/components/button';
@@ -32,8 +32,8 @@ export interface SettingsRenderProps {
 type SettingsWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
 /** The singleton owns the same settings forms for its entire document life.
  * Requesting editors have no handle capable of clearing or disposing them. */
-export default function SettingsRoot({ context, bridge, rpc, contractChecks, renderSettings }: {
-  context: ProjectWindowContext; bridge: ProjectWindowBridge; rpc: LauncherRpc; contractChecks: LauncherContractChecks;
+export default function SettingsRoot({ context, bridge, contractChecks, renderSettings }: {
+  context: ProjectWindowContext; bridge: ProjectWindowBridge; contractChecks: LauncherContractChecks;
   renderSettings: (props: SettingsRenderProps) => ReactNode;
 }) {
   const { t, renderMessage } = useI18n();
@@ -45,7 +45,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   const receiveEntry = useRef<(next: ProjectWindowContext) => void>(() => {});
   const [navigation] = useState(() => createSettingsWindowNavigation({ context, registry, confirm, onChange: () => rerender(value => value + 1) }));
   const [workspace, setWorkspace] = useState<'pending' | 'ready' | 'failed'>('pending');
-  const [identity] = useState(() => createProjectEntryIdentityOwner({...(contractChecks.readDirectory ? {read: () => contractChecks.readDirectory!()} : {})}));
+  const [identity] = useState(() => createSettingsWorkspaceIdentityOwner(contractChecks.readIdentity ? {read: contractChecks.readIdentity} : {}));
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   const [closeFailed, setCloseFailed] = useState(false);
   const active = useRef(true), closeRequest = useRef<Promise<void> | null>(null);
@@ -102,7 +102,7 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
   }, [bridge, navigation, native, registry, pauseObservation, identity]);
   useEffect(() => receiveEntry.current(context), [context]);
   return <main className="project-home project-home-settings-window native-settings-panel"><header className="native-settings-panel-header"><span className="native-settings-panel-title">{t('settings.title')}</span>
-      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}</summary><div><ProjectEntryIdentityStatus owner={identity} /></div></details>
+      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}</summary><div><ProjectEntryIdentityStatus owner={identity} workspace /></div></details>
       <Button type="button" variant="ghost" className="native-settings-panel-close" data-testid="native-settings-panel-close" aria-label={t('common.closeSettings')} title={t('common.closeSettings')} onClick={() => { void requestClose(); }}><WorkbenchIcon name="close" /></Button>
     </header>
     <section className="project-home-settings" aria-label={t('settings.title')}>

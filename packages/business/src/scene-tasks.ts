@@ -200,8 +200,12 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   const row=db.prepare(`SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.fps') END AS fps,
    CASE WHEN json_valid(data) THEN json_extract(data,'$.width') END AS width,
    CASE WHEN json_valid(data) THEN json_extract(data,'$.height') END AS height FROM timelines WHERE projectId=?`).get(projectId);
+  if(!usesTimelineFrameTransaction(db)){
+   const width=row?.width,height=row?.height;
+   if(typeof width!=='number'||typeof height!=='number'||!(width>0)||!(height>0))return '9:16';
+   return width>height?'16:9':width<height?'9:16':'1:1';
+  }
   const ratio=timelineOutputRatio(row??DEFAULT_TIMELINE_OUTPUT_PRESET);
-  if(!usesTimelineFrameTransaction(db))return ratio==='16:9'||ratio==='1:1'?ratio:'9:16';
   if(!ratio)fail('SCENE_PROJECT_ASPECT_UNSUPPORTED');
   return ratio;
  }

@@ -27,7 +27,7 @@ function fixture(platform: NodeJS.Platform = 'darwin') {
     assetsVisible: true, inspectorVisible: false, timelineVisible: true,
     commands: Object.fromEntries(MENU_COMMAND_IDS.map(command => [command, true])) as Record<MenuCommandId, boolean>};
   let state: ApplicationMenuState = {canProject: true, canSettings: true, canShow: true, canFocusProjects: true, canHide: true, canClose: true,
-    canResize: true, canReload: true, canRestart: true, canEditText: true, canCommand: true, business,
+    canResize: true, canReload: true, canRestart: true, canExportDiagnostics: true, canEditText: true, canCommand: true, business,
     windows: [{id: 'synthetic-A', label: 'Scene A'}, {id: 'synthetic-B', label: 'Scene B'}]};
   const options = {platform, productName: 'Mioon Dev', state: () => state,
     action: (action: ApplicationMenuAction) => {calls.push(action);}, command: (command: MenuCommandId) => {calls.push(command);},
@@ -46,7 +46,10 @@ test('macOS menu separates application, project, view, editing and recovery comm
   assert.equal(find(file, 'app-close-window').accelerator, 'CmdOrCtrl+W');
   assert.equal(lookup(file, 'app-quit'), undefined, 'Quit belongs to the macOS app menu');
   assert.equal(lookup(file, 'app-reload'), undefined, 'Recovery is not a project editing action');
-  assert.ok(find(find(menu, 'menu-help').submenu as MenuItemConstructorOptions[], 'app-reload'));
+  const help = find(menu, 'menu-help').submenu as MenuItemConstructorOptions[];
+  assert.ok(find(help, 'app-reload'));
+  assert.equal(find(help, 'app-export-diagnostics').enabled, true);
+  assert.equal(lookup(file, 'app-export-diagnostics'), undefined);
   click(find(menu, 'app-close-window')); click(find(menu, 'app-quit'));
   assert.deepEqual(f.calls, ['close-window', 'quit']);
 });
@@ -72,12 +75,22 @@ test('native accelerators and shortcut help use one definition while Space and B
 test('callbacks retained before a modal or shutdown recheck current guards, including native recovery', () => {
   const f = fixture(), old = f.build();
   f.patch({canProject: false, canSettings: false, canShow: false, canFocusProjects: false, canHide: false, canClose: false, canResize: false,
-    canReload: false, canRestart: false, canEditText: false, canCommand: false});
+    canReload: false, canRestart: false, canExportDiagnostics: false, canEditText: false, canCommand: false});
   for (const id of ['app-new-project', 'app-open-project', 'app-settings', 'app-close-window', 'app-full-screen', 'app-reload', 'app-restart',
-    'command-export', 'command-clip-remove', 'command-edit-undo', 'project-window-synthetic-A']) click(find(old, id));
+    'app-export-diagnostics', 'command-export', 'command-clip-remove', 'command-edit-undo', 'project-window-synthetic-A']) click(find(old, id));
   assert.deepEqual(f.calls, []);
   const fresh = f.build(); assert.equal(find(fresh, 'command-export').enabled, false);
   assert.equal(find(fresh, 'app-settings').enabled, false); click(find(old, 'app-quit')); assert.deepEqual(f.calls, ['quit']);
+});
+
+test('Help diagnostics export is a native action independent of editor commands', () => {
+  const f = fixture('win32');
+  f.patch({canProject: false, canCommand: false, business: null});
+  const item = find(f.build(), 'app-export-diagnostics');
+  assert.equal(item.enabled, true);
+  assert.equal(item.accelerator, undefined);
+  click(item);
+  assert.deepEqual(f.calls, ['export-diagnostics']);
 });
 
 test('text focus permits native Undo without granting a disabled timeline operation', () => {
@@ -124,7 +137,7 @@ test('all four menu locales retain platform groups and the explicit development 
     for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
       setNativeLanguageReader(() => locale); const menu = fixture().build();
       assert.equal(menu[0].label, 'Mioon Dev'); assert.ok(find(menu, 'app-quit').label?.includes('Mioon Dev'));
-      for (const id of ['menu-file', 'menu-view', 'menu-clip', 'menu-help', 'command-import-media', 'command-export']) assert.ok(find(menu, id).label);
+      for (const id of ['menu-file', 'menu-view', 'menu-clip', 'menu-help', 'command-import-media', 'command-export', 'app-export-diagnostics']) assert.ok(find(menu, id).label);
     }
   } finally {setNativeLanguageReader(() => 'zh-Hans');}
 });

@@ -3,6 +3,8 @@ import {projectEntryWindowSchema,projectEntryWindowRevokedSchema} from '../../..
 import type {ProjectEntryControlPort,ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowId, isProjectWindowRequest, isProjectWindowSettingsSlot, isProjectWindowEntryMode, projectWindowOpenFailure } from './project-window-protocol.ts';
 import type { ProjectWindowContext, ProjectWindowEntryMode, ProjectWindowEntryReceipt, ProjectWindowOpenResult, ProjectWindowRole, ProjectWindowSettingsSlot, ProjectWindowPhase, ProjectWindowLocatorStatus, ProjectWindowLocatorIntent, ProjectWindowOpenFailure } from './project-window-protocol.ts';
+import type { SettingsDiagnosticRequest, SettingsOpenPhase } from './settings-diagnostics-protocol.ts';
+import type { SettingsOpeningDiagnostics } from './settings-opening-diagnostics.ts';
 
 type Listener = (...args: unknown[]) => void;
 interface EventSource { on(event: string, listener: Listener): unknown; removeListener(event: string, listener: Listener): unknown }
@@ -52,6 +54,9 @@ export interface ProjectWindowHostOptions<W extends ProjectNativeWindow> {
   /** Install only the passive shell policy, returning its retirement hook. */
   prepareWarmSettings?(window: W, url: string): () => void;
   discardWarmSettings?(window: W): void;
+  warmSettingsMatches?(window: W): boolean;
+  settingsDiagnostics?: SettingsOpeningDiagnostics<W>;
+  settingsBootAckTimeoutMs?: number;
   /** Main may withhold explicit focus restoration after the user switches to
    * another app while an asynchronous settings close is being admitted. */
   canRestoreParentFocus?(parent: W): boolean;
@@ -119,6 +124,9 @@ interface WindowRecord<W extends ProjectNativeWindow> {
   revealIntent: number; revealFence: number; readyToShow: boolean; focusOrder: number;
   entryMode: ProjectWindowEntryMode | null; entryVersion: number; entryReceipt: ProjectWindowEntryReceipt | null; entryAttempt: EntryAttempt | null;
   settingsSlot: ProjectWindowSettingsSlot | null; settingsVersion: number;
+  settingsLoadTimes?: Partial<Record<SettingsOpenPhase, number>>;
+  settingsBoot?: 'reloading' | 'started' | 'done';
+  settingsBootTimer?: ReturnType<typeof setTimeout>;
   initialLoad: { contextId: string; started: boolean; frame: ProjectWindowFrame | null };
   load: Promise<void>; owner: ProjectWindowOwner<W>;
   listeners: Array<{ target: EventSource; event: string; listener: Listener }>;
@@ -157,6 +165,12 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   // exact parent requests it. Native dispatch never sees a dormant shell.
   let warmSettings: {record: WindowRecord<W>; parent: ProjectWindowDocumentOwner<W>; release: () => void; loaded: boolean} | null = null;
   const lifetime = () => !disposed && options.isCurrent();
+  const diagnostics = options.settingsDiagnostics;
+  function settingsPhase(record: WindowRecord<W>, phase: SettingsOpenPhase, at = Date.now()): void {
+    if (record.role !== 'settings') return;
+    if (record.settingsLoadTimes) record.settingsLoadTimes[phase] ??= at;
+    diagnostics?.phase(record.window, phase, at);
+  }
   function retireWarmSettings(): void {
     const warm = warmSettings;
     if (!warm) return;
@@ -265,12 +279,14 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     // back over another project's newer foreground window.
     if (focus && record.role === 'settings' && record.parent?.window.isMinimized()) record.parent.window.restore();
     if (focus && record.window.isMinimized()) record.window.restore();
-    if (focus) { record.window.show(); record.window.focus(); record.focusOrder = ++focusOrder; }
+    settingsPhase(record, 'showRequested');
     // macOS attaches a modal sheet in show(), not showInactive(). A settings
     // load that finishes after another editor gained focus still needs its
     // native parent binding, without explicitly taking the newer focus.
-    else if (record.role === 'settings') record.window.show();
+    if (focus || record.role === 'settings') record.window.show();
     else record.window.showInactive();
+    settingsPhase(record, 'showReturned');
+    if (focus) { record.window.focus(); record.focusOrder = ++focusOrder; }
     return true;
   }
   function hideLauncher() {
@@ -371,6 +387,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     catch(error){if(projectId)reservations.delete(projectId);throw error;}
     const windowId = lease?.windowId??randomUUID(), contextId = randomUUID();
     const autoOpen = role === 'launcher' && !launcherCreated && options.autoOpenLauncher !== false;
+    const createStarted = role === 'settings' ? Date.now() : undefined;
     let window: W, contents: ProjectWindowWebContents;
     try {
       window = options.createWindow({ role, windowId, contextId, backendId: options.backendId, projectId, autoOpen, url, ...(parent ? {parent: parent.window} : {}) });
@@ -390,6 +407,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       frame: null, revealIntent, revealFence: fence, readyToShow: false, focusOrder: warmParent ? 0 : ++focusOrder,
       entryMode: null, entryVersion: 0, entryReceipt: null, entryAttempt: null, settingsSlot: null, settingsVersion: 0,
       initialLoad, load: Promise.resolve(), owner, listeners: [], lease, pending };
+    if (createStarted !== undefined) record.settingsLoadTimes = {createStarted, created: Date.now()};
     const isWarm = () => warmSettings?.record === record;
     const isLoadingOwner = () => ownsRecord(record) || isWarm() && lifetime() && !window.isDestroyed();
     if (warmParent) {
@@ -408,6 +426,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     listen(record, window, 'closed', () => {
       if (record.closed) return;
       if (isWarm()) { retireWarmSettings(); return; }
+      clearTimeout(record.settingsBootTimer);
+      if (role === 'settings') diagnostics?.close(window);
       const attached = modalFor(record);
       const restoreParentFocus = role === 'settings' && parent &&
         ![...records.values()].some(other => other !== record && !other.closed && other.focusOrder > record.focusOrder);
@@ -443,12 +463,14 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     };
     contents.on('destroyed', destroyed);
     listen(record, window, 'show', () => {
+      if (ownsRecord(record)) settingsPhase(record, 'show');
       if (ownsRecord(record) && (record.pending || role === 'launcher' && hasOpenEditor() && !nativeDialogPresentation.has(record))) window.hide();
     });
     listen(record, window, 'focus', () => { if (ownsRecord(record)) record.focusOrder = ++focusOrder; });
     listen(record, window, 'ready-to-show', () => {
       if (!isLoadingOwner()) return;
       record.readyToShow = true;
+      settingsPhase(record, 'readyToShow');
       if (isWarm()) return;
       if (role === 'launcher') { if (record.revealIntent === intent) reveal(record); }
       else reveal(record, record.revealIntent === intent);
@@ -468,6 +490,11 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       const previousContext = record.contextId;
       const firstAssignedLoad = !initialLoad.started && initialLoad.contextId === previousContext && target === url;
       if (isWarm() && !firstAssignedLoad) { retireWarmSettings(); return; }
+      diagnostics?.resetDocument(window);
+      if (role === 'settings') {
+        clearTimeout(record.settingsBootTimer);
+        record.settingsBoot = undefined;
+      }
       invalidateDocument(record); retireLocator(record);
       retireCandidateFor(record);
       record.committed = false; record.frame = null; record.contextId = randomUUID();
@@ -490,6 +517,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (role === 'settings') listen(record, contents, 'did-finish-load', () => {
       // The static settings page has subscribed by this point. Reloads also
       // need an activation event after their new document is committed.
+      settingsPhase(record, 'didFinishLoad');
       sendContext(record);
     });
     try { if (!warmParent) options.prepareWindow?.(window, owner); }
@@ -589,7 +617,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (record.readyToShow || record.phase === 'ready' || record.phase === 'failed') reveal(record);
     refresh(); return true;
   }
-  function showSettings(slot: ProjectWindowSettingsSlot, focused?: W | null): boolean {
+  function showSettings(slot: ProjectWindowSettingsSlot, focused?: W | null, receivedAt = Date.now()): boolean {
     if (!isProjectWindowSettingsSlot(slot) || !permitted() || settings && !ownsRecord(settings)) return false;
     const source = focused ? records.get(focused) : undefined;
     if (focused && (!source || !ownsRecord(source) || source.pending || isClosing(source))) return false;
@@ -600,13 +628,83 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       if (!parent || !trustedDocument(parent) || parent.phase === 'closing') return false;
     }
     intent++;
-    const record = settings ?? promoteWarmSettings(parent) ?? create('settings', null, intent, parent);
+    const existing = settings;
+    const promoted = existing ? null : promoteWarmSettings(parent);
+    const record = existing ?? promoted ?? create('settings', null, intent, parent);
     if (!record || record.phase === 'closing') return false;
+    const mode = existing ? 'existing' : promoted ? 'warm' : 'cold';
+    diagnostics?.begin(record.window, source?.window, mode, receivedAt, mode === 'existing' ? {} : record.settingsLoadTimes ?? {});
+    if (promoted) settingsPhase(record, 'promoted');
     allowExplicitReveal(record);
     record.settingsSlot = slot; record.settingsVersion++; record.revealIntent = intent; record.revealFence = fence;
+    if (promoted && options.settingsBootAckTimeoutMs !== undefined) watchWarmActivation(record, options.settingsBootAckTimeoutMs);
     // Tell the child to start loading before AppKit presents its painted shell.
     if (record.readyToShow) { sendContext(record); reveal(record); }
     refresh();
+    return true;
+  }
+  function watchWarmActivation(record: WindowRecord<W>, timeout: number): void {
+    const owner = capture(record);
+    if (!owner) return;
+    record.settingsBootTimer = setTimeout(() => {
+      record.settingsBootTimer = undefined;
+      if (!owner.isCurrent() || !permitted() || isClosing(record) || record.settingsBoot) return;
+      // The boot document cannot start importing the app without our ACK.
+      // Reload only this exact idle shell. Keep its native modal and owner slot.
+      record.settingsBoot = 'reloading';
+      settingsPhase(record, 'warmFallback');
+      let expectedContextId = owner.contextId;
+      const stop = () => record.contents.removeListener('did-start-navigation', started);
+      const started: Listener = (details, legacyUrl, legacyInPlace, legacyMainFrame) => {
+        const value = details && typeof details === 'object' ? details as Record<string, unknown> : null;
+        const mainFrame = value && 'isMainFrame' in value ? value.isMainFrame : legacyMainFrame;
+        const sameDocument = value && 'isSameDocument' in value ? value.isSameDocument : legacyInPlace;
+        const target = value && 'url' in value ? value.url : legacyUrl;
+        if (mainFrame === false || sameDocument === true || target !== record.url) return;
+        // The host's navigation listener runs first and rotates the document ID.
+        expectedContextId = record.contextId;
+        stop();
+      };
+      const failed = (error: unknown) => {
+        stop();
+        if (error && typeof error === 'object' &&
+          (('code' in error && error.code === 'ERR_ABORTED') || ('errno' in error && error.errno === -3))) return;
+        if (!ownsRecord(record) || !permitted() || isClosing(record) || record.contextId !== expectedContextId) return;
+        const url = currentUrl(record);
+        if (url !== record.url && url !== '' && url !== 'about:blank') return;
+        options.onLoadError?.(error, record.window, record.owner);
+      };
+      record.contents.on('did-start-navigation', started);
+      try { void record.window.loadURL(record.url).then(stop, failed); }
+      catch (error) { failed(error); }
+    }, timeout);
+    record.settingsBootTimer.unref?.();
+  }
+
+  function recordSettingsDiagnostic(event: ProjectWindowIPCEvent, request: SettingsDiagnosticRequest): boolean {
+    const record = contentsRecords.get(event.sender);
+    if (!record || !trustedDocument(record) || event.senderFrame !== record.frame || event.senderFrame !== event.sender.mainFrame ||
+      event.senderFrame?.url !== record.url || !permitted() || options.rendererPaused?.() || isClosing(record)) return false;
+    if (request.kind === 'click') {
+      if (record.role === 'settings' || record.pending || trayHidden || hiddenForTray.has(record)) return false;
+      diagnostics?.click(record.window, request);
+      return true;
+    }
+    if (record.role !== 'settings' || !record.settingsSlot) return false;
+    if (request.kind === 'read') {
+      if (record.settingsBoot !== 'started' && record.settingsBoot !== 'done') return false;
+      diagnostics?.read(record.window, request);
+      return true;
+    }
+    if (request.phase === 'start') {
+      if (record.settingsBoot) return false;
+      record.settingsBoot = 'started';
+      clearTimeout(record.settingsBootTimer);
+    } else if (request.phase !== 'import') {
+      if (record.settingsBoot !== 'started') return false;
+      record.settingsBoot = 'done';
+    } else if (record.settingsBoot !== 'started') return false;
+    diagnostics?.boot(record.window, request.phase, request.at);
     return true;
   }
   function prewarmSettings(window: W): void {
@@ -628,6 +726,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (!warm) return null;
     const {record} = warm;
     if (!parent || warm.parent.window !== parent.window || !warm.parent.isCurrent() || !warm.loaded || !record.readyToShow || !record.committed ||
+      options.warmSettingsMatches?.(record.window) === false ||
       record.frame !== record.contents.mainFrame || currentUrl(record) !== record.url || record.window.isDestroyed()) {
       retireWarmSettings();
       return null;
@@ -836,6 +935,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     refresh(); return true;
   }
   function dispatch(event: ProjectWindowIPCEvent, request: unknown): ProjectWindowContext | Promise<ProjectWindowOpenResult> | boolean {
+    const receivedAt = Date.now();
     if (!isProjectWindowRequest(request)) throw new Error('Rejected project-window request');
     const record = contentsRecords.get(event.sender);
     if (!record || !trustedDocument(record) || event.senderFrame !== record.frame || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== record.url)
@@ -856,7 +956,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     }
     if (request.action === 'projects' || request.action === 'project-entry') return record.role !== 'settings' &&
       requestProjectEntry(request.action === 'projects' ? 'open' : request.mode, record.window);
-    if (request.action === 'settings') return showSettings(request.slot, record.window);
+    if (request.action === 'settings') return showSettings(request.slot, record.window, receivedAt);
     if (request.action === 'settings-close') {
       if (record.role !== 'settings' || !permitted()) return false;
       // Main's native close admission owns dirty inspection and any one-use
@@ -1013,7 +1113,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   return {
     ensureLauncher, activate, requestProjectEntry, openPath, restoreProject, adoptPrepared, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings, prewarmSettings, invalidateWarmSettings,
-    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, isCandidate, candidateSourceWindow, rendererGone,
+    dispatch, recordSettingsDiagnostic, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, isCandidate, candidateSourceWindow, rendererGone,
     canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor, reserveClosedProjectAction,
     settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },
@@ -1030,6 +1130,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       for(const lease of [...leases.values()])releaseLease(lease);
       nativeDialogOwners.clear();
       for (const record of records.values()) {
+        clearTimeout(record.settingsBootTimer);
+        if (record.role === 'settings') diagnostics?.close(record.window);
         if (record.pending) completeCandidate(record, record.pending, refused('busy'));
         for (const entry of record.listeners) entry.target.removeListener(entry.event, entry.listener);
       }

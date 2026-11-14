@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
 import {VIDEO_BUILTIN_PROVIDER_IDS, videoConnectionConfigurationV2Schema} from '../packages/contracts/src/generation-video-settings.ts';
 import type {VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../packages/contracts/src/generation-video-settings.ts';
+import {VIDEO_SETTINGS_LIMITS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoSettingsClient} from '../apps/web/src/video-settings.ts';
 import {newVideoConnection, videoSettingsEndpoint, videoSettingsRequestEndpoint} from '../apps/web/src/video-settings.ts';
 import {createGenerationVideoServicesSession, generationVideoAvailable, generationVideoDirty} from '../apps/web/src/generation-video-services.ts';
@@ -43,6 +44,55 @@ test('six stable built-in drafts and clean preparation never create settings rec
   f.session.update('video:wan', {workspaceId: 'draft-workspace'}); const id = f.session.getState().drafts.find(draft => draft.key === 'video:wan')!.configuration.id;
   assert.equal(f.session.discard(), true); assert.equal(f.session.getState().drafts.find(draft => draft.key === 'video:wan')!.configuration.workspaceId, '');
   assert.equal(f.session.getState().drafts.find(draft => draft.key === 'video:wan')!.configuration.id, id);
+});
+
+test('selected listed video models are appended enabled without changing existing models or writing before save', async t => {
+  const f = await fixture(t);
+  const key = 'video:ark';
+  const template = f.session.getState().drafts.find(draft => draft.key === key)!.configuration.models[0]!;
+  assert.equal(f.session.update(key, {models: [
+    {...template, enabled: false},
+    {...template, id: crypto.randomUUID(), modelId: 'doubao-seedance-2-0-existing', inputModes: ['text']},
+  ]}), true);
+  const before = f.session.getState();
+  const existing = before.drafts.find(draft => draft.key === key)!.configuration.models;
+  const added = 'doubao-seedance-2-0-synthetic';
+  assert.equal(f.session.stageModels(key, before.version, [existing[0]!.modelId, added, added]), true);
+  const after = f.session.getState();
+  const configuration = after.drafts.find(draft => draft.key === key)!.configuration;
+  assert.deepEqual(configuration.models.slice(0, -1), existing);
+  assert.equal(configuration.models.length, existing.length + 1);
+  const entry = configuration.models.at(-1)!;
+  assert.deepEqual([entry.modelId, entry.name, entry.enabled, entry.inputModes], [added, added, true, ['text', 'image', 'frames']]);
+  assert.equal(videoConnectionConfigurationV2Schema.safeParse(configuration).success, true);
+  assert.deepEqual(after.drafts.filter(draft => draft.key !== key), before.drafts.filter(draft => draft.key !== key));
+  assert.equal(generationVideoDirty(after), true);
+  assert.deepEqual((await f.settings.get()).connections, []);
+  assert.equal(f.writes.length, 0);
+  const ticket = f.prepare()!;
+  assert.equal(await ticket.run(), 'saved');
+  ticket.dispose();
+  assert.deepEqual((await f.settings.get()).connections[0]!.configuration.models, configuration.models);
+});
+
+test('listed video selections reject stale, unsupported, invalid and over-capacity batches without changing the draft', async t => {
+  const f = await fixture(t), key = 'video:veo';
+  const before = f.session.getState();
+  assert.equal(f.session.stageModels('video:kling', before.version, ['synthetic-kling']), false);
+  assert.equal(f.session.stageModels(key, before.version, ['veo-synthetic', 'models/invalid']), false);
+  assert.deepEqual(f.session.getState(), before);
+  const template = before.drafts.find(draft => draft.key === key)!.configuration.models[0]!;
+  const almostFull = Array.from({length: VIDEO_SETTINGS_LIMITS.models - 1}, (_, index) => ({
+    ...template, id: crypto.randomUUID(), modelId: `veo-synthetic-${index}`,
+  }));
+  assert.equal(f.session.update(key, {models: almostFull}), true);
+  const changed = f.session.getState();
+  assert.equal(f.session.stageModels(key, before.version, ['veo-stale']), false);
+  assert.equal(f.session.stageModels(key, changed.version, ['veo-one', 'veo-two']), false);
+  assert.deepEqual(f.session.getState(), changed);
+  assert.equal(f.session.stageModels(key, changed.version, ['veo-one']), true);
+  assert.equal(f.session.getState().drafts.find(draft => draft.key === key)!.configuration.models.length, VIDEO_SETTINGS_LIMITS.models);
+  assert.equal(f.writes.length, 0);
 });
 
 test('two independent service keys become one CAS batch, with no key in draft events or accepted state', async t => {

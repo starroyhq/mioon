@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {WorkbenchAlert,WorkbenchBadge,WorkbenchButton} from '@mioon/ui/components/workbench-controls';
 import {useI18n} from './i18n/I18nProvider.tsx';
@@ -17,19 +18,20 @@ export default function SettingsVideoTools({active,onNavigationStateChange}:{act
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useLayoutEffect(()=>{const owner=reporter.connect(onNavigationStateChange,{dirty,phase:pathBusy?'saving':'ready'});return()=>reporter.disconnect(owner);},[reporter,onNavigationStateChange]);
  useLayoutEffect(()=>{reporter.update({dirty,phase:pathBusy?'saving':'ready'});},[reporter,dirty,pathBusy]);
- useEffect(()=>{if(!active||saved)return;let live=true;const abort=new AbortController();void (native?native.read():readWorkspaceInfo(abort.signal,'metadata').then(info=>info.tools)).then(value=>{if(live){setSaved(value);pathsRef.current=value;setPaths(value);setFailed(false);}}).catch(()=>{if(live)setFailed(true);});return()=>{live=false;abort.abort();};},[active,native,saved]);
+ useEffect(()=>{if(!active||saved)return;let live=true;const abort=new AbortController();void measureSettingsRead('video-tools',()=>native?native.read():readWorkspaceInfo(abort.signal,'metadata').then(info=>info.tools)).then(value=>{if(live){setSaved(value);pathsRef.current=value;setPaths(value);setFailed(false);}}).catch(()=>{if(live)setFailed(true);});return()=>{live=false;abort.abort();};},[active,native,saved]);
  const edit=(name:'ffmpeg'|'ffprobe',value:string)=>{if(!visible.current||busyRef.current)return;const next={...pathsRef.current,[name]:value};pathsRef.current=next;reporter.update({dirty:saved!==null&&!same(saved,next),phase:'ready'});setPaths(next);setResult(null);};
- const run=async(save:boolean)=>{
+ const run=async(save:boolean,opening=false)=>{
   if(!visible.current||busyRef.current)return;
   busyRef.current=true;reporter.update({dirty,phase:'saving'});setBusy(true);setFailed(false);
   const frozen={...pathsRef.current};
   try{
-   const value=native?await(save?native.save(frozen):native.check(frozen)):await checkConfiguredMediaTools();
+   const check=()=>native?(save?native.save(frozen):native.check(frozen)):checkConfiguredMediaTools();
+   const value=await (opening?measureSettingsRead('video-tools-check',check):check());
    if(mounted.current){setResult(value);if(save){setSaved(frozen);setPathsSaved(true);}}
   }catch{if(mounted.current)setFailed(true);}
   finally{busyRef.current=false;if(mounted.current)setBusy(false);}
  };
- useEffect(()=>{if(active&&saved&&!initialCheck.current){initialCheck.current=true;void run(false);}},[active,saved]);
+ useEffect(()=>{if(active&&saved&&!initialCheck.current){initialCheck.current=true;void run(false,true);}},[active,saved]);
  // Stable callbacks for the download card; they only touch state setters and refs.
  const [installed]=useState(()=>(value:ToolPaths,diagnostics:MediaToolDiagnostics)=>{if(!mounted.current)return;pathsRef.current=value;setSaved(value);setPaths(value);setResult(diagnostics);setFailed(false);setPathsSaved(true);reporter.update({dirty:false,phase:'ready'});});
  // A running download blocks path edits; it starts only while no path operation runs.

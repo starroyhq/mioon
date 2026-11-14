@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {WorkbenchAlert,WorkbenchBadge,WorkbenchButton,WorkbenchProgress} from '@mioon/ui/components/workbench-controls';
 import {useI18n} from './i18n/I18nProvider.tsx';
@@ -20,7 +21,7 @@ export default function SettingsMediaToolsDownload({native,active,saved,onInstal
  const {t}=useI18n(),[status,setStatus]=useState<MediaToolsStatus|null>(null),[failure,setFailure]=useState<string|null>(null),[running,setRunning]=useState(false);
  const mounted=useRef(true),runningRef=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- const refresh=useCallback(async()=>{try{const value=await native.mediaToolsStatus();if(mounted.current)setStatus(value);}catch{/* The offer stays hidden without a status. */}},[native]);
+ const refresh=useCallback(async()=>{try{const value=await measureSettingsRead('video-tools-status',()=>native.mediaToolsStatus());if(mounted.current)setStatus(value);}catch{/* The offer stays hidden without a status. */}},[native]);
  useEffect(()=>{if(active)void refresh();},[active,refresh]);
  const installing=running||(status!==null&&ACTIVE.has(status.progress.phase));
  useEffect(()=>{onBusyChange?.(installing);},[installing,onBusyChange]);

@@ -12,6 +12,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | --- | --- |
 | `GET /api/background-tasks` | S3-A应用级只读任务等待摘要：`limit`为1–100（默认50）、`after`为项目ID游标；返回`version:1`、`projects[{projectId,taskCount,reasonCodes}]`和`nextCursor`，最多256KiB。只列项目打不开且有未结束任务的项，不打开项目，不提供结果弃置；独立契约`@mioon/contracts/background-task-query` |
 | `GET /api/project-entries` | 只读登记目录、availability、封面缓存地址、应用库与服务实例身份，以及新建项目所用格式 `newProjectFormatVersion`（3 或 4，旧服务可省略）。网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项。不扫描目录，不 acquire 运行时 |
+| `GET /api/project-entries/identity` | 同一认证边界下只读返回 `appLibraryScope` 和 `instanceId`。桌面设置用来确认当前应用库和服务归属，无需加载登记目录、扫描项目或读取其文件头 |
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
@@ -447,9 +448,10 @@ Storyboards (2026-10-25):
   `frameCount`); a number outside the result fails with `SCENE_SEGMENTS_INVALID`.
 - Each shot is titled `<titlePrefix> NN` by segment number (default prefix
   `参考`), lasts the segment's length rounded to whole seconds within 1–20, has an
-  empty prompt. Format 3 uses the legacy portrait, landscape or square ratios
-  with `9:16` as the fallback for non-preset geometry. Format 4 freezes the
-  current frame ratio at acceptance and uses `9:16` before a timeline exists.
+  empty prompt. Format 3 infers portrait (`9:16`), landscape (`16:9`) or square
+  (`1:1`) from the timeline dimensions and uses `9:16` if they are unavailable
+  or invalid. Format 4 freezes the current frame ratio at acceptance and uses
+  `9:16` before a timeline exists.
   An unsupported format 4 frame gives `SCENE_PROJECT_ASPECT_UNSUPPORTED` (409)
   with the exact not-accepted proof when available. The shot's only reference is the
   keyframe at the segment's middle frame. Shots are laid out in rows of six from

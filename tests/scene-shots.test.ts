@@ -262,38 +262,44 @@ test('without a position the batch goes below the canvas content and continues t
  assert.deepEqual([(shot)!.title,(shot)!.position,(shot)!.orderIndex,(shot)!.aspectRatio],['参考 02',{x:80,y:1360},5,'9:16']);
 });
 
-test('non-preset project geometry falls back to portrait in format 3 and is refused before storyboard acceptance in format 4', async t=>{
- for(const canvas of [false,true]){
-  const f=fixture(t,{canvas}),resultId=await f.detected();
+for(const {width,height,aspectRatio} of [
+ {width:1600,height:1000,aspectRatio:'16:9'},
+ {width:1000,height:1600,aspectRatio:'9:16'},
+ {width:1000,height:1000,aspectRatio:'1:1'},
+])test(`format 3 infers the storyboard ratio ${aspectRatio} from non-preset geometry ${width}x${height}`, async t=>{
+  const f=fixture(t),resultId=await f.detected();
   f.store.db.prepare('INSERT INTO timelines(id,projectId,data) VALUES(?,?,?)')
-   .run(randomUUID(),f.project.id,JSON.stringify({projectId:f.project.id,fps:30,width:1600,height:1000}));
+   .run(randomUUID(),f.project.id,JSON.stringify({projectId:f.project.id,fps:30,width,height}));
   const input=f.input(resultId,{segments:[1]});
-  if(canvas){
-   const before=rows(f.store.db);
-   let refusal: {code: string; message: string; details: unknown} | undefined;
-   await assert.rejects(f.call('scene.shots.create',input),error=>{
-    assert.ok(error instanceof Error && 'code' in error && typeof error.code==='string' && 'details' in error);
-    refusal={code:error.code,message:error.message,details:error.details};
-    return refused('SCENE_PROJECT_ASPECT_UNSUPPORTED','scene.shots.create',input)(error);
-   });
-   const client=createClient({
-    env:{MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:'storyboard-test-token'},
-    fetchImpl:async()=>new Response(JSON.stringify({ok:false,error:refusal}),{status:409}),
-   });
-   await assert.rejects(client.rpc('scene.shots.create',input),error=>{
-    assert.match(String((error as {code?: string}).code),/^SCENE_PROJECT_ASPECT_UNSUPPORTED$/);
-    assert.equal((error as {details?: {submissionMayHaveSucceeded?: boolean}}).details?.submissionMayHaveSucceeded,false);
-    return true;
-   });
-   assert.equal(rows(f.store.db),before);
-   assert.equal(f.decodes,0);
-   continue;
-  }
   const ack=await f.call('scene.shots.create',input),done=await f.state(ack.id,'succeeded');
-  assert.equal(ack.aspectRatio,'9:16');
-  assert.equal(f.store.get('shots',done.shots![0]!.shotId)!.aspectRatio,'9:16');
+  assert.equal(ack.aspectRatio,aspectRatio);
+  assert.equal(f.store.get('shots',done.shots![0]!.shotId)!.aspectRatio,aspectRatio);
   assert.deepEqual(await f.call('scene.shots.create',input),ack);
- }
+});
+
+test('format 4 refuses non-preset project geometry before storyboard acceptance', async t=>{
+ const f=fixture(t,{canvas:true}),resultId=await f.detected();
+ f.store.db.prepare('INSERT INTO timelines(id,projectId,data) VALUES(?,?,?)')
+  .run(randomUUID(),f.project.id,JSON.stringify({projectId:f.project.id,fps:30,width:1600,height:1000}));
+ const input=f.input(resultId,{segments:[1]});
+ const before=rows(f.store.db);
+ let refusal: {code: string; message: string; details: unknown} | undefined;
+ await assert.rejects(f.call('scene.shots.create',input),error=>{
+  assert.ok(error instanceof Error && 'code' in error && typeof error.code==='string' && 'details' in error);
+  refusal={code:error.code,message:error.message,details:error.details};
+  return refused('SCENE_PROJECT_ASPECT_UNSUPPORTED','scene.shots.create',input)(error);
+ });
+ const client=createClient({
+  env:{MIOON_BASE_URL:'http://127.0.0.1:4318',MIOON_TOKEN:'storyboard-test-token'},
+  fetchImpl:async()=>new Response(JSON.stringify({ok:false,error:refusal}),{status:409}),
+ });
+ await assert.rejects(client.rpc('scene.shots.create',input),error=>{
+  assert.match(String((error as {code?: string}).code),/^SCENE_PROJECT_ASPECT_UNSUPPORTED$/);
+  assert.equal((error as {details?: {submissionMayHaveSucceeded?: boolean}}).details?.submissionMayHaveSucceeded,false);
+  return true;
+ });
+ assert.equal(rows(f.store.db),before);
+ assert.equal(f.decodes,0);
 });
 
 test('storyboards freeze each exact project frame ratio at acceptance and replay the original ratio', async t=>{

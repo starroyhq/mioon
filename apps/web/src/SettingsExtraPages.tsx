@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { readWorkspaceInfo } from './workspace-info-client.ts';
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import type { WorkspaceMetadata } from '../../../packages/contracts/src/workspace-info.ts';
 import {MENU_COMMAND_ACCELERATORS, MENU_COMMAND_LOCAL_SHORTCUTS, MENU_COMMAND_WINDOWS_REDO_SHORTCUT} from '../../desktop/src/menu-command-protocol.ts';
 
@@ -24,7 +25,7 @@ export function SettingsShortcuts() {
 }
 export function SettingsAbout({ active }: { active: boolean }) {
   const { t } = useI18n(), [info, setInfo] = useState<WorkspaceMetadata | null>(null), [failed, setFailed] = useState(false);
-  useEffect(() => { if (!active) return; let live = true; const abort = new AbortController(); void readWorkspaceInfo(abort.signal,'metadata').then(value => { if (live) { setInfo(value); setFailed(false); } }).catch(() => { if (live) setFailed(true); }); return () => { live = false; abort.abort(); }; }, [active]);
+  useEffect(() => { if (!active) return; let live = true; const abort = new AbortController(); void measureSettingsRead('about', () => readWorkspaceInfo(abort.signal,'metadata')).then(value => { if (live) { setInfo(value); setFailed(false); } }).catch(() => { if (live) setFailed(true); }); return () => { live = false; abort.abort(); }; }, [active]);
   return <section className="settings-about" data-testid="settings-about"><h2>Mioon</h2><dl><div><dt>{t('redesign.settings.version')}</dt><dd>{info?.version ?? '—'}</dd></div><div><dt>{t('redesign.settings.channel')}</dt><dd>{info ? t(info.channel === 'development' ? 'redesign.settings.development' : 'redesign.settings.stable') : '—'}</dd></div></dl>
     {failed && <p role="status">{t('workspace.info.failed')}</p>}<p>{info?.dataDirectory}</p><h3>{t('redesign.settings.licenses')}</h3><p>React · MIT<br />Base UI · MIT<br />React Flow · MIT<br />Tailwind CSS · MIT<br />Electron · MIT</p><p>{t('redesign.settings.ffmpegNotice')}</p>
   </section>;
