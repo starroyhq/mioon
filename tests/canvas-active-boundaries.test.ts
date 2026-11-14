@@ -259,3 +259,30 @@ test('timeline seeding uses active shots while an existing clip and its source v
   const freshSelection = {...selection, expectedRevision: selectionAck.revision, requestId: randomUUID()};
   await assertArchivedMutation(f.store, f.call('version.select', freshSelection), live.id, freshSelection.requestId);
 });
+
+test('archive undo restores shot order and preserves a version selected on a surviving shot', async t => {
+  const f = await fixture(t), {projectId} = f;
+  const first = await f.shot('Archive this shot'), second = await f.shot('Select a new version here'), third = await f.shot('Keep this shot');
+  const asset = f.asset('video/mp4', 'generated'), jobId = randomUUID(), versionId = randomUUID();
+  f.store.put('jobs', {id: jobId, projectId, shotId: second.id, versionId, assetId: asset.id, status: 'succeeded',
+    snapshot: {projectId, shotId: second.id}});
+  f.store.put('versions', {id: versionId, projectId, shotId: second.id, jobId, assetId: asset.id, number: 1, sha256: asset.sha256});
+
+  const history = async () => canvasEditingResponses['canvas.history.get'].parse(await f.call('canvas.history.get', {projectId}));
+  const initial = await history();
+  await f.call('canvas.apply', {projectId, operation: 'archive', historyRevision: initial.revision,
+    requestId: createCanvasRequestId(initial.requestEpoch, randomUUID()),
+    targets: [{kind: 'shot', id: first.id, revision: readMioTargetRevision(f.store.db, projectId, 'shot', first.id)}]});
+  const visible = (await f.call('project.get', {projectId})).shots;
+  assert.deepEqual(visible.map(shot => [shot.id, shot.orderIndex]), [[second.id, 0], [third.id, 1]]);
+  const selected = await f.call('version.select', {shotId: second.id, versionId,
+    expectedRevision: visible[0]!.revision, requestId: randomUUID()});
+  const updated = await history();
+  assert.equal(updated.conflict, false);
+  await f.call('canvas.history.undo', {projectId, historyRevision: updated.revision,
+    requestId: createCanvasRequestId(updated.requestEpoch, randomUUID())});
+  const restored = (await f.call('project.get', {projectId})).shots;
+  assert.deepEqual(restored.map(shot => [shot.id, shot.orderIndex]), [[first.id, 0], [second.id, 1], [third.id, 2]]);
+  assert.equal(restored[1]!.selectedVersionId, versionId);
+  assert.equal(restored[1]!.revision, selected.revision + 1);
+});

@@ -237,6 +237,9 @@ test('format 4 versions restore and copy exact archive fields while older bodies
   const copyVersions = (destination: typeof copy) => destination.store.tx(() => copyProjectVersionsToNewProjectInside(target.store.db,
     destination.store.db, {sourceProjectId: projectId, projectId: destination.projectId, sourceProjectDir: target.store.projectDir,
       targetProjectDir: destination.store.projectDir}));
+  copy.store.db.exec('UPDATE main.canvas_receipt_window SET floor=1');
+  assert.throws(() => copyVersions(copy), {code: 'PROJECT_VERSION_RECORD_INVALID', details: {reason: 'target-not-empty'}});
+  copy.store.db.exec('UPDATE main.canvas_receipt_window SET floor=0');
   copyVersions(copy);
   const copied = decodeProjectDocument(readBlob(copy.store, archived.id));
   const copiedActive = decodeProjectDocument(readBlob(copy.store, active.id));
