@@ -11,6 +11,7 @@ export interface AgentTaskEffectOrigin {
  readonly operation:string;readonly beforeEffect:()=>void;
  readonly recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;
  readonly appendChangesInside?:(changes:TaskChangeInput[])=>void;
+ readonly beforeTimelineFrameWrite?:(timeline: unknown)=>void;
  importHandle?:string;
  effectFailure?:unknown;
  recorded:boolean;

@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="00ce8b4f939ab90086d22479377f01c2a22bd326428cf87d9806b5129dd4c887";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="77f2eda20e63eb97b285867f98f164e1109d6904a78d4440a38d7fb9e9e582de";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -4354,6 +4354,81 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "type": "string",
     "format": "uuid"
    },
+   "aspectSource": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "project"
+       },
+       "expectedTimelineRevision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "aspectRatio": {
+        "type": "string",
+        "enum": [
+         "9:16",
+         "16:9",
+         "1:1",
+         "4:3",
+         "3:4",
+         "21:9"
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "expectedTimelineRevision",
+       "aspectRatio"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "shot"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "explicit"
+       },
+       "aspectRatio": {
+        "type": "string",
+        "enum": [
+         "9:16",
+         "16:9",
+         "1:1",
+         "4:3",
+         "3:4",
+         "21:9",
+         "adaptive"
+        ]
+       }
+      },
+      "required": [
+       "kind",
+       "aspectRatio"
+      ],
+      "additionalProperties": false
+     }
+    ],
+    "description": "Aspect source for this generation only. For a new generation, default to project: read timeline.format.get and pass its reviewed revision and ratio. Shot keeps the saved shot ratio. Explicit uses a user-selected ratio without editing the shot; adaptive requires model support. Omission preserves legacy generation behavior."
+   },
    "parameters": {
     "type": "object",
     "properties": {
@@ -5276,7 +5351,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "x": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 1918,
+      "maximum": 2518,
       "multipleOf": 2
      },
      "y": {
@@ -5288,7 +5363,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "width": {
       "type": "integer",
       "minimum": 2,
-      "maximum": 1920,
+      "maximum": 2520,
       "multipleOf": 2
      },
      "height": {
@@ -5304,7 +5379,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "width",
      "height"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "description": "Even pixels in the current frame basis. The rectangle must fit the current frame."
    },
    "gain": {
     "type": "number",
@@ -5866,7 +5942,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "x": {
         "type": "integer",
         "minimum": 0,
-        "maximum": 1918,
+        "maximum": 2518,
         "multipleOf": 2
        },
        "y": {
@@ -5878,7 +5954,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "width": {
         "type": "integer",
         "minimum": 2,
-        "maximum": 1920,
+        "maximum": 2520,
         "multipleOf": 2
        },
        "height": {
@@ -5894,7 +5970,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "width",
        "height"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Even pixels in the current frame basis. Omit for clips with a saved layout.basisPresetId; their rectangle and transform are read-only here."
      },
      "gain": {
       "type": "number",

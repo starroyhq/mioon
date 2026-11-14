@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { isGenerationAspectNotApplied } from '../packages/contracts/src/generation-aspect.ts';
 import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
 import type {PendingEntry} from '../apps/web/src/submissions.ts';
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.ts';
@@ -119,19 +120,19 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   // `timeline || isReferenceOperation(...)` spelling. Reference proof handling
   // must remain stricter than a generic definitive 4xx after the alias refactor.
   const run = app.slice(app.indexOf('async function runSession('), app.indexOf('async function inspect(')).replace('async function runSession(', 'async function run(');
-  const flagsEnd = 'const requestBound = timeline || reference;';
+  const flagsEnd = "const generationWithAspect = operation === 'generation.submit' && Object.hasOwn(input, 'aspectSource');";
   const flagsStart = run.indexOf('const mutation ='), flagsStop = run.indexOf(flagsEnd);
   assert.ok(flagsStart >= 0 && flagsStop > flagsStart, 'The actual classification declarations must remain present');
   const flags = run.slice(flagsStart, flagsStop + flagsEnd.length);
-  const decision = run.slice(run.indexOf('const rejected ='), run.indexOf('onFailure?.'));
+  const decision = run.slice(run.indexOf('const aspectRejected ='), run.indexOf('onFailure?.'));
   assert.ok(flags && decision, 'The test must evaluate the real App failure path');
   const classify = Function('operation', 'e', 'stored', 'isMutationOperation', 'TIMELINE_MUTATION_OPERATIONS', 'REFERENCE_MUTATION_OPERATIONS',
-    'mutationNotApplied', 'hasRequestNotAppliedProof', `${flags}\n${decision}\nreturn rejected;`);
+    'mutationNotApplied', 'hasRequestNotAppliedProof', 'isGenerationAspectNotApplied', 'input', 'subjectRetry', 'projectId', `${flags}\n${decision}\nreturn rejected;`);
   const owner = '87000000-0000-4000-8000-000000000001', other = '87000000-0000-4000-8000-000000000002';
   const stored = { input: { projectId: owner, requestId: 'original-app-classification-request' } };
   const loudnessInput = (await loudnessApplyFixture(stored.input)).input;
-  const check = (operation: unknown, error: unknown, receipt: unknown = stored) => classify(operation, error, receipt, isMutationOperation,
-    TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, mutationNotApplied, hasRequestNotAppliedProof);
+  const check = (operation: unknown, error: unknown, receipt: {input: Record<string, unknown>} | null = stored) => classify(operation, error, receipt, isMutationOperation,
+    TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, mutationNotApplied, hasRequestNotAppliedProof, isGenerationAspectNotApplied, receipt?.input ?? {}, false, owner);
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
@@ -163,6 +164,14 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
     for (const code of ['TIMELINE_LIMIT', 'IDEMPOTENCY_CONFLICT', 'UNAUTHORIZED', 'BACKEND_PROTOCOL_ERROR'])
       assert.equal(check(operation, { ...rejection, code, details }), false, `${code} is not a reference rollback proof`);
   }
+  const subject = { input: { shotId: owner, subjectVersionId: other, requestId: stored.input.requestId,
+    aspectSource: { kind: 'project', aspectRatio: '9:16', expectedTimelineRevision: 3 } } };
+  const aspectConflict = { code: 'PROJECT_ASPECT_CHANGED', status: 409, definitive: true,
+    details: { mutationOutcome: 'not_applied', projectId: owner, shotId: owner, requestId: stored.input.requestId, timelineRevision: 4, projectAspectRatio: '16:9' } };
+  assert.equal(check('generation.submit', aspectConflict, subject), true);
+  assert.equal(check('generation.submit', { ...aspectConflict, details: { ...aspectConflict.details, shotId: other } }, subject), false);
+  assert.equal(check('generation.submit', { ...aspectConflict, details: { ...aspectConflict.details, projectId: other } }, subject), false);
+  assert.equal(check('generation.submit', { ...aspectConflict, details: {} }, subject), false);
   assert.match(app, /isBusy\('canvas:mutation', projectId\)/);
   assert.doesNotMatch(app, /await rpc\('(shot\.create|shot\.update|shot\.reorder|node\.create|node\.update|version\.select)'/);
   const structure = app.slice(app.indexOf('async function addStructure()'), app.indexOf('async function addNode('));

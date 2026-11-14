@@ -2,6 +2,9 @@ import {z} from 'zod';
 import {subjectVersionResponseSchema} from './subjects.ts';
 import {getCapabilityProfile, SUBJECT_REFERENCE_PROFILE_VERSION, type ImplementedGenerationInputRole} from './generation-input-profiles.ts';
 import {parseVideoBinding,validateVideoSnapshot} from './video-providers.ts';
+import {effectiveVideoParameters} from './wan-video.ts';
+import {generationAspectSourceSchema,generationFixedAspectRatioSchema} from './generation-aspect.ts';
+import {generationReferenceRevisionsSchema} from './asset-media.ts';
 import {videoCredentialDiagnosticSchema} from './video-credential-diagnostic.ts';
 
 export const SUBJECT_GENERATION_KINDS=Object.freeze(['character','product','location'] as const);
@@ -106,8 +109,10 @@ export function isSubjectGenerationResponse(operation: unknown,input: unknown,re
 }
 function matchesSubjectGenerationResponse(input: unknown,result: unknown,options: SubjectGenerationMatchOptions,expectedRetryOfJobId: unknown): boolean {
  if(!safeData(input)||!safeData(result)||!fields(options,[],['projectId','subjectReference']))return false;
- if(!fields(input,['shotId','expectedRevision','requestId','providerId','subjectVersionId'],['model','parameters','connectionId','configurationRevision','modelEntryId']))return false;
+ if(!fields(input,['shotId','expectedRevision','requestId','providerId','subjectVersionId'],['model','parameters','connectionId','configurationRevision','modelEntryId','aspectSource','referenceRevisions']))return false;
  const request = input as Record<string, unknown>;
+ const aspectSource=own(request,'aspectSource')?generationAspectSourceSchema.safeParse(request.aspectSource):null;
+ if(aspectSource&&!aspectSource.success)return false;
  const connected=own(request,'connectionId');
  if(!uuid(request.shotId)||!uuid(request.subjectVersionId)||!integer(request.expectedRevision,1)||!text(request.requestId,8,200)||typeof request.providerId!=='string'||!['mock','ark'].includes(request.providerId)||own(request,'model')&&!text(request.model,0,100)||own(request,'parameters')&&!(connected?record(request.parameters):parameters(request.parameters)))return false;
  if(connected&&(!uuid(request.connectionId)||!integer(request.configurationRevision,1)||!uuid(request.modelEntryId))||!connected&&(own(request,'configurationRevision')||own(request,'modelEntryId')))return false;
@@ -123,15 +128,30 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  if(!fields(snapshot,snapshotFields,['projectId','lastFrameAssetId','executionBinding','executionConnectionName']))return false;
  const frozen = snapshot as Record<string, unknown>;
  if(frozen.shotId!==request.shotId||frozen.shotRevision!==request.expectedRevision||frozen.providerId!==job.providerId||frozen.model!==job.model||!text(frozen.title,1,150)||!text(frozen.prompt,0,5000)||!(connected?record(frozen.parameters):parameters(frozen.parameters))||!record(frozen.capabilities)||getSubjectGenerationSnapshotIssue(frozen,{projectId:job.projectId,requireProfilePin:true}))return false;
- if(connected){try{const binding=parseVideoBinding(frozen.executionBinding);if(binding.connectionId!==request.connectionId||binding.configurationRevision!==request.configurationRevision||binding.model.id!==request.modelEntryId)return false;validateVideoSnapshot(binding,frozen);}catch{return false;}}
+ let effectiveRatio=frozen.aspectRatio;
+ if(connected){try{const binding=parseVideoBinding(frozen.executionBinding);if(binding.connectionId!==request.connectionId||binding.configurationRevision!==request.configurationRevision||binding.model.id!==request.modelEntryId)return false;validateVideoSnapshot(binding,frozen);effectiveRatio=effectiveVideoParameters(binding,frozen).aspectRatio;}catch{return false;}}
  else if(own(frozen,'executionBinding'))return false;
+ const aspect=aspectSource?.data;
+ if(aspect&&(aspect.kind==='shot'?effectiveRatio!==frozen.aspectRatio:effectiveRatio!==aspect.aspectRatio||aspect.aspectRatio!=='adaptive'&&frozen.aspectRatio!==aspect.aspectRatio))return false;
+ if(own(request,'referenceRevisions')){
+  const revisions=generationReferenceRevisionsSchema.safeParse(request.referenceRevisions);
+  const asset=(frozen.referenceAssets as Record<string,unknown>[])[0]!;
+  if(!revisions.success||revisions.data.length!==1)return false;
+  const [reviewed]=revisions.data;
+  if(reviewed!.assetId!==asset.id||reviewed!.referenceRevision!==asset.referenceRevision||reviewed!.sha256!==asset.sha256)return false;
+ }
  const subjectVersionId=(frozen.subjectReference as SubjectReference).subjectVersionId;
  const inputParameters=request.parameters as Record<string, unknown> | undefined;
  const snapshotParameters=frozen.parameters as Record<string, unknown>;
  if(subjectVersionId!==request.subjectVersionId||inputParameters&&Object.keys(inputParameters).some(key=>snapshotParameters[key]!==inputParameters[key]))return false;
  if(own(options,'subjectReference')&&(!isSubjectReference(options.subjectReference)||!same(frozen.subjectReference,options.subjectReference)))return false;
  const profile=getCapabilityProfile(job.providerId,job.model,frozen.providerRegion,{profileId:frozen.inputProfileId,profileVersion:frozen.inputProfileVersion})!;
- if(!profile.aspectRatios.includes(frozen.aspectRatio as string)||!profile.durationsSeconds.includes(frozen.duration as number))return false;
+ // The exact connected binding checks the effective ratio and duration. A
+ // retry has only the source job ID and must read the same snapshot without
+ // the original aspectSource. Keep base values inside the saved shot contract.
+ if(connected&&(aspect||expectedRetryOfJobId!==null)){
+  if(!generationFixedAspectRatioSchema.safeParse(frozen.aspectRatio).success||!integer(frozen.duration,1,20))return false;
+ }else if(!profile.aspectRatios.includes(frozen.aspectRatio as string)||!profile.durationsSeconds.includes(frozen.duration as number))return false;
  const prompt=frozen.prompt as string;
  if(profile.prompt.required&&!prompt.trim()||prompt.length>profile.prompt.maxCodeUnits)return false;
  for(const [key,value] of Object.entries(snapshotParameters)){

@@ -4,7 +4,7 @@ import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {s1PublicOperationSchemas} from '../packages/contracts/src/asset-generation.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,realpath,symlink,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,realpath,symlink,writeFile,readFile} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,7 @@ import {createProjectFile} from '../packages/business/src/project-file/connectio
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {run as runMedia} from '../packages/business/src/media-runtime.ts';
-import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
+import {projectAgentTaskUndo,createAgentTaskTools,listAgentTaskToolsForChannel,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
@@ -93,6 +93,23 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
+test('Mio generation reports the accepted ratio from the frozen job only for aspect-aware submits',async t=>{
+ const f=await acceptedGeneratedShot(t),legacy=f.journal.snapshot(f.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')!;
+ assert.ok(record(legacy.result));
+ assert.equal(Object.hasOwn(legacy.result,'aspectRatio'),false);
+ const shot=await f.execute('shot.create',{title:'Aspect-aware generation',duration:2,aspectRatio:'16:9'});
+ assert.ok(record(shot.outcome.result)&&typeof shot.outcome.result.id==='string');
+ const {outcome,step}=await f.execute('generation.submit',{...f.generation,shotId:shot.outcome.result.id,aspectSource:{kind:'explicit',aspectRatio:'9:16'}});
+ assert.equal((f.store.get('shots',shot.outcome.result.id) as Record<string,unknown>).aspectRatio,'16:9');
+ const job=f.store.get('jobs',String(record(step.result)&&step.result.id));
+ assert.ok(record(job)&&record(job.snapshot));
+ assert.ok(record(step.result)&&record(outcome.result));
+ assert.equal(step.result.id,job.id);
+ assert.equal(step.result.aspectRatio,job.snapshot.aspectRatio);
+ assert.equal(outcome.result.aspectRatio,'9:16');
+ assert.equal(Object.hasOwn(step.result,'snapshot'),false);
+ assert.equal(Object.hasOwn(outcome.result,'snapshot'),false);
+});
 test('Mio provider observations expose availability without the retired workspace gate',async t=>{
  const provider:Provider={
   id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
@@ -200,6 +217,19 @@ test('all public operations have explicit admission; model cannot acquire admini
  for(const operation of ['project.rename','shot.update','timeline.clip.update','image.generate','generation.submit','task.wait','asset.importSelected','video.connection.list','export.activity.get','task.disposition.list'])assert.equal(names.has(operation),true,operation);
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',requestId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',projectId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
+});
+test('channel-aware Mio catalogs retain format 4 frame presets and remove mock only from release generation tools',()=>{
+ for(const mockAllowed of [true,false])for(const frameTransaction of [true,false]){
+  const tools=listAgentTaskToolsForChannel(mockAllowed,{frameTransaction});
+  const frame=tools.find(tool=>tool.operation==='timeline.format.set'),generation=tools.find(tool=>tool.operation==='generation.submit');
+  assert.ok(frame&&generation);
+  const presets=schemaAt(frame.parameters,['properties','presetId','enum']);
+  const providers=schemaAt(generation.parameters,['properties','providerId','enum']);
+  assert.ok(Array.isArray(presets)&&Array.isArray(providers));
+  assert.equal(presets.includes('ultrawide_1080'),frameTransaction);
+  assert.equal(providers.includes('mock'),mockAllowed);
+  assert.ok(schemaAt(generation.parameters,['properties','aspectSource']));
+ }
 });
 test('every actual model tool catalog has self-contained schema references in both protocols',async t=>{
  const f=await fixture(t),tools=f.tools.list(),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
@@ -888,6 +918,7 @@ function storyboardPng(index:number):Buffer{
 }
 async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
  const bytes=mp4HeaderFixture('Synthetic storyboard reference; decoder replaced'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ await mkdir(path.join(f.root,'media'),{recursive:true,mode:0o700});
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});
  f.store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:3,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const ack=await f.services.call('scene.detect',{projectId:f.projectId,sourceAssetId:id,sourceHash:sha256,requestId:randomUUID()});assert.ok(record(ack));
@@ -895,6 +926,22 @@ async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
  throw Error('Synthetic detection did not finish');
 }
 const sceneState=(f:Awaited<ReturnType<typeof fixture>>,id:string):string=>String(f.store.db.prepare('SELECT state FROM scene_tasks WHERE id=?').get(id)!.state);
+test('Mio receives a proven format 4 storyboard refusal with no accepted task or request',async t=>{
+ const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:storyboardFrames as never}},new Map(),true);
+ const source=await storyboardSource(f);
+ const timeline=await f.services.call('timeline.get',{projectId:f.projectId});
+ assert.ok(record(timeline));
+ f.store.db.prepare('UPDATE timelines SET data=? WHERE projectId=?')
+  .run(JSON.stringify({...timeline,width:1600,height:1000}),f.projectId);
+ const tables=['scene_tasks','scene_requests','mio_job_origins'];
+ const snapshot=()=>tables.map(table=>f.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+ const before=snapshot();
+ await assert.rejects(f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1]}),
+  {code:'SCENE_PROJECT_ASPECT_UNSUPPORTED',status:409,details:{mutationOutcome:'not_applied'}});
+ assert.deepEqual(snapshot(),before);
+ assert.deepEqual(f.store.list('shots',f.projectId),[]);
+});
+
 test('storyboard acceptance binds its task to the step and a stopped run retires it before it starts',async t=>{
  const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:(async()=>{throw Error('A held storyboard must not decode');}) as never}});
  const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Paused'),{code:'AGENT_TASK_PAUSED'});});t.after(remove);

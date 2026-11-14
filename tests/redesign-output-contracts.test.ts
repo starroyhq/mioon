@@ -17,10 +17,17 @@ test('project creation keeps three 1080 presets while the public frame setter ac
     assert.equal(timelineFormatSchemas['timeline.format.set'].safeParse(input).success,
       TIMELINE_FORMAT_WRITE_PRESETS.some(value=>value.id===preset.id));
   }
+  assert.throws(()=>parse('timeline.format.set',{projectId:randomUUID(),expectedProjectRevision:1,expectedRevision:0,requestId:randomUUID(),presetId:'arbitrary'}),{code:'VALIDATION_ERROR'});
+});
+
+test('clip rectangle syntax admits the largest supported frame and rejects invalid dimensions',()=>{
   const input={projectId:randomUUID(),expectedRevision:1,requestId:randomUUID(),clipId:randomUUID(),patch:{rect:{x:0,y:0,width:1920,height:1080}}};
-  assert.throws(()=>parse('timeline.format.set',{projectId:input.projectId,expectedProjectRevision:1,expectedRevision:0,requestId:input.requestId,presetId:'arbitrary'}),{code:'VALIDATION_ERROR'});
   assert.deepEqual(parse('timeline.clip.update',input),input);
-  assert.throws(()=>parse('timeline.clip.update',{...input,patch:{rect:{x:2,y:0,width:1920,height:1080}}}));
+  const wide={...input,patch:{rect:{x:0,y:0,width:2520,height:1080}}};
+  assert.deepEqual(parse('timeline.clip.update',wide),wide);
+  assert.throws(()=>parse('timeline.clip.update',{...input,patch:{rect:{x:2,y:0,width:2520,height:1080}}}),{code:'VALIDATION_ERROR'});
+  assert.throws(()=>parse('timeline.clip.update',{...input,patch:{rect:{x:0,y:0,width:2519,height:1080}}}),{code:'VALIDATION_ERROR'});
+  assert.throws(()=>parse('timeline.clip.update',{...input,patch:{rect:{x:0,y:0,width:1080,height:1922}}}),{code:'VALIDATION_ERROR'});
 });
 
 test('frame ratios select both native short edges exactly and keep the native and encoded pixel pairs closed',()=>{

@@ -2,6 +2,7 @@ import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
+import {usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {currentProjectRecord,mutateProjectRecord} from './project-record-mutations.ts';
 import {testProjectServiceApplication} from './project-service-application.ts';
 import {registerProjectMediaStore, registeredProjectAssetReferences} from './project-media-storage.ts';
@@ -36,14 +37,18 @@ import {validateTimeline} from './timeline-inputs.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
-import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
+import {parse,AppError,publicValue,findModelCapabilities,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {operationEffect} from '@mioon/contracts';
 import type {OperationName} from '@mioon/contracts';
 import {generationServiceUnavailable,isMockGenerationProvider,normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
-import {getWan30Capability,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
+import {getWan30Capability,isWan30Binding,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
+import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
+import {generationAspectRatioSchema,generationFixedAspectRatioSchema} from '../../contracts/src/generation-aspect.ts';
+import type {GenerationAspectRatio,GenerationAspectSource} from '../../contracts/src/generation-aspect.ts';
+import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputRatio} from '../../contracts/src/timeline-output-geometry.ts';
 import type {VideoGenerationSettings} from './video/generation.ts';
 import {isVideoBindingHistoryUnavailable} from './video/settings-v2.ts';
 import {generationImageServiceSchemas} from '../../contracts/src/generation-image-services.ts';
@@ -53,6 +58,7 @@ import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareCo
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob,readGenerationLinkedJobForDisclosure} from './generation-inputs.ts';
 import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,GenerationSource,GenerationSubjectGraph} from './generation-inputs.ts';
 import {createTimelineServices} from './timeline.ts';
+import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createTimelinePreflightServices} from './timeline-preflight.ts';
 import {createExportSamplePeakServices} from './export-sample-peak.ts';
@@ -202,6 +208,7 @@ export interface GenerationSubmitInput {
  requestId: string;
  providerId: string;
  model?: string;
+ aspectSource?: GenerationAspectSource;
  parameters?: ServiceRow;
  subjectVersionId?: string;
  videoInput?: unknown;
@@ -295,18 +302,27 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  };
  const bindingRole=(bindings: unknown,index: number): unknown=>Array.isArray(bindings)?property(bindings[index],'role'):undefined;
  const hasLastFrameRole=(value: unknown): boolean=>Array.isArray(value)&&value.some(reference=>property(reference,'role')==='last_frame');
- const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null)=>{
+ const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null,aspect?: {input:GenerationSubmitInput;ratio:GenerationAspectRatio})=>{
   const binding=readVideoBinding(source);
+  const requireSupportedAspect=(model:string,ratios:unknown)=>{
+   if(!aspect)return;
+   const supportedAspectRatios=[...new Set(arrayValue(ratios).filter((ratio):ratio is GenerationAspectRatio=>generationAspectRatioSchema.options.some(value=>value===ratio)))];
+   if(supportedAspectRatios.includes(aspect.ratio))return;
+   const {input,ratio}=aspect,project=input.aspectSource?.kind==='project';
+   throw new AppError(project?'PROJECT_ASPECT_UNSUPPORTED':'GENERATION_ASPECT_UNSUPPORTED',
+    project?'所选模型不支持项目画幅，请明确选择支持的画幅后再确认':'所选模型不支持本次生成画幅，请明确选择支持的画幅后再确认',400,
+    {requestId:input.requestId,shotId:input.shotId,projectId,providerId,model,supportedAspectRatios,...(project?{projectAspectRatio:ratio}:{aspectRatio:ratio})});
+  };
   if(source.videoInput!==undefined&&!binding)throw new AppError('UNSUPPORTED_INPUT_ROLE',providerId==='ark'?'Seedance 图片输入需要明确的 Seedance 2.5 连接。':'Wan 图片输入需要明确的 Wan 3.0 连接。');
   if(binding){
    if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
    const p=boundProvider(binding),c=videoBindingCapabilities(binding,{asOf:currentProfileDate()});
    if(!c.configured)throw new AppError('VIDEO_SETTINGS_INCOMPLETE','请先配置此连接的输出域名。',409);
+   requireSupportedAspect(binding.model.modelId,c.modelCapabilities[0]?.aspectRatios);
    const prepared=prepareConfiguredVideoInputs({source:{...source,parameters},binding,projectId,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),frozen,asOf:currentProfileDate()});
    const executionConnectionName=frozen?source.executionConnectionName:videoSettings?.list().find(view=>view.configuration.id===binding.connectionId)?.configuration.name;
    return {p,model:binding.model.modelId,assets:prepared.assets,referenceAssetIds:prepared.assets.map(asset=>asset.id),capabilities:c,inputFields:{...prepared.fields,...(typeof executionConnectionName==='string'?{executionConnectionName}:{})}};
   }
-  assertMockAllowed(providerId);
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),models=Array.isArray(property(c,'models'))?property(c,'models') as unknown[]:[],first=models[0],
    model=requestedModel||(typeof first==='string'?first:stringValue(property(first,'id')));
@@ -325,11 +341,18 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   // Environment adapters still enforce their independently configured credentials.
   if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','所选生成服务不可用，请先配置并启用生成服务。',403,{providerId,status:property(c,'status'),configuration:property(c,'configuration')});
   if(property(source.capabilities,'region')&&property(c,'region')!==property(source.capabilities,'region'))throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
+  const {inputProfiles: _ignoredProfiles,...legacyCapabilities}=c;
+  if(aspect){
+   const advertisedModel=findModelCapabilities(legacyCapabilities,model);
+   if(!advertisedModel)throw new AppError('UNSUPPORTED_MODEL','此供应商不支持所选模型',400,{providerId,model});
+   const exactModel=profiled?findModelCapabilities(c,model):advertisedModel;
+   const supported=exactModel&&arrayValue(exactModel.aspectRatios).filter(ratio=>ratio!=='adaptive'&&arrayValue(advertisedModel.aspectRatios).includes(ratio));
+   requireSupportedAspect(model,supported);
+  }
   const subjectMode=hasSubjectGeneration(source);
   const prepare=(sourceValue: GenerationSource,capabilities: ServiceRow)=>prepareGenerationInputs({source:sourceValue,projectId,providerId,model,capabilities,readAsset:(id: string)=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),asOf:property(c,'profileEvaluationDate'),frozen});
   let prepared: ReturnType<typeof prepareGenerationInputs>|null=subjectMode?prepare({...source,parameters},c as unknown as ServiceRow):null;
   const snapshot={...source,model,referenceAssetIds:selection.ids,referenceAssets:frozen?source.referenceAssets:assets,parameters,...(subjectMode&&prepared?{providerId,...prepared.fields}:{})};
-  const {inputProfiles: _ignoredProfiles,...legacyCapabilities}=c;
   const issue=getGenerationIssue(snapshot,legacyCapabilities);if(issue)throw new AppError(issue.code,issue.message,400,{providerId,model});
   if(p.validate){try{p.validate(snapshot);}catch(error){throw new AppError(stringValue(property(error,'code'))||'UNSUPPORTED_PARAMETERS',stringValue(property(error,'message'))||'此供应商不支持所选参数',400,{providerId,model});}}
   prepared??=profiled?prepare({...source,parameters},c as unknown as ServiceRow):null;
@@ -352,6 +375,23 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const checkGenerationAdmission=<T>(check: ()=>T): T=>{
   try{return check();}catch(error){return rejectGenerationAdmission(error);}
  };
+ const resolveGenerationAspect=(input: GenerationSubmitInput,shot: ShotRecord): GenerationAspectRatio|undefined=>{
+  const source=input.aspectSource;
+  if(!source)return;
+  if(source.kind==='explicit')return source.aspectRatio;
+  if(source.kind==='shot'){
+   const ratio=generationFixedAspectRatioSchema.safeParse(shot.aspectRatio);
+   if(!ratio.success)throw new AppError('UNSUPPORTED_PARAMETERS','镜头画幅无效');
+   return ratio.data;
+  }
+  const {timeline}=readTimelineFormatOwner(db,{projectId:shot.projectId});
+  const projectAspectRatio=timelineOutputRatio(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET);
+  if(!projectAspectRatio)throw new AppError('TIMELINE_STATE_UNAVAILABLE','无法确认项目画幅',409);
+  const timelineRevision=timeline?.revision??0;
+  if(source.expectedTimelineRevision!==timelineRevision||source.aspectRatio!==projectAspectRatio)
+   throw new AppError('PROJECT_ASPECT_CHANGED','项目画幅已改变，请重新确认生成',409,{requestId:input.requestId,shotId:shot.id,projectId:shot.projectId,projectAspectRatio,timelineRevision});
+  return projectAspectRatio;
+ };
  const prepareJobDraft=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null)=>checkGenerationAdmission(()=>{
   const shot=required('shots',input.shotId) as ShotRecord;
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
@@ -359,6 +399,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(archiveAware){assertGenerationShotOwnership(db,shot);assertCanvasTargetActive(db,'shots',shot.id);}
   if(!retrySnapshot)check(shot,input.expectedRevision);
   if(!archiveAware&&(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId))assertGenerationShotOwnership(db,shot);
+  assertMockAllowed(input.providerId);
   let source: GenerationSource=retrySnapshot||shot as unknown as GenerationSource,subjectGraph: GenerationSubjectGraph|null=null;
   if(!retrySnapshot&&input.videoInput!==undefined)source={...source,videoInput:input.videoInput};
   const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
@@ -382,11 +423,19 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const executionBinding=retrySnapshot?readVideoBinding(retrySnapshot):input.connectionId?videoSettings?.select(input.connectionId,input.configurationRevision!,input.modelEntryId!):null;
   if(input.connectionId&&!executionBinding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
   if(executionBinding)source={...source,executionBinding};
+  const ratio=retrySnapshot?undefined:resolveGenerationAspect(input,shot);
+  if(ratio&&ratio!=='adaptive')source={...source,aspectRatio:ratio};
   let parameters:unknown=(retrySnapshot?property(retrySnapshot,'parameters'):undefined)||{...(isRecord(shot.parameters)?shot.parameters:{}),...input.parameters};
   const wanCapability=executionBinding?.providerId==='wan'?getWan30Capability(executionBinding.model.modelId,executionBinding.region,executionBinding.model.templateId):undefined;
   // Missing historical parameters must not borrow the current shot's preferences during retry validation.
-  if(wanCapability&&executionBinding)parameters=retrySnapshot?property(retrySnapshot,'parameters'):resolveWanGenerationParameters(executionBinding.model,wanCapability.defaults,{aspectRatio:shot.aspectRatio,parameters});
-  const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
+  if(wanCapability&&executionBinding)parameters=retrySnapshot?property(retrySnapshot,'parameters'):resolveWanGenerationParameters(executionBinding.model,wanCapability.defaults,{aspectRatio:source.aspectRatio,parameters});
+  const takesRequestAspect=executionBinding&&(isWan30Binding(executionBinding)||isSeedance25Binding(executionBinding));
+  if(ratio&&takesRequestAspect){
+   if(input.parameters?.aspectRatio!==undefined&&input.parameters.aspectRatio!==ratio)
+    throw new AppError('UNSUPPORTED_PARAMETERS','本次生成参数的画幅与已选择的来源不一致');
+   parameters={...recordValue(parameters),aspectRatio:ratio};
+  }
+  const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph,ratio?{input,ratio}:undefined);
   return {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters};
  });
  const createJob=(input: GenerationSubmitInput,retrySnapshot: JobRecord|null=null,retryOfJobId: string|null=null,referenceBasis: ReadonlyMap<string,string>|null=null,outputLocale?: OutputLocale): JobRecord=>tx(()=>{
@@ -398,7 +447,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   });
   assertSubjectGenerationRequestVacant(db,input);
   const {shot,subjectMode,source,referenceConnections,model,assets,referenceAssetIds,capabilities,inputFields,parameters}=prepareJobDraft(input,retrySnapshot);
-  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
+  const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,...(kernelProjectId?{projectId:a.projectId,reference:a.reference,referenceRevision:a.referenceRevision}:{relativePath:a.relativePath}),mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:source.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
   put('jobs',job);idem('generation',input.requestId,requestHash,job.id);event(job,{status:'queued'});bindAgentTaskJobInside(db,'job',job.id);
   recordOutputLocale(db,job.id,requestHash,outputLocale);
@@ -578,7 +627,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     }));
     canvasEditBase={...readProjectContentStamp(db),targets};
    }
-   return {project,timeline:currentTimeline,timelineHistory,...values,...(canvasEditBase?{canvasEditBase}:{})};
+   return {project,timelineFrameTransaction:usesTimelineFrameTransaction(db),timeline:currentTimeline,timelineHistory,...values,...(canvasEditBase?{canvasEditBase}:{})};
   }),
   'asset.import':createManagedAssetImportHandler(inputStore,{required,now,signal:ownerSignal,outsidePaths:application.outsidePaths,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}) as ServiceHandler,
   'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},

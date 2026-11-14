@@ -1089,6 +1089,12 @@ const shellCoreMessages = {
     "en": "An original subject-generation request awaits confirmation. Check it in the task center first. No new selection will be submitted and the original request will not be retried automatically",
     "ja": "被写体生成に確認待ちの元リクエストがあります。まずタスクセンターで確認してください。新しい選択の送信や元リクエストの自動再試行は行いません"
   },
+  "shell.error.generationRequestPending": {
+    "zh-Hans": "此镜头有生成请求待确认，请先在任务中心核对原请求。",
+    "zh-Hant": "此鏡頭有生成請求待確認，請先在工作中心核對原請求。",
+    "en": "A generation request for this shot is awaiting confirmation. Check the original request in the task center first.",
+    "ja": "このショットには確認待ちの生成リクエストがあります。まずタスクセンターで元のリクエストを確認してください。"
+  },
   "shell.error.operationMismatch": {
     "zh-Hans": "原请求操作不一致，已阻止提交。请先核对任务面板中的原请求",
     "zh-Hant": "原請求操作不一致，已阻止提交。請先核對工作面板中的原請求",
@@ -1178,6 +1184,24 @@ const shellCoreMessages = {
     "zh-Hant": "鏡頭、參考素材或目前工作區已變更，請重新檢查固定主體圖片或完整首尾幀後確認生成",
     "en": "The shot, reference assets, or current workspace changed. Recheck the fixed subject images or complete first and last frames before confirming generation",
     "ja": "ショット、参照素材、または現在のワークスペースが変わりました。固定された被写体画像、または開始・終了フレーム一式を再確認してから生成を承認してください"
+  },
+  "shell.generationFrameChanged": {
+    "zh-Hans": "项目画框已变化。请重新检查画幅并确认生成。",
+    "zh-Hant": "專案畫框已變更。請重新檢查畫幅並確認生成。",
+    "en": "The project frame changed. Review the aspect ratio and confirm generation again.",
+    "ja": "プロジェクトの画枠が変わりました。画面比を確認してから、もう一度生成を承認してください。"
+  },
+  "shell.generationProjectAspectUnsupported": {
+    "zh-Hans": "此模型不支持项目画幅 {ratio}。可用画幅：{options}。",
+    "zh-Hant": "此模型不支援專案畫幅 {ratio}。可用畫幅：{options}。",
+    "en": "This model does not support the project aspect ratio {ratio}. Available ratios: {options}.",
+    "ja": "このモデルはプロジェクトの画面比 {ratio} に対応していません。利用可能な画面比：{options}。"
+  },
+  "shell.generationAspectUnsupported": {
+    "zh-Hans": "此模型不支持所选画幅 {ratio}。可用画幅：{options}。",
+    "zh-Hant": "此模型不支援所選畫幅 {ratio}。可用畫幅：{options}。",
+    "en": "This model does not support the selected aspect ratio {ratio}. Available ratios: {options}.",
+    "ja": "このモデルは選択した画面比 {ratio} に対応していません。利用可能な画面比：{options}。"
   },
   "projects.previousCreateKeep": {
     "zh-Hans": "上次新建项目的结果尚未确认。请保留当前窗口并核对项目列表，不要重复创建",

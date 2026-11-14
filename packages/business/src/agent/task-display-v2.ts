@@ -1,6 +1,8 @@
 import path from 'node:path';
 import {AGENT_TASK_DISPLAY_TARGET_KINDS} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskChange,AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
+import {generationAspectSourceSchema} from '../../../contracts/src/generation-aspect.ts';
+import {TIMELINE_OUTPUT_PRESETS,timelineOutputPreset,timelineOutputRatio} from '../../../contracts/src/timeline-output-geometry.ts';
 import type { Store } from '../store-contract.ts';
 
 type Value=Record<string,unknown>;
@@ -12,6 +14,8 @@ const object=(value:unknown):value is Value=>value!==null&&typeof value==='objec
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
 const kinds:ReadonlySet<string>=new Set(AGENT_TASK_DISPLAY_TARGET_KINDS);
 const ratios:ReadonlySet<string>=new Set(['9:16','16:9','1:1','3:4','4:3','21:9']);
+const rectMaxWidth=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({width})=>width));
+const rectMaxHeight=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({height})=>height));
 
 function boundedCharacters(value:string,limit:number):string {
   let result='';for(const character of value){if(result.length+character.length>limit)break;result+=character;}return result;
@@ -52,7 +56,13 @@ function fields(operationName:string,kind:string,value:Value|undefined):Projecte
     for(const field of ['durationFrames','sourceInFrame','startFrame','fadeInFrames','fadeOutFrames'] as const)number(field,'frames',value[field],true);
     if(Number.isSafeInteger(value.sourceInFrame)&&Number.isSafeInteger(value.durationFrames))number('sourceOutFrame','frames',Number(value.sourceInFrame)+Number(value.durationFrames),true);
     if(typeof value.gain==='number'&&Number.isFinite(value.gain)&&value.gain>=0&&value.gain<=2)put('gainDb','db',value.gain===0?'muted':20*Math.log10(value.gain));
-    if(object(value.rect)){for(const [property,field] of [['positionX','x'],['positionY','y'],['width','width'],['height','height']] as const)number(property,'pixels',value.rect[field],true,1920);}
+    if(object(value.rect))for(const [property,field,max] of [
+      ['positionX','x',rectMaxWidth-2],['positionY','y',rectMaxHeight-2],['width','width',rectMaxWidth],['height','height',rectMaxHeight],
+    ] as const)number(property,'pixels',value.rect[field],true,max);
+  }
+  if(operationName==='timeline.format.set'&&kind==='timeline'){
+    const preset=timelineOutputPreset(value),ratio=timelineOutputRatio(preset);
+    if(preset&&ratio){put('aspectRatio','ratio',ratio);put('width','pixels',preset.width);put('height','pixels',preset.height);}
   }
   if(['shot.create','shot.update'].includes(operationName)&&kind==='shot'){
     if(typeof value.aspectRatio==='string'&&ratios.has(value.aspectRatio))put('aspectRatio','ratio',value.aspectRatio);
@@ -135,10 +145,18 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     const index=display.targets.push(projected)-1,input=object(args.patch)?args.patch:args;if(operationWide)continue;
     // A whole previs scene's counts say nothing about the planned edit, and next
     // to the current counts in a conflict they would read as a difference.
-    let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,input);
+    const inputPreset=display.operation==='timeline.format.set'&&typeof args.presetId==='string'?timelineOutputPreset(args.presetId):null;
+    let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,display.operation==='timeline.format.set'?inputPreset??undefined:input);
     // A gain batch plans one gain for each clip it lists.
     if(display.operation==='timeline.clip.setGains'){const listed=Array.isArray(args.gains)?args.gains.find(entry=>object(entry)&&entry.clipId===item.id):undefined;planned=object(listed)?fields(display.operation,item.kind,{gain:listed.gain}):{};}
-    if(display.operation==='generation.submit'&&item.kind==='shot')planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
+    if(display.operation==='generation.submit'&&item.kind==='shot'){
+      planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
+      if(Object.hasOwn(args,'aspectSource')){
+        const source=generationAspectSourceSchema.safeParse(args.aspectSource);
+        if(!source.success)delete planned.aspectRatio;
+        else if(source.data.kind!=='shot')planned.aspectRatio={unit:'ratio',value:source.data.aspectRatio};
+      }
+    }
     appendFields(display,index,{},planned,true);
     // Conflict values are read from this snapshot's saved project state, never
     // from the browser cache or the model's parameters. Only already planned
@@ -157,8 +175,9 @@ export function agentTaskDisplayTargetReader(store:Store,projectId:string):Targe
     if(!uuid.test(target.id))return;
     const table=Object.hasOwn(tables,target.kind)?tables[target.kind]:undefined;
     if(table){const value:unknown=store.get(table,target.id);return object(value)&&value.id===target.id&&(target.kind==='project'?value.id===projectId:value.projectId===projectId)?value:undefined;}
-    if(!['timeline_clip','timeline_track','timeline_subtitle'].includes(target.kind))return;
+    if((target.kind==='timeline'&&target.id!==projectId)||!['timeline','timeline_clip','timeline_track','timeline_subtitle'].includes(target.kind))return;
     if(!loaded){loaded=true;const row=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);if(typeof row?.data==='string'){let value:unknown;try{value=JSON.parse(row.data);}catch{return;}if(object(value)&&value.projectId===projectId)timeline=value;}}
+    if(target.kind==='timeline')return timeline&&{fps:timeline.fps,width:timeline.width,height:timeline.height};
     const values=target.kind==='timeline_clip'?timeline?.clips:target.kind==='timeline_track'?timeline?.tracks:object(timeline?.subtitles)?timeline.subtitles.cues:undefined;
     return Array.isArray(values)?values.find((item):item is Value=>object(item)&&item.id===target.id):undefined;
   };

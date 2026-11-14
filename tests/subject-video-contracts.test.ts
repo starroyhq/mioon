@@ -131,6 +131,22 @@ test('ACK checks supplied parameter overrides without inferring omitted values o
  const {model,...defaultModel}=requestFor('mock');assert.equal(isSubjectGenerationResponse('generation.submit',defaultModel,job),true);
 });
 
+test('subject generation ACK verifies the exact selected aspect and managed reference proof',()=>{
+ const job=jobFor('mock'),asset=job.snapshot.referenceAssets[0]!;
+ const input={...requestFor('mock'),aspectSource:{kind:'project',expectedTimelineRevision:1,aspectRatio:'9:16'},
+  referenceRevisions:[{assetId:asset.id,referenceRevision:2,sha256:asset.sha256}]};
+ Object.assign(asset,{referenceRevision:2});
+ assert.equal(isSubjectGenerationResponse('generation.submit',input,job),true);
+ const before=clone(input);
+ for(const aspectSource of [{kind:'project',aspectRatio:'9:16'},{kind:'project',expectedTimelineRevision:1,aspectRatio:'16:9'},
+  {kind:'explicit',aspectRatio:'adaptive'},{kind:'explicit',aspectRatio:'16:9'},{kind:'shot',aspectRatio:'9:16'}])
+  assert.equal(isSubjectGenerationResponse('generation.submit',{...input,aspectSource},job),false);
+ for(const referenceRevisions of [[],[{...input.referenceRevisions[0],referenceRevision:3}],
+  [{...input.referenceRevisions[0],assetId:id()}],[{...input.referenceRevisions[0],sha256:'f'.repeat(64)}]])
+  assert.equal(isSubjectGenerationResponse('generation.submit',{...input,referenceRevisions},job),false);
+ assert.deepEqual(input,before);
+});
+
 test('subject ACK revalidates the exact Ark profile prompt without accepting blank or oversized text',()=>{
  const input=requestFor('ark');
  for(const prompt of ['', ' '.repeat(2), 'x'.repeat(1001)]){

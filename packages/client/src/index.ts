@@ -3,7 +3,8 @@ import {s1PublicOperationSchemas,isS1PublicOperation} from '../../contracts/src/
 import {previsPublicationSchemas,previsPublicationEffects,isPrevisPublicationOperation,isPrevisPublicationResponse} from '../../contracts/src/previs-publication.ts';
 import {assetMediaPublicSchemas,assetMediaEffects,isAssetMediaOperation,trustedAssetMediaSchemas,isTrustedAssetMediaOperation,assetMediaStatusListResponseSchema,assetMediaPrepareResponseSchema,nativeAssetImportResponseSchema} from '../../contracts/src/asset-media.ts';
 import type {TrustedAssetMediaOperation} from '../../contracts/src/asset-media.ts';
-import {projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
+import {parseProjectApiPath,projectApiPath,projectRpcPath} from '../../contracts/src/project-file.ts';
+import {isGenerationAspectNotApplied,isGenerationAspectResponse} from '../../contracts/src/generation-aspect.ts';
 import {isTimelineClipLoudnessResponse, TIMELINE_CLIP_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from './timeline-clip-loudness.ts';
 export {measureTimelineClipLoudness} from './timeline-clip-loudness.ts';
@@ -224,7 +225,7 @@ function frameNotAccepted(error: unknown, status: number, operation: string, inp
 
 const sceneRefusalStatuses: Record<string, number> = Object.freeze({SCENE_CAPACITY:507,SCENE_QUEUE_FULL:409,SCENE_TASK_ACTIVE:409,SCENE_REVISION_CONFLICT:409,
   SCENE_STATE_CONFLICT:409,SCENE_SOURCE_INVALID:409,SCENE_SOURCE_CHANGED:409,SCENE_RESULT_CONFLICT:409,SCENE_RESULT_STALE:409,SCENE_CUTS_INVALID:409,
-  SCENE_SEGMENTS_INVALID:409,SCENE_UNDO_BLOCKED:409});
+  SCENE_SEGMENTS_INVALID:409,SCENE_PROJECT_ASPECT_UNSUPPORTED:409,SCENE_UNDO_BLOCKED:409});
 const subjectVariantRefusalStatuses: Record<string, number> = Object.freeze({SUBJECT_VARIANT_CAPACITY:507,SUBJECT_VARIANT_REVISION_CONFLICT:409,SUBJECT_VARIANT_STATE_CONFLICT:409,
   SUBJECT_VARIANT_KIND_UNSUPPORTED:409,SUBJECT_VARIANT_SOURCE_UNSUPPORTED:409,SUBJECT_VARIANT_QUEUE_FULL:409,SUBJECT_VARIANT_RETRY_UNAVAILABLE:409,SUBJECT_VARIANT_UNDO_BLOCKED:409,SUBJECT_VERSION_HIDDEN:409});
 /** Subject variant refusals carry the scene proof's shape under subjectVariantOutcome. */
@@ -318,6 +319,13 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       if (!envelope.ok || !response.ok) {
         const failure = (envelope.error ?? {}) as {code?: unknown; message?: unknown; details?: unknown};
         let details = safeValue(failure.details || {}, [token]);
+        if (body?.operation === 'generation.submit' && Object.hasOwn(body.input, 'aspectSource')) {
+          const projectId = parseProjectApiPath(resource)?.projectId;
+          const proven = typeof projectId === 'string' && isGenerationAspectNotApplied({...failure, status: response.status}, body.input, projectId);
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
+            ...(proven ? {operation: body.operation, requestId: body.input.requestId, submissionMayHaveSucceeded: false} : recoveryDetails)};
+          if (!proven) delete (details as Record<string, unknown>).mutationOutcome;
+        }
         if (body && ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (SUBJECT_MUTATION_OPERATIONS as readonly string[]).includes(body.operation))) {
           const proven = hasRequestNotAppliedProof({...failure, status: response.status}, body.input, {operation: body.operation});
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
@@ -426,6 +434,9 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid project version response.', {details: uncertainRequestDetails(body)});
     if (operation === 'generation.submit' && Object.hasOwn(parsed, 'subjectVersionId') && !isSubjectGenerationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (operation === 'generation.submit' && Object.hasOwn(parsed, 'aspectSource') &&
+        (typeof projectId !== 'string' || !isGenerationAspectResponse(parsed, result, projectId)))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid generation acknowledgement.', {details: uncertainRequestDetails(body)});
     const retry = result as {snapshot?: {subjectReference?: unknown; subjectVersionId?: unknown; referenceBindings?: unknown; referenceAssets?: unknown}} | null | undefined;
     if (operation === 'job.retry' && retry?.snapshot && (Object.hasOwn(retry.snapshot, 'subjectReference') || Object.hasOwn(retry.snapshot, 'subjectVersionId') ||
       [retry.snapshot.referenceBindings,retry.snapshot.referenceAssets].some(items => Array.isArray(items) && items.some((item: unknown) => ((item as {role?: unknown} | null | undefined)?.role) === 'subject_reference'))) && !isSubjectGenerationRetryResponse(parsed, result))

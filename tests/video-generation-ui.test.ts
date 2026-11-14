@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities, videoTemplate } from '../packages/contracts/src/video-providers.ts';
 import type { VideoConnectionDescriptor, VideoExecutionBinding } from '../packages/contracts/src/video-providers.ts';
-import { generationSelection, generationParameters, videoConnectionProviders, generationInputIssue, generationProfileSelection, findGenerationProvider, videoGenerationServiceAvailable } from '../apps/web/src/generation-settings.ts';
+import { generationSelection, generationParameters, videoConnectionProviders, generationInputIssue, generationProfileSelection, findGenerationProvider, prepareGenerationAspect, videoGenerationServiceAvailable } from '../apps/web/src/generation-settings.ts';
+import { renderMessage } from '../packages/i18n/src/index.ts';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -15,6 +16,15 @@ function descriptor(connectionId = idA): VideoConnectionDescriptor {
     models: models.map(entry => { const binding: VideoExecutionBinding = { version: 1, connectionId, configurationRevision: 3, providerId: 'wan', region: 'cn-beijing', workspaceId: '', endpoint: resolveVideoEndpoint('wan', 'cn-beijing'), credentialRef: '00000000-0000-4000-8000-000000000099', model: entry, outputHosts: ['video.example.com'] }; return { entry, capabilities: videoBindingCapabilities(binding) }; }) };
 }
 const shot = { prompt: 'A quiet sunset', aspectRatio: '16:9', duration: 5, parameters: {}, referenceAssetIds: [] };
+
+test('Mock lists its actual ratio when the project frame is unsupported', () => {
+  const provider = { id: 'mock', mock: true, models: ['mock-motion-v1'], aspectRatios: ['9:16'] };
+  const frame = { fps: 30, width: 2520, height: 1080, revision: 4 };
+  const prepared = prepareGenerationAspect(frame, shot, provider, 'mock-motion-v1', {});
+  assert.match(renderMessage('zh-Hans', prepared.issue), /项目画幅 21:9.*可用画幅：9:16/);
+  assert.deepEqual(prepared.source, { kind: 'project', expectedTimelineRevision: 4, aspectRatio: '21:9' });
+  assert.equal(shot.aspectRatio, '16:9');
+});
 
 test('explicitly applying the MiniMax settings template offers only SDK-supported 2K combinations', async () => {
   const { readFileSync } = await import('node:fs');
@@ -68,6 +78,17 @@ test('a removed entry cannot reuse another entry even when raw model IDs match',
   const selected = generationSelection(providers, { connectionId: idA, model: d.models[0]!.entry.modelId, modelEntryId: idB }, shot);
   assert.equal(selected.capabilities, null); assert.equal(selected.provider?.videoModel, undefined);
   assert.notEqual(generationInputIssue(shot, selected.provider, selected.model, [], 'text'), '');
+});
+
+test('project aspect advisory reads the selected configured entry even with a duplicate model ID', () => {
+  const d = descriptor(), providers = videoConnectionProviders([d]);
+  const [provider] = providers, [first] = provider!.modelCapabilities!;
+  provider!.modelCapabilities = [{ ...first!, modelEntryId: idB, aspectRatios: ['9:16'] }, { ...first!, aspectRatios: ['16:9'] }];
+  const frame = { fps: 30, width: 1920, height: 1080, revision: 4 };
+  const selected = generationSelection(providers, { connectionId: idA, modelEntryId: first!.modelEntryId }, shot);
+  assert.equal(prepareGenerationAspect(frame, shot, selected.provider, selected.model, {}).issue, undefined);
+  const restricted = generationSelection(providers, { connectionId: idA, modelEntryId: idB }, shot);
+  assert.match(renderMessage('zh-Hans', prepareGenerationAspect(frame, shot, restricted.provider, restricted.model, {}).issue), /项目画幅 16:9.*可用画幅：9:16/);
 });
 
 test('resolution defaults and overrides preserve exact duration-resolution pairs outside shot state', () => {

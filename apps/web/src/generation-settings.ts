@@ -1,6 +1,9 @@
 import {assetMediaStatusListResponseSchema} from '../../../packages/contracts/src/asset-media.ts';
 import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue, wanVideoInputSchema } from '../../../packages/contracts/src/video-providers.ts';
 import { resolveWanGenerationParameters } from '../../../packages/contracts/src/wan-video.ts';
+import { TIMELINE_OUTPUT_RATIOS, timelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
+import type { TimelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
+import type { GenerationAspectSource } from '../../../packages/contracts/src/generation-aspect.ts';
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
@@ -67,6 +70,63 @@ export interface GenerationSelectionResult {
   capabilities: Record<string, unknown> | null | undefined;
   inputMode: string;
   scenario: string;
+}
+
+export interface GenerationFrame {
+  readonly fps: number;
+  readonly width: number;
+  readonly height: number;
+  readonly revision: number;
+}
+
+const fixedAspect = (value: unknown): value is TimelineOutputRatio =>
+  (TIMELINE_OUTPUT_RATIOS as readonly unknown[]).includes(value);
+
+function aspectIssue(code: string, ratio: unknown, choices: unknown): DisplayMessage | null {
+  if (!Array.isArray(choices) || !fixedAspect(ratio) && ratio !== 'adaptive') return null;
+  const ratios = choices.filter((item): item is TimelineOutputRatio | 'adaptive' => fixedAspect(item) || item === 'adaptive');
+  if (!ratios.length || ratios.length !== choices.length || new Set(ratios).size !== ratios.length) return null;
+  return message(code === 'PROJECT_ASPECT_UNSUPPORTED' ? 'shell.generationProjectAspectUnsupported' : 'shell.generationAspectUnsupported',
+    { ratio, options: ratios.join(' / ') });
+}
+
+export function generationAspectError(error: unknown): DisplayMessage | null {
+  const failure = error as { code?: string; details?: Record<string, unknown> } | null;
+  if (failure?.code === 'PROJECT_ASPECT_CHANGED') return message('shell.generationFrameChanged');
+  if (failure?.code !== 'PROJECT_ASPECT_UNSUPPORTED' && failure?.code !== 'GENERATION_ASPECT_UNSUPPORTED') return null;
+  return aspectIssue(failure.code, failure.details?.projectAspectRatio ?? failure.details?.aspectRatio, failure.details?.supportedAspectRatios);
+}
+
+export function generationFrameMatches(source: GenerationAspectSource, frame: GenerationFrame | null): boolean {
+  return source.kind !== 'project' || (frame?.revision === source.expectedTimelineRevision && timelineOutputRatio(frame) === source.aspectRatio);
+}
+
+/** Pin the reviewed frame and override provider defaults only for a new request. */
+export function prepareGenerationAspect<T extends GenerationShot>(
+  frame: GenerationFrame, shot: T, provider: GenerationProvider | null | undefined, model: string,
+  options: Record<string, unknown>,
+): { shot: T; source?: GenerationAspectSource; issue?: DisplayMessage } {
+  const ratio = timelineOutputRatio(frame);
+  if (!ratio || !Number.isSafeInteger(frame.revision) || frame.revision < 0) return { shot, issue: message('shell.generationFrameChanged') };
+  const providerTakesAspect = Boolean(wanGenerationCapabilities(provider) || seedanceGenerationCapabilities(provider));
+  const requested = (options.parameters as Record<string, unknown> | undefined)?.aspectRatio;
+  const explicit = providerTakesAspect && (fixedAspect(requested) || requested === 'adaptive') ? requested : undefined;
+  const effective = explicit ?? ratio;
+  const source: GenerationAspectSource = explicit
+    ? { kind: 'explicit', aspectRatio: explicit }
+    : { kind: 'project', expectedTimelineRevision: frame.revision, aspectRatio: ratio };
+  const capability = provider?.connectionId
+    ? providerModels(provider).find(entry => entry.modelEntryId === provider.modelEntryId && entry.id === model)
+    : provider && findModelCapabilities(provider, model);
+  const issue = Array.isArray(capability?.aspectRatios) && !capability.aspectRatios.includes(effective)
+    ? aspectIssue(explicit ? 'GENERATION_ASPECT_UNSUPPORTED' : 'PROJECT_ASPECT_UNSUPPORTED', effective, capability.aspectRatios)
+    : null;
+  const aspectRatio = effective === 'adaptive' ? shot.aspectRatio : effective;
+  const basis = { ...shot, aspectRatio };
+  if (!provider?.connectionId) return { shot: basis, source, ...(issue ? { issue } : {}) };
+  const parameters = generationParameters(basis, provider, options);
+  if (providerTakesAspect) parameters.aspectRatio = effective;
+  return { shot: { ...basis, parameters }, source, ...(issue ? { issue } : {}) };
 }
 
 // ./subject-video.ts is owned by the web batch B typing pass; its defaulted

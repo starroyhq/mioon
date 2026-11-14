@@ -188,6 +188,23 @@ test('only a proof bound to the exact input clears a refused request', async () 
   assert.equal(renderMessage('zh-Hans', (h.controller.getState().notice)!.descriptor), '拆解队列已满，等前面的完成后再试');
 });
 
+test('a storyboard frame refusal clears the request only when the proof matches', async () => {
+  let proofPatch = { inputHash: 'd'.repeat(64) } as Record<string, unknown>;
+  const h = setup((operation, input) => {
+    if (operation === 'scene.shots.create') throw refusal('SCENE_PROJECT_ASPECT_UNSUPPORTED', operation, input, proofPatch);
+    return page();
+  });
+  await h.controller.refreshTasks();
+  assert.equal(await h.controller.createShots(asset, resultId, [1]), null);
+  assert.equal(h.controller.getState().phase, 'unknown');
+  proofPatch = {};
+  assert.equal(await h.controller.retryUnknown(), null);
+  assert.equal(h.controller.getState().pending, null);
+  assert.equal(h.controller.getState().phase, 'idle');
+  assert.equal(renderMessage('zh-Hans', h.controller.getState().notice!.descriptor), '当前项目画幅无法用于建分镜，请在项目设置中检查画幅');
+  assert.deepEqual(h.of('scene.shots.create')[0].input, h.of('scene.shots.create')[1].input);
+});
+
 test('cancel sends the shown revision; saving cuts names its base result and reads the new one', async () => {
   let shown = [running(100)], result = resultResponse();
   const saved: NonNullable<SceneResultResponse['result']> = { ...detected, id: savedId, origin: 'manual', taskId: null, basedOnResultId: resultId, requestId: 'request-0002', options: null, cuts: [{ frame: 108, score: 0.5 }, { frame: 300, score: null }] };

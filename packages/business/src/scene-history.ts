@@ -25,6 +25,7 @@ export const sceneServiceMessages: Readonly<Record<string,string>>=Object.freeze
  SCENE_CUTS_INVALID:'Cuts must be strictly increasing frames inside the source.',
  SCENE_CUTS_LIMIT:'The detected cuts exceed the scene result limit. Lower the sensitivity or raise the shortest shot.',
  SCENE_SEGMENTS_INVALID:'The chosen segments are not segments of this scene result.',
+ SCENE_PROJECT_ASPECT_UNSUPPORTED:'The project frame does not match a supported storyboard format.',
  SCENE_UNDO_BLOCKED:'Some shots of this storyboard were generated, edited, connected or bound to a subject, so it can no longer be undone.',
  SCENE_DETECTION_FAILED:'Local scene detection failed.',SCENE_INTERRUPTED:'The local scene task was interrupted. No automatic retry will occur.',
  SCENE_PROFILE_UNSUPPORTED:'The source does not match the supported local scene detection profile.',SCENE_DECODE_INCOMPLETE:'The decoded frames do not cover the source duration.',

@@ -1,6 +1,7 @@
 import {AGENT_TASK_STEP_STATUSES,agentTaskGoalsSchema} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskSnapshot,AgentTaskStep} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskCheck} from '../../../packages/contracts/src/agent-task-checks-v2.ts';
+import {TIMELINE_OUTPUT_PRESETS} from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import {catalogs,translate} from '../../../packages/i18n/src/index.ts';
 import type {Locale,MessageKey} from '../../../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../../../packages/i18n/src/catalogs/mio-panel.ts';
@@ -125,6 +126,7 @@ export function taskDisplayTargets(display:AgentTaskDisplay|undefined,locale:Loc
 }
 const units:Readonly<Record<DisplayProperty,DisplayUnit>>={durationFrames:'frames',sourceInFrame:'frames',sourceOutFrame:'frames',startFrame:'frames',positionX:'pixels',positionY:'pixels',gainDb:'db',fadeInFrames:'frames',fadeOutFrames:'frames',aspectRatio:'ratio',durationSeconds:'seconds',description:'text',subtitleText:'text',provider:'enum',model:'text',mode:'enum',versionNumber:'count',resolution:'enum',generateAudio:'boolean',seed:'count',width:'pixels',height:'pixels',count:'count',quality:'enum',outputFormat:'enum',background:'enum',figureCount:'count',propCount:'count',keyframeCount:'count'};
 const clipFields:ReadonlySet<DisplayProperty>=new Set(['durationFrames','sourceInFrame','sourceOutFrame','startFrame','positionX','positionY','gainDb','fadeInFrames','fadeOutFrames','width','height']);
+const frameFields:ReadonlySet<DisplayProperty>=new Set(['aspectRatio','width','height']);
 const shotFields:ReadonlySet<DisplayProperty>=new Set(['aspectRatio','durationSeconds','description']);
 const generationFields:ReadonlySet<DisplayProperty>=new Set(['provider','model','mode','versionNumber','aspectRatio','durationSeconds','resolution','generateAudio','seed','width','height','count','quality','outputFormat','background']);
 const previsFields:ReadonlySet<DisplayProperty>=new Set(['figureCount','propCount','keyframeCount']);
@@ -134,6 +136,7 @@ const modes:ReadonlySet<string>=new Set(['text_to_video','image_to_video','first
 function allowedField(operation:string,field:AgentTaskDisplayField,target?:AgentTaskDisplayTarget):boolean {
   if(!Object.hasOwn(units,field.property)||units[field.property]!==field.unit)return false;
   if(operation.startsWith('timeline.clip.'))return clipFields.has(field.property)&&(!target||target.kind==='timeline_clip');
+  if(operation==='timeline.format.set')return target?.kind==='timeline'&&frameFields.has(field.property);
   if(operation==='shot.create'||operation==='shot.update')return shotFields.has(field.property)&&(!target||target.kind==='shot');
   if(operation.startsWith('timeline.subtitle.'))return field.property==='subtitleText'&&(!target||target.kind==='timeline_subtitle');
   if(operation==='previs.scene.set')return previsFields.has(field.property)&&(!target||target.kind==='node');
@@ -151,11 +154,16 @@ function enumText(property:DisplayProperty,value:string,locale:Locale):string|un
   if(property==='background'&&['opaque','transparent','auto'].includes(value))key=`agent.display.enum.background.${value}` as EnumKey;
   return key&&Object.hasOwn(mioPanelMessages,key)?translate(locale,key):undefined;
 }
-function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions):string|undefined {
+function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions,operation?:string):string|undefined {
   if(value===null)return translate(locale,'agent.display.empty');
+  if(operation==='timeline.format.set'&&(field.property==='width'||field.property==='height')){
+    const axis=field.property;
+    if(!TIMELINE_OUTPUT_PRESETS.some(preset=>preset[axis]===value))return;
+  }
   if(typeof value==='boolean')return field.unit==='boolean'?translate(locale,value?'agent.display.on':'agent.display.off'):undefined;
   if(typeof value==='string'){
     if(field.property==='gainDb'&&value==='muted')return translate(locale,'agent.display.muted');
+    if(operation==='generation.submit'&&field.property==='aspectRatio'&&value==='adaptive')return translate(locale,'video.wan.adaptive');
     if(field.property==='description'||field.property==='subtitleText')return projectText(value)??translate(locale,'agent.display.empty');
     return enumText(field.property,value,locale);
   }
@@ -191,8 +199,8 @@ function formattedFields(display:AgentTaskDisplay,locale:Locale,options:TaskDisp
     // unchanged input is absent from changed fields; either changed input is
     // sufficient evidence not to repeat its derived out-point in this row.
     if(field.property==='sourceOutFrame'&&rangeChangeTargets.has(field.targetIndex))continue;
-    const before=field.before===undefined?undefined:displayValue(field,field.before,locale,options);
-    const after=field.after===undefined?undefined:displayValue(field,field.after,locale,options);
+    const before=field.before===undefined?undefined:displayValue(field,field.before,locale,options,operation);
+    const after=field.after===undefined?undefined:displayValue(field,field.after,locale,options,operation);
     if(field.before!==undefined&&before===undefined||field.after!==undefined&&after===undefined||before===undefined&&after===undefined)continue;
     const target=field.targetIndex===undefined?undefined:display.targets[field.targetIndex],fieldKey=`agent.display.field.${field.property}` as FieldKey;
     const prefix=target&&display.targets.length>1?`${targetTitle(target,locale,options.lookup)} · `:'';
