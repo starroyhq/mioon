@@ -124,7 +124,7 @@ export function taskDisplayTargets(display:AgentTaskDisplay|undefined,locale:Loc
   if(omitted)names.push(translate(locale,'agent.display.moreTargets',{count:omitted}));
   return names.join('、')||translate(locale,'agent.display.target.unknown');
 }
-const units:Readonly<Record<DisplayProperty,DisplayUnit>>={durationFrames:'frames',sourceInFrame:'frames',sourceOutFrame:'frames',startFrame:'frames',positionX:'pixels',positionY:'pixels',gainDb:'db',fadeInFrames:'frames',fadeOutFrames:'frames',aspectRatio:'ratio',durationSeconds:'seconds',description:'text',subtitleText:'text',provider:'enum',model:'text',mode:'enum',versionNumber:'count',resolution:'enum',generateAudio:'boolean',seed:'count',width:'pixels',height:'pixels',count:'count',quality:'enum',outputFormat:'enum',background:'enum',figureCount:'count',propCount:'count',keyframeCount:'count'};
+const units:Readonly<Record<DisplayProperty,DisplayUnit>>={durationFrames:'frames',sourceInFrame:'frames',sourceOutFrame:'frames',startFrame:'frames',positionX:'pixels',positionY:'pixels',gainDb:'db',fadeInFrames:'frames',fadeOutFrames:'frames',aspectRatio:'ratio',durationSeconds:'seconds',description:'text',subtitleText:'text',provider:'enum',model:'text',mode:'enum',versionNumber:'count',resolution:'enum',generateAudio:'boolean',seed:'count',width:'pixels',height:'pixels',count:'count',quality:'enum',outputFormat:'enum',background:'enum',figureCount:'count',propCount:'count',keyframeCount:'count',canvasVersionCount:'count',canvasTimelineClipCount:'count'};
 const clipFields:ReadonlySet<DisplayProperty>=new Set(['durationFrames','sourceInFrame','sourceOutFrame','startFrame','positionX','positionY','gainDb','fadeInFrames','fadeOutFrames','width','height']);
 const frameFields:ReadonlySet<DisplayProperty>=new Set(['aspectRatio','width','height']);
 const shotFields:ReadonlySet<DisplayProperty>=new Set(['aspectRatio','durationSeconds','description']);
@@ -140,6 +140,7 @@ function allowedField(operation:string,field:AgentTaskDisplayField,target?:Agent
   if(operation==='shot.create'||operation==='shot.update')return shotFields.has(field.property)&&(!target||target.kind==='shot');
   if(operation.startsWith('timeline.subtitle.'))return field.property==='subtitleText'&&(!target||target.kind==='timeline_subtitle');
   if(operation==='previs.scene.set')return previsFields.has(field.property)&&(!target||target.kind==='node');
+  if(operation==='canvas.archive')return (!target||target.kind==='shot')&&(field.property==='canvasVersionCount'||field.property==='canvasTimelineClipCount');
   return (operation==='generation.submit'||operation==='image.generate')&&generationFields.has(field.property);
 }
 function enumText(property:DisplayProperty,value:string,locale:Locale):string|undefined {
@@ -155,6 +156,7 @@ function enumText(property:DisplayProperty,value:string,locale:Locale):string|un
   return key&&Object.hasOwn(mioPanelMessages,key)?translate(locale,key):undefined;
 }
 function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions,operation?:string):string|undefined {
+  if(operation==='canvas.archive'&&typeof value!=='number')return;
   if(value===null)return translate(locale,'agent.display.empty');
   if(operation==='timeline.format.set'&&(field.property==='width'||field.property==='height')){
     const axis=field.property;

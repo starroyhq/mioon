@@ -19,6 +19,7 @@ import type {AgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskTools,PreparedAgentTaskTool} from './task-tools-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL,mioProjectFileImportResultSchema} from '../../../contracts/src/mio-project-import.ts';
 import type {ProjectAssetImportLookup} from '../referenced-asset-project-import.ts';
+import {isMioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
 import {agentTaskExplicitTargets,agentTaskChangeWasModified,agentTaskUndoTargets,projectAgentTaskUndo} from './task-tools-v2.ts';
 import {agentTaskGenerationAspectFeedback} from './task-tool-errors-v2.ts';
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
@@ -37,7 +38,7 @@ import {taskModelUsage} from './task-usage-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames,sourceTaskModelToolLoadMode,sourceTaskModelToolLoadInputAllowed} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
 import {collectTaskProjectNotes,collectTaskProjectOverview} from './task-context-observations-v2.ts';
-import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolCatalogProfile,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {readAgentTaskChecks} from './task-checks-v2.ts';
 import type {AgentTaskChecksPreflight} from './task-checks-v2.ts';
@@ -258,7 +259,15 @@ function safeSnapshot(value:AgentTaskSnapshot,store:Store):AgentTaskSnapshot {
   const skippedSteps=new Set(copy.run.skippedTargets?.map(item=>item.stepId)??[]);
   copy.steps=copy.steps.map(step=>{if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
   const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
-  copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;delete change.frameDependencies;return change;});return copy;
+  copy.changes=copy.changes.map(change=>{
+    Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);
+    if(isMioCanvasOperation(change.operation)&&Array.isArray(change.after)){
+      const affected=new Set(change.after.flatMap(row=>record(row)&&typeof row.kind==='string'&&typeof row.id==='string'?[row.kind+':'+row.id]:[]));
+      change.targets=change.targets.filter(target=>affected.has(target.kind+':'+target.id));
+      if(change.revertedTargets)change.revertedTargets=change.revertedTargets.filter(target=>affected.has(target.kind+':'+target.id));
+    }
+    change.before=null;change.after=null;delete change.undo;delete change.frameDependencies;return change;
+  });return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
 export interface AgentTaskRuntimeOptions {store:Store;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;rules?:MioProjectRules;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
@@ -315,7 +324,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -410,6 +419,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const run=fence(runId),step=journal.step(stepId);
     if(step.runId!==run.id||step.status==='rejected'||step.status==='denied')throw agentTaskFailure('AGENT_TASK_PAUSED');
     assertNotSkipped(run,prepared.referencedTargets??prepared.targets);
+    if(prepared.canvas&&(!record(step.data)||step.data.canvasProof!==prepared.canvas.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
   }
@@ -486,7 +496,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(!run.diagnostic){
       let visible:string[];try{visible=sourceTaskModelToolNames(configuration(run).protocol,source.request);}catch(error){if(storageError(error))failStorage(error);throw error;}
       if(!visible.includes(call.name)){
-        const group=agentTaskToolGroupForName(call.name,'native');if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
+        const group=agentTaskToolGroupForName(call.name,agentTaskToolCatalogProfile(toolset().list()));if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
         if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id,...repairStepData(source)}});}
         const message=unloadedToolMessages[taskResponseLocale(run.context)];
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TOOL_NOT_LOADED',message,group}},error:{code:'TOOL_NOT_LOADED',message}});
@@ -509,7 +519,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const message=invalidLoaderInputMessage(run,source,call.arguments);
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'VALIDATION_ERROR',message}},error:{code:'VALIDATION_ERROR',message}});
       }
-      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
+      prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,canvasRequester:{runId,stepId:step.id},...(call.name===AGENT_TASK_TOOLS_LOAD_NAME?{toolLoadMode:sourceTaskModelToolLoadMode(protocol,source.request)}:{}),beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
       if(prepared.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
         const initial=prepared,stepId=step.id;
         // Preparing the frozen source is read-only and precedes approval. The
@@ -525,7 +535,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         conflicts=[...step.targets.filter(target=>!prepared!.targets.some(item=>item.kind===target.kind&&item.id===target.id&&item.revision===target.revision)),...prepared.targets.filter(target=>!step!.targets!.some(item=>item.kind===target.kind&&item.id===target.id))];
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)})}});
+      const canvas=prepared.canvas;
+      if(canvas&&record(step.data)&&typeof step.data.canvasProof==='string'&&step.data.canvasProof!==canvas.proof){
+        conflicts=prepared.targets;
+        throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+      }
+      const canvasEvidence=canvas?{canvasProof:canvas.proof,...(canvas.input.operation==='archive'?{canvasArchiveImpact:json({
+        ...canvas.impact,shotIds:canvas.impact.shots.map(shot=>shot.id),selected:canvas.input.targets,
+      })}:{})}:{};
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...canvasEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
       const serviceIssue=toolset().generationServiceIssue(prepared);
@@ -559,6 +577,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }catch(error){
       if(closed)return null;const failure=code(error);
       if(storageError(error))failStorage(error);
+      // A retained canvas proposal can become invalid before preparation can
+      // even rebuild its proof (archived target, dependent edit or active job).
+      if(record(step.data)&&typeof step.data.canvasProof==='string'&&['CANVAS_EDIT_CONFLICT','CANVAS_EDIT_BLOCKED'].includes(failure)&&
+        ['intent','awaiting_approval'].includes(journal.step(step.id).status))
+        return handBackConflict(runId,step.id,failure==='CANVAS_EDIT_BLOCKED'?'AGENT_TASK_TARGET_CLAIMED':'AGENT_TASK_TARGET_CHANGED',step.targets??[]);
       // X4: a step that meets a conflict before it runs is handed back, not paused.
       // This includes a pending approval re-entered after a pause or restart.
       // A partly committed (completed) step keeps the conflict pause below.
@@ -914,7 +937,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         // A saved compensation revision only bridges adjacent AI changes. It
         // must not jump across an intervening external edit, including ABA.
         const expectedTargets=agentTaskUndoTargets(change,chain);
-        if(request.action==='undo_change'&&agentTaskUndoTargets(change,new Map()).some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+        if(request.action==='undo_change'&&!isMioCanvasOperation(change.operation)&&agentTaskUndoTargets(change,new Map()).some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
         if(request.action==='undo_all'&&store.tx(()=>{if(!agentTaskChangeWasModified(store,change,expectedTargets))return false;journal.markChangeSupersededInside(change.id);return true;})){retainedChangeIds.push(change.id);continue;}
         const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},beforeCompensation:()=>{if(undoChangeIds&&!undoChangeIds.has(change.id))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');},recordInside:()=>{
           journal.markChangeRevertedInside(change.id);

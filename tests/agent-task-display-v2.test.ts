@@ -42,6 +42,62 @@ function change(operation:string,kind:string,before:Record<string,AgentTaskJson>
 function step(name:string,args:AgentTaskJson,target?:{kind:string;id:string}):AgentTaskStep {
   return {id:randomUUID(),runId:randomUUID(),position:2,kind:'tool',status:'awaiting_approval',createdAt:now,updatedAt:now,toolCall:{id:'call_synthetic',name,arguments:args},...(target?{targets:[{...target,revision:1}]}:{})};
 }
+test('canvas archive approval projects only the selected objects and server-prepared shot impact',()=>{
+  const first=randomUUID(),second=randomUUID(),node=randomUUID(),guard=randomUUID(),foreign=randomUUID();
+  const planned=step('mioon_canvas_archive',{shotId:foreign,versions:999,clips:999});
+  const selected=[{kind:'node',id:node},{kind:'shot',id:second},{kind:'shot',id:first}];
+  planned.targets=[{kind:'shot',id:guard,revision:5},...selected.map(item=>({...item,revision:5}))];
+  planned.data={canvasArchiveImpact:{selected,shotIds:[first,second,guard,foreign],shots:[
+    {id:first,title:'Closing shot'},{id:second,title:'Closing shot'},{id:guard,title:'DEPENDENCY_ONLY'},{id:foreign,title:'FOREIGN_SHOT'},
+  ],versions:2,clips:3,shotImpacts:[
+    {id:first,number:1,versions:2,clips:0},{id:second,number:2,versions:0,clips:3},{id:guard,number:3,versions:9,clips:9},
+  ],private:'INTERNAL_APPROVAL_DATA'}};
+  const display=projectAgentTaskStepDisplay(planned,({id})=>id===node?{name:'Notes'}:{title:'Unbound title'});
+  assert.ok(display);
+  assert.deepEqual(agentTaskDisplaySchema.parse(display),display);
+  assert.equal(display.operation,'canvas.archive');
+  assert.equal(display.targetCount,3);
+  assert.deepEqual(display.targets.map(item=>({id:item.id,name:item.name})),[
+    {id:first,name:'#01 · Closing shot'},{id:second,name:'#02 · Closing shot'},{id:node,name:'Notes'},
+  ]);
+  assert.deepEqual(display.fields.map(({targetIndex,property,after})=>[targetIndex,property,after]),[
+    [undefined,'canvasVersionCount',2],[undefined,'canvasTimelineClipCount',3],
+    [0,'canvasVersionCount',2],[0,'canvasTimelineClipCount',0],
+    [1,'canvasVersionCount',0],[1,'canvasTimelineClipCount',3],
+  ]);
+  assert.doesNotMatch(JSON.stringify(display),/999|DEPENDENCY_ONLY|FOREIGN_SHOT|INTERNAL_APPROVAL_DATA/u);
+  const entries=taskDisplayEntries(display,'en');
+  assert.ok(entries.some(item=>item.label.includes('#01 · Closing shot')&&item.label.includes('Generated video versions')&&item.value==='2'));
+  assert.ok(entries.some(item=>item.label.includes('#02 · Closing shot')&&item.label.includes('Clips used on the timeline')&&item.value==='3'));
+  assert.deepEqual(projectAgentTaskStepDisplay({...planned,status:'completed'})?.fields,[]);
+});
+test('canvas changes show saved labels for changed rows without exposing unchanged guards',()=>{
+  const archived=change('canvas.archive','shot',null,{title:'Selected shot',private:'HIDDEN_CANVAS_PAYLOAD'});
+  const [{id}]=archived.targets;
+  archived.targets.push({kind:'edge',id:randomUUID(),revision:1});
+  const display=projectAgentTaskChangeDisplay(archived);
+  assert.equal(display.targetCount,1);
+  assert.deepEqual(display.targets,[{kind:'shot',id,name:'Selected shot'}]);
+  assert.doesNotMatch(JSON.stringify(display),/HIDDEN_CANVAS_PAYLOAD/u);
+});
+test('canvas approval falls back to a valid aggregate and rejects impact on other operations',()=>{
+  const id=randomUUID(),planned=step('mioon_canvas_archive',{versions:999},{kind:'shot',id});
+  planned.data={canvasArchiveImpact:{shotIds:[id],versions:0,clips:4}};
+  const display=projectAgentTaskStepDisplay(planned,()=>({title:'Saved shot'}));
+  assert.ok(display);
+  assert.equal(display.targets[0]?.name,'Saved shot');
+  assert.deepEqual(display.fields.map(({targetIndex,after})=>[targetIndex,after]),[[undefined,0],[undefined,4]]);
+  assert.equal(taskDisplayEntries({...display,operation:'canvas.restore'},'en').length,0);
+  assert.equal(taskDisplayEntries({...display,fields:[{property:'canvasVersionCount',unit:'count',after:'not a count'}]},'en').length,0);
+  planned.data={canvasArchiveImpact:{shotIds:[id],versions:-1,clips:4}};
+  assert.deepEqual(projectAgentTaskStepDisplay(planned)?.fields,[]);
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+    const tools=['layout','archive','restore'] as const;
+    const titles=tools.map(operation=>taskOperationTitle(`mioon_canvas_${operation}`,locale));
+    assert.deepEqual(titles,tools.map(operation=>translate(locale,`agent.display.operation.canvas.${operation}`)));
+    assert.equal(new Set(titles).size,3);
+  }
+});
 test('display names preserve slashes in project content and shorten only media filenames',()=>{
   for(const [kind,key,text,expected] of [
     ['timeline_subtitle','text','A/B 对比：雨后的城市','A/B 对比：雨后的城市'],

@@ -309,7 +309,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   useLayoutEffect(() => { if (visible && !readOnly && focusKey && !review) log.current?.querySelector<HTMLButtonElement>('[data-mio-primary]:not(:disabled)')?.focus(); }, [projectId, focusKey, visible, readOnly, review]);
   const markedConflicts = steps.filter(step => step.display?.conflict === true);
   const conflictSteps = markedConflicts.length ? markedConflicts : [steps.filter(step => step.kind === 'tool' && ['intent', 'awaiting_approval'].includes(step.status)).at(-1)].filter((step): step is AgentTaskStep => step !== undefined);
-  const parameters = (step: AgentTaskStep) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale,formatOptions).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
+  const parameters = (step: AgentTaskStep, options = formatOptions) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale, options).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
   const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => {
     const diagnostic = step.kind === 'model' ? agentTaskDiagnosticDetails(step.error?.diagnostic) : undefined;
     return <details className="mio-safe-details">
@@ -445,7 +445,25 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           const decision = rulesStepApplied(step) ? {kind: 'allowed' as const} : rejected ? {kind: 'rejected' as const} : step.status === 'unknown' || pending && state.phase === 'unknown' ? {kind: 'unknown' as const} : pending ? {kind: 'submitting' as const, decision: pending.action === 'approve' ? 'allow' as const : 'reject' as const} : step.status === 'awaiting_approval' && proposal ? {kind: 'pending' as const} : {kind: 'unavailable' as const};
           return <div key={step.id} data-testid={`agent-task-rules-${step.id}`}><ProjectRulesChangeCard proposal={proposal} change={proposal ? projectRulesProposalChange(proposal) : undefined} state={decision} disabled={blocked || run.projectId !== projectId || run.status !== 'awaiting_approval'} onAllow={() => {if (proposal && canInteract() && visibility.current) void act('approve', {stepId: step.id});}} onReject={() => {if (proposal && canInteract() && visibility.current) void act('deny', {stepId: step.id});}} /></div>;
         })}
-        {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={event => { if (visibility.current) onSettings(undefined, event?.nativeEvent); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
+        {approval.map(step => {
+          const paid = step.tier === 'paid', operation = step.display?.operation;
+          const archive = operation === 'canvas.archive', canvas = archive || operation === 'canvas.layout' || operation === 'canvas.restore';
+          const options = archive ? {...formatOptions, lookup: undefined} : formatOptions;
+          const targets = step.display && taskDisplayTargets(step.display, locale, options.lookup);
+          return <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}>
+            <header><Icon name={paid ? 'film' : 'info'} /><strong>{paid || canvas ? taskOperationTitle(operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header>
+            <p className="mio-secondary">{targets}</p>
+            {parameters(step, options)}
+            {archive && <p className="mio-secondary">{t('agent.panel.canvasArchiveEffect')}</p>}
+            {paid && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{targets} · {t('agent.panel.newVersion')}</dd></div></dl> : null}
+            {paid ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}
+            <div className="mio-card-actions">
+              <Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button>
+              <Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(paid ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button>
+            </div>
+            {paid && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={event => { if (visibility.current) onSettings(undefined, event?.nativeEvent); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}
+          </section>;
+        })}
         {pause && <section className="mio-card" data-testid="agent-task-paused">
           <strong>{pause.title}</strong>
           {conflictPaused && conflictSteps.map(step => {

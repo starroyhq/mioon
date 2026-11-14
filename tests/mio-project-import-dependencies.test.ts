@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {gzipSync} from 'node:zlib';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
+import {prepareMioCanvasEdit, applyMioCanvasEdit} from '../packages/business/src/canvas-mio-editing.ts';
 import {createCanvasEditing} from '../packages/business/src/canvas-editing.ts';
 import {CANVAS_ARCHIVE_ORDER_FIELD} from '../packages/business/src/canvas-patch.ts';
 import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
@@ -661,6 +662,34 @@ test('candidate canvas patches are asset-free but archived consumers remain in t
   store.put('nodes', media);
   canvas.call('canvas.apply', {projectId, requestId: request(), operation: 'archive', historyRevision: moved.history.revision, targets: [target(media.id)]});
   assert.equal(store.db.prepare('SELECT archiveReason FROM project.nodes WHERE id=?').get(media.id)?.archiveReason, 'user-delete');
+  assert.deepEqual(f.read(), {status: 'referenced', source: 'project.nodes.data'});
+});
+
+test('asset-import absence proof accepts a strict Mio canvas patch and refuses damaged patch or missing guards', t => {
+  const f = fixture(t, true, undefined, true), {store, projectId} = f, {run, step} = mioAudit(f);
+  const node = {id: randomUUID(), projectId, type: 'text', revision: 1, position: {x: 0, y: 0}, createdAt: now, updatedAt: now};
+  store.put('nodes', node);
+  const preparation = prepareMioCanvasEdit(store, {operation: 'archive', targets: [{kind: 'node', id: node.id}]});
+  const changeId = randomUUID();
+  const change = store.tx(() => {
+    const effect = applyMioCanvasEdit(store, preparation);
+    assert.ok(effect.undo);
+    const change = {id: changeId, runId: run, stepId: step, projectId, operation: 'canvas.archive', targets: effect.targets,
+      before: null, after: effect.changedRows.map(row => ({...row, value: {}})), undo: [effect.undo], reversible: true, status: 'applied', createdAt: now};
+    store.db.prepare('INSERT INTO main.mio_changes(id,runId,stepId,projectId,data) VALUES(?,?,?,?,?)')
+      .run(changeId, run, step, projectId, JSON.stringify(change));
+    return change;
+  });
+  assert.deepEqual(f.read(), {status: 'clear'});
+  const update = store.db.prepare('UPDATE main.mio_changes SET data=? WHERE id=?');
+  update.run(JSON.stringify({...change, targets: []}), changeId);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'});
+  update.run(JSON.stringify({...change, undo: [{...change.undo[0], after: JSON.stringify({assetId: f.assetId})}]}), changeId);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'});
+  update.run(JSON.stringify({...change, after: [{kind: 'node', id: node.id, value: {assetId: f.assetId}}]}), changeId);
+  assert.deepEqual(f.read(), {status: 'unproven', reason: 'invalid'});
+  update.run(JSON.stringify(change), changeId);
+  store.put('nodes', {...node, type: 'image', assetId: f.assetId});
   assert.deepEqual(f.read(), {status: 'referenced', source: 'project.nodes.data'});
 });
 

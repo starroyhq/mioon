@@ -11,6 +11,7 @@ import {agentTaskSnapshotSchema,type AgentTaskJson,type AgentTaskSnapshot,type A
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
+import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer,type InspectProject} from '../apps/server/src/index.ts';
@@ -99,7 +100,7 @@ test('real Mio subtitle undo retains valid locked format history while unknown o
  }
 });
 
-async function format4MioFixture(t: test.TestContext){
+async function format4MioFixture(t: test.TestContext,localMode:'confirm'|'direct'='confirm'){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-format4-mio-'));
  const projectFile=path.join(root,'project.mioon'),projectId=createProjectFile(projectFile);
  const locate=()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')});
@@ -115,7 +116,7 @@ async function format4MioFixture(t: test.TestContext){
  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_FRAME_TRANSACTION_KEY'}});
  const authorizations=ports.createAuthorizations(settings);
  await authorizeTestScope(authorizations,'project_agent');
- const policy={...mioTestPolicy,policy:()=>{const base=mioTestPolicy.policy();return {...base,modes:{...base.modes,local_reversible:'confirm' as const}};}};
+ const policy={...mioTestPolicy,policy:()=>{const base=mioTestPolicy.policy();return {...base,modes:{...base.modes,local_reversible:localMode}};}};
  const journal=createMioJournal(store,policy),tools=createAgentTaskTools({store,services,journal});
  let runtime:ReturnType<typeof createMioRuntime>|undefined;
  function startRuntime(gateway:TaskGateway){
@@ -145,6 +146,316 @@ async function waitForMioRun(runtime:ReturnType<typeof createMioRuntime>,project
  }
  assert.fail('Synthetic Mio frame run did not reach '+expected);
 }
+
+async function canvasMioFixture(t:test.TestContext, mode:'confirm'|'direct'='confirm'){
+ const fixture=await format4MioFixture(t,mode);
+ const {store,settings,journal,startRuntime,rpc,projectId}=fixture;
+ const history=async()=>canvasEditingResponses['canvas.history.get'].parse(await rpc('canvas.history.get'));
+ const cursor=()=>({
+  state:store.db.prepare('SELECT * FROM main.canvas_history_state WHERE projectId=?').get(projectId),
+  entries:store.db.prepare('SELECT * FROM main.canvas_history_entries WHERE projectId=? ORDER BY position').all(projectId),
+  receipts:store.db.prepare('SELECT count(*) AS count FROM main.canvas_requests WHERE projectId=?').get(projectId),
+ });
+ const userEdit=async(edit:Record<string,unknown>)=>{
+  const {revision,requestEpoch,requestAfter}=await history();
+  return canvasEditingResponses['canvas.apply'].parse(await rpc('canvas.apply',{
+   ...edit,historyRevision:revision,requestId:createCanvasRequestId(requestEpoch,randomUUID(),Math.max(Date.now(),requestAfter+1)),
+  }));
+ };
+ const target=(kind:'shot'|'node',id:string)=>{
+  const expectedRevision=journal.targetRevision(projectId,kind,id);
+  assert.ok(typeof expectedRevision==='number');
+  return {kind,id,expectedRevision};
+ };
+ const archiveRow=(kind:'shot'|'node',id:string)=>{
+  const row=store.db.prepare(`SELECT archivedAt,archiveBatchId,archiveReason FROM project.${kind==='shot'?'shots':'nodes'} WHERE id=?`).get(id);
+  assert.ok(row,'a reversible archive preserves the underlying record');
+  return {...row};
+ };
+ async function node(label:string,position:{x:number;y:number}){
+  const saved=await rpc('node.create',{type:'text',label,text:'Kept node text',position,requestId:randomUUID()});
+  assert.ok(object(saved)&&typeof saved.id==='string');
+  return saved.id;
+ }
+ async function shot(title:string){
+  const saved=await rpc('shot.create',{requestId:randomUUID(),title,position:{x:480,y:320}});
+  assert.ok(object(saved)&&typeof saved.id==='string');
+  return saved.id;
+ }
+ async function turn(operation:'layout'|'archive'|'restore',args:Record<string,AgentTaskJson>){
+  const name=`mioon_canvas_${operation}`,callId='canvas_edit',loaderId='load_canvas_edit';
+  let requests=0;
+  const gateway:TaskGateway=async function*(request){
+   request.beforeSubmit?.();
+   const body:unknown=JSON.parse(request.body);assert.ok(object(body)&&Array.isArray(body.tools));
+   const advertised=body.tools.some((tool:unknown)=>object(tool)&&object(tool.function)&&tool.function.name===name);
+   requests++;
+   const calls= requests===1
+    ? [{id:loaderId,name:'mioon_tools_load',arguments:{names:[name]}}]
+    : requests===2 ? [{id:callId,name,arguments:args}] : [];
+   assert.equal(advertised,requests>1);
+   yield {type:'done',output:output(calls)};
+  };
+  const runtime=startRuntime(gateway);
+  const started=await runtime.send(projectId,{
+   requestId:randomUUID(),text:`Canvas ${operation}`,expectedSettingsRevision:testAgentExecution(await settings.get()).revision,
+  });
+  const wait=(status:AgentTaskSnapshot['run']['status'])=>waitForMioRun(runtime,projectId,started.run.id,status);
+  const step=(snapshot:AgentTaskSnapshot)=>{
+   const item=snapshot.steps.find(entry=>entry.toolCall?.id===callId);
+   assert.ok(item);
+   return item;
+  };
+  const approve=(snapshot:AgentTaskSnapshot)=>runtime.action(projectId,started.run.id,{
+   requestId:randomUUID(),expectedRevision:snapshot.run.revision,action:'approve',stepId:step(snapshot).id,
+  });
+  const undo=(snapshot:AgentTaskSnapshot)=>{
+   assert.equal(requests,3);
+   assert.equal(snapshot.changes.length,1);
+   const change=snapshot.changes[0]!;
+   assert.equal(change.operation,`canvas.${operation}`);
+   assert.equal(change.reversible,true);
+   return runtime.action(projectId,started.run.id,{
+    requestId:randomUUID(),expectedRevision:snapshot.run.revision,action:'undo_change',changeId:change.id,
+   });
+  };
+  return {wait,step,approve,undo};
+ }
+ return {...fixture,cursor,userEdit,target,archiveRow,node,shot,turn};
+}
+
+for(const operation of ['layout','archive','restore'] as const)test(`format-4 Mio ${operation} obeys approval and undoes its own change without moving the user canvas cursor`,async t=>{
+ const f=await canvasMioFixture(t);
+ const unrelated=await f.node('User card',{x:140,y:160});
+ const selected=await f.node('Mio card',{x:1560,y:1180});
+ const kind='node',unselected=f.target(kind,unrelated);
+ await f.userEdit({operation:'move',moves:[{kind,id:unrelated,revision:unselected.expectedRevision,position:{x:520,y:240}}]});
+ if(operation==='restore'){
+  await f.userEdit({operation:'archive',targets:[{kind,id:selected,revision:f.target(kind,selected).expectedRevision}]});
+ }
+ const before=f.cursor(),original=f.store.get('nodes',selected),userCard=f.store.get('nodes',unrelated),oldArchive=f.archiveRow(kind,selected);
+ assert.ok(before.state&&before.entries.length>0);
+ assert.ok(object(original)&&object(userCard));
+ const readLive=async()=>{
+  const project=await f.rpc('project.get');
+  assert.ok(object(project)&&Array.isArray(project.nodes));
+  return project.nodes.some((item:unknown)=>object(item)&&item.id===selected);
+ };
+ const run=await f.turn(operation,{targets:[{kind,id:selected}]});
+ const review=await run.wait('awaiting_approval');
+ const step=run.step(review);
+ assert.equal(step.status,'awaiting_approval');
+ assert.equal(step.tier,'local_reversible');
+ assert.equal(review.changes.length,0);
+ assert.deepEqual(f.archiveRow(kind,selected),oldArchive);
+ assert.deepEqual(f.store.get('nodes',selected),original);
+ assert.deepEqual(f.cursor(),before);
+ await run.approve(review);
+ const completed=await run.wait('completed');
+ assert.equal(run.step(completed).status,'completed');
+ const changed=f.store.get('nodes',selected),newArchive=f.archiveRow(kind,selected);
+ assert.ok(object(changed));
+ assert.equal(await readLive(),operation!=='archive');
+ if(operation==='layout'){
+  assert.notDeepEqual(changed.position,original.position);
+  assert.deepEqual(newArchive,oldArchive);
+ } else {
+  assert.deepEqual(changed.position,original.position);
+  assert.equal(typeof newArchive.archivedAt==='string',operation==='archive');
+ }
+ assert.equal(changed.label,original.label);
+ assert.equal(changed.text,original.text);
+ assert.deepEqual(f.store.get('nodes',unrelated),userCard);
+ assert.deepEqual(f.cursor(),before);
+ if(operation==='archive'){
+  const ownerId=randomUUID(),{expectedRevision:revision}=f.target(kind,selected);
+  f.journal.claim({projectId:f.projectId,ownerId,targets:[{kind,id:selected,revision}]});
+  await assert.rejects(run.undo(completed),{code:'AGENT_TASK_TARGET_CLAIMED'});
+  assert.deepEqual(f.archiveRow(kind,selected),newArchive);
+  assert.deepEqual(f.cursor(),before);
+  f.journal.releaseClaims(f.projectId,ownerId);
+ }
+ const undone=await run.undo(completed),restored=f.store.get('nodes',selected);
+ assert.equal(undone.changes[0]?.status,'reverted');
+ assert.ok(object(restored));
+ assert.deepEqual(restored.position,original.position);
+ assert.equal(restored.label,original.label);
+ assert.equal(restored.text,original.text);
+ assert.deepEqual(f.archiveRow(kind,selected),oldArchive);
+ assert.equal(await readLive(),operation!=='restore');
+ assert.deepEqual(f.store.get('nodes',unrelated),userCard);
+ assert.deepEqual(f.cursor(),before);
+});
+
+for(const usedBy of ['version','timeline'] as const)test(`format-4 Mio archive requires approval in direct mode for a shot used by ${usedBy}`,async t=>{
+ const f=await canvasMioFixture(t,'direct'),title='Shot with retained evidence',shotId=await f.shot(title);
+ const {store,projectId,assetId}=f;
+ const versions=usedBy==='version'?1:0,clips=usedBy==='timeline'?1:0;
+ const otherShot=usedBy==='timeline'?await f.shot('Unused shot in the same selection'):undefined;
+ if(usedBy==='version'){
+  store.put('versions',{id:randomUUID(),projectId,shotId,jobId:randomUUID(),assetId,sha256:'a'.repeat(64)});
+ } else {
+  const timeline=await f.timeline('timeline.clip.add',{
+   expectedRevision:f.initialized.revision,requestId:randomUUID(),trackId:f.track.id,assetId,startFrame:0,durationFrames:90,
+  });
+  const bound={...timeline,clips:timeline.clips.map(clip=>({...clip,shotId}))};
+  assert.ok(isTimelineRecord(bound,{projectId}));
+  store.put('timelines',bound);
+ }
+ const ids=otherShot?[shotId,otherShot]:[shotId],targets=ids.map(id=>f.target('shot',id));
+ const before=f.cursor(),original=ids.map(id=>f.archiveRow('shot',id));
+ const preview=canvasEditingResponses['canvas.archive.preview'].parse(await f.rpc('canvas.archive.preview',{
+  operation:'archive',targets:targets.map(({kind,id,expectedRevision})=>({kind,id,revision:expectedRevision})),
+ }));
+ assert.deepEqual([preview.versions,preview.clips,preview.blocked],[versions,clips,[]]);
+ assert.ok(preview.confirmation);
+ const run=await f.turn('archive',{targets:targets.map(({kind,id})=>({kind,id}))});
+ const review=await run.wait('awaiting_approval'),step=run.step(review);
+ assert.equal(step.tier,'local_reversible');
+ assert.equal(step.status,'awaiting_approval');
+ assert.equal(step.display?.operation,'canvas.archive');
+ const display=step.display;
+ const shotIndex=display.targets.findIndex(item=>item.kind==='shot'&&item.id===shotId&&item.name===`#01 · ${title}`);
+ assert.ok(shotIndex>=0);
+ assert.deepEqual(display.targets.map(({id})=>id),ids);
+ for(const targetIndex of otherShot?[undefined,shotIndex]:[undefined]){
+  const counts=display.fields.filter(field=>field.targetIndex===targetIndex
+   &&(field.property==='canvasVersionCount'||field.property==='canvasTimelineClipCount'));
+  const at=targetIndex===undefined?{}:{targetIndex};
+  assert.deepEqual(counts,[
+   {...at,property:'canvasVersionCount',unit:'count',after:versions},
+   {...at,property:'canvasTimelineClipCount',unit:'count',after:clips},
+  ],JSON.stringify(display));
+ }
+ assert.equal(review.changes.length,0);
+ assert.deepEqual(ids.map(id=>f.archiveRow('shot',id)),original);
+ assert.deepEqual(f.cursor(),before);
+ await run.approve(review);
+ const completed=await run.wait('completed');
+ assert.equal(run.step(completed).status,'completed');
+ for(const id of ids)assert.equal(typeof f.archiveRow('shot',id).archivedAt,'string');
+ assert.equal(completed.changes.length,1);
+ assert.deepEqual(f.cursor(),before);
+ if(usedBy==='version')assert.equal(store.list('versions',projectId).length,1);
+ else assert.equal((await f.timeline()).clips[0]?.shotId,shotId);
+});
+
+test('format-4 Mio layout without a selection and ordinary archive execute under direct policy',async t=>{
+ await t.test('layout includes both kinds of live elements',async t=>{
+  const f=await canvasMioFixture(t,'direct'),shotId=await f.shot('Live shot'),nodeId=await f.node('Live card',{x:1500,y:840});
+  const read=()=>[f.store.get('shots',shotId),f.store.get('nodes',nodeId)].map(item=>{
+   assert.ok(object(item));
+   return item.position;
+  });
+  const preserved=f.cursor(),before=read(),run=await f.turn('layout',{});
+  const completed=await run.wait('completed');
+  assert.equal(run.step(completed).status,'completed');
+  assert.notDeepEqual(read()[0],before[0]);
+  assert.notDeepEqual(read()[1],before[1]);
+  await run.undo(completed);
+  assert.deepEqual(read(),before);
+  assert.deepEqual(f.cursor(),preserved);
+ });
+ await t.test('archive of an unused shot needs no approval',async t=>{
+  const f=await canvasMioFixture(t,'direct'),id=await f.shot('Unused shot'),before=f.archiveRow('shot',id),cursor=f.cursor();
+  const run=await f.turn('archive',{targets:[{kind:'shot',id}]});
+  const completed=await run.wait('completed');
+  assert.equal(run.step(completed).status,'completed');
+  assert.equal(typeof f.archiveRow('shot',id).archivedAt,'string');
+  await run.undo(completed);
+  assert.deepEqual(f.archiveRow('shot',id),before);
+  assert.deepEqual(f.cursor(),cursor);
+ });
+});
+
+for(const changedBy of ['move','claim'] as const)test(`format-4 Mio refuses an old canvas plan when user ${changedBy} arrives during approval`,async t=>{
+ const f=await canvasMioFixture(t),id=await f.node('Touched during approval',{x:1360,y:960}),kind='node';
+ const run=await f.turn('archive',{targets:[{kind,id}]});
+ const review=await run.wait('awaiting_approval'),step=run.step(review),original=f.archiveRow(kind,id);
+ const revision=f.target(kind,id).expectedRevision;
+ assert.equal(step.targets?.find(target=>target.kind===kind&&target.id===id)?.revision,revision);
+ const ownerId=randomUUID();
+ if(changedBy==='move'){
+  await f.userEdit({operation:'move',moves:[{kind,id,revision,position:{x:1380,y:980}}]});
+  assert.equal(f.target(kind,id).expectedRevision,revision+1);
+ } else {
+  f.journal.claim({projectId:f.projectId,ownerId,targets:[{kind,id,revision}]});
+ }
+ const cursor=f.cursor(),current=f.store.get('nodes',id);
+ await assert.rejects(run.approve(review),{code:changedBy==='move'?'AGENT_TASK_TARGET_CHANGED':'AGENT_TASK_TARGET_CLAIMED'});
+ const completed=await run.wait('completed');
+ assert.equal(run.step(completed).status,'rejected');
+ assert.equal(completed.changes.length,0);
+ assert.deepEqual(f.archiveRow(kind,id),original);
+ assert.deepEqual(f.store.get('nodes',id),current);
+ assert.deepEqual(f.cursor(),cursor);
+ if(changedBy==='claim')f.journal.releaseClaims(f.projectId,ownerId);
+});
+
+test('format-4 Mio refuses an earlier approval when archive impact changes without a shot revision change',async t=>{
+ const f=await canvasMioFixture(t),kind='shot',id=await f.shot('Shot receives new evidence');
+ const run=await f.turn('archive',{targets:[{kind,id}]});
+ const review=await run.wait('awaiting_approval'),step=run.step(review),original=f.archiveRow(kind,id);
+ const {expectedRevision}=f.target(kind,id);
+ const versionId=randomUUID();
+ f.store.put('versions',{id:versionId,projectId:f.projectId,shotId:id,jobId:randomUUID(),assetId:f.assetId,sha256:'a'.repeat(64)});
+ assert.equal(f.target(kind,id).expectedRevision,expectedRevision);
+ const cursor=f.cursor();
+ await run.approve(review);
+ const completed=await run.wait('completed'),rejected=run.step(completed);
+ assert.equal(rejected.id,step.id);
+ assert.equal(rejected.status,'rejected');
+ assert.equal(rejected.error?.code,'TARGET_CHANGED');
+ assert.deepEqual(completed.changes,[]);
+ assert.deepEqual(f.archiveRow(kind,id),original);
+ assert.ok(f.store.get('versions',versionId));
+ assert.deepEqual(f.cursor(),cursor);
+});
+
+test('format-4 Mio separately undoes overlapping layout and archive steps through its own revision chain',async t=>{
+ const f=await canvasMioFixture(t,'direct'),kind='node',id=await f.node('Moved and archived card',{x:1500,y:1180});
+ const before=f.store.get('nodes',id),cursor=f.cursor(),originalArchive=f.archiveRow(kind,id);
+ assert.ok(object(before));
+ let request=0;
+ const gateway:TaskGateway=async function*(input){
+  input.beforeSubmit?.();
+  const args={targets:[{kind,id}]},names=['mioon_canvas_layout','mioon_canvas_archive'];
+  const calls=[
+   [{id:'load_both',name:'mioon_tools_load',arguments:{names}}],
+   [{id:'layout_first',name:'mioon_canvas_layout',arguments:args}],
+   [{id:'archive_next',name:'mioon_canvas_archive',arguments:args}],
+   [],
+  ][request++];
+  assert.ok(calls);
+  yield {type:'done',output:output(calls)};
+ };
+ const runtime=f.startRuntime(gateway),started=await runtime.send(f.projectId,{
+  requestId:randomUUID(),text:'Tidy and archive the card',expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision,
+ });
+ const completed=await waitForMioRun(runtime,f.projectId,started.run.id,'completed');
+ assert.equal(request,4);
+ assert.deepEqual(completed.changes.map(change=>[change.operation,change.status]),[['canvas.layout','applied'],['canvas.archive','applied']]);
+ const [layout,archive]=completed.changes;
+ assert.ok(layout&&archive);
+ const moved=f.store.get('nodes',id);
+ assert.ok(object(moved));
+ assert.notDeepEqual(moved.position,before.position);
+ assert.equal(typeof f.archiveRow(kind,id).archivedAt,'string');
+ const undo=(revision:number,changeId:string)=>runtime.action(f.projectId,started.run.id,{
+  requestId:randomUUID(),expectedRevision:revision,action:'undo_change',changeId,
+ });
+ const restored=await undo(completed.run.revision,archive.id);
+ assert.deepEqual(restored.changes.map(({status})=>status),['applied','reverted']);
+ assert.equal(restored.changes[0]?.undoDisposition,'undo');
+ assert.deepEqual(f.archiveRow(kind,id),originalArchive);
+ assert.deepEqual(f.cursor(),cursor);
+ const reverted=await undo(restored.run.revision,layout.id),saved=f.store.get('nodes',id);
+ assert.deepEqual(reverted.changes.map(({status})=>status),['reverted','reverted']);
+ assert.ok(object(saved));
+ assert.deepEqual(saved.position,before.position);
+ assert.deepEqual(f.archiveRow(kind,id),originalArchive);
+ assert.deepEqual(f.cursor(),cursor);
+});
 
 test('format-4 Mio keeps dual CAS, a reversible frame receipt, and the native undo and redo history', async t=>{
  const {store,settings,journal,tools,startRuntime,rpc,read,timeline,frameArgs,initialized,track,assetId,dataBase64,projectId}=await format4MioFixture(t);

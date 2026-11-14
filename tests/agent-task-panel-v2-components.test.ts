@@ -391,6 +391,31 @@ test('preparing has no step budget and a locale change retains the panel session
 test('an already accepted generation with renewed approval requirement renders the same exact-step approval card',()=>{
   const h=harness();try{h.render();assert.ok(h.find(`agent-task-approval-${stepId}`));h.find(`agent-task-approve-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[0],['approve',{stepId},'run']);const card=h.find(`agent-task-approval-${stepId}`),buttons=nodes(card).filter((node)=>node.type==='button');assert.equal(buttons.length,3);h.find(`agent-task-deny-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[1],['deny',{stepId},'run']);buttons.at(-1)!.props.onClick();assert.deepEqual(h.calls[2],['settings']);}finally{h.unmount();}
 });
+test('canvas archive approval shows the selected shots and the impact before exact-step approval',()=>{
+  const h=harness({status:'awaiting_approval',locale:'en',followMio:true});
+  try{
+    const step=h.state.snapshot!.steps[0];
+    Object.assign(step,{tier:'local_reversible',toolCall:{name:'mioon_canvas_archive',arguments:{versions:999,private:'HIDDEN_MODEL_INPUT'}},display:{
+      operation:'canvas.archive',targetCount:2,
+      targets:[{kind:'shot',id:followShot,name:'#01 · Close-up'},{kind:'shot',id:followClip,name:'#02 · Wide shot'}],
+      fields:[
+        {targetIndex:0,property:'canvasVersionCount',unit:'count',after:2},
+        {targetIndex:1,property:'canvasTimelineClipCount',unit:'count',after:3},
+      ],
+    }});
+    h.render();
+    const card=h.find(`agent-task-approval-${stepId}`)!;
+    const text=renderedText(card);
+    assert.ok(text.includes(translate('en','agent.display.operation.canvas.archive')));
+    assert.ok(text.includes(translate('en','agent.panel.canvasArchiveEffect')));
+    assert.match(text,/#01 · Close-up · Generated video versions\s+2/u);
+    assert.match(text,/#02 · Wide shot · Clips used on the timeline\s+3/u);
+    assert.doesNotMatch(text,/999|HIDDEN_MODEL_INPUT|Shot 03/u);
+    assert.equal(nodes(card).filter(node=>node.type==='button').length,2);
+    h.find(`agent-task-approve-${stepId}`)!.props.onClick();
+    assert.deepEqual(h.calls,[['approve',{stepId},'run']]);
+  }finally{h.unmount();}
+});
 test('unfinished background work blocks another send while retaining pause/stop controls and read-only history selection',()=>{
   const h=harness({backgroundPending:true});try{h.render();assert.ok(h.find('agent-task-background-pending'));assert.ok(h.find('agent-task-pause'));assert.ok(h.find('agent-task-stop'));assert.equal(h.find('agent-task-send')!.props.disabled,true);assert.equal(h.find('agent-task-new-conversation')!.props.disabled,true);const upload=h.find('agent-task-upload');assert.equal(upload!.type,'input');assert.equal(upload!.props.type,'file');assert.equal(upload!.props.disabled,false);}finally{h.unmount();}
   const restored=harness({readOnly:true});try{restored.state.draft='';const tree=restored.render();assert.ok(restored.find('agent-task-read-only'));const history=tree.find((node)=>node!.type==='conversation-history');assert.equal(history!.props.disabled,false);assert.equal(restored.find('agent-task-send'),undefined);assert.equal(restored.find('agent-task-stop')!.props.disabled,true);assert.equal(restored.find('agent-task-upload'),undefined);}finally{restored.unmount();}

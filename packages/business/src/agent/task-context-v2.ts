@@ -2,7 +2,7 @@ import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,A
 import type {AgentConfiguration} from './config.ts';
 import {TASK_DEFAULT_HISTORY_BUDGET,taskContinuation,taskHistoryFits,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
 import type {TaskHistoryBudget,TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
-import {AGENT_TASK_CONVERSATION_TOOLS,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolNames} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_CONVERSATION_TOOLS,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolCatalogProfile,agentTaskToolGroupForName,loadedAgentTaskToolNames} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
 import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview,taskContextRulesSnapshot} from './task-context-base-v2.ts';
@@ -106,7 +106,7 @@ export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTas
     if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
     return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;
   }
-  const catalogProfile=definitions.some(tool=>tool.name==='mioon_project_notes_set')?'legacy':'native';
+  const catalogProfile=agentTaskToolCatalogProfile(definitions);
   const names=new Set(loadedAgentTaskToolNames(steps,catalogProfile));
   return definitions.filter(tool=>agentTaskToolGroupForName(tool.name,catalogProfile)==='core'||names.has(tool.name)||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
 }
