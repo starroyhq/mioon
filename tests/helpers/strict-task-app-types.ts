@@ -4,7 +4,7 @@ export interface TaskMethods {
  readTaskRevealContext(): TaskWorkspaceContext; readTaskViewContext(): TaskWorkspaceContext;
  captureTaskView(): (() => boolean) | null;
  openTasks(current?: () => boolean, selectedId?: string): boolean;
- inspectTaskJob(job: unknown, current: () => boolean): Promise<boolean>;
+ inspectTaskJob(job: unknown, current: () => boolean, intent?: 'regenerate'): Promise<boolean>;
  runDurable(key: string, operation: string, input: Record<string, unknown>, ...options: unknown[]): Promise<unknown>;
  recoverTask(task: unknown, acknowledgeOnly?: boolean, current?: () => boolean): Promise<unknown>;
  openAgentRequests(selectedId?: string): Promise<boolean>;

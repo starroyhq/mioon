@@ -9,6 +9,7 @@ import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '@mioon/contracts';
 import {parseAgentTaskRecoveryLocation,resolveAgentTaskRecoveryLocation} from '../apps/web/src/agent-task-recovery-location.ts';
 import {createSubtitleController} from '../apps/web/src/subtitle-state.ts';
+import {unsubmittedVideoConnection} from '../apps/web/src/creation-i18n.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -22,9 +23,11 @@ const make=(code: string,deps: Record<string, unknown>,names: readonly string[])
 const gate=()=>{let resolve!: (value?: unknown) => void;const promise=new Promise<unknown>(r=>{resolve=r;});return {promise,resolve};};
 const projectId='11111111-1111-4111-8111-111111111111',shotId='22222222-2222-4222-8222-222222222222',jobId='33333333-3333-4333-8333-333333333333';
 function harness() {
+ const regeneration: string[]=[];
  const state: TaskPaneState={projectReady:true,selectedTaskId:undefined,overlay:'tasks',dock:'properties',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
  const refs={importSession:{current:{active:true}},viewReady:{current:true},taskWorkspaceState:{current:{visible:true,connected:true}},currentProject:{current:projectId as string | null},projectEpoch:{current:2},navigationEpoch:{current:3},panelIntent:{current:4},editorSession:{current:'original'},taskShotAttempt:{current:0},dataRef:{current:{project:{id:projectId},jobs:[{id:jobId,shotId,projectId,status:'succeeded'}],shots:[{id:shotId,projectId}],timelineHistory:{revision:1}}}};
  const deps={message,msg:message,...createI18nTestContext(),...refs,clipConnectionBlocked:{current:false},clipDraftRef:{current:null},markPanelIntent:()=>refs.panelIntent.current++,setSelectedTaskId:(value?: string)=>{state.selectedTaskId=value;},setShowDelivery:(value: boolean)=>{if(value)state.overlay='delivery';else if(state.overlay==='delivery')state.overlay=null;},setShowImage:(value: boolean)=>{if(value)state.overlay='image';else if(state.overlay==='image')state.overlay=null;},setShowTasks:(value: boolean)=>{if(value){state.overlay='tasks';state.reveal.push(['tasks',true]);}else if(state.overlay==='tasks')state.overlay=null;},projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:(w: {id: string})=>w.id,
+  unsubmittedVideoConnection,setRegenerationJobId:(value?:string)=>{if(value)regeneration.push(value);},
   guardNavigation:async(message: unknown,extra: unknown,canDiscard: () => boolean)=>{state.confirm.push({message,extra,canDiscard});return canDiscard();},
   setRightDockTab:(value: string|((arg0: string) => string))=>{state.dock=typeof value==='function'?value(state.dock):value;},setPropertiesPage:(value: string)=>{state.page=value;},
   setPanelOpen:(...args: [string, ...unknown[]])=>{state.reveal.push(args);refs.panelIntent.current++;},updateView:(section: string,value: string)=>{state.reveal.push([section,value]);if(section==='activeMode')state.mode=value;},
@@ -34,7 +37,7 @@ function harness() {
   refresh:async (id: unknown)=>state.refresh.push(id),setAuth:(value: unknown)=>state.auth.push(value),setSubjectRefresh:()=>{},timelineFormatRef:{current:null},subtitlesRef:{current:null as {controller: DraftOwner} | null},
   tasksRef:{current:{submit:async()=>{throw Error('Set explicit submit fixture');},acknowledge:async (task: unknown)=>state.ack.push(task),recover:async()=>{throw Error('Set explicit recovery fixture');}} as FakeTaskController}};
  const methods=make(bridge+runBody+recoverBody,deps,['readTaskRevealContext','readTaskViewContext','captureTaskView','openTasks','inspectTaskJob','runDurable','recoverTask']);
- return {state,refs,deps,...methods,remake:()=>make(bridge+runBody+recoverBody,deps,['inspectTaskJob'])};
+ return {state,refs,deps,regeneration,...methods,remake:()=>make(bridge+runBody+recoverBody,deps,['inspectTaskJob'])};
 }
 
 test('actual Tasks entry reveals its overlay without changing the dock, drafts or business state',()=>{
@@ -130,6 +133,18 @@ test('actual view-shot bridge reaches Properties and the fixed shot without usin
  assert.equal(h.state.dock,'properties');assert.equal(h.state.page,'inspector');assert.equal(h.state.mode,'canvas');
  assert.deepEqual(h.state.reveal[0],['canvas',{selectedId:shotId,inspectorTab:'versions',highlightedVersionId:null}]);
  assert.equal(h.state.confirm.length,1);assert.equal(h.state.confirm[0].extra,false);assert.deepEqual(h.state.reveal.at(-1),['inspector',true,'canvas']);
+});
+test('the task-center regeneration bridge opens only the exact still-paused job in shot settings',async()=>{
+ const h=harness(), paused={...h.refs.dataRef.current.jobs[0],status:'queued',phase:'connection_required',providerJobId:null,submissionCount:0};
+ h.refs.dataRef.current.jobs=[paused];
+ assert.equal(await h.inspectTaskJob(paused,()=>true,'regenerate'),true);
+ assert.deepEqual(h.regeneration,[jobId]);
+ assert.deepEqual(h.state.reveal[0],['canvas',{selectedId:shotId,inspectorTab:'settings',highlightedVersionId:null}]);
+ const stale=harness();
+ stale.refs.dataRef.current.jobs=[{...paused,status:'running'}];
+ assert.equal(await stale.inspectTaskJob(paused,()=>true,'regenerate'),false);
+ assert.deepEqual(stale.regeneration,[]);
+ assert.deepEqual(stale.state.reveal,[]);
 });
 for(const change of ['cancel','hidden','panel','project','workspace','job','shot','reboundJob'])test(`actual Tasks target guard preserves inputs when ${change} occurs during confirmation`,async()=>{
  const h=harness(),entered=gate(),release=gate();let discard=0;const before=structuredClone(h.state.draft);

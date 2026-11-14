@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {transformSync} from 'esbuild';
 import {translate} from '../packages/i18n/src/index.ts';
+import type {Locale} from '../packages/i18n/src/index.ts';
 import type {RootNode, RootTree} from './helpers/strict-root-ui-types.ts';
 import type ModelPickerDialog from '../apps/web/src/ModelPickerDialog.tsx';
 
@@ -14,7 +15,7 @@ const nodes = (value: RootTree): RootNode[] => Array.isArray(value) ? value.flat
 const text = (value: RootTree): string => Array.isArray(value) ? value.map(text).join('')
   : value && typeof value === 'object' ? text(value.props.children) : typeof value === 'string' ? value : '';
 
-function mount(overrides: Partial<Picker> = {}) {
+function mount(overrides: Partial<Picker> = {}, locale: Locale = 'zh-Hans') {
   const calls: Array<readonly string[]> = [];
   const props: Picker = {
     serviceName: 'Synthetic', status: 'ready',
@@ -38,7 +39,7 @@ function mount(overrides: Partial<Picker> = {}) {
   const stubs: Record<string, unknown> = {
     react, '@mioon/ui/components/dialog': {Dialog: 'Dialog'}, '@mioon/ui/components/input': {Input: 'Input'},
     '@mioon/ui/components/workbench-controls': {WorkbenchBadge: 'Badge', WorkbenchButton: 'Button', WorkbenchDialogContent: 'DialogContent'},
-    './i18n/I18nProvider.tsx': {useI18n: () => ({t: translate.bind(null, 'zh-Hans')})},
+    './i18n/I18nProvider.tsx': {useI18n: () => ({t: translate.bind(null, locale)})},
     './icons.tsx': {__esModule: true, default: 'Icon'}, './model-picker-dialog.css': {},
   };
   const module = {exports: {}} as {exports: {default: (value: Picker) => RootNode}};
@@ -123,4 +124,34 @@ test('single choice uses one radio selection and publishes only on confirmation'
   assert.deepEqual(picker.calls, []);
   picker.click('选用这个模型');
   assert.deepEqual(picker.calls, [['beta']]);
+});
+
+
+test('single picker labels the current model in all four languages', () => {
+  const labels = {'zh-Hans': '当前使用', 'zh-Hant': '目前使用', en: 'Currently in use', ja: '現在使用中'} as const;
+  for (const locale of Object.keys(labels) as Array<keyof typeof labels>) {
+    const picker = mount({mode: 'single', items: [{id: 'current', added: true}]}, locale);
+    assert.ok(picker.render().some(node => node.props.className === 'model-picker-row-state' && text(node) === labels[locale]));
+  }
+});
+
+test('single picker retains the locked current model even without a usable remote list', () => {
+  for (const status of ['loading', 'empty', 'error'] as const) {
+    const picker = mount({mode: 'single', status, statusMessage: 'Synthetic status',
+      items: [{id: 'current', added: true}, {id: 'stale'}]});
+    assert.equal(picker.label('current')?.props.checked, true);
+    assert.equal(picker.label('current')?.props.disabled, true);
+    assert.equal(picker.label('stale'), undefined);
+    assert.equal(picker.byId('model-picker-add').props.disabled, true);
+    assert.equal(picker.render().some(node => text(node) === 'Synthetic status' && node.props.role === (status === 'error' ? 'alert' : 'status')), true);
+  }
+});
+
+test('single picker keeps the current model visible while searching and counts only returned models', () => {
+  const picker = mount({mode: 'single', returnedModelCount: 1, items: [{id: 'current', added: true}, {id: 'alpha'}]});
+  assert.match(picker.byId('model-picker').props.description as string, /返回了 1 个模型/);
+  picker.label('搜索模型')!.props.onChange({target: {value: 'missing'}});
+  assert.equal(picker.label('current')?.props.checked, true);
+  assert.equal(picker.label('alpha'), undefined);
+  assert.ok(picker.render().some(node => node.props.role === 'status' && text(node) === '没有匹配的模型。'));
 });

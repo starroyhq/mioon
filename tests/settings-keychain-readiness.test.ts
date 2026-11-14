@@ -118,10 +118,13 @@ test('all settings forms can edit committed configuration while one native Keych
   assert.equal(comfy.edit('image:comfy', {}, {baseUrl: 'http://127.0.0.1:8188'}), true);
   assert.equal(checks, 1, 'all domains share one held native authorization');
 
+  const pages = [agentPage, videoPage, official, custom];
+  const confirmed = () => pages.every(page => page.getState().keychainWaitConfirmed);
   const routes = ['/api/agent/settings', '/api/video-providers/settings', '/api/images/settings', '/api/images/custom-settings'];
-  const pollingDeadline = performance.now() + 6000;
   const polled = () => routes.every(route => (observedReads.get(route) ?? 0) >= 2);
-  while (!polled() && performance.now() < pollingDeadline) await delay(25);
+  const pollingDeadline = performance.now() + 6000;
+  while ((!confirmed() || !polled()) && performance.now() < pollingDeadline) await delay(25);
+  assert.equal(confirmed(), true, 'a still-pending authorization is confirmed before showing guidance');
   assert.equal(polled(), true, 'each visible form polls while authorization is still held');
   assert.deepEqual(marks, beforePolling, 'periodic capability checks emit no timing marks');
   availability.resolve(true);
@@ -130,6 +133,7 @@ test('all settings forms can edit committed configuration while one native Keych
   const deadline = performance.now() + 6000;
   while (!resolved() && performance.now() < deadline) await delay(25);
   assert.equal(resolved(), true, 'each visible settings form updates its storage after approval');
+  assert.equal(pages.some(page => page.getState().keychainWaitConfirmed), false);
   assert.deepEqual(marks, beforePolling, 'the final readiness poll emits no timing marks');
   assert.equal(checks, 1);
   assert.equal(agentPage.getState().draft?.services.find(entry => entry.serviceKey === service)?.name, 'Editable Agent draft');
@@ -154,7 +158,7 @@ test('all settings forms can edit committed configuration while one native Keych
     assert.deepEqual(during.services, before.services);
     for (const snapshot of [during, videoDuring, imageDuring, customDuring]) {
       assert.ok(snapshot && typeof snapshot === 'object' && 'storage' in snapshot);
-      assert.equal((snapshot.storage as {reasonCode: string}).reasonCode, pending);
+      assert.deepEqual(snapshot.storage, {persistentAvailable: true, sessionScope: snapshot === during ? 'app' : 'server', reasonCode: null});
     }
   } finally {writeRelease.resolve();}
   const committed = await writing;

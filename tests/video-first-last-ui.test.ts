@@ -23,11 +23,13 @@ interface VideoHarness {
  setLanguage(next: Locale): ElementTree; segment(testId: string): ElementNode | undefined; edit(testId: string, value: unknown): void; click(testId: string): unknown; reset(): void; unmount(): void;
 }
 interface GenerationMethods {
- generate(shot: VideoShot, options: GenerationOptionState): unknown;
+ generate(shot: VideoShot, options: GenerationOptionState, replacement?: {job: ReplacementJob; stillCurrent: () => boolean}): unknown;
  submitGeneration(args: GenerationReviewArgs): unknown;
  reviewGeneration(args: GenerationReviewArgs): unknown;
  confirmGeneration(args: GenerationReviewArgs | null): unknown;
+ closeGenerationReview(): void;
 }
+type ReplacementJob = {id: string; shotId: string; projectId: string; status: string; phase: string; providerJobId: null; submissionCount: number; error: unknown};
 import type {ElementTree, ElementNode, HookSlot} from './helpers/strict-timeline-audio-harness-types.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
@@ -152,20 +154,89 @@ function configuredConnectionFixture() {
   return { providers: settings.videoConnectionProviders(directories), options: { providerId: 'kling', connectionId: id(82), modelEntryId: model.id, model: model.modelId, inputMode: 'image', parameters: { resolution: '1080p', generateAudio: true } }, selectedShot: shot({ duration: 5 }) };
 }
 
-function appGenerationFlow({ providers, options, currentShot }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot}) {
+function appGenerationFlow({ providers, options, currentShot, jobs = [] }: {providers: GenerationProvider[]; options: GenerationOptionState; currentShot: VideoShot; jobs?: ReplacementJob[]}) {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));
-  const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
-    providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
+  const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null; cancel: (job: ReplacementJob) => Promise<unknown>; pending: [] | {key: string}[]} = { calls: [], notices: [], review: null, pending: [], cancel: async job => ({...job, status:'cancelled',phase:'cancelled_before_dispatch',error:null}) }, scope = { ...settings, ...subjectVideo, ...contracts, ...creationI18n, msg,
+    providers, providersRef: {current: providers}, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
     readableError:(error:unknown)=>String(error),rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}),generationUnavailableReason: '', editorSession: {current: 'normal'}, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
-    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [] } },
+    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
-    run: async (...args: [string, string, GenerationSubmitInput]) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
+    run: async (...args: [string, string, GenerationSubmitInput]) => {
+      state.calls.push(args);
+      return args[1] === 'job.cancel' ? state.cancel(jobs.find(job => job.id === (args[2] as unknown as {jobId: string}).jobId)!) : {status: 'queued'};
+    }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
+    isBusy: () => false, pendingForProject: () => state.pending,
     captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}) };
-  const methods = Function(...Object.keys(scope), `${functions}; return { generate, submitGeneration, confirmGeneration };`)(...Object.values(scope)) as Pick<GenerationMethods, 'generate' | 'submitGeneration' | 'confirmGeneration'>;
+  const methods = Function(...Object.keys(scope), `${functions}; return { generate, submitGeneration, confirmGeneration, closeGenerationReview };`)(...Object.values(scope)) as Pick<GenerationMethods, 'generate' | 'submitGeneration' | 'confirmGeneration' | 'closeGenerationReview'>;
   return { ...methods,generate:async(...args:Parameters<GenerationMethods['generate']>)=>{methods.generate(...args);await new Promise<void>(resolve=>setImmediate(resolve));}, state, scope };
 }
+
+test('Inspector regenerates the chosen unsubmitted task only after the usual paid review', async () => {
+  const f = configuredConnectionFixture();
+  const queued = (n: number): ReplacementJob => ({id: id(n), shotId, projectId, status:'queued', phase:'connection_required',providerJobId:null,submissionCount:0,
+    error: { code:'VIDEO_CREDENTIAL_UNAVAILABLE', diagnostic:{kind:'video_credential',cause:'VIDEO_CREDENTIAL_INVALID',recovery:'user_action'} }});
+  const old = queued(93), sibling = queued(94);
+  const app = appGenerationFlow({providers:f.providers,options:f.options,currentShot:f.selectedShot,jobs:[old,sibling]});
+  const h = harness({shot:f.selectedShot, providers:f.providers,generationOptions:f.options,jobs:[sibling,old],regenerationJobId:old.id,
+    onRegenerate:(currentShot:VideoShot, options:GenerationOptionState, job:ReplacementJob, stillCurrent:()=>boolean) => app.generate(currentShot,options,{job,stillCurrent})});
+  assert.match(h.text(), /这次还没提交，没有扣费/);
+  const button = h.find('regenerate-unsubmitted-video');
+  assert.ok(button);
+  assert.equal(button.props.disabled, false);
+  await h.click('regenerate-unsubmitted-video');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.ok(app.state.review);
+  const dismissed = app.state.review;
+  app.closeGenerationReview();
+  await app.confirmGeneration(dismissed);
+  assert.equal(app.state.calls.length, 0);
+  await h.click('regenerate-unsubmitted-video');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(app.state.calls.length, 0);
+  const review = app.state.review;
+  assert.ok(review);
+  assert.equal(review.replacementJobId,old.id);
+  assert.equal(review.connectionId,f.options.connectionId);
+  assert.deepEqual(review.shot.parameters,f.options.parameters);
+  await Promise.all([app.confirmGeneration(review),app.confirmGeneration(review)]);
+  assert.deepEqual(app.state.calls.map(call => call[1]), ['job.cancel','generation.submit']);
+  assert.deepEqual(app.state.calls[0]![2],{jobId:old.id});
+  const wire=app.state.calls[1]![2];
+  assert.equal(wire.requestId,`regenerate:${old.id}`);
+  assert.equal(wire.connectionId,f.options.connectionId);
+  assert.equal(wire.configurationRevision,3);
+  assert.equal(wire.shotId,shotId);
+  assert.equal(wire.expectedRevision,f.selectedShot.revision);
+  h.unmount();
+});
+
+test('regeneration does not cancel an older task before review or submit across an uncertain cancellation or a changed connection', async () => {
+  const f = configuredConnectionFixture();
+  const old: ReplacementJob = {id:id(93),shotId,projectId,status:'queued',phase:'connection_required',providerJobId:null,submissionCount:0,
+    error: { code:'VIDEO_SETTINGS_CORRUPT', diagnostic:{kind:'video_credential',cause:'VIDEO_SETTINGS_CORRUPT',recovery:'user_action'} }};
+  for (const mode of ['existing pending', 'owner left before confirmation', 'uncertain cancel', 'connection changed during cancel'] as const) {
+    const app=appGenerationFlow({providers:f.providers,options:f.options,currentShot:f.selectedShot,jobs:[old]});
+    let active=true;
+    if (mode==='existing pending') app.state.pending=[{key:`generate:${shotId}`}];
+    if (mode==='uncertain cancel') app.state.cancel=async()=>null;
+    if (mode==='connection changed during cancel') app.state.cancel=async job=>{
+      app.scope.providersRef.current=f.providers.filter(provider=>provider.connectionId!==f.options.connectionId);
+      return {...job,status:'cancelled',phase:'cancelled_before_dispatch'};
+    };
+    await app.generate(f.selectedShot,f.options,{job:old,stillCurrent:()=>active});
+    if (mode==='existing pending') {
+      assert.equal(app.state.review,null);
+      assert.deepEqual(app.state.calls,[]);
+      continue;
+    }
+    assert.ok(app.state.review);
+    if (mode==='owner left before confirmation') active=false;
+    await app.confirmGeneration(app.state.review);
+    assert.deepEqual(app.state.calls.map(call=>call[1]),mode==='owner left before confirmation'?[]:['job.cancel'], mode);
+  }
+});
 
 test('a shot without a generation service offers settings and cannot generate', async () => {
   const opened: string[] = [];
@@ -176,6 +247,20 @@ test('a shot without a generation service offers settings and cannot generate', 
   assert.deepEqual(h.generated, []);
   await h.click('video-generation-configure');
   assert.deepEqual(opened, ['models']);
+});
+
+test('a paused unsubmitted task can be cancelled while generation settings are unavailable', async () => {
+  const opened: string[] = [];
+  const job: ReplacementJob = {id:id(93),shotId,projectId,status:'queued',phase:'connection_required',providerJobId:null,submissionCount:0,
+    error:{code:'VIDEO_CREDENTIAL_INVALID',diagnostic:{kind:'video_credential',cause:'VIDEO_CREDENTIAL_INVALID',recovery:'user_action'}}};
+  const h = harness({providers:[],generationOptions:{},jobs:[job],configureGeneration:()=>{opened.push('models');},
+    onCancelJob:()=>{},onRegenerate:()=>assert.fail('No paid generation service was configured')});
+  assert.match(h.text(), /这次还没提交，没有扣费/);
+  assert.equal(h.find('cancel-generation')!.props.disabled, false);
+  assert.equal(h.find('regenerate-unsubmitted-video')!.props.disabled, true);
+  await h.click('video-generation-configure');
+  assert.deepEqual(opened, ['models']);
+  h.unmount();
 });
 
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {

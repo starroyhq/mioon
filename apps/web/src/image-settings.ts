@@ -1,6 +1,7 @@
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT, imageSettingsResultSchema, customImageSettingsResultSchema, customImageConfigurationSchema, normalizeCustomImageBaseUrl, getCustomImageDestination, canonicalImageInput } from '@mioon/contracts';
+import { watchPendingSecretStorage } from './settings-secret-storage.ts';
 
 export { DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION, IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT };
 export type ImageSettingsResult=ReturnType<typeof imageSettingsResultSchema.parse>;
@@ -11,7 +12,7 @@ export interface CustomImageConfiguration extends ImageConfiguration {providerId
 export type ImageSettingsUpdate=Record<string, unknown>;
 export interface ImageClientError extends Error {code: string}
 export interface ImageSettingsClient {
-  read(): Promise<ImageSettingsResult|CustomImageSettingsResult>;
+  read(signal?: AbortSignal): Promise<ImageSettingsResult|CustomImageSettingsResult>;
   write(input: {expectedRevision: number; configuration: ImageConfiguration|CustomImageConfiguration; secret: Record<string, unknown>}): Promise<ImageSettingsResult|CustomImageSettingsResult>;
 }
 export interface ImageSettingsClientOptions {fetchImpl?: typeof fetch; timeoutMs?: number; slot?: ImageSettingsSlot}
@@ -20,6 +21,7 @@ export type ImageRecovery='conflict'|'unknown'|null;
 export interface ImageSettingsState {
   phase: string;
   snapshot: ImageSettingsResult|CustomImageSettingsResult|null;
+  keychainWaitConfirmed: boolean;
   draft: ImageConfiguration|CustomImageConfiguration|null;
   storage: string;
   secretAction: ImageSecretAction;
@@ -64,10 +66,11 @@ export function safeImageSettings(value: unknown,slot: ImageSettingsSlot = 'offi
 }
 export function createImageSettingsClient({ fetchImpl = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => globalThis.fetch(...args), timeoutMs = 12000, slot = 'official' }: ImageSettingsClientOptions = {}): ImageSettingsClient {
   const details = slotDetails(slot);
-  async function request(method: string, body?: string): Promise<ImageSettingsResult|CustomImageSettingsResult> {
+  async function request(method: string, body?: string, signal?: AbortSignal): Promise<ImageSettingsResult|CustomImageSettingsResult> {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>|undefined;
+    const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     const transport = (async () => {
-      const response = await fetchImpl(details.route, { method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body }) });
+      const response = await fetchImpl(details.route, { method, credentials: 'same-origin', cache: 'no-store', signal: requestSignal, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body }) });
       let envelope: unknown; try { envelope = await response.json(); } catch { throw failure('INVALID_RESPONSE'); }
       if (!response.ok || property(envelope,'ok') !== true) { const code=errorCode(property(envelope,'error')); throw failure(response.status === 401 ? 'UNAUTHORIZED' : code!==undefined&&codes.has(code) ? code : 'NETWORK'); }
       return safeImageSettings(property(envelope,'data'), slot);
@@ -76,9 +79,9 @@ export function createImageSettingsClient({ fetchImpl = (...args: Parameters<typ
     catch (error) { const code=errorCode(error); throw failure(code!==undefined&&(codes.has(code) || code === 'INVALID_RESPONSE') ? code : 'NETWORK'); }
     finally { clearTimeout(timer); }
   }
-  return { read: () => request('GET'), write: (input: {expectedRevision: number; configuration: ImageConfiguration|CustomImageConfiguration; secret: Record<string, unknown>}) => request('PUT', JSON.stringify(input)) };
+  return { read: (signal?: AbortSignal) => request('GET', undefined, signal), write: (input: {expectedRevision: number; configuration: ImageConfiguration|CustomImageConfiguration; secret: Record<string, unknown>}) => request('PUT', JSON.stringify(input)) };
 }
-export const initialImageSettingsState=(): ImageSettingsState => ({ phase: 'loading', snapshot: null, draft: null, storage: '', secretAction: 'keep', recovery: null, message: '', displayMessages: [] });
+export const initialImageSettingsState=(): ImageSettingsState => ({ phase: 'loading', snapshot: null, keychainWaitConfirmed: false, draft: null, storage: '', secretAction: 'keep', recovery: null, message: '', displayMessages: [] });
 export const imageSettingsBusy=(state: ImageSettingsState): boolean=>['loading', 'saving', 'reconciling'].includes(state.phase);
 export const imageSettingsEditable=(state: ImageSettingsState): boolean=>Boolean(state.snapshot) && !imageSettingsBusy(state);
 export const imageSettingsCanSave=(state: ImageSettingsState): boolean=>imageSettingsEditable(state) && !state.recovery && state.phase !== 'blocked';
@@ -100,7 +103,23 @@ const errorText=(code: string): string => ({ UNAUTHORIZED: '登录会话已过�
 export function createImageSettingsSession({ slot = 'official', client = createImageSettingsClient({ slot }), onChange = () => {}, onSnapshot = () => {} }: ImageSettingsSessionOptions = {}): ImageSettingsSession {
   slotDetails(slot);
   let state = initialImageSettingsState(), active = true, visible = true, epoch = 0;
-  const publish = (patch: Partial<ImageSettingsState>): void => { if (active) { state = { ...state, ...patch }; onChange(copy(state)); } };
+  const watchStorage = watchPendingSecretStorage(async signal => {
+    const before = state.snapshot;
+    if (!before) return;
+    const {storage} = safeImageSettings(await client.read(signal), slot);
+    if (signal.aborted || state.snapshot !== before) return;
+    if (storage.reasonCode !== 'OS_SECRET_STORE_PENDING') {
+      const snapshot = {...before, storage};
+      onSnapshot(copy(snapshot));
+      publish({snapshot});
+    } else if (!state.keychainWaitConfirmed) publish({keychainWaitConfirmed: true});
+  });
+  const observeStorage = () => watchStorage(active && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const publish = (patch: Partial<ImageSettingsState>): void => { if (active) {
+    state = {...state, ...patch};
+    if (state.snapshot?.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') state.keychainWaitConfirmed = false;
+    observeStorage(); onChange(copy(state));
+  } };
   const current = (token: number): boolean => active && epoch === token;
   const editable = (): boolean => active && visible && imageSettingsEditable(state);
   const receive = (snapshot: unknown): ImageSettingsResult|CustomImageSettingsResult => { const safe = safeImageSettings(snapshot, slot); onSnapshot(copy(safe)); return safe; };
@@ -165,8 +184,8 @@ export function createImageSettingsSession({ slot = 'official', client = createI
     removeKey(remove = true): boolean { if (!editable()) return false; publish({ secretAction: remove ? 'remove' : 'keep' }); return true; },
     acknowledge(): boolean { if (!editable() || state.phase !== 'review' || !state.recovery) return false; publish({ recovery: null, phase: 'ready', message: '已保留草稿，请重新确认密钥操作后保存。', displayMessages: [message('image.settings.notice.keepDraft')] }); return true; },
     useLatest(): boolean { if (!editable() || state.phase === 'blocked' || !state.snapshot) return false; publish({ draft: copy(state.snapshot.configuration), secretAction: 'keep', recovery: null, phase: 'ready', message: '已使用当前已保存设置。', displayMessages: [message('connections.notice.useSaved')] }); return true; },
-    setVisible(value: unknown): void { visible = Boolean(value); },
-    dispose(): void { active = false; epoch++; state = initialImageSettingsState(); },
+    setVisible(value: unknown): void { visible = Boolean(value); observeStorage(); if (!visible && state.keychainWaitConfirmed) publish({keychainWaitConfirmed: false}); },
+    dispose(): void { active = false; watchStorage(false); epoch++; state = initialImageSettingsState(); },
   };
 }
 

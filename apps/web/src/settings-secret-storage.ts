@@ -3,15 +3,16 @@
 export function watchPendingSecretStorage(refresh: (signal: AbortSignal) => Promise<void>) {
   let owner: AbortController | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  function schedule(current: AbortController) {
+  function schedule(current: AbortController, delay: number) {
     timer = setTimeout(async () => {
       try {await refresh(current.signal);} catch { /* Keep the last confirmed status. */ }
-      if (!current.signal.aborted) schedule(current);
-    }, 1000);
+      if (!current.signal.aborted) schedule(current, 1000);
+    }, delay);
   }
   return (active: boolean) => {
     if (active && !owner) {
-      owner = new AbortController(); schedule(owner);
+      // Confirm the initial pending snapshot before showing authorization help.
+      owner = new AbortController(); schedule(owner, 300);
     } else if (!active && owner) {
       owner.abort(); owner = undefined; clearTimeout(timer);
     }

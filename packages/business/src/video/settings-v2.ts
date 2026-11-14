@@ -24,10 +24,13 @@ export interface VideoSettingsV2Options extends VideoSettingsOptions {persistenc
 export interface VideoSettingsV2Service {
   get(): Promise<VideoSettingsSnapshotV2>;
   put(input: unknown): Promise<VideoSettingsSnapshotV2>;
+  subscribeConnectionChanges(listener: (connectionIds: readonly string[]) => void): () => void;
   list(): VideoConnectionViewV2[];
   select(connectionId: string, configurationRevision: number, modelEntryId: string): VideoExecutionBinding;
   assertBinding(binding: unknown): void;
   acquire(binding: unknown, signal?: AbortSignal): Promise<string>;
+  replacementForResult(binding: unknown): {credentialRef:string; connectionRevision:number} | null;
+  acquireResultCredential(binding: unknown, replacement: {credentialRef:string; connectionRevision:number}, signal?: AbortSignal): Promise<string>;
   acquireForProbe(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   acquireCompatible(connectionId: string, configurationRevision: number, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   close(): Promise<void>;
@@ -131,6 +134,8 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
   const operationSignal = (request?: AbortSignal) => request ? AbortSignal.any([activeSignal, request]) : activeSignal;
   let state = emptyVideoSettingsV2Envelope(), notice: VideoSettingsSnapshotV2['notice'] = null;
   let sessions = new Map<string, string>(), fault: VideoSettingsError | null = null, closing = false, pendingPuts = 0, storageBlocked = false, tail: Promise<unknown> = Promise.resolve();
+  const connectionChangeListeners = new Set<(connectionIds: readonly string[]) => void>();
+  const committedConnectionChanges = new Set<string>();
   try {const loaded = await persistence.load(); if (loaded) {state = validateVideoSettingsV2Envelope(loaded.envelope); if (loaded.notice !== null && loaded.notice !== VIDEO_SETTINGS_V1_RESET_NOTICE) throw Error(); notice = loaded.notice;}} catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_CORRUPT');}
   const check = () => {if (closing || activeSignal.aborted) fail('VIDEO_SETTINGS_CLOSED'); if (fault) throw fault;};
   const capabilities = (): VideoStorageV2 => {const value = validateStorage(typeof storage === 'function' ? storage() : storage); return storageBlocked || value.persistentAvailable && !secretCodec ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;};
@@ -151,7 +156,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     const configuration = entry.configuration;
     return parseVideoBinding({version: 1, connectionId: configuration.id, configurationRevision: entry.revision, providerId: configuration.providerId, region: configuration.region, workspaceId: configuration.workspaceId, endpoint: videoConnectionEndpoint(configuration), credentialRef: entry.credentialRef, model: copy(model), outputHosts: copy(configuration.outputHosts)});
   };
-  const assertBinding = (input: unknown): VideoExecutionBinding => {
+  const assertFrozenBinding = (input: unknown): VideoExecutionBinding => {
     ensureStable(); let selected: VideoExecutionBinding;
     try {selected = parseVideoBinding(videoExecutionBindingV2Schema.parse(input));} catch {return fail('VIDEO_BINDING_INVALID');}
     if (state.deletedConnectionIds.includes(selected.connectionId)) return fail('VIDEO_SETTINGS_DELETED');
@@ -161,8 +166,21 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       unavailableBindingHistory.add(error); throw error;
     }
     if (!same(binding(historical, selected.model.id), selected)) return fail('VIDEO_BINDING_INVALID');
+    return selected;
+  };
+  const assertBinding = (input: unknown): VideoExecutionBinding => {
+    const selected = assertFrozenBinding(input);
     if (material(selected.credentialRef) === 'none') return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
     return selected;
+  };
+  const replacementForResult = (input: unknown) => {
+    const selected = assertFrozenBinding(input);
+    const current = state.connections.find(entry => entry.configuration.id === selected.connectionId);
+    if (!current?.credentialRef || current.revision <= selected.configurationRevision ||
+        current.credentialRef === selected.credentialRef || material(current.credentialRef) === 'none') return null;
+    const frozenRecipient = [selected.connectionId, selected.providerId, selected.region, selected.workspaceId, selected.endpoint];
+    return same(recipient(current.configuration), frozenRecipient)
+      ? {credentialRef:current.credentialRef, connectionRevision:current.revision} : null;
   };
   async function secretOf(credential: Credential, request?: AbortSignal): Promise<string | undefined> {
     if (!credential.encrypted) return sessions.get(credential.ref);
@@ -183,7 +201,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (!validCiphertext(encrypted)) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     credential.encrypted = encrypted;
   }
-  async function apply(candidate: VideoSettingsEnvelopeV2, nextSessions: Map<string, string>, operation: VideoSettingsOperationV2): Promise<boolean> {
+  async function apply(candidate: VideoSettingsEnvelopeV2, nextSessions: Map<string, string>, operation: VideoSettingsOperationV2): Promise<string | null> {
     const id = operation.action === 'save' ? operation.configuration.id : operation.connectionId;
     if (candidate.deletedConnectionIds.includes(id)) return fail('VIDEO_SETTINGS_DELETED');
     const current = candidate.connections.find(entry => entry.configuration.id === id);
@@ -193,7 +211,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       candidate.connections = candidate.connections.filter(entry => entry.configuration.id !== id);
       candidate.history = candidate.history.filter(entry => entry.configuration.id !== id);
       candidate.credentials = candidate.credentials.filter(credential => credential.connectionId !== id);
-      candidate.deletedConnectionIds.push(id); return true;
+      candidate.deletedConnectionIds.push(id); return id;
     }
     const {configuration, secret} = operation;
     if (current && current.configuration.providerId !== configuration.providerId || configuration.providerId !== 'compatible' && candidate.connections.some(entry => entry.configuration.id !== id && entry.configuration.providerId === configuration.providerId)) return fail('VIDEO_SETTINGS_VALIDATION');
@@ -212,7 +230,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       }
       check(); secretChanged = existing !== secret.value;
     }
-    if (current && same(current.configuration, configuration) && !secretChanged) return false;
+    if (current && same(current.configuration, configuration) && !secretChanged) return null;
     if (secret.action === 'remove' && ref && secretChanged) {
       candidate.credentials.find(credential => credential.ref === ref)!.encrypted = null; nextSessions.delete(ref);
     }
@@ -227,7 +245,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (current?.revision === Number.MAX_SAFE_INTEGER) return fail('VIDEO_SETTINGS_CAPACITY');
     const entry: RevisionV2 = {configuration: copy(configuration), revision: (current?.revision ?? 0) + 1, credentialRef: ref};
     if (current) candidate.connections[candidate.connections.indexOf(current)] = entry; else candidate.connections.push(entry);
-    candidate.history.push(copy(entry)); return true;
+    candidate.history.push(copy(entry)); return id;
   }
   function acquireCurrent(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient | null, request?: AbortSignal) {
     return schedule(async () => {
@@ -282,11 +300,29 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
       if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED'); return value;
     });},
+    replacementForResult,
+    acquireResultCredential(input, replacement, request) {return schedule(async () => {
+      const verify = (): void => {
+        if (request?.aborted) fail('VIDEO_SETTINGS_CLOSED');
+        const current = replacementForResult(input);
+        if (current?.credentialRef !== replacement.credentialRef || current.connectionRevision !== replacement.connectionRevision) fail('VIDEO_SETTINGS_CONFLICT');
+      };
+      verify();
+      const credential = state.credentials.find(entry => entry.ref === replacement.credentialRef)!;
+      const value = await secretOf(credential, request);
+      verify();
+      if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
+      return value;
+    });},
     acquireForProbe(connectionId, configurationRevision, target, request) {
       return acquireCurrent(connectionId, configurationRevision, target, request);
     },
     acquireCompatible(connectionId, configurationRevision, request) {
       return acquireCurrent(connectionId, configurationRevision, null, request);
+    },
+    subscribeConnectionChanges(listener) {
+      if (!closing && !activeSignal.aborted) connectionChangeListeners.add(listener);
+      return () => {connectionChangeListeners.delete(listener);};
     },
     put(input) {
       let update: VideoSettingsUpdateV2;
@@ -294,10 +330,13 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       pendingPuts++;
       return schedule(async () => {
         if (update.expectedRevision !== state.revision) return fail('VIDEO_SETTINGS_CONFLICT');
-        const candidate = copy(state), nextSessions = new Map(sessions); let changed = false;
-        for (const operation of update.action === 'batch' ? update.operations : [update]) changed = await apply(candidate, nextSessions, operation) || changed;
+        const candidate = copy(state), nextSessions = new Map(sessions), changedIds: string[] = [];
+        for (const operation of update.action === 'batch' ? update.operations : [update]) {
+          const changedId = await apply(candidate, nextSessions, operation);
+          if (changedId) changedIds.push(changedId);
+        }
         check();
-        if (!changed) {
+        if (!changedIds.length) {
           // A no-op still confirms ownership of the source. Another writer may
           // have changed a file whose stale in-memory configuration looks equal.
           try {
@@ -315,10 +354,25 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
           } catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED'); sessions.clear();}
           return fail('VIDEO_SETTINGS_SAVE_FAILED');
         }
-        check(); state = candidate; sessions = nextSessions; notice = null; return snapshot();
-      }).finally(() => {pendingPuts--;});
+        check(); state = candidate; sessions = nextSessions; notice = null;
+        const saved = snapshot();
+        for (const id of changedIds) committedConnectionChanges.add(id);
+        return saved;
+      }).finally(() => {
+        pendingPuts--;
+        // Listeners may read a frozen binding. Drain only once the write fence is down.
+        if (pendingPuts || !committedConnectionChanges.size || activeSignal.aborted) return;
+        const changedIds = Object.freeze([...committedConnectionChanges]);
+        committedConnectionChanges.clear();
+        for (const listener of [...connectionChangeListeners]) {
+          try {listener(changedIds);} catch {/* A listener cannot fail an already committed save. */}
+        }
+      });
     },
-    async close() {closing = true; lifetime.abort(); await tail; sessions.clear();},
+    async close() {
+      closing = true; connectionChangeListeners.clear(); committedConnectionChanges.clear();
+      lifetime.abort(); await tail; sessions.clear();
+    },
   };
   return Object.freeze(service);
 }

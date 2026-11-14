@@ -32,16 +32,16 @@ export function canvasClipboardShortcut(event: ShortcutEvent): 'copy' | 'paste' 
 
 export function canvasShortcut(
   event: ShortcutEvent,
-  {blocked, composing, textFocus, nativeHistory}: {blocked: boolean; composing: boolean; textFocus: boolean; nativeHistory: boolean},
+  {blocked, composing, textFocus}: {blocked: boolean; composing: boolean; textFocus: boolean},
 ): CanvasShortcut | undefined {
   if (blocked || composing || textFocus || event.defaultPrevented || event.isComposing || event.keyCode === 229 ||
       event.repeat || event.altKey || event.ctrlKey && event.metaKey) return;
   if (event.ctrlKey || event.metaKey) {
     const key = event.key.toLowerCase();
     if (key === 'a' && !event.shiftKey) return 'all';
-    if (key === 'd' && !event.shiftKey && !nativeHistory) return 'duplicate';
+    if (key === 'd' && !event.shiftKey) return 'duplicate';
     if (key === 'l' && event.shiftKey) return 'tidy';
-    if (key === 'z' && !nativeHistory) return event.shiftKey ? 'redo' : 'undo';
+    if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
     return;
   }
   if (event.shiftKey) return;
@@ -58,8 +58,8 @@ export function canvasClipboardInText(event: Event, document: Document): boolean
     event.composedPath().some(target => target instanceof Element && nativeMenuTextFocus(target));
 }
 
-// The archive popover is portalled, so its presence blocks commands even when
-// focus temporarily returns to the document during an open or close animation.
+// The open archive popover is portalled and owns these shortcuts even during
+// a focus transition. Its dismissal handler consumes the Escape that closes it.
 export function canvasOwnsShortcutFocus(area: HTMLElement | null, document: Document): boolean {
   if (!area || [...document.querySelectorAll('[data-testid="canvas-archive-popover"]')]
     .some(dialog => !dialog.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'))) return false;

@@ -9,7 +9,7 @@ import {acquireBoundVideoCredential} from './credential.ts';
 import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
 import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
-import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskPath} from './adapters.ts';
+import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskNotFound,configuredTaskPath} from './adapters.ts';
 import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from './adapters.ts';
 import {createWanSdkClient,validateWanImageBytes} from './wan-sdk.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
@@ -30,6 +30,7 @@ export interface ConfiguredVideoProviderOptions {
 const record=(value: unknown): Record<string,unknown>|null=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
 const contextOf=(context: RegisteredContext): ProviderContext=>({requestId:context.requestId,jobId:context.jobId,signal:context.signal??undefined,beforeSubmit:context.beforeSubmit,...(typeof context.validateReferenceState==='function'?{validateReferenceState:context.validateReferenceState as ()=>unknown}:{})});
 const unsafeImage=()=>providerError('INVALID_REFERENCE_TYPE','The reference bytes do not match the supported image format.');
+const KLING_TASK_VISIBILITY_GRACE_MS=60_000;
 
 /** Only Runway's existing protocol accepts WebP. The shared image reader covers
  * PNG/JPEG; this bounded parser obtains WebP dimensions from the actual bytes. */
@@ -62,7 +63,7 @@ async function managedWebp(root: string,asset: ProviderReferenceAsset,maximum: n
 /** A factory has no network or credential side effects. Its immutable binding
  * chooses only an implemented official protocol; secrets are acquired for each
  * observation/dispatch and are never retained by the provider or its poll cache. */
-export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl,now=Date.now}: ConfiguredVideoProviderOptions): Provider {
+export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl,now=Date.now}: ConfiguredVideoProviderOptions): Provider & {invalidateTaskObservation(id:string):void} {
   const frozen=parseVideoBinding(binding),template=videoTemplate(frozen.model.templateId),hosts=new Set(videoOutputHosts(frozen));
   const compatible=frozen.providerId==='compatible';
   let endpoint='';try{endpoint=videoConnectionEndpoint({...frozen,...(compatible?{baseUrl:frozen.endpoint}:{})});}catch{}
@@ -85,16 +86,35 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const sdkOptions={api:frozen.endpoint,model:frozen.model.modelId,send:request};
   const compatibleSdk=compatible?createCompatibleVideoSdkClient(sdkOptions):null;
   const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient({...sdkOptions,audio:frozen.model.audio}):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
-  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))}});
-  const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
+  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,async retrieve(id,context){
+    try{
+      return wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))};
+    }catch(error){
+      // This is the bound task lookup. A missing output file or rejected
+      // submission has a different meaning even when it returns HTTP 404.
+      const failure=record(error);
+      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404)throw configuredTaskNotFound();
+      throw error;
+    }
+  }});
+  const retrieve=async(id: string,context: ProviderContext,providerAcceptedAt?: string):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);
     // A cached successful observation must not let a removed key authorize a
     // later poll or download. The network wrapper reacquires again at actual I/O.
     await credential(context);
-    return await cache.get(id,context) as unknown as ConfiguredVideoTask;
+    try{return await cache.get(id,context) as unknown as ConfiguredVideoTask;}
+    catch(error){
+      if(frozen.providerId!=='kling'||record(error)?.code!=='KLING_TASK_NOT_LISTED')throw error;
+      // A successful empty listing gives no task state. Give the persisted
+      // submit receipt a short local observation window, including cache hits.
+      const age=now()-Date.parse(providerAcceptedAt??'');
+      if(age>=0&&age<KLING_TASK_VISIBILITY_GRACE_MS)return {id,status:'running',progress:0};
+      throw configuredTaskNotFound();
+    }
   };
   return {
     id:frozen.providerId,capabilities,validate,
+    invalidateTaskObservation(id){cache.invalidate(id);},
     async submit(snapshot: unknown,registered: RegisteredContext={}){
       validate(snapshot);const value=record(snapshot)!;const context=contextOf(registered);
       if(registered.providerRegion!==undefined&&registered.providerRegion!==frozen.region)throw providerError('PROVIDER_REGION_CHANGED','The task region differs from its frozen connection.');
@@ -129,7 +149,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,raw:submission.raw,headers:submission.headers,context}))};
     },
     async poll(id: string,registered: RegisteredContext={}){
-      const task=await retrieve(id,contextOf(registered));
+      const task=await retrieve(id,contextOf(registered),registered.providerAcceptedAt);
       return task.status==='failed'?{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'The provider generation failed. Review the existing task before retrying.'}}:{status:task.status,progress:task.status==='succeeded'?1:task.progress??0};
     },
     async reconcile(requestId: string,registered: RegisteredContext={}){
@@ -139,7 +159,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       return task?{providerJobId:task.id}:null;
     },
     async download(id: string,destination: string,registered: RegisteredContext={}){
-      ensureHosts();const context=contextOf(registered),task=await retrieve(id,context);
+      ensureHosts();const context=contextOf(registered),task=await retrieve(id,context,registered.providerAcceptedAt);
       if(task.status!=='succeeded')throw providerError('PROVIDER_NOT_READY','The existing provider task has no completed output.',{retryable:true});
       let url:URL,headers:Record<string,string>|undefined;
       // The OpenAI shape streams the result from the service's own authenticated

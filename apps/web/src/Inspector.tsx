@@ -1,5 +1,5 @@
 import {ProjectMediaImage} from './project-media-read-gate.tsx';
-import { jobStatusDescriptor, outputReviewDescriptor, videoJobConnection } from './creation-i18n.ts';
+import { jobStatusDescriptor, outputReviewDescriptor, videoJobConnection, unsubmittedVideoConnection } from './creation-i18n.ts';
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
@@ -92,6 +92,8 @@ export interface InspectorProps {
   onSave: (shotId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppShot | null | undefined>;
   onNodeSave: (nodeId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppNode | null | undefined>;
   onGenerate: (shot: AppShot, selection: GenerationOptionState & {model: string; scenario: string; inputMode: string}) => unknown;
+  regenerationJobId?: string;
+  onRegenerate?: (shot: AppShot, selection: GenerationOptionState & {model: string; scenario: string; inputMode: string}, job: AppJob, stillCurrent: () => boolean) => unknown;
   onSelectVersion: (shot: AppShot, versionId: string) => unknown;
   onCompare: (shotId: string) => unknown;
   onOpenJobs: () => unknown;
@@ -125,7 +127,7 @@ function ShotSegments({ id, value, options, label, disabled, onChange, 'data-tes
 }): React.ReactElement {
   return <div id={id} data-testid={testId} className="shot-segments"><WorkbenchTabs value={value} label={label} options={options.map(option => ({ ...option, disabled }))} onValueChange={next => onChange({ target: { value: next } })} /></div>;
 }
-export default function Inspector({ timelineStatus = null, onViewInEditing, protectEditing = content => content, onEditImage, annotations, annotationAsset = null, assetSections = null, annotationBlocked = false,  onShowTasks, subjects, subjectBlocked, shot, node, project, assets, versions, jobs, providers, configureGeneration, tab, setTab, busy, onSave, onNodeSave, onGenerate, onSelectVersion, onCompare, onOpenJobs, onCancelJob, onRetryJob, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId, actionScopeKey = '', shotTextContext = null, onShotTextController, onShotTextAccepted }: InspectorProps): React.ReactElement | null {
+export default function Inspector({ timelineStatus = null, onViewInEditing, protectEditing = content => content, onEditImage, annotations, annotationAsset = null, assetSections = null, annotationBlocked = false,  onShowTasks, subjects, subjectBlocked, shot, node, project, assets, versions, jobs, providers, configureGeneration, tab, setTab, busy, onSave, onNodeSave, onGenerate, regenerationJobId, onRegenerate, onSelectVersion, onCompare, onOpenJobs, onCancelJob, onRetryJob, onDirtyChange, onAddVersion, generationOptions = {}, onGenerationOptionsChange, shots = [], nodes = [], edges = [], referenceBusy = false, referencePending = false, onAttachReference, onDetachReference, onInspect, highlightedVersionId, actionScopeKey = '', shotTextContext = null, onShotTextController, onShotTextAccepted }: InspectorProps): React.ReactElement | null {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const confirm = useConfirmation();
   const initial: ShotDraftView = shot ? editable(shot) : nodeDraft(node);
@@ -339,11 +341,15 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
     edit('referenceAssetIds', []);
   }
   function reset(): void { if (shot && shotTextContext && (shotText.controller.getState().pending || shotText.controller.getState().busy || currentTextContext().busy)) return; editSerial.current++; textVersion.current++; const latest: ShotDraftView = shot ? editable(shot) : nodeDraft(node); draftRef.current = latest; dirtyRef.current = false; baseRevisionRef.current = record!.revision; setDraft(latest); baseline.current = latest; setBaseRevision(record!.revision); setDirty(false); setConflict(false); shotText.controller.setContext(currentTextContext()); }
-  async function generate(): Promise<void> {
+  async function generate(replace?: AppJob): Promise<void> {
     if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return;
     const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey;
     const latest = (dirty ? await save() : shot) as AppShot | null | undefined;
-    if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationParameters(latest, provider, generationOptions), ...(videoInput ? { videoInput: generationVideoInput(latest, generationOptions as { videoInput?: GenerationVideoInput }, provider) } : {}) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) });
+    const stillCurrent = () => actionCurrent(epoch, serial, { requireVisible: Boolean(replace) }) && actionState.current?.generationOptionsKey === optionsKey;
+    if (!latest || !stillCurrent()) return;
+    const selection = { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationParameters(latest, provider, generationOptions), ...(videoInput ? { videoInput: generationVideoInput(latest, generationOptions as { videoInput?: GenerationVideoInput }, provider) } : {}) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) };
+    if (replace) onRegenerate?.(latest, selection, replace, stillCurrent);
+    else onGenerate(latest, selection);
   }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
   function frozenVersionSpecs(version: AppVersion): React.ReactNode {
@@ -372,7 +378,10 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
     // A resize, panel reopen, or data refresh must not steal focus again.
   }, [highlightedVersionId, tab, shot?.id]);
   const shotJobs = jobs.filter(j => j.shotId === shot?.id).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
-  const running = shotJobs.find(activeJob);
+  const active = shotJobs.find(job => activeJob(job) && !unsubmittedVideoConnection(job));
+  const unsubmitted = shotJobs.find(job => job.id === regenerationJobId && unsubmittedVideoConnection(job)) ?? shotJobs.find(unsubmittedVideoConnection);
+  const running = active ?? unsubmitted;
+  const regenerate = !active && onRegenerate ? unsubmitted : undefined;
   const connection = videoJobConnection(running);
   const latestConnection = running === shotJobs[0] ? connection : videoJobConnection(shotJobs[0]);
   const taskView = useRef({ jobs, busy,  shotId: shot?.id, projectId: project?.id, tab });
@@ -386,9 +395,10 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
   async function cancelGeneration(job: AppJob): Promise<void> {
     const current = taskGuard(job);
     if (!onCancelJob || !activeJob(job) || !current() || busy[`cancel:${job.id}`]) return;
-    if (await confirm(msg('tasks.center.stopWaitConfirmation')) && current() && !taskView.current.busy[`cancel:${job.id}`]) onCancelJob(job, current);
+    const ask = unsubmittedVideoConnection(job) ? 'tasks.center.cancelUnsubmittedVideoConfirmation' : 'tasks.center.stopWaitConfirmation';
+    if (await confirm(msg(ask)) && current() && !taskView.current.busy[`cancel:${job.id}`]) onCancelJob(job, current);
   }
-  const generating = Boolean(running || busy[`generate:${shot?.id}`]);
+  const generating = Boolean((running && !regenerate) || busy[`generate:${shot?.id}`]);
   const referenceAssets = assets.filter(a => a.mimeType?.startsWith('image/'));
   const effectiveParameters = generationParameters(draft, provider, generationOptions);
   const generationDraft = provider?.connectionId ? { ...draft, parameters: effectiveParameters, ...(videoInput ? { videoInput } : {}) } : draft;
@@ -499,6 +509,6 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
     </div></ScrollArea></Tabs><footer className="inspector-action">{configureGeneration && <div className="capability-issue" data-testid="video-generation-no-service">
       <p role="status">{t('generation.services.configureFirst')}</p>
       <Button variant="ghost" size="sm" data-testid="video-generation-configure" disabled={!visible} onClick={() => { if (visibleRef.current) void configureGeneration(); }}>{t('generation.services.openSettings')}</Button>
-    </div>}{!configureGeneration && (capabilityIssue || availabilityIssue) && <p className="capability-issue" data-testid="generation-issue" role="status"><Icon name="info" size={13} />{renderMessage(capabilityIssueDisplay || availabilityIssueDisplay)}</p>}{!capabilityIssue && !availabilityIssue && (textBlocksLegacy || !draft.title.trim()) && <p className="capability-issue" data-testid="generation-save-first" role="status"><Icon name="info" size={13} />{textBlocksLegacy ? t('inspector.saveTextFirst') : t('inspector.nameRequired')}</p>}{running && onCancelJob && <Button variant="ghost" size="sm" className="text-button cancel-generation" data-testid="cancel-generation" disabled={Boolean(busy[`cancel:${running.id}`])} onClick={() => cancelGeneration(running)}>{t('redesign.board.cancelGeneration')}</Button>}{protectEditing(<Button size="sm" className="button generate-button full" data-testid="generate-shot" disabled={textBlocksLegacy || generating || referenceBlocked || Boolean(capabilityIssue) || !draft.title.trim() || Boolean(availabilityIssue) || Boolean(busy[`save:${shot!.id}`])} onClick={generate}>{generating && !connection ? <span className="spinner" /> : <Icon name={connection ? 'info' : 'sparkle'} size={17} />}{generating ? renderMessage(connection?.status ?? jobStatusDescriptor(running ?? {status: 'queued'})) : dirty && !textBlocksLegacy ? t('inspector.saveGenerate') : t('inspector.generateShot')}<span className="button-shortcut">{wanCapabilities ? effectiveParameters.durationSeconds === -1 ? t('video.wan.smartDuration') : t('shell.durationSeconds', { seconds: Number(effectiveParameters.durationSeconds) }) : <>{draft.duration}s</>}</span></Button>,discardProtectedDraft)}</footer>
+    </div>}{!configureGeneration && (capabilityIssue || availabilityIssue) && <p className="capability-issue" data-testid="generation-issue" role="status"><Icon name="info" size={13} />{renderMessage(capabilityIssueDisplay || availabilityIssueDisplay)}</p>}{!capabilityIssue && !availabilityIssue && (textBlocksLegacy || !draft.title.trim()) && <p className="capability-issue" data-testid="generation-save-first" role="status"><Icon name="info" size={13} />{textBlocksLegacy ? t('inspector.saveTextFirst') : t('inspector.nameRequired')}</p>}{running && onCancelJob && <Button variant="ghost" size="sm" className="text-button cancel-generation" data-testid="cancel-generation" disabled={Boolean(busy[`cancel:${running.id}`])} onClick={() => cancelGeneration(running)}>{t(unsubmittedVideoConnection(running) ? 'common.cancel' : 'redesign.board.cancelGeneration')}</Button>}{protectEditing(<Button size="sm" className="button generate-button full" data-testid={regenerate ? 'regenerate-unsubmitted-video' : 'generate-shot'} disabled={textBlocksLegacy || generating || referenceBlocked || Boolean(capabilityIssue) || !draft.title.trim() || Boolean(availabilityIssue) || Boolean(busy[`save:${shot!.id}`] || regenerate && busy[`cancel:${regenerate.id}`])} onClick={() => generate(regenerate)}>{generating && !connection ? <span className="spinner" /> : <Icon name={connection ? 'info' : 'sparkle'} size={17} />}{generating ? renderMessage(connection?.status ?? jobStatusDescriptor(running ?? {status: 'queued'})) : regenerate ? t('tasks.center.regenerateVideoWithCurrentSettings') : dirty && !textBlocksLegacy ? t('inspector.saveGenerate') : t('inspector.generateShot')}<span className="button-shortcut">{wanCapabilities ? effectiveParameters.durationSeconds === -1 ? t('video.wan.smartDuration') : t('shell.durationSeconds', { seconds: Number(effectiveParameters.durationSeconds) }) : <>{draft.duration}s</>}</span></Button>,discardProtectedDraft)}</footer>
   </aside>;
 }
