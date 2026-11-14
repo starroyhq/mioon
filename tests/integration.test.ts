@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ServiceResponse, MediaJob, MediaShot, GenerationSnapshot} from './helpers/strict-service-responses.ts';
 import type {FixtureVersion} from './helpers/strict-timeline-core-types.ts';
 import type {AddressInfo} from 'node:net';
@@ -46,7 +47,7 @@ async function fixture(t: test.TestContext) {
   async function start() {
     const number = ++processNumber;
     // The backend starts as the CLI starts it and, over IPC, answers ledger questions on its own connection.
-    processHandle = spawn(process.execPath, [serverEntry], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    processHandle = spawn(process.execPath, [serverEntry], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     let stdout = '', stderr = ''; processHandle.stdout!.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr!.setEncoding('utf8').on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     processHandle.on('message', (message: LedgerReply) => { const reply = message?.type === 'reply' && typeof message.id === 'string' ? pending.get(message.id) : undefined; if (!reply) return; if (message.error) reply.reject(Object.assign(Error(message.error.message), { code: message.error.code })); else reply.resolve(message.data); });

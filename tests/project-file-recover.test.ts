@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // recoverProjectFile: step 1 of the opening order alone, for projects that are
 // not open (at startup and when listing recent projects). It rolls back a hot
 // journal beside the project file and does nothing else. A crash in the
@@ -58,7 +59,7 @@ function newProject(t: TestContext, candidate = false): Project {
 }
 
 function childEnv(mode: string, extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {...process.env, ...extra, MODE: mode, PAYLOAD_MIB: '1'};
+  const env: NodeJS.ProcessEnv = {...testEnv(), ...extra, MODE: mode, PAYLOAD_MIB: '1'};
   delete env.ROOT;
   delete env.MOVED_PROJECT_FILE;
   return env;

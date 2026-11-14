@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {spawn} from 'node:child_process';
 import {build} from 'esbuild';
+import {testEnv} from '../../helpers/test-env.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../..');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -105,7 +106,7 @@ export async function runOriginSweep(outputDirectory, referenceFile) {
       window.destroy();app.exit(report.status==='passed'?0:1);
     }catch(error){fs.writeFileSync(path.join(__dirname,'failure.txt'),String(error.stack??error),{mode:0o600});window?.destroy();app.exit(1);}});`;
   await writeFile(path.join(root, 'main.cjs'), main, {mode: 0o600});
-  const env = {...process.env}; delete env.ELECTRON_RUN_AS_NODE; delete env.NODE_OPTIONS;
+  const env = testEnv(); delete env.ELECTRON_RUN_AS_NODE; delete env.NODE_OPTIONS;
   const child = spawn(createRequire(import.meta.url)('electron'), [path.join(root, 'main.cjs')], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   const logs = []; let logBytes = 0;
   for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => {if (logBytes < 1024 * 1024) {logs.push(Buffer.from(bytes)); logBytes += bytes.length;}});

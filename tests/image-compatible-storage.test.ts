@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {validateWorkspaceStorage} from '../packages/business/src/application-storage.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {CUSTOM_IMAGE_SETTINGS_V2_LIMITS} from '../packages/contracts/src/generation-image-settings.ts';
 interface CapturedEntry {mode: number; uid: number; ino: number; nlink: number; bytes: string | null}
 function capture(root: string): Record<string, CapturedEntry> {const result: Record<string, CapturedEntry> = {};const visit=(file: string,key: string)=>{const info=fs.lstatSync(file);result[key]={mode:info.mode,uid:info.uid,ino:info.ino,nlink:info.nlink,bytes:info.isFile()?fs.readFileSync(file).toString('hex'):info.isSymbolicLink()?fs.readlinkSync(file):null};if(info.isDirectory())for(const name of fs.readdirSync(file).sort())visit(path.join(file,name),key+'/'+name);};visit(root,'root');return result;}

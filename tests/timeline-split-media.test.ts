@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
@@ -51,7 +52,7 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-media-'));
   await mkdir(evidence, { recursive: true });
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
   records.server = { pid: child.pid, port, stdout: '', stderr: '' };
   child.stdout.setEncoding('utf8').on('data', bytes => records.server.stdout += bytes);
   child.stderr.setEncoding('utf8').on('data', bytes => records.server.stderr += bytes);

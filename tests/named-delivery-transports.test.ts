@@ -28,7 +28,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {openServerProject} from './helpers/project-database.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -41,7 +41,7 @@ const TOKEN = 'synthetic-named-delivery-transport-token';
 const NAME = ' 交付 Café e\u0301 🎬 / Final.mp4 ';
 const pause = (milliseconds: number|undefined) => new Promise(resolve => setTimeout(resolve, milliseconds));
 const sha256 = (value: Buffer<ArrayBuffer>|BinaryLike) => createHash('sha256').update(value).digest('hex');
-const environment = (url?:string) => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
+const environment = (url?:string) => ({...mediaEnvironment(),
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN} : {})});
 const noPrivate = (value: unknown) => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

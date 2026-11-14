@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -15,7 +16,7 @@ import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 test('native Windows headless backend and separate CLI share private storage, diagnostics and synthetic v2 tool/control receipts',{skip:process.platform!=='win32',timeout:180000},async t=>{
  await initializeNodePrivateStorage();
  const root=createPrivateTemporaryDirectory(tmpdir(),'mioon-node-host-smoke-');
- const {startServer}=await import('../apps/server/src/index.ts');
+ const {startServer}=await import('./helpers/test-server.ts');
  const {createHeadlessAgentSecretCodec}=await import('../apps/server/src/headless-agent-secret-codec.ts');
  let modelCalls=0;
  type Gateway = NonNullable<NonNullable<Parameters<typeof startServer>[0]>['taskGatewayV2']>;
@@ -32,7 +33,7 @@ test('native Windows headless backend and separate CLI share private storage, di
  };
  const service=await startServer({dataDir:root,port:0,agentSecretCodecFactory:createHeadlessAgentSecretCodec,taskGatewayV2:gateway});
  t.after(async()=>{await service.close();rmSync(root,{recursive:true,force:true});});
- const env: NodeJS.ProcessEnv={...process.env,MIOON_BASE_URL:service.url,MIOON_TOKEN_FILE:service.tokenFile};delete env.MIOON_TOKEN;delete env.MIOON_CONNECTION_FILE;
+ const env: NodeJS.ProcessEnv={...testEnv(),MIOON_BASE_URL:service.url,MIOON_TOKEN_FILE:service.tokenFile};delete env.MIOON_TOKEN;delete env.MIOON_CONNECTION_FILE;
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url));
  async function cli(words: string[],input: Record<string,unknown>={},options: { key?: string; flags?: string[]; }|undefined={}){
   const child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input),...(options.flags??[])],{env,stdio:[options.key===undefined?'ignore':'pipe','pipe','pipe']});

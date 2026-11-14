@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createQaProject,closeQaProject,readQaFixture} from './helpers/kernel-qa-fixture.mjs';
 export const qaRoot=path.resolve('evidence/dockable-panels');
 export const runtime=path.join(qaRoot,'browser-runtime');
@@ -26,7 +26,6 @@ export async function prepareDockableFixture(){
 }
 if(process.argv.includes('--prepare')) console.log(JSON.stringify(await prepareDockableFixture(),null,2));
 if(process.argv.includes('--serve')){
- process.env.MIOON_ENABLE_LIVE_PROVIDER='0';for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_)/.test(key))delete process.env[key];
  const fixture=await prepareDockableFixture();
  // Synthetic QA-only credential, never a user credential or production token.
  const token='dockable-panels-local-synthetic-qa-token';await writeFile(path.join(runtime,'token'),token,{mode:0o600});

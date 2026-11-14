@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,9 +20,9 @@ const repo = fileURLToPath(new URL('..', import.meta.url)), token = 'synthetic-w
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 const state = () => { const value = defaultWorkspaceState(); delete (value.shared as unknown as Record<PropertyKey,unknown>).assetSearch; return value; };
 function environment(extra = {}) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const name of Object.keys(env)) if (/^(MIOON_|MIOON_|ARK_|VEO_|RUNWAY|MINIMAX_|VIDU_|GEMINI_|GOOGLE_)/.test(name)) delete (env as unknown as Record<PropertyKey,unknown>)[name];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
 async function backend(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-preferences-http-'));

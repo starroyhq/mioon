@@ -20,7 +20,7 @@ import {EventEmitter} from 'node:events';
 
 import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
 import {createVideoHttp} from '../apps/server/src/video-http.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 
 
 import {defaultVideoModels,VIDEO_SETTINGS_LIMITS,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';

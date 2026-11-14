@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 
 import test from 'node:test';
 import type {TestContext} from 'node:test';
@@ -277,7 +278,7 @@ test('close is idempotent and lets another process open the project', t => {
   store.close();
   store.close();
   assert.equal(store.db.isOpen, false);
-  const env: NodeJS.ProcessEnv = {...process.env, MODE: 'open-report', ROOT: root};
+  const env: NodeJS.ProcessEnv = {...testEnv(), MODE: 'open-report', ROOT: root};
   const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout.trim()) as Record<string, unknown>;

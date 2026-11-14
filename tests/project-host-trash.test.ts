@@ -21,7 +21,7 @@ import {createProjectTrashRecords} from '../apps/server/src/project-host/trash-r
 import {ProjectTrashRefusedError} from '../packages/contracts/src/project-trash-native.ts';
 import type {ProjectTrashRequest} from '../packages/contracts/src/project-trash-native.ts';
 import type {ProjectDeleteInput} from '../packages/contracts/src/project-lifecycle.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication} from '../apps/server/src/index.ts';
 
 function tree(directory: string): unknown {

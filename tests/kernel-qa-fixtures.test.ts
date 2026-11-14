@@ -5,7 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createQaProject, ensureQaProject, closeQaProject, auditQaDatabases, readQaFixture} from './helpers/kernel-qa-fixture.mjs';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/project-host/host.ts';
 import type {DatabaseSync} from 'node:sqlite';
 

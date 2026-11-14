@@ -33,7 +33,7 @@ async function fixture(t: import('node:test').TestContext, responses: unknown[] 
   const root = await sandbox(t), file = path.join(root, 'reference.png');
   await writeFile(file, syntheticPng);
   const sha256 = createHash('sha256').update(syntheticPng).digest('hex'), calls: [RequestInfo | URL, (RequestInit | undefined)?][] = [], queue: unknown[] = [...responses];
-  const env = { RUNWAYML_API_SECRET: SECRET, MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
+  const env = { RUNWAYML_API_SECRET: SECRET, RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
   const provider = createRunwayProvider({ root, env, now: options.now ?? Date.now, fetchImpl: async (...args: [RequestInfo | URL, RequestInit?]) => {
     calls.push(args);
     const next = queue.shift();
@@ -172,7 +172,7 @@ test('Runway parity: configured exact CDN allowlist is preserved without auth', 
 test('Runway parity: actual worker persists HTTP 409 unknown, refuses job.retry and never resubmits on reconciliation or restart', async t => {
   const root = await sandbox(t), fixture = await createRunwayUnknownFixture(root), store = openStore(root);
   let calls = 0, worker: ReturnType<typeof startWorker> | undefined;
-  const provider = createRunwayProvider({ root, env: { RUNWAYML_API_SECRET: SECRET, MIOON_ENABLE_LIVE_PROVIDER: '1' }, fetchImpl: async () => { calls++; throw Error('No network during unknown reconciliation'); } });
+  const provider = createRunwayProvider({ root, env: { RUNWAYML_API_SECRET: SECRET,  }, fetchImpl: async () => { calls++; throw Error('No network during unknown reconciliation'); } });
   const providers = new Map([['runway', provider]]) as unknown as ReadonlyMap<string, Provider>, services = createServices(store, providers, {});
   t.after(async () => { await worker?.stop(); store.close(); });
   assert.equal((store.get('jobs', fixture.jobId) as {status: string}).status, 'submission_unknown');

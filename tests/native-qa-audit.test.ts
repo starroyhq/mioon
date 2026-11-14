@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -59,7 +60,7 @@ test('an independent physical report runs the real warmed four CLI reads without
     writeFileSync(${JSON.stringify(connectionFile+'.tmp')},JSON.stringify({version:1,pid:process.pid,url:server.url,tokenFile:${JSON.stringify(tokenFile)}}),{mode:0o600});
     renameSync(${JSON.stringify(connectionFile+'.tmp')},${JSON.stringify(connectionFile)});
     process.once('SIGTERM',()=>server.close().then(()=>process.exit(0),error=>{console.error(error);process.exit(1);}));
-  `],{cwd:REPOSITORY,env:{...process.env,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','ignore','inherit']});
+  `],{cwd:REPOSITORY,env:{...testEnv(),},stdio:['ignore','ignore','inherit']});
   const ended=once(backend,'exit'),pid=backend.pid;assert.ok(pid);
   let done=false;t.after(async()=>{if(!done){backend.kill('SIGTERM');await ended;}});
   const deadline=Date.now()+20000;while(!existsSync(connectionFile)){assert.equal(backend.exitCode,null);assert.ok(Date.now()<deadline,'real test backend startup');await new Promise(resolve=>setTimeout(resolve,20));}

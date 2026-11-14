@@ -15,7 +15,7 @@ import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {operationDefinition, EXIT_CODES} from '../packages/client/src/index.ts';
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION, comfyImageSettingsResultSchema} from '../packages/contracts/src/comfy-images.ts';
@@ -30,7 +30,7 @@ interface HttpBody {ok?: boolean; data?: HttpData; error?: {code?: string; retry
 interface Fixture {root: string; server: {url: string}; request(route: string, options?: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}): Promise<{status: number; headers: Headers; body: HttpBody}>; rpc(operation: string, input?: Record<string, unknown>): Promise<HttpData>; approve(review: {projectId: string; id: string}): Promise<HttpData>; task(ack: {projectId: string; id: string}): Promise<HttpData>; remote(ack: {projectId: string; id: string}): Promise<HttpData>; reopen(selected?: string): Promise<void>; inspect: InspectProject}
 const cliEnvironment = (f: Fixture): Record<string, string> => ({...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC']
   .filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
-  TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>);
+  TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token,} as Record<string, string>);
 async function cli(f: Fixture, operation: string, input: unknown) {
   // Feature-specific invocation against this test's owned ephemeral backend.
   // No doctor, startup measurement, native QA workspace, or external service.
@@ -199,7 +199,7 @@ test('omitting Comfy preserves official MCP discovery and CLI refusal but grants
   const client = new Client({name: 'synthetic-optional-comfy-acceptance', version: '1.0.0'}, {capabilities: {}});
   const clean = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo,
-    env: {...clean, TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
+    env: {...clean, TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token,}, stderr: 'pipe'});
   t.after(() => client.close());
   await client.connect(transport);
   const tools = (await client.listTools()).tools;

@@ -23,11 +23,11 @@ function sampled(bytes: Buffer): string {const hash=createHash('sha256');for(con
 
 async function fixture(t: TestContext, {large=false, pair=false}={}) {
   const root=await mkdtemp(path.join(tmpdir(),'generation-reference-revisions-')),store=openStore(root);
-  const providers=createProviderRegistry({db:store.db,root,env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}}),base=providers.get('mock');assert.ok(base);
+  const providers=createProviderRegistry({db:store.db,root,env:{}}),base=providers.get('mock');assert.ok(base);
   let submitCounter=0,dispatchCounter=0,worker:Worker|undefined;
   providers.set('mock',{...base,submit:async(_snapshot,context)=>{submitCounter++;context.beforeSubmit?.();dispatchCounter++;return {providerJobId:'counted-local-submit'};},
     poll:async()=>({status:'running',progress:.1}),reconcile:async()=>null,download:async()=>{throw Error('These pre-dispatch tests never download or render');}});
-  const services=createServices(store,providers,{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'},profileNow:()=>Date.parse('2026-10-10T12:00:00Z')});
+  const services=createServices(store,providers,{env:{},profileNow:()=>Date.parse('2026-10-10T12:00:00Z')});
   t.after(async()=>{await worker?.stop();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
   const project=row(await services.call('project.create',{name:'Reference confirmation regressions'}));assert.equal(project.id,store.projectId);
   await mkdir(path.join(root,'sources'));

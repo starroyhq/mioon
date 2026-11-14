@@ -7,7 +7,7 @@ import {installWireGuard} from '../helpers/inspection-wire-fixture.ts';
 import type {InspectApplication,InspectProject} from '../../apps/server/src/index.ts';
 
 const guard = installWireGuard({auditPath: process.argv[2]});
-const {startServer} = await import('../../apps/server/src/index.ts');
+const {startServer} = await import('../helpers/test-server.ts');
 const {schemaObjects} = await import('../helpers/project-database.ts');
 const {readProjectState,changeMarks} = await import('../helpers/project-state.ts');
 const {databaseFiles} = await import('../helpers/data-file-snapshot.ts');

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';

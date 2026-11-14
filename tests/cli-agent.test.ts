@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 interface ManagementBody {secretActions:AgentSecretAction[];services:AgentServiceInput[];mioSelection:AgentMioSelection|null;requestId:string;projectId?:string;diagnostic:{profile:string};locale:string;action:string;expectedRevision:number;name:string;mimeType:string;dataBase64:string;filePath?:string;conversationId:string}
 interface ManagementCall {method:string|undefined;url:string|undefined;body:ManagementBody}
@@ -21,8 +22,8 @@ const settings=adapterSettings(),secretMetadata={expectedRevision:4,serviceKey:A
 const token='SYNTHETIC_CLI_AGENT_TOKEN_1234567890';
 const snapshot=(status: string|undefined='completed',revision: number|undefined=1)=>({run:{id:runId,projectId,requestId,text:'synthetic',status,revision,stepLimit:30,budget:30,stepsUsed:1,configuration,createdAt:'2026-10-21T00:00:00Z',updatedAt:'2026-10-21T00:00:00Z'},steps:[],changes:[]});
 function command(args: string[],{base,stdin=''}:{base?:string;stdin?:string}={}){
- const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('MIOON_')));
- if(base)Object.assign(env,{MIOON_BASE_URL:base,MIOON_TOKEN:token});env.MIOON_ENABLE_LIVE_PROVIDER='0';
+ const env=Object.fromEntries(Object.entries(testEnv()).filter(([key])=>!key.startsWith('MIOON_')));
+ if(base)Object.assign(env,{MIOON_BASE_URL:base,MIOON_TOKEN:token});
  const child=spawn(process.execPath,[entry,...args],{cwd:root,env,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
  child.stdout.setEncoding('utf8').on('data',value=>stdout+=value);child.stderr.setEncoding('utf8').on('data',value=>stderr+=value);child.stdin.on('error',()=>{});child.stdin.end(stdin);
  const result=new Promise<ManagementResult>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI did not exit.'));},15000);child.on('error',error=>{clearTimeout(timer);reject(error);});child.on('close',(code,signal)=>{clearTimeout(timer);try{assert.equal(signal,null);const lines=stdout.trim().split('\n');assert.equal(lines.length,1);resolve({code,stdout,stderr,body:JSON.parse(stdout)});}catch(error){reject(error);}});});

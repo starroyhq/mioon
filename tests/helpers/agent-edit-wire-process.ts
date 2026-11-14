@@ -24,7 +24,7 @@ const start = async (message: WireProcessMessage): Promise<void> => {
   root = String(message.dataDir);
   startupPhase('module-loading');
   const [{startServer}, {createAgentSettings, AGENT_CREDENTIAL_ACQUIRE}, {createAgentSettingsFile}] = await Promise.all([
-    import('../../apps/server/src/index.ts'), import('../../packages/business/src/agent/settings.ts'), import('../../packages/business/src/agent/settings-file.ts'),
+    import('./test-server.ts'), import('../../packages/business/src/agent/settings.ts'), import('../../packages/business/src/agent/settings-file.ts'),
   ]);
   startupPhase('module-loaded');
   if (!active()) return;

@@ -15,7 +15,7 @@ import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type { BinaryLike } from 'crypto';
 
 // Local synthetic acceptance: exact float PCM first, then the shared production

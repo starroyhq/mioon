@@ -5,7 +5,10 @@ import {createArkProvider} from './providers/ark.ts';
 import {createVeoProvider} from './providers/veo.ts';
 import {createMinimaxProvider} from './providers/minimax.ts';
 import {createViduProvider} from './providers/vidu.ts';
+import {providerSettings} from './providers/environment.ts';
 import type {DatabaseSync} from 'node:sqlite';
+
+export {providerEnvironmentKeys,providerSettings} from './providers/environment.ts';
 
 /** Signed-in/embedded adapter contract consumed by the backend services. Methods
  * are declared with method syntax so adapter implementations stay assignable
@@ -82,17 +85,9 @@ export function generationServiceUnavailable():AppError {
 }
 type CapabilityProfile=NonNullable<ReturnType<typeof getCapabilityProfile>>;
 
-export const providerSettings = Object.freeze({
- runway:{credential:'RUNWAYML_API_SECRET',prefix:'RUNWAY'},
- ark:{credential:'ARK_API_KEY',prefix:'ARK'},
- veo:{credential:'GEMINI_API_KEY',prefix:'VEO'},
- minimax:{credential:'MINIMAX_API_KEY',prefix:'MINIMAX'},
- vidu:{credential:'VIDU_API_KEY',prefix:'VIDU'},
-});
 type ProviderSettingsKey=keyof typeof providerSettings;
-const providerSetting=(id: string): {credential: string; prefix: string} | undefined =>
+const providerSetting=(id: string) =>
  Object.hasOwn(providerSettings,id)?providerSettings[id as ProviderSettingsKey]:undefined;
-export const providerEnvironmentKeys=Object.freeze(['MINIMAX_REGION','VIDU_REGION',...Object.values(providerSettings).flatMap(({credential,prefix})=>[credential,`${prefix}_APPROVED_ASSET_SHA256`,`${prefix}_OUTPUT_HOSTS`])]);
 // Only the production registry opts into the reviewed profile policy. Trusted
 // embedded adapters keep the legacy extension contract; request DTOs cannot
 // opt a production registry out, including after a provider handle is replaced.
@@ -140,9 +135,9 @@ export function normalizedCapabilities(provider: ProviderMetadata,_env: NodeJS.P
  for(const key of ['inputProfiles','inputProfileVersion','providerRegion','profileEvaluationDate','inputProfileEvaluations'])delete publicCapabilities[key];
  return {...publicCapabilities,...profiles,id:provider.id,inputModes,modelCapabilities,configured,enabled,status,liveVerified:c.mock?false:Boolean(c.liveVerified),
   configuration:{...(c.configuration||{}),missing:[...new Set(missing)],requirements:settings?[
-   `${settings.prefix}_APPROVED_ASSET_SHA256：图生视频仅发送已授权参考图`,
+   `${settings.approvedAssetSha256}：图生视频仅发送已授权参考图`,
    ...(c.region?[`${settings.prefix}_REGION=global|cn：必须与密钥账户区域一致，不会跨区回退`]:[]),
-   ...(provider.id==='vidu'?['VIDU_OUTPUT_HOSTS：必填，仅允许独立核实的精确输出域名']:[]),
+   ...(provider.id==='vidu'?[`${settings.outputHosts}：必填，仅允许独立核实的精确输出域名`]:[]),
    '提交前确认服务商、模型、提示词、素材范围与费用；应用不设置生成次数上限，也不提供金额硬上限。',
   ]:[]}};
 }

@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSy
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer,type InspectProject} from '../apps/server/src/index.ts';
+import {startServer,type InspectProject} from './helpers/test-server.ts';
 import {projectLocation,serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker,safeProjectEntryControlError} from '../apps/desktop/src/project-entry-control.ts';

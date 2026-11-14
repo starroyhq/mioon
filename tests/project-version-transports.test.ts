@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -116,7 +117,7 @@ test('client binds version replies and retains save identity after an uncertain 
 });
 
 test('HTTP CLI and official MCP agree on local version save/list/preview/restore and daily capture', {timeout: 120_000}, async t => {
-  const {startServer} = await import('../apps/server/src/index.ts');
+  const {startServer} = await import('./helpers/test-server.ts');
   const root = await mkdtemp(path.join(tmpdir(), 'project-version-wire-'));
   let inspect!: InspectProject;
   let server = await startServer({dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
@@ -134,7 +135,7 @@ test('HTTP CLI and official MCP agree on local version save/list/preview/restore
   const created = await rpc<{id: string; revision: number}>('project.create', {name: 'Versions 🎬'}, null);
   const other = await rpc<{id: string}>('project.create', {name: 'Other'}, null);
   const id = created.id;
-  const env = {...process.env, MIOON_BASE_URL: server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>;
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token, } as Record<string, string>;
   delete env.MIOON_CONNECTION_FILE; delete env.MIOON_TOKEN_FILE;
   const cli = async (operation: string, input: unknown): Promise<unknown> => {
     const result = await run(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)],

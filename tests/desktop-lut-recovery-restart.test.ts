@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
@@ -44,7 +45,7 @@ async function startBackend(t: TestContext, dataDir: string) {
     process.send({url:service.url});
   `], {
     cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, LUT_TEST_DATA: dataDir },
+    env: { ...testEnv(), LUT_TEST_DATA: dataDir },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let diagnostics = '';

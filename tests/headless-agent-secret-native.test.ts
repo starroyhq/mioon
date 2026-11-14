@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -50,7 +51,7 @@ process.once('message',async input=>{
   await writeFile(file,source,{mode:0o600});
   async function call(action: string,{directoryOverride=directory,environment={}}={}){
     return new Promise<{ok: boolean; available?: boolean; matches?: boolean; value?: boolean}>((resolve,reject)=>{
-      const child=fork(file,[],{execPath:process.execPath,execArgv:[],env:{...process.env,...environment},stdio:['ignore','ignore','ignore','ipc']});
+      const child=fork(file,[],{execPath:process.execPath,execArgv:[],env:{...testEnv(),...environment},stdio:['ignore','ignore','ignore','ipc']});
       let result: unknown;const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic vault operation exceeded its deadline.'));},10000);
       child.on('error',()=>{clearTimeout(timer);reject(Error('Synthetic vault process failed.'));});
       child.on('message',value=>{result=value;});

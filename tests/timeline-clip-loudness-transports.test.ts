@@ -20,7 +20,7 @@ import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url));
-const env=(url?: string)=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const env=(url?: string)=>({PATH:process.env.PATH||'',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const deferred=()=>{let resolve!: () => void;const promise=new Promise<void>(r=>{resolve=r;});return {promise,resolve};};
 async function bounded<T>(promise: Promise<T>,label: string,ms=10000){let timer: ReturnType<typeof setTimeout> | undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function cli(t: TestContext,url: string | undefined,args: string[]){

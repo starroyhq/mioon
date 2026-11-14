@@ -37,7 +37,7 @@ export function readQaFixture(file, dataDir) {
 }
 /** @param {import('../../packages/business/src/project-file/store.ts').ProjectStore} store */
 async function seeded(store, {media = true} = {}) {
-  const services = createServices(store, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  const services = createServices(store, new Map(), {env: {}});
   const saved = store.get('projects', store.projectId);
   if(!saved||typeof saved!=='object'||!('id' in saved)||typeof saved.id!=='string')throw Error('Missing QA project');
   const project={id:saved.id};

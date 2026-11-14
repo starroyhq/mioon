@@ -30,7 +30,7 @@ async function foreignProject(t: test.TestContext,name: string){
 }
 async function fixture(t: test.TestContext,{providerId='mock',date='2026-10-10',image=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-')),store=(openStore(root) as TypedStore);
- const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-fixture',GEMINI_API_KEY:'inert-fixture',MINIMAX_API_KEY:'inert-fixture'};
+ const env={ARK_API_KEY:'inert-fixture',GEMINI_API_KEY:'inert-fixture',MINIMAX_API_KEY:'inert-fixture'};
  const providers=createProviderRegistry({db:store.db,root,env});let current=date,worker: Worker,posts=0,polls=0;
  const services=(createServices(store,providers,{env,profileNow:()=>Date.parse(`${current}T12:00:00Z`)}) as TypedServices);
  const project=await services.call('project.create',{name:'Input boundary synthetic fixture'});

@@ -18,7 +18,7 @@ async function fixture(t: unknown) {
   return {root, marker, run(target: string) {
     const result = spawnSync(process.execPath, ['--import', guard, 'scripts/create-timeline-demo.ts'], {
       cwd: repo, encoding: 'utf8', timeout: 5000, maxBuffer: 65536,
-      env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', MIOON_V2_DEMO_DIR: target, MIOON_ENABLE_LIVE_PROVIDER: '0'},
+      env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', MIOON_V2_DEMO_DIR: target,},
     });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /STORAGE_PRIVATE_REQUIRED/);

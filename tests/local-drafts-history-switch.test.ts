@@ -13,7 +13,7 @@ import {projectLocation, serverAppDirectories} from '../apps/server/src/project-
 import {composeHostedProject} from '../apps/server/src/project-host/runtime.ts';
 import type {HostedProject} from '../apps/server/src/project-host/runtime.ts';
 import {composeApplicationRuntime} from '../apps/server/src/application-runtime.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
@@ -44,7 +44,7 @@ const confirmation = (status: ProjectHistoryStatus, action: 'continue' | 'restor
 async function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-drafts-history-switch-'));
   const library = openAppLibrary({dataDir: root}), owner = new AbortController(), directories = serverAppDirectories(root);
-  const application = createProjectServiceApplication(library, owner.signal, {MIOON_ENABLE_LIVE_PROVIDER: '0'});
+  const application = createProjectServiceApplication(library, owner.signal, {});
   const options = {port: 0, comfyModule: 'skip' as const};
   const app = await composeApplicationRuntime(library, options, owner.signal, () => undefined);
   const normal: {context: Parameters<typeof composeHostedProject>[0]; runtime: HostedProject}[] = [];

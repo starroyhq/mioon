@@ -15,7 +15,7 @@ import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue
 import {readProjectState} from '../helpers/project-state.ts';
 
 const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
-const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+const store=openStore(root),services=createServices(store,new Map(),{env:{}});
 let armed: string|null=null,inOutcome=false,closing=false;const dispatches: unknown[]=[];
 function boundary(phase: string): never|void{
  if(armed!==phase)return;

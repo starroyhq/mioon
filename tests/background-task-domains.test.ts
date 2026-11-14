@@ -426,7 +426,7 @@ test('legacy unknown snapshots receive one read-only startup probe, become quiet
 });
 
 for (const target of ['generation snapshot', 'export owner', 'export ACK range'] as const) test(`a deeply invalid ${target} retains raw bytes but cannot hold a task lease without an executor`, async t => {
-  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const providers = new Map<string, Provider>(), env = {GEMINI_API_KEY: 'synthetic-audit-only'};
   const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')});
   let id: string, original: Record<string, unknown>, originalReceipt: string | undefined, requestId: string | undefined, dispatches = 0;
   const kind = target === 'generation snapshot' ? 'job' : 'export', table = kind === 'job' ? 'jobs' : 'exports';
@@ -487,7 +487,7 @@ test('a storage read failure in an export guard is not proof of an invalid task'
 });
 
 test('an abandoned generation attempt with changed frozen input becomes quiet without rewriting its refused record', async t => {
-  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const providers = new Map<string, Provider>(), env = {GEMINI_API_KEY: 'synthetic-audit-only'};
   const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')}), registry = createProviderRegistry({db: f.store.db, root: f.root, env}), provider = registry.get('veo')!;
   let posts = 0, afterTamper: string | undefined, changesAfterTamper: unknown;
   const raw = () => JSON.stringify({jobs: f.store.db.prepare('SELECT * FROM jobs ORDER BY rowid').all(), events: f.store.db.prepare('SELECT * FROM job_events ORDER BY rowid').all()});
@@ -511,7 +511,7 @@ test('an abandoned generation attempt with changed frozen input becomes quiet wi
 });
 
 test('normal queued revision and nextPollAt changes cannot publish a phantom frozen-input block', async t => {
-  const providers = new Map<string, Provider>(), env = {MIOON_ENABLE_LIVE_PROVIDER: '1', GEMINI_API_KEY: 'synthetic-audit-only'};
+  const providers = new Map<string, Provider>(), env = {GEMINI_API_KEY: 'synthetic-audit-only'};
   const f = await fixture(t, providers, {env, profileNow: () => Date.parse('2026-10-10T12:00:00Z')}), registry = createProviderRegistry({db: f.store.db, root: f.root, env}), provider = registry.get('veo')!;
   let posts = 0;
   providers.set('veo', registerInputProfileWrapper({...provider, submit: async (_snapshot: unknown, context: Parameters<Provider['submit']>[1]) => {context.beforeSubmit!(); posts++; return {providerJobId: 'accepted-once'};}, poll: async () => ({status: 'running'})}, provider));

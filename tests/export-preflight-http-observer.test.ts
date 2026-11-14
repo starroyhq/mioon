@@ -75,7 +75,7 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   const child = spawn(process.execPath, [fileURLToPath(new URL('../apps/cli/src/index.ts', import.meta.url)),
     ...operation.split('.'), '--input', JSON.stringify(input)], {
     stdio: ['ignore', 'pipe', 'pipe'], env: {PATH: process.env.PATH || '', MIOON_BASE_URL: f.url,
-      MIOON_TOKEN: 'preflight-cli-public-synthetic-only-token', MIOON_ENABLE_LIVE_PROVIDER: '0'},
+      MIOON_TOKEN: 'preflight-cli-public-synthetic-only-token',},
   });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', bytes => {stdout += bytes;}); child.stderr.setEncoding('utf8').on('data', bytes => {stderr += bytes;});

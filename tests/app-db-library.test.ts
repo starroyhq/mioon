@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // The app library (task card B1): its structure, lock, private storage rules,
 // transactions and stores, and the shapes the project host's ports expect.
 import test from 'node:test';
@@ -98,7 +99,7 @@ function tamper(file: string, change: (db: DatabaseSync) => void): void {
 }
 /** Another process reading the file read-only with a busy timeout of 0. */
 function readInChild(file: string): {ok: boolean; errcode?: number} {
-  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...process.env, MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...testEnv(), MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim().split('\n').at(-1)!) as {ok: boolean; errcode?: number};
 }
@@ -256,7 +257,7 @@ try {
 } catch (error) {
   console.log(JSON.stringify({ok: false, code: error.code}));
 }`;
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {cwd: REPOSITORY, env: {...process.env, DATA_DIR: dataDir}, encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {cwd: REPOSITORY, env: {...testEnv(), DATA_DIR: dataDir}, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim().split('\n').at(-1)!) as Record<string, unknown>;
 }

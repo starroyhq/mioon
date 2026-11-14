@@ -14,6 +14,7 @@ import {build} from 'esbuild';
 import {openStore} from '../../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../../packages/business/src/services.ts';
 import {timelineCompositionSegments} from '../../../packages/contracts/src/timeline-segments.ts';
+import {testEnv} from '../../helpers/test-env.ts';
 
 const here=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(here,'../../..'),exec=promisify(execFile),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const seconds=frame=>(frame/30).toFixed(9);
@@ -106,7 +107,7 @@ export async function run(rootArgument,{reuse=false}={}){
     ...['launch.mjs','main.mjs','preload.ts','renderer.ts','capture-worklet.js'].map(file=>`tests/fixtures/timeline-audio-continuous/${file}`)];
   const base=await exec('git',['rev-parse','HEAD'],{cwd:repo});
   await writeFile(path.join(root,'source-hashes.json'),JSON.stringify({baseCommit:base.stdout.trim(),files:Object.fromEntries(await Promise.all(sourceFiles.map(async file=>[file,hash(await readFile(path.join(repo,file)))])))},null,2),{mode:0o600});
-  const electron=createRequire(import.meta.url)('electron'),env={...process.env,MIOON_ENABLE_LIVE_PROVIDER:'0'};delete env.ELECTRON_RUN_AS_NODE;delete env.NODE_OPTIONS;
+  const electron=createRequire(import.meta.url)('electron'),env=testEnv();delete env.ELECTRON_RUN_AS_NODE;delete env.NODE_OPTIONS;
   const child=spawn(electron,[path.join(root,'main.cjs')],{cwd:repo,env,stdio:['ignore','pipe','pipe']});
   const logs=[];for(const stream of[child.stdout,child.stderr])stream.on('data',bytes=>{if(logs.reduce((n,b)=>n+b.length,0)<2*1024*1024)logs.push(Buffer.from(bytes));});
   const timeout=setTimeout(()=>child.kill('SIGTERM'),10*60*1000);

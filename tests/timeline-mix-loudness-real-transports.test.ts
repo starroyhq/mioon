@@ -23,7 +23,7 @@ import {createClient,discoverSchema} from '@mioon/client';
 import {readTimelineMixLoudnessEnvelope} from '@mioon/client/timeline-mix-loudness';
 import {isTimelineMixLoudnessResponse,TIMELINE_MIX_LOUDNESS_PROFILE} from '@mioon/contracts/timeline-mix-loudness';
 import {EXPORT_LOUDNESS_PROFILE} from '@mioon/contracts/export-loudness';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, type MediaProcessEvent} from '../packages/business/src/media-processes.ts';
@@ -32,7 +32,7 @@ import type { BinaryLike } from 'crypto';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.loudness.prepare',sha=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
-const environment=(url: string,token: string)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',
+const environment=(url: string,token: string)=>({...mediaEnvironment(),
   MIOON_BASE_URL:url,MIOON_TOKEN:token});
 async function bounded<T>(promise: Promise<T>,label: string,ms: number|undefined=20000):Promise<T>{let timer;try{
   return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);

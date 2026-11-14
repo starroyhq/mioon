@@ -38,7 +38,7 @@ async function fixture(t: test.TestContext){
  const listing='Encoders:\n V..... = Video\n A..... = Audio\n ------\n V....D libx264 Synthetic H.264\n A..... aac Synthetic AAC\n A..... pcm_f32le Synthetic float PCM\n';
  await writeFile(tool,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';\nconst args=process.argv.slice(2);\nif(args.includes('-encoders'))process.stdout.write(${JSON.stringify(listing)});\nelse{const file=args.at(-1);if(!file.endsWith('.mov'))process.exit(29);writeFileSync(file,'partial owned MOV');setInterval(()=>{},1000);}\n`,{mode:0o700});
  const restoreTool=()=>{if(originalFfmpeg===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=originalFfmpeg;};
- const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}}) as FixtureServices);
+ const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map(),{env:{}}) as FixtureServices);
  const project=await services.call('project.create',{name:'Float cancellation synthetic project'});let timeline=await services.call('timeline.get',{projectId:project.id});
  const assetId=randomUUID(),relativePath=`media/${assetId}.wav`,source=tinyWave();await writeFile(path.join(root,relativePath),source,{mode:0o600});
  store.put('assets',{id:assetId,projectId:project.id,name:'Synthetic silence.wav',mimeType:'audio/wav',relativePath,sha256:hash(source),sizeBytes:source.length,width:0,height:0,duration:.1,hasVideo:false,hasAudio:true,audioStreamIndex:0,provenance:'user-import',createdAt:new Date().toISOString()});
@@ -100,7 +100,7 @@ test('real HTTP disconnect aborts active v2 capability MOV child, cleans owned s
 test('actual CLI Ctrl+C reaches active v2 capability lifecycle without business mutation or retry',{timeout:20000},async t=>{
  if(process.platform==='win32'){t.skip('POSIX signals and installed executable fixture; no native Windows claim');return;}
  const f=await fixture(t),child=spawn(process.execPath,[fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),'timeline','export','capabilities','--input',JSON.stringify(f.input)],
-  {stdio:['ignore','pipe','pipe'],shell:false,env:{PATH:process.env.PATH||'',MIOON_BASE_URL:f.url,MIOON_TOKEN:TOKEN,MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+  {stdio:['ignore','pipe','pipe'],shell:false,env:{PATH:process.env.PATH||'',MIOON_BASE_URL:f.url,MIOON_TOKEN:TOKEN,}});
  let stdout='',stderr='',bytes=0;
  // One audited text registration site; UTF-8 decoding survives arbitrary chunk boundaries.
  for(const [stream,append] of ([[child.stdout,(value: string)=>{stdout+=value;}],[child.stderr,(value: string)=>{stderr+=value;}]] as const))stream.setEncoding('utf8').on('data',(value: string|ArrayBufferLike|NodeJS.ArrayBufferView<ArrayBufferLike>)=>{bytes+=Buffer.byteLength(value);if(bytes>65536){child.kill('SIGKILL');return;}append(((value) as unknown as StrictIntersection<Parameters<NonNullable<typeof append>>[0]>));});

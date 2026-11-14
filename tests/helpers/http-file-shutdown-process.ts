@@ -12,7 +12,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createServerProject} from './project-database.ts';
 import type {Stats} from 'node:fs';
-import {startServer} from '../../apps/server/src/index.ts';
+import {startServer} from './test-server.ts';
 import {FILE_RESPONSE_LIMITS} from '../../apps/server/src/file-response.ts';
 
 const [mode, root] = process.argv.slice(2);

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import path from 'node:path';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import test from 'node:test';
@@ -209,7 +210,7 @@ for (const [origin, trigger] of [
       ${trigger}
     `;
     const child = spawn(process.execPath, ['--unhandled-rejections=throw', '--input-type=module', '-e', script],
-      { stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, NODE_OPTIONS: '' } });
+      { stdio: ['ignore', 'pipe', 'ignore'], env: { ...testEnv(), NODE_OPTIONS: '' } });
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); });
     const chunks: Buffer[] = [];
     child.stdout.on('data', chunk => chunks.push(chunk));

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // Listing the project directory for Mio (task card L1, plan 10.3): only
 // folders and media, each with name, kind, MIME type, size and duration, in an
 // open project of the test layout with media made by ffmpeg. Nothing it skips
@@ -22,7 +23,7 @@ const INVALID = (reason: string) => ({code: 'MEDIA_LIST_PATH_INVALID', status: 4
 
 /** Another process reading the file read-only with a busy timeout of 0. */
 function readInChild(file: string): Record<string, unknown> {
-  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...process.env, MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...testEnv(), MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim().split('\n').at(-1)!) as Record<string, unknown>;
 }

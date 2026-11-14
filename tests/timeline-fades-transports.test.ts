@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
@@ -36,12 +37,12 @@ const editable = (timeline: FixtureTimeline) => ({tracks: timeline.tracks, clips
 const keys = (value: {}, expected: string[]) => assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 const resolveSchema = (root:SchemaNode,field:SchemaNode):SchemaNode=>field.$ref?resolveSchema(root,field.$ref.slice(2).split('/').reduce<SchemaNode>((node,key)=>node[key] as SchemaNode,root)):field;
 
-function environment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+function environment(extra: Record<string, string> = {}) {
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
 
 async function cli<const A extends readonly string[],E extends string|undefined=undefined>(args: A, env: {MIOON_BASE_URL?: string; MIOON_TOKEN?: string;} = {}, expectedError?: E):Promise<WireResult<CliResult<A>,E>> {

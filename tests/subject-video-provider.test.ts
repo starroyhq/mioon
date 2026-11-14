@@ -36,7 +36,7 @@ async function fixture(t: test.TestContext,{providerId='ark',mimeType='image/png
   inputProfileId:`${providerId}:${model}:v3`,inputProfileVersion:SUBJECT_REFERENCE_PROFILE_VERSION,providerRegion:providerId==='ark'?'cn-beijing':'local',
   referenceAssetIds:[asset.id],referenceAssets:[asset],referenceBindings:[{role:'subject_reference',assetId:asset.id,sha256:asset.sha256}],referenceConnections:[],
   subjectReference:{subjectVersionId:subjectVersion.id,subjectName:'Synthetic object',subjectKind:'product',subjectVersion}};
- const calls: { url: RequestInfo|URL; options: RequestInit|undefined; }[]=[],env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'INERT-SUBJECT-FIXTURE',ARK_APPROVED_ASSET_SHA256:approved?asset.sha256:''};
+ const calls: { url: RequestInfo|URL; options: RequestInit|undefined; }[]=[],env={ARK_API_KEY:'INERT-SUBJECT-FIXTURE',ARK_APPROVED_ASSET_SHA256:approved?asset.sha256:''};
  let db!:DatabaseSync,provider;
  if(providerId==='mock'){store=openStore(root);db=store.db;provider=createMockProvider({root,db,now:()=>0});}
  else provider=createArkProvider({root,env,fetchImpl:(async(url: string,options: RequestInit | undefined)=>{calls.push({url,options});return reply?reply(url,options):json({id:'offline-subject-task'});}) as unknown as typeof fetch});
@@ -132,7 +132,7 @@ test('Ark subject validation stays offline and submission requires a configured 
  const fetchImpl:typeof fetch=async()=>assert.fail('Network forbidden');
  const ready=createArkProvider({root:f.root,env:{...approval,ARK_API_KEY:'INERT-SUBJECT-FIXTURE'},fetchImpl});
  assert.equal(ready.capabilities.enabled,true);assert.equal(ready.validate(f.snapshot),true);
- const missing=createArkProvider({root:f.root,env:{...approval,MIOON_ENABLE_LIVE_PROVIDER:'1'},fetchImpl});
+ const missing=createArkProvider({root:f.root,env:{...approval,},fetchImpl});
  assert.equal(missing.capabilities.enabled,false);assert.deepEqual(missing.capabilities.configuration.missing,['ARK_API_KEY']);
  assert.equal(missing.validate(f.snapshot),true);await assert.rejects(missing.submit(f.snapshot),{code:'PROVIDER_DISABLED'});
 });

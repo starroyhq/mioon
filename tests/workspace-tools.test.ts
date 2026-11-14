@@ -10,7 +10,7 @@ import {readWorkspaceInfo,readApplicationWorkspaceInfo} from '../apps/server/src
 import {applicationWorkspaceInfoSchema,applicationWorkspaceStorageInfoSchema,workspaceMetadataSchema,workspaceInfoSchema} from '../packages/contracts/src/workspace-info.ts';
 import {readWorkspaceInfo as readBrowserWorkspaceInfo} from '../apps/web/src/workspace-info-client.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {createWorkspaceToolsHost} from '../apps/desktop/src/workspace-tools-host.ts';
 import {createWorkspaceToolsBridge} from '../apps/desktop/src/workspace-tools-preload.ts';

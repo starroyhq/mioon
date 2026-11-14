@@ -8,6 +8,7 @@ import {spawn} from 'node:child_process';
 import {mkdir, chmod, writeFile, readFile, readdir, lstat, appendFile} from 'node:fs/promises';
 import {prepareNativeQaProject, closeQaProject} from './helpers/native-local-qa-fixture.ts';
 import {ownQaChild} from './helpers/qa-owned-child.mjs';
+import {testEnv} from './helpers/test-env.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const evidence = process.env.MIOON_QA_FIXTURE_ROOT ? path.resolve(process.env.MIOON_QA_FIXTURE_ROOT) : path.join(repo, 'evidence/q2-private-storage');
@@ -57,9 +58,8 @@ export async function prepareStorageQa(mode) {
 }
 async function launch(mode) {
   const fixture = await prepareStorageQa(mode), require = createRequire(import.meta.url), binary = require('electron');
-  const env = {...process.env, MIOON_DESKTOP_USER_DATA: fixture.userData, MIOON_ENABLE_LIVE_PROVIDER: '0',
-    MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
-  for (const key of Object.keys(env)) if (/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_|MIOON_TOKEN|MIOON_CONNECTION_FILE|MIOON_DESKTOP_SMOKE_)/u.test(key)) delete env[key];
+  const env = {...testEnv(), MIOON_DESKTOP_USER_DATA: fixture.userData, MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
+  for (const key of Object.keys(env)) if (/^(MIOON_TOKEN|MIOON_CONNECTION_FILE|MIOON_DESKTOP_SMOKE_)/u.test(key)) delete env[key];
   const launchId = randomUUID();
   const child = spawn(binary, [path.join(repo, 'apps/desktop/build')], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   const owned = ownQaChild(child);

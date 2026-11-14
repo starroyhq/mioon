@@ -33,7 +33,7 @@ const operations = ['asset.range.get', 'asset.range.set'];
 const oldMutations = ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select'];
 const rangeTables = new Set(['asset_ranges', 'asset_range_requests']);
 const toolName = (operation: string) => operation.replaceAll('.', '_');
-const environment=(extra:NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_RANGE_WIRE_GUARD:'1',...extra});
+const environment=(extra:NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_RANGE_WIRE_GUARD:'1',...extra});
 const noPrivate = (value:unknown) => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
   for (const secret of [TOKEN, PRIVATE, 'Bearer ']) assert.ok(!text.includes(secret), 'wire output omits fixture-private fields and credentials');

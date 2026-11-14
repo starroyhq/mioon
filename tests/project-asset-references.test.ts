@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
@@ -243,7 +244,7 @@ test('held project/history/cache/application aliases are rejected without droppi
   const f = fixture(t);
   const child = fileURLToPath(new URL('./helpers/project-file-child.ts', import.meta.url));
   const locked = (file: string) => {
-    const result = spawnSync(process.execPath, [child], {env: {...process.env, MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
+    const result = spawnSync(process.execPath, [child], {env: {...testEnv(), MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout.trim()) as unknown;
   };

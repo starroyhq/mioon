@@ -65,7 +65,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const dataDir = process.env.MIOON_DATA_DIR;
   if (!dataDir) throw Error('An owned project-server fixture directory is required');
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-  const {startServer} = await import('../../apps/server/src/index.ts');
+  const {startServer} = await import('../helpers/test-server.ts');
   const {comfyModuleModeFromEnvironment} = await import('../../apps/server/src/comfy-module.ts');
   const {createHeadlessAgentSecretCodec} = await import('../../apps/server/src/headless-agent-secret-codec.ts');
   const {initializeNodePrivateStorage} = await import('../../packages/node-host/src/private-storage-bootstrap.ts');

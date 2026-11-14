@@ -2,7 +2,7 @@
  * production HTTP and environment variables cannot configure task faults. */
 import type {InspectProject} from '../../apps/server/src/index.ts';
 import {readTaskHttpSnapshot} from './edit-tasks-http-fixture.ts';
-import {startServer} from '../../apps/server/src/index.ts';
+import {startServer} from './test-server.ts';
 
 interface HttpHarnessServerLike {url: string; close(): Promise<unknown>}
 interface HttpProcessMessage {type: string; dataDir?: string; token?: string; phase?: string; requestId?: string; [key: string]: unknown}

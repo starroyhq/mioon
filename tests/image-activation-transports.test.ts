@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {FixtureImageReview,FixtureImageTask,ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 interface ActivationRequest extends EventEmitter{destroy():void;end(payload:string):void}
@@ -19,7 +20,7 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID, createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
@@ -40,12 +41,12 @@ function publicOnly(value: unknown, root: string) {
   assert.ok(!text.includes(syntheticKey) && !text.includes(token) && !text.includes(root), 'no private credential or path in response');
   assert.ok(!/"(?:apiKey|authorization|canonicalInput|canonicalIntent|stagedReceipt|b64_json|relativePath)"\s*:/i.test(text));
 }
-function childEnvironment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+function childEnvironment(extra: Record<string, string> = {}) {
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
-async function cli(args: string[], env: NodeJS.ProcessEnv) {
+async function cli(args: string[], env: Record<string, string>) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {cwd: repo,
     env: childEnvironment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';

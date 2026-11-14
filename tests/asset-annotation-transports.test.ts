@@ -49,7 +49,7 @@ const operations = ['asset.disposition.list', 'asset.disposition.set'];
 const oldMutations = ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select'];
 const dispositionTables = new Set(['asset_dispositions', 'asset_disposition_requests']);
 const toolName = (operation: string): string => operation.replaceAll('.', '_');
-const environment = (extra: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
+const environment = (extra: Record<string, string | undefined> = {}): Record<string, string | undefined> => ({...mediaEnvironment(),
   MIOON_DISPOSITION_WIRE_GUARD: '1', ...extra});
 const noPrivate = (value: unknown): void => {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

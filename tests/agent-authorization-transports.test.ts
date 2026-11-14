@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {agentAuthorizationListSchema} from '../packages/contracts/src/agent-authorization.ts';
 import {agentServiceInput,agentSettingsSnapshotSchema} from '../packages/contracts/src/agent-connection-settings.ts';
 import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
@@ -20,7 +20,7 @@ test('HTTP, CLI and MCP share grant/revoke state without granting built-in model
   const server=await startServer({dataDir:root,port:0,token,chatGateway:async function*(){calls++;yield {type:'done',finishReason:'stop'};}});
   const client=new Client({name:'authorization-offline-test',version:'1'},{capabilities:{}});
   t.after(async()=>{await client.close();await server.close();await rm(root,{recursive:true,force:true});});
-  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'};
+  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,};
   const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});(transport.stderr as {resume?: () => void} | null | undefined)?.resume?.();
   await client.connect(transport);
   const http=async(operation: string,input: Record<string, unknown>={})=>{

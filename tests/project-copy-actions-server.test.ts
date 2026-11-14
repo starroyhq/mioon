@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';

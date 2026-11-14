@@ -63,7 +63,7 @@ export async function prepareNativeQaProject(dataDir:string,name:string){
 }
 export {closeQaProject};
 export function openNativeQaProject(dataDir:string,projectId:string){
- const store=openServerProject(dataDir,projectId),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+ const store=openServerProject(dataDir,projectId),services=createServices(store,new Map(),{env:{}});
  try{return {store,services,project:projectFields(store.get('projects',projectId))};}catch(error){store.close();throw error;}
 }
 export function listNativeQaProjects(dataDir:string,owner?:ProjectStore){

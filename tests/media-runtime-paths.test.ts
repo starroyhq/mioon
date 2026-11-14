@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,symlink,mkdir,realpath,rm,writeFile} from 'node:fs/promises';
@@ -21,7 +22,7 @@ test('project package fixture honors selected media paths before the legacy tool
   {name:'legacy directory remains supported without overrides',ffmpeg:undefined,ffprobe:undefined,tools:legacy,available:true},
   {name:'missing selected executable cannot fall back to a legacy binary',ffmpeg:missing,ffprobe:probe,tools:legacy,available:false},
  ])await t.test(scenario.name,async()=>{
-  const env:NodeJS.ProcessEnv={...process.env,MIOON_TEST_MEDIA_TOOLS:scenario.tools};
+  const env:NodeJS.ProcessEnv={...testEnv(),MIOON_TEST_MEDIA_TOOLS:scenario.tools};
   delete env.MIOON_FFMPEG_PATH;delete env.MIOON_FFPROBE_PATH;
   if(scenario.ffmpeg!==undefined)env.MIOON_FFMPEG_PATH=scenario.ffmpeg;
   if(scenario.ffprobe!==undefined)env.MIOON_FFPROBE_PATH=scenario.ffprobe;
@@ -44,6 +45,6 @@ test('mock generation and probe use selected absolute executables with no host P
  const storage=pathToFileURL(path.resolve('packages/business/src/project-file/test-store.ts')).href;
  const media=pathToFileURL(path.resolve('packages/business/src/media.ts')).href;
  const source=`import {openStore} from ${JSON.stringify(storage)};import {createMockProvider} from ${JSON.stringify(provider)};import {probe} from ${JSON.stringify(media)};const root=${JSON.stringify(root)},store=openStore(root),db=store.db;try{const p=createMockProvider({db,root});const job=await p.submit({prompt:'Synthetic path verification',duration:2,aspectRatio:'9:16',parameters:{scenario:'success',delayMs:0},referenceAssets:[]},{requestId:'custom-runtime-path'});await p.download(job.providerJobId,root+'/output.mp4');const result=await probe(root+'/output.mp4');console.log(JSON.stringify({codec:result.codec,width:result.width,height:result.height,duration:result.duration}));}finally{store.close();}`;
- const result=await exec(process.execPath,['--input-type=module','-e',source],{env:{...process.env,PATH:path.join(root,'missing-path'),MIOON_FFMPEG_PATH:encoder,MIOON_FFPROBE_PATH:probe},timeout:60000});
+ const result=await exec(process.execPath,['--input-type=module','-e',source],{env:{...testEnv(),PATH:path.join(root,'missing-path'),MIOON_FFMPEG_PATH:encoder,MIOON_FFPROBE_PATH:probe},timeout:60000});
  const output=JSON.parse(result.stdout);assert.equal(output.codec,'h264');assert.equal(output.width/output.height,9/16);assert.equal(output.duration,2);
 });

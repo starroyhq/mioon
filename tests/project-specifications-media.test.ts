@@ -53,7 +53,7 @@ async function makeFixtures(root: string){
 }
 async function fixture(t: test.TestContext,sourceRoot?:string){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-output-presets-')),store=(openStore(path.join(root,'data')) as TypedStore),providers=new Map();
- const services=(createServices(store,providers,{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}}) as TypedServices),worker=startWorker(store,services,providers);
+ const services=(createServices(store,providers,{env:{}}) as TypedServices),worker=startWorker(store,services,providers);
  await mkdir(evidence,{recursive:true});
  t.after(async()=>{
   await worker.stop();await services.drain();store.close();

@@ -28,7 +28,7 @@ import type { BinaryLike } from 'crypto';
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='synthetic-frame-pair-transport-token';
 const sleep=(ms: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms));
 const sha=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
-const env=(extra: NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
+const env=(extra: Record<string, string>)=>({...mediaEnvironment(),...extra});
 // The backend stays a child process: the wire guard patches its process-wide
 // network and process APIs. While it holds the project the parent cannot open
 // a second connection, so the parent asks it over IPC to count rows on its own.

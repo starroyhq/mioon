@@ -23,7 +23,7 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema} from '@mioon/client';
 import {parse, effectAnnotations, operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE, isAudioPreviewPlan, audioPreviewPlanDigestMaterial} from '@mioon/contracts/timeline-audio-preview';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
@@ -34,7 +34,7 @@ const operation = 'timeline.audioPreview.plan', toolName = 'timeline_audioPrevie
 const token = 'synthetic-timeline-audio-preview-transport-token';
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const environment = (url?: string) => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
+const environment = (url?: string) => ({...mediaEnvironment(),
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: token} : {})});
 async function bounded<T>(promise: Promise<T>, label: string, ms = 15000) {
   let timer: ReturnType<typeof setTimeout> | undefined;

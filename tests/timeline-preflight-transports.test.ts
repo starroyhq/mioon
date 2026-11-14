@@ -41,7 +41,7 @@ const input = {projectId: IDS.project, expectedRevision: 4};
 const imageId = uuid(80), videoTrack = uuid(81), audioTrack = uuid(82), imageClip = uuid(83), audioClip = uuid(84), audioId = uuid(85);
 const PRIVATE = 'PREFLIGHT_PRIVATE_SOURCE_MARKER';
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
-const environment = (extra: { MIOON_BASE_URL: unknown; MIOON_TOKEN: string; MIOON_PREFLIGHT_WIRE_ORIGIN: unknown; MIOON_DATA_DIR: string; MIOON_PREFLIGHT_WIRE_AUDIT: string; MIOON_PREFLIGHT_WIRE_MEDIA: string; }) => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra});
+const environment = (extra: { MIOON_BASE_URL: unknown; MIOON_TOKEN: string; MIOON_PREFLIGHT_WIRE_ORIGIN: unknown; MIOON_DATA_DIR: string; MIOON_PREFLIGHT_WIRE_AUDIT: string; MIOON_PREFLIGHT_WIRE_MEDIA: string; }) => ({...mediaEnvironment(), ...extra});
 const sha256 = (value: unknown[]|Buffer<ArrayBuffer>|BinaryLike) => createHash('sha256').update(((value) as unknown as BinaryLike)).digest('hex');
 const canonicalHash = (value: { operation: string; input: { preflightSnapshotHash?: undefined; projectId: string; expectedRevision: number; requestId: string; purpose: string; }|{ preflightSnapshotHash: string; projectId: string; expectedRevision: number; requestId: string; purpose: string; }; }) => sha256(JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item));

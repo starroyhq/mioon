@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 
 
 
@@ -29,7 +30,7 @@ import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
 
 
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {visibleAgentTaskChecks} from '../apps/web/src/agent-task-checks-state.ts';
 import {createServerProject, schemaObjects} from './helpers/project-database.ts';
@@ -112,9 +113,8 @@ test('full checks default to at least sixty seconds while explicit and longer cl
 });
 
 async function command(args:string[],base?:string):Promise<{code:number|null;stdout:string;stderr:string;body:unknown}>{
- const childEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('MIOON_')));
+ const childEnv=Object.fromEntries(Object.entries(testEnv()).filter(([key])=>!key.startsWith('MIOON_')));
  if(base)Object.assign(childEnv,{MIOON_BASE_URL:base,MIOON_TOKEN:env.MIOON_TOKEN});
- childEnv.MIOON_ENABLE_LIVE_PROVIDER='0';
  const child=spawn(process.execPath,[entry,...args],{cwd:root,env:childEnv,stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(part:string)=>{stdout+=part;});child.stderr.setEncoding('utf8').on('data',(part:string)=>{stderr+=part;});
  const code=await new Promise<number|null>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic checks CLI timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);resolve(code);});});

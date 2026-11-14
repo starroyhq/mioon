@@ -1,3 +1,4 @@
+import {isolateTestProviderEnvironment} from './helpers/test-env.ts';
 
 
 
@@ -13,7 +14,7 @@ import {mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts
 import path from 'node:path';
 import {composeProjectRuntime, ProjectRuntimeCleanupError, type ProjectRuntime, type ProjectRuntimeOptions} from '../apps/server/src/project-runtime.ts';
 import {createProjectDeletionGate} from '../apps/server/src/project-deletion-gate.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {ownsStoreLock} from '../packages/business/src/store-runtime.ts';
 import {createProjectStore, openProjectStore, isProjectStore, schemaObjects, foreignKeyCheck} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
@@ -69,6 +70,8 @@ function fixture(t: TestContext) {
 }
 
 
+
+isolateTestProviderEnvironment();
 
 test('kernel assembly is opt-in and requires explicit app dependencies', async t => {
   const f = fixture(t);

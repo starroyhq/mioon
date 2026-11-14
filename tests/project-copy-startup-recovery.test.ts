@@ -5,7 +5,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
-import {startServer, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type ServerOptions} from './helpers/test-server.ts';
 import {copyIdentity} from '../apps/server/src/project-host/copy-records.ts';
 import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';

@@ -31,7 +31,7 @@ import type {MioStorageSnapshot} from '../packages/contracts/src/mio-storage.ts'
 
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
 import {createTestAuthorizations, authorizeTestScope} from './helpers/agent-authorizations.ts';

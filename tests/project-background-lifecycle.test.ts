@@ -151,7 +151,7 @@ test('initial real-history repair retires 512 stale hints before discovering and
   const noDispatch = async (): Promise<never> => {throw new Error('Cold seed has no worker');};
   const provider: Provider = {id: 'ark', capabilities: {models: ['fixture'], inputModes: ['text'], aspectRatios: ['9:16'], durations: [4],
     configured: true, enabled: true, mock: false}, submit: noDispatch, poll: noDispatch, reconcile: noDispatch, download: noDispatch};
-  const services = createServices(seed.store, new Map([['ark', provider]]), {env: {MIOON_ENABLE_LIVE_PROVIDER: '1'}});
+  const services = createServices(seed.store, new Map([['ark', provider]]), {env: {}});
   const shot = object(await services.call('shot.create', {projectId: seed.projectId, title: 'Cold repair', prompt: 'A blue rectangle', duration: 4}));
   const requestId = randomUUID(), job = object(await services.call('generation.submit', {shotId: shot.id, expectedRevision: shot.revision, providerId: 'ark', requestId}));
   const source = backgroundHistorySource(seed.store), projectFile = seed.store.projectFile;

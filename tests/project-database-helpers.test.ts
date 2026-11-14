@@ -8,7 +8,7 @@ import {chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSy
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject, InspectApplication} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -637,7 +637,7 @@ test('the TEST opener accepts a public project folder but rejects linked roots a
 test('the assembled application configuration acknowledges only its own committed transaction', t => {
   const root = dataDirectory(t), library = openAppLibrary({dataDir: root});
   t.after(() => library.close());
-  const ports = createProjectServiceApplication(library, undefined, {MIOON_ENABLE_LIVE_PROVIDER: '0'});
+  const ports = createProjectServiceApplication(library, undefined, {});
   const before = ports.configuration.get(); let acknowledged = false;
   assert.throws(() => library.tx(() => {
     ports.configuration.set({expectedRevision: before.revision, liveGeneration: true});

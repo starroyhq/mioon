@@ -11,7 +11,7 @@ import {Readable} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {agentAuthorizationListSchema} from '../packages/contracts/src/agent-authorization.ts';
@@ -45,7 +45,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   });
   const client = new Client({name: 'anthropic-offline-transports', version: '1'}, {capabilities: {}});
   t.after(async () => {await client.close(); await server.close(); await rm(root, {recursive: true, force: true});});
-  const env = {PATH: process.env.PATH ?? '', TMPDIR: process.env.TMPDIR ?? tmpdir(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'};
+  const env = {PATH: process.env.PATH ?? '', TMPDIR: process.env.TMPDIR ?? tmpdir(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token,};
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env, stderr: 'pipe'});
   if (transport.stderr instanceof Readable) transport.stderr.resume();
   await client.connect(transport);

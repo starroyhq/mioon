@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureHistory, FixtureTimeline, FixtureHistoryEntry} from './helpers/strict-timeline-core-types.ts';
@@ -30,12 +31,12 @@ const operations = (['timeline.history.get', 'timeline.undo', 'timeline.redo'] a
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 const toolName = (operation: string) => operation.replaceAll('.', '_');
 
-function environment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+function environment(extra: Record<string, string> = {}) {
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|MIOON_)/.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
 
 async function cli<const A extends readonly string[],E extends string|undefined=undefined>(args: A, env: {MIOON_BASE_URL?: string; MIOON_TOKEN?: string;} = {}, expectedError?: E):Promise<WireResult<CliResult<A>,E>> {

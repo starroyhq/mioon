@@ -39,7 +39,7 @@ const deadline=<T>(promise:Promise<T>,label: string,ms=15000)=>{let timer: strin
 
 function spawnWorker(root: string){
  const child=spawn(process.execPath,[workerPath,root],{cwd:repo,stdio:['ignore','pipe','pipe','ipc'],
-  env:{PATH:process.env.PATH||'',TMPDIR:root,LANG:'C.UTF-8',MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+  env:{PATH:process.env.PATH||'',TMPDIR:root,LANG:'C.UTF-8',}});
  const ready=Promise.withResolvers<WorkerReady>(),exited=Promise.withResolvers<WorkerExit>(),pending=new Map<string,PromiseWithResolvers<unknown>>(),boundaries=new Map<string,PromiseWithResolvers<WorkerBoundary>>();
  let stopped:WorkerExit|null=null,stdout='',stderr='';
  // Always attach a rejection handler immediately, including startup failures.

@@ -66,7 +66,7 @@ test('real project worker retains published files after cancellation and never d
   await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=1080x1920:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',source],{timeout:30_000});
   const bytes=await readFile(source);
   for(const mode of ['cancel','replace-output','replace-part','published'] as const)await t.test(mode,async ()=>{
-    const root=path.join(base,mode),store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+    const root=path.join(base,mode),store=openStore(root),services=createServices(store,new Map(),{env:{}});
     let worker:ReturnType<typeof startWorker>|undefined,clearHook:(()=>void)|undefined,cancellation:Promise<unknown>|undefined;
     let outputFile='',stageFile='',reached=false;
     const replacement=Buffer.from('Foreign replacement must be retained');

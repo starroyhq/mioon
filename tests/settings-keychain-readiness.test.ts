@@ -13,7 +13,7 @@ import {createImageSecretBroker, createImageSecretClient} from '../apps/desktop/
 import {createDesktopImageSecretCodec} from '../apps/desktop/src/image-secret-store.ts';
 import {createVideoSecretBroker, createVideoSecretClient} from '../apps/desktop/src/video-secret-broker.ts';
 import {createDesktopVideoSecretCodec} from '../apps/desktop/src/video-secret-store.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createAgentSettingsClient as createAgentSettingsHttpClient, createAgentSettingsSession} from '../apps/web/src/agent-settings.ts';
 import {createGenerationImageServicesClient, createGenerationImageServicesOwner} from '../apps/web/src/generation-image-services-settings.ts';
 import {createGenerationVideoServicesSession} from '../apps/web/src/generation-video-services.ts';

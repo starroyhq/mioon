@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {referenceTestAsset} from '../packages/business/src/project-file/test-asset-fixture.ts';
 import {publicMediaFingerprint} from '../packages/contracts/src/asset-media.ts';
 import * as storage from '@mioon/contracts/private-storage';
@@ -33,7 +34,7 @@ function dacls(targets: readonly string[]): {user: string; entries: Dacl[]} {
     '$entries=@(($env:MIOON_DACL_TARGETS | ConvertFrom-Json) | ForEach-Object { $target=$_; $acl=Get-Acl -LiteralPath $target; ' +
     '[pscustomobject]@{protected=$acl.AreAccessRulesProtected; sids=@($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Sort-Object -Unique)} });' +
     '[pscustomobject]@{user=$user; entries=$entries} | ConvertTo-Json -Depth 4 -Compress';
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {encoding: 'utf8', env: {...process.env, MIOON_DACL_TARGETS: JSON.stringify(targets)}});
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {encoding: 'utf8', env: {...testEnv(), MIOON_DACL_TARGETS: JSON.stringify(targets)}});
   assert.equal(result.status, 0, result.stderr);
   // Windows PowerShell may emit a one-element array as its only element.
   const value = JSON.parse(result.stdout) as {user: string; entries: ReportedDacl | ReportedDacl[]};

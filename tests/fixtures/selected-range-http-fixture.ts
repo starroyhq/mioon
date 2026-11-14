@@ -94,7 +94,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   const off = onMediaProcess((event: unknown) => media.push(event));
   const reopen = (): void => {
     store = openStore(root);
-    services = createServices(store!, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, exportOptions: {
+    services = createServices(store!, new Map(), {env: {}, exportOptions: {
       // Admission-only deterministic proof; encoding correctness has separate
       // real-media gates. No renderer, model or provider is started here.
       inspect: async (value: unknown) => {capabilityChecks.push(structuredClone(value)); return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};},

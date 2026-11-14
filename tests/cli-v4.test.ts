@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 type CommandData<O extends string>=O extends 'job.watch'|'generation.submit'|'job.get'?import('./helpers/strict-service-responses.ts').MediaJob & {submissionCount:number;requestId:string}:O extends 'export.watch'?import('./helpers/strict-timeline-core-types.ts').FixtureExport:ServiceResponse<O>;
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData} from './helpers/strict-timeline-transport-types.ts';
@@ -17,7 +18,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '@mioon/server';
 import {schemas} from '@mioon/contracts';
 import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
@@ -28,9 +29,9 @@ const exec = promisify(execFile);
 const token = 'synthetic-v4-cli-token-never-live';
 const pause = (ms?: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 function environment(extra: {}|undefined = {}) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra};
+  return {...env, ...extra};
 }
 function startCli<const A extends readonly string[]>(args: A, env: {}|undefined = {}, stdin: string|undefined = '') {
   const child = spawn(process.execPath, [cliPath, ...args], {cwd:repo, env:environment(env), stdio:['pipe','pipe','pipe']});
