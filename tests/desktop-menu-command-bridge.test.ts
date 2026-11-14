@@ -5,6 +5,9 @@ import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
 import type {MenuCommandDocument} from '../apps/desktop/src/menu-command-host.ts';
 import {createMenuCommandBridge} from '../apps/desktop/src/menu-command-preload.ts';
 import {menuCommandGestureScript} from '../apps/desktop/src/menu-command-gesture.ts';
+import {installCanvasClipboardBridge} from '../apps/desktop/src/canvas-clipboard.ts';
+import {canvasClipboardNativeFormat, readCanvasClipboardPickle, readNativeCanvasClipboard} from '../apps/desktop/src/canvas-clipboard-host.ts';
+import {CANVAS_CLIPBOARD_HANDLE_MIME} from '../packages/contracts/src/canvas-clipboard.ts';
 import vm from 'node:vm';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, isMenuCommandId, isMenuCommandIntent,
   isMenuCommandRequest, isMenuCommandState, isMenuDocumentIdentity} from '../apps/desktop/src/menu-command-protocol.ts';
@@ -245,5 +248,62 @@ test('the actual sandbox preload bundles the menu bridge with Electron as its so
   const result = await build({entryPoints: ['apps/desktop/src/preload.ts'], bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'], write: false, metafile: true});
   assert.deepEqual(Object.values(result.metafile.outputs).flatMap(output => output.imports.map(item => item.path)), ['electron']);
   assert.match(result.outputFiles[0].text, /exposeInMainWorld\("__mioonMenuCommands"/);
+  assert.match(result.outputFiles[0].text, /exposeInMainWorld\("__mioonCanvasClipboard"/);
   assert.doesNotMatch(result.outputFiles[0].text, /node:|\.sendSync\(|\.postMessage\(|webContents|process\.env/);
+});
+
+function canvasHandlePickle(handle = id, mime = CANVAS_CLIPBOARD_HANDLE_MIME) {
+  const type = Buffer.from(mime, 'utf16le'), value = Buffer.from(handle, 'utf16le');
+  const valueLengthAt = 12 + Math.ceil(type.length / 4) * 4;
+  const bytes = Buffer.alloc(valueLengthAt + 4 + Math.ceil(value.length / 4) * 4);
+  bytes.writeUInt32LE(bytes.length - 4, 0); bytes.writeUInt32LE(1, 4); bytes.writeUInt32LE(mime.length, 8);
+  type.copy(bytes, 12); bytes.writeUInt32LE(handle.length, valueLengthAt); value.copy(bytes, valueLengthAt + 4);
+  return bytes;
+}
+
+const arrayBuffer = (bytes: Uint8Array): ArrayBuffer => new Uint8Array(bytes).buffer;
+
+test('canvas clipboard parser accepts only one exact custom type with a bounded version-4 handle', () => {
+  const valid = canvasHandlePickle();
+  assert.equal(readCanvasClipboardPickle(arrayBuffer(valid)), id);
+  assert.equal(readCanvasClipboardPickle(arrayBuffer(Buffer.concat([valid, Buffer.alloc(4)]))), id);
+  const multiple = Buffer.from(valid); multiple.writeUInt32LE(2, 4);
+  for (const invalid of [multiple, valid.subarray(0, -1), Buffer.concat([valid, Buffer.from([1])]),
+    Buffer.concat([valid, Buffer.alloc(30)]), canvasHandlePickle(id, 'text/plain'), canvasHandlePickle(otherId.toUpperCase().replaceAll('2','A')),
+    canvasHandlePickle('e030afdb-2623-485b-a800-9c0847561d50\n')]) {
+    assert.equal(readCanvasClipboardPickle(arrayBuffer(invalid)), null);
+  }
+});
+
+test('menu paste reads only the Chromium handle and rechecks current authority after an asynchronous read', async () => {
+  for (const platform of ['darwin', 'win32', 'linux'] as const) {
+    const format = canvasClipboardNativeFormat(platform)!;
+    let reads = 0;
+    const custom = {types: [format], async getType(type: string) {
+      reads++; assert.equal(type, format); return new Blob([arrayBuffer(canvasHandlePickle())]);
+    }};
+    assert.equal(await readNativeCanvasClipboard(platform, async () => [custom], () => true), id);
+    let current = true;
+    const pending = Promise.withResolvers<readonly (typeof custom)[]>();
+    const change = readNativeCanvasClipboard(platform, () => pending.promise, () => current);
+    current = false; pending.resolve([custom]);
+    assert.equal(await change, null);
+    assert.equal(await readNativeCanvasClipboard(platform, async () => [custom, {...custom, types:['text/plain']}], () => true), null);
+    assert.equal(await readNativeCanvasClipboard(platform, async () => [custom, custom], () => true), null);
+    assert.equal(await readNativeCanvasClipboard(platform, async () => [], () => true), null);
+    assert.equal(reads, 1);
+  }
+  assert.equal(await readNativeCanvasClipboard('freebsd', async () => assert.fail('unsupported clipboard'), () => true), null);
+});
+
+test('a renderer cannot request a native clipboard read without a captured paste gesture', async () => {
+  const listeners = new Map<string, EventListener>();
+  const bridge = installCanvasClipboardBridge({document: {hasFocus: () => true}, navigator: {userActivation: {isActive: true}},
+    addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); }} as unknown as Window,
+  async () => assert.fail('no gesture should reach IPC'));
+  assert.equal(await bridge.readHandle(), null);
+  listeners.get('click')!(new Event('click'));
+  assert.equal(await bridge.readHandle(), null);
+  listeners.get('keydown')!(new Event('keydown'));
+  assert.equal(await bridge.readHandle(), null);
 });

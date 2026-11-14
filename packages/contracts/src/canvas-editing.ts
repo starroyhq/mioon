@@ -7,6 +7,7 @@ export const CANVAS_EDIT_LIMITS = Object.freeze({
   historyBytes: 8 * 1024 * 1024, receiptRows: 65536, receiptBytes: 32 * 1024 * 1024,
   receiptLifetimeMs: 7 * 24 * 60 * 60_000, requestClockSkewMs: 2 * 60_000,
 });
+export const CANVAS_CLIPBOARD_LIMITS = Object.freeze({cards: 256, links: 1024, snapshotBytes: 1024 * 1024, lifetimeMs: 120_000});
 
 const revision = z.number().int().safe().nonnegative();
 const shotNumber = z.number().int().safe().positive();
@@ -41,6 +42,10 @@ const commit = {...project, requestId, historyRevision: revision};
 const confirmation = z.string().min(1).max(512);
 const archiveAction = {targets: selected, confirmation: confirmation.optional()};
 const archiveCursor = z.object({id, kind}).strict();
+const card = target.extend({kind: z.enum(['shot', 'node'])});
+const positiveExtent = z.number().finite().positive().max(2 * CANVAS_GRID.coordinateLimit);
+const pasteViewport = position.extend({width: positiveExtent, height: positiveExtent}).refine(value =>
+  value.x + value.width <= CANVAS_GRID.coordinateLimit && value.y + value.height <= CANVAS_GRID.coordinateLimit);
 
 export const canvasEditingSchemas = Object.freeze({
   'canvas.archive.preview': z.discriminatedUnion('operation', [
@@ -48,11 +53,14 @@ export const canvasEditingSchemas = Object.freeze({
     z.object({...project, operation: z.literal('restore'), targets: selected, batchId: id.optional()}).strict(),
   ]),
   'canvas.archive.list': z.object({...project, after: archiveCursor.optional(), limit: z.number().int().positive().max(CANVAS_EDIT_LIMITS.archivedPage).optional()}).strict(),
+  'canvas.copy.snapshot': z.object({...project, documentId: id,
+    targets: selected.max(CANVAS_CLIPBOARD_LIMITS.cards)}).strict(),
   'canvas.apply': z.discriminatedUnion('operation', [
     z.object({...commit, operation: z.literal('archive'), ...archiveAction}).strict(),
     z.object({...commit, operation: z.literal('restore'), ...archiveAction, batchId: id.optional()}).strict(),
     z.object({...commit, operation: z.literal('move'), moves}).strict(),
     z.object({...commit, operation: z.literal('layout'), moves, contentSequence: revision, contentToken: token}).strict(),
+    z.object({...commit, operation: z.literal('paste'), documentId: id, snapshotId: id, viewport: pasteViewport}).strict(),
   ]),
   'canvas.history.get': z.object(project).strict(),
   'canvas.history.undo': z.object(commit).strict(),
@@ -64,6 +72,8 @@ export type CanvasEditInput = z.infer<typeof canvasEditingSchemas['canvas.apply'
 export type CanvasHistoryInput = z.infer<typeof canvasEditingSchemas['canvas.history.undo']>;
 export type CanvasArchivePreviewInput = z.infer<typeof canvasEditingSchemas['canvas.archive.preview']>;
 export type CanvasArchiveListInput = z.infer<typeof canvasEditingSchemas['canvas.archive.list']>;
+export type CanvasCopyInput = z.infer<typeof canvasEditingSchemas['canvas.copy.snapshot']>;
+export type CanvasPasteInput = Extract<CanvasEditInput, {operation: 'paste'}>;
 export type CanvasTarget = z.infer<typeof target>;
 export type CanvasTargetExpectation = z.infer<typeof selected>[number];
 export interface CanvasEditBase {
@@ -92,6 +102,9 @@ const shotImpact = z.object({number: shotNumber, versions: revision, clips: revi
 export type CanvasArchiveShotImpact = z.infer<typeof shotImpact>;
 const result = z.object({projectId: id, actionId: id.nullable(), affected: z.number().int().nonnegative(),
   history: historyResponse, contentSequence: revision, contentToken: token}).strict();
+const applyResult = result.extend({created: z.array(card).min(1).max(CANVAS_CLIPBOARD_LIMITS.cards).optional()}).strict().refine(value =>
+  value.created === undefined || value.actionId !== null && value.affected >= value.created.length &&
+  new Set(value.created.map(item => item.id)).size === value.created.length);
 export const canvasEditingResponses = Object.freeze({
   'canvas.archive.preview': z.object({projectId: id, targets: selected, affected: z.number().int().nonnegative(),
     versions: z.number().int().nonnegative(), clips: z.number().int().nonnegative(),
@@ -100,12 +113,14 @@ export const canvasEditingResponses = Object.freeze({
   'canvas.archive.list': z.object({projectId: id, total: revision, next: archiveCursor.nullable(),
     contentSequence: revision, contentToken: token,
     items: z.array(archiveItem).max(CANVAS_EDIT_LIMITS.archivedPage)}).strict(),
-  'canvas.apply': result,
+  'canvas.copy.snapshot': z.object({projectId: id, documentId: id, snapshotId: id,
+    count: z.number().int().positive().max(CANVAS_CLIPBOARD_LIMITS.cards)}).strict(),
+  'canvas.apply': applyResult,
   'canvas.history.get': historyResponse.extend({requestEpoch, requestAfter: revision, undoConflict: z.boolean(), redoConflict: z.boolean(),
     undoBlocked: z.boolean(), redoBlocked: z.boolean()}),
   'canvas.history.undo': result,
   'canvas.history.redo': result,
 });
-export type CanvasEditResult = z.infer<typeof result>;
+export type CanvasEditResult = z.infer<typeof applyResult>;
 export type CanvasHistoryView = z.infer<typeof historyResponse>;
 export type CanvasEditingResponse<T extends CanvasEditingOperation> = z.infer<(typeof canvasEditingResponses)[T]>;

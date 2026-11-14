@@ -17,7 +17,8 @@ import {createProjectStore, openProjectStore, readProjectContentStamp} from '../
 import {createServices} from '../packages/business/src/services.ts';
 import {layoutCanvas} from '../packages/contracts/src/canvas-tidy-layout.ts';
 import {canvasEditingResponses, createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
-import {CANVAS_EDIT_LIMITS} from '../packages/contracts/src/canvas-editing.ts';
+import {CANVAS_CLIPBOARD_LIMITS, CANVAS_EDIT_LIMITS} from '../packages/contracts/src/canvas-editing.ts';
+import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
 import type {CanvasEditBase, CanvasEditInput, CanvasEditingOperation, CanvasEditingResponse, CanvasTarget} from '../packages/contracts/src/canvas-editing.ts';
 
 const date = '2026-11-13T01:02:03.000Z';
@@ -79,6 +80,192 @@ function fixture(t: TestContext, candidate = true) {
   return {root, projectFile, location, projectId, get store(){return store;}, call, reopen, expectTarget, id, requestId, node, shot, edge, apply, edit, undo, redo, archived, order,
     advanceTime: (ms = 200_000) => {clock += ms;}};
 }
+
+test('copy freezes only canvas fields, remaps internal links, and pastes as one repeatable undo step', t => {
+  const f = fixture(t), initial = readProjectContentStamp(f.store.db), documentId = f.id();
+  function image() {
+    const id = f.id(), hash = 'b'.repeat(64);
+    f.store.put('assets', {id, projectId: f.projectId, name: 'Fixture image', mimeType: 'image/png',
+      provenance: 'imported', sha256: hash, sizeBytes: 100, referenceRevision: 1,
+      reference: {pathForm: 'relative', path: `media/${id}.png`, volume: null, sizeBytes: 100, mtimeMs: 1,
+        sampledSha256: hash, fullSha256: hash}});
+    return id;
+  }
+  const assetId = image(), tailId = image(), exportId = image();
+  const shot = f.shot(7, {title: 'Later shot', aspectRatio: '21:9', duration: 7, prompt: 'Frozen prompt',
+    referenceAssetIds: [assetId], lastFrameAssetId: tailId, parameters: {seed: 48, executionBinding: 'private'},
+    selectedVersionId: f.id(), subjectBinding: {subjectVersionId: f.id(), reviewed: true},
+    dataToLeaveBehind: 'private', position: {x: 320, y: 0}});
+  const earlier = f.shot(2, {title: 'Earlier shot', position: {x: 640, y: 0}, referenceAssetIds: [f.id()]});
+  const subjectId = f.id(), subjectVersionId = f.id(), bindingId = f.id();
+  f.store.tx(() => {
+    f.store.db.prepare(`INSERT INTO project.subjects(id,projectId,kind,name,revision,headVersionId,createdAt,updatedAt)
+      VALUES(?,?,'character','Fixture subject',1,?,?,?)`).run(subjectId, f.projectId, subjectVersionId, date, date);
+    const version = {id: subjectVersionId, projectId: f.projectId, subjectId, number: 1, assetId, createdAt: date};
+    f.store.db.prepare(`INSERT INTO project.subject_versions(id,projectId,subjectId,number,assetId,data)
+      VALUES(?,?,?,1,?,?)`).run(subjectVersionId, f.projectId, subjectId, assetId, JSON.stringify(version));
+    f.store.db.prepare(`INSERT INTO project.subject_bindings(id,projectId,shotId,subjectId,role,revision,subjectVersionId,reviewedHeadVersionId,createdAt,updatedAt)
+      VALUES(?,?,?,?,'subject',1,?,?,?,?)`).run(bindingId, f.projectId, shot.id, subjectId, subjectVersionId, subjectVersionId, date, date);
+  });
+  const imageNode = f.node('image', {assetId, position: {x: 0, y: 0}});
+  const outsideNode = f.node('text', {position: {x: 960, y: 0}});
+  const scene = {...defaultPrevisScene(), activeKeyframeId: 'k1',
+    keyframes: [{id: 'k1', name: 'Opening', camera: defaultPrevisScene().camera, exports: [exportId]}]};
+  const previs = f.node('previs', {scene, sceneRevision: 4, revision: 8, position: {x: 0, y: 320}});
+  const reference = f.edge(imageNode, shot, {kind: 'reference', role: 'first_frame', sourceAssetId: assetId});
+  const decorative = f.edge(previs, shot);
+  f.edge(outsideNode, shot);
+  assert.ok(readProjectContentStamp(f.store.db).contentSequence > initial.contentSequence);
+  const copyStamp = readProjectContentStamp(f.store.db);
+  const copied = f.call('canvas.copy.snapshot', {documentId, targets: [shot, previs, imageNode, earlier].map(f.expectTarget)});
+  assert.deepEqual(copied, {projectId: f.projectId, documentId, snapshotId: copied.snapshotId, count: 4});
+  assert.deepEqual(readProjectContentStamp(f.store.db), copyStamp);
+  f.store.put('shots', {...f.store.get('shots', shot.id) as object, prompt: 'Later edit'});
+  f.advanceTime(CANVAS_CLIPBOARD_LIMITS.lifetimeMs - 1);
+  const input = {operation: 'paste', documentId, snapshotId: copied.snapshotId,
+    viewport: {x: 0, y: 0, width: 1500, height: 1450}, requestId: f.requestId(),
+    historyRevision: f.call('canvas.history.get').revision};
+  const ack = f.call('canvas.apply', input);
+  assert.equal(ack.affected, 6);
+  assert.equal(ack.history.undo?.operation, 'paste');
+  assert.equal(ack.history.undo?.count, 4);
+  assert.equal(ack.created?.length, 4);
+  assert.ok(ack.created);
+  const [newEarlier, newShot] = ack.created.filter(card => card.kind === 'shot');
+  const newNodes = ack.created.filter(card => card.kind === 'node').map(card => f.store.get('nodes', card.id)) as Array<Record<string, unknown>>;
+  const imageCopy = newNodes.find(node => node.type === 'image')!;
+  const previsCopy = newNodes.find(node => node.type === 'previs')!;
+  assert.deepEqual(f.order(), [earlier.id, shot.id, newEarlier!.id, newShot!.id]);
+  const shotCopy = f.store.get('shots', newShot!.id) as Record<string, unknown>;
+  assert.equal(shotCopy.title, 'Later shot');
+  assert.equal(shotCopy.prompt, 'Frozen prompt');
+  assert.equal(shotCopy.aspectRatio, '21:9');
+  assert.equal(shotCopy.duration, 7);
+  assert.deepEqual(shotCopy.referenceAssetIds, [assetId]);
+  assert.deepEqual((f.store.get('shots', newEarlier!.id) as Record<string, unknown>).referenceAssetIds, []);
+  assert.equal(shotCopy.lastFrameAssetId, tailId);
+  assert.deepEqual(shotCopy.parameters, {seed: 48});
+  assert.equal(shotCopy.selectedVersionId, null);
+  assert.equal(Object.hasOwn(shotCopy, 'subjectBinding'), false);
+  assert.equal(Object.hasOwn(shotCopy, 'dataToLeaveBehind'), false);
+  assert.equal(imageCopy.assetId, assetId);
+  assert.equal(previsCopy.sceneRevision, 1);
+  assert.deepEqual(previsCopy.scene, {...scene, keyframes: scene.keyframes.map(frame => ({...frame, exports: []}))});
+  const allEdges = f.store.list('edges', f.projectId) as Array<Record<string, unknown>>;
+  const copiedEdges = allEdges.filter(edge => edge.target === newShot!.id);
+  assert.equal(copiedEdges.length, 2);
+  assert.notEqual(copiedEdges.find(edge => edge.kind === 'reference')?.id, reference.id);
+  assert.notEqual(copiedEdges.find(edge => edge.kind === 'decorative')?.id, decorative.id);
+  assert.deepEqual(copiedEdges.map(edge => [edge.kind, edge.source, edge.sourceAssetId]).sort(),
+    [['decorative', previsCopy.id, undefined], ['reference', imageCopy.id, assetId]]);
+  const shotPoint = shotCopy.position as {x: number; y: number}, imagePoint = imageCopy.position as typeof shotPoint;
+  assert.equal(shotPoint.x - imagePoint.x, 320);
+  assert.equal(shotPoint.y - imagePoint.y, 0);
+  assert.ok(imagePoint.x >= input.viewport.x && imagePoint.y >= input.viewport.y);
+  assert.ok(imagePoint.x >= 292 || imagePoint.y >= 296, 'new source avoids the existing source');
+  assert.equal(f.store.list('assets', f.projectId).length, 3);
+  assert.deepEqual(f.store.list('versions', f.projectId), []);
+  assert.deepEqual(f.store.list('jobs', f.projectId), []);
+  assert.deepEqual(f.store.db.prepare('SELECT id,shotId FROM project.subject_bindings').all().map(row => [row.id,row.shotId]), [[bindingId,shot.id]]);
+  f.advanceTime(1);
+  assert.deepEqual(f.call('canvas.apply', input), ack, 'exact replay predates snapshot expiry check');
+  assert.throws(() => f.call('canvas.apply', {...input, viewport: {...input.viewport, width: 1600}}), {code: 'REQUEST_ID_REUSED'});
+  const undone = f.undo();
+  assert.equal(undone.actionId, ack.actionId);
+  assert.deepEqual(f.order(), [earlier.id, shot.id]);
+  assert.ok([...ack.created, ...copiedEdges.map(edge => ({kind: 'edge' as const, id: String(edge.id)}))].every(f.archived));
+  assert.equal(f.call('canvas.archive.list').total, 0, 'undo-create rows are history-only');
+  assert.equal(f.redo().actionId, ack.actionId);
+  assert.ok(ack.created.every(card => !f.archived(card)));
+  assert.deepEqual(f.order(), [earlier.id, shot.id, newEarlier!.id, newShot!.id]);
+  const secondBinding = f.id();
+  f.store.db.prepare(`INSERT INTO project.subject_bindings(id,projectId,shotId,subjectId,role,revision,subjectVersionId,reviewedHeadVersionId,createdAt,updatedAt)
+    VALUES(?,?,?,?,'subject',1,?,?,?,?)`).run(secondBinding, f.projectId, newShot!.id, subjectId, subjectVersionId, subjectVersionId, date, date);
+  assert.throws(f.undo, {code: 'CANVAS_EDIT_CONFLICT'});
+  assert.ok(ack.created.every(card => !f.archived(card)));
+  assert.deepEqual(foreignKeyCheck(f.store.db), []);
+});
+
+test('copy rejects foreign, wrong-document, forged and expired snapshots with no writes', t => {
+  const source = fixture(t), other = fixture(t), documentId = source.id(), clipboardOwner = {};
+  const node = source.node(), linked = source.node('text', {position: {x: 300, y: 0}});
+  const edge = source.edge(node, linked);
+  let clock = Date.parse(date);
+  const service = createCanvasEditing(source.store, {clipboardOwner, time: () => clock, now: () => new Date(clock).toISOString()});
+  const destination = createCanvasEditing(other.store, {clipboardOwner, time: () => clock});
+  const copy = {projectId: source.projectId, documentId, targets: [source.expectTarget(node)]};
+  assert.throws(() => service.call('canvas.copy.snapshot', {...copy, targets: [source.expectTarget(edge)]}), {code: 'CANVAS_CLIPBOARD_NO_CARDS'});
+  assert.throws(() => service.call('canvas.copy.snapshot', {...copy, targets: [other.expectTarget(other.node())]}), {code: 'CANVAS_EDIT_CONFLICT'});
+  assert.throws(() => service.call('canvas.copy.snapshot', {...copy, externalData: 'forged'}), {code: 'VALIDATION_ERROR'});
+  const {snapshotId} = canvasEditingResponses['canvas.copy.snapshot'].parse(service.call('canvas.copy.snapshot', copy));
+  const sourceHistory = canvasEditingResponses['canvas.history.get'].parse(service.call('canvas.history.get', {projectId: source.projectId}));
+  const otherHistory = canvasEditingResponses['canvas.history.get'].parse(destination.call('canvas.history.get', {projectId: other.projectId}));
+  const input = {projectId: source.projectId, documentId, snapshotId, operation: 'paste', historyRevision: sourceHistory.revision,
+    requestId: createCanvasRequestId(sourceHistory.requestEpoch, source.id(), clock), viewport: {x: 0, y: 0, width: 1200, height: 900}};
+  const stamp = readProjectContentStamp(source.store.db);
+  assert.throws(() => service.call('canvas.apply', {...input, snapshotId: source.id()}), {code: 'CANVAS_CLIPBOARD_UNAVAILABLE'});
+  assert.throws(() => service.call('canvas.apply', {...input, documentId: source.id()}), {code: 'CANVAS_CLIPBOARD_UNAVAILABLE'});
+  assert.throws(() => service.call('canvas.apply', {...input, viewport: {...input.viewport, width: 1}}), {code: 'CANVAS_PASTE_NO_SPACE'});
+  assert.throws(() => destination.call('canvas.apply', {...input, projectId: other.projectId, historyRevision: otherHistory.revision,
+    requestId: createCanvasRequestId(otherHistory.requestEpoch, other.id(), clock)}), {code: 'CANVAS_CLIPBOARD_UNAVAILABLE'});
+  clock += CANVAS_CLIPBOARD_LIMITS.lifetimeMs;
+  assert.throws(() => service.call('canvas.apply', input), {code: 'CANVAS_CLIPBOARD_UNAVAILABLE'});
+  assert.deepEqual(readProjectContentStamp(source.store.db), stamp);
+  assert.deepEqual(source.call('canvas.history.get').undo, null);
+  assert.equal(source.store.db.prepare('SELECT count(*) AS n FROM main.canvas_requests').get()?.n, 0);
+});
+
+test('paste revalidates frozen assets and separately retains an unselected first frame as a manual slot', t => {
+  const f = fixture(t), documentId = f.id(), id = f.id(), sha256 = 'a'.repeat(64);
+  const record = {id, projectId: f.projectId, name: 'Fixture image', mimeType: 'image/png', provenance: 'imported',
+    sha256, sizeBytes: 100, referenceRevision: 1, reference: {pathForm: 'relative', path: 'media/example.png',
+      volume: null, sizeBytes: 100, mtimeMs: 1, sampledSha256: sha256, fullSha256: sha256}};
+  f.store.put('assets', record);
+  const shot = f.shot(0, {referenceAssetIds: [id]}), imageNode = f.node('image', {assetId: id, position: {x: 400, y: 0}});
+  f.edge(imageNode, shot, {kind: 'reference', role: 'first_frame', sourceAssetId: id});
+  const {snapshotId} = f.call('canvas.copy.snapshot', {documentId, targets: [f.expectTarget(shot)]});
+  const input = {operation: 'paste', documentId, snapshotId, historyRevision: f.call('canvas.history.get').revision,
+    requestId: f.requestId(), viewport: {x: 0, y: 0, width: 900, height: 900}};
+  f.store.put('assets', {...record, sizeBytes: 101});
+  assert.throws(() => f.call('canvas.apply', input), {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'clipboard-reference', id: shot.id}});
+  f.store.put('assets', record);
+  const result = f.call('canvas.apply', input);
+  assert.equal(result.affected, 1);
+  assert.deepEqual((f.store.get('shots', result.created![0]!.id) as Record<string, unknown>).referenceAssetIds, [id]);
+  assert.equal(f.store.list('edges', f.projectId).length, 1);
+});
+
+test('format 3 keeps copy and paste unavailable', t => {
+  const f = fixture(t, false), documentId = f.id();
+  assert.throws(() => f.call('canvas.copy.snapshot', {documentId, targets: []}), {code: 'UNKNOWN_OPERATION'});
+  assert.throws(() => f.call('canvas.apply', {operation: 'paste', documentId}), {code: 'UNKNOWN_OPERATION'});
+});
+
+test('canvas snapshots belong to the same application owner across an idle backend reopen', async t => {
+  const f = fixture(t), source = f.node(), documentId = f.id();
+  const library = openAppLibrary({dataDir: path.join(f.root, 'same-app')});
+  t.after(() => library.close());
+  const call = (store: typeof f.store, owner = library) => createServices(store, new Map(), {application: createProjectServiceApplication(owner)});
+  const service = call(f.store);
+  const selected = {projectId: f.projectId, documentId, targets: [f.expectTarget(source)]};
+  const snapshot = canvasEditingResponses['canvas.copy.snapshot'].parse(await service.call('canvas.copy.snapshot', selected));
+  await service.drain();
+  f.reopen();
+  const differentLibrary = openAppLibrary({dataDir: path.join(f.root, 'another-app')});
+  t.after(() => differentLibrary.close());
+  const reopened = call(f.store), other = call(f.store, differentLibrary);
+  try {
+    const {requestEpoch, revision} = canvasEditingResponses['canvas.history.get'].parse(await reopened.call('canvas.history.get', {projectId: f.projectId}));
+    const input = {projectId: f.projectId, documentId, snapshotId: snapshot.snapshotId, operation: 'paste', historyRevision: revision,
+      requestId: createCanvasRequestId(requestEpoch, f.id()), viewport: {x: 0, y: 0, width: 1200, height: 900}};
+    await assert.rejects(other.call('canvas.apply', input), {code: 'CANVAS_CLIPBOARD_UNAVAILABLE'});
+    const result = canvasEditingResponses['canvas.apply'].parse(await reopened.call('canvas.apply', input));
+    assert.equal(result.affected, 1);
+  } finally {
+    await other.drain();
+    await reopened.drain();
+  }
+});
 
 test('archive of a first-frame source preserves the manual asset and hides both types of edges, with exact undo', async t => {
   const f = fixture(t), assetId = f.id();

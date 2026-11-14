@@ -19,10 +19,19 @@ export function canvasSelectionTargets(
     (kind === 'edge' ? id === edgeId : ids.has(id)) ? [{kind, id}] : []);
 }
 
-type CanvasShortcut = 'all' | 'clear' | 'archive' | 'tidy' | 'undo' | 'redo';
+type CanvasShortcut = 'all' | 'clear' | 'archive' | 'tidy' | 'undo' | 'redo' | 'duplicate';
+type ShortcutEvent = Pick<KeyboardEvent, 'key' | 'defaultPrevented' | 'repeat' | 'isComposing' | 'keyCode' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>;
+
+export function canvasClipboardShortcut(event: ShortcutEvent): 'copy' | 'paste' | undefined {
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229 || event.altKey ||
+      event.shiftKey || event.ctrlKey === event.metaKey) return;
+  const key = event.key.toLowerCase();
+  if (key === 'c') return 'copy';
+  if (key === 'v') return 'paste';
+}
 
 export function canvasShortcut(
-  event: Pick<KeyboardEvent, 'key' | 'defaultPrevented' | 'repeat' | 'isComposing' | 'keyCode' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>,
+  event: ShortcutEvent,
   {blocked, composing, textFocus, nativeHistory}: {blocked: boolean; composing: boolean; textFocus: boolean; nativeHistory: boolean},
 ): CanvasShortcut | undefined {
   if (blocked || composing || textFocus || event.defaultPrevented || event.isComposing || event.keyCode === 229 ||
@@ -30,6 +39,7 @@ export function canvasShortcut(
   if (event.ctrlKey || event.metaKey) {
     const key = event.key.toLowerCase();
     if (key === 'a' && !event.shiftKey) return 'all';
+    if (key === 'd' && !event.shiftKey && !nativeHistory) return 'duplicate';
     if (key === 'l' && event.shiftKey) return 'tidy';
     if (key === 'z' && !nativeHistory) return event.shiftKey ? 'redo' : 'undo';
     return;
@@ -41,6 +51,11 @@ export function canvasShortcut(
 
 export function canvasShortcutInText(event: KeyboardEvent, activeElement: Element | null): boolean {
   return nativeMenuTextFocus(activeElement) || event.composedPath().some(target => target instanceof Element && nativeMenuTextFocus(target));
+}
+
+export function canvasClipboardInText(event: Event, document: Document): boolean {
+  return nativeMenuTextFocus(document.activeElement) || Boolean(document.getSelection()?.toString()) ||
+    event.composedPath().some(target => target instanceof Element && nativeMenuTextFocus(target));
 }
 
 // The archive popover is portalled, so its presence blocks commands even when

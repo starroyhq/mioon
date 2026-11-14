@@ -37,6 +37,10 @@ function commandAllowed(command: MenuCommandId, state: ApplicationMenuState): bo
     return state.canEditText && (!state.business || state.business.editingContext === 'text') ||
       state.canCommand && state.business?.editingContext !== 'text' && state.business?.commands[command] === true;
   }
+  if (command === 'canvas-duplicate') {
+    return state.canCommand && state.business?.workspaceMode === 'canvas' && state.business.editingContext === 'none' &&
+      state.business.commands[command] === true;
+  }
   return state.canCommand && state.business?.commands[command] === true;
 }
 
@@ -75,6 +79,7 @@ export function applicationMenuTemplate(options: ApplicationMenuOptions): MenuIt
     command('edit-undo', nt('native.undo')),
     command('edit-redo', nt('native.redo')), separator,
     {role: 'cut', label: nt('native.cut')}, {role: 'copy', label: nt('native.copy')}, {role: 'paste', label: nt('native.paste')},
+    command('canvas-duplicate', nt('native.canvasDuplicate')),
     ...(mac ? [{role: 'pasteAndMatchStyle' as const, label: nt('native.pasteMatch')}] : []),
     {role: 'delete', label: nt('native.delete')}, {role: 'selectAll', label: nt('native.selectAll')},
   ]}, {id: 'menu-view', label: nt('native.menuView'), submenu: [

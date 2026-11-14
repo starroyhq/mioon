@@ -765,6 +765,12 @@ export const nativeMessages = {
     "en": "Paste",
     "ja": "ペースト"
   },
+  "native.canvasDuplicate": {
+    "zh-Hans": "创建副本",
+    "zh-Hant": "建立副本",
+    "en": "Duplicate",
+    "ja": "複製"
+  },
   "native.pasteMatch": {
     "zh-Hans": "粘贴并匹配样式",
     "zh-Hant": "貼上並符合樣式",

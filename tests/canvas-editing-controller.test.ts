@@ -29,7 +29,7 @@ function fixture(t: TestContext, enabled = true) {
   store.put('projects', {id: projectId, name: 'Canvas controller test', revision: 1});
   const time = () => Date.parse(date);
   const cb = createCanvasEditing(store, {now: () => date, time});
-  const errors: string[] = [], archivedSelections: CanvasTarget[][] = [];
+  const errors: string[] = [], archivedSelections: CanvasTarget[][] = [], createdSelections: CanvasTarget[][] = [];
   const notices: CanvasEditingNotice[] = [];
   const shots: CanvasLayoutShot[] = [], targets: CanvasTarget[] = [];
   const calls: {operation: string; input: unknown}[] = [];
@@ -62,6 +62,7 @@ function fixture(t: TestContext, enabled = true) {
     onError: failure => errors.push(canvasEditErrorCode(failure)),
     onNotice: notice => notices.push(notice),
     onArchived: selection => archivedSelections.push(selection.map(({kind,id}) => ({kind,id}))),
+    onCreated: selection => createdSelections.push([...selection]),
   });
   function addNode(text = '') {
     const target = {kind: 'node' as const, id: randomUUID()};
@@ -102,7 +103,7 @@ function fixture(t: TestContext, enabled = true) {
     return () => { if (clip) assert.deepEqual(store.get('timelines', timeline.id), timeline); };
   }
   return {
-    controller, context, errors, notices, calls, archived, archivedSelections, addNode, addShot, addClipEvidence, layout, position, positions,
+    controller, context, errors, notices, calls, archived, archivedSelections, createdSelections, addNode, addShot, addClipEvidence, layout, position, positions,
     activate() {controller.setContext(context());},
     decorateRpc(hook: (next: CanvasEditRpc) => CanvasEditRpc) {decorate = hook;},
     smallPages() {pageLimit = 2;},
@@ -129,6 +130,53 @@ function fixture(t: TestContext, enabled = true) {
     },
   };
 }
+
+test('copy remains read-only; paste survives a lost acknowledgement with the same request and one undo', async t => {
+  const f = fixture(t), node = f.addNode('frozen note'), {controller} = f, documentId = randomUUID();
+  const viewport = {x: -220, y: -150, width: 1200, height: 900};
+  f.activate();
+  const snapshot = await controller.copySnapshot(documentId, [node]);
+  assert.ok(snapshot);
+  controller.copied(snapshot.count);
+  assert.equal(controller.getSnapshot().toast?.kind, 'copy');
+  assert.equal(controller.getSnapshot().canUndoToast, false);
+  assert.equal(await controller.undoToast(), false);
+  assert.equal(f.receiptCount(), 0);
+  let lost = false;
+  f.decorateRpc(next => async (op, input) => {
+    const reply = await next(op, input);
+    if (op === 'canvas.apply' && !lost) { lost = true; throw new Error('Synthetic lost acknowledgement'); }
+    return reply;
+  });
+  assert.equal(await controller.paste(documentId, viewport, async () => snapshot.snapshotId, () => true), true);
+  const writes = f.calls.filter(call => call.operation === 'canvas.apply');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0]!.input, writes[1]!.input);
+  assert.equal(f.receiptCount(), 1);
+  assert.equal(f.createdSelections.length, 1);
+  const [created] = f.createdSelections[0]!;
+  assert.ok(created);
+  assert.notEqual(created.id, node.id);
+  assert.equal(controller.getSnapshot().toast?.kind, 'paste');
+  assert.equal(controller.getSnapshot().canUndoToast, true);
+  assert.equal(await controller.undoToast(), true);
+  assert.equal(f.archived(created), true);
+  assert.equal(f.archived(node), false);
+});
+
+test('a delayed clipboard read cannot write after its owning document changes', async t => {
+  const f = fixture(t), node = f.addNode(), {controller} = f, documentId = randomUUID();
+  f.activate();
+  const snapshot = await controller.copySnapshot(documentId, [node]);
+  assert.ok(snapshot);
+  const arrival = Promise.withResolvers<string | null>();
+  const pending = controller.paste(documentId, {x: 0, y: 0, width: 1200, height: 900}, () => arrival.promise, () => true);
+  controller.setContext({...f.context(), scope: 'new editor document'});
+  arrival.resolve(snapshot.snapshotId);
+  assert.equal(await pending, false);
+  assert.equal(f.writeCount(), 0);
+  assert.deepEqual(f.createdSelections, []);
+});
 
 test('simple archive writes once, reports the selected count and restores single and multi-page items', async t => {
   const f = fixture(t), nodes = [f.addNode('one'), f.addNode('two'), f.addNode('three'), f.addNode('four')];

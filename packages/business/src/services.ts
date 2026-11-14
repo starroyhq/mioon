@@ -228,7 +228,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const applicationPorts=application;
  const active=new Set<Promise<unknown>>();let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
- const canvasEditing = isProjectStore(store) ? createCanvasEditing(store) : undefined;
+ const canvasEditing = isProjectStore(store) ? createCanvasEditing(store, {clipboardOwner: applicationPorts.outsidePaths}) : undefined;
  const configuration=application.configuration;
  const assertApplicationMutationAllowed=()=>application.assertMutationAllowed();
  const configurationHandlers={
@@ -715,7 +715,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if (isCanvasEditingOperation(op)) {
     if (!canvasEditing) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     const authorize = (): void => { checkpoint(signal); assertApplicationMutationAllowed(); assertMutationAllowed?.(); };
-    return canvasEditing.call(op, input, isCanvasEditingWrite(op) ? authorize : undefined);
+    return canvasEditing.call(op, input, isCanvasEditingWrite(op) ? authorize : op === 'canvas.copy.snapshot' ? assertApplicationMutationAllowed : undefined);
    }
    if(isAssetMediaOperation(op)){
     const effect=assetMediaEffects[op];if(effect.databaseWrite||effect.fileWrite||effect.localProcess){assertApplicationMutationAllowed();assertMutationAllowed?.();}
