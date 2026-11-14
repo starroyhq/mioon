@@ -1,17 +1,18 @@
 import {createHash} from 'node:crypto';
 import {agentTaskTargetSchema} from '../../contracts/src/agent-tasks-v2.ts';
-import type {CanvasTarget} from '../../contracts/src/canvas-editing.ts';
+import type {CanvasArchiveShotImpact, CanvasTarget} from '../../contracts/src/canvas-editing.ts';
 import {mioClaimSchema} from '../../contracts/src/mio-records.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../contracts/src/timeline-replacement.ts';
 import {createMioRecords} from './agent/mio-records.ts';
 import {agentTaskExplicitTargets} from './agent/task-tools-v2.ts';
+import {INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {pendingPrevisPublications} from './previs-publication.ts';
 import {assertProjectStore} from './store-runtime.ts';
 
 interface CanvasBlocker {readonly kind: string; readonly id: string; readonly reason: string}
-interface ShotImpact {versions: number; clips: number}
+type ShotImpact = Omit<CanvasArchiveShotImpact, 'number'>;
 interface CanvasDependencies {
   readonly shotImpacts: ReadonlyMap<string, Readonly<ShotImpact>>;
   readonly versions: number;
@@ -114,26 +115,39 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
   const impactJobIds = new Set(impactVersions.map(row => row.jobId));
   const shotImpacts = new Map<string, ShotImpact>();
   const jobShots = new Map<string, Set<string>>(), assetShots = new Map<string, Set<string>>();
+  const impactVersionsByJob = new Map<string, VersionEvidence>();
   function countFor(shotId: string): ShotImpact {
     const existing = shotImpacts.get(shotId);
     if (existing) return existing;
-    const point = {versions: 0, clips: 0};
-    shotImpacts.set(shotId, point);
-    return point;
+    const impact = {versions: 0, clips: 0, usedVersions: 0};
+    shotImpacts.set(shotId, impact);
+    return impact;
   }
   function addOwner(index: Map<string, Set<string>>, id: string, shotId: string): void {
     const owners = index.get(id) ?? new Set<string>();
     owners.add(shotId);
     index.set(id, owners);
   }
-  if (reportShotImpacts) for (const {shotId, jobId, assetId} of impactVersions) {
+  if (reportShotImpacts) for (const version of impactVersions) {
+    const {shotId, jobId, assetId} = version;
     countFor(shotId).versions++;
     addOwner(jobShots, jobId, shotId);
     addOwner(assetShots, assetId, shotId);
+    impactVersionsByJob.set(jobId, version);
   }
   for (const version of versions) evidence(['version', version]);
 
   const versionOwners = new Map(versions.map(version => [version.id, version]));
+  const usedVersionIds = new Set<string>();
+  const assetVersionOwners = reportShotImpacts && impactAssetIds.size ? db.prepare(`SELECT id FROM project.versions
+    WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`) : undefined;
+  function versionForAsset(assetId: string): VersionEvidence | undefined {
+    // Resolve implicit sources only when the same asset has one owner across
+    // the project, even when the other owning shot is outside the selection.
+    if (!assetVersionOwners || !impactAssetIds.has(assetId)) return;
+    const owners = assetVersionOwners.all(assetId);
+    if (owners.length === 1 && typeof owners[0]?.id === 'string') return versionOwners.get(owners[0].id);
+  }
   const timelineRow = shots.size ? db.prepare(`SELECT id,${bounded('data', TIMELINE_RESPONSE_BYTES)} AS data FROM project.timelines WHERE projectId=?`).get(projectId) : undefined;
   const timeline = timelineRow ? ownedRow(timelineRow.data, timelineRow.id, projectId) : null;
   const clipIds = new Set<string>();
@@ -159,6 +173,16 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
             if (linkedShot) consumers.add(linkedShot);
             if (explicit && impactShots.has(explicit.shotId)) consumers.add(explicit.shotId);
             for (const id of consumers) countFor(id).clips++;
+
+            // A known clip can matter to confirmation even when it is not
+            // attributable to a particular generated version.
+            const version = clip.versionId ? explicit : clip.jobId ? impactVersionsByJob.get(clip.jobId) : versionForAsset(clip.assetId);
+            if (version && impactShots.has(version.shotId) && version.assetId === clip.assetId &&
+                (!clip.shotId || clip.shotId === version.shotId) && (!clip.jobId || clip.jobId === version.jobId) &&
+                !usedVersionIds.has(version.id)) {
+              usedVersionIds.add(version.id);
+              countFor(version.shotId).usedVersions++;
+            }
           }
         }
         evidence(['clip', timeline.id, clip.id, clip.assetId, clip.shotId, clip.versionId, clip.jobId, clip.trackId, hidden.get(clip.trackId)]);

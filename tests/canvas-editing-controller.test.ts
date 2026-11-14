@@ -165,7 +165,8 @@ for (const [withVersion, withClip] of [[true, true], [true, false], [false, true
     f.activate();
     assert.equal(await controller.archiveSelection([shot, node]), false);
     assert.deepEqual(controller.getSnapshot().review, {count: 2, versions: Number(withVersion), clips: Number(withClip),
-      shotImpacts: [{number: 1, versions: Number(withVersion), clips: Number(withClip)}], impactedShotCount: 1});
+      shotImpacts: [{number: 1, versions: Number(withVersion), usedVersions: Number(withVersion && withClip),
+        clips: Number(withClip)}], impactedShotCount: 1});
     assert.equal(f.writeCount(), 0);
     assert.deepEqual([f.archived(shot), f.archived(node)], [false, false]);
     controller.cancelArchive();
@@ -296,11 +297,17 @@ test('pending writes produce retryable undo messages before and during dispatch'
   assert.deepEqual(f.notices, [{kind: 'undone'}, {kind: 'redone'}]);
 });
 
-test('known external revisions disable all undo entry points without another RPC', async t => {
+test('known undo conflicts explain the shortcut failure and keep the toast disabled without an RPC', async t => {
   const f = fixture(t), node = f.addNode();
   const {controller} = f;
   f.activate();
+  assert.equal(controller.reportHistoryConflict('undo'), false);
+  assert.deepEqual(f.calls, []);
   assert.equal(await controller.archiveSelection([node]), true);
+  assert.equal(controller.getSnapshot().canUndo, true);
+  const callsBeforeNotice = f.calls.length;
+  assert.equal(controller.reportHistoryConflict('undo'), false);
+  assert.equal(f.calls.length, callsBeforeNotice, 'the native fallback cannot execute an available undo');
   f.externalNodeUpdate(node);
   await controller.loadHistory();
   assert.equal(controller.getSnapshot().history?.undoConflict, true);
@@ -310,7 +317,32 @@ test('known external revisions disable all undo entry points without another RPC
   f.calls.length = 0;
   assert.equal(await controller.undo(), false);
   assert.equal(await controller.undoToast(), false);
+  assert.equal(controller.reportHistoryConflict('undo'), true);
+  assert.equal(controller.reportHistoryConflict('redo'), false);
+  controller.setContext({...f.context(), writable: false});
+  assert.equal(await controller.undo(), false);
+  assert.equal(controller.reportHistoryConflict('undo'), false);
+  assert.deepEqual(f.errors, ['CANVAS_UI_UNDO_CONFLICT', 'CANVAS_UI_UNDO_CONFLICT']);
   assert.deepEqual(f.calls, []);
+  assert.ok(f.archived(node));
+});
+
+test('known redo conflicts explain the shortcut failure without an RPC', async t => {
+  const f = fixture(t), node = f.addNode();
+  const {controller} = f;
+  f.activate();
+  assert.equal(await controller.archiveSelection([node]), true);
+  assert.equal(await controller.undo(), true);
+  f.externalNodeUpdate(node);
+  await controller.loadHistory();
+  assert.equal(controller.getSnapshot().history?.redoConflict, true);
+  assert.equal(controller.getSnapshot().canRedo, false);
+  f.calls.length = 0;
+  assert.equal(await controller.redo(), false);
+  assert.equal(controller.reportHistoryConflict('redo'), true);
+  assert.deepEqual(f.errors, ['CANVAS_UI_REDO_CONFLICT', 'CANVAS_UI_REDO_CONFLICT']);
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.archived(node), false);
 });
 
 test('a lost response replays only the exact request and an older toast cannot undo a later edit', async t => {

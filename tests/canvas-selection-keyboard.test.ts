@@ -29,18 +29,17 @@ test('Shift toggles across card types without mutating the prior selection or ad
   assert.deepEqual(canvasSelectionTargets(base, new Set(), 'decor'), [{kind: 'edge', id: 'decor'}]);
 });
 
-const ready = {blocked: false, composing: false, textFocus: false, nativeHistory: false};
+const ready = {blocked: false, composing: false, textFocus: false};
 const event = (key: string, more: Partial<Parameters<typeof canvasShortcut>[0]> = {}) => ({
   key, defaultPrevented: false, repeat: false, isComposing: false, keyCode: 0, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...more,
 });
 
-test('both platform modifier keys work, and native menus own desktop undo and redo', () => {
+test('both platform modifier keys work and unrelated clipboard shortcuts are untouched', () => {
   for (const modifier of [{ctrlKey: true}, {metaKey: true}]) {
     assert.equal(canvasShortcut(event('a', modifier), ready), 'all');
     assert.equal(canvasShortcut(event('z', modifier), ready), 'undo');
     assert.equal(canvasShortcut(event('Z', {...modifier, shiftKey: true}), ready), 'redo');
     assert.equal(canvasShortcut(event('L', {...modifier, shiftKey: true}), ready), 'tidy');
-    assert.equal(canvasShortcut(event('z', modifier), {...ready, nativeHistory: true}), undefined);
     assert.equal(canvasShortcut(event('c', modifier), ready), undefined);
     assert.equal(canvasShortcut(event('v', modifier), ready), undefined);
     assert.equal(canvasShortcut(event('d', modifier), ready), undefined);

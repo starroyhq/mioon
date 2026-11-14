@@ -159,12 +159,12 @@ export function CanvasDeleteDialog({review, busy, onCancel, onConfirm}: {
     <WorkbenchDialogContent data-testid="canvas-delete-dialog" size="confirm" className="canvas-delete-dialog" initialFocus={cancel} showCloseButton={false}
       title={<><span className="canvas-delete-icon"><Trash2 size={18} aria-hidden="true" /></span>{t('canvas.edit.deleteTitle', {count: review.count})}</>}
       description={[
-        ...review.shotImpacts.map(({number, versions, clips}) => {
+        ...review.shotImpacts.map(({number, versions, usedVersions, clips}) => {
           const shot = t('canvas.edit.shotNumber', {number: String(number).padStart(2, '0')});
           if (!versions) return t('canvas.edit.deleteShotClipOnly', {shot, count: clips});
           const generated = t('canvas.edit.deleteVersions', {count: versions});
-          return clips
-            ? t('canvas.edit.deleteShotAndClips', {shot, versions: generated, clips: t('canvas.edit.deleteClips', {count: clips})})
+          return usedVersions
+            ? t('canvas.edit.deleteShotAndUsedVersions', {shot, versions: generated, used: t('canvas.edit.deleteUsedVersions', {count: usedVersions})})
             : t('canvas.edit.deleteShotVersionsOnly', {shot, versions: generated});
         }),
         ...(review.impactedShotCount > review.shotImpacts.length ? [t('canvas.edit.deleteMoreShots', {count: review.impactedShotCount})] : []),
@@ -207,7 +207,8 @@ export function CanvasArchivePopover({scope, visible: requestedVisible, count, i
     if (open && current.current === scope) action();
   };
   if (!count && !open && !error) return null;
-  return <><span className="board-toolbar-separator" aria-hidden="true" /><WorkbenchPopover open={open} onOpenChange={next => {
+  return <><span className="board-toolbar-separator" aria-hidden="true" /><WorkbenchPopover open={open} onOpenChange={(next, details) => {
+    if (!next && details.reason === 'escape-key') details.event.stopPropagation();
     if (current.current !== scope) return;
     setOpenScope(next ? scope : null);
     onOpen(next);

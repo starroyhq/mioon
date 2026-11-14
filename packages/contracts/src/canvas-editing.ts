@@ -88,7 +88,8 @@ const archiveItem = target.extend({archive: archiveInfo, revision, label: z.stri
   nodeType: canvasArchiveNodeTypeSchema.nullable(), shotNumber: shotNumber.nullable(), versions: revision, preview: canvasArchiveMediaSchema.nullable(),
 });
 export type CanvasArchiveItem = z.infer<typeof archiveItem>;
-const shotImpact = z.object({number: shotNumber, versions: revision, clips: revision}).strict();
+const shotImpact = z.object({number: shotNumber, versions: revision, clips: revision, usedVersions: revision}).strict()
+  .refine(impact => impact.usedVersions <= impact.versions, {path: ['usedVersions']});
 export type CanvasArchiveShotImpact = z.infer<typeof shotImpact>;
 const result = z.object({projectId: id, actionId: id.nullable(), affected: z.number().int().nonnegative(),
   history: historyResponse, contentSequence: revision, contentToken: token}).strict();

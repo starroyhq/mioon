@@ -415,6 +415,7 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     },
     undo: () => travel('undo'),
     redo: () => travel('redo'),
+    reportHistoryConflict,
     undoToast: () => state.toast ? travel('undo', state.toast.actionId) : Promise.resolve(false),
     dismissToast: () => emit({toast: null}),
   };
@@ -435,16 +436,27 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
     return true;
   }
 
-  function travel(direction: HistoryDirection, actionId = state.history?.[direction]?.id): Promise<boolean> {
+  function reportHistoryConflict(direction: HistoryDirection): boolean {
+    const conflictFlag = direction === 'undo' ? 'undoConflict' : 'redoConflict';
+    if (reviewing || inFlight || !state.history?.[direction] || !state.history[conflictFlag] || !capture(true)) return false;
+    onError(error(direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT'));
+    return true;
+  }
+
+  function travel(direction: HistoryDirection, toastActionId?: string): Promise<boolean> {
+    const actionId = toastActionId ?? state.history?.[direction]?.id;
     const conflictFlag = direction === 'undo' ? 'undoConflict' : 'redoConflict';
     const blockedFlag = direction === 'undo' ? 'undoBlocked' : 'redoBlocked';
-    if (reviewing || !actionId || state.history?.[conflictFlag]) return Promise.resolve(false);
+    const conflictCode = direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT';
+    if (reviewing || !actionId) return Promise.resolve(false);
+    if (state.history?.[conflictFlag]) {
+      if (toastActionId === undefined) reportHistoryConflict(direction);
+      return Promise.resolve(false);
+    }
     return act(async flight => {
       const history = await read(rpc, 'canvas.history.get', {projectId: flight.projectId});
       const target = history[direction];
-      if (!target || target.id !== actionId || history[conflictFlag]) {
-        throw error(direction === 'undo' ? 'CANVAS_UI_UNDO_CONFLICT' : 'CANVAS_UI_REDO_CONFLICT');
-      }
+      if (!target || target.id !== actionId || history[conflictFlag]) throw error(conflictCode);
       if (history[blockedFlag]) throw error('CANVAS_EDIT_BLOCKED');
       const ack = await mutate(flight, direction === 'undo' ? 'canvas.history.undo' : 'canvas.history.redo', commitInput(history, flight.projectId));
       if (!ack?.actionId) return false;

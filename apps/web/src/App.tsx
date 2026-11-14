@@ -3481,8 +3481,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         .some(menu => !menu.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'));
       const command = canvasShortcut(event, {blocked: !canvasOwner.isCurrent() || viewRef.current!.activeMode !== 'canvas' ||
         !canvasOwnsShortcutFocus(canvasArea.current, document) || menuOpen || hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen),
-        composing: canvasComposing.current, textFocus: canvasShortcutInText(event, document.activeElement), nativeHistory: Boolean(nativeMenuBridge)});
+        composing: canvasComposing.current, textFocus: canvasShortcutInText(event, document.activeElement)});
       if (!command) return;
+      // A conflicted native command is disabled. Only its notice can fall back
+      // to the renderer. Ordinary desktop undo and redo use the native menu.
+      if (nativeMenuBridge && (command === 'undo' || command === 'redo')) {
+        if (canvasEditing.reportHistoryConflict(command)) event.preventDefault();
+        return;
+      }
       event.preventDefault();
       if (command === 'all') void selectCanvasCards(new Set([...canvasShotIds, ...canvasNodeRecords.keys()]));
       else if (command === 'clear') void selectCanvasCards(new Set());

@@ -394,23 +394,35 @@ test('a confirmed batch rechecks implicit hidden clip consumers and can replay a
 
 test('archive preview lists the first three affected shots by displayed order and preserves their numbers across reopen and redo', t => {
   const f = fixture(t), ordered = [5, 10, 18, 27, 31].map(index => f.shot(index));
-  const assetId = f.id(), trackId = f.id();
-  f.store.put('assets', {id: assetId, projectId: f.projectId, name: 'Video'});
+  const trackId = f.id();
+  const asset = () => {
+    const id = f.id();
+    f.store.put('assets', {id, projectId: f.projectId, name: 'Video'});
+    return id;
+  };
   const [first, second, third, fourth, fifth] = ordered as [CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget, CanvasTarget];
+  const firstAsset = asset(), fourthAsset = asset();
   for (const shot of [first, third, third, fifth]) {
-    f.store.put('versions', {id: f.id(), projectId: f.projectId, jobId: f.id(), shotId: shot.id, assetId, sha256: 'a'.repeat(64)});
+    f.store.put('versions', {id: f.id(), projectId: f.projectId, jobId: f.id(), shotId: shot.id,
+      assetId: shot === first ? firstAsset : asset(), sha256: 'a'.repeat(64)});
   }
   f.store.put('timelines', {id:f.id(), projectId:f.projectId, fps:30, width:1920, height:1080, revision:1, durationFrames:30,
     createdAt:date, updatedAt:date, tracks:[{id:trackId,name:'Track',kind:'video',orderIndex:0,hidden:true,muted:false}],
-    clips:[{id:f.id(),trackId,assetId,shotId:fourth.id,name:'Retained',startFrame:0,durationFrames:30,sourceInFrame:0,gain:1,
+    clips:[{id:f.id(),trackId,assetId:firstAsset,name:'Generated',startFrame:0,durationFrames:15,sourceInFrame:0,gain:1,
+      rect:{x:0,y:0,width:1920,height:1080}},
+    {id:f.id(),trackId,assetId:fourthAsset,shotId:fourth.id,name:'Linked',startFrame:15,durationFrames:15,sourceInFrame:0,gain:1,
       rect:{x:0,y:0,width:1920,height:1080}}]});
+  const clipsOnly = f.call('canvas.archive.preview', {operation:'archive', targets:[f.expectTarget(fourth)]});
+  assert.ok(clipsOnly.confirmation);
+  assert.deepEqual(clipsOnly.shotImpacts, [{number:4,versions:0,clips:1,usedVersions:0}]);
   const selection = [fifth, second, fourth, third, first, f.node()];
   const targets = selection.map(f.expectTarget);
   const preview = f.call('canvas.archive.preview', {operation: 'archive', targets});
   assert.ok(preview.confirmation);
   assert.equal(f.store.db.isTransaction, false);
   assert.deepEqual({clips: preview.clips, versions: preview.versions, count: preview.impactedShotCount, impacts: preview.shotImpacts},
-    {clips: 1, versions: 4, count: 4, impacts: [{number:1,versions:1,clips:1}, {number:3,versions:2,clips:1}, {number:4,versions:0,clips:1}]});
+    {clips: 2, versions: 4, count: 4, impacts: [{number:1,versions:1,clips:1,usedVersions:1}, {number:3,versions:2,clips:0,usedVersions:0},
+      {number:4,versions:0,clips:1,usedVersions:0}]});
   f.apply({operation: 'archive', targets, requestId: f.requestId(), historyRevision: preview.historyRevision, confirmation: preview.confirmation});
   const assertNumbers = () => {
     const page = f.call('canvas.archive.list');
