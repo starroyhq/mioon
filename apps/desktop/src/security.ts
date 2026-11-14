@@ -1,6 +1,7 @@
 import {configureOwnedTimelineDeliveryDownload, timelineDownloadIdentity} from './timeline-delivery-download.ts';
 import type {TimelineDownloadDirectory} from './timeline-delivery-download.ts';
 import {installAssignedProjectNavigation} from './project-window-navigation.ts';
+import {isWarmSettingsScriptPath} from './settings-warm-assets.ts';
 import type {AssignedProjectNavigation} from './project-window-navigation.ts';
 import type {BrowserWindow, CookiesSetDetails, DownloadItem, Event, Session, WebContents} from 'electron';
 
@@ -92,7 +93,7 @@ export function installSessionPolicy(session: Session, origin: string, getWindow
     if (blocked || !isWarmSettings?.(details.webContentsId)) return callback({cancel: blocked});
     const shell = details.resourceType === 'mainFrame' && details.url === `${origin}/settings.html`;
     const script = details.resourceType === 'script' && isSameOrigin(details.url, origin) &&
-      /^\/assets\/(?:settings|settings-boot-close)-[\w-]{8}\.js$/.test(new URL(details.url).pathname);
+      isWarmSettingsScriptPath(new URL(details.url).pathname);
     callback({cancel: details.method !== 'GET' || !(shell || script)});
   });
 }

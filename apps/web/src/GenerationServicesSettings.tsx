@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {Badge} from '@mioon/ui/components/badge';
@@ -94,7 +95,7 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   useLayoutEffect(() => {
     if (!pageVisible) return;
     let current = true; const abort = new AbortController();
-    void browserRpc('provider.list', {}, {signal: abort.signal}).then(value => {
+    void measureSettingsRead('generation-provider-list', () => browserRpc('provider.list', {}, {signal: abort.signal})).then(value => {
       if (!current || !Array.isArray(value)) return;
       const next: Record<string, boolean> = {};
       for (const provider of value) if (provider && typeof provider === 'object' && typeof provider.id === 'string' && Object.hasOwn(environmentVariables, provider.id) && typeof provider.configured === 'boolean') next[provider.id] = provider.configured;

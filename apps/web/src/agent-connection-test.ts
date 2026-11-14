@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import { agentTaskConnectionTestResponseSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type { AgentTaskConnectionTest, AgentTaskLocale, AgentTaskSnapshot } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { createAgentTaskClient, agentTaskDefinitiveFailure } from './agent-tasks-v2.ts';
@@ -41,7 +42,8 @@ async function envelope(response: Response): Promise<unknown> {
   return body.data;
 }
 const defaults = {
-  latest: async (): Promise<AgentTaskConnectionTest | null> => agentTaskConnectionTestResponseSchema.parse(await envelope(await fetch('/api/agent/tasks/v2/diagnostics/latest', { credentials: 'same-origin', cache: 'no-store' }))).test,
+  latest: (): Promise<AgentTaskConnectionTest | null> => measureSettingsRead('agent-connection-test', async () =>
+    agentTaskConnectionTestResponseSchema.parse(await envelope(await fetch('/api/agent/tasks/v2/diagnostics/latest', { credentials: 'same-origin', cache: 'no-store' }))).test),
   projects: async (): Promise<readonly AgentConnectionTestProject[]> => parseLauncherProjects(await envelope(await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'project.list', input: {} }) }))),
   recentOpened: async (): Promise<Readonly<Record<string, string>>> => {

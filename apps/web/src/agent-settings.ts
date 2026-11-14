@@ -1,3 +1,5 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
+import type {SettingsReadPurpose} from './settings-diagnostics.ts';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {DisplayMessage,MessageKey,MessageArguments} from '../../../packages/i18n/src/index.ts';
 import {AGENT_PROTOCOLS,deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
@@ -23,7 +25,7 @@ export interface AgentSettingsState {
  phase:AgentSettingsPhase;snapshot:AgentSettingsSnapshot|null;draft:AgentSettingsDraft|null;
  serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];recovery:'conflict'|'unknown'|null;
 }
-export interface AgentSettingsClient {read:(signal?:AbortSignal)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
+export interface AgentSettingsClient {read:(signal?:AbortSignal,purpose?:SettingsReadPurpose)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
 export interface AgentSettingsSessionOptions {client?:AgentSettingsClient;onChange?:(state:AgentSettingsState)=>void;newServiceKey?:()=>string}
 export interface AgentSettingsSecretSource {read:(serviceKey:string)=>string;clear:()=>void}
 const fields=['presetId','platformId','baseUrl','model','protocol'] as const;
@@ -114,7 +116,8 @@ export function createAgentSettingsClient({ fetchImpl = (input: RequestInfo | UR
     } catch (error) { const code = failureCode(error); throw failure(code && (codes.has(code) || code === 'INVALID_RESPONSE') ? code : 'NETWORK'); }
     finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); }
   }
-  return { read: (signal?: AbortSignal) => request('GET', undefined, signal), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
+  return { read: (signal?: AbortSignal, purpose?: SettingsReadPurpose) => measureSettingsRead('agent-settings', () => request('GET', undefined, signal), purpose),
+    write: (input: unknown) => request('PUT', JSON.stringify(input)) };
 }
 
 
@@ -151,7 +154,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
  let state=initialAgentSettingsState(),active=true,visible=true,epoch=0;
  const watchStorage=watchPendingSecretStorage(async signal=>{
   const before=state.snapshot;if(!before)return;
-  const {storage}=safeAgentSettings(await client.read(signal));
+  const {storage}=safeAgentSettings(await client.read(signal,'keychain-poll'));
   if(!signal.aborted&&state.snapshot===before&&storage.reasonCode!=='OS_SECRET_STORE_PENDING')publish({snapshot:{...before,storage}});
  });
  const observeStorage=()=>watchStorage(active&&visible&&state.snapshot?.storage.reasonCode==='OS_SECRET_STORE_PENDING');
@@ -210,10 +213,14 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
   const serviceIntents={...state.serviceIntents};delete serviceIntents[key];
   publish({draft:{...state.draft,services:state.draft.services.filter(item=>item.serviceKey!==key)},serviceIntents,selectedKey:state.selectedKey===key?'general':state.selectedKey,...readyPatch()});return true;
  }
- function addModel(key:string,value:string):boolean {
-  const found=service(key),model=value.trim();if(!found||!isAgentModelIdentifier(model)||found.manualModelIds.includes(model)||found.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels)return false;
-  return editService(key,{manualModelIds:[...found.manualModelIds,model]});
+ function addModels(key:string,values:readonly string[]):boolean {
+  const found=service(key);
+  if(!found||values.length===0||values.some(value=>!isAgentModelIdentifier(value)))return false;
+  const previous=new Set(found.manualModelIds),models=[...new Set(values)].filter(value=>!previous.has(value));
+  if(models.length===0||previous.size+models.length>AGENT_CONNECTION_LIMITS.manualModels)return false;
+  return editService(key,{manualModelIds:[...previous,...models]});
  }
+ const addModel=(key:string,value:string):boolean=>addModels(key,[value.trim()]);
  function removeModel(key:string,model:string):boolean {const found=service(key);return found?editService(key,{manualModelIds:found.manualModelIds.filter(id=>id!==model)}):false;}
  function selectMio(key:string,modelId:string):boolean {
   if(!editable()||!service(key)||!isAgentModelIdentifier(modelId)||!state.draft)return false;
@@ -271,7 +278,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
    }).catch(()=>{if(current(token))publish({phase:'blocked',message:'',displayMessages:[message('agent.settings.notice.blocked')]});return false;});
   });
  }
- return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,removeModel,selectMio,useLatest,acknowledge,save,
+ return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,addModels,removeModel,selectMio,useLatest,acknowledge,save,
   setVisible(value:boolean){visible=Boolean(value);observeStorage();},
   setStorage(key:string,storage:string):boolean {if(!editable()||!service(key)||(storage!=='session'&&storage!=='persistent')||storage==='persistent'&&!state.snapshot?.storage.persistentAvailable)return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{action:'keep'},storage}}});return true;},
   removeKey(key:string,remove=true):boolean {if(!editable()||!service(key))return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{storage:'session'},action:remove?'remove':'keep'}},...readyPatch()});return true;},

@@ -1,3 +1,4 @@
+import { markSettingsClick, type SettingsClick } from '../apps/web/src/settings-diagnostics.ts';
 import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
@@ -258,7 +259,7 @@ type UiNode = {type?: unknown; props: Obj & {children?: unknown; ref: {current: 
 const element = (type: unknown, props: Obj | null = {}, ...children: unknown[]): UiNode => ({type, props: {...(props ?? {}), children: children.length === 1 ? children[0] : children} as UiNode['props']});
 const nodes = (tree: unknown): UiNode[] => Array.isArray(tree) ? tree.flatMap((item: unknown) => nodes(item)) : tree !== null && typeof tree === 'object' && 'props' in tree ? [tree as UiNode, ...nodes((tree as UiNode).props.children)] : [];
 const depsEqual = (left: unknown, right: unknown): boolean => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value: unknown, index: number) => Object.is(value, right[index]));
-interface RenderOptions { mockAvailable?: boolean; onOpenSettings?: (slot: string) => unknown; languageStore?: Parameters<typeof creationTestDependency>[1]; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
+interface RenderOptions { mockAvailable?: boolean; onOpenSettings?: (slot: string, click?: SettingsClick) => unknown; languageStore?: Parameters<typeof creationTestDependency>[1]; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
 interface RenderSlot { [key: string]: unknown; value?: unknown; deps?: unknown; callback?: () => unknown; cleanup?: unknown }
 interface Harness {
   render(owner?: string): UiNode; find(id: string): UiNode; form(): UiNode;
@@ -291,6 +292,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
   react.default = react;
   const module: {exports: Obj} = {exports: {}}, primitive = new Proxy<Obj>({}, {get: (_target, key) => String(key)});
   const require = (name: string): unknown => {
+    if (name === './settings-diagnostics.ts') return {markSettingsClick};
     if (name === './project-media-read-gate.tsx') return {ProjectMediaImage: 'img'};
     const i18nDependency = creationTestDependency(name, options.languageStore); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
@@ -343,8 +345,8 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
 }
 
 test('stable image generation with no service offers settings, preserves historical Mock, and makes no request', async () => {
-  const f = historyFixture(), opened: string[] = [];
-  const ui = renderer(f, {mockAvailable: false, onOpenSettings: slot => {opened.push(slot);}});
+  const f = historyFixture(), opened: Array<[string, SettingsClick | undefined]> = [];
+  const ui = renderer(f, {mockAvailable: false, onOpenSettings: (slot, click) => {opened.push([slot, click]); return false;}});
   try {
     ui.render(); await flush(); ui.render();
     assert.equal(ui.find('image-provider-mock'), undefined);
@@ -353,8 +355,12 @@ test('stable image generation with no service offers settings, preserves histori
     ui.change('image-generation-name', 'New image'); ui.change('image-generation-prompt', 'New prompt');
     assert.equal(ui.find('image-generate').props.disabled, true);
     ui.form().props.onSubmit({preventDefault() {}});
-    ui.click('image-generation-configure'); await flush();
-    assert.deepEqual(opened, ['official']);
+    const configureClick = {isTrusted: true, timeStamp: 3};
+    ui.find('image-generation-configure').props.onClick({nativeEvent: configureClick}); await flush();
+    assert.deepEqual(opened, [['official', configureClick]]);
+    const headerClick = {isTrusted: true, timeStamp: 7};
+    ui.find('image-settings-open').props.onClick({nativeEvent: headerClick}); await flush();
+    assert.deepEqual(opened, [['official', configureClick], ['official', headerClick]]);
     assert.equal(mutations(f).length, 0);
     assert.equal(f.privateCalls.length, 0);
   } finally {ui.unmount(); f.session.dispose();}

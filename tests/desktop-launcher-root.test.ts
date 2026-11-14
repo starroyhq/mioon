@@ -207,6 +207,8 @@ test('directory identity status is read-only in four languages and blocked ident
     assert.equal(nodes(blocked).some(node => node.props['data-testid'] === 'project-entry-identity-retry'), false);
     assert.ok(JSON.stringify(blocked).includes(i18nTestModule(locale).useI18n().t('projects.locatorKeepWindow')));
     for (const phase of ['idle', 'loading', 'ready']) assert.equal(nodes(render({owner, state: {phase, identityBlocked: false}})).some(node => node.props['data-testid'] === 'project-entry-identity-retry'), false);
+    const workspace = render({owner, workspace: true, state: {phase: 'ready', identityBlocked: false}});
+    assert.ok(JSON.stringify(workspace).includes(i18nTestModule(locale).useI18n().t('shell.workspaceVerified')));
   }
 });
 test('entry form stale handlers cannot mutate while sealed before React rerenders disabled props', () => {

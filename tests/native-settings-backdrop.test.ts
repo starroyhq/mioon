@@ -11,8 +11,12 @@ import { installSettingsBootClose, retireSettingsBootClose } from '../apps/web/s
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import type { SettingsRenderProps } from '../apps/web/src/SettingsRoot.tsx';
-import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
-import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import {createSettingsWorkspaceIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import type {SettingsWorkspaceIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import * as settingsLocale from '../packages/i18n/src/locale.ts';
+import {settingsBootMessages} from '../packages/i18n/src/catalogs/settings-boot.ts';
+import type {SettingsDiagnosticsBridge} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
+import {markSettingsClick, measureSettingsRead} from '../apps/web/src/settings-diagnostics.ts';
 
 interface Node { type: unknown; key: unknown; props: Record<string, unknown> & { children?: unknown } }
 interface Effect { deps: readonly unknown[]; cleanup?: void | (() => void) }
@@ -141,6 +145,180 @@ const context = (patch: Partial<ProjectWindowContext> = {}): ProjectWindowContex
   editorProjectId: id(4), editorPhase: 'ready', editorCount: 1, entryMode: null, entryVersion: 0, entryReceipt: null, settingsSlot: null, settingsVersion: 0,
   selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false, ...patch });
 
+function executeBoot(appearance: unknown, bridge?: SettingsDiagnosticsBridge, native = true) {
+  const source = readFileSync(new URL('../apps/web/src/settings-boot.ts', import.meta.url), 'utf8');
+  const bootstrap = Promise.withResolvers();
+  const bootCalls: string[] = [];
+  const closeHandlers: Array<() => void> = [];
+  const elements = new Map(['settings-boot', 'settings-boot-title', 'settings-boot-status', 'settings-boot-close'].map(id => [id, {
+    textContent: '', hidden: true, addEventListener(type: string, callback: () => void) {
+      assert.equal(id, 'settings-boot-close'); assert.equal(type, 'click'); closeHandlers.push(callback);
+    },
+  }]));
+  const classes = new Set<string>();
+  const root = {lang: 'en', dataset: {} as {theme?: string}, style: {} as {colorScheme?: string},
+    classList: {toggle(name: string, on: boolean) { if (on) classes.add(name); else classes.delete(name); }}};
+  let receive: ((next: ProjectWindowContext) => void) | undefined;
+  const host = {
+    __mioonSettingsBootAppearance: appearance,
+    __mioonSettingsDiagnostics: bridge,
+    ...(native ? {__mioonProjectWindow: {
+      subscribe(callback: (next: ProjectWindowContext) => void) { receive = callback; return () => { bootCalls.push('unsubscribe'); }; },
+      context() { assert.fail('An idle shell may not call describe'); },
+      async closeSettings() { bootCalls.push('close-request'); return true; },
+    }} : {}),
+  };
+  const code = transformSync(source.replace("import('./main.tsx')", 'loadMain()'), {loader: 'ts', format: 'cjs'}).code;
+  Function('require', 'window', 'document', 'navigator', 'loadMain', code)((name: string) => {
+    if (name.endsWith('/locale.ts')) return settingsLocale;
+    if (name.endsWith('/settings-boot.ts')) return {settingsBootMessages};
+    assert.equal(name, './settings-boot-close.ts');
+    return {installSettingsBootClose(value: unknown) { assert.equal(value, host); bootCalls.push('close-installed'); }};
+  }, host, {documentElement: root, getElementById: (name: string) => elements.get(name)}, {languages: ['en-US']},
+  () => { bootCalls.push('import'); return bootstrap.promise; });
+  return {root, classes, bootCalls, elements, bootstrap, closeHandlers, receive: (next: ProjectWindowContext) => receive?.(next)};
+}
+
+test('prewarmed settings paint the selected locale and theme and import only after the active document ACK', async () => {
+  const ack = Promise.withResolvers<boolean>(), marks: string[] = [];
+  const boot = executeBoot({locale: 'zh-Hant', theme: 'light'}, {
+    markBoot(phase) { marks.push(phase); return phase === 'start' ? ack.promise : Promise.resolve(true); },
+    markClick() { assert.fail('A settings document cannot mark a click'); },
+    markRead() { assert.fail('An idle shell cannot read settings'); },
+  });
+  assert.equal(boot.root.lang, 'zh-Hant');
+  assert.equal(boot.root.dataset.theme, 'light');
+  assert.equal(boot.root.style.colorScheme, 'light');
+  assert.deepEqual([...boot.classes], ['light']);
+  assert.equal(boot.elements.get('settings-boot-title')?.textContent, '設定');
+  assert.equal(boot.elements.get('settings-boot-status')?.textContent, '正在載入設定…');
+  assert.equal(boot.elements.get('settings-boot')?.hidden, false);
+  assert.equal(boot.elements.get('settings-boot-close')?.hidden, true);
+  const html = readFileSync(new URL('../apps/web/settings.html', import.meta.url), 'utf8');
+  assert.match(html, /<main id="settings-boot" hidden>/);
+  assert.match(html, /#settings-boot\[hidden\]\s*\{\s*display:\s*none/);
+  assert.deepEqual(boot.bootCalls, ['close-installed']);
+  boot.receive(context({settingsSlot: 'general'}));
+  boot.receive(context({role: 'settings', settingsSlot: 'general', quitting: true}));
+  assert.deepEqual(marks, []);
+  const active = context({role: 'settings', settingsSlot: 'general'});
+  boot.receive(active); boot.receive(active);
+  assert.deepEqual(marks, ['start']);
+  assert.deepEqual(boot.bootCalls, ['close-installed']);
+  ack.resolve(true);
+  await new Promise(setImmediate);
+  assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import']);
+  assert.equal(boot.elements.get('settings-boot-close')?.textContent, '關閉設定視窗');
+  boot.bootstrap.resolve(undefined);
+  await new Promise(setImmediate);
+  assert.deepEqual(marks, ['start', 'import', 'ready']);
+});
+
+test('a refused boot does not import and failures stay localized and closable', async () => {
+  for (const admission of ['refused', 'unavailable', 'accepted'] as const) {
+    const accepted = admission === 'accepted';
+    const marks: string[] = [];
+    const boot = executeBoot({locale: 'ja', theme: 'dark'}, {
+      async markBoot(phase) {
+        marks.push(phase);
+        if (admission === 'unavailable') throw Error('synthetic activation transport failure');
+        return accepted;
+      },
+      markClick() {}, markRead() {},
+    });
+    boot.receive(context({role: 'settings', settingsSlot: 'general'}));
+    await new Promise(setImmediate);
+    assert.equal(boot.bootCalls.includes('import'), accepted);
+    if (accepted) {
+      boot.bootstrap.reject(Error('synthetic import failure'));
+      await new Promise(setImmediate);
+    }
+    assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+    assert.equal(boot.elements.get('settings-boot-close')?.hidden, false);
+    assert.deepEqual(marks, accepted ? ['start', 'import', 'failed'] : ['start']);
+  }
+  const browser = executeBoot(undefined, undefined, false);
+  assert.equal(browser.root.lang, 'en');
+  assert.deepEqual(browser.bootCalls, ['import']);
+  browser.bootstrap.resolve(undefined);
+});
+
+test('an ACK denied during quit retries once the active owner returns without duplicating the close listener', async () => {
+  for (const resumeBeforeDenial of [true, false]) {
+    const first = Promise.withResolvers<boolean>(), marks: string[] = [];
+    let admissions = 0;
+    const boot = executeBoot({locale: 'ja', theme: 'dark'}, {
+      markBoot(phase) {
+        marks.push(phase);
+        if (phase === 'start' && admissions++ === 0) return first.promise;
+        return Promise.resolve(true);
+      },
+      markClick() {}, markRead() {},
+    });
+    const active = context({role: 'settings', settingsSlot: 'general', settingsVersion: 1});
+    boot.receive(active);
+    boot.receive(active);
+    boot.receive({...active, quitting: true});
+    if (resumeBeforeDenial) boot.receive(active);
+    assert.deepEqual(marks, ['start']);
+    first.resolve(false);
+    await new Promise(setImmediate);
+    if (!resumeBeforeDenial) {
+      assert.deepEqual(marks, ['start']);
+      assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+      boot.receive(active);
+      await new Promise(setImmediate);
+    }
+    assert.deepEqual(marks, ['start', 'start', 'import']);
+    assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込んでいます…');
+    assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import']);
+    assert.equal(boot.closeHandlers.length, 1);
+    boot.closeHandlers[0]!();
+    assert.deepEqual(boot.bootCalls, ['close-installed', 'unsubscribe', 'import', 'close-request']);
+    boot.bootstrap.resolve(undefined);
+    await new Promise(setImmediate);
+    assert.deepEqual(marks, ['start', 'start', 'import', 'ready']);
+  }
+});
+
+test('trusted click uses the browser event timestamp and simultaneous reads pair their own terminal marks', async t => {
+  const events: unknown[][] = [];
+  const bridge = {
+    markClick: at => { events.push(['click', at]); },
+    async markBoot() { return true; },
+    markRead: (page, phase, id, at) => { events.push([page, phase, id, at]); },
+  } satisfies SettingsDiagnosticsBridge;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const host: {__mioonSettingsDiagnostics: SettingsDiagnosticsBridge; __mioonSettingsBootAppearance?: unknown} = {__mioonSettingsDiagnostics: bridge};
+  Object.defineProperty(globalThis, 'window', {configurable: true, value: host});
+  t.after(() => { if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window'); });
+  const timeStamp = Math.max(1, performance.now() - 50);
+  markSettingsClick({isTrusted: false, timeStamp});
+  markSettingsClick({isTrusted: true, timeStamp: Number.NaN});
+  markSettingsClick({isTrusted: true, timeStamp});
+  assert.deepEqual(events, [['click', Math.floor(performance.timeOrigin + timeStamp)]]);
+  assert.equal(await measureSettingsRead('appearance', async () => 'editor'), 'editor');
+  assert.equal(events.length, 1, 'settings helpers used by an editor emit no read timing');
+  host.__mioonSettingsBootAppearance = {locale: 'en', theme: 'dark'};
+
+  const left = Promise.withResolvers<string>(), right = Promise.withResolvers<string>();
+  const a = measureSettingsRead('appearance', () => left.promise);
+  const b = measureSettingsRead('appearance', () => right.promise);
+  assert.equal(events.length, 3);
+  const first = events[1]!, second = events[2]!;
+  assert.deepEqual(first.slice(0, 2), ['appearance', 'start']);
+  assert.deepEqual(second.slice(0, 2), ['appearance', 'start']);
+  assert.notEqual(first[2], second[2]);
+  const failure = Error('synthetic read failure');
+  right.reject(failure); await assert.rejects(b, error => error === failure);
+  left.resolve('result'); assert.equal(await a, 'result');
+  assert.deepEqual(events.slice(3).map(event => event.slice(0, 3)), [
+    ['appearance', 'end', second[2]], ['appearance', 'end', first[2]],
+  ]);
+  assert.ok(Number(events[3]![3]) >= Number(second[3]));
+  assert.ok(Number(events[4]![3]) >= Number(first[3]));
+});
+
 test('DesktopRoot applies only its verified modal flag without replacing its editor owner or accepting stale unlocks', async () => {
   const h = hooks(), initial = Promise.withResolvers<ProjectWindowContext>();
   let receive!: (context: unknown) => void;
@@ -175,6 +353,7 @@ class SettingsPage extends EventTarget {
 
 async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, options: {
   initialSlot?: ProjectWindowContext['settingsSlot']; confirm?: () => Promise<boolean>; page?: SettingsPage;
+  readIdentity?: (input: {readonly signal: AbortSignal}) => Promise<unknown>;
 } = {}) {
   const h = hooks(), page = options.page ?? new SettingsPage(), document = Object.assign(new Document(), { visibilityState: 'visible' });
   const observation: boolean[] = [], pauseObservation = (paused: boolean) => { observation.push(paused); };
@@ -183,15 +362,15 @@ async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, 
   let locale: import('../packages/i18n/src/index.ts').Locale = 'zh-Hans';
   let props: SettingsRenderProps | undefined;
   let owner: ReturnType<ReturnType<typeof createSettingsNavigationRegistry>['register']> | undefined;
-  let identity!: ProjectEntryIdentityOwner;
-  let directory: unknown = {version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []};
+  let identity!: SettingsWorkspaceIdentityOwner, identityReads = 0;
+  let workspaceIdentity: unknown = {appLibraryScope: 'a'.repeat(64), instanceId: id(900)};
   const Component = load('SettingsRoot.tsx', h.react, {
     './i18n/I18nProvider.tsx': {useI18n: () => i18nTestModule(locale).useI18n()}, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => options.confirm ?? (async () => false) },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
     './settings-boot-close.ts': { retireSettingsBootClose },
     './settings-window-state.ts': { createSettingsWindowNavigation },
-    './project-entry-identity.ts': {createProjectEntryIdentityOwner: (input: Parameters<typeof createProjectEntryIdentityOwner>[0]) => identity = createProjectEntryIdentityOwner(input)},
+    './project-entry-identity.ts': {createSettingsWorkspaceIdentityOwner: (input: Parameters<typeof createSettingsWorkspaceIdentityOwner>[0]) => identity = createSettingsWorkspaceIdentityOwner(input)},
     './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './ProjectEntryIdentityStatus.tsx': { __esModule: true, default: 'identity-status' },
     '@mioon/ui/components/button': { Button: 'Button' }, '@mioon/ui/components/workbench-icons': { WorkbenchIcon: 'WorkbenchIcon' },
   }, { window: page, document });
@@ -200,18 +379,27 @@ async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, 
   let requests = 0;
   const bridge = { subscribe: (listener: (next: ProjectWindowContext) => void) => {receive = listener; return () => {receive = () => {};};}, closeSettings: () => { requests++; return onClose(page); } };
   const render = () => {
-    h.begin(); const tree = Component({ context: settings, bridge, rpc() {}, contractChecks: {readDirectory: async () => {if (directory instanceof Error) throw directory; return directory;}}, renderSettings(next: SettingsRenderProps) {
+    h.begin(); const tree = Component({ context: settings, bridge, contractChecks: {
+      readDirectory: () => assert.fail('The desktop settings window does not read the project catalog'),
+      readIdentity: async (input: {readonly signal: AbortSignal}) => {
+        identityReads++;
+        if (options.readIdentity) return options.readIdentity(input);
+        if (workspaceIdentity instanceof Error) throw workspaceIdentity;
+        return workspaceIdentity;
+      },
+    }, renderSettings(next: SettingsRenderProps) {
       props = next; owner ??= next.registry.register('retained-form'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 }); return marker;
     } }); h.flush(); return tree;
   };
-  render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
-  assert.ok(props); assert.ok(nodes(tree).includes(marker));
+  const initial = render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
+  if (!options.readIdentity) {assert.ok(props); assert.ok(nodes(tree).includes(marker));}
   return { render, page, marker, input, password, observation,
-    identity, directory(value: unknown) {directory = value;},
+    identity, workspaceIdentity(value: unknown) {workspaceIdentity = value;},
     reportForm(state: Parameters<NonNullable<typeof owner>['update']>[0]) {assert.ok(owner); owner.update(state);},
     receive(next: ProjectWindowContext) {settings = next; receive(next);},
     setLocale(next: typeof locale) {locale = next;},
     get context() {return settings;}, get props() {assert.ok(props); return props;}, get stateUpdates() {return h.updates;},
+    get identityReads() {return identityReads;}, initial,
     button: find(tree, 'native-settings-panel-close').props.onClick as () => void, dispose: h.dispose, get requests() { return requests; } };
 }
 
@@ -279,20 +467,38 @@ test('SettingsRoot releases an outstanding native observation pause when its doc
 
 test('SettingsRoot identity failures retain the exact secret input and recovery owners while a changed instance stays inert', async () => {
   const f = await settingsPanel(async () => false), retained = f.props.registry.capture();
-  f.directory(Error('private disconnected endpoint')); await f.identity.refresh(); let tree = f.render();
+  f.workspaceIdentity(Error('private disconnected endpoint')); await f.identity.refresh(); let tree = f.render();
   assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, true);
   assert.deepEqual(f.props.registry.capture(), retained); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh(); tree = f.render();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(900)}); await f.identity.refresh(); tree = f.render();
   assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, false);
   const admission = f.page.__mioonNativeCloseAdmission!, ticket = admission.inspect();
   f.reportForm({dirty: true, busy: false, blocked: true, version: 2}); const unresolved = f.props.registry.capture();
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(901), registered: []}); await f.identity.refresh(); tree = f.render();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(901)}); await f.identity.refresh(); tree = f.render();
   assert.equal(f.identity.getState().identityBlocked, true); assert.equal(f.identity.getVerifiedScope(), null);
   assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
   assert.deepEqual(f.props.registry.capture(), unresolved); assert.equal(admission.commit(ticket.token, {discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000}), false);
   assert.equal(admission.inspect('reload', f.page.location.href).disposition, 'blocked');
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(900)}); await f.identity.refresh();
   assert.equal(f.identity.getVerifiedScope(), null); assert.equal(find(f.render(), 'retained-native-key'), f.input); f.dispose();
+});
+
+test('native Settings starts and switches pages using only workspace identity', async () => {
+  const received = Promise.withResolvers<unknown>();
+  const f = await settingsPanel(async () => false, {initialSlot: 'general', readIdentity: () => received.promise});
+  assert.equal(nodes(f.initial).includes(f.marker), false);
+  assert.equal(f.identity.getState().phase, 'loading');
+  assert.equal(f.identityReads, 1);
+  received.resolve({appLibraryScope: 'a'.repeat(64), instanceId: id(900)});
+  await f.identity.discover();
+  assert.ok(nodes(f.render()).includes(f.marker));
+  assert.equal(f.props.page, 'general');
+  f.reportForm({dirty: false, busy: false, blocked: false, version: 2});
+  f.props.onPage('workspace'); await new Promise(setImmediate);
+  assert.ok(nodes(f.render()).includes(f.marker));
+  assert.equal(f.props.page, 'workspace');
+  assert.equal(f.identityReads, 1);
+  f.dispose();
 });
 
 test('native close requests coalesce while pending and rejection keeps the same dirty settings form without fallback', async () => {

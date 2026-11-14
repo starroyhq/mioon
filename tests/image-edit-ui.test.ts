@@ -1,3 +1,4 @@
+import { markSettingsClick } from '../apps/web/src/settings-diagnostics.ts';
 import { comfyConnectorAvailabilityDescriptor } from '../apps/web/src/comfy-image-settings.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
@@ -188,6 +189,7 @@ function renderer(f: Fixture): Harness {
   react.default = react;
   const module: {exports: RenderState} = {exports: {}}, primitive = new Proxy<Record<string, unknown>>({}, {get: (_target, key) => String(key)});
   const require = (name: string): unknown => {
+    if (name === './settings-diagnostics.ts') return {markSettingsClick};
     const i18nDependency = creationTestDependency(name); if (i18nDependency) return i18nDependency;
     if (name === './native-close-sources.ts') return nativeCloseSources;
     if (name === './image-edit-intent.ts') return imageEditIntent;

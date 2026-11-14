@@ -53,6 +53,7 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
     if (name === '@mioon/ui/components/textarea') return {Textarea: 'textarea'};
     if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select'};
     if (name === './VideoProviderSettings.tsx') return {ModelEditor: 'ModelEditor'};
+    if (name === './ModelPickerDialog.tsx') return {__esModule: true, default: 'ModelPickerDialog'};
     if (name.endsWith('.css')) return {};
     assert.fail('Unexpected video domain dependency: ' + name);
   }, module, module.exports);
@@ -75,6 +76,7 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
   const find = (key: string, id: string) => {const found = nodes(trees.get(key)).find(item => item.props['data-testid'] === id); assert.ok(found, `${key}:${id}`); return found;};
   render();
   return {keyA, keyB, inputs, reports, render, find, client, all: (key: string) => nodes(trees.get(key)),
+    picker: (key: string) => nodes(trees.get(key)).find(item => item.type === 'ModelPickerDialog'),
     domain: () => domain,
     type(key: string, value: string) {inputs.get(key)!.value = value; invoke(find(key, 'video-connection-key'), 'onChange'); render();},
     select(key: string) {selected = key; render();},
@@ -205,7 +207,7 @@ test('built-in check and model discovery use one-time draft values and retain no
   const f = fixture({
     modelsList: async input => {
       requests.push(structuredClone(input));
-      return input.operation === 'models' ? {result: 'ok', models: [{id: 'veo-test-video'}]} : {result: 'ok'};
+      return input.operation === 'models' ? {result: 'ok', models: [{id: 'veo-3.1-generate-preview'}, {id: 'veo-test-video'}, {id: 'veo-test-not-selected'}]} : {result: 'ok'};
     },
     write: async () => {writes++; throw Error('Unexpected save');},
   });
@@ -218,6 +220,8 @@ test('built-in check and model discovery use one-time draft values and retain no
   await flush();
   f.render();
   invoke(f.find('video:veo', 'video-fetch-models'), 'onClick');
+  f.render();
+  assert.equal(f.picker('video:veo')?.props.status, 'loading');
   await flush();
   f.render();
   assert.deepEqual(requests, [
@@ -225,7 +229,31 @@ test('built-in check and model discovery use one-time draft values and retain no
     {operation: 'models', source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value: 'synthetic-video-ui-draft'},
   ]);
   assert.equal(f.find('video:veo', 'video-compatible-check-result').props['data-result'], 'ok');
+  const picker = f.picker('video:veo')!;
+  assert.equal(picker.props.status, 'ready');
+  assert.equal(picker.props.usesDraftKey, true);
+  assert.deepEqual(picker.props.items, [
+    {id: 'veo-3.1-generate-preview', added: true, unavailable: false},
+    {id: 'veo-test-video', added: false, unavailable: false},
+    {id: 'veo-test-not-selected', added: false, unavailable: false},
+  ]);
   assert.equal(f.all('video:veo').some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'veo-test-video'), false);
+  const visibleProps = {...picker.props};
+  assert.deepEqual(Object.keys(visibleProps).sort(), [
+    'children', 'items', 'key', 'maxAdditions', 'onAdd', 'onClose', 'serviceName',
+    'status', 'statusMessage', 'triggerRef', 'usesDraftKey',
+  ]);
+  assert.doesNotMatch(JSON.stringify(visibleProps), /synthetic-video-ui-draft/);
+  invoke(picker, 'onAdd', ['veo-not-returned']);
+  f.render();
+  assert.equal(f.picker('video:veo')?.props.status, 'ready');
+  invoke(picker, 'onAdd', ['veo-test-video']);
+  f.render();
+  assert.equal(f.picker('video:veo'), undefined);
+  assert.deepEqual(f.all('video:veo').filter(node => node.type === 'ModelEditor').map(node => {
+    const model = node.props.model as {modelId: string; enabled: boolean};
+    return [model.modelId, model.enabled];
+  }), [['veo-3.1-generate-preview', true], ['veo-test-video', true]]);
   assert.equal(f.domain().navigation.dirty, true);
   assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-video-ui-draft/);
   f.domain().discard();
@@ -234,6 +262,129 @@ test('built-in check and model discovery use one-time draft values and retain no
   assert.equal(f.domain().navigation.dirty, false);
   assert.equal(writes, 0);
   f.unmount();
+});
+
+test('video model discovery lists IDs outside the existing video contract without staging them', async () => {
+  const valid = 'synthetic-model:preview';
+  const invalid = ['vendor/synthetic-model', 'v'.repeat(101)];
+  const f = fixture({modelsList: async () => ({result: 'ok', models: [...invalid, valid].map(id => ({id}))})});
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const picker = f.picker(f.keyA)!;
+  assert.equal(picker.props.status, 'ready');
+  assert.deepEqual(picker.props.items, [
+    ...invalid.map(id => ({id, added: false, unavailable: true})),
+    {id: valid, added: false, unavailable: false},
+  ]);
+  invoke(picker, 'onAdd', [invalid[0]!, valid]);
+  f.render();
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(f.picker(f.keyA)?.props.status, 'ready');
+  invoke(picker, 'onAdd', [valid]);
+  f.render();
+  assert.equal(f.picker(f.keyA), undefined);
+  assert.deepEqual(f.all(f.keyA).filter(node => node.type === 'ModelEditor').map(node => (node.props.model as {modelId: string}).modelId), ['sora-2', valid]);
+  f.unmount();
+});
+
+test('cancel closes the model picker, aborts the request, and discards late results without writes', async () => {
+  const pending = deferred<Awaited<ReturnType<NonNullable<VideoSettingsClient['modelsList']>>>>();
+  const signals: (AbortSignal | undefined)[] = [];
+  let writes = 0;
+  const f = fixture({
+    modelsList: async (input, requestSignal) => {
+      assert.equal(input.source, 'saved');
+      signals.push(requestSignal);
+      return pending.promise;
+    },
+    write: async () => {writes++; throw Error('Unexpected save');},
+  });
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  f.render();
+  const picker = f.picker(f.keyA)!;
+  assert.equal(picker.props.status, 'loading');
+  assert.equal(picker.props.usesDraftKey, false);
+  invoke(picker, 'onClose');
+  assert.equal(signals[0]?.aborted, true);
+  pending.resolve({result: 'ok', models: [{id: 'synthetic-late-video'}]});
+  await flush();
+  f.render();
+  assert.equal(f.picker(f.keyA), undefined);
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(f.domain().prepareSave(), null);
+  assert.equal(writes, 0);
+  f.unmount();
+});
+
+test('empty and unsupported model discovery remain read-only picker states', async () => {
+  const f = fixture({modelsList: async input => input.providerId === 'kling' ? {result: 'unsupported'} : {result: 'ok', models: []}});
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const empty = f.picker(f.keyA)!;
+  assert.equal(empty.props.status, 'empty');
+  assert.equal(empty.props.statusMessage, 'zh-Hans:settings.draftKey.modelsEmpty');
+  assert.deepEqual(empty.props.items, []);
+  assert.equal(f.domain().navigation.dirty, false);
+  f.select('video:kling');
+  f.type('video:kling', 'synthetic-unsupported-maker');
+  invoke(f.find('video:kling', 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const unsupported = f.picker('video:kling')!;
+  assert.equal(unsupported.props.status, 'empty');
+  assert.equal(unsupported.props.statusMessage, 'zh-Hans:settings.draftKey.listUnsupported');
+  assert.deepEqual(unsupported.props.items, []);
+  assert.equal(f.picker(f.keyA), undefined);
+  f.unmount();
+});
+
+test('model picker preserves the video check messages for provider and transport failures', async () => {
+  for (const [result, message] of [
+    ['unreachable', 'video.providers.check.unreachable'], ['failed', 'settings.draftKey.failed'],
+  ] as const) {
+    const f = fixture({modelsList: async () => ({result})});
+    await flush();
+    f.render();
+    invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+    await flush();
+    f.render();
+    const picker = f.picker(f.keyA)!;
+    assert.equal(picker.props.status, 'error');
+    assert.equal(picker.props.statusMessage, `zh-Hans:${message}`);
+    assert.equal(f.domain().navigation.dirty, false);
+    f.unmount();
+  }
+});
+
+test('a model picker retained by stale callbacks cannot add to another service or after a recipient edit', async () => {
+  for (const action of ['select', 'address', 'key']) {
+    const f = fixture({modelsList: async () => ({result: 'ok', models: [{id: 'synthetic-old-video'}]})});
+    await flush();
+    f.render();
+    invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+    await flush();
+    f.render();
+    const stale = f.picker(f.keyA)!;
+    assert.equal(stale.props.status, 'ready');
+    if (action === 'select') f.select(f.keyB);
+    if (action === 'address') invoke(f.find(f.keyA, 'video-connection-base-url'), 'onChange', {target: {value: 'https://new.example.com/v2'}});
+    if (action === 'key') f.type(f.keyA, 'synthetic-new-key');
+    invoke(stale, 'onAdd', ['synthetic-old-video']);
+    f.render();
+    for (const key of [f.keyA, f.keyB]) {
+      assert.equal(f.picker(key), undefined);
+      assert.equal(f.all(key).some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'synthetic-old-video'), false);
+    }
+    f.unmount();
+  }
 });
 
 test('a saved password cannot be reused by a retained callback after the draft address changes', async () => {

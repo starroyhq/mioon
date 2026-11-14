@@ -12,12 +12,13 @@ import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import type { AgentTaskReveal } from './agent-task-location.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
 import type { MioFollowFocus, MioFollowTarget, MioFollowTargetExists } from './mio-follow.ts';
+import type { SettingsClick } from './settings-diagnostics.ts';
 const pass = <T,>(value: unknown): T => value as T;
 
 export interface AgentDockPaneProps { visible: boolean; children?: ReactNode; id?: string; labelledBy?: string; fallbackFocus?: string }
 export interface AgentWorkspaceProps {
   isAdmissionAllowed?: () => boolean;
-  onOpenSettings?: ((page: string) => unknown) | null;
+  onOpenSettings?: ((page: string, click?: SettingsClick) => unknown) | null;
   onReviewProjectRules?: () => void;
   settingsOverlayOpen?: boolean;
   nativeSettingsScope?: unknown;
@@ -84,7 +85,7 @@ export default function AgentWorkspace({ isAdmissionAllowed, onReviewProjectRule
   if (page === 'settings') settingsOpened.current = true;
   return <div className="agent-workspace" data-testid="agent-workspace" data-page={page}>
     <AgentDockPane id="agent-chat-pane" visible={page === 'chat' && !settingsOverlayOpen} fallbackFocus="[data-testid=right-dock-tab-agent]">
-      {projectId ? <AgentTaskPanel isAdmissionAllowed={isAdmissionAllowed} onReviewProjectRules={onReviewProjectRules} nativeCloseRegistry={nativeCloseRegistry} key={`${workspaceScope}:${projectId}`} workspaceScope={workspaceScope} projectId={projectId} projectName={projectName} timelineFps={timelineFps} targetName={targetName} onApplied={onTaskApplied ?? onApplied} onLocate={onTaskLocate} reveal={taskReveal} shotNumber={shotNumber} onReview={onTaskReview} onReviewLocate={onTaskReviewLocate} reviewReveal={reviewReveal} onOpenRequests={onTaskOpenRequests} onSettings={target => onOpenSettings ? onOpenSettings(target ?? 'agent') : onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} onMioFollowFocus={onMioFollowFocus} onMioFollowLocate={onMioFollowLocate} mioFollowTargetExists={mioFollowTargetExists} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
+      {projectId ? <AgentTaskPanel isAdmissionAllowed={isAdmissionAllowed} onReviewProjectRules={onReviewProjectRules} nativeCloseRegistry={nativeCloseRegistry} key={`${workspaceScope}:${projectId}`} workspaceScope={workspaceScope} projectId={projectId} projectName={projectName} timelineFps={timelineFps} targetName={targetName} onApplied={onTaskApplied ?? onApplied} onLocate={onTaskLocate} reveal={taskReveal} shotNumber={shotNumber} onReview={onTaskReview} onReviewLocate={onTaskReviewLocate} reviewReveal={reviewReveal} onOpenRequests={onTaskOpenRequests} onSettings={(target, click) => onOpenSettings ? onOpenSettings(target ?? 'agent', click) : onPage('settings')} onClose={onCollapse} onDraftChange={onDraftChange} onMioFollowFocus={onMioFollowFocus} onMioFollowLocate={onMioFollowLocate} mioFollowTargetExists={mioFollowTargetExists} /> : <div className="agent-chat-empty"><h3>{t('agent.workspace.selectProject')}</h3><p>{t('agent.workspace.noImplicitProjectContent')}</p></div>}
     </AgentDockPane>
     <AgentDockPane id="agent-settings-pane" visible={page === 'settings'} fallbackFocus="[data-testid=right-dock-tab-agent]">
       {!nativeSettingsScope && !onOpenSettings && settingsOpened.current && <SettingsNavigationSlot registry={navigationRegistry} slot="workbench:agent">{report => <AgentSettings onClose={() => onPage('chat')} onNavigationStateChange={pass(report)} />}</SettingsNavigationSlot>}
