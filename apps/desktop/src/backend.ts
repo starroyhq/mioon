@@ -111,12 +111,12 @@ process.parentPort.on('message', ({ data, ports }) => {
   starting = true;
   initialization = (async () => {
     try {
+      // Windows storage opens only through the helper main verified and named.
+      initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
       if (ports?.length) {
         for (const port of ports) port.close();
         throw new TypeError('Unexpected backend startup ports');
       }
-      // Windows storage opens only through the helper main verified and named.
-      initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
       for (const name of ['dataDir', 'cacheDir', 'projectsDir'] as const) {
         if (typeof data[name] !== 'string' || !path.isAbsolute(data[name])) throw new TypeError('Invalid backend application directory');
       }
