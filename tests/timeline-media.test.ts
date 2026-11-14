@@ -36,7 +36,7 @@ const records: {startedAt:string;runtime:string;fixturePolicy:string;commands:Re
 async function command<B extends boolean=false>(file:string,args:readonly string[],binary:B=false as B):Promise<B extends true ? Buffer : string> {
   const startedAt = new Date().toISOString();
   try {
-    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
+    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { env: testEnv(), encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
     records.commands.push((({ file, args, startedAt, exitCode: 0, stdout: binary ? { bytes: result.stdout.length, sha256: sha(result.stdout) } : result.stdout, stderr: String(result.stderr) }) as unknown as Parameters<typeof records.commands.push>[0]));
     return result.stdout as B extends true ? Buffer : string;
   } catch (error) {

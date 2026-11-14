@@ -16,6 +16,7 @@ import type {VideoSecretCodec} from './video-secret-store.ts';
 import {randomUUID} from 'node:crypto';
 import {createProjectEntryControlClient} from './project-entry-control.ts';
 import type {DesktopProjectEntryControl} from './project-entry-control.ts';
+import {createSettingsEventLoopClient} from './settings-event-loop.ts';
 
 /** Electron utilityProcess surface used by the supervisor (structural for tests). */
 export interface BackendUtilityProcess {
@@ -111,6 +112,7 @@ export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateM
 
 export class BackendSupervisor extends EventEmitter {
   private projectControl: ReturnType<typeof createProjectEntryControlClient> | null = null;
+  private settingsEventLoop: ReturnType<typeof createSettingsEventLoopClient> | null = null;
   get projectEntries(): DesktopProjectEntryControl {
     if(!this.projectControl || this.state!=='running') throw new Error('Project entry control is unavailable');
     return this.projectControl.api;
@@ -206,6 +208,7 @@ export class BackendSupervisor extends EventEmitter {
       } catch (error) { this.exitReason = 'startup-error'; this.recordDiagnostic('spawn-failed', { classification: 'abnormal' }); fail(error as Error); return; }
       const kill = (reason: string) => {
         if (this.child !== child) return;
+        this.settingsEventLoop?.close();
         this.noteExitReason(reason);
         this.termination = 'utility-kill';
         this.recordDiagnostic('termination-requested', { classification: 'terminated' });
@@ -220,6 +223,8 @@ export class BackendSupervisor extends EventEmitter {
       const backendId=config.backendId??config.nativeAudioPreview?.backendId??randomUUID();
       const projectControl=this.projectControl=createProjectEntryControlClient({backendId,send:message=>child.postMessage(message),
         isCurrent:()=>this.child===child&&['running','stopping'].includes(this.state)});
+      const settingsEventLoop = this.settingsEventLoop = createSettingsEventLoopClient(message => child.postMessage(message),
+        () => this.child === child && this.state === 'running' && this.termination === null);
       // Startup needs vault status/decryption while the Images engine is loaded
       // in the utility. This bridge owns no settings or session credential RAM.
       const imageSecretBroker = createImageSecretBroker({ imageSecretCodec: this.imageSecretCodec,
@@ -250,6 +255,7 @@ export class BackendSupervisor extends EventEmitter {
         if (nativeAudioBroker?.handle(message)) return;
         if (projectTrashBroker.handle(message)) return;
         if (this.child !== child) return;
+        if (settingsEventLoop.handle(message)) return;
         if (isBackendLeaseProbe(message)) {
           // A suspended utility must prove its parent is still this live
           // owner. This acknowledgement cannot start work or revive a child
@@ -307,6 +313,8 @@ export class BackendSupervisor extends EventEmitter {
       child.once('exit', (code: number) => {
         projectControl.close();
         if(this.projectControl===projectControl)this.projectControl=null;
+        settingsEventLoop.close();
+        if (this.settingsEventLoop === settingsEventLoop) this.settingsEventLoop = null;
         settingsBroker.close();
         imageSecretBroker.close();
         videoSecretBroker.close();
@@ -357,6 +365,10 @@ export class BackendSupervisor extends EventEmitter {
     return this.nativeAudioBroker.request(command, onPending);
   }
 
+  sampleSettingsEventLoop(fromMs: number, toMs: number, signal?: AbortSignal, onTimeout?: () => void): Promise<number | null> {
+    return this.settingsEventLoop?.sample(fromMs, toMs, signal, onTimeout) ?? Promise.resolve(null);
+  }
+
   stop(): Promise<StopOutcome> {
     if (this.hasUnconfirmedMedia) return Promise.reject(unconfirmedMediaError());
     if (!this.child) { this.state = 'stopped'; return Promise.resolve(this.stopOutcome ?? { exitConfirmed: true, forced: false, code: null }); }
@@ -367,6 +379,7 @@ export class BackendSupervisor extends EventEmitter {
     this.cancelStart?.();
     this.expectedExit = true;
     this.state = 'stopping';
+    this.settingsEventLoop?.close();
     this.noteExitReason('stop-requested');
     this.recordDiagnostic('stop-requested');
     clearInterval(this.heartbeat ?? undefined);

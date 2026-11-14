@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -38,7 +39,7 @@ test('private policy is an explicit Node-only subpath and capability metadata ca
   // Synthetic platform process proves even a positive code-injected verifier
   // cannot enable the unimplemented Windows backend. This is not native ACL QA.
   const module = new URL('../packages/contracts/src/private-storage.ts', import.meta.url).href;
-  const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `Object.defineProperty(process,'platform',{value:'win32'}); const {createPrivateStoragePolicy}=await import(${JSON.stringify(module)}); let called=false; const policy=createPrivateStoragePolicy({windowsAclVerifier:()=>{called=true;return true;}}); try { policy.ensurePrivateDirectory('/synthetic-never-created',{create:true}); process.exitCode=1; } catch(error) { if(error.code!=='STORAGE_PRIVACY_UNAVAILABLE'||!called)process.exitCode=2; }`], {encoding: 'utf8'});
+  const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `Object.defineProperty(process,'platform',{value:'win32'}); const {createPrivateStoragePolicy}=await import(${JSON.stringify(module)}); let called=false; const policy=createPrivateStoragePolicy({windowsAclVerifier:()=>{called=true;return true;}}); try { policy.ensurePrivateDirectory('/synthetic-never-created',{create:true}); process.exitCode=1; } catch(error) { if(error.code!=='STORAGE_PRIVACY_UNAVAILABLE'||!called)process.exitCode=2; }`], {env: testEnv(), encoding: 'utf8'});
   assert.equal(probe.status, 0, probe.stderr);
 });
 

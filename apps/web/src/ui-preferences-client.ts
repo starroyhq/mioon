@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import { uiPreferencesPutSchema, uiPreferencesProjectIdSchema, uiPreferencesResponseSchema, UI_PREFERENCES_LIMITS } from '../../../packages/contracts/src/ui-preferences.ts';
 import type { UiPreferencesPut, UiPreferencesResponse } from '../../../packages/contracts/src/ui-preferences.ts';
 
@@ -68,7 +69,7 @@ export function createUiPreferencesClient(fetcher: typeof fetch = (...args) => f
     } finally { clearTimeout(timer); }
   }
   return {
-    get: () => request('GET'),
+    get: () => measureSettingsRead('appearance', () => request('GET')),
     async put(input) {
       const parsed = uiPreferencesPutSchema.safeParse(input);
       if (!parsed.success) throw new UiPreferencesRequestError('UI_PREFERENCES_VALIDATION');

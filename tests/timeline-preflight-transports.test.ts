@@ -183,7 +183,7 @@ if(process.argv[2] === 'preflight-server'){
     return child;
   };
   syncBuiltinESMExports();
-  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
+  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/test-server.ts')).href)});
   const {readProjectState,changeMarks} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/project-state.ts')).href)});
   const {databaseFiles} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/data-file-snapshot.ts')).href)});
   let inspect,inspectApplication;

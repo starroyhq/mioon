@@ -36,8 +36,8 @@ const metadata = (file: string): ApplicationFileMetadata | undefined => {
 };
 const generation = (info: ApplicationFileMetadata): bigint => typeof info.birthtimeNs === 'bigint' && info.birthtimeNs > 0n ? info.birthtimeNs : 0n;
 
-/** One synchronous recovery sweep; do not create/move private files in its
- * callback. A snapshot must never be retained across an await. */
+/** One synchronous inspection or recovery sweep. Do not create or move private
+ * files in the callback, and never retain a snapshot across an await. */
 export interface ApplicationFileGuard {
   (file: string): void;
   withSnapshot<T>(inspect: () => T): T;
@@ -57,8 +57,8 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
   const refresh = (): void => {
     // Directory timestamps are not entry versions: even positive ns values can
     // stay equal across creation or same-size replacement in one filesystem
-    // clock tick. Enumerate synchronously; only a recovery sweep may share this
-    // scan. There is no count/depth cutoff that loses private identities.
+    // clock tick. A synchronous sweep can share this scan. There is no
+    // count/depth cutoff that loses private identities.
     const pending = [dataDir, ...protectedRoots.filter(root => !within(dataDir, root))];
     const visited = new Set<string>();
     while (pending.length) {

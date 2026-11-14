@@ -1,5 +1,5 @@
-import {PROJECT_ENTRY_ERROR_STATUS, PROJECT_ENTRY_LIMITS, projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
-import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
+import {measureSettingsRead} from './settings-diagnostics.ts';
+import {PROJECT_ENTRY_ERROR_STATUS, PROJECT_ENTRY_LIMITS, projectEntriesResponseSchema, projectEntryIdentitySchema} from '../../../packages/contracts/src/project-entry.ts';
 
 const serverStatuses = Object.freeze({...PROJECT_ENTRY_ERROR_STATUS,
   UNAUTHORIZED: 401, ORIGIN_REJECTED: 403, METHOD_NOT_ALLOWED: 405, VALIDATION_ERROR: 400, NOT_FOUND: 404,
@@ -63,7 +63,9 @@ export async function readBoundedJsonResponse(response: Response, {signal, maxBy
 export function createProjectEntryDirectoryClient({fetcher = (...args: Parameters<typeof fetch>) => fetch(...args), timeoutMs = 30_000}: {
   readonly fetcher?: typeof fetch; readonly timeoutMs?: number;
 } = {}) {
-  return {async list(options: {readonly signal?: AbortSignal} = {}): Promise<ProjectEntriesResponse> {
+  async function read<T>(route: '/api/project-entries' | '/api/project-entries/identity',
+    schema: {safeParse(value: unknown): {success: true; data: T} | {success: false}}, maxBytes: number,
+    options: {readonly signal?: AbortSignal} = {}): Promise<T> {
     if (!record(options) || Object.keys(options).some(key => key !== 'signal') || !validSignal(options.signal) ||
       typeof fetcher !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000) throw new ProjectEntryDirectoryError('VALIDATION_ERROR');
     if (options.signal?.aborted) throw interrupted();
@@ -77,8 +79,8 @@ export function createProjectEntryDirectoryClient({fetcher = (...args: Parameter
     const timer = setTimeout(() => {timedOut = true; controller.abort();}, timeoutMs);
     try {
       return await Promise.race([(async () => {
-        const response = await fetcher('/api/project-entries', {method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal});
-        const body = await readBoundedJsonResponse(response, {signal: controller.signal, maxBytes: PROJECT_ENTRY_LIMITS.responseBytes});
+        const response = await fetcher(route, {method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal});
+        const body = await readBoundedJsonResponse(response, {signal: controller.signal, maxBytes});
         if (!record(body) || typeof body.ok !== 'boolean' || body.ok !== response.ok || body.ok && response.status !== 200 || Object.keys(body).length !== 2) throw protocol();
         if (!body.ok) {
           if (!Object.hasOwn(body, 'error') || !record(body.error)) throw protocol();
@@ -90,7 +92,7 @@ export function createProjectEntryDirectoryClient({fetcher = (...args: Parameter
           throw new ProjectEntryDirectoryError(error.code as keyof typeof serverStatuses, response.status);
         }
         if (!Object.hasOwn(body, 'data')) throw protocol();
-        const parsed = projectEntriesResponseSchema.safeParse(body.data);
+        const parsed = schema.safeParse(body.data);
         if (!parsed.success) throw protocol();
         return parsed.data;
       })(), stopped]);
@@ -102,5 +104,11 @@ export function createProjectEntryDirectoryClient({fetcher = (...args: Parameter
     } finally {
       clearTimeout(timer); options.signal?.removeEventListener('abort', abort); controller.signal.removeEventListener('abort', stop);
     }
-  }};
+  }
+  return {
+    list: (options?: {readonly signal?: AbortSignal}) => measureSettingsRead('workspace-directory',
+      () => read('/api/project-entries', projectEntriesResponseSchema, PROJECT_ENTRY_LIMITS.responseBytes, options)),
+    readIdentity: (options?: {readonly signal?: AbortSignal}) => measureSettingsRead('workspace-identity',
+      () => read('/api/project-entries/identity', projectEntryIdentitySchema, 4096, options)),
+  };
 }

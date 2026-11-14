@@ -96,7 +96,9 @@ function fixture({ saved = snapshot(), systemDark = false, read, write, opened, 
   }, module, module.exports, { documentElement: root }, window, { randomUUID });
   const run = (queue: number[]) => { for (const index of queue) { const slot = slots[index]; slot.cleanup?.(); slot.cleanup = slot.callback!(); } };
   const f = {
-    root, media, reads, writes, queries, opens, client, window: window as typeof window & {__mioonUiPreferences?: unknown},
+    root, media, reads, writes, queries, opens, client, window: window as typeof window & {
+      __mioonUiPreferences?: unknown; __mioonSettingsBootAppearance?: {theme: appearance.ResolvedAppearance};
+    },
     listeners,
     focus() { for (const listener of listeners.get('focus') || []) listener(); },
     render() { cursor = 0; layout = []; passive = []; tree = module.exports.UiPreferencesProvider({ client, children: 'unchanged project' }); run(layout); run(passive); return tree.props.value; },
@@ -115,6 +117,22 @@ function assertTheme(f: ReturnType<typeof fixture>, resolved: 'dark' | 'light', 
   assert.equal(f.root.style.colorScheme, resolved);
   assert.equal(f.state.resolvedTheme, resolved);
 }
+
+test('settings keep the skeleton theme while the first authoritative read is pending', async () => {
+  const read = deferred(), f = fixture({read: () => read.promise});
+  f.window.__mioonSettingsBootAppearance = {theme: 'light'};
+  f.root.classList.toggle('dark', false);
+  f.root.dataset.theme = 'light';
+  f.root.style.colorScheme = 'light';
+  assert.equal(f.render().resolvedTheme, 'light');
+  assert.equal(f.root.dataset.theme, 'light');
+  assert.equal(f.root.classes.has('dark'), false);
+  assert.equal(f.root.style.colorScheme, 'light');
+  read.resolve(snapshot('dark'));
+  await flush(); f.render(); f.render();
+  assertTheme(f, 'dark', 'dark');
+  f.unmount();
+});
 
 /** Mount the actual appearance form alongside the actual Provider. A native
  * dialog's focus return must preserve its hidden, registered settings owner. */

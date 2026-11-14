@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -78,7 +79,7 @@ for(const damage of ['unexpected-object','changed-trigger'] as const)test(`histo
 });
 for(const point of ['after-drop','after-copy','after-commit'])test(`a real SIGKILL at ${point} leaves either the exact old profile or the complete committed upgrade`,t=>{
  const f=fixture(t),before=f.inspect(),worker=fileURLToPath(new URL('./fixtures/project-output-history-upgrade-worker.ts',import.meta.url));
- const result=spawnSync(process.execPath,[worker,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{stdio:'ignore',timeout:30000});
+ const result=spawnSync(process.execPath,[worker,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{env: testEnv(), stdio:'ignore',timeout:30000});
  assert.equal(result.error,undefined);assert.equal(result.signal,'SIGKILL');
  const recovered=f.inspect();if(recovered.version===6)assert.deepEqual(recovered,before);else{assert.equal(recovered.version,HISTORY_SCHEMA_VERSION);assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);for(const key of ['reviews','tasks','jobs','requests']as const)assert.deepEqual(recovered[key],before[key]);assert.deepEqual(recovered.state.map(row=>({...row})),before.state.map(row=>({...row,seenContentToken:null})));}
  const connection=f.open();try{assert.equal(connection.historyState,'diverged');assert.equal(connection.historyAdmission.reason,'legacy-token-missing');assert.equal(connection.historyAdmission.seen.contentToken,null);}finally{connection.close();}assert.equal(f.inspect().version,HISTORY_SCHEMA_VERSION);

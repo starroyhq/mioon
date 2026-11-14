@@ -10,7 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
-import {composeHostedProject} from '../apps/server/src/project-host/runtime.ts';
+import {composeHostedProject} from './helpers/test-server.ts';
 import type {HostedProject} from '../apps/server/src/project-host/runtime.ts';
 import {composeApplicationRuntime} from '../apps/server/src/application-runtime.ts';
 import {startServer} from './helpers/test-server.ts';

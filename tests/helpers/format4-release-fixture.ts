@@ -1,3 +1,4 @@
+import {testEnv} from './test-env.ts';
 import assert from 'node:assert/strict';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {copyFileSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync} from 'node:fs';
@@ -48,6 +49,7 @@ export function releaseProjectPaths(root: string) {
 
 function runRelease(archiveRoot: string, args: string[]): void {
   const result = spawnSync(process.execPath, [path.join(archiveRoot, 'fixture-runner.mjs'), ...args], {
+      env: testEnv(),
     cwd: archiveRoot, encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: 60_000,
   });
   const diagnostic = (result.stderr ?? '').replaceAll(repository, '<repo>/');

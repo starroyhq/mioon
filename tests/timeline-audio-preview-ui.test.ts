@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {AudioPreviewPlanInput} from '../packages/contracts/src/timeline-audio-preview.ts';
 import type {AudioPreviewPrepareOptions, AudioPreviewAllocation} from '../apps/web/src/timeline-audio-preview-client.ts';
 import type {AudioPreviewTransportState, TimelineAudioPreviewTransport} from '../apps/web/src/timeline-audio-preview-engine.ts';
@@ -73,7 +74,7 @@ before(async () => {
   const script = `import {build} from 'esbuild';globalThis.fetch=()=>{throw Error('render may not fetch')};
     const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixtures)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'transform',define:{'process.env.NODE_ENV':'"production"'}});
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
-  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
+  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 
 test('mount and context refresh perform no preparation, RPC, context allocation or autoplay', () => {

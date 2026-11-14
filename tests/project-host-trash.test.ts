@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -250,7 +251,7 @@ test('an intent path alias of the held B1 is rejected before opening a second de
       try{db.exec('BEGIN EXCLUSIVE');db.exec('ROLLBACK');process.exitCode=2;}
       catch(error){if(!/locked|busy/i.test(String(error)))throw error;}
       finally{db.close();}
-    `, alias], {encoding: 'utf8', timeout: 10_000});
+    `, alias], {env: testEnv(), encoding: 'utf8', timeout: 10_000});
     assert.equal(probe.error, undefined); assert.equal(probe.signal, null); assert.equal(probe.status, 0, probe.stderr);
     assert.equal(f.osCalls.length, 0);
   } finally {renameSync(alias, f.library.databaseFile);}
@@ -258,7 +259,7 @@ test('an intent path alias of the held B1 is rejected before opening a second de
 
 test('SIGKILL after the OS move and before its ACK keeps registration and never retries on restart or a later file', async t => {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-trash-crash-'));
-  const child = spawn(process.execPath, [path.join(import.meta.dirname, 'fixtures/project-trash-crash-worker.ts'), root], {stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  const child = spawn(process.execPath, [path.join(import.meta.dirname, 'fixtures/project-trash-crash-worker.ts'), root], {env: testEnv(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   t.after(async () => {
     if (child.exitCode === null && child.signalCode === null) {const exited = once(child, 'exit'); child.kill('SIGKILL'); await exited;}

@@ -64,7 +64,7 @@ const scanFiles = `const fs=require('node:fs'),path=require('node:path'),[direct
 const contains=dir=>fs.readdirSync(dir,{withFileTypes:true}).some(entry=>{const file=path.join(dir,entry.name);return entry.isDirectory()?contains(file):fs.readFileSync(file).includes(bytes);});
 process.send(contains(directory),()=>process.disconnect());`;
 async function filesContain(directory:string, needle: string): Promise<boolean> {
-  const child = spawn(process.execPath, ['-e', scanFiles, '--', directory, needle], {stdio: ['ignore', 'ignore', 'inherit', 'ipc'], signal: AbortSignal.timeout(30000)});
+  const child = spawn(process.execPath, ['-e', scanFiles, '--', directory, needle], {env: testEnv(), stdio: ['ignore', 'ignore', 'inherit', 'ipc'], signal: AbortSignal.timeout(30000)});
   const found = new Promise<unknown>(resolve => {child.once('message', resolve); child.once('disconnect', () => resolve(undefined));});
   const [result, [code, signal]] = await Promise.all([found, once(child, 'exit')]);
   if (code !== 0 || typeof result !== 'boolean') throw Error(`The file scan child failed: ${code ?? signal}`);

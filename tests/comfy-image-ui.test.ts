@@ -1,3 +1,4 @@
+import { markSettingsClick } from '../apps/web/src/settings-diagnostics.ts';
 import type {ComfyImageSettingsClient,ComfyImageSettingsResult,ComfyImageCheckResult,ComfyConnectorAvailability} from '../apps/web/src/comfy-image-settings.ts';
 import type {ComfyObservationInput} from '../apps/web/src/comfy-image-observation.ts';
 import type {ImageTaskResponse,ImageGroupResponse,ImageVersionResponse} from '../packages/contracts/src/images.ts';
@@ -182,6 +183,7 @@ function componentHarness(filename: string, resolve: (name:string)=>unknown, pro
   const react = { createElement(type: string, props: Record<string,unknown>|null, ...children: ElementTree[]) { if (type === 'SettingsNavigationSlot') return (children[0] as unknown as (admit:()=>void)=>ElementTree)(() => {}); return { type, props: { ...props, children } }; }, useState(initial: unknown) { const slot = index++; slots[slot] ||= { value: typeof initial === 'function' ? initial() : initial }; return [slots[slot].value, (value: (arg0: unknown) => unknown) => { slots[slot].value = typeof value === 'function' ? value(slots[slot].value) : value; }]; }, useRef(initial: unknown) { return slots[index++] ||= { current: initial }; }, useMemo(fn: () => unknown, deps: readonly unknown[] | undefined) { const slot = index++; if (!slots[slot] || !equal(slots[slot].deps, deps)) slots[slot] = { value: fn(), deps }; return slots[slot].value; }, useLayoutEffect(fn: () => void|(()=>void), deps: readonly unknown[] | undefined) { const slot = index++, old = slots[slot]; if (old && equal(old.deps, deps)) return; slots[slot] = { fn, deps, cleanup: old?.cleanup }; effects.push(slot); } }; (react as typeof react & {default: unknown}).default = react;
   const primitive = new Proxy({}, { get: (_, key) => String(key) }), module = ({ exports: {} } as ElementModule & {exports:{ComfyImageReviewDetails:(props:Record<string,unknown>)=>ElementTree;ComfyImageTaskDetails:(props:Record<string,unknown>)=>ElementTree}});
   const require = (name: string) => {
+    if (name === './settings-diagnostics.ts') return {markSettingsClick};
     if (name === './i18n/I18nProvider.tsx') return { useI18n: () => localeDisplay(locale) };
     if (name === '../../../packages/i18n/src/index.ts') return i18n; if (name === './creation-i18n.ts') return creationI18n;
     if (name === './image-edit-intent.ts') return imageEditIntent;

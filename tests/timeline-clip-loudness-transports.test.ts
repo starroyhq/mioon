@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import type {Readable} from 'node:stream';
@@ -64,7 +65,7 @@ async function fixture(t: TestContext,request: typeof input & {target?: typeof m
       try {result=await callObservedRpc(req,res,{call:async(op,actual,{signal}={})=>{
         assert.equal(op,operation);assert.deepEqual(actual,request);signals.push(signal as AbortSignal);entered.resolve();
         if(mode==='wait'){
-          const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});owned.push(child);
+          const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{env: testEnv(), stdio:'ignore'});owned.push(child);
           const closed=once(child,'close'),stop=()=>child.kill('SIGTERM');
           (signal as AbortSignal).addEventListener('abort',stop,{once:true});if((signal as AbortSignal).aborted)stop();
           try{await closed;}finally{(signal as AbortSignal).removeEventListener('abort',stop);}

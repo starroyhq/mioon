@@ -30,7 +30,7 @@ test('native headless CLI publicly removes its synthetic key and refuses a lost 
  const env=Object.fromEntries(Object.entries(testEnv()).filter(([key])=>!key.startsWith('MIOON_')));
  const source=`import {createRequire} from 'node:module';
 import {initializeNodePrivateStorage} from ${JSON.stringify(new URL('../packages/node-host/src/private-storage-bootstrap.ts',import.meta.url).href)};
-import {startServer} from ${JSON.stringify(new URL('../apps/server/src/index.ts',import.meta.url).href)};
+import {startServer} from ${JSON.stringify(new URL('./helpers/test-server.ts',import.meta.url).href)};
 import {createHeadlessAgentSecretCodec} from ${JSON.stringify(new URL('../apps/server/src/headless-agent-secret-codec.ts',import.meta.url).href)};
 import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE} from ${JSON.stringify(new URL('../packages/business/src/agent/settings.ts',import.meta.url).href)};
 import {createAgentSettingsFile} from ${JSON.stringify(new URL('../packages/business/src/agent/settings-file.ts',import.meta.url).href)};

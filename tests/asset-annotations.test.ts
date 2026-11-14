@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
@@ -77,7 +78,7 @@ test('corrupt stored shapes and oversized bounded fields fail closed without raw
 
 for(const sameKey of [false,true])test(`exclusive-host annotation ${sameKey?'exact replay':'CAS'} race commits one immutable receipt`,{timeout:30000},async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset);
- const children=[0,1].map(()=>fork(new URL('./helpers/asset-annotation-race-child.ts',import.meta.url),[f.root],{execArgv:[],stdio:['ignore','ignore','pipe','ipc']}));
+ const children=[0,1].map(()=>fork(new URL('./helpers/asset-annotation-race-child.ts',import.meta.url),[f.root],{env: testEnv(), execArgv:[],stdio:['ignore','ignore','pipe','ipc']}));
  t.after(()=>{for(const child of children)if(child.exitCode===null)child.kill('SIGTERM');});
  const exits=children.map(child=>once(child,'exit'));
  await Promise.all(children.map(async child=>{const [message]=await once(child,'message') as [{code:string}];assert.equal(message.code,'PROJECT_LOCKED');}));

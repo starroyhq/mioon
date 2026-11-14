@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FloatRenderResult,ProbeJson} from './helpers/strict-timeline-media-result-types.ts';
@@ -29,7 +30,7 @@ const hash = (bytes: Buffer<ArrayBuffer>|BinaryLike) => createHash('sha256').upd
 const records:{startedAt:string;runtime?:string;fixturePolicy:string;commands:Record<string,unknown>[];http:Record<string,unknown>[];checks:Record<string,unknown>[];server:{pid?:number;port:number;stdout:string;stderr:string};originalTimeline?:unknown;splitTimeline?:unknown;outputs?:unknown} = ({startedAt: new Date().toISOString(), fixturePolicy: 'Generated PCM/lavfi only; local HTTP only; no model or provider operations', commands: [], checks: [], http: []} as unknown as typeof records);
 
 async function command<B extends boolean=false>(file: string, args?: unknown[]|readonly string[]|null|undefined, binary:B=false as B):Promise<B extends true ? Buffer : string> {
-  const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), {encoding: binary ? 'buffer' : 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 120_000});
+  const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), {env: testEnv(), encoding: binary ? 'buffer' : 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 120_000});
   records.commands.push((({file, args, exitCode: 0, stdout: binary ? {bytes: result.stdout.length, sha256: hash(result.stdout)} : result.stdout}) as unknown as Parameters<typeof records.commands.push>[0]));
   return (result.stdout as B extends true ? Buffer : string);
 }

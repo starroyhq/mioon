@@ -1,13 +1,12 @@
-import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
-import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
-import {createProjectEntryDirectoryClient, ProjectEntryDirectoryError} from './project-entry-directory-client.ts';
-import {createProjectEntryDirectoryController} from './project-entry-directory-state.ts';
-import type {ProjectEntryDirectoryReadPort} from './project-entry-directory-state.ts';
+import type {ProjectEntriesResponse, ProjectEntryIdentity} from '../../../packages/contracts/src/project-entry.ts';
+import {ProjectEntryDirectoryError} from './project-entry-directory-client.ts';
+import {createProjectEntryDirectoryController, createProjectEntryIdentityReader} from './project-entry-directory-state.ts';
+import type {ProjectEntryDirectoryReadPort, ProjectEntryDirectoryState} from './project-entry-directory-state.ts';
 
 export interface ProjectEntryIdentityFailure {readonly code: string; readonly status?: number}
-export interface ProjectEntryIdentityState {
+export interface ProjectEntryIdentityState<T extends ProjectEntryIdentity = ProjectEntriesResponse> {
   readonly phase: 'idle' | 'loading' | 'ready' | 'error' | 'blocked';
-  readonly snapshot: ProjectEntriesResponse | null;
+  readonly snapshot: T | null;
   readonly appLibraryScope: string | null;
   readonly instanceId: string | null;
   readonly identityBlocked: boolean;
@@ -19,20 +18,27 @@ export class ProjectEntryIdentityError extends Error {
   constructor(code: ProjectEntryIdentityError['code']) {super('The application identity changed. Keep the current window and inputs.'); this.name = 'ProjectEntryIdentityError'; this.code = code;}
 }
 
-/** Read-only renderer authority. Both library and service identity are pinned:
- * a new renderer must validate a replacement instance before old requests or
- * cached preferences can become eligible again. No selection is persisted. */
-export function createProjectEntryIdentityOwner({read, onChange = () => {}}: {
+interface OwnerOptions<T extends ProjectEntryIdentity> {
   readonly read?: ProjectEntryDirectoryReadPort;
-  readonly onChange?: (state: ProjectEntryIdentityState) => void;
-} = {}) {
-  const port = read ?? createProjectEntryDirectoryClient().list;
-  let active = false, generation = 0, flight: Promise<ProjectEntriesResponse | null> | null = null;
-  let baseline: {appLibraryScope: string; instanceId: string} | null = null;
+  readonly onChange?: (state: ProjectEntryIdentityState<T>) => void;
+}
+export function createProjectEntryIdentityOwner(options: OwnerOptions<ProjectEntriesResponse> = {}) {
+  return createIdentityOwner(options, createProjectEntryDirectoryController);
+}
+export function createSettingsWorkspaceIdentityOwner(options: OwnerOptions<ProjectEntryIdentity> = {}) {
+  return createIdentityOwner(options, createProjectEntryIdentityReader);
+}
+
+/** Both library and service identity stay pinned for this renderer. */
+function createIdentityOwner<T extends ProjectEntryIdentity>({read, onChange = () => {}}: OwnerOptions<T>,
+  createReader: (options: {read?: ProjectEntryDirectoryReadPort; onChange: (state: ProjectEntryDirectoryState<T>) => void}) =>
+    Pick<ReturnType<typeof createProjectEntryDirectoryController>, 'activate' | 'dispose' | 'refresh'>) {
+  let active = false, generation = 0, flight: Promise<T | null> | null = null;
+  let baseline: ProjectEntryIdentity | null = null;
   let blocked: ProjectEntryIdentityError | null = null;
   const listeners = new Set<() => void>();
-  let state: ProjectEntryIdentityState = Object.freeze({phase: 'idle', snapshot: null, appLibraryScope: null, instanceId: null, identityBlocked: false, failure: null});
-  const emit = (patch: Partial<ProjectEntryIdentityState>): void => {
+  let state: ProjectEntryIdentityState<T> = Object.freeze({phase: 'idle', snapshot: null, appLibraryScope: null, instanceId: null, identityBlocked: false, failure: null});
+  const emit = (patch: Partial<ProjectEntryIdentityState<T>>): void => {
     state = Object.freeze({...state, ...patch});
     if (active) {onChange(state); for (const listener of listeners) listener();}
   };
@@ -42,26 +48,21 @@ export function createProjectEntryIdentityOwner({read, onChange = () => {}}: {
     directory.dispose();
     emit({phase: 'blocked', snapshot: null, appLibraryScope: null, instanceId: null, identityBlocked: true, failure: Object.freeze({code, status: 409})});
   }
-  const directory = createProjectEntryDirectoryController({
-    read: async input => {
-      const owner = generation, value = await port(input);
-      if (!active || owner !== generation || input.signal.aborted || blocked) return value;
-      const parsed = projectEntriesResponseSchema.safeParse(value);
-      if (parsed.success && baseline) {
-        if (parsed.data.appLibraryScope !== baseline.appLibraryScope) block('PROJECT_ENTRY_SCOPE_MISMATCH');
-        else if (parsed.data.instanceId !== baseline.instanceId) block('PROJECT_ENTRY_STALE_INSTANCE');
-      }
-      return value;
-    },
+  const directory = createReader({
+    ...(read ? {read} : {}),
     onChange: next => {
       if (blocked) return;
       if (next.phase === 'blocked') {block('PROJECT_ENTRY_SCOPE_MISMATCH'); return;}
-      if (next.phase === 'ready' && next.snapshot) baseline ??= {appLibraryScope: next.snapshot.appLibraryScope, instanceId: next.snapshot.instanceId};
+      if (next.phase === 'ready' && next.snapshot) {
+        const {appLibraryScope, instanceId} = next.snapshot;
+        if (baseline && baseline.instanceId !== instanceId) {block('PROJECT_ENTRY_STALE_INSTANCE'); return;}
+        baseline ??= {appLibraryScope, instanceId};
+      }
       emit({phase: next.phase, snapshot: next.snapshot, appLibraryScope: baseline?.appLibraryScope ?? null,
         instanceId: baseline?.instanceId ?? null, failure: next.error});
     },
   });
-  function discover(replace = false): Promise<ProjectEntriesResponse | null> {
+  function discover(replace = false): Promise<T | null> {
     if (!active || blocked) return Promise.resolve(null);
     if (flight && !replace) return flight;
     const owner = generation;
@@ -75,12 +76,13 @@ export function createProjectEntryIdentityOwner({read, onChange = () => {}}: {
     dispose(): void {active = false; generation++; flight = null; directory.dispose(); if (!blocked) emit({phase: 'idle', snapshot: null, failure: null});},
     discover: () => discover(), refresh: () => discover(true),
     getVerifiedScope: (): string | null => blocked ? null : baseline?.appLibraryScope ?? null,
-    getState: (): ProjectEntryIdentityState => state,
+    getState: (): ProjectEntryIdentityState<T> => state,
     subscribe(listener: () => void): () => void {listeners.add(listener); return () => {listeners.delete(listener);};},
     assertIdentity(): void {if (blocked) throw blocked;},
   };
 }
 export type ProjectEntryIdentityOwner = ReturnType<typeof createProjectEntryIdentityOwner>;
+export type SettingsWorkspaceIdentityOwner = ReturnType<typeof createSettingsWorkspaceIdentityOwner>;
 
 /** A missing read is an error, never an invented empty directory. The public
  * directory error keeps status handling shared with existing browser clients. */

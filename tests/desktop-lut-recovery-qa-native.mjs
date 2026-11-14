@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {importNativeQaAsset,nativeQaAssetFile,coldNativeQaAssetFile} from './helpers/native-local-qa-fixture.ts';
 /** Synthetic preparation and read-only audits for manual native recovery QA.
  * This is NOT a native lost-ACK capture. No GUI launch, control, kill, RPC after
@@ -45,7 +46,7 @@ function scope(workspace) {
 }
 async function media(source) {
   await new Promise((resolve, reject) => {
-    const child = spawn(mediaTool('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=3', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', '-movflags', '+faststart', '-n', source], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(mediaTool('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x18bf57:s=320x180:r=30:d=3', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_trc', 'bt709', '-color_primaries', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', '-movflags', '+faststart', '-n', source], { env: testEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
     const stderrLimit = 16 * 1024;
     let errors = Buffer.alloc(0), timedOut = false, settled = false, exitTimer;
     const finish = error => {

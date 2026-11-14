@@ -163,7 +163,7 @@ if(serverMode){
     return child;
   };
   syncBuiltinESMExports();
-  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
+  const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/test-server.ts')).href)});
   const {readProjectState,changeMarks} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/project-state.ts')).href)});
   let inspect;
   const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:Number(process.env.PORT || 0),token:${JSON.stringify(TOKEN)},inspectProject:received=>{inspect=received;}});

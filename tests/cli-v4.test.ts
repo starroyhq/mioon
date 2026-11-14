@@ -189,7 +189,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
   });
 
   const imagePath = path.join(root, 'reference.png');
-  await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath]);
+  await exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-v','error','-y','-f','lavfi','-i','color=c=0x3566ab:s=16x16','-frames:v','1','-threads','1',imagePath], {env: testEnv()});
   const image = await command('asset.import', {projectId:project.id}, ['--file',imagePath,'--upload']);
   assert.equal(image.name, 'reference.png');
   assert.equal(image.mimeType, 'image/png');
@@ -244,7 +244,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const media = await fetch(service.url + projectMediaPath(project.id, rendered.assetId), {headers:{authorization:`Bearer ${token}`}});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'video/mp4');
     const file = path.join(root, 'verified-export.mp4'); await writeFile(file, Buffer.from(await media.arrayBuffer()));
-    const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
+    const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file], {env: testEnv()})).stdout);
     const downloadPath = path.join(root, 'cli-export.mp4');
     succeeded(await cli(['export','download','--input',JSON.stringify({projectId:project.id, exportId:queued.id}),'--output',downloadPath], env));
     const exportedBytes = await readFile(file);

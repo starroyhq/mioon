@@ -41,6 +41,29 @@ test('browser directory reads only the fixed same-origin URL and preserves every
   assert.equal(calls.length, 1);
 });
 
+test('browser identity reads its fixed URL, accepts only the identity and enforces the small response limit', async () => {
+  const calls: Array<{url: string; options: RequestInit}> = [];
+  const data = {appLibraryScope: scope, instanceId: id(1)};
+  let response = json({ok: true, data});
+  const client = createProjectEntryDirectoryClient({fetcher: async (url, options) => {
+    calls.push({url: String(url), options: options!});
+    return response;
+  }});
+  assert.deepEqual(await client.readIdentity(), data);
+  const {signal, ...options} = calls[0].options;
+  assert.ok(signal instanceof AbortSignal);
+  assert.deepEqual(options, {method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error'});
+  for (const value of [snapshot(), {...data, instanceId: 'invalid'}, {...data, appLibraryScope: 'invalid'}]) {
+    response = json({ok: true, data: value});
+    await assert.rejects(client.readIdentity(), {code: 'BACKEND_PROTOCOL_ERROR'});
+  }
+  response = new Response(JSON.stringify({ok: true, data}), {headers: {'content-type': 'application/json', 'content-length': '4097'}});
+  await assert.rejects(client.readIdentity(), {code: 'BACKEND_PROTOCOL_ERROR'});
+  response = json({ok: false, error: {code: 'UNAUTHORIZED', message: 'denied'}}, 401);
+  await assert.rejects(client.readIdentity(), {code: 'UNAUTHORIZED', status: 401});
+  assert.deepEqual(calls.map(call => call.url), Array(6).fill('/api/project-entries/identity'));
+});
+
 test('browser directory validates exact success and error envelopes while retaining safe auth code and status', async () => {
   let response = json({ok: true, data: snapshot()});
   const client = createProjectEntryDirectoryClient({fetcher: async () => response});

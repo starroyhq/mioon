@@ -37,8 +37,8 @@ test('mock generation and probe use selected absolute executables with no host P
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'wb-media-runtime-'));
  t.after(()=>rm(root,{recursive:true,force:true}));
  const bin=path.join(root,'selected media tools');await mkdir(bin);
- const {stdout:ffmpeg}=await exec('/bin/sh',['-c','command -v ffmpeg']);
- const {stdout:ffprobe}=await exec('/bin/sh',['-c','command -v ffprobe']);
+ const {stdout:ffmpeg}=await exec('/bin/sh',['-c','command -v ffmpeg'], {env: testEnv()});
+ const {stdout:ffprobe}=await exec('/bin/sh',['-c','command -v ffprobe'], {env: testEnv()});
  const encoder=path.join(bin,'encoder selected'),probe=path.join(bin,'probe selected');
  await symlink(ffmpeg.trim(),encoder);await symlink(ffprobe.trim(),probe);
  const provider=pathToFileURL(path.resolve('packages/business/src/providers/mock.ts')).href;

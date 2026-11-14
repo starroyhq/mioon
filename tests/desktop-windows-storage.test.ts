@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -33,7 +34,7 @@ Object.assign(results,{relative:outcome('native/mioon_private_storage.node'),not
 let closed=false;try{storage.ensurePrivateDirectory(${JSON.stringify(path.join(root, 'never-created'))},{create:true});}catch(error){closed=error.code==='STORAGE_PRIVACY_UNAVAILABLE';}
 results.closed=closed;results.capability=storage.getStoragePrivacyCapability('win32').available;
 process.stdout.write(JSON.stringify(results));`;
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {encoding: 'utf8'});
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {env: testEnv(), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     outsideElectron: 'STORAGE_PRIVACY_UNAVAILABLE/WINDOWS_HELPER_UNAVAILABLE',

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -93,7 +94,7 @@ test('normal stop and SIGKILL restart recover the same accepted task without a s
   const f = await fixture(t), current = await f.start();
   current.window.release(); await current.host.close();
   const config = path.join(f.root, 'child.json'); await writeFile(config, JSON.stringify({dataDir: f.dataDir, remote: f.url, projectId: current.project.projectId}), {mode: 0o600});
-  const before = f.calls.poll, child = fork('tests/fixtures/project-background-lifecycle-worker.ts', [config], {cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  const before = f.calls.poll, child = fork('tests/fixtures/project-background-lifecycle-worker.ts', [config], {env: testEnv(), cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   f.children.add(child);
   const message = await Promise.race([once(child, 'message'), once(child, 'exit').then(() => {throw new Error('Recovery child exited before ready');})]);
   assert.deepEqual(message[0], {type: 'ready', taskLeases: 1});

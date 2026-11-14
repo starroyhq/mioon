@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, readFile, copyFile, rm, truncate, symlink} from 'node:fs/promises';
@@ -67,18 +68,18 @@ test('corrupted gzip, missing member and duplicate member never validate as the 
 });
 test('a nonzero extractor exit rejects even after every expected byte has been produced', async t => {
   const f = await fixture(t), bytes = await readFile(f.native);
-  await assert.rejects(verifyArchiveMember(f.tarball, member, f.native, {extract:() => spawn(process.execPath, ['-e', `process.stdout.write(Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'));process.exitCode=2;`], {stdio:['ignore','pipe','pipe'],detached:process.platform!=='win32'})}), /ARCHIVE_EXTRACTION_FAILED/);
+  await assert.rejects(verifyArchiveMember(f.tarball, member, f.native, {extract:() => spawn(process.execPath, ['-e', `process.stdout.write(Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'));process.exitCode=2;`], {env: testEnv(), stdio:['ignore','pipe','pipe'],detached:process.platform!=='win32'})}), /ARCHIVE_EXTRACTION_FAILED/);
 });
 test('a stalled extractor is terminated within its bounded deadline', async t => {
   const f = await fixture(t); let child: ReturnType<typeof spawn> | undefined;
   await assert.rejects(verifyArchiveMember(f.tarball, member, f.native, {timeoutMs:50,extract:() => {
-    const producer = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000);'], {stdio:['ignore','pipe','pipe'],detached:process.platform!=='win32'}); child=producer; return producer;
+    const producer = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000);'], {env: testEnv(), stdio:['ignore','pipe','pipe'],detached:process.platform!=='win32'}); child=producer; return producer;
   }}), /ARCHIVE_EXTRACTION_TIMEOUT/);
   const pid = child?.pid; assert.ok(pid); assert.throws(() => process.kill(pid, 0), {code:'ESRCH'});
 });
 test('file hard limits, unsafe paths and symlinks reject before an extractor can run', async t => {
   const f = await fixture(t); let calls = 0;
-  const extract = () => {calls++; return spawn(process.execPath, ['-e', ''], {stdio:['ignore','pipe','pipe']});};
+  const extract = () => {calls++; return spawn(process.execPath, ['-e', ''], {env: testEnv(), stdio:['ignore','pipe','pipe']});};
   await assert.rejects(verifyArchiveMember(f.tarball, member, f.native, {maxBytes:1,extract}), /PACKAGE_FILE_LIMIT_EXCEEDED/);
   for (const entry of ['../app.asar', '/app.asar', 'base/../app.asar', 'base//app.asar', 'base\\app.asar'])
     await assert.rejects(verifyArchiveMember(f.tarball, entry, f.native, {extract}), /ARCHIVE_MEMBER_PATH_INVALID/);

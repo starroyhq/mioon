@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {setTimeout as delay} from 'node:timers/promises';
 import desktopIdentity from '../apps/desktop/identity.ts';
+import type {SettingsDiagnosticsBridge, SettingsDiagnosticsRead} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
 import {createAgentSettingsBroker, createAgentSettingsClient} from '../apps/desktop/src/secret-broker.ts';
 import {createDesktopAgentSettings} from '../apps/desktop/src/secret-store.ts';
 import type {DesktopSafeStorage} from '../apps/desktop/src/secret-store.ts';
@@ -26,7 +27,23 @@ class TestPort extends EventEmitter {
   reply = (data: unknown) => {this.emit('message', {data});};
 }
 
+function settingsReadMarks(t: import('node:test').TestContext) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const marks: [SettingsDiagnosticsRead, 'start' | 'end', number][] = [];
+  const bridge: SettingsDiagnosticsBridge = {
+    markClick() {},
+    markBoot: async () => true,
+    markRead(page, phase, id) {marks.push([page, phase, id]);},
+  };
+  Object.defineProperty(globalThis, 'window', {configurable: true, value: {
+    __mioonSettingsBootAppearance: {locale: 'en', theme: 'light'}, __mioonSettingsDiagnostics: bridge,
+  }});
+  t.after(() => {if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window');});
+  return marks;
+}
+
 test('all settings forms can edit committed configuration while one native Keychain operation remains held', async t => {
+  const marks = settingsReadMarks(t);
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-settings-keychain-')));
   const availability = Promise.withResolvers<boolean>();
   const writeEntered = Promise.withResolvers<void>(), writeRelease = Promise.withResolvers<void>();
@@ -53,7 +70,12 @@ test('all settings forms can edit committed configuration while one native Keych
   agentPort.send = agentBroker.handle; imagePort.send = imageBroker.handle; videoPort.send = videoBroker.handle;
   const agent = createAgentSettingsClient({port: agentPort}), image = createImageSecretClient({port: imagePort}), video = createVideoSecretClient({port: videoPort});
   const server = await startServer({dataDir: directory, port: 0, agentSettings: agent, imageSecretCodec: image, videoSecretCodec: video});
-  const fetchLocal: typeof fetch = (input, init) => fetch(new URL(String(input), server.url), {...init, headers: {authorization: `Bearer ${server.token}`}});
+  const observedReads = new Map<string, number>();
+  const fetchLocal: typeof fetch = (input, init) => {
+    const route = String(input);
+    if (init?.method === 'GET') observedReads.set(route, (observedReads.get(route) ?? 0) + 1);
+    return fetch(new URL(route, server.url), {...init, headers: {authorization: `Bearer ${server.token}`}});
+  };
   const agentHttp = createAgentSettingsHttpClient({fetchImpl: fetchLocal});
   const agentPage = createAgentSettingsSession({client: agentHttp});
   const videoPage = createGenerationVideoServicesSession({client: createVideoSettingsClient({fetchImpl: fetchLocal})});
@@ -68,6 +90,13 @@ test('all settings forms can edit committed configuration while one native Keych
   });
   const loaded = await Promise.all([agentPage.load(), videoPage.load(), ...imagePages.map(page => page.load())]);
   assert.deepEqual(loaded, [true, true, true, true, true]);
+  const timedStages = ['agent-settings', 'generation-video', 'generation-image-official', 'generation-image-custom',
+    'generation-comfy', 'generation-comfy-availability'];
+  assert.deepEqual(marks.filter(([,phase]) => phase === 'start').map(([page]) => page).sort(), timedStages.sort());
+  for (const [page, phase, id] of marks) {
+    if (phase === 'start') assert.equal(marks.filter(mark => mark[0] === page && mark[1] === 'end' && mark[2] === id).length, 1);
+  }
+  const beforePolling = marks.slice();
   const pending = 'OS_SECRET_STORE_PENDING';
   assert.equal(agentPage.getState().snapshot?.storage.reasonCode, pending);
   assert.equal(videoPage.getState().snapshot?.storage.reasonCode, pending);
@@ -89,12 +118,19 @@ test('all settings forms can edit committed configuration while one native Keych
   assert.equal(comfy.edit('image:comfy', {}, {baseUrl: 'http://127.0.0.1:8188'}), true);
   assert.equal(checks, 1, 'all domains share one held native authorization');
 
+  const routes = ['/api/agent/settings', '/api/video-providers/settings', '/api/images/settings', '/api/images/custom-settings'];
+  const pollingDeadline = performance.now() + 6000;
+  const polled = () => routes.every(route => (observedReads.get(route) ?? 0) >= 2);
+  while (!polled() && performance.now() < pollingDeadline) await delay(25);
+  assert.equal(polled(), true, 'each visible form polls while authorization is still held');
+  assert.deepEqual(marks, beforePolling, 'periodic capability checks emit no timing marks');
   availability.resolve(true);
   const resolved = () => [agentPage.getState().snapshot, videoPage.getState().snapshot, official.getState().snapshot, custom.getState().snapshot]
     .every(snapshot => snapshot && 'storage' in snapshot && snapshot.storage.persistentAvailable);
   const deadline = performance.now() + 6000;
   while (!resolved() && performance.now() < deadline) await delay(25);
   assert.equal(resolved(), true, 'each visible settings form updates its storage after approval');
+  assert.deepEqual(marks, beforePolling, 'the final readiness poll emits no timing marks');
   assert.equal(checks, 1);
   assert.equal(agentPage.getState().draft?.services.find(entry => entry.serviceKey === service)?.name, 'Editable Agent draft');
   assert.equal(videoPage.getState().drafts[0]?.configuration.enabled, true);
@@ -125,4 +161,20 @@ test('all settings forms can edit committed configuration while one native Keych
   assert.equal(committed.revision, before.revision + 1);
   assert.deepEqual(await agentHttp.read(), committed);
   assert.equal(checks, 1);
+});
+
+test('explicit settings reads keep their terminal diagnostic marks when a request is refused', async t => {
+  const marks = settingsReadMarks(t);
+  const denied: typeof fetch = async () => new Response(JSON.stringify({ok: false, error: {code: 'UNAUTHORIZED'}}), {status: 401});
+  for (const [stage, read] of [
+    ['agent-settings', createAgentSettingsHttpClient({fetchImpl: denied}).read],
+    ['generation-video', createVideoSettingsClient({fetchImpl: denied}).read],
+    ['generation-image-official', createGenerationImageServicesClient('official', denied).read],
+  ] as const) {
+    const before = marks.length;
+    await assert.rejects(read(new AbortController().signal), {code: 'UNAUTHORIZED'});
+    const requestId = marks[before]?.[2];
+    assert.ok(requestId);
+    assert.deepEqual(marks.slice(before), [[stage, 'start', requestId], [stage, 'end', requestId]]);
+  }
 });

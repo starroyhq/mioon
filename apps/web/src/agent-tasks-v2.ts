@@ -1,3 +1,4 @@
+import {measureSettingsRead} from './settings-diagnostics.ts';
 import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema, agentTaskConversationPolicySchema, agentTaskChecksSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { sameAgentTaskPolicyModes } from './agent-task-policy-menu.ts';
 import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskConversationPolicy, AgentTaskPolicyModes, AgentTaskChecks } from '../../../packages/contracts/src/agent-tasks-v2.ts';
@@ -141,7 +142,7 @@ export function createAgentTaskClient({ fetchImpl = globalThis.fetch, timeoutMs 
         onEvent(value);
       }, signal);
     },
-    policy: async () => safePolicyView(await json(`${root}/policy`)),
+    policy: () => measureSettingsRead('agent-policy', async () => safePolicyView(await json(`${root}/policy`))),
     savePolicy: async input => safePolicyView(await json(`${root}/policy`, 'PUT', input)),
     conversationPolicy: async (projectId, conversationId) => safeConversationPolicyView(await json(`${path(projectId)}/conversations/${encodeURIComponent(conversationId)}/policy`), projectId, conversationId),
     setConversationPolicy: async (projectId, conversationId, input) => safeConversationPolicyView(await json(`${path(projectId)}/conversations/${encodeURIComponent(conversationId)}/policy`, 'PUT', input), projectId, conversationId),

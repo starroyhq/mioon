@@ -125,7 +125,7 @@ const deny = () => { log({type:'forbidden-network'}); throw Error('Synthetic fra
 globalThis.fetch = deny; http.request = deny; http.get = deny; https.request = deny; https.get = deny; net.Socket.prototype.connect = deny; tls.connect = deny;
 syncBuiltinESMExports();
 const {onMediaProcess} = await import('./packages/business/src/media-processes.ts'); onMediaProcess(log);
-const {startServer} = await import('./apps/server/src/index.ts');
+const {startServer} = await import('./tests/helpers/test-server.ts');
 const {schemaObjects} = await import('./tests/helpers/project-database.ts');
 let inspect;
 const service = await startServer({dataDir:process.env.MIOON_DATA_DIR, port:Number(process.env.PORT), token:process.env.MIOON_TOKEN, inspectProject:received => {inspect = received;}});

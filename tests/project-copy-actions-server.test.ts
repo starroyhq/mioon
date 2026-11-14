@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -92,7 +93,7 @@ async function occupyHistory(file: string): Promise<() => Promise<void>> {
     import {DatabaseSync} from 'node:sqlite';
     const db=new DatabaseSync(process.argv[1]);db.exec('PRAGMA locking_mode=EXCLUSIVE;BEGIN EXCLUSIVE');process.send('locked');
     process.once('message',()=>{db.exec('ROLLBACK');db.close();process.disconnect();});
-  `, file], {stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  `, file], {env: testEnv(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   try {
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject); child.once('exit', code => reject(Error(`history holder ended before release: ${code}`)));

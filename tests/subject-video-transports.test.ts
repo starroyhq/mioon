@@ -37,7 +37,7 @@ const env=(extra: Record<string, string>)=>({...mediaEnvironment(),...extra});
 const serverSource=`
 import {installWireGuard} from './tests/helpers/inspection-wire-fixture.ts';
 installWireGuard({auditPath:process.env.MIOON_WIRE_AUDIT});
-const {startServer}=await import('./apps/server/src/index.ts');
+const {startServer}=await import('./tests/helpers/test-server.ts');
 let inspect;
 const server=await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:process.env.MIOON_TOKEN,inspectProject:received=>{inspect=received;}});
 process.on('message',({id,projectId,table})=>{let reply;try{if(!['jobs','mock_provider_submissions'].includes(table))throw Error('Unsupported fixture count');reply={id,count:inspect(projectId,db=>db.prepare('SELECT COUNT(*) AS n FROM '+table).get().n)};}catch(error){reply={id,error:String(error?.message??error)};}if(process.connected)process.send(reply);});

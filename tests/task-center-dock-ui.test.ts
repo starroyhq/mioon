@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {RootTree, RootNode, RootHook} from './helpers/strict-root-ui-types.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { message, createI18nTestContext } from './helpers/i18n.ts';
@@ -51,7 +52,7 @@ before(() => {
     if (!javascript) throw Error('Task dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));
     await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(result.html), error => error ? reject(error) : resolve())); process.exit(0);`;
-  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
+  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 
 test('actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls', () => {

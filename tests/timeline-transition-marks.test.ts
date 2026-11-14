@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -59,7 +60,7 @@ test('the marks render their spans and the quick-add buttons say why they wait',
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   const tag = (html: string, id: string): string => html.match(new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`))?.[0] ?? '';
   const mark = tag(markup.view!, 'timeline-transition-B');
   assert.match(mark, /aria-label="转场：交叉溶解，20 帧"/);

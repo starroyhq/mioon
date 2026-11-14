@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -102,7 +103,7 @@ for(const kind of ['project','history','cache','application'] as const)test(`sou
  const file={project:store.projectFile,history:path.join(store.localDir,'history.db'),cache:path.join(store.cacheDir,'cache.db'),application:library.databaseFile}[kind],alias=path.join(f.parent,`${kind}.mioon`);
  linkSync(file,alias);const info=lstatSync(alias,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
  assert.equal(kind==='application'?isAppLibraryHeld(identity):isProjectFileHeld(identity),true);
- const probe=()=>{const result=spawnSync(process.execPath,['--input-type=module','-e',`import{DatabaseSync}from'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');process.stdout.write(JSON.stringify({ok:true}));}catch(error){process.stdout.write(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`,file],{encoding:'utf8',timeout:60_000});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);};
+ const probe=()=>{const result=spawnSync(process.execPath,['--input-type=module','-e',`import{DatabaseSync}from'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');process.stdout.write(JSON.stringify({ok:true}));}catch(error){process.stdout.write(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`,file],{env: testEnv(), encoding:'utf8',timeout:60_000});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);};
  assert.deepEqual(probe(),{ok:false,errcode:5});
  await assert.rejects(f.client.api.observeSource({projectFile:alias}),{code:'PROJECT_LOCKED'});
  assert.deepEqual(probe(),{ok:false,errcode:5},'refusing the source must preserve the existing owner lock');

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CliResult,McpData,WireResult,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
@@ -63,7 +64,7 @@ async function fixture(t: test.TestContext,request: {projectId?: string; expecte
       try {result=await callObservedRpc(req,res,{call:async(op,actual,{signal}={})=>{
         assert.equal(op,operation);assert.deepEqual(actual,request);signals.push(signal as AbortSignal);(entered.resolve)!();
         if(mode==='wait'){
-          const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});owned.push(child);
+          const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{env: testEnv(), stdio:'ignore'});owned.push(child);
           const closed=once(child,'close'),stop=()=>child.kill('SIGTERM');
           (signal as AbortSignal).addEventListener('abort',stop,{once:true});if((signal as AbortSignal).aborted)stop();
           try{await closed;}finally{(signal as AbortSignal).removeEventListener('abort',stop);}

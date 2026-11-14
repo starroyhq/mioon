@@ -18,7 +18,7 @@ import {testEnv} from '../../helpers/test-env.ts';
 
 const here=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(here,'../../..'),exec=promisify(execFile),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const seconds=frame=>(frame/30).toFixed(9);
-async function ffmpeg(args){return exec(process.env.MIOON_FFMPEG_PATH||'ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-n','-threads','1',...args],{timeout:120000,maxBuffer:256*1024});}
+async function ffmpeg(args){return exec(process.env.MIOON_FFMPEG_PATH||'ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-n','-threads','1',...args],{env: testEnv(), timeout:120000,maxBuffer:256*1024});}
 function wav(){
   const samples=25*48000,bytes=Buffer.alloc(44+samples*4);bytes.write('RIFF',0);bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
   bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(2,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(192000,28);bytes.writeUInt16LE(4,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(samples*4,40);
@@ -97,7 +97,7 @@ export async function run(rootArgument,{reuse=false}={}){
   await build({entryPoints:[path.join(here,'main.mjs')],outfile:path.join(root,'main.cjs'),bundle:true,platform:'node',format:'cjs',target:'node24',external:['electron'],define:{'import.meta.url':'__fixture_import_meta_url'},banner:{js:'const __fixture_import_meta_url=require("node:url").pathToFileURL(__filename).href;'},logLevel:'silent'});
   await copyFile(path.join(here,'capture-worklet.js'),path.join(root,'web/capture-worklet.js'));
   await writeFile(path.join(root,'web/index.html'),'<!doctype html><meta charset="utf-8"><title>Synthetic continuous audio qualification</title><body>Running controlled media checks<script type="module" src="/entry.js"></script>',{mode:0o600});
-  const ffmpegVersion=await exec(process.env.MIOON_FFMPEG_PATH||'ffmpeg',['-version'],{maxBuffer:256*1024}),ffprobeVersion=await exec(process.env.MIOON_FFPROBE_PATH||'ffprobe',['-version'],{maxBuffer:256*1024});
+  const ffmpegVersion=await exec(process.env.MIOON_FFMPEG_PATH||'ffmpeg',['-version'],{env: testEnv(), maxBuffer:256*1024}),ffprobeVersion=await exec(process.env.MIOON_FFPROBE_PATH||'ffprobe',['-version'],{env: testEnv(), maxBuffer:256*1024});
   await writeFile(path.join(root,'environment.json'),JSON.stringify({launcherNode:process.version,ffmpeg:ffmpegVersion.stdout.split('\n')[0],ffprobe:ffprobeVersion.stdout.split('\n')[0]},null,2),{mode:0o600});
   const sourceFiles=['apps/web/src/timeline-audio-continuous-client.ts','apps/web/src/timeline-audio-continuous-engine.ts','apps/web/src/native-audio-preview-adapter.ts',
     'packages/contracts/src/timeline-audio-continuous.ts','packages/contracts/src/native-audio-preview.ts','packages/business/src/timeline-audio-continuous.ts',

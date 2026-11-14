@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -41,7 +42,7 @@ function worker(t: test.TestContext,{root,file,mode,marker=65,iterations=1,size=
  }
  await send({type:'result',successes,rejected});process.disconnect();
  `;
- const child=spawn(process.execPath,['--input-type=module','-e',source],{stdio:['ignore','pipe','pipe','ipc']});
+ const child=spawn(process.execPath,['--input-type=module','-e',source],{env: testEnv(), stdio:['ignore','pipe','pipe','ipc']});
  const messages: WorkerMessage[]=[];let outputBytes=0,exitResult: WorkerExit | undefined;
  (child.stdout)!.on('data',bytes=>{outputBytes+=bytes.length;});(child.stderr)!.on('data',bytes=>{outputBytes+=bytes.length;});
  const waiters=new Set<() => void>();

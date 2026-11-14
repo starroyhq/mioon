@@ -35,7 +35,7 @@ function scope(dataDir: string, projectId: string) {
 
 async function startBackend(t: TestContext, dataDir: string) {
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
-    import { startServer } from '@mioon/server';
+    import { startServer } from './tests/helpers/test-server.ts';
     const service = await startServer({dataDir:process.env.LUT_TEST_DATA,
       distDir:process.env.LUT_TEST_DATA+'/unused-dist',port:0,
       token:${JSON.stringify(token)},localDraftChannel:${JSON.stringify(channel)}});

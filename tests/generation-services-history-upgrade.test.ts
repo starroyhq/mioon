@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -192,7 +193,7 @@ for (const point of POINTS) test(`v9 exception ${point} restores the complete ol
 
 for (const point of [...POINTS, 'after-commit']) test(`v9 SIGKILL ${point} recovers exact old9 or fully committed10`, {timeout: 60000}, t => {
   const f = fixture(t), before = f.inspect(), files = f.files();
-  const result = spawnSync(process.execPath, [WORKER, JSON.stringify({projectFile: f.projectFile, localDir: f.localDir, cacheDir: f.cacheDir, tempDir: f.tempDir, point})], {stdio: 'ignore', timeout: 30000});
+  const result = spawnSync(process.execPath, [WORKER, JSON.stringify({projectFile: f.projectFile, localDir: f.localDir, cacheDir: f.cacheDir, tempDir: f.tempDir, point})], {env: testEnv(), stdio: 'ignore', timeout: 30000});
   assert.equal(result.error, undefined); assert.equal(result.signal, 'SIGKILL');
   if (point === 'after-commit') {
     const recovered = f.inspect(); assert.deepEqual(recovered.manifest, SCHEMA_MANIFEST.history.entries); assert.equal(recovered.version[0]!.version, 10);

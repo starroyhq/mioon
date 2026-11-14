@@ -35,7 +35,7 @@ const sha = (bytes: BinaryLike|Buffer<ArrayBuffer>) => createHash('sha256').upda
 const records: Evidence = { startedAt: new Date().toISOString(), runtime: process.version, invocation: { executable: process.execPath, arguments: ['--test', 'tests/integration.test.ts'] }, commands: [], assertions: [], processEvents: [], http: [] };
 async function command(file: string, args?: readonly string[]|null|undefined) {
   const startedAt = new Date().toISOString();
-  try { const result = await exec(file, args, { maxBuffer: 8 * 1024 * 1024 }); records.commands.push({ file, args, startedAt, exitCode: 0, stdout: result.stdout, stderr: result.stderr }); return result.stdout; }
+  try { const result = await exec(file, args, { env: testEnv(), maxBuffer: 8 * 1024 * 1024 }); records.commands.push({ file, args, startedAt, exitCode: 0, stdout: result.stdout, stderr: result.stderr }); return result.stdout; }
   catch (error) { records.commands.push({ file, args, startedAt, exitCode: (error as {code: unknown}).code, stdout: (error as {stdout: unknown}).stdout, stderr: (error as {stderr: unknown}).stderr }); throw error; }
 }
 async function freePort() { const server = net.createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening'); const port = (server.address() as AddressInfo).port; await new Promise(resolve => server.close(resolve)); return port; }

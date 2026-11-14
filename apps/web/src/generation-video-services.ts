@@ -1,6 +1,7 @@
 import {VIDEO_BUILTIN_PROVIDER_IDS, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
 import type {VideoConnectionConfigurationV2, VideoSettingsOperationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../../../packages/contracts/src/generation-video-settings.ts';
-import {normalizeCompatibleVideoBaseUrl, VIDEO_SETTINGS_LIMITS, videoBindingCapabilities, videoConnectionEndpoint} from '../../../packages/contracts/src/video-providers.ts';
+import {getSeedance25Capability} from '../../../packages/contracts/src/seedance-video.ts';
+import {defaultVideoModels, normalizeCompatibleVideoBaseUrl, VIDEO_SETTINGS_LIMITS, videoBindingCapabilities, videoConnectionEndpoint, videoModelEntrySchema} from '../../../packages/contracts/src/video-providers.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
 import {createVideoSettingsClient, newVideoConnection, safeVideoSettings} from './video-settings.ts';
 import type {VideoSettingsClient} from './video-settings.ts';
@@ -55,7 +56,7 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
   const watchStorage = watchPendingSecretStorage(async signal => {
     const before = state.snapshot;
     if (!before) return;
-    const {storage} = safeVideoSettings(await client.read(signal));
+    const {storage} = safeVideoSettings(await client.read(signal, 'keychain-poll'));
     if (!signal.aborted && state.snapshot === before && storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
   });
   const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
@@ -136,6 +137,35 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
       if (!editable()) return false;
       const drafts = state.drafts.map(draft => draft.key === key ? {...draft, touched: true, configuration: {...draft.configuration, ...clone(patch), id: draft.configuration.id, providerId: draft.configuration.providerId}} : draft);
       if (!drafts.some(draft => draft.key === key)) return false; emit({drafts, phase: 'ready', notice: null}); return true;
+    },
+    stageModels(key: string, expectedVersion: number, selectedIds: readonly string[]) {
+      if (!editable() || !state.snapshot || state.version !== expectedVersion) return false;
+      const draft = state.drafts.find(draft => draft.key === key);
+      if (!draft) return false;
+      const {models, providerId, region} = draft.configuration;
+      if (providerId !== 'compatible' && providerId !== 'ark' && providerId !== 'veo') return false;
+      const existing = new Set(models.map(model => model.modelId));
+      const additions = [...new Set(selectedIds)].filter(id => !existing.has(id));
+      if (!additions.length || models.length + additions.length > VIDEO_SETTINGS_LIMITS.models) return false;
+      const template = defaultVideoModels(providerId)[0]!;
+      const entries = additions.map(modelId => videoModelEntrySchema.safeParse({
+        ...template,
+        id: crypto.randomUUID(),
+        name: modelId,
+        modelId,
+        enabled: true,
+        inputModes: providerId === 'ark' && !getSeedance25Capability(modelId, region, template.templateId)
+          ? template.inputModes.filter(mode => mode !== 'subject' && mode !== 'reference') : template.inputModes,
+      }));
+      const next = [...models];
+      for (const entry of entries) {
+        if (!entry.success) return false;
+        next.push(entry.data);
+      }
+      const drafts = state.drafts.map(item => item === draft
+        ? {...item, touched: true, configuration: {...item.configuration, models: next}} : item);
+      emit({drafts, phase: 'ready', notice: null});
+      return true;
     },
     keyEdited(key: string, hasKey: boolean) {if (!editable()) return false; emit({drafts: state.drafts.map(draft => draft.key === key ? {...draft, hasKey, secretAction: hasKey ? 'replace' : 'keep'} : draft), phase: 'ready', notice: null}); return true;},
     keysCleared(key?: string) {if (state.drafts.some(draft => draft.hasKey && (!key || key === draft.key))) emit({drafts: state.drafts.map(draft => !key || key === draft.key ? {...draft, hasKey: false} : draft)});},

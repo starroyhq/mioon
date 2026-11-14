@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -144,7 +145,7 @@ test('default recovery leaves a ready format 4 adoption untouched until a truste
 for(const point of ['ready','project-published'] as const)test(`real SIGKILL at ${point} recovers the fixed adoption without inherited sidecars`,{timeout:60_000},async t=>{
  const f=await fixture(t);await f.app.close();
  const worker=new URL('./fixtures/project-copy-action-worker.ts',import.meta.url);
- const killed=spawnSync(process.execPath,[worker.pathname,JSON.stringify({root:f.root,input:f.input,point})],{encoding:'utf8',timeout:40_000});
+ const killed=spawnSync(process.execPath,[worker.pathname,JSON.stringify({root:f.root,input:f.input,point})],{env: testEnv(), encoding:'utf8',timeout:40_000});
  assert.equal(killed.error,undefined);assert.equal(killed.signal,'SIGKILL',killed.stderr);
  const saved=f.readIntent();assert.equal(saved.phase,point);assert.notEqual(saved.projectId,f.source.projectId);
  if(point==='ready')assert.deepEqual(readFileSync(f.selected),f.selectedBefore);
