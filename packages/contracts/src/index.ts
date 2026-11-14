@@ -361,9 +361,11 @@ export function publicValue(value: unknown): unknown {
    const {reference,...frozen}=asset;
    return publicValue({...frozen,fingerprint:publicMediaFingerprint(reference)});
   }
-  const result: Record<string, unknown> = Object.fromEntries(Object.entries(value).filter(([k])=>!['path','relativePath','requestHash'].includes(k)).map(([k,x])=>[k,publicValue(x)]));
   const record = value as {shotId?: unknown; providerId?: unknown; status?: unknown; requestId?: unknown};
-  if(record.shotId&&record.providerId&&record.status&&record.requestId)result.allowedActions=record.status==='failed'?['retry']:record.status==='submission_unknown'?['reconcile','cancel']:record.status==='cancelled'?['reconcile']:record.status==='succeeded'?[]:['cancel'];
+  const job=record.shotId&&record.providerId&&record.status&&record.requestId;
+  const result: Record<string, unknown> = Object.fromEntries(Object.entries(value).filter(([k])=>
+   !['path','relativePath','requestHash'].includes(k)&&!(job&&(k==='providerAcceptedAt'||k==='originalResultCredentialRejected'))).map(([k,x])=>[k,publicValue(x)]));
+  if(job)result.allowedActions=record.status==='failed'?['retry']:record.status==='submission_unknown'?['reconcile','cancel']:record.status==='cancelled'?['reconcile']:record.status==='succeeded'?[]:['cancel'];
   return result;
  }
  return value;

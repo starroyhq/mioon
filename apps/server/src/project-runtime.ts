@@ -242,6 +242,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
       },
       startWorker: () => worker ??= startWorker(store, services, providers, {
         signal: shutdown.signal,
+        subscribeVideoConnectionChanges: listener => videoSettings!.subscribeConnectionChanges(listener),
         ...(videoSecretCodec?.subscribeStorageAvailable
           ? {subscribeVideoStorageAvailable: listener => videoSecretCodec.subscribeStorageAvailable!(listener)}
           : {}),

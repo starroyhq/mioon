@@ -35,6 +35,7 @@ export interface GenerationImageDraft {
 export interface GenerationImageDomainState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'reconciling' | 'review' | 'blocked' | 'load_error' | 'error' | 'checking';
   snapshot: GenerationImageSnapshot | null; drafts: GenerationImageDraft[]; deleted: string[];
+  keychainWaitConfirmed: boolean;
   recovery: 'conflict' | 'unknown' | null; notice: string | null; version: number;
   availability: ComfyConnectorAvailability | null; check: ComfyImageCheckResult | null;
   probe: {id: string; operation: 'check' | 'models'; result: DraftServiceProbeResult} | null;
@@ -100,7 +101,7 @@ function draftsFor(snapshot: GenerationImageSnapshot): GenerationImageDraft[] {
 /** One owner per file, never one owner per selected panel. State contains only
  * redacted drafts; the refs map holds DOM nodes and never copied passwords. */
 export function createGenerationImageServicesOwner(kind: GenerationImageDomainKind, {client = createGenerationImageServicesClient(kind), onChange = () => {}, interactionAllowed = () => true}: {client?: GenerationImageServicesClient; onChange?: (state: GenerationImageDomainState) => void; interactionAllowed?: () => boolean} = {}) {
-  let state: GenerationImageDomainState = {phase: 'loading', snapshot: null, drafts: [], deleted: [], recovery: null, notice: null, version: 0, availability: null, check: null, probe: null};
+  let state: GenerationImageDomainState = {phase: 'loading', snapshot: null, keychainWaitConfirmed: false, drafts: [], deleted: [], recovery: null, notice: null, version: 0, availability: null, check: null, probe: null};
   let live = true, pageVisible = true, pageEpoch = 0, requestEpoch = 0, checkEpoch = 0, draftVersion = 0, prepared: GenerationSaveTicket | null = null;
   let probeOwner: string | null = null;
   let pending: AbortController | null = null, checking: AbortController | null = null, availabilityPending: AbortController | null = null;
@@ -109,12 +110,17 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     const before = state.snapshot;
     if (!before || !('storage' in before)) return;
     const next = safeSnapshot(kind, await client.read(signal, 'keychain-poll'));
-    if (!signal.aborted && state.snapshot === before && 'storage' in next && next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') {
-      publish({snapshot: {...before, storage: next.storage}});
-    }
+    if (signal.aborted || state.snapshot !== before || !('storage' in next)) return;
+    if (next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') publish({snapshot: {...before, storage: next.storage}});
+    else if (!state.keychainWaitConfirmed) publish({keychainWaitConfirmed: true});
   });
-  const observeStorage = () => watchStorage(live && pageVisible && !!state.snapshot && 'storage' in state.snapshot && state.snapshot.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
-  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; observeStorage(); onChange(copy(state));}};
+  const storagePending = () => !!state.snapshot && 'storage' in state.snapshot && state.snapshot.storage.reasonCode === 'OS_SECRET_STORE_PENDING';
+  const observeStorage = () => watchStorage(live && pageVisible && storagePending());
+  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {
+    state = {...state, ...patch, version: state.version + 1};
+    if (!storagePending()) state.keychainWaitConfirmed = false;
+    observeStorage(); onChange(copy(state));
+  }};
   const baseline = () => state.snapshot ? draftsFor(state.snapshot) : [];
   const draftDirty = (draft: GenerationImageDraft) => {
     const before = baseline().find(item => item.id === draft.id);
@@ -326,7 +332,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     },
     cancelCheck,
     setPageVisible(visible: boolean) {if (visible === pageVisible) return; pageVisible = visible; observeStorage(); ++pageEpoch; ++requestEpoch; pending?.abort(); availabilityPending?.abort(); cancelCheck(); clearKeys();
-      if (!visible) {prepared?.dispose(); if (state.phase === 'saving' || state.phase === 'reconciling') publish({phase: 'blocked', recovery: 'unknown', notice: 'image.settings.notice.review'});}
+      if (!visible) {if (state.keychainWaitConfirmed) publish({keychainWaitConfirmed: false}); prepared?.dispose(); if (state.phase === 'saving' || state.phase === 'reconciling') publish({phase: 'blocked', recovery: 'unknown', notice: 'image.settings.notice.review'});}
       else if (!state.snapshot) void read();},
     dispose() {clearKeys(); live = false; watchStorage(false); ++pageEpoch; ++requestEpoch; ++checkEpoch; pending?.abort(); checking?.abort(); availabilityPending?.abort(); prepared?.dispose(); inputs.clear();},
   };

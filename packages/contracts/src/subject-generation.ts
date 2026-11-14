@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {subjectVersionResponseSchema} from './subjects.ts';
 import {getCapabilityProfile, SUBJECT_REFERENCE_PROFILE_VERSION, type ImplementedGenerationInputRole} from './generation-input-profiles.ts';
 import {parseVideoBinding,validateVideoSnapshot} from './video-providers.ts';
-import {videoCredentialDiagnosticSchema} from './video-credential-diagnostic.ts';
+import {videoCredentialDiagnosticSchema,videoResultCredentialRecoverySchema} from './video-credential-diagnostic.ts';
 
 export const SUBJECT_GENERATION_KINDS=Object.freeze(['character','product','location'] as const);
 export type SubjectGenerationKind = (typeof SUBJECT_GENERATION_KINDS)[number];
@@ -111,10 +111,11 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  const connected=own(request,'connectionId');
  if(!uuid(request.shotId)||!uuid(request.subjectVersionId)||!integer(request.expectedRevision,1)||!text(request.requestId,8,200)||typeof request.providerId!=='string'||!['mock','ark'].includes(request.providerId)||own(request,'model')&&!text(request.model,0,100)||own(request,'parameters')&&!(connected?record(request.parameters):parameters(request.parameters)))return false;
  if(connected&&(!uuid(request.connectionId)||!integer(request.configurationRevision,1)||!uuid(request.modelEntryId))||!connected&&(own(request,'configurationRevision')||own(request,'modelEntryId')))return false;
- if(!fields(result,jobFields,['allowedActions','nextPollAt']))return false;
+ if(!fields(result,jobFields,['allowedActions','nextPollAt','resultCredentialRecovery']))return false;
  const job = result as Record<string, unknown>;
  if(!uuid(job.id)||!uuid(job.projectId)||job.requestId!==request.requestId||job.shotId!==request.shotId||job.providerId!==request.providerId||request.model&&job.model!==request.model||!text(job.model,1,100)||!integer(job.revision,1)||typeof job.status!=='string'||!statuses.includes(job.status)||!text(job.phase,1,100)||!integer(job.progress,0,100)||!integer(job.submissionCount,0)||!timestamp(job.createdAt)||!timestamp(job.updatedAt)||job.retryOfJobId!==expectedRetryOfJobId||!(job.providerJobId===null||text(job.providerJobId,1,200))||!(job.versionId===null||uuid(job.versionId))||!([null,'local_only'] as unknown[]).includes(job.cancelScope)||own(job,'nextPollAt')&&!integer(job.nextPollAt,0))return false;
  const jobError=job.error;
+ if(own(job,'resultCredentialRecovery')&&(!connected||!job.providerJobId||!videoResultCredentialRecoverySchema.safeParse(job.resultCredentialRecovery).success))return false;
  if(jobError!==null&&(!fields(jobError,['code','message'],['retryable','diagnostic'])||!text(jobError.code,1,200)||!text(jobError.message,1,600)||own(jobError,'retryable')&&typeof jobError.retryable!=='boolean'||own(jobError,'diagnostic')&&!videoCredentialDiagnosticSchema.safeParse(jobError.diagnostic).success))return false;
  const allowed=job.status==='failed'?['retry']:job.status==='submission_unknown'?['reconcile','cancel']:job.status==='cancelled'?['reconcile']:job.status==='succeeded'?[]:['cancel'];
  if(own(job,'allowedActions')&&!same(job.allowedActions,allowed))return false;
