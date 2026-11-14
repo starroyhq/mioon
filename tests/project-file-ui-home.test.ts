@@ -433,8 +433,9 @@ test('native waiting status and cancel stay with the candidate card or move abov
 test('long project paths preserve distinct status labels and ordering in both home layouts and all languages', () => {
   const directory = `/private/tmp/P03/${'long-project-location-'.repeat(20)}`;
   const states: ProjectEntry['availability'][] = [{state: 'missing'}, {state: 'locked'}, {state: 'invalid', reason: 'read-only'},
-    {state: 'invalid', reason: 'corrupt'}, {state: 'invalid', reason: 'format-newer'}];
-  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid', 'projectFile.open.newer.title'] as const;
+    {state: 'invalid', reason: 'corrupt'}, {state: 'invalid', reason: 'format-newer'}, {state: 'busy'}];
+  const statusKeys = ['projectFile.home.missing', 'projectFile.home.locked', 'projectFile.home.readOnly', 'projectFile.home.invalid',
+    'projectFile.open.newer.title', 'projectFile.home.checking'] as const;
   const projects: ProjectEntry[] = RECENT_PROJECTS.slice(0, states.length).map((project, index) => ({project: {...project, name: `Status ${states.length - index}`,
     projectFile: `${directory}/project-${index}.mioon`, lastOpenedAt: `2026-10-${20 + index}T00:00:00.000Z`,
     summary: project.summary ? {...project.summary, updatedAt: `2026-10-${20 + index}T00:00:00.000Z`} : null}, availability: states[index]!, coverUrl: null}));
@@ -451,7 +452,7 @@ test('long project paths preserve distinct status labels and ordering in both ho
       assert.ok(status, `${locale}/${view}/${sort}/${entry.availability.state}: status has its non-shrinking role`);
       assert.equal(status[1], escapeHtml(translate(locale, statusKeys[index]!)));
       assert.ok(meta.includes(directory), 'the original path remains available to render with ellipsis');
-      assert.equal(meta.startsWith(status[0]), index !== 1, 'missing/invalid lead with their status; locked keeps its existing folder-then-status order');
+      assert.equal(meta.startsWith(status[0]), index !== 1, 'the locked status follows its folder; other statuses lead');
     }
   }
   assert.deepEqual(projects, original);

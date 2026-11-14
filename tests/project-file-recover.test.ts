@@ -328,6 +328,31 @@ test('closing a catalog endpoint rejects all outstanding scans without waiting f
   assert.equal(closed, 1);
 });
 
+test('cancelling an active scan retires its endpoint and drops late replies', async t => {
+  const project = newProject(t), input = catalogInput(project.projectFile);
+  let closed = 0, receive: (message: unknown) => void = () => assert.fail('Missing scanner reply listener');
+  const client = createProjectCatalogClient({
+    postMessage() {},
+    onMessage(listener) {receive = listener;},
+    onClose() {},
+    close() {closed++;},
+  });
+  const finished = new AbortController();
+  const first = client.scan([input], finished.signal);
+  receive({type: 'project-catalog:result', id: 1, results: [{recovery: {state: 'clean'}}]});
+  assert.deepEqual(await first, [{recovery: {state: 'clean'}}]);
+  finished.abort();
+  assert.equal(closed, 0, 'completed scans detach their cancellation handler');
+  const active = new AbortController();
+  const checks = Promise.all([client.scan([input], active.signal), client.scan([input], active.signal)]
+    .map(result => assert.rejects(result, {code: 'PROJECT_ENTRY_UNAVAILABLE'})));
+  active.abort();
+  receive({type: 'project-catalog:result', id: 2, results: [{recovery: {state: 'clean'}}]});
+  await checks;
+  await assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  assert.equal(closed, 1);
+});
+
 test('the headless catalog owns and drains a child closed while its first scan is pending', async t => {
   const project = newProject(t), client = createNodeProjectCatalogClient();
   t.after(async () => {client.close(); await client.drain?.();});
@@ -336,4 +361,18 @@ test('the headless catalog owns and drains a child closed while its first scan i
   client.close();
   await Promise.all([pending, client.drain?.()]);
   await assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+});
+
+test('the headless catalog replaces an aborted worker for the next scan', {timeout: 10_000}, async t => {
+  const project = newProject(t), client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  const input = catalogInput(project.projectFile);
+  const active = new AbortController();
+  const pending = assert.rejects(client.scan([input], active.signal), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  active.abort();
+  await pending;
+  assert.deepEqual(await client.scan([input]), [{
+    recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
+    format: {generation: input.generation, newer: false},
+  }]);
 });

@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
-import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {request} from 'node:http';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
@@ -39,7 +39,8 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false, projectCatalogClient = undefined as ServerOptions['projectCatalogClient']} = {}) {
+async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false,
+  projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined} = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
   const dataDir = path.join(root, 'app'), projectsDir = externalProjectsRoot ? path.join(root, 'selected-projects') : path.join(dataDir, 'projects');
   let server: Server | undefined;
@@ -85,7 +86,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
     if (externalProjectsRoot) library.registry.upsert({...library.registry.get(b.projectId)!, projectFile: bFile});
   } finally {library.close();}
   let inspect!: InspectProject, inspectApplication!: InspectApplication,backupAttempts=0;
-  server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel, projectCatalogClient,
+  server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel, projectCatalogClient, projectCatalogTimeoutMsForTest,
     inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;},
     ...(rejectBackup?{projectBackupCopyForTest:async()=>{backupAttempts++;throw Error('Metadata reads must not start backups');}}:{})});
   const owned = server;
@@ -270,8 +271,10 @@ test('a catalog shares one private identity scan but checks each project and ref
   assert.deepEqual(opened, [stable], 'a changed generation is read again');
 
   rejectRefresh = true;
-  await assert.rejects(readCatalog(), /Synthetic unavailable private root/u);
+  opened.length = 0;
+  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'available'}]);
   assert.deepEqual(reads, [directories.dataDir], 'a failed snapshot exposes no project header hints');
+  assert.deepEqual(opened, []);
 });
 
 test('identity and preferences respond while HTTP and native callers share one catalog scan', {timeout: 10_000}, async t => {
@@ -386,9 +389,117 @@ test('a delayed format hint cannot be applied to a changed project file', {timeo
     const mtime = fs.statSync(file).mtime;
     fs.utimesSync(file, mtime, new Date(mtime.getTime() + 2000));
   } finally {resume.resolve();}
-  for (const catalog of [await listing, await f.catalog()]) {
-    assert.deepEqual(catalog.registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'available'});
-  }
+  assert.deepEqual((await listing).registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'busy'});
+  assert.deepEqual((await f.catalog()).registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'available'});
+});
+
+test('a failed or timed out catalog scan serves registration metadata and admits a fresh scan', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>();
+  let mode: 'normal' | 'failure' | 'stall' = 'normal';
+  let scans = 0;
+  let cancelled: AbortSignal | undefined;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+    async scan(inputs, signal) {
+      scans++;
+      if (mode === 'failure') throw Error('Synthetic scanner transport closed');
+      if (mode === 'stall') {
+        cancelled = signal;
+        entered.resolve();
+        return new Promise(() => {});
+      }
+      return inputs.map(scanProjectCatalogFile);
+    },
+    close() {},
+  }});
+  const candidateStatus = (value: ProjectEntriesResponse) => value.registered.find(item => item.project.projectId === f.b.projectId)?.availability;
+  const data = await f.catalog();
+  assert.deepEqual(candidateStatus(data), {state: 'invalid', reason: 'format-newer'});
+  mode = 'failure';
+  const degraded = await f.catalog();
+  assert.deepEqual(degraded.registered.map(item => item.project), data.registered.map(item => item.project));
+  assert.deepEqual(candidateStatus(degraded), {state: 'available'}, 'transport loss omits the prior format hint');
+  mode = 'stall';
+  const listing = f.catalog();
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before scanner was reached'))]);
+  const overlap = f.server.projectEntries.listRecent();
+  assert.deepEqual(await listing, degraded);
+  assert.deepEqual(await overlap, degraded);
+  assert.equal(cancelled?.aborted, true);
+  assert.equal(scans, 3, 'both callers joined the same bounded attempt');
+  mode = 'normal';
+  assert.deepEqual(await f.catalog(), data);
+  assert.equal(scans, 4, 'the next read creates a new flight');
+});
+
+test('inconclusive inspection preserves a known lock or shows the project as busy', async t => {
+  let phase: 'locked' | 'changed' | 'clean' = 'locked';
+  const f = await fixture(t, 'production', {projectCatalogClient: {
+    async scan(inputs) {
+      return inputs.map(input => {
+        if (phase === 'changed') return {recovery: 'changed'};
+        if (phase === 'locked' && input.file === f.a.projectFile) return {recovery: {state: 'locked'}};
+        return scanProjectCatalogFile(input);
+      });
+    },
+    close() {},
+  }});
+  const states = (data: ProjectEntriesResponse) => [f.a, f.b].map(({projectId}) => data.registered.find(row => row.project.projectId === projectId)?.availability.state);
+  assert.deepEqual(states(await f.catalog()), ['locked', 'available']);
+  phase = 'changed';
+  assert.deepEqual(states(await f.catalog()), ['locked', 'busy']);
+  phase = 'clean';
+  assert.deepEqual(states(await f.catalog()), ['available', 'available']);
+});
+
+test('a stalled metadata read releases the directory flight and ignores its late result', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), resumed = Promise.withResolvers<void>();
+  let scans = 0, stall = true;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+    async scan(inputs) {scans++; return inputs.map(scanProjectCatalogFile);},
+    close() {},
+  }});
+  const original = fs.promises.lstat;
+  t.mock.method(fs.promises, 'lstat', async (file: Parameters<typeof original>[0], options: Parameters<typeof original>[1]) => {
+    if (stall && file === f.b.projectFile) {
+      stall = false;
+      entered.resolve();
+      await resume.promise;
+      resumed.resolve();
+    }
+    return original(file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {resume.resolve(); restoreFsMocks(t);});
+  const listing = f.catalog();
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before reading metadata'))]);
+  const degraded = await listing;
+  assert.equal(degraded.registered.length, 2);
+  assert.equal(scans, 0);
+  const fresh = await f.catalog();
+  assert.deepEqual(fresh.registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'invalid', reason: 'format-newer'});
+  resume.resolve();
+  await resumed.promise;
+  assert.deepEqual(await f.catalog(), fresh);
+  assert.equal(scans, 2);
+});
+
+test('a held database at a journal alias leaves the project checking and preserves the holder', async t => {
+  const scanned: string[] = [];
+  const f = await fixture(t, 'production', {projectCatalogClient: {
+    async scan(inputs) {scanned.push(...inputs.map(input => input.file)); return inputs.map(scanProjectCatalogFile);},
+    close() {},
+  }});
+  const journal = f.a.projectFile + '-journal', holder = f.hold(f.b.projectId);
+  const availability = async () => (await f.catalog()).registered.find(item => item.project.projectId === f.a.projectId)?.availability;
+  assert.deepEqual(await availability(), {state: 'available'});
+  scanned.length = 0;
+  linkSync(f.b.projectFile, journal);
+  try {
+    assert.deepEqual(await availability(), {state: 'busy'});
+    assert.deepEqual(scanned, []);
+    assert.equal(holder.db.prepare('SELECT 1 AS value').get()?.value, 1);
+  } finally {rmSync(journal);}
+  assert.deepEqual(await availability(), {state: 'available'});
 });
 
 test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{

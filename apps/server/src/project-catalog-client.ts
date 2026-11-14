@@ -12,7 +12,7 @@ export interface ProjectCatalogMessagePort {
 }
 
 export interface ProjectCatalogClient {
-  scan(inputs: readonly ProjectCatalogScanInput[]): Promise<readonly ProjectCatalogScanResult[]>;
+  scan(inputs: readonly ProjectCatalogScanInput[], signal?: AbortSignal): Promise<readonly ProjectCatalogScanResult[]>;
   close(): void;
   drain?(): Promise<void>;
 }
@@ -29,11 +29,15 @@ export function createProjectCatalogClient(port: ProjectCatalogMessagePort): Pro
     readonly length: number;
     readonly resolve: (result: readonly ProjectCatalogScanResult[]) => void;
     readonly reject: (error: unknown) => void;
+    readonly detach: () => void;
   }>();
   const close = (): void => {
     if (closed) return;
     closed = true;
-    for (const request of pending.values()) request.reject(projectCatalogUnavailable());
+    for (const request of pending.values()) {
+      request.detach();
+      request.reject(projectCatalogUnavailable());
+    }
     pending.clear();
     port.close();
   };
@@ -49,15 +53,20 @@ export function createProjectCatalogClient(port: ProjectCatalogMessagePort): Pro
       return;
     }
     pending.delete(id);
+    request.detach();
     request.resolve(message.results);
   });
   return {
-    scan(inputs) {
-      if (closed || !isCatalogScanBatch(inputs)) return Promise.reject(projectCatalogUnavailable());
+    scan(inputs, signal) {
+      if (closed || signal?.aborted || !isCatalogScanBatch(inputs)) return Promise.reject(projectCatalogUnavailable());
       if (inputs.length === 0) return Promise.resolve([]);
       const id = ++sequence;
       return new Promise((resolve, reject) => {
-        pending.set(id, {length: inputs.length, resolve, reject});
+        // An in-flight synchronous filesystem call cannot be canceled over
+        // IPC. Retire this exact port so the owner can reap its process.
+        const abort = () => close();
+        signal?.addEventListener('abort', abort, {once: true});
+        pending.set(id, {length: inputs.length, resolve, reject, detach: () => signal?.removeEventListener('abort', abort)});
         try { port.postMessage({type: 'project-catalog:scan', id, inputs}); }
         catch { close(); }
       });
@@ -115,15 +124,15 @@ export function createNodeProjectCatalogClient(): ProjectCatalogClient {
     return connected;
   };
   return {
-    async scan(inputs) {
-      if (stopped || !isCatalogScanBatch(inputs)) throw projectCatalogUnavailable();
+    async scan(inputs, signal) {
+      if (stopped || signal?.aborted || !isCatalogScanBatch(inputs)) throw projectCatalogUnavailable();
       if (!inputs.length) return [];
       try {
         // A broken IPC channel can retire a worker during native recovery.
         // Confirm the retired process exited before admitting its replacement.
         if (!client && owned.size > 0) await Promise.all(owned);
-        if (stopped) throw projectCatalogUnavailable();
-        return await (client ??= start()).scan(inputs);
+        if (stopped || signal?.aborted) throw projectCatalogUnavailable();
+        return await (client ??= start()).scan(inputs, signal);
       }
       catch { throw projectCatalogUnavailable(); }
     },

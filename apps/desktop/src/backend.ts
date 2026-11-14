@@ -16,9 +16,7 @@ import path from 'node:path';
 import {createProjectEntryControlBroker} from './project-entry-control.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
 import {createSettingsEventLoopMonitor} from './settings-event-loop.ts';
-import {createProjectCatalogClient} from '../../server/src/project-catalog-client.ts';
-import type {ProjectCatalogClient} from '../../server/src/project-catalog-client.ts';
-import {desktopProjectCatalogPort} from './project-catalog-port.ts';
+import {createDesktopProjectCatalogClient} from './project-catalog-port.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -52,7 +50,7 @@ let server: BackendServer | undefined, starting = false, startFailed = false, cl
 let projectControl: ReturnType<typeof createProjectEntryControlBroker> | undefined;
 let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
-let projectCatalog: ProjectCatalogClient | undefined;
+let projectCatalog: ReturnType<typeof createDesktopProjectCatalogClient> | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
 const imageSecretCodec = createImageSecretClient({ port: process.parentPort });
 const videoSecretCodec = createVideoSecretClient({ port: process.parentPort });
@@ -97,6 +95,11 @@ process.parentPort.on('message', ({ data, ports }) => {
     return;
   }
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
+  if (data?.type === 'project-catalog:attach') {
+    if (!closing && projectCatalog) projectCatalog.attach(data, ports ?? []);
+    else for (const port of ports ?? []) port.close();
+    return;
+  }
   if (settingsEventLoop.handle(data, reply => process.parentPort!.postMessage(reply))) return;
   if (projectControl?.handle(data)) return;
   if (data?.type === 'native-audio:reserve' || data?.type === 'native-audio:retire') {
@@ -108,6 +111,10 @@ process.parentPort.on('message', ({ data, ports }) => {
   starting = true;
   initialization = (async () => {
     try {
+      if (ports?.length) {
+        for (const port of ports) port.close();
+        throw new TypeError('Unexpected backend startup ports');
+      }
       // Windows storage opens only through the helper main verified and named.
       initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
       for (const name of ['dataDir', 'cacheDir', 'projectsDir'] as const) {
@@ -117,10 +124,8 @@ process.parentPort.on('message', ({ data, ports }) => {
         throw new TypeError('Invalid backend examples directory');
       }
       if (data.projectTrashAvailable !== undefined && typeof data.projectTrashAvailable !== 'boolean') throw new TypeError('Invalid project trash capability');
-      if (ports?.length !== 1) throw new TypeError('Missing desktop project catalog channel');
-      const [catalogPort] = ports;
-      projectCatalog = createProjectCatalogClient(desktopProjectCatalogPort(catalogPort));
-      catalogPort.start();
+      if (typeof data.backendId !== 'string' || data.backendId !== data.nativeAudioPreview?.backendId) throw new TypeError('Invalid backend project owner');
+      projectCatalog = createDesktopProjectCatalogClient(data.backendId, message => process.parentPort!.postMessage(message));
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
@@ -134,7 +139,6 @@ process.parentPort.on('message', ({ data, ports }) => {
         projectCatalogClient: projectCatalog,
         projectTrash: data.projectTrashAvailable === true ? projectTrash : undefined,
         token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
-      if (typeof data.backendId !== 'string' || data.backendId !== data.nativeAudioPreview?.backendId) throw new TypeError('Invalid backend project owner');
       projectControl = createProjectEntryControlBroker({backendId:data.backendId, control:server.projectEntries,
         send:message=>process.parentPort!.postMessage(message), isCurrent:()=>!closing});
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,

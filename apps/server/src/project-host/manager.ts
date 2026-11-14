@@ -115,7 +115,7 @@ export interface ListedProject {
 }
 
 type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'};
-export type CatalogRecovery = {readonly result: RecoveryResult} | {readonly error: unknown};
+export type CatalogRecovery = {readonly result: RecoveryResult} | {readonly error: unknown} | {readonly pending: true};
 type InspectCatalog = (projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean) => Promise<ReadonlyMap<string, CatalogRecovery>>;
 
 export interface ProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime> {
@@ -319,7 +319,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** Tail of each project's queue of exclusive operations. */
   const exclusive = new Map<string, Promise<void>>();
   /** What the last recovery found for each project that is not open. */
-  const recoveries = new Map<string, {registration: RecentProject; result: RecoveryResult}>();
+  const recoveries = new Map<string, {registration: RecentProject; result: RecoveryResult | {readonly state: 'busy'}}>();
   /** Searches by file identity for projects the recovery found missing. */
   const searches = new Map<string, Promise<void>>();
   let stopped = false;
@@ -688,8 +688,14 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   function recordRecovery(registration: RecentProject, observed: CatalogRecovery | undefined, inspect?: InspectCatalog): void {
     const {projectId} = registration;
+    const previous = recoveries.get(projectId);
+    const wasLocked = previous?.result.state === 'locked' && sameRegistration(previous.registration, registration);
     if (!observed) {
-      recoveries.delete(projectId);
+      if (!wasLocked) recoveries.delete(projectId);
+      return;
+    }
+    if ('pending' in observed) {
+      if (!wasLocked) recoveries.set(projectId, {registration, result: {state: 'busy'}});
       return;
     }
     if ('error' in observed) {

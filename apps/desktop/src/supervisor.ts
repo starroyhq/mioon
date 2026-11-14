@@ -113,6 +113,20 @@ const projectCatalogEnvironmentKeys = ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 
 // is not proof of exit: keep the owned handle until Electron reports its exit.
 export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateMs: 2000, confirmMs: 1000 });
 const CATALOG_DISCONNECT_GRACE_MS = 100;
+const CATALOG_STARTUP_MS = 5000;
+const CATALOG_RESTART_DELAYS_MS = [250, 500, 1000];
+const CATALOG_STABLE_MS = 60000;
+
+interface OwnedCatalog {
+  readonly child: BackendUtilityProcess;
+  readonly generation: number;
+  backendPort?: MessagePortMain;
+  readyAt?: number;
+  retiring: boolean;
+  startupTimer?: ReturnType<typeof setTimeout>;
+  terminateTimer?: ReturnType<typeof setTimeout>;
+  forceTimer?: ReturnType<typeof setTimeout>;
+}
 
 export class BackendSupervisor extends EventEmitter {
   private projectControl: ReturnType<typeof createProjectEntryControlClient> | null = null;
@@ -195,8 +209,6 @@ export class BackendSupervisor extends EventEmitter {
     this.recordDiagnostic('start');
     return new Promise<BackendReady>((resolve, reject) => {
       let settled = false;
-      let catalogReady = !this.projectCatalog;
-      let pendingBackendReady: Record<string, unknown> | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       const fail = (error: Error) => {
@@ -276,6 +288,11 @@ export class BackendSupervisor extends EventEmitter {
           return;
         }
         const notice = recordOf(message);
+        if (notice?.type === 'project-catalog:retire') {
+          if (catalog && !Array.isArray(message) && Object.keys(notice).length === 3 &&
+              notice.backendId === backendId && notice.generation === catalog.generation) retireCatalog(catalog);
+          return;
+        }
         if (notice?.type === 'exit-diagnostic') {
           // Only fixed reason labels cross into diagnostics. Never persist a
           // utility message, error, runtime payload, or startup configuration.
@@ -302,8 +319,6 @@ export class BackendSupervisor extends EventEmitter {
           fail(new Error('本地服务启动失败。请检查数据目录和应用文件')); return;
         }
         if (notice?.type !== 'ready' || settled || this.state !== 'starting') return;
-        if (!catalogReady) { pendingBackendReady = notice; return; }
-        pendingBackendReady = undefined;
         let origin: string;
         try { origin = trustedOrigin(notice.url); }
         catch (error) { this.noteExitReason('invalid-origin'); fail(error as Error); kill('invalid-origin'); return; }
@@ -322,10 +337,85 @@ export class BackendSupervisor extends EventEmitter {
         resolve({ url: origin, runtime: notice.runtime as BackendRuntime });
       };
       child.on('message', acceptBackendMessage);
-      let catalog: BackendUtilityProcess | undefined;
-      let catalogTerminateTimer: ReturnType<typeof setTimeout> | undefined;
-      let catalogForceTimer: ReturnType<typeof setTimeout> | undefined;
+      let catalog: OwnedCatalog | undefined;
+      let catalogGeneration = 0;
+      let catalogRestarts = 0;
+      let catalogRestartTimer: ReturnType<typeof setTimeout> | undefined;
       let backendExitCode: number | undefined;
+      const ownsBackend = (): boolean => this.child === child && this.exitedChild !== child &&
+        ['starting', 'running'].includes(this.state) && this.termination === null;
+      const scheduleCatalog = (): void => {
+        if (!ownsBackend() || catalogRestartTimer || catalogRestarts >= CATALOG_RESTART_DELAYS_MS.length) return;
+        catalogRestartTimer = setTimeout(() => {
+          catalogRestartTimer = undefined;
+          startCatalog();
+        }, CATALOG_RESTART_DELAYS_MS[catalogRestarts++]!);
+      };
+      const retireCatalog = (owned: OwnedCatalog): void => {
+        if (catalog !== owned || owned.retiring) return;
+        owned.retiring = true;
+        clearTimeout(owned.startupTimer);
+        try {owned.backendPort?.close();} catch { /* Reap the scanner below. */ }
+        owned.backendPort = undefined;
+        // A closed channel may be waiting behind a blocking filesystem call.
+        // Only confirmed exit permits a replacement to access the same files.
+        owned.terminateTimer = setTimeout(() => {
+          try {owned.child.kill();} catch { /* Wait for the owned exit event. */ }
+        }, CATALOG_DISCONNECT_GRACE_MS);
+        owned.forceTimer = setTimeout(() => {
+          try {this.forceKill(owned.child);} catch { /* Wait for the owned exit event. */ }
+        }, CATALOG_DISCONNECT_GRACE_MS + this.terminateTimeout);
+      };
+      const startCatalog = (): void => {
+        if (!this.projectCatalog || !ownsBackend() || catalog) return;
+        let channel: MessageChannelMain | undefined;
+        try {
+          channel = this.projectCatalog.createChannel();
+          const environment: NodeJS.ProcessEnv = {};
+          for (const key of projectCatalogEnvironmentKeys) {
+            if (this.environment[key] !== undefined) environment[key] = this.environment[key];
+          }
+          const worker = this.fork(this.projectCatalog.modulePath, [], {
+            env: environment, stdio: 'ignore', serviceName: 'Mioon Project Catalog',
+            allowLoadingUnsignedLibraries: false, execArgv: [],
+          });
+          const owned: OwnedCatalog = {child: worker, generation: ++catalogGeneration, backendPort: channel.port2, retiring: false};
+          catalog = owned;
+          worker.on('error', () => retireCatalog(owned));
+          worker.on('message', message => {
+            if (message !== 'project-catalog-ready' || catalog !== owned || owned.retiring || !ownsBackend() || !owned.backendPort) return;
+            clearTimeout(owned.startupTimer);
+            try {
+              child.postMessage({type: 'project-catalog:attach', backendId, generation: owned.generation}, [owned.backendPort]);
+              owned.backendPort = undefined;
+              owned.readyAt = performance.now();
+            } catch {retireCatalog(owned);}
+          });
+          worker.once('exit', () => {
+            clearTimeout(owned.startupTimer);
+            clearTimeout(owned.terminateTimer);
+            clearTimeout(owned.forceTimer);
+            try {owned.backendPort?.close();} catch { /* The peer already exited. */ }
+            if (catalog !== owned) return;
+            catalog = undefined;
+            if (backendExitCode !== undefined) {
+              finishExit(backendExitCode);
+              return;
+            }
+            if (owned.readyAt !== undefined && performance.now() - owned.readyAt >= CATALOG_STABLE_MS) catalogRestarts = 0;
+            scheduleCatalog();
+          });
+          owned.startupTimer = setTimeout(() => retireCatalog(owned), CATALOG_STARTUP_MS);
+          worker.postMessage('start-project-catalog', [channel.port1]);
+        } catch {
+          try {channel?.port1.close();} catch { /* The transfer may already own it. */ }
+          if (catalog) retireCatalog(catalog);
+          else {
+            try {channel?.port2.close();} catch { /* Retry with a fresh pair. */ }
+            scheduleCatalog();
+          }
+        }
+      };
       const finishExit = (code: number) => {
         if (this.child !== child) return;
         const exitState = this.state;
@@ -364,54 +454,19 @@ export class BackendSupervisor extends EventEmitter {
         if (!settled) fail(new Error(`本地服务退出 (${code})`));
         this.exitedChild = child;
         backendExitCode = code;
+        clearTimeout(catalogRestartTimer);
         const ownedCatalog = catalog;
         if (!ownedCatalog) { finishExit(code); return; }
-        // The peer port closes when the backend exits. Reap the helper even
-        // if a cold filesystem call prevents it from handling that close.
-        catalogTerminateTimer = setTimeout(() => {
-          try { ownedCatalog.kill(); } catch { /* Keep the exact child until it reports exit. */ }
-        }, CATALOG_DISCONNECT_GRACE_MS);
-        catalogForceTimer = setTimeout(() => {
-          try { this.forceKill(ownedCatalog); } catch { /* Keep waiting for the exit event. */ }
-        }, CATALOG_DISCONNECT_GRACE_MS + this.terminateTimeout);
+        retireCatalog(ownedCatalog);
       });
       const startMessage = { type: 'start', ...config, backendId, projectTrashAvailable: this.projectTrash !== undefined };
-      let catalogChannel: MessageChannelMain | undefined;
       try {
-        if (!this.projectCatalog) { child.postMessage(startMessage); return; }
-        catalogChannel = this.projectCatalog.createChannel();
-        const environment: NodeJS.ProcessEnv = {};
-        for (const key of projectCatalogEnvironmentKeys) {
-          if (this.environment[key] !== undefined) environment[key] = this.environment[key];
-        }
-        catalog = this.fork(this.projectCatalog.modulePath, [], {
-          env: environment, stdio: 'ignore', serviceName: 'Mioon Project Catalog',
-          allowLoadingUnsignedLibraries: false, execArgv: [],
-        });
-        // Electron reports the subsequent exit even after a fatal V8 error.
-        catalog.on('error', () => {});
-        catalog.on('message', message => {
-          if (message !== 'project-catalog-ready' || catalogReady || settled || this.child !== child || this.exitedChild === child) return;
-          catalogReady = true;
-          if (pendingBackendReady) acceptBackendMessage(pendingBackendReady);
-        });
-        catalog.once('exit', () => {
-          clearTimeout(catalogTerminateTimer);
-          clearTimeout(catalogForceTimer);
-          catalog = undefined;
-          if (backendExitCode !== undefined) finishExit(backendExitCode);
-          else if (!settled) {
-            fail(new Error('本地服务启动通信失败'));
-            kill('startup-communication-failed');
-          }
-        });
-        catalog.postMessage('start-project-catalog', [catalogChannel.port1]);
-        child.postMessage(startMessage, [catalogChannel.port2]);
+        child.postMessage(startMessage);
       } catch {
-        catalogChannel?.port1.close();
-        catalogChannel?.port2.close();
         this.noteExitReason('startup-communication-failed'); fail(new Error('本地服务启动通信失败')); kill('startup-communication-failed');
+        return;
       }
+      startCatalog();
     });
   }
 

@@ -58,7 +58,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, catalogClient}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, catalogClient, catalogTimeoutMs}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -72,6 +72,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
   readonly assertProjectFile?: ApplicationFileGuard;
   readonly catalogClient?: ProjectCatalogClient;
+  readonly catalogTimeoutMs?: number;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
@@ -102,7 +103,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   // Native and HTTP share the same sweep. The web process still does recovery
   // for existing registrations, while header hints and responses are scoped
   // to the web project root.
-  const inspectCatalog = createProjectCatalog({client: catalogClient, guard: assertProjectFile, signal, checkpoint: scope});
+  const inspectCatalog = createProjectCatalog({client: catalogClient, guard: assertProjectFile, signal, checkpoint: scope, timeoutMs: catalogTimeoutMs});
   const readCatalog = async (coversAll: boolean) => {
     const before = scope();
     refreshSummaries();

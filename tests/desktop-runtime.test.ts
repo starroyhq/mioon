@@ -4,7 +4,9 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, stat, rm, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+import type {MessagePortMain} from 'electron';
 import { BackendSupervisor } from '../apps/desktop/src/supervisor.ts';
+import { createDesktopProjectCatalogClient } from '../apps/desktop/src/project-catalog-port.ts';
 import { QuitCoordinator, installUnsavedGuard } from '../apps/desktop/src/lifecycle.ts';
 import { dataPaths, utilityEnvironment, readToolConfig, saveToolConfig, validateTool,
   writeConnection, removeConnection } from '../apps/desktop/src/config.ts';
@@ -100,10 +102,10 @@ test('supervisor transfers a dedicated catalog channel without exposing backend 
   }, modulePath: '/app/backend.cjs', environment: {HOME: '/home/u', MIOON_FFMPEG_PATH: '/bin/ffmpeg', RUNWAYML_API_SECRET: 'secret'},
   projectCatalog: {modulePath: '/app/project-catalog.cjs', createChannel: () => channel as ReturnType<NonNullable<SupervisorOptions['projectCatalog']>['createChannel']>}});
   const starting = supervisor.start({token: 'private'} as Parameters<typeof supervisor.start>[0]);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(supervisor.state, 'starting');
-  catalog.emit('message', 'project-catalog-ready');
   await starting;
+  assert.equal(supervisor.state, 'running');
+  assert.equal(backend.transfer, undefined);
+  catalog.emit('message', 'project-catalog-ready');
   assert.deepEqual(launches.map(launch => launch.modulePath), ['/app/backend.cjs', '/app/project-catalog.cjs']);
   assert.deepEqual(launches[1].args, []);
   assert.deepEqual(launches[1].options, {env: {HOME: '/home/u'}, stdio: 'ignore', serviceName: 'Mioon Project Catalog',
@@ -111,6 +113,7 @@ test('supervisor transfers a dedicated catalog channel without exposing backend 
   assert.deepEqual(catalog.messages, ['start-project-catalog']);
   assert.deepEqual(catalog.transfer, [channel.port1]);
   assert.deepEqual(backend.transfer, [channel.port2]);
+  assert.deepEqual(backend.messages.at(-1), {type: 'project-catalog:attach', backendId: backend.messages[0]!.backendId, generation: 1});
 
   const stopping = supervisor.stop();
   await new Promise(resolve => backend.once('exit', resolve));
@@ -122,8 +125,8 @@ test('supervisor transfers a dedicated catalog channel without exposing backend 
   assert.equal(supervisor.state, 'stopped');
 });
 
-test('failed catalog transfer terminates and reaps both utility processes', async () => {
-  const backend = fakeChild('idle'), catalog = fakeChild('idle');
+test('a failed initial catalog transfer retires the helper while the backend stays ready', async () => {
+  const backend = fakeChild(), catalog = fakeChild('idle');
   catalog.pid = 23456;
   catalog.postMessage = () => {throw new Error('private transfer error');};
   let closedPorts = 0;
@@ -132,13 +135,131 @@ test('failed catalog transfer terminates and reaps both utility processes', asyn
     modulePath: '/app/backend.cjs', environment: {},
     projectCatalog: {modulePath: '/app/project-catalog.cjs', createChannel: () =>
       ({port1: port, port2: port}) as ReturnType<NonNullable<SupervisorOptions['projectCatalog']>['createChannel']>}});
-  const exited = new Promise(resolve => supervisor.once('exit', resolve));
-  await assert.rejects(supervisor.start({} as Parameters<typeof supervisor.start>[0]), /启动通信失败/);
+  const catalogExit = new Promise(resolve => catalog.once('exit', resolve));
+  await supervisor.start({} as Parameters<typeof supervisor.start>[0]);
   assert.equal(closedPorts, 2);
-  await exited;
-  assert.equal(backend.pid, undefined);
+  await catalogExit;
+  assert.equal(supervisor.state, 'running');
+  assert.equal(supervisor.child, backend);
   assert.equal(catalog.pid, undefined);
+  await supervisor.stop();
+  assert.equal(backend.pid, undefined);
   assert.equal(supervisor.child, null);
+});
+
+test('catalog crashes and abort retirements replace only the exact helper with bounded backoff', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const backend = fakeChild(), catalogs: FakeChild[] = [];
+  const supervisor = new BackendSupervisor({
+    fork: file => {
+      if (file === '/app/backend.cjs') return backend;
+      const worker = fakeChild('idle');
+      worker.pid = 23456 + catalogs.length;
+      catalogs.push(worker);
+      return worker;
+    },
+    modulePath: '/app/backend.cjs', environment: {},
+    projectCatalog: {modulePath: '/app/project-catalog.cjs', createChannel: () =>
+      ({port1: {close() {}}, port2: {close() {}}}) as ReturnType<NonNullable<SupervisorOptions['projectCatalog']>['createChannel']>},
+  });
+  const waitForCatalog = (milliseconds: number, count: number): FakeChild => {
+    t.mock.timers.tick(milliseconds - 1);
+    assert.equal(catalogs.length, count - 1, 'restart honors the current backoff');
+    t.mock.timers.tick(1);
+    assert.equal(catalogs.length, count);
+    return catalogs[count - 1]!;
+  };
+  const closeCatalog = (worker: FakeChild): void => {
+    worker.pid = undefined;
+    worker.emit('exit', 9);
+  };
+  const backendId = '11111111-1111-4111-8111-111111111111';
+  const notice = (generation: number, owner = backendId) => ({type: 'project-catalog:retire', backendId: owner, generation});
+  await supervisor.start({backendId} as Parameters<typeof supervisor.start>[0]);
+  try {
+    const first = catalogs[0]!;
+    first.emit('message', 'project-catalog-ready');
+    closeCatalog(first);
+    assert.equal(catalogs.length, 1);
+    assert.equal(supervisor.state, 'running');
+    const second = waitForCatalog(250, 2);
+    second.emit('message', 'project-catalog-ready');
+    backend.emit('message', notice(1));
+    backend.emit('message', notice(2, 'foreign'));
+    first.emit('message', 'project-catalog-ready');
+    t.mock.timers.tick(120);
+    assert.equal(catalogs.length, 2);
+    assert.ok(second.pid);
+
+    const exited = new Promise(resolve => second.once('exit', resolve));
+    let signalRequests = 0;
+    second.kill = () => {signalRequests++; return true;};
+    backend.emit('message', notice(2));
+    backend.emit('message', notice(2));
+    t.mock.timers.tick(150);
+    assert.equal(signalRequests, 1);
+    assert.equal(catalogs.length, 2, 'a signal request is not proof that the old helper exited');
+    closeCatalog(second);
+    await exited;
+    const third = waitForCatalog(500, 3);
+    third.emit('message', 'project-catalog-ready');
+    closeCatalog(third);
+    const fourth = waitForCatalog(1000, 4);
+    fourth.emit('message', 'project-catalog-ready');
+    closeCatalog(fourth);
+    t.mock.timers.tick(60000);
+    assert.equal(catalogs.length, 4);
+    assert.equal(supervisor.state, 'running');
+    assert.deepEqual(backend.messages.filter(message => message.type === 'project-catalog:attach').map(message => message.generation), [1, 2, 3, 4]);
+  } finally {await supervisor.stop();}
+});
+
+test('backend catalog client fences dead and stale ports and resumes through the new port', async () => {
+  class FakePort extends EventEmitter {
+    readonly messages: unknown[] = [];
+    started = false;
+    closed = false;
+    postMessage(message: unknown): void {this.messages.push(message);}
+    start(): void {this.started = true;}
+    close(): void {
+      if (this.closed) return;
+      this.closed = true;
+      this.emit('close');
+    }
+  }
+  const backendId = '11111111-1111-4111-8111-111111111111';
+  const notices: unknown[] = [];
+  const client = createDesktopProjectCatalogClient(backendId, message => notices.push(message));
+  const attach = (generation: number, port: FakePort, owner = backendId): void =>
+    client.attach({type: 'project-catalog:attach', backendId: owner, generation}, [port as unknown as MessagePortMain]);
+  const scan = [{file: path.resolve('/synthetic/project.mioon'), generation: '1:2:3:4:5', birthtime: '4', journalGeneration: null, checkHeader: true}];
+  const result = {recovery: {state: 'clean'}, generation: scan[0]!.generation, birthtime: scan[0]!.birthtime};
+  const aborted = new AbortController();
+  await assert.rejects(client.scan(scan), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  const early = new FakePort();
+  attach(1, early);
+  assert.equal(early.started, true);
+  const pending = assert.rejects(client.scan(scan, aborted.signal), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  aborted.abort();
+  await pending;
+  assert.equal(early.closed, true);
+  assert.deepEqual(notices, [{type: 'project-catalog:retire', backendId, generation: 1}]);
+  await assert.rejects(client.scan(scan), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  for (const [generation, owner] of [[1, backendId], [2, 'foreign']] as const) {
+    const stale = new FakePort();
+    attach(generation, stale, owner);
+    assert.equal(stale.started, false);
+    assert.equal(stale.closed, true);
+  }
+  const next = new FakePort();
+  attach(2, next);
+  const resumed = client.scan(scan);
+  early.emit('message', {data: {type: 'project-catalog:result', id: 1, results: []}});
+  next.emit('message', {data: {type: 'project-catalog:result', id: 1, results: [result]}});
+  assert.deepEqual(await resumed, [result]);
+  client.close();
+  assert.equal(next.closed, true);
+  assert.equal(notices.length, 1, 'closing the server cannot request a restart');
 });
 
 test('supervisor rejects wrong-origin handshakes and terminates that child', async () => {

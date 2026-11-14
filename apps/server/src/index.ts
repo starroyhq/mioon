@@ -102,6 +102,8 @@ interface ComfyNetworkSeam {httpRequest: NonNullable<ComfyTransportOptions['http
 export interface ServerOptions {
   /** Desktop binds the closed-project scanner to its own utility process. */
   projectCatalogClient?: ProjectCatalogClient;
+  /** Trusted in-process timing seam for a stalled filesystem fixture. */
+  projectCatalogTimeoutMsForTest?: number;
   dataDir?: string;
   cacheDir?: string;
   projectsDir?: string;
@@ -300,6 +302,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, catalogClient,
+      catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       markRecentOpened: (projectId, lastOpenedAt) => app.ui.markOpened(projectId, lastOpenedAt),
       templates:projectTemplates.flatMap(entry=>entry.manifest.templateId==='timeline-basics'&&entry.manifest.version===1?[{id:'timeline-basics' as const,version:1 as const}]:[]),
       copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},

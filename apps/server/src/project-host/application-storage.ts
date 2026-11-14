@@ -37,20 +37,26 @@ const metadata = (file: string): ApplicationFileMetadata | undefined => {
   catch (error) {if ((error as {code?: unknown}).code === 'ENOTDIR') return undefined; throw error;}
 };
 const generation = (info: ApplicationFileMetadata): bigint => typeof info.birthtimeNs === 'bigint' && info.birthtimeNs > 0n ? info.birthtimeNs : 0n;
+const isMissingPath = (error: unknown): boolean => {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+};
 const catalogMetadata = async (file: string): Promise<ApplicationFileMetadata | undefined> => {
   try {return await lstat(file, {bigint: true});}
   catch (error) {
-    const code = (error as {code?: unknown}).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
+    if (isMissingPath(error)) return undefined;
     throw error;
   }
 };
 
-/** One synchronous inspection or recovery sweep. Do not create or move private
- * files in the callback, and never retain a snapshot across an await. */
 export interface ApplicationFileGuard {
   (file: string): void;
+  /** Share one refresh across a synchronous inspection or recovery sweep.
+   * Do not create or move private files in the callback. */
   withSnapshot<T>(inspect: () => T): T;
+  /** Refresh retained private identities and return a check against the live
+   * set. Catalog reads supply current metadata and check held SQLite files
+   * before dispatch. The worker verifies the file generation before reading. */
   catalogSnapshot(signal: AbortSignal): Promise<(file: string, info: ApplicationFileMetadata | undefined) => void>;
 }
 
@@ -133,10 +139,18 @@ export function createApplicationFileGuard(directories: AppDirectories, {
       if (visited.has(file) || within(projectsDir, file)) continue;
       visited.add(file);
       const info = await readCatalogMetadata(file);
+      signal.throwIfAborted();
       if (!info || info.isSymbolicLink()) continue;
       if (info.isFile()) remember(info, order);
       else if (info.isDirectory()) {
-        for (const name of await readdir(file)) pending.push(path.join(file, name));
+        try {
+          const names = await readdir(file);
+          signal.throwIfAborted();
+          for (const name of names) pending.push(path.join(file, name));
+        } catch (error) {
+          // A temporary directory may disappear or be replaced after lstat.
+          if (!isMissingPath(error)) throw error;
+        }
       }
     }
     signal.throwIfAborted();
