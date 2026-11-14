@@ -170,18 +170,22 @@ test('settings diagnostics retain a bounded batch without delaying renderer heal
   assert.ok((await stat(f.file)).size - bytesBefore <= 16 * 1024);
 });
 
-test('slow opening evidence survives normal settings queue and file rotation', async t => {
+test('slow opening and page read evidence survive normal settings queue and file rotation', async t => {
   const f = await fixture(t);
   const diagnostics = f.create();
   const slow: SettingsDiagnosticRecord = {schemaVersion: 1, at: settingsRead.at, attempt: 1, event: 'settings-open-slow',
     mode: 'warm', outcome: 'pending', elapsedMs: 3_100, utilityMaxDelayMs: null, phases: {mainReceived: 4, show: 310}};
+  const slowRead: SettingsDiagnosticRecord = {...settingsRead, event: 'settings-page-read-slow',
+    startedMs: 3_100, endedMs: 6_200, durationMs: 3_100, utilityMaxDelayMs: 2_900};
   const filled = {...slow, utilityMaxDelayMs: 3_000};
   const slowFile = path.join(f.logDirectory, SLOW_SETTINGS_DIAGNOSTIC_FILE);
   assert.equal(diagnostics.recordSettings(slow), true);
+  assert.equal(diagnostics.recordSettings(slowRead), true);
   for (let attempt = 2; attempt <= 100; attempt++) {
     assert.equal(diagnostics.recordSettings({...settingsRead, attempt}), true);
   }
   diagnostics.flushSettings();
+  assert.ok((await records(f.file)).every(row => row.event === 'settings-page-read'));
   await rm(f.file);
   // Reuse a full ordinary slot to cross the real rotation boundary without
   // making thousands of individual disk syncs.
@@ -195,12 +199,13 @@ test('slow opening evidence survives normal settings queue and file rotation', a
   }
   assert.equal(diagnostics.recordSettings(filled), true);
   diagnostics.flushSettings();
-  assert.deepEqual(await records(slowFile), [slow, filled]);
+  assert.deepEqual(await records(slowFile), [slow, slowRead, filled]);
   if (process.platform !== 'win32') assert.equal((await stat(slowFile)).mode & 0o777, 0o600);
   const destination = path.join(f.directory, 'support.jsonl');
   assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'saved');
   const output = await records(destination);
   assert.deepEqual(output.filter(row => row.event === 'settings-open-slow'), [slow, filled]);
+  assert.deepEqual(output.filter(row => row.event === 'settings-page-read-slow'), [slowRead]);
   assert.ok(output.some(row => row.event === 'settings-page-read'));
 });
 
@@ -214,23 +219,32 @@ test('Help export includes only the sanitized diagnostics family in rotation ord
     mode: 'warm', outcome: 'ready', elapsedMs: 3200, utilityMaxDelayMs: 3000, phases: {mainReceived: 0, show: 150, bootReady: 3200}};
   const page = {schemaVersion: 1, at: current.at, event: 'settings-page-read', attempt: 1, page: 'appearance',
     startedMs: 3100, endedMs: 3150, durationMs: 50, utilityMaxDelayMs: 9};
+  const slowPage = {...page, event: 'settings-page-read-slow', endedMs: 6_200, durationMs: 3_100};
+  const slowFile = path.join(f.logDirectory, SLOW_SETTINGS_DIAGNOSTIC_FILE);
   const rotated = [
     {...current, event: 'render-process-gone', reason: 'crashed', exitCode: 19, classification: privateValue, token: privateValue},
     {...timing, phases: {...timing.phases, [privateValue]: 1}, token: privateValue},
     {...page, url: privateValue},
     {...page, page: privateValue},
+    {...slowPage, url: privateValue},
   ];
   await writeFile(f.file + '.1', rotated.map(record => JSON.stringify(record)).join('\n') + '\ninvalid-json\n', {mode: 0o600});
+  await writeFile(slowFile + '.1', JSON.stringify({...timing, attempt: 2, token: privateValue}) + '\n', {mode: 0o600});
+  await writeFile(slowFile, [{...slowPage, attempt: 2, token: privateValue}, {...page, attempt: 2}, {...slowPage, attempt: 2, page: privateValue}]
+    .map(record => JSON.stringify(record)).join('\n') + '\n', {mode: 0o600});
   await writeFile(f.file + '.3', JSON.stringify(current) + '\n', {mode: 0o600});
   await writeFile(path.join(f.logDirectory, 'unrelated.jsonl'), privateValue, {mode: 0o600});
   const destination = path.join(f.directory, 'support.jsonl');
   await writeFile(destination, 'previous export');
   assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'saved');
   const result = await records(destination);
-  assert.deepEqual(result.map(record => record.event), ['unresponsive', 'render-process-gone', 'settings-open-slow', 'settings-page-read', 'responsive']);
+  assert.deepEqual(result.map(record => record.event), ['unresponsive', 'render-process-gone', 'settings-open-slow', 'settings-page-read',
+    'settings-page-read-slow', 'responsive', 'settings-open-slow', 'settings-page-read-slow']);
   assert.deepEqual(result.filter(record => 'classification' in record).map(record => record.classification), ['unresponsive', 'crashed', 'responsive']);
   assert.deepEqual(result[2], timing);
   assert.deepEqual(result[3], page);
+  assert.deepEqual(result[4], slowPage);
+  assert.deepEqual(result.slice(6), [{...timing, attempt: 2}, {...slowPage, attempt: 2}]);
   assert.equal(result[1].exitCode, 19);
   const output = await readFile(destination, 'utf8');
   assert.ok(!output.includes(privateValue));

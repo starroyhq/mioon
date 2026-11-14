@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {lstat, open, realpath, rename, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {readPrivateFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
-import {RENDERER_DIAGNOSTIC_FILE, RENDERER_DIAGNOSTIC_LIMITS, sanitizeRendererHealthRecord, SLOW_SETTINGS_DIAGNOSTIC_FILE} from './renderer-diagnostics.ts';
+import {isSlowSettingsDiagnostic, RENDERER_DIAGNOSTIC_FILE, RENDERER_DIAGNOSTIC_LIMITS, sanitizeRendererHealthRecord, SLOW_SETTINGS_DIAGNOSTIC_FILE} from './renderer-diagnostics.ts';
 import {sanitizeSettingsDiagnosticRecord} from './settings-diagnostics-protocol.ts';
 
 function readDiagnostics(directory: string): string[] {
@@ -20,7 +20,7 @@ function readDiagnostics(directory: string): string[] {
         try {raw = JSON.parse(line);} catch {continue;}
         const settings = sanitizeSettingsDiagnosticRecord(raw);
         const record = name === SLOW_SETTINGS_DIAGNOSTIC_FILE
-          ? settings?.event === 'settings-open-slow' ? settings : null
+          ? settings && isSlowSettingsDiagnostic(settings.event) ? settings : null
           : settings ?? sanitizeRendererHealthRecord(raw);
         if (record) records.push(JSON.stringify(record));
       }

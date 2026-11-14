@@ -7,11 +7,15 @@ import { sanitizeSettingsDiagnosticRecord } from './settings-diagnostics-protoco
 import type { SettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
 
 // Each family has its own size-limited rotation. Frequent settings reads can
-// roll over the general log without displacing slow-opening evidence.
+// roll over the general log without displacing slow settings evidence.
 export const RENDERER_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileCount: 3 });
 export const RENDERER_DIAGNOSTIC_FILE = 'renderer-health.jsonl';
 export const SLOW_SETTINGS_DIAGNOSTIC_FILE = 'settings-open-slow.jsonl';
 const settingsBatch = {delayMs: 200, maxRows: 64, maxBytes: 16 * 1024};
+
+export function isSlowSettingsDiagnostic(event: SettingsDiagnosticRecord['event']): boolean {
+  return event === 'settings-open-slow' || event === 'settings-page-read-slow';
+}
 
 const events = ['unresponsive', 'responsive', 'render-process-gone'] as const;
 const classifications = ['unresponsive', 'responsive', 'exited', 'terminated', 'crashed', 'abnormal'] as const;
@@ -317,7 +321,7 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
       if (!safe) return false;
       const line = Buffer.from(`${JSON.stringify(safe)}\n`);
       if (line.length > settingsBatch.maxBytes) return false;
-      (safe.event === 'settings-open-slow' ? pendingSlow : pending).push(line);
+      (isSlowSettingsDiagnostic(safe.event) ? pendingSlow : pending).push(line);
       timer ??= setTimeout(flushSettings, settingsBatch.delayMs);
       timer.unref?.();
       return true;

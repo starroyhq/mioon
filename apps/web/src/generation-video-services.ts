@@ -55,7 +55,7 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
   const watchStorage = watchPendingSecretStorage(async signal => {
     const before = state.snapshot;
     if (!before) return;
-    const {storage} = safeVideoSettings(await client.read(signal));
+    const {storage} = safeVideoSettings(await client.read(signal, 'keychain-poll'));
     if (!signal.aborted && state.snapshot === before && storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
   });
   const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
