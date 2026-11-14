@@ -24,6 +24,7 @@ export interface GenerationVideoDraft {
 export interface GenerationVideoState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'load_error' | 'review' | 'blocked' | 'reconciling';
   snapshot: VideoSettingsSnapshotV2 | null;
+  keychainWaitConfirmed: boolean;
   drafts: GenerationVideoDraft[];
   deletedIds: string[];
   recovery: 'conflict' | 'unknown' | null;
@@ -34,7 +35,7 @@ export interface GenerationVideoState {
 export const generationVideoBusy = (state: GenerationVideoState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const generationVideoDraftDirty = (draft: GenerationVideoDraft): boolean => draft.secretAction !== 'keep' || draft.touched && !same(draft.configuration, draft.baseline);
 export const generationVideoDirty = (state: GenerationVideoState): boolean => state.deletedIds.length > 0 || state.drafts.some(generationVideoDraftDirty);
-export const initialGenerationVideoState = (): GenerationVideoState => ({phase: 'loading', snapshot: null, drafts: VIDEO_BUILTIN_PROVIDER_IDS.map(id => {const configuration = newVideoConnection(id); return {key: videoServiceKey(configuration), configuration, baseline: null, touched: false, storage: '', secretAction: 'keep', hasKey: false};}), deletedIds: [], recovery: null, notice: null, version: 0, editorEpoch: 0});
+export const initialGenerationVideoState = (): GenerationVideoState => ({phase: 'loading', snapshot: null, keychainWaitConfirmed: false, drafts: VIDEO_BUILTIN_PROVIDER_IDS.map(id => {const configuration = newVideoConnection(id); return {key: videoServiceKey(configuration), configuration, baseline: null, touched: false, storage: '', secretAction: 'keep', hasKey: false};}), deletedIds: [], recovery: null, notice: null, version: 0, editorEpoch: 0});
 /** Uses only saved, redacted facts and the existing local capability validator. */
 export function generationVideoAvailable(snapshot: VideoSettingsSnapshotV2 | null, configuration: VideoConnectionConfigurationV2): boolean | null {
   if (!snapshot) return null;
@@ -56,10 +57,16 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
     const before = state.snapshot;
     if (!before) return;
     const {storage} = safeVideoSettings(await client.read(signal));
-    if (!signal.aborted && state.snapshot === before && storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
+    if (signal.aborted || state.snapshot !== before) return;
+    if (storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
+    else if (!state.keychainWaitConfirmed) emit({keychainWaitConfirmed: true});
   });
   const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
-  const emit = (patch: Partial<GenerationVideoState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; observeStorage(); onChange(clone(state));}};
+  const emit = (patch: Partial<GenerationVideoState>) => {if (live) {
+    state = {...state, ...patch, version: state.version + 1};
+    if (state.snapshot?.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') state.keychainWaitConfirmed = false;
+    observeStorage(); onChange(clone(state));
+  }};
   const owned = (token: number) => live && visible && epoch === token;
   const editable = () => live && visible && !generationVideoBusy(state) && !state.recovery;
   const fromSnapshot = (snapshot: VideoSettingsSnapshotV2): GenerationVideoDraft[] => {
@@ -152,6 +159,7 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
     acknowledge() {if (!live || !visible || state.phase !== 'review') return false; emit({phase: 'ready', recovery: null, notice: null}); return true;},
     setVisible(value: boolean) {
       if (visible === value) return; visible = value; ++epoch; pending?.abort(); pending = null; observeStorage();
+      if (!value && state.keychainWaitConfirmed) emit({keychainWaitConfirmed: false});
       if (!value) {for (const release of tickets) release(); tickets.clear();}
       if (!value && generationVideoBusy(state) && state.phase !== 'loading') emit({phase: 'blocked', recovery: 'unknown', notice: 'video.providers.unknown'});
       else if (!value && state.phase === 'loading') emit({phase: 'ready'});

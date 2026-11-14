@@ -75,6 +75,7 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
   const find = (key: string, id: string) => {const found = nodes(trees.get(key)).find(item => item.props['data-testid'] === id); assert.ok(found, `${key}:${id}`); return found;};
   render();
   return {keyA, keyB, inputs, reports, render, find, client, all: (key: string) => nodes(trees.get(key)),
+    storage(value: VideoSettingsSnapshotV2['storage']) {snapshot.storage = value;},
     domain: () => domain,
     type(key: string, value: string) {inputs.get(key)!.value = value; invoke(find(key, 'video-connection-key'), 'onChange'); render();},
     select(key: string) {selected = key; render();},
@@ -114,6 +115,29 @@ test('only a saved persistent video key blocked by system storage displays Keych
       assert.deepEqual(keychain(f.keyA)?.props.children, storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' ? [`${locale}:tasks.error.videoSecretStore`] : undefined);
       assert.equal(keychain(f.keyB), undefined);
       assert.equal(f.inputs.get(f.keyA)?.value, '');
+    }
+    f.unmount();
+  }
+});
+
+test('Keychain guidance appears only for authorization that is still pending after 300 ms', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const pending = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'} as const;
+  const ready = {persistentAvailable: true, sessionScope: 'server', reasonCode: null} as const;
+  for (const releasesQuickly of [true, false]) {
+    const f = fixture({storage: pending}); await flush(); f.render();
+    const guidance = () => f.all(f.keyA).find(node => node.props['data-testid'] === 'video-keychain-pending');
+    assert.equal(guidance(), undefined);
+    assert.equal(f.find(f.keyA, 'video-connection-enabled').props.disabled, undefined);
+    t.mock.timers.tick(299); await flush(); f.render();
+    assert.equal(guidance(), undefined);
+    if (releasesQuickly) f.storage(ready);
+    t.mock.timers.tick(1); await flush(); f.render();
+    assert.equal(guidance() !== undefined, !releasesQuickly);
+    if (!releasesQuickly) {
+      f.storage(ready);
+      t.mock.timers.tick(1000); await flush(); f.render();
+      assert.equal(guidance(), undefined);
     }
     f.unmount();
   }

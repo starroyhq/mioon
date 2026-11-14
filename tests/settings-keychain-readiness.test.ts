@@ -89,12 +89,19 @@ test('all settings forms can edit committed configuration while one native Keych
   assert.equal(comfy.edit('image:comfy', {}, {baseUrl: 'http://127.0.0.1:8188'}), true);
   assert.equal(checks, 1, 'all domains share one held native authorization');
 
+  const pages = [agentPage, videoPage, official, custom];
+  const confirmed = () => pages.every(page => page.getState().keychainWaitConfirmed);
+  const confirmationDeadline = performance.now() + 6000;
+  while (!confirmed() && performance.now() < confirmationDeadline) await delay(25);
+  assert.equal(confirmed(), true, 'a still-pending authorization is confirmed before showing guidance');
+
   availability.resolve(true);
   const resolved = () => [agentPage.getState().snapshot, videoPage.getState().snapshot, official.getState().snapshot, custom.getState().snapshot]
     .every(snapshot => snapshot && 'storage' in snapshot && snapshot.storage.persistentAvailable);
   const deadline = performance.now() + 6000;
   while (!resolved() && performance.now() < deadline) await delay(25);
   assert.equal(resolved(), true, 'each visible settings form updates its storage after approval');
+  assert.equal(pages.some(page => page.getState().keychainWaitConfirmed), false);
   assert.equal(checks, 1);
   assert.equal(agentPage.getState().draft?.services.find(entry => entry.serviceKey === service)?.name, 'Editable Agent draft');
   assert.equal(videoPage.getState().drafts[0]?.configuration.enabled, true);
@@ -118,7 +125,7 @@ test('all settings forms can edit committed configuration while one native Keych
     assert.deepEqual(during.services, before.services);
     for (const snapshot of [during, videoDuring, imageDuring, customDuring]) {
       assert.ok(snapshot && typeof snapshot === 'object' && 'storage' in snapshot);
-      assert.equal((snapshot.storage as {reasonCode: string}).reasonCode, pending);
+      assert.deepEqual(snapshot.storage, {persistentAvailable: true, sessionScope: snapshot === during ? 'app' : 'server', reasonCode: null});
     }
   } finally {writeRelease.resolve();}
   const committed = await writing;

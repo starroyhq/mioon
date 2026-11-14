@@ -28,6 +28,8 @@ export interface VideoSettingsV2Service {
   select(connectionId: string, configurationRevision: number, modelEntryId: string): VideoExecutionBinding;
   assertBinding(binding: unknown): void;
   acquire(binding: unknown, signal?: AbortSignal): Promise<string>;
+  replacementForResult(binding: unknown): string | null;
+  acquireResultCredential(binding: unknown, replacementRef: string, signal?: AbortSignal): Promise<string>;
   acquireForProbe(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   acquireCompatible(connectionId: string, configurationRevision: number, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   close(): Promise<void>;
@@ -151,7 +153,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     const configuration = entry.configuration;
     return parseVideoBinding({version: 1, connectionId: configuration.id, configurationRevision: entry.revision, providerId: configuration.providerId, region: configuration.region, workspaceId: configuration.workspaceId, endpoint: videoConnectionEndpoint(configuration), credentialRef: entry.credentialRef, model: copy(model), outputHosts: copy(configuration.outputHosts)});
   };
-  const assertBinding = (input: unknown): VideoExecutionBinding => {
+  const assertFrozenBinding = (input: unknown): VideoExecutionBinding => {
     ensureStable(); let selected: VideoExecutionBinding;
     try {selected = parseVideoBinding(videoExecutionBindingV2Schema.parse(input));} catch {return fail('VIDEO_BINDING_INVALID');}
     if (state.deletedConnectionIds.includes(selected.connectionId)) return fail('VIDEO_SETTINGS_DELETED');
@@ -161,8 +163,20 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       unavailableBindingHistory.add(error); throw error;
     }
     if (!same(binding(historical, selected.model.id), selected)) return fail('VIDEO_BINDING_INVALID');
+    return selected;
+  };
+  const assertBinding = (input: unknown): VideoExecutionBinding => {
+    const selected = assertFrozenBinding(input);
     if (material(selected.credentialRef) === 'none') return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
     return selected;
+  };
+  const replacementForResult = (input: unknown): string | null => {
+    const selected = assertFrozenBinding(input);
+    const current = state.connections.find(entry => entry.configuration.id === selected.connectionId);
+    if (!current?.credentialRef || current.revision <= selected.configurationRevision ||
+        current.credentialRef === selected.credentialRef || material(current.credentialRef) === 'none') return null;
+    const frozenRecipient = [selected.connectionId, selected.providerId, selected.region, selected.workspaceId, selected.endpoint];
+    return same(recipient(current.configuration), frozenRecipient) ? current.credentialRef : null;
   };
   async function secretOf(credential: Credential, request?: AbortSignal): Promise<string | undefined> {
     if (!credential.encrypted) return sessions.get(credential.ref);
@@ -281,6 +295,19 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       const value = await secretOf(credential, request); assertBinding(selected);
       if (request?.aborted) return fail('VIDEO_SETTINGS_CLOSED');
       if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED'); return value;
+    });},
+    replacementForResult,
+    acquireResultCredential(input, replacementRef, request) {return schedule(async () => {
+      const verify = (): void => {
+        if (request?.aborted) fail('VIDEO_SETTINGS_CLOSED');
+        if (replacementForResult(input) !== replacementRef) fail('VIDEO_SETTINGS_CONFLICT');
+      };
+      verify();
+      const credential = state.credentials.find(entry => entry.ref === replacementRef)!;
+      const value = await secretOf(credential, request);
+      verify();
+      if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
+      return value;
     });},
     acquireForProbe(connectionId, configurationRevision, target, request) {
       return acquireCurrent(connectionId, configurationRevision, target, request);

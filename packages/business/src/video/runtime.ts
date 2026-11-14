@@ -9,7 +9,7 @@ import {acquireBoundVideoCredential} from './credential.ts';
 import {createJsonRequest,createPollCache,downloadMp4,readProviderReferenceBytes,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
 import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
-import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskPath} from './adapters.ts';
+import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskNotFound,configuredTaskPath} from './adapters.ts';
 import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from './adapters.ts';
 import {createWanSdkClient,validateWanImageBytes} from './wan-sdk.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
@@ -85,7 +85,17 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const sdkOptions={api:frozen.endpoint,model:frozen.model.modelId,send:request};
   const compatibleSdk=compatible?createCompatibleVideoSdkClient(sdkOptions):null;
   const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient({...sdkOptions,audio:frozen.model.audio}):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
-  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))}});
+  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,async retrieve(id,context){
+    try{
+      return wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))};
+    }catch(error){
+      // This is the bound task lookup. A missing output file or rejected
+      // submission has a different meaning even when it returns HTTP 404.
+      const failure=record(error);
+      if(failure?.code==='PROVIDER_HTTP_404'&&failure.httpStatus===404)throw configuredTaskNotFound();
+      throw error;
+    }
+  }});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);
     // A cached successful observation must not let a removed key authorize a

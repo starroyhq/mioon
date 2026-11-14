@@ -41,7 +41,7 @@ import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
 
-type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'>;
+type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'|'resolveGenerationResultProvider'>;
 
 async function paidReferenceHash<T>(operation: Promise<T>): Promise<T> {
  try{return await operation;}catch(error){
@@ -244,7 +244,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   checkpoint(signal);
   let j=recordValue(get('jobs',original.id)) as JobRecord|null;
   if(!j)return;
-  let provider:Provider|undefined;
+  let provider:Pick<Provider,'capabilities'|'poll'|'download'>|undefined;
   const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal};
   let acceptedProviderId: string|null=null,guardJob=j,postPermitted=false,blockedGate=false;
   const submissionCount=numberValue(j.submissionCount)??0;
@@ -260,10 +260,11 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   }
   try {
    const localOwner=registeredProjectStore(root),localComplete=j.status==='downloading'&&localOwner?readOutputArtifact(localOwner,{kind:'generation',id:j.id,requestId:j.requestId,inputHash:j.requestHash},'generation',outputArtifactDigest(JSON.stringify([j.projectId,j.id,j.requestId,j.requestHash,j.providerId,j.providerJobId,j.model,j.snapshot]))):null;
-   provider=localComplete?providers.get(j.providerId):services.resolveGenerationProvider?services.resolveGenerationProvider(j):providers.get(j.providerId);
+   const originalProvider=(job:JobRecord)=>services.resolveGenerationProvider?services.resolveGenerationProvider(job):providers.get(job.providerId);
    if(j.status==='queued') {
     assertAgentTaskJobEffect(store.db,'job',j.id);
-    if(!provider)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
+    const submitProvider=originalProvider(j);
+    if(!submitProvider)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
     services.validateGenerationDispatch(j);
     const preparedSnapshot=JSON.stringify(j.snapshot);
     // Prepare references before recording an attempt. A shutdown here has not
@@ -322,7 +323,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     // rejects drift. The final beforeSubmit fence still runs directly at POST.
     context.beforeSubmit=()=>{assertClaim();if(j!.providerId!=='mock')recordAgentTaskJobDispatch(store.db,'job',claim.id);postPermitted=true;};
     (context as unknown as {validateReferenceState: ()=>void}).validateReferenceState=assertClaim;
-    const accepted: unknown=await awaitProvider(()=>provider!.submit({...j!.snapshot,referenceAssets,...(referenceAudios.length?{referenceAudios}:{})},context as never),signal,{submit:true});
+    const accepted: unknown=await awaitProvider(()=>submitProvider.submit({...j!.snapshot,referenceAssets,...(referenceAudios.length?{referenceAudios}:{})},context as never),signal,{submit:true});
     acceptedProviderId=stringValue(property(recordValue(accepted),'providerJobId'))??null;
     credentialRetries.delete(j.id);
     // Receipt persistence is the sole intentional write permitted after abort.
@@ -331,14 +332,23 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(latest)services.saveJob(latest,{providerJobId:acceptedProviderId,...latest.status==='cancelled'?{}:{status:'running',phase:'polling',progress:5,error:null}});
     return;
    }
-   if(!provider&&!localComplete)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
    if(j.status==='submission_unknown') {
-    const found: unknown=j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>provider!.reconcile(String(j!.requestId),context as never),signal);
+    let found:unknown;
+    if(j.providerJobId)found={providerJobId:j.providerJobId};
+    else {
+     const reconcileProvider=originalProvider(j);
+     if(!reconcileProvider)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
+     const requestId=j.requestId;
+     found=await awaitProvider(()=>reconcileProvider.reconcile(requestId,context as never),signal);
+    }
     checkpoint(signal);
     if(found&&isRecord(found)&&typeof found.providerJobId==='string')services.saveJob(j as JobRecord,{status:'running',phase:'reconciled',providerJobId:found.providerJobId,error:null,nextPollAt:0});
     else services.saveJob(j as JobRecord,{nextPollAt:Date.now()+5000});
     return;
    }
+   provider=localComplete?providers.get(j.providerId):j.providerJobId&&services.resolveGenerationResultProvider
+    ?services.resolveGenerationResultProvider(j,signal):originalProvider(j);
+   if(!provider&&!localComplete)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
    if(j.status==='running') {
     const remote=await awaitProvider(()=>provider!.poll(String(j!.providerJobId),context as never),signal);checkpoint(signal);
     credentialRetries.delete(j.id);

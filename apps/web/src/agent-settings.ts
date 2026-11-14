@@ -21,6 +21,7 @@ export interface AgentServiceIntent {action:'keep'|'remove';storage:'session'|'p
 export type AgentSettingsPhase='loading'|'ready'|'saving'|'reconciling'|'review'|'blocked'|'load_error'|'error'|'saved';
 export interface AgentSettingsState {
  phase:AgentSettingsPhase;snapshot:AgentSettingsSnapshot|null;draft:AgentSettingsDraft|null;
+ keychainWaitConfirmed:boolean;
  serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];recovery:'conflict'|'unknown'|null;
 }
 export interface AgentSettingsClient {read:(signal?:AbortSignal)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
@@ -81,7 +82,7 @@ export function agentServiceEqual(left:AgentServiceInput,right:AgentServiceInput
 }
 const draftFrom=(snapshot:AgentSettingsSnapshot):AgentSettingsDraft=>({services:snapshot.services.map(agentServiceInput),mioSelection:snapshot.mioSelection?{...snapshot.mioSelection}:null});
 const intentsFrom=(snapshot:AgentSettingsSnapshot):Record<string,AgentServiceIntent>=>Object.fromEntries(snapshot.services.map(service=>[service.serviceKey,{action:'keep' as const,storage:service.secret.storage==='persistent'?'persistent' as const:'session' as const}]));
-export const initialAgentSettingsState=():AgentSettingsState=>({phase:'loading',snapshot:null,draft:null,serviceIntents:{},selectedKey:'general',message:'',displayMessages:[],recovery:null});
+export const initialAgentSettingsState=():AgentSettingsState=>({phase:'loading',snapshot:null,draft:null,keychainWaitConfirmed:false,serviceIntents:{},selectedKey:'general',message:'',displayMessages:[],recovery:null});
 export const agentSettingsBusy=(state:AgentSettingsState|null|undefined):boolean=>Boolean(state&&['loading','saving','reconciling'].includes(state.phase));
 export const agentSettingsEditable=(state:AgentSettingsState|null|undefined):boolean=>Boolean(state?.snapshot)&&!agentSettingsBusy(state);
 export const agentSettingsCanSave=(state:AgentSettingsState|null|undefined):boolean=>agentSettingsEditable(state)&&Boolean(state&&!state.recovery&&state.phase!=='blocked');
@@ -152,10 +153,16 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
  const watchStorage=watchPendingSecretStorage(async signal=>{
   const before=state.snapshot;if(!before)return;
   const {storage}=safeAgentSettings(await client.read(signal));
-  if(!signal.aborted&&state.snapshot===before&&storage.reasonCode!=='OS_SECRET_STORE_PENDING')publish({snapshot:{...before,storage}});
+  if(signal.aborted||state.snapshot!==before)return;
+  if(storage.reasonCode!=='OS_SECRET_STORE_PENDING')publish({snapshot:{...before,storage}});
+  else if(!state.keychainWaitConfirmed)publish({keychainWaitConfirmed:true});
  });
  const observeStorage=()=>watchStorage(active&&visible&&state.snapshot?.storage.reasonCode==='OS_SECRET_STORE_PENDING');
- const publish=(patch:Partial<AgentSettingsState>)=>{if(active){state={...state,...patch};observeStorage();onChange(state);}};
+ const publish=(patch:Partial<AgentSettingsState>)=>{if(active){
+  state={...state,...patch};
+  if(state.snapshot?.storage.reasonCode!=='OS_SECRET_STORE_PENDING')state.keychainWaitConfirmed=false;
+  observeStorage();onChange(state);
+ }};
  const current=(token:number)=>active&&token===epoch;
  const editable=()=>active&&visible&&agentSettingsEditable(state);
  const readyPatch=()=>({phase:state.recovery?state.phase:'ready' as const,message:state.recovery?state.message:'',displayMessages:state.recovery?state.displayMessages:[]});
@@ -272,7 +279,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
   });
  }
  return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,removeModel,selectMio,useLatest,acknowledge,save,
-  setVisible(value:boolean){visible=Boolean(value);observeStorage();},
+  setVisible(value:boolean){visible=Boolean(value);observeStorage();if(!visible&&state.keychainWaitConfirmed)publish({keychainWaitConfirmed:false});},
   setStorage(key:string,storage:string):boolean {if(!editable()||!service(key)||(storage!=='session'&&storage!=='persistent')||storage==='persistent'&&!state.snapshot?.storage.persistentAvailable)return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{action:'keep'},storage}}});return true;},
   removeKey(key:string,remove=true):boolean {if(!editable()||!service(key))return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{storage:'session'},action:remove?'remove':'keep'}},...readyPatch()});return true;},
   dispose(){active=false;watchStorage(false);epoch++;state=initialAgentSettingsState();},
