@@ -10,6 +10,7 @@ import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
 import {stageTrayResources} from '../tray-resources.ts';
 import {stageProjectNotices} from './stage-project-notices.ts';
+import {verifySettingsWarmAssets} from './settings-warm-assets.ts';
 import {stageProjectExampleResources, verifyProjectExampleResources} from '../../../packages/business/src/project-example-resources.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -24,6 +25,7 @@ const web = path.join(root, 'apps/web/dist');
 await Promise.all(['index.html', 'settings.html'].map(file => readFile(path.join(web, file)))).catch(() => {
   throw new Error('Build the shared web UI first: pnpm build');
 });
+await verifySettingsWarmAssets(file => readFile(path.join(web, file), 'utf8'));
 const examples = path.join(web, 'project-examples');
 verifyProjectExampleResources(examples);
 await rm(output, { recursive: true, force: true });

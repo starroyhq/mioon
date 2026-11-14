@@ -2,6 +2,7 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import { Button } from '@mioon/ui/components/button';
 import type { ProjectWindowBridge, ProjectWindowContext } from './desktop-window-client.ts';
+import { markSettingsClick } from './settings-diagnostics.ts';
 /** Editors show the one global writer's status; only the independent settings
  * surface forwards explicit recovery intents to that exact retained owner. */
 export default function NativeLocatorStatus({ context, bridge, recovery = false }: {
@@ -23,6 +24,6 @@ export default function NativeLocatorStatus({ context, bridge, recovery = false 
       {state?.canRetry && <Button type="button" variant="outline" disabled={context.quitting} onClick={() => { void bridge.requestLocatorAction('retry', state.statusVersion).catch(() => {}); }}>{t('projects.retrySameWrite')}</Button>}
       {state?.canRecheck && <Button type="button" variant="ghost" disabled={context.quitting || state.reading} onClick={() => { void bridge.requestLocatorAction('recheck', state.statusVersion).catch(() => {}); }}>{t('shell.readOnlyCheck')}</Button>}
       {state?.reading && <span role="status">{t('shell.checkingReadOnly')}</span>}
-    </> : <Button type="button" size="sm" variant="ghost" aria-label={t('projects.locatorView')} disabled={context.quitting} onClick={() => { void bridge.showSettings('agent').catch(() => {}); }}>{t('shell.details')}</Button>}
+    </> : <Button type="button" size="sm" variant="ghost" aria-label={t('projects.locatorView')} disabled={context.quitting} onClick={event => { markSettingsClick(event?.nativeEvent); void bridge.showSettings('agent').catch(() => {}); }}>{t('shell.details')}</Button>}
   </section>;
 }

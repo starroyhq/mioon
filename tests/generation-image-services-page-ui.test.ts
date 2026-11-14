@@ -7,6 +7,8 @@ import type {GenerationImageServicesClient} from '../apps/web/src/generation-ima
 import type {GenerationServiceDomain} from '../apps/web/src/generation-services-settings.ts';
 import {createCustomImageSettingsV2} from '../packages/business/src/images/custom-settings-v2.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
+import type ModelPickerDialog from '../apps/web/src/ModelPickerDialog.tsx';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import * as comfy from '../apps/web/src/comfy-image-settings.ts';
@@ -20,7 +22,7 @@ const flush = async () => {for (let n = 0; n < 40; n++) await Promise.resolve();
 
 /** The component retention harness follows existing settings tests. Real browser
  * DOM/screenshots are separate evidence, not claimed by these field-port nodes. */
-function harness(client: GenerationImageServicesClient, confirm: () => Promise<boolean> = async () => true, kind: 'custom' | 'comfy' = 'custom') {
+function harness(client: GenerationImageServicesClient, confirm: () => Promise<boolean> = async () => true, kind: logic.GenerationImageDomainKind = 'custom') {
   const scopes = new Map<string, Hook[]>(), fields = new Map<string, {value: string}>();
   let hooks: Hook[] = [], cursor = 0, effects: Array<() => void> = [], selected = 'general', panelKey = '', locale: i18n.Locale = 'zh-Hans', visible = true, allowed = true;
   let domain: GenerationServiceDomain, trees: Node[][] = [];
@@ -32,10 +34,11 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
     useMemo(factory: () => unknown, deps: readonly unknown[]) {const hook = hooks[cursor++] ??= {}; if (changed(hook.deps, deps)) {hook.value = factory(); hook.deps = deps;} return hook.value;},
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) {const hook = hooks[cursor++] ??= {}; if (changed(hook.deps, deps)) {hook.deps = deps; hook.effect = callback; effects.push(() => {hook.cleanup?.(); hook.cleanup = callback() || undefined;});}},
   };
-  const module = {exports: {} as {useGenerationCustomImageServices(options: unknown): GenerationServiceDomain; useGenerationComfyService(options: unknown): GenerationServiceDomain}};
+  const module = {exports: {} as {useGenerationCustomImageServices(options: unknown): GenerationServiceDomain; useGenerationComfyService(options: unknown): GenerationServiceDomain; useGenerationOfficialImageService(options: unknown): GenerationServiceDomain}};
   const source = readFileSync(new URL('../apps/web/src/GenerationImageServices.tsx', import.meta.url), 'utf8');
   const imports: Record<string, unknown> = {
     react: {...react, __esModule: true, default: react}, './generation-image-services-settings.ts': logic,
+    './ModelPickerDialog.tsx': {__esModule: true, default: 'ModelPickerDialog'},
     './i18n/I18nProvider.tsx': {useI18n: () => createI18nTestContext(locale)},
     '../../../packages/i18n/src/index.ts': i18n, './comfy-image-settings.ts': comfy, './ImageSettings.tsx': {imageStorageReason: () => ''},
     '../../../packages/contracts/src/image-compatible.ts': imageCompatible,
@@ -49,7 +52,9 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
   const onSelect = (key: string) => {selected = key;};
   const interactionAllowed = () => allowed;
   const render = () => {
-    domain = scope('owner', () => (kind === 'custom' ? module.exports.useGenerationCustomImageServices : module.exports.useGenerationComfyService)({pageVisible: visible, client, onSelect, interactionAllowed}));
+    const useDomain = kind === 'custom' ? module.exports.useGenerationCustomImageServices
+      : kind === 'official' ? module.exports.useGenerationOfficialImageService : module.exports.useGenerationComfyService;
+    domain = scope('owner', () => useDomain({pageVisible: visible, client, onSelect, interactionAllowed}));
     trees = domain.services.map(service => {
       panelKey = service.key; const element = service.content as Node;
       const tree = scope(service.key, () => (element.type as (props: Node['props']) => Node)(element.props)), all = nodes(tree);
@@ -61,7 +66,15 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
     return domain;
   };
   const find = (id: string) => {const item = trees.flat().find(node => node.props['data-testid'] === id); assert.ok(item, id); return item;};
-  return {render, find, fields, elements: () => trees.flat(), domain: () => domain, select(key: string) {selected = key; return render();}, locale(value: i18n.Locale) {locale = value; return render();},
+  const picker = () => trees.flat().find(node => node.type === 'ModelPickerDialog')?.props as
+    Parameters<typeof ModelPickerDialog>[0] | undefined;
+  const fetchModels = (prefix: string) => {
+    const button = find(`${prefix}-model-list`);
+    assert.equal(button.props.disabled, false);
+    (button.props.onClick as (event: {currentTarget: unknown}) => void)({currentTarget: button});
+    render();
+  };
+  return {render, find, picker, fetchModels, fields, elements: () => trees.flat(), domain: () => domain, select(key: string) {selected = key; return render();}, locale(value: i18n.Locale) {locale = value; return render();},
     visible(value: boolean) {visible = value; return render();}, key(id: string, value: string) {fields.get(id)!.value = value; (find(id).props.onChange as () => void)(); render();},
     lock(value: boolean) {allowed = !value;},
     replayOwnerEffects() {const ownerHooks = scopes.get('owner') ?? []; for (const hook of ownerHooks) hook.cleanup?.(); for (const hook of ownerHooks) if (hook.effect) hook.cleanup = hook.effect() || undefined;},
@@ -160,16 +173,83 @@ test('image Check and Get models use the current password input and put safe res
   assert.equal(ui.find(`${id}-probe-result`).props.role, 'alert');
   assert.equal(ui.fields.get(passwordId)?.value, 'synthetic-q21-draft');
 
-  (ui.find(`${id}-model-list`).props.onClick as () => void)();
+  ui.fetchModels(id);
+  assert.equal(ui.picker()?.status, 'loading');
+  assert.equal(ui.picker()?.usesDraftKey, true);
   assert.equal(probes[1]?.request.operation, 'models');
   ui.select(b.key);
   assert.equal(probes[1]?.signal?.aborted, true);
   finish?.({result:'ok',models:[{id:'model-a'}]}); await flush(); ui.render();
   assert.ok(!ui.elements().some(item => item.props['data-testid'] === `${id}-probe-result`));
+  assert.equal(ui.picker(), undefined);
   ui.select(a.key);
-  (ui.find(`${id}-model-list`).props.onClick as () => void)();
+  ui.fetchModels(id);
   finish?.({result:'ok',models:[{id:'model-a'}]}); await flush(); ui.render();
-  assert.equal(ui.find(`${id}-probe-result`).props.role, 'status');
+  const ready = ui.picker();
+  assert.equal(ready?.status, 'ready');
+  assert.equal(ready?.mode, 'single');
+  assert.deepEqual(ready?.items.map(item => item.id), ['model-a']);
   assert.equal(ui.fields.get(passwordId)?.value, 'synthetic-q21-draft');
   assert.equal(f.writes, 0);
+});
+
+
+test('custom image picker replaces just one staged model, rejects stale and invalid picks, and writes only on Save', async t => {
+  const f = await fixture(), ui = harness(f.client);
+  t.after(async () => {ui.unmount(); await f.settings.close();});
+  const tooLong = 'a'.repeat(121);
+  f.client.probe = async () => ({result: 'ok', models: [{id: 'same-model'}, {id: 'model-a'}, {id: 'model-b'}, {id: tooLong}]});
+  ui.render(); await flush(); const [a, b] = ui.render().services;
+  assert.ok(a && b);
+  const id = a.key.slice(6);
+  ui.select(a.key); ui.fetchModels(id); await flush(); ui.render();
+  const picker = ui.picker()!;
+  assert.equal(picker.status, 'ready');
+  assert.equal(picker.mode, 'single');
+  assert.equal(picker.items.find(item => item.id === 'same-model')?.added, true);
+  assert.equal(picker.items.find(item => item.id === tooLong)?.unavailable, true);
+  picker.onAdd(['model-a', 'model-b']); picker.onAdd(['unlisted']); picker.onAdd([tooLong]);
+  ui.render();
+  assert.equal(ui.find(`${id}-model`).props.value, 'same-model');
+  picker.onClose(); ui.render(); assert.equal(ui.picker(), undefined);
+  picker.onAdd(['model-a']); ui.render();
+  assert.equal(ui.find(`${id}-model`).props.value, 'same-model');
+
+  ui.fetchModels(id); await flush(); ui.render();
+  ui.picker()!.onAdd(['model-a']); ui.render();
+  assert.equal(ui.find(`${id}-model`).props.value, 'model-a');
+  assert.equal(ui.find(`${b.key.slice(6)}-model`).props.value, 'same-model');
+  assert.ok((await f.settings.get()).connections.every(item => item.configuration.model === 'same-model'));
+  assert.equal(f.writes, 0);
+  ui.domain().discard(); ui.render();
+  assert.equal(ui.find(`${id}-model`).props.value, 'same-model');
+  ui.fetchModels(id); await flush(); ui.render();
+  ui.picker()!.onAdd(['model-b']); ui.render();
+  const ticket = ui.domain().prepareSave()!;
+  assert.equal(await ticket.run(), 'saved'); ticket.dispose();
+  assert.equal(f.writes, 1);
+  const saved = (await f.settings.get()).connections;
+  assert.equal(saved.find(item => item.connectionId === id)?.configuration.model, 'model-b');
+  assert.equal(saved.find(item => item.connectionId === id)?.secret.configured, true);
+});
+
+test('official image picker identifies the fixed model and shows other returned models without allowing a change', async () => {
+  const fixedModel = DEFAULT_IMAGE_CONFIGURATION.model;
+  const ui = harness({
+    read: async () => ({revision: 1, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: true, storage: 'session'},
+      storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}),
+    probe: async () => ({result: 'ok', models: [{id: fixedModel}, {id: 'other-model'}]}),
+    write: async () => assert.fail('Fixed model discovery is read-only'),
+  }, undefined, 'official');
+  try {
+    ui.render(); await flush(); ui.render(); ui.select('image:official');
+    ui.fetchModels('image-official'); await flush(); ui.render();
+    const picker = ui.picker()!;
+    assert.equal(picker.status, 'ready');
+    assert.equal(picker.mode, 'single');
+    assert.match(picker.statusMessage ?? '', /固定/);
+    assert.deepEqual(picker.items, [{id: fixedModel, added: true, unavailable: false}, {id: 'other-model', added: false, unavailable: true}]);
+    picker.onAdd(['other-model']); picker.onClose(); ui.render();
+    assert.equal(ui.domain().navigation.dirty, false);
+  } finally {ui.unmount();}
 });

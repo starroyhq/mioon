@@ -1,18 +1,23 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
 import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {request} from 'node:http';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {createProjectEntries} from '../apps/server/src/project-entries.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
+import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
+import {createMemoryProjectRegistry, createProjectHostManager, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
-import {projectEntriesResponseSchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
+import {projectEntriesResponseSchema,projectEntryIdentitySchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
@@ -134,6 +139,11 @@ function requestGetBody(url: string, body: object): Promise<{status: number; bod
   });
 }
 
+function restoreFsMocks(t: TestContext): void {
+  t.mock.restoreAll();
+  syncBuiltinESMExports();
+}
+
 function registry(f: Fixture): readonly RecentProject[] {
   return f.server.projectEntries.listRecent().registered.map(entry => entry.project);
 }
@@ -186,6 +196,150 @@ test('default web routes keep the released project format and report the candida
   assert.deepEqual(candidate.body.error?.details, {projectId: f.b.projectId, reason: 'PROJECT_FORMAT_NEWER'});
   assert.ok(recent);
   assert.deepEqual(recent.availability, {state: 'invalid', reason: 'format-newer'});
+});
+
+test('a catalog shares one private identity scan but checks each project and refreshes on the next read', async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-catalog-snapshot-'));
+  const directories = serverAppDirectories(path.join(root, 'app'));
+  mkdirSync(directories.projectsDir, {recursive: true});
+  const registry = createMemoryProjectRegistry();
+  const candidates = ['Stable', 'Candidate'].map((name, index) => {
+    const projectFile = path.join(directories.projectsDir, `${name}.mioon`);
+    const projectId = createProjectFile(projectFile, index === 0 ? {} : {format4: {}});
+    const fileIdentity = statProjectFileIdentity(projectFile);
+    assert.ok(fileIdentity);
+    registry.upsert({projectId, name, projectFile, fileIdentity, lastOpenedAt: null, summary: null});
+    return projectFile;
+  });
+  const secret = path.join(directories.dataDir, 'private-settings.json');
+  let reads: string[] = [], rejectRefresh = false;
+  const guard = createApplicationFileGuard(directories, {metadata(file) {
+    reads.push(file);
+    if (file === directories.dataDir && rejectRefresh) throw new Error('Synthetic unavailable private root');
+    const stat = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    // Simulate the candidate being a private inode moved outside the protected
+    // tree, independently of filesystem inode and creation-time reuse rules.
+    return file === secret && stat ? lstatSync(candidates[1]!, {bigint: true}) : stat;
+  }});
+  const manager = createProjectHostManager({directories, registry, factory: async () => assert.fail('Catalog must not create a project runtime'),
+    maintenance: {recoverProjectFile: () => ({state: 'clean'})}});
+  const shutdown = new AbortController();
+  t.after(async () => {
+    shutdown.abort();
+    try { await manager.closeAll(); }
+    finally { rmSync(root, {recursive: true, force: true}); }
+  });
+  const {control} = createProjectEntries({manager, registry, projectsDir: directories.projectsDir, channel: 'web', signal: shutdown.signal,
+    readScope: () => 'a'.repeat(64), createProject: async () => assert.fail('Catalog must not create a project'), refreshSummaries() {}, assertProjectFile: guard});
+  const opened: string[] = [];
+  const open = fs.openSync;
+  t.mock.method(fs, 'openSync', (file: Parameters<typeof open>[0], flags: Parameters<typeof open>[1], mode?: Parameters<typeof open>[2]) => {
+    if (candidates.includes(String(file))) opened.push(String(file));
+    return open(file, flags, mode);
+  });
+  syncBuiltinESMExports();
+  t.after(() => restoreFsMocks(t));
+
+  const readCatalog = () => {
+    reads = [];
+    return control.listRecent().registered.map(entry => entry.availability);
+  };
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'invalid', reason: 'format-newer'}]);
+  assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+  assert.deepEqual(opened, candidates);
+
+  writeFileSync(secret, '{}', {mode: 0o600});
+  opened.length = 0;
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
+  assert.ok(reads.includes(secret), 'the second read refreshes private identities before reading any project header');
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+  assert.deepEqual(opened, [], 'a same-generation hint avoids opening the stable file, and the private guard still rejects a previously cached inode');
+
+  const stable = candidates[0]!, bytes = readFileSync(stable), previousMtime = fs.statSync(stable).mtime;
+  bytes.writeUInt32BE(FORMAT4_PROJECT_SCHEMA_VERSION, 60);
+  writeFileSync(stable, bytes);
+  fs.utimesSync(stable, previousMtime, new Date(previousMtime.getTime() + 2000));
+  opened.length = 0;
+  assert.deepEqual(readCatalog(), [{state: 'invalid', reason: 'format-newer'}, {state: 'available'}]);
+  assert.deepEqual(opened, [stable], 'a changed generation is read again');
+
+  rejectRefresh = true;
+  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.deepEqual(reads, [directories.dataDir], 'a failed snapshot exposes no project header hints');
+});
+
+test('application identity GET bypasses private tree scans and slow project-file opens', async t => {
+  const f = await fixture(t, 'production'), route = '/api/project-entries/identity';
+  const cache = path.join(f.dataDir, 'cache', 'synthetic-tree');
+  mkdirSync(cache, {recursive: true});
+  for (let index = 0; index < 16; index++) {
+    const folder = path.join(cache, String(index));
+    mkdirSync(folder);
+    for (let item = 0; item < 64; item++) writeFileSync(path.join(folder, String(item)), '');
+  }
+  let slowOpens = 0, cacheScans = 0, projectStats = 0;
+  const open = fs.openSync, readdir = fs.readdirSync, lstat = fs.lstatSync;
+  const delay = new Int32Array(new SharedArrayBuffer(4));
+  const injectedDelayMs = 120;
+  t.mock.method(fs, 'openSync', (file: Parameters<typeof open>[0], flags: Parameters<typeof open>[1], mode?: Parameters<typeof open>[2]) => {
+    if (file === f.b.projectFile) {
+      slowOpens++;
+      Atomics.wait(delay, 0, 0, injectedDelayMs);
+    }
+    return open(file, flags, mode);
+  });
+  t.mock.method(fs, 'lstatSync', (file: Parameters<typeof lstat>[0], options?: Parameters<typeof lstat>[1]) => {
+    if (file === f.b.projectFile) projectStats++;
+    return lstat(file, options);
+  });
+  t.mock.method(fs, 'readdirSync', (file: Parameters<typeof readdir>[0], options: Parameters<typeof readdir>[1]) => {
+    if (file === cache) cacheScans++;
+    return readdir(file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => restoreFsMocks(t));
+
+  assert.equal((await fetch(f.server.url + route)).status, 401);
+  const foreign = await f.json(route, {headers: {origin: 'https://foreign.invalid'}});
+  assert.equal(foreign.status, 403);
+  assert.equal(foreign.body.error?.code, 'ORIGIN_REJECTED');
+  for (const invalidRoute of [route + '?cursor=1', route + '/extra', route + '/', '/api/project-entries/%69dentity']) {
+    const result = await f.json(invalidRoute);
+    assert.equal(result.status, invalidRoute === route + '?cursor=1' ? 400 : 404);
+  }
+  const wrongMethod = await f.fetch(route, {method: 'POST'});
+  assert.equal(wrongMethod.status, 405);
+  assert.equal(wrongMethod.headers.get('allow'), 'GET');
+  await wrongMethod.arrayBuffer();
+  const getBody = await requestGetBody(f.server.url + route, {projectFile: '/outside'});
+  assert.equal(getBody.status, 400);
+  assert.equal(getBody.body.error?.code, 'VALIDATION_ERROR');
+
+  const readIdentity = async () => {
+    const response = await f.fetch(route);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.json() as WireBody<unknown>;
+    assert.equal(body.ok, true);
+    return projectEntryIdentitySchema.parse(body.data);
+  };
+  const from = performance.now();
+  const identity = await readIdentity(), identityMs = performance.now() - from;
+  assert.deepEqual(await readIdentity(), identity);
+  assert.deepEqual({slowOpens, cacheScans, projectStats}, {slowOpens: 0, cacheScans: 0, projectStats: 0});
+  const coldStart = performance.now();
+  const catalog = await f.catalog(), coldCatalogMs = performance.now() - coldStart;
+  assert.equal(slowOpens, 1);
+  assert.equal(cacheScans, 2, 'recovery and header hints each take a fresh private identity snapshot');
+  assert.ok(projectStats > 0);
+  assert.ok(coldCatalogMs >= injectedDelayMs);
+  assert.deepEqual(identity, {appLibraryScope: catalog.appLibraryScope, instanceId: catalog.instanceId});
+  const warmStart = performance.now();
+  assert.deepEqual(await f.catalog(), catalog);
+  assert.equal(slowOpens, 1, 'subsequent catalogs retain the guarded same-generation header result');
+  t.diagnostic(`1,024 synthetic cache files and one ${injectedDelayMs} ms open: identity ${identityMs.toFixed(1)} ms, cold catalog ${coldCatalogMs.toFixed(1)} ms, warm catalog ${(performance.now() - warmStart).toFixed(1)} ms`);
 });
 
 test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{

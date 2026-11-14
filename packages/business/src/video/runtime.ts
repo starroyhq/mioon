@@ -63,7 +63,7 @@ async function managedWebp(root: string,asset: ProviderReferenceAsset,maximum: n
 /** A factory has no network or credential side effects. Its immutable binding
  * chooses only an implemented official protocol; secrets are acquired for each
  * observation/dispatch and are never retained by the provider or its poll cache. */
-export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl,now=Date.now}: ConfiguredVideoProviderOptions): Provider {
+export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl,now=Date.now}: ConfiguredVideoProviderOptions): Provider & {invalidateTaskObservation(id:string):void} {
   const frozen=parseVideoBinding(binding),template=videoTemplate(frozen.model.templateId),hosts=new Set(videoOutputHosts(frozen));
   const compatible=frozen.providerId==='compatible';
   let endpoint='';try{endpoint=videoConnectionEndpoint({...frozen,...(compatible?{baseUrl:frozen.endpoint}:{})});}catch{}
@@ -114,6 +114,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   };
   return {
     id:frozen.providerId,capabilities,validate,
+    invalidateTaskObservation(id){cache.invalidate(id);},
     async submit(snapshot: unknown,registered: RegisteredContext={}){
       validate(snapshot);const value=record(snapshot)!;const context=contextOf(registered);
       if(registered.providerRegion!==undefined&&registered.providerRegion!==frozen.region)throw providerError('PROVIDER_REGION_CHANGED','The task region differs from its frozen connection.');

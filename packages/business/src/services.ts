@@ -134,8 +134,13 @@ export interface CreateServicesOptions {
 }
 type AudioPreviewService=ReturnType<typeof createTimelineAudioPreviewCoordinator>;
 type InspectionService=ReturnType<typeof createInspectionServices>;
+type OriginalVideoCredentialRejection={credentialRef:string;connectionRevision:number};
+type VideoResultCredentialState={
+ originalResultCredentialRejected?:OriginalVideoCredentialRejection|null;
+ resultCredentialRecovery?:VideoResultCredentialRecovery;
+};
 type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & {
- resultCredentialState?(): {originalResultCredentialRejected?:true;resultCredentialRecovery?:VideoResultCredentialRecovery};
+ resultCredentialState?(): VideoResultCredentialState;
 };
 /** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
@@ -197,7 +202,7 @@ export interface JobRecord extends ServiceRow {
  snapshot: ServiceRow;
  providerJobId?: string|null;
  providerAcceptedAt?: string;
- originalResultCredentialRejected?: true;
+ originalResultCredentialRejected?: OriginalVideoCredentialRejection|null|true;
  resultCredentialRecovery?: VideoResultCredentialRecovery;
  retryOfJobId?: string|null;
  submissionCount?: number;
@@ -285,13 +290,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const provider=providers.get(providerId);
   if(!mockAllowed&&(providerId==='mock'||(provider&&isMockGenerationProvider(provider))))throw generationServiceUnavailable();
  };
- const configuredVideoProviders=new Map<string,Provider>();
- const configuredProvider=(binding:VideoExecutionBinding,settings:VideoGenerationSettings):Provider=>{
+ const configuredVideoProviders=new Map<string,ReturnType<typeof createConfiguredVideoProvider>>();
+ const configuredProvider=(binding:VideoExecutionBinding,settings:VideoGenerationSettings)=>{
   const key=canonical(binding);let provider=configuredVideoProviders.get(key);
   if(!provider){provider=createConfiguredVideoProvider({root,binding,acquireCredential:()=>settings.acquire(binding,ownerSignal),...(videoFetch?{fetchImpl:videoFetch}:{})});configuredVideoProviders.set(key,provider);}
   return provider;
  };
- const boundProvider=(binding:VideoExecutionBinding):Provider=>{
+ const boundProvider=(binding:VideoExecutionBinding)=>{
   if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
   try {videoSettings.assertBinding(binding);} catch (error) {
    if(isVideoBindingHistoryUnavailable(error))throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','原任务绑定的视频连接历史不可用。',409);
@@ -326,7 +331,15 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    root,binding,acquireCredential:()=>acquireResultCredential.call(videoSettings,binding,replacement,readSignal),
    ...(videoFetch?{fetchImpl:videoFetch}:{}),
   });
-  let originalRejected=job.originalResultCredentialRejected===true,usingReplacement=originalRejected;
+  const previousRejection=job.originalResultCredentialRejected;
+  const originalIdentity={credentialRef:binding.credentialRef,connectionRevision:binding.configurationRevision};
+  const matchesOriginal=previousRejection&&previousRejection!==true&&
+   previousRejection.credentialRef===originalIdentity.credentialRef&&previousRejection.connectionRevision===originalIdentity.connectionRevision;
+  let originalRejection:VideoResultCredentialState['originalResultCredentialRejected']=previousRejection&&!matchesOriginal?null:undefined;
+  // Only a rejection of this exact original credential can skip it, and only
+  // when an eligible replacement actually exists. A resumed original lookup
+  // must go to the provider even inside the cache interval of the denied GET.
+  let usingReplacement=Boolean(provider&&matchesOriginal),refreshOriginal=Boolean(previousRejection);
   let recovery:VideoResultCredentialRecovery|undefined;
   const rejected=(error:unknown):boolean=>{
    const status=property(error,'httpStatus');
@@ -337,15 +350,25 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   async function observe<T>(id:string,read:(source:GenerationResultProvider)=>Promise<T>):Promise<T>{
    if(id!==knownId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
    if(!usingReplacement){
-    try{return await read(boundProvider(binding));}
+    try{
+     const original=boundProvider(binding);
+     if(refreshOriginal){original.invalidateTaskObservation(id);refreshOriginal=false;}
+     const value=await read(original);
+     if(previousRejection||originalRejection)originalRejection=null;
+     return value;
+    }
     catch(error){
-     if(taskMissing(error))throw new AppError('VIDEO_TASK_NOT_FOUND','服务商找不到这个任务。',404);
-     if(rejected(error))originalRejected=true;
+     if(taskMissing(error)){
+      if(previousRejection||originalRejection)originalRejection=null;
+      throw new AppError('VIDEO_TASK_NOT_FOUND','服务商找不到这个任务。',404);
+     }
+     const denied=rejected(error);
+     if(denied)originalRejection=originalIdentity;
      const cause=videoCredentialDiagnostic(error)?.cause;
-     if(!originalRejected&&
+     if(!denied&&
         cause!=='VIDEO_SETTINGS_CORRUPT'&&cause!=='VIDEO_SETTINGS_NOT_CONFIGURED'&&
         cause!=='VIDEO_CREDENTIAL_INVALID'&&cause!=='VIDEO_CREDENTIAL_UNAVAILABLE')throw error;
-     if(!provider)throw originalRejected?originalUnavailable():error;
+     if(!provider)throw denied?originalUnavailable():error;
     }
    }
    if(!provider)throw originalUnavailable();
@@ -371,7 +394,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     return result;
    },
    resultCredentialState:()=>({
-    ...(originalRejected?{originalResultCredentialRejected:true as const}:{}),
+    ...(originalRejection!==undefined?{originalResultCredentialRejected:originalRejection}:{}),
     ...(recovery?{resultCredentialRecovery:recovery}:{}),
    }),
   };
@@ -790,8 +813,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    try {await awaitProvider(()=>p.poll(found.providerJobId,context),callSignal);}
    catch(error){
     checkpoint(callSignal);claim();
-    if(p.resultCredentialState?.().originalResultCredentialRejected&&!j.originalResultCredentialRejected)
-     saveGenerationGuarded(j,{originalResultCredentialRejected:true});
+    const credentialState=p.resultCredentialState?.();
+    if(credentialState?.originalResultCredentialRejected!==undefined)saveGenerationGuarded(j,credentialState);
     throw error;
    }
    checkpoint(callSignal);claim();

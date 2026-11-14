@@ -83,6 +83,7 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
       modelsList: async () => assert.fail('Navigation fixtures must not fetch a provider model list'),
     } }) };
     if (name === './agent-model-list-rows.ts') return modelRows;
+    if (name === './ModelPickerDialog.tsx') return {default:'ModelPickerDialog',__esModule:true};
     if (name === './image-settings.ts') return image;
     if (name === './comfy-image-settings.ts') return comfy;
     if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };

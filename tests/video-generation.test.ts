@@ -107,7 +107,9 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
   job(id:string){return store.get('jobs',id) as JobRecord;},
   async submit(change:Record<string,unknown>={}){return await services.call('generation.submit',{...input(),...change}) as JobRecord;},
   async live(enabled:boolean){return services.call('workspace.settings.set',{expectedRevision:services.configuration.get().revision,liveGeneration:enabled});},
-  async tick(subscribeVideoStorageAvailable=desktopConnection?.client.subscribeStorageAvailable){worker??=startWorker(store,services,providers,{...(subscribeVideoStorageAvailable?{subscribeVideoStorageAvailable}:{})});await worker.tick();},
+  async tick(subscribeVideoStorageAvailable=desktopConnection?.client.subscribeStorageAvailable){worker??=startWorker(store,services,providers,{
+   ...(subscribeVideoStorageAvailable?{subscribeVideoStorageAvailable}:{}),subscribeVideoConnectionChanges:settings.subscribeConnectionChanges,
+  });await worker.tick();},
   async stop(){await worker?.stop();worker=null;},
   async restart({reopenApp=false}={}){await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();if(reopenApp)desktopVault?.reopenMain();store=openStore(root);desktopConnection=desktopVault?.connect();settings=await openSettings();providers=registry();services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});},
   ready(id:string){services.saveJob(f.job(id),{nextPollAt:0});},
@@ -627,6 +629,108 @@ test('Q17-C an original account task lookup 404 pauses without trying the replac
  t.mock.timers.setTime(Date.now()+600_000);
  await f.tick();await f.restart();await f.tick();
  assert.equal(f.calls.length,2);
+});
+
+test('Q17-C explicitly rechecks the same key after a temporary 401 and publishes without replacement audit',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const {f,submitted,assertPublished}=await desktopPaidTask(t);
+ const output=await readFile(path.join(f.root,'minimax-output.mp4'));
+ const outputUrl='https://output.example/recovered.mp4';
+ let denied=true;
+ f.reply((url,init)=>{
+  assert.equal(init.method,'GET');
+  const authorization=new Headers(init.headers).get('Authorization');
+  if(url===outputUrl){assert.equal(authorization,null);return new Response(output);}
+  assert.match(url,/\/query\/video_generation\/original-task$/);
+  assert.equal(authorization,'Bearer original-synthetic-key');
+  return denied?new Response('{}',{status:401}):json({task:{id:'original-task',status:'succeeded',content:{url:outputUrl}}});
+ });
+ await f.tick();
+ await desktopTaskDiagnostic(f,f.job(submitted.id),'VIDEO_CREDENTIAL_UNAVAILABLE','user_action');
+ const saved=await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret()});
+ assert.equal(saved.revision,1);
+ denied=false;
+ await f.services.call('job.reconcile',{jobId:submitted.id});
+ await f.tick();await f.stop();
+ assertPublished(2);
+ assert.equal(f.job(submitted.id).originalResultCredentialRejected,null);
+ assert.equal(f.job(submitted.id).resultCredentialRecovery,undefined);
+});
+
+test('Q17-C a second rejection of the same original key pauses again after one real recheck',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{persistent:true}),job=await f.submit();
+ await f.tick();await f.stop();
+ const submitted=f.job(job.id),binding=submitted.snapshot.executionBinding as VideoExecutionBinding;
+ f.reply((_url,init)=>{
+  assert.equal(init.method,'GET');
+  assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');
+  return new Response('{}',{status:403});
+ });
+ await f.tick();
+ await desktopTaskDiagnostic(f,f.job(job.id),'VIDEO_CREDENTIAL_UNAVAILABLE','user_action');
+ await f.services.call('job.reconcile',{jobId:job.id});
+ await f.tick();
+ assert.equal(f.calls.length,3);
+ const waiting=f.job(job.id);
+ await desktopTaskDiagnostic(f,waiting,'VIDEO_CREDENTIAL_UNAVAILABLE','user_action');
+ assert.deepEqual(waiting.originalResultCredentialRejected,{credentialRef:binding.credentialRef,connectionRevision:binding.configurationRevision});
+ assert.equal(waiting.nextPollAt,Number.MAX_SAFE_INTEGER);
+ assert.equal(waiting.providerJobId,submitted.providerJobId);
+ assert.deepEqual(waiting.snapshot,submitted.snapshot);
+ t.mock.timers.setTime(Date.now()+600_000);
+ await f.tick();await f.restart();await f.tick();
+ assert.deepEqual(f.calls.map(call=>call.init.method),['POST','GET','GET']);
+});
+
+for(const wake of ['connection change','Keychain becomes available'])
+test(`Q17-C ${wake} wakes a paused original-key check once`,async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{persistent:true}),job=await f.submit();
+ await f.tick();await f.stop();
+ let storageAvailable:()=>void=()=>assert.fail('missing storage subscription');
+ const subscribe=(listener:()=>void)=>{storageAvailable=listener;return ()=>{};};
+ const entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+ t.after(()=>release.resolve());
+ let queries=0;
+ f.reply(async(_url,init)=>{
+  assert.equal(init.method,'GET');
+  assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');
+  if(++queries===1){entered.resolve();await release.promise;return new Response('{}',{status:401});}
+  return json({task:{id:'original-task',status:'running'}});
+ });
+ const first=f.tick(subscribe);
+ await entered.promise;
+ if(wake==='connection change'){
+  const disabled={...f.configuration,enabled:false};
+  const saved=await f.settings.put({action:'save',expectedRevision:1,configuration:disabled,secret:{action:'keep'}});
+  assert.equal(saved.revision,2);
+ }else storageAvailable();
+ release.resolve();
+ await first;await f.tick();
+ const resumed=f.job(job.id);
+ assert.equal(resumed.phase,'polling');
+ assert.equal(resumed.error,null);
+ assert.equal(resumed.originalResultCredentialRejected,null);
+ assert.equal(resumed.resultCredentialRecovery,undefined);
+ assert.deepEqual(f.calls.map(call=>call.init.method),['POST','GET','GET']);
+ await f.tick();
+ assert.equal(f.calls.length,3);
+});
+
+for(const stale of ['legacy boolean','credential ref','connection revision'])
+test(`Q17-C an original rejection with stale ${stale} cannot select the replacement`,async t=>{
+ const {f,submitted,assertPublished}=await desktopPaidTask(t);
+ const binding=submitted.snapshot.executionBinding as VideoExecutionBinding;
+ await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
+ f.services.saveJob(submitted,{originalResultCredentialRejected:stale==='legacy boolean'?true:{
+  credentialRef:stale==='credential ref'?randomUUID():binding.credentialRef,
+  connectionRevision:stale==='connection revision'?binding.configurationRevision+1:binding.configurationRevision,
+ }});
+ await f.tick();await f.stop();
+ assertPublished();
+ assert.equal(f.job(submitted.id).originalResultCredentialRejected,null);
+ assert.equal(f.job(submitted.id).resultCredentialRecovery,undefined);
 });
 
 for(const status of [401,403])test(`Q17-C replacement account HTTP ${status} pauses without automatic credential requests`,async t=>{
