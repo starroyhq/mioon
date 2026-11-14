@@ -1,7 +1,9 @@
 import { defaultVideoModels, VIDEO_REGIONS, VIDEO_PROVIDER_NAMES, videoConnectionEndpoint, normalizeCompatibleVideoBaseUrl, isVideoCatalogProvider } from '../../../packages/contracts/src/video-providers.ts';
 import type { CompatibleVideoCheck, CompatibleVideoCheckResult, VideoModelEntry, VideoProviderId } from '../../../packages/contracts/src/video-providers.ts';
-import {compatibleVideoCheckResultV2Schema, compatibleVideoCheckV2Schema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
-import type {VideoConnectionConfigurationV2, VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../../../packages/contracts/src/generation-video-settings.ts';
+import {compatibleVideoCheckResultV2Schema, compatibleVideoCheckV2Schema, videoModelsListEndpoint, videoModelsListInputSchema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../../../packages/contracts/src/generation-video-settings.ts';
+import type {VideoConnectionConfigurationV2, VideoConnectionViewV2, VideoModelsListInput, VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../../../packages/contracts/src/generation-video-settings.ts';
+import {draftServiceProbeResultSchema} from '../../../packages/contracts/src/draft-service-probe.ts';
+import type {DraftServiceProbeResult} from '../../../packages/contracts/src/draft-service-probe.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -14,7 +16,12 @@ export function safeVideoSettings(value: unknown): VideoSettingsSnapshotV2 {
   if (!parsed.success) throw fail('INVALID_RESPONSE');
   return parsed.data;
 }
-export interface VideoSettingsClient { read(signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>; write(input: VideoSettingsUpdateV2, signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>; check?(input: CompatibleVideoCheck, signal?: AbortSignal): Promise<CompatibleVideoCheckResult> }
+export interface VideoSettingsClient {
+  read(signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>;
+  write(input: VideoSettingsUpdateV2, signal?: AbortSignal): Promise<VideoSettingsSnapshotV2>;
+  check?(input: CompatibleVideoCheck, signal?: AbortSignal): Promise<CompatibleVideoCheckResult>;
+  modelsList?(input: VideoModelsListInput, signal?: AbortSignal): Promise<DraftServiceProbeResult>;
+}
 /** The check reply is a closed enum plus an optional HTTP status; nothing else enters UI state. */
 export function safeCompatibleCheck(value: unknown): CompatibleVideoCheckResult {
   const parsed = compatibleVideoCheckResultV2Schema.safeParse(value);
@@ -54,13 +61,67 @@ export function createVideoSettingsClient({ fetchImpl = globalThis.fetch, timeou
     } catch (error) { throw fail(errorCode(error)); }
     finally { clearTimeout(timer); external?.removeEventListener('abort', abort); }
   }
-  return { read: signal => request('GET', undefined, signal), write: (input, signal) => request('PUT', input, signal), check };
+  async function modelsList(input: VideoModelsListInput, external?: AbortSignal): Promise<DraftServiceProbeResult> {
+    const parsed = videoModelsListInputSchema.safeParse(input);
+    if (!parsed.success) throw fail('VIDEO_SETTINGS_VALIDATION');
+    const controller = new AbortController(), abort = () => controller.abort();
+    const timer = setTimeout(abort, Math.max(timeoutMs, 22000));
+    external?.addEventListener('abort', abort, {once: true});
+    if (external?.aborted) controller.abort();
+    try {
+      controller.signal.throwIfAborted();
+      const response = await fetchImpl('/api/video-providers/models/list', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(parsed.data),
+      });
+      const body: unknown = await response.json();
+      controller.signal.throwIfAborted();
+      if (!response.ok || !record(body) || body.ok !== true) throw fail();
+      const result = draftServiceProbeResultSchema.safeParse(body.data);
+      if (!result.success) throw fail('INVALID_RESPONSE');
+      const {models, ...outcome} = result.data;
+      if (parsed.data.operation === 'check' || outcome.result !== 'ok') return outcome;
+      if (!models) throw fail('INVALID_RESPONSE');
+      const secret = parsed.data.source === 'draft' ? parsed.data.value : null;
+      return {...outcome, models: secret ? models.filter(entry => !entry.id.includes(secret)) : models};
+    } catch {
+      throw fail();
+    } finally {
+      clearTimeout(timer);
+      external?.removeEventListener('abort', abort);
+    }
+  }
+  return { read: signal => request('GET', undefined, signal), write: (input, signal) => request('PUT', input, signal), check, modelsList };
 }
 export interface VideoSettingsState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'load_error' | 'review' | 'blocked' | 'reconciling';
   snapshot: VideoSettingsSnapshotV2 | null; draft: VideoConnectionConfigurationV2 | null; baseline: VideoConnectionConfigurationV2 | null;
   secretAction: 'keep' | 'remove'; storage: '' | 'session' | 'persistent'; recovery: 'conflict' | 'unknown' | null; notice: MessageKey | null;
 }
+export function videoDraftProbeInput(
+  operation: VideoModelsListInput['operation'],
+  configuration: VideoConnectionConfigurationV2,
+  action: 'keep' | 'replace' | 'remove',
+  value: string,
+  saved?: VideoConnectionViewV2,
+  persistentAvailable?: boolean,
+): VideoModelsListInput | null {
+  const {providerId, region, workspaceId, baseUrl} = configuration;
+  const target = {operation, providerId, region, workspaceId, ...(baseUrl === undefined ? {} : {baseUrl})};
+  if (action === 'replace') {
+    const parsed = videoModelsListInputSchema.safeParse({...target, source: 'draft', value});
+    return parsed.success ? parsed.data : null;
+  }
+  if (action !== 'keep' || !saved?.secret.configured || saved.configuration.id !== configuration.id
+    || saved.secret.storage === 'persistent' && !persistentAvailable) return null;
+  const original = saved.configuration;
+  try {
+    if (original.providerId !== providerId || original.region !== region || original.workspaceId !== workspaceId
+      || videoModelsListEndpoint(original) !== videoModelsListEndpoint(target)) return null;
+  } catch {return null;}
+  return {...target, source: 'saved', connectionId: configuration.id, configurationRevision: saved.revision};
+}
+
 export const initialVideoSettingsState = (): VideoSettingsState => ({ phase: 'loading', snapshot: null, draft: null, baseline: null, secretAction: 'keep', storage: '', recovery: null, notice: null });
 export const videoSettingsBusy = (state: VideoSettingsState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const videoSettingsDirty = (state: VideoSettingsState): boolean => Boolean(state.draft && (JSON.stringify(state.draft) !== JSON.stringify(state.baseline) || state.secretAction !== 'keep'));

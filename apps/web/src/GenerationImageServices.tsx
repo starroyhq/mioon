@@ -62,7 +62,7 @@ function useImageDomain(kind: GenerationImageDomainKind, options: GenerationImag
       ? 'readiness' in snapshot && snapshot.readiness.checked && state.availability?.state === 'available'
       : !!secret?.configured && (secret.storage === 'session' || !!storage?.persistentAvailable));
     return {key: kind === 'custom' ? `image:${id}` : id, label: kind === 'custom' ? draft!.name : t(kind === 'official' ? 'image.settings.official' : 'image.settings.comfy'),
-      providerId: kind === 'official' ? 'openai' : kind === 'custom' ? 'openai-compatible' : 'comfy-local', kind: 'image' as const, custom: kind === 'custom', configured, available,
+      providerId: kind === 'official' ? 'openai' : kind === 'custom' ? 'openai-compatible' : 'comfy-local', kind: 'image' as const, custom: kind === 'custom', configured, available, dirty: owner.isDirty(id),
       content: <GenerationImageServiceDetail key={id} id={id} kind={kind} owner={owner} state={state} onSelect={key => current.current.onSelect?.(key)} />};
   });
   const notice = kind === 'custom' && state.snapshot && 'notice' in state.snapshot && state.snapshot.notice && !legacyDismissed
@@ -82,10 +82,17 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
   const interaction = useMemo(() => ({id, active: visibility.active, version: state.version}), [id, visibility.active, state.version]);
   const current = useRef(interaction); current.current = interaction;
   const usable = () => current.current === interaction && visibility.active && documentVisible() && owner.interactionAllowed();
-  useLayoutEffect(() => {if (!visibility.selected) owner.cancelCheck();}, [owner, visibility.selected]);
+  useLayoutEffect(() => {if (!visibility.selected) owner.cancelCheck(id);}, [id, owner, visibility.selected]);
   const draft = state.drafts.find(item => item.id === id), busy = ['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
   const editable = visibility.active && !busy && !state.recovery, snapshot = state.snapshot, secret = owner.savedSecret(id);
   const storage = snapshot && 'storage' in snapshot ? snapshot.storage : null;
+  const probe = state.probe?.id === id ? state.probe : null;
+  const probeable = editable && owner.canProbe(id);
+  const probeMessage = probe?.result.result === 'ok'
+    ? probe.result.models ? t('settings.draftKey.modelCount', {count: probe.result.models.length}) : t('settings.draftKey.success')
+    : probe?.result.result === 'unauthorized' ? t('settings.draftKey.unauthorized')
+      : probe?.result.result === 'unsupported' ? t(probe.operation === 'models' ? 'settings.draftKey.listUnsupported' : 'settings.draftKey.unavailable')
+        : t('settings.draftKey.failed');
   let destination = '';
   try {if (draft?.configuration.baseUrl) destination = kind === 'custom' ? getCustomImageDestination(normalizeCustomImageBaseUrl(draft.configuration.baseUrl)) : `${draft.configuration.baseUrl}/images/generations`;} catch {}
   const prefix = id.replaceAll(':', '-'), edit = (patch: Parameters<typeof owner.edit>[1], configuration: Parameters<typeof owner.edit>[2] = {}) => {if (usable()) owner.edit(id, patch, configuration);};
@@ -104,6 +111,7 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
       <p role="status">{renderMessage(comfyConnectorAvailabilityDescriptor(state.availability))}</p>
       <Button type="button" data-testid={`${prefix}-check`} disabled={!editable || state.availability?.state !== 'available' || !draft.configuration.baseUrl} onClick={() => {if (usable()) void owner.checkConnection();}}>{t(state.phase === 'checking' ? 'connections.comfy.checking' : 'connections.comfy.check')}</Button>
       <p className="image-settings-help">{t('connections.comfy.checkScope')}</p><p role="status">{renderMessage(comfyImageCheckDescriptor(state.check))}</p>
+      {owner.isDirty(id) && <p className="image-settings-help">{t('settings.draftKey.resultHint')}</p>}
       <Label htmlFor={`${prefix}-model`}>{t('connections.comfy.model')}</Label><WorkbenchSelect id={`${prefix}-model`} data-testid={`${prefix}-model`} value={draft.configuration.model} disabled={!editable || !state.check?.checkpoints.length} onChange={event => edit({}, {model: event.target.value})}>
         <option value="">{t('connections.comfy.chooseModel')}</option>{draft.configuration.model && !state.check?.checkpoints.includes(draft.configuration.model) && <option value={draft.configuration.model} disabled>{t('connections.comfy.savedModel', {model: draft.configuration.model})}</option>}{state.check?.checkpoints.map(model => <option key={model} value={model}>{model}</option>)}
       </WorkbenchSelect><p className="image-settings-help">{t('connections.comfy.modelScope')}</p>
@@ -113,6 +121,15 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
       <div className="image-settings-fixed"><span>{destination || t('image.settings.destinationEmpty')}</span><span>{draft.configuration.model || t('image.settings.modelEmpty')}</span><span>{t('image.settings.fixedOutput')}</span></div>
       {kind === 'custom' && <p className="image-settings-help">{t('image.settings.compatibility')}</p>}
       <Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><Input ref={inputRef} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={4096} disabled={!editable || draft.secretAction === 'remove'} placeholder={secret?.configured ? t('image.settings.keepPlaceholder') : t(kind === 'official' ? 'image.settings.openaiKeyPlaceholder' : 'image.settings.customKeyPlaceholder')} onChange={() => {if (usable()) owner.keyChanged(id);}} />
+      <div className="image-generation-actions">
+        <Button type="button" data-testid={`${prefix}-key-check`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'check');}}>{t('settings.draftKey.check')}</Button>
+        <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'models');}}>{t('settings.draftKey.list')}</Button>
+      </div>
+      {state.phase === 'checking' && <p role="status">{t('settings.draftKey.checking')}</p>}
+      {probe && <p role={probe.result.result === 'ok' ? 'status' : 'alert'} data-testid={`${prefix}-probe-result`}>
+        {probeMessage}
+      </p>}
+      {owner.isDirty(id) && <p className="image-settings-help">{t('settings.draftKey.resultHint')}</p>}
       <p className="image-settings-help">{t('image.settings.keyHelp')}</p><Label htmlFor={`${prefix}-storage`}>{t('image.settings.keyStorage')}</Label><WorkbenchSelect id={`${prefix}-storage`} data-testid={`${prefix}-storage`} value={draft.storage} disabled={!editable || draft.secretAction === 'remove'} onChange={event => {if (event.target.value === 'session' || event.target.value === 'persistent') edit({storage: event.target.value});}}><option value="" disabled>{t('image.settings.storageChoose')}</option><option value="session">{t('image.settings.storageSession')}</option><option value="persistent" disabled={!storage?.persistentAvailable}>{t('connections.storage.persistent')}</option></WorkbenchSelect>
       {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}
       <p className="image-settings-help">{t('connections.sessionLoss')}</p><p className="image-settings-help">{imageStorageReason(storage, t)}</p>

@@ -31,8 +31,8 @@ export interface GenerationVideoState {
   editorEpoch: number;
 }
 export const generationVideoBusy = (state: GenerationVideoState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
-const draftDirty = (draft: GenerationVideoDraft): boolean => draft.secretAction !== 'keep' || draft.touched && !same(draft.configuration, draft.baseline);
-export const generationVideoDirty = (state: GenerationVideoState): boolean => state.deletedIds.length > 0 || state.drafts.some(draftDirty);
+export const generationVideoDraftDirty = (draft: GenerationVideoDraft): boolean => draft.secretAction !== 'keep' || draft.touched && !same(draft.configuration, draft.baseline);
+export const generationVideoDirty = (state: GenerationVideoState): boolean => state.deletedIds.length > 0 || state.drafts.some(generationVideoDraftDirty);
 export const initialGenerationVideoState = (): GenerationVideoState => ({phase: 'loading', snapshot: null, drafts: VIDEO_BUILTIN_PROVIDER_IDS.map(id => {const configuration = newVideoConnection(id); return {key: videoServiceKey(configuration), configuration, baseline: null, touched: false, storage: '', secretAction: 'keep', hasKey: false};}), deletedIds: [], recovery: null, notice: null, version: 0, editorEpoch: 0});
 /** Uses only saved, redacted facts and the existing local capability validator. */
 export function generationVideoAvailable(snapshot: VideoSettingsSnapshotV2 | null, configuration: VideoConnectionConfigurationV2): boolean | null {
@@ -73,7 +73,7 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
       if (!editable() || !state.snapshot) throw safeError();
       for (const draft of state.drafts) {
         const value = readKey(draft.key);
-        if (!draftDirty(draft) && !value) continue;
+        if (!generationVideoDraftDirty(draft) && !value) continue;
         const configuration = clone(draft.configuration);
         if (configuration.providerId === 'compatible') {try {configuration.baseUrl = normalizeCompatibleVideoBaseUrl(configuration.baseUrl);} catch {emit({phase: 'error', notice: 'video.providers.baseUrlInvalid'}); throw safeError();}}
         if (draft.secretAction === 'replace' && !value || value && !draft.storage || value && draft.storage === 'persistent' && !state.snapshot.storage.persistentAvailable) {emit({phase: 'error', notice: 'video.providers.invalid'}); throw safeError();}

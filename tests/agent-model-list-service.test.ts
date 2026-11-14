@@ -8,6 +8,9 @@ import type {AgentSettingsSnapshot,AgentServiceInput} from '../packages/contract
 import type {AgentModelListRequest,AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import type {AgentModelListCacheStore} from '../packages/business/src/agent/model-list-cache.ts';
 import type {SettingsContextOptions} from '../packages/business/src/agent/settings.ts';
+import type {TaskGateway,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {agentChatHttpError} from '../packages/business/src/agent/chat-errors.ts';
+
 import {testAgentCredential} from './helpers/agent-settings-fixture.ts';
 
 const success=(id='gpt-4.1-mini',complete=true):AgentModelListSuccess=>({outcome:'success',models:[{id,adaptation:'unverified'}],complete,source:'current_protocol',fetchedAt:'2026-11-04T00:00:00.000Z'});
@@ -24,10 +27,10 @@ function cacheStore(){
  const store:AgentModelListCacheStore={read(identity){reads++;return values.get(JSON.stringify(identity))??null;},write(identity,result){writes++;values.set(JSON.stringify(identity),structuredClone(result));return true;},remove(key){removes++;for(const identity of values.keys())if(JSON.parse(identity).serviceKey===key)values.delete(identity);}};
  return {store,values,get writes(){return writes;},get reads(){return reads;},get removes(){return removes;}};
 }
-async function fixture(t:test.TestContext,fetch:Parameters<typeof createAgentModelListService>[0]['fetch'],cache=cacheStore()){
+async function fixture(t:test.TestContext,fetch:Parameters<typeof createAgentModelListService>[0]['fetch'],cache=cacheStore(),gateway?:TaskGateway){
  let disk:unknown=null,writes=0;
  const owner=await createAgentSettings({persistence:{load:async()=>disk,save:async value=>{disk=structuredClone(value);writes++;}}});
- const models=createAgentModelListService({settings:owner,cache:cache.store,fetch});
+ const models=createAgentModelListService({settings:owner,cache:cache.store,fetch,gateway});
  t.after(async()=>{await models.close();await owner.close();});
  const snapshot=await owner.put({...metadata(await owner.get()),secretActions:[{serviceKey:'openai',action:'replace',storage:'session',value:'SYNTHETIC_A'},{serviceKey:'deepseek',action:'replace',storage:'session',value:'SYNTHETIC_B'}]});
  return {owner,models,cache,snapshot,get writes(){return writes;},get disk(){return structuredClone(disk);}};
@@ -42,6 +45,7 @@ test('saved discovery reads the named unselected service; input is ephemeral and
  await f.models.list(request(f.snapshot,'openai','input'));assert.equal(seen[1]?.key,'SYNTHETIC_INPUT');
  assert.deepEqual(await f.models.settings.get(),f.snapshot);assert.deepEqual(f.disk,baseline);assert.equal(f.writes,writes);
  assert.equal(JSON.stringify([...f.cache.values]).includes('SYNTHETIC'),false);
+ assert.equal(f.cache.writes,1,'Only the saved request may publish its list');
  assert.equal((await f.models.list(request(f.snapshot,'openai','none'))).outcome,'invalid_key');assert.equal(seen.length,2);
  await assert.rejects(f.models.list({...request(f.snapshot),expectedSettingsRevision:f.snapshot.revision-1}),{code:'AGENT_SETTINGS_CONFLICT'});
 });
@@ -61,14 +65,105 @@ test('list purpose cannot loosen the existing inference acquisition witness or c
  assert.equal((await f.owner[AGENT_CREDENTIAL_ACQUIRE](active)).apiKey,'SYNTHETIC_A');assert.notEqual(changed.revision,snapshot.revision);
 });
 
-test('same-recipient protocol draft acquires the saved configuration but never persists a draft cache',async t=>{
- const f=await fixture(t,async options=>{assert.equal(options.apiKey,'SYNTHETIC_B');assert.equal(options.selection.protocol,'anthropic_messages');return success('deepseek-flash');});
+test('protocol and address drafts only send a fresh input key',async t=>{
+ let dispatched=0;
+ const f=await fixture(t,async()=>{dispatched++;return success('deepseek-flash');});
  const input=request(f.snapshot,'deepseek');input.selection={...input.selection,protocol:'anthropic_messages',baseUrl:'https://api.deepseek.com/anthropic'};
- assert.equal((await f.models.list(input)).outcome,'success');assert.equal(f.cache.writes,0);
+ await assert.rejects(f.models.list(input),{code:'AGENT_SETTINGS_CONFLICT'});assert.equal(dispatched,0);
+ assert.deepEqual(await f.models.list({...input,credential:{source:'input',value:'SYNTHETIC_INPUT'}}),{outcome:'unavailable',reason:'not_provided'});
+ assert.equal(dispatched,0);assert.equal(f.cache.writes,0);
  const custom:AgentServiceInput={serviceKey:'00000000-0000-4000-8000-000000000001',presetId:'custom',name:'One',platformId:'custom',protocol:'chat_completions',addressInput:'https://custom.example.com/v1',manualModelIds:[]};
  const saved=sanitizeAgentSettingsResult(await f.models.settings.put(metadata(f.snapshot,[...f.snapshot.services.map(agentServiceInput),custom])));
  const wrong=request(saved,custom.serviceKey);wrong.selection.baseUrl='https://other.example.com/v1';
  await assert.rejects(f.models.list(wrong),{code:'AGENT_SETTINGS_CONFLICT'});assert.equal(f.cache.writes,0);
+});
+
+test('draft connection test uses the current key without changing settings, and never returns replies or errors verbatim',async t=>{
+ const calls:{configuration:TaskModelRequest['configuration'];key:string|null|undefined;body:Record<string,unknown>}[]=[];
+ let fail=false;
+ const f=await fixture(t,async()=>success(),undefined,async function*({configuration,apiKey,body,beforeSubmit}){
+  beforeSubmit?.();
+  calls.push({configuration,key:apiKey,body:JSON.parse(body)});
+  if(fail)throw agentChatHttpError(401,Buffer.from(JSON.stringify({error:{message:apiKey}})));
+  yield {type:'done',output:{text:`OK ${apiKey}`,toolCalls:[],providerOutput:{echo:apiKey??null}}};
+ });
+ const model='gpt-4.1-mini',before=f.disk,writes=f.writes;
+ const saved={...request(f.snapshot),model};
+ const draft={...request(f.snapshot,'openai','input'),model};
+ assert.deepEqual(await f.models.test(draft),{outcome:'success'});
+ assert.deepEqual(await f.models.test(saved),{outcome:'success'});
+ assert.deepEqual(calls.map(call=>call.key),['SYNTHETIC_INPUT','SYNTHETIC_A']);
+ assert.equal(calls[0]!.configuration.model,model);
+ assert.equal(calls[0]!.body.tools,undefined);
+ assert.match(JSON.stringify(calls[0]!.body),/Mioon connection test/);
+ assert.doesNotMatch(JSON.stringify(calls[0]!.body),/SYNTHETIC_INPUT/);
+ fail=true;
+ assert.deepEqual(await f.models.test(draft),{outcome:'failed',reason:'rejected'});
+ assert.deepEqual(f.disk,before);assert.equal(f.writes,writes);assert.equal(f.cache.writes,0);
+ const changed=await f.models.settings.put({...metadata(f.snapshot),secretActions:[{serviceKey:'openai',action:'replace',storage:'session',value:'SYNTHETIC_INPUT'}]});
+ fail=false;
+ assert.deepEqual(await f.models.test({...request(sanitizeAgentSettingsResult(changed)),model}),{outcome:'success'});
+ assert.equal(calls.at(-1)?.key,'SYNTHETIC_INPUT');assert.equal(f.writes,writes+1);
+});
+
+test('draft connection test rejects a saved key for a changed base, platform, or protocol before dispatch',async t=>{
+ const observed:TaskModelRequest[]=[];
+ const f=await fixture(t,async()=>success(),undefined,async function*(call){
+  observed.push(call);
+  yield {type:'done',output:{text:'OK',toolCalls:[],providerOutput:null}};
+ });
+ const custom:AgentServiceInput={serviceKey:'00000000-0000-4000-8000-000000000001',presetId:'custom',name:'One',platformId:'custom',protocol:'chat_completions',addressInput:'https://one.example.com/v1',manualModelIds:[]};
+ const saved=sanitizeAgentSettingsResult(await f.models.settings.put({...metadata(f.snapshot,[...f.snapshot.services.map(agentServiceInput),custom]),secretActions:[
+  {serviceKey:custom.serviceKey,action:'replace',storage:'session',value:'SYNTHETIC_OLD_CUSTOM'},
+  {serviceKey:'minimax',action:'replace',storage:'session',value:'SYNTHETIC_OLD_MINIMAX'},
+ ]}));
+ const changed=[
+  {...request(saved,custom.serviceKey).selection,baseUrl:'https://two.example.com/v1'},
+  {...request(saved,custom.serviceKey).selection,protocol:'responses'},
+  {...request(saved,'minimax').selection,platformId:'international',baseUrl:'https://api.minimax.io/v1'},
+ ] as const;
+ for(const [index,selection] of changed.entries()){
+  const input={...request(saved,index===2?'minimax':custom.serviceKey),selection,model:'model-draft'};
+  await assert.rejects(f.models.test(input),{code:'AGENT_SETTINGS_CONFLICT'});
+  const {model:_model,...list}=input;
+  await assert.rejects(f.models.list(list),{code:'AGENT_SETTINGS_CONFLICT'});
+  const count=observed.length;
+  assert.deepEqual(await f.models.test({...input,credential:{source:'input',value:'SYNTHETIC_NEW'}}),{outcome:'success'});
+  assert.equal(observed.length,count+1);
+  assert.deepEqual(observed[count]?.configuration,{...selection,model:'model-draft'});
+  assert.equal(observed[count]?.apiKey,'SYNTHETIC_NEW');
+ }
+ assert.equal(observed.length,changed.length);
+});
+
+test('draft connection tests cap normal and required-thinking output without borrowing task context',async t=>{
+ const bodies:Record<string,unknown>[]=[];
+ const f=await fixture(t,async()=>success(),undefined,async function*({body}){
+  bodies.push(JSON.parse(body));
+  yield {type:'done',output:{text:'OK',toolCalls:[],providerOutput:null}};
+ });
+ for(const [serviceKey,model] of [['openai','gpt-4.1-mini'],['anthropic','claude-sonnet-5-5'],['kimi','kimi-k3.1-pro']] as const){
+  const input={...request(f.snapshot,serviceKey,'input'),model};
+  assert.deepEqual(await f.models.test(input),{outcome:'success'});
+ }
+ assert.equal(bodies[0]?.max_output_tokens,128);
+ assert.equal(bodies[1]?.max_tokens,1152);
+ assert.equal(bodies[2]?.max_completion_tokens,1152);
+ for(const body of bodies){
+  assert.equal(body.system,undefined);assert.equal(body.instructions,undefined);assert.equal(body.tools,undefined);
+  assert.match(JSON.stringify(body),/Mioon connection test/);
+  assert.doesNotMatch(JSON.stringify(body),/cache_control|SYNTHETIC_INPUT/);
+ }
+});
+
+test('draft list results and reflected credential values stay out of cache, even for an unchanged saved address',async t=>{
+ let calls=0;
+ const f=await fixture(t,async({apiKey})=>{calls++;return success(calls===1?'draft-model':apiKey!);});
+ const baseline=f.disk,writes=f.writes,input=request(f.snapshot,'openai','input');
+ assert.equal((await f.models.list(input)).outcome,'success');
+ assert.deepEqual(await f.models.list(input),{outcome:'unreachable',reason:'invalid_response'});
+ assert.deepEqual(await f.models.cache(inputToCache(input)),{status:'miss'});
+ assert.equal(f.cache.writes,0);assert.deepEqual(f.disk,baseline);assert.equal(f.writes,writes);
 });
 
 test('unsupported descriptors finish before credential acquisition; an unsaved custom entry remains transient',async t=>{

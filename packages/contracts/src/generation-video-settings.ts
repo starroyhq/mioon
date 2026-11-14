@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {COMPATIBLE_VIDEO_CHECK_RESULTS, VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, compatibleVideoCheckSchema, videoConnectionConfigurationSchema, videoExecutionBindingSchema, videoModelEntrySchema, videoSecretUpdateSchema} from './video-providers.ts';
+import {COMPATIBLE_VIDEO_CHECK_RESULTS, VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, compatibleVideoCheckSchema, normalizeCompatibleVideoBaseUrl, videoConnectionConfigurationSchema, videoConnectionEndpoint, videoExecutionBindingSchema, videoModelEntrySchema, videoSecretUpdateSchema} from './video-providers.ts';
 
 export const VIDEO_BUILTIN_PROVIDER_IDS = ['ark', 'veo', 'minimax', 'vidu', 'kling', 'wan'] as const;
 export const VIDEO_SETTINGS_V2_PROVIDER_IDS = [...VIDEO_BUILTIN_PROVIDER_IDS, 'compatible'] as const;
@@ -74,3 +74,33 @@ export const compatibleVideoCheckV2Schema = z.discriminatedUnion('source', [
   compatibleVideoCheckSchema.options[1].extend({connectionId: videoSettingsUuidV2Schema, configurationRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}),
 ]);
 export const compatibleVideoCheckResultV2Schema = z.object({result: z.enum(COMPATIBLE_VIDEO_CHECK_RESULTS), httpStatus: z.number().int().min(100).max(599).optional()}).strict();
+
+
+const videoModelsListTarget = z.object({
+  operation: z.enum(['check', 'models']),
+  providerId: z.enum(VIDEO_SETTINGS_V2_PROVIDER_IDS),
+  region: z.string().min(1).max(40),
+  workspaceId: z.string().regex(/^[A-Za-z0-9_-]{0,80}$/u),
+  baseUrl: z.string().min(1).max(2048).optional(),
+}).strict();
+
+export const videoModelsListInputSchema = z.discriminatedUnion('source', [
+  videoModelsListTarget.extend({source: z.literal('draft'), value: compatibleVideoCheckSchema.options[0].shape.value}),
+  videoModelsListTarget.extend({
+    source: z.literal('saved'), connectionId: videoSettingsUuidV2Schema,
+    configurationRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  }),
+]).superRefine((input, context) => {
+  try {videoModelsListEndpoint(input);}
+  catch {context.addIssue({code: 'custom', path: ['baseUrl'], message: 'Invalid video service destination.'});}
+});
+export type VideoModelsListInput = z.infer<typeof videoModelsListInputSchema>;
+export type VideoModelsListRecipient = Pick<VideoModelsListInput, 'providerId' | 'region' | 'workspaceId' | 'baseUrl'>;
+
+export function videoModelsListEndpoint(recipient: VideoModelsListRecipient): string {
+  if (recipient.providerId === 'compatible') {
+    return videoConnectionEndpoint({...recipient, baseUrl: normalizeCompatibleVideoBaseUrl(recipient.baseUrl)});
+  }
+  if (recipient.baseUrl !== undefined) throw new TypeError('Built-in services use their fixed endpoint.');
+  return videoConnectionEndpoint(recipient);
+}
