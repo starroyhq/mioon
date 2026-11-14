@@ -5,6 +5,7 @@ import type {MessageKey} from '../../../packages/i18n/src/index.ts';
 import {createVideoSettingsClient, newVideoConnection, safeVideoSettings} from './video-settings.ts';
 import type {VideoSettingsClient} from './video-settings.ts';
 import type {GenerationSaveTicket} from './generation-services-settings.ts';
+import {watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -51,7 +52,14 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
   let state = initialGenerationVideoState();
   let live = true, visible = true, epoch = 0, pending: AbortController | null = null;
   const tickets = new Set<() => void>();
-  const emit = (patch: Partial<GenerationVideoState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; onChange(clone(state));}};
+  const watchStorage = watchPendingSecretStorage(async signal => {
+    const before = state.snapshot;
+    if (!before) return;
+    const {storage} = safeVideoSettings(await client.read(signal));
+    if (!signal.aborted && state.snapshot === before && storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
+  });
+  const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const emit = (patch: Partial<GenerationVideoState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; observeStorage(); onChange(clone(state));}};
   const owned = (token: number) => live && visible && epoch === token;
   const editable = () => live && visible && !generationVideoBusy(state) && !state.recovery;
   const fromSnapshot = (snapshot: VideoSettingsSnapshotV2): GenerationVideoDraft[] => {
@@ -143,12 +151,12 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
     useLatest() {if (!live || !visible || generationVideoBusy(state) || !state.snapshot || state.phase === 'blocked') return false; emit({drafts: fromSnapshot(state.snapshot), deletedIds: [], phase: 'ready', recovery: null, notice: null, editorEpoch: state.editorEpoch + 1}); return true;},
     acknowledge() {if (!live || !visible || state.phase !== 'review') return false; emit({phase: 'ready', recovery: null, notice: null}); return true;},
     setVisible(value: boolean) {
-      if (visible === value) return; visible = value; ++epoch; pending?.abort(); pending = null;
+      if (visible === value) return; visible = value; ++epoch; pending?.abort(); pending = null; observeStorage();
       if (!value) {for (const release of tickets) release(); tickets.clear();}
       if (!value && generationVideoBusy(state) && state.phase !== 'loading') emit({phase: 'blocked', recovery: 'unknown', notice: 'video.providers.unknown'});
       else if (!value && state.phase === 'loading') emit({phase: 'ready'});
     },
-    dispose() {live = false; ++epoch; pending?.abort(); for (const release of tickets) release(); tickets.clear();},
+    dispose() {live = false; watchStorage(false); ++epoch; pending?.abort(); for (const release of tickets) release(); tickets.clear();},
   };
 }
 export type GenerationVideoServicesSession = ReturnType<typeof createGenerationVideoServicesSession>;

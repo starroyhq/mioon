@@ -53,6 +53,11 @@ test('video connection diagnostics require the safe structured payload and an ac
   const waiting = videoJobConnection(job);
   assert.equal(waiting?.detail.key, 'tasks.error.videoSecretStore');
   assert.equal(waiting?.diagnosticCode, 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+  const oldUnavailable = {...diagnostic, cause: 'VIDEO_CREDENTIAL_UNAVAILABLE'};
+  const unavailable = videoJobConnection({...job, error: {...legacy.error, diagnostic: oldUnavailable}});
+  assert.equal(unavailable?.requiresAction, true);
+  assert.equal(unavailable?.detail.key, 'tasks.error.videoCredentialUnavailable');
+  assert.equal(unavailable?.continuation, null);
   assert.deepEqual(job, original);
   assert.equal(videoJobConnection({...job, phase: 'polling'}), null);
   assert.equal(videoJobConnection({...job, status: 'cancelled'}), null);

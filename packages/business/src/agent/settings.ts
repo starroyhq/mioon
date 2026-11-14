@@ -74,9 +74,10 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
  const checkpoint=(options?:SettingsContextOptions):void=>{if(closing||options?.signal?.aborted||options?.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_CLOSED');};
  const refreshCapabilities=async(options:SettingsContextOptions):Promise<void>=>{
   if(typeof secretCodec?.refreshStorage!=='function')return;
-  try{const refreshed=await boundedCredentialRead(()=>secretCodec.refreshStorage!(options),options.signal);refreshBlocked=!publicStorage(refreshed).persistentAvailable;}catch{refreshBlocked=true;}
+  try{const refreshed=await boundedCredentialRead(()=>secretCodec.refreshStorage!(options),options.signal);const storage=publicStorage(refreshed);refreshBlocked=!storage.persistentAvailable&&storage.reasonCode!=='OS_SECRET_STORE_PENDING';}catch{refreshBlocked=true;}
  };
  const capabilities=():PublicStorage=>{const value=publicStorage(typeof storage==='function'?storage():storage);return refreshBlocked?{...value,persistentAvailable:false,reasonCode:value.reasonCode||'OS_SECRET_STORE_UNAVAILABLE'}:value;};
+ const canUseVault=()=>{const value=capabilities();return !refreshBlocked&&(value.persistentAvailable||value.reasonCode==='OS_SECRET_STORE_PENDING');};
  function snapshot(candidate=state,keys:ReadonlyMap<string,SessionSecret>=session,messages:SettingsNotice[]=notices):AgentSettingsSnapshot{
   const presets=AGENT_PRESETS.map(p=>({...p,supportedModelHints:agentAdaptedModelHints(p.id),platforms:p.platforms.map(platform=>({...platform,supportedModelHints:agentAdaptedModelHints(p.id)}))}));
   return sanitizeAgentSettingsResult({revision:candidate.revision,services:candidate.services.map(entry=>({...agentServiceInput(entry),revision:entry.revision,secret:credentialState(entry,keys)})),mioSelection:candidate.mioSelection,mioSelectionRevision:candidate.mioSelectionRevision,execution:execution(candidate,keys),storage:capabilities(),presets,scope:'settings_only',verification:'not_tested',notices:messages});
@@ -103,7 +104,13 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
   return {entry,binding:serviceBinding(entry)};
  }
  return {
-  get(options={}){const context=controls(options);return schedule(async()=>{checkpoint(context);await refreshCapabilities(context);checkpoint(context);return snapshot();});},
+  async get(options={}){
+   const context=controls(options);
+   checkpoint(context);if(fault)throw fault;
+   await refreshCapabilities(context);checkpoint(context);if(fault)throw fault;
+   // Read the last committed configuration while a native authorization holds the credential queue.
+   return snapshot();
+  },
   [AGENT_CREDENTIAL_ACQUIRE](input,options={}){
    let expected:AgentCredentialRequest;try{expected=parseAgentCredentialRequest(input,options);}catch(error){return Promise.reject(error);}const context=controls(options);
    const credentialCheckpoint=()=>{if(closing)throw agentSettingsError('AGENT_SETTINGS_CLOSED');if(context.signal.aborted||context.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');};
@@ -111,7 +118,7 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
     credentialCheckpoint();const {entry,binding}=match(expected);let apiKey:string|null=null;
     if(entry.secret){
      await refreshCapabilities(context);credentialCheckpoint();match(expected);
-     if(!secretCodec?.decrypt||!capabilities().persistentAvailable||entry.secret.binding!==binding)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+     if(!secretCodec?.decrypt||!canUseVault()||entry.secret.binding!==binding)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
      try{
       const raw=await boundedCredentialRead(()=>secretCodec.decrypt!(entry.secret!.encrypted,context),context.signal);credentialCheckpoint();match(expected);
       if(typeof raw!=='string')throw Error();const decoded:unknown=JSON.parse(raw);
@@ -143,7 +150,7 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
       keyChanged=true;secret=null;nextSession.delete(inputEntry.serviceKey);
       if(action.storage==='persistent'){
        await refreshCapabilities(context);checkpoint(context);
-       if(!secretCodec?.encrypt||!capabilities().persistentAvailable)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+       if(!secretCodec?.encrypt||!canUseVault())throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
        let encrypted:unknown;
        try{encrypted=await boundedCredentialRead(()=>secretCodec.encrypt!(JSON.stringify({version:2,serviceKey:inputEntry.serviceKey,binding,value:action.value}),context),context.signal);}catch{checkpoint(context);throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
        checkpoint(context);if(typeof encrypted!=='string')throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');secret={binding,encrypted};

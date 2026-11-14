@@ -22,7 +22,7 @@ type ImageStorageState = {reasonCode?: string | null; persistentAvailable?: bool
 const noop = () => {};
 const storageLabels: Readonly<Record<string, string>> = { none: 'image.settings.storageNone', session: 'image.settings.storageSession', persistent: 'connections.storage.persistent' };
 const storageLabel = (value: string, t: TranslateFn): string => t((storageLabels[value] ?? 'image.settings.storageChoose') as MessageKey);
-const storageReasons: Readonly<Record<string, string>> = { WEB_SESSION_ONLY: 'image.settings.storageWeb', LINUX_BASIC_TEXT: 'image.settings.storageBasic', OS_SECRET_STORE_UNAVAILABLE: 'image.settings.storageUnavailable' };
+const storageReasons: Readonly<Record<string, string>> = { WEB_SESSION_ONLY: 'image.settings.storageWeb', OS_SECRET_STORE_PENDING: 'connections.storage.keychainPending', LINUX_BASIC_TEXT: 'image.settings.storageBasic', OS_SECRET_STORE_UNAVAILABLE: 'image.settings.storageUnavailable' };
 export const imageStorageReason = (storage: ImageStorageState, t: TranslateFn = (key) => translate('zh-Hans', key)): string => {
   const key = typeof storage?.reasonCode === 'string' ? storageReasons[storage.reasonCode] : undefined;
   return t((key ?? 'image.settings.storageAvailable') as MessageKey);

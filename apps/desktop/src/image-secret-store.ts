@@ -7,7 +7,7 @@ import {IMAGE_SETTINGS_NAMESPACE} from '../../../packages/contracts/src/image-se
 import {CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../../../packages/contracts/src/generation-image-settings.ts';
 
 /** Images-only session scope; images configuration/revision stay in the utility. */
-export type ImageSecretReasonCode = 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
+export type ImageSecretReasonCode = 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
 export interface ImageSecretStorage {
   readonly persistentAvailable: boolean;
   readonly sessionScope: 'server';

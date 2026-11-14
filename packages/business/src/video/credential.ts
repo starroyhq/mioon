@@ -26,6 +26,8 @@ export async function acquireBoundVideoCredential(acquire: ()=>Promise<string>, 
   try {value = await awaitProvider(acquire, signal);}
   catch (error) {check(); throw unavailable(videoCredentialDiagnostic(error));}
   check();
-  if (typeof value !== 'string' || !value || value !== value.trim() || value.length > 8192 || /[\u0000-\u0020\u007f]/.test(value)) throw unavailable();
+  if (typeof value !== 'string' || !value || value !== value.trim() || value.length > 8192 || /[\u0000-\u0020\u007f]/.test(value)) {
+    throw unavailable(videoCredentialDiagnosticForCode('VIDEO_CREDENTIAL_INVALID'));
+  }
   return value;
 }
