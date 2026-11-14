@@ -661,6 +661,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [boxSelection, setBoxSelection] = useState<ReadonlySet<string> | null>(null);
   const [canvasContextMenu, setCanvasContextMenu] = useState<{scope: string; x: number; y: number} | null>(null);
   const canvasSelectionIntent = useRef(0);
+  const canvasSelectionPending = useRef<number | null>(null);
+  const canvasSelectionRevision = useRef(0);
+  const [renderedCanvasSelection, setRenderedCanvasSelection] = useState(0);
+  function commitCanvasSelection(): void {
+    setRenderedCanvasSelection(++canvasSelectionRevision.current);
+  }
   const canvasBox = useRef<Set<string> | null>(null);
   const canvasComposing = useRef(false);
   const [shotDirty, setShotDirty] = useState(false);
@@ -1559,22 +1565,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function leaveReferencePage() { setShowTasks(false); setShowDelivery(false); }
   async function inspect(id: string | null, nextTab = 'settings', versionId: string | null = null, { reveal = false }: {reveal?: boolean} = {}): Promise<boolean> {
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current!.timeline?.id, timelineRevision = dataRef.current!.timeline?.revision;
-    const canDiscard = (): boolean => Boolean(isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current!.timeline?.id && timelineRevision === dataRef.current!.timeline?.revision && [...dataRef.current!.shots, ...dataRef.current!.nodes].some(record => record.id === id));
-    if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, canDiscard)) return false;
-    if (!canDiscard()) return false;
-    setPropertiesPage('inspector');
-    navigationEpoch.current++;
-    leaveReferencePage();
-    if (supportsCanvasEditing(dataRef.current!.projectFormatVersion, dataRef.current!.canvasEditBase)) {
-      ++canvasSelectionIntent.current;
-      setCanvasGroup(null);
-      setCanvasContextMenu(null);
-      updateView('canvas', {selectedEdgeId: null});
+    const tracked = supportsCanvasEditing(dataRef.current!.projectFormatVersion, dataRef.current!.canvasEditBase);
+    const ticket = tracked ? beginCanvasSelection() : null;
+    const canDiscard = (): boolean => Boolean((ticket === null || ticket === canvasSelectionIntent.current) &&
+      isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current!.timeline?.id &&
+      timelineRevision === dataRef.current!.timeline?.revision && [...dataRef.current!.shots, ...dataRef.current!.nodes].some(record => record.id === id));
+    try {
+      if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, canDiscard)) return false;
+      if (!canDiscard()) return false;
+      setPropertiesPage('inspector');
+      navigationEpoch.current++;
+      leaveReferencePage();
+      if (tracked) {
+        commitCanvasSelection();
+        setCanvasGroup(null);
+        setCanvasContextMenu(null);
+      }
+      updateView('canvas', { selectedId: id, inspectorTab: nextTab, highlightedVersionId: versionId, ...(tracked && {selectedEdgeId: null}) });
+      updateView('activeMode', 'canvas');
+      if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
+      return true;
+    } finally {
+      if (ticket !== null) finishCanvasSelection(ticket);
     }
-    updateView('canvas', { selectedId: id, inspectorTab: nextTab, highlightedVersionId: versionId });
-    updateView('activeMode', 'canvas');
-    if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
-    return true;
   }
   function checkGeneration(shot: AppShot, provider: ProviderRecord | undefined, model: string | undefined, inputMode: string, frozen = false, subjectReference?: AppSubjectReference | null): boolean {
     const modelName = model as string;
@@ -3226,7 +3239,23 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }
 
+  function beginCanvasSelection(): number {
+    const ticket = ++canvasSelectionIntent.current;
+    canvasSelectionPending.current = ticket;
+    return ticket;
+  }
+
+  function finishCanvasSelection(ticket: number): void {
+    if (canvasSelectionPending.current === ticket) canvasSelectionPending.current = null;
+  }
+
+  function canvasSelectionIsReady(): boolean {
+    return canvasSelectionPending.current === null && canvasBox.current === null &&
+      canvasSelectionRevision.current === renderedCanvasSelection;
+  }
+
   function applyCanvasCardSelection(ids: ReadonlySet<string>, edgeId: string | null): void {
+    commitCanvasSelection();
     setCanvasGroup(ids.size > 1 ? {scope: canvasEditingScope, ids} : null);
     setStoryboardBatch(null);
     setCanvasContextMenu(null);
@@ -3241,15 +3270,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
 
   async function selectCanvasCards(ids: ReadonlySet<string>, edgeId: string | null = null): Promise<boolean> {
-    const ticket = ++canvasSelectionIntent.current;
+    const ticket = beginCanvasSelection();
     const valid = () => {
       if (ticket !== canvasSelectionIntent.current || !canvasOwner?.isCurrent() || viewRef.current!.activeMode !== 'canvas') return false;
       const active = new Set(dataRef.current!.canvasEditBase?.targets.filter(target => target.kind !== 'edge').map(target => target.id));
       return [...ids].every(id => active.has(id)) && (!edgeId || dataRef.current!.edges.some(edge => edge.id === edgeId));
     };
-    if (!valid() || !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, valid) || !valid()) return false;
-    applyCanvasCardSelection(ids, edgeId);
-    return true;
+    try {
+      if (!valid() || !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, valid) || !valid()) return false;
+      applyCanvasCardSelection(ids, edgeId);
+      return true;
+    } finally {
+      finishCanvasSelection(ticket);
+    }
   }
 
   function canvasNodesChange(changes: NodeChange<FlowNode>[]): void {
@@ -3290,14 +3323,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
 
   async function archiveCanvasSelection(): Promise<void> {
-    if (!canvasEditingWritable || !canvasOwner?.isCurrent()) return;
+    if (!canvasEditingWritable || !canvasOwner?.isCurrent() || !canvasSelectionIsReady()) return;
     if (selectedCanvasEdge && !selectedDecorEdge) { notify(msg('shell.referenceDisconnectHint'), 'warning'); return; }
     if (!canvasTargets.length) return;
     await canvasEditing.archiveSelection(canvasTargets);
   }
 
   async function tidyCanvas(): Promise<void> {
-    if (!canTidyCanvas || !canvasOwner?.isCurrent() || dragging.current) return;
+    if (!canTidyCanvas || !canvasOwner?.isCurrent() || !canvasSelectionIsReady() || dragging.current) return;
     const dimensions = (id: string) => {
       const measured = flow.getInternalNode(id)?.measured;
       return Number(measured?.width) > 0 && Number(measured?.height) > 0

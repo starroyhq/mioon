@@ -62,3 +62,51 @@ test('text, composition and modal focus keep all canvas shortcuts unhandled', ()
     }
   }
 });
+
+test('the App suppresses Delete while a newer selection is pending or still unpainted', async () => {
+  const {readFileSync} = await import('node:fs');
+  const {transformSync} = await import('esbuild');
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const selectionStart = source.indexOf('  function beginCanvasSelection()');
+  const selectionEnd = source.indexOf('  function canvasNodesChange(', selectionStart);
+  const archiveStart = source.indexOf('  async function archiveCanvasSelection()');
+  const archiveEnd = source.indexOf('  async function tidyCanvas()', archiveStart);
+  assert.ok(selectionStart >= 0 && selectionEnd > selectionStart && archiveStart >= 0 && archiveEnd > archiveStart);
+  const calls: unknown[] = [];
+  const gate = Promise.withResolvers<boolean>();
+  const code = transformSync(source.slice(selectionStart, selectionEnd) + source.slice(archiveStart, archiveEnd),
+    {loader: 'ts', format: 'cjs'}).code;
+  // Mirror the App's state publication so the old event handler can be invoked
+  // before the click settles and again while React still displays its old view.
+  const fixture = Function('base', 'gate', 'calls', `
+    let renderedCanvasSelection = 0, canvasTargets = [{kind:'shot', id:'shot'}];
+    const canvasSelectionIntent = {current:0}, canvasSelectionPending = {current:null},
+      canvasSelectionRevision = {current:0}, canvasBox = {current:null};
+    const dataRef = {current:{canvasEditBase:base}}, viewRef = {current:{activeMode:'canvas'}};
+    const canvasEditingWritable = true, selectedCanvasEdge = null, selectedDecorEdge = null;
+    const canvasOwner = {isCurrent:() => true}, canvasEditing = {archiveSelection: targets => calls.push(targets)};
+    const guardNavigation = () => gate.promise, msg = value => value;
+    const setCanvasGroup = () => {}, setStoryboardBatch = () => {}, setCanvasContextMenu = () => {};
+    const setPropertiesPage = () => {}, setRightDockTab = () => {}, leaveReferencePage = () => {}, updateView = () => {};
+    const canvasEditingScope = '', navigationEpoch = {current:0};
+    function commitCanvasSelection() {canvasSelectionRevision.current++;}
+    ${code}
+    return {selectCanvasCards, archiveCanvasSelection, render(ids) {
+      canvasTargets = [...ids].map(id => ({kind:id === 'shot' ? 'shot' : 'node', id}));
+      renderedCanvasSelection = canvasSelectionRevision.current;
+    }};
+  `)(base, gate, calls) as {
+    selectCanvasCards(ids: Set<string>): Promise<boolean>; archiveCanvasSelection(): Promise<void>; render(ids: Set<string>): void;
+  };
+  const nextIds = new Set(['shot', 'image']);
+  const pending = fixture.selectCanvasCards(nextIds);
+  await fixture.archiveCanvasSelection();
+  assert.deepEqual(calls, []);
+  gate.resolve(true);
+  assert.equal(await pending, true);
+  await fixture.archiveCanvasSelection();
+  assert.deepEqual(calls, []);
+  fixture.render(nextIds);
+  await fixture.archiveCanvasSelection();
+  assert.deepEqual(calls, [[{kind:'shot', id:'shot'}, {kind:'node', id:'image'}]]);
+});
