@@ -201,6 +201,33 @@ test('a mixed batch increments only changed connections and an all-noop batch ne
   assert.equal(saves, 2); assert.equal(await readFile(f.file, 'utf8'), before); assert.equal(JSON.parse(before).history.length, 3);
 });
 
+test('connection change listeners see only committed IDs after the write fence releases', async t => {
+  const {settings} = await fixture(t), builtin = configuration(), custom = configuration('compatible');
+  const events: {ids: string[]; revisions: number[]}[] = [];
+  settings.subscribeConnectionChanges(() => {throw Error('Synthetic listener failure');});
+  const unsubscribe = settings.subscribeConnectionChanges(ids => {
+    events.push({ids: [...ids], revisions: settings.list().map(connection => connection.revision)});
+  });
+  await settings.put({action: 'batch', expectedRevision: 0, operations: [builtin, custom].map(configuration => ({action: 'save', configuration, secret: replace()}))});
+  const renamed = {...custom, name: 'Renamed service'};
+  const writes = await Promise.allSettled([
+    settings.put({action: 'batch', expectedRevision: 1, operations: [{action: 'save', configuration: builtin, secret: keep}, {action: 'save', configuration: renamed, secret: keep}]}),
+    settings.put({action: 'delete', expectedRevision: 1, connectionId: custom.id}),
+  ]);
+  assert.equal(writes[0]?.status, 'fulfilled');
+  assert.equal(writes[1]?.status, 'rejected');
+  await settings.put({action: 'save', expectedRevision: 2, configuration: renamed, secret: replace()});
+  await assert.rejects(settings.put({action: 'batch', expectedRevision: 2, operations: [{action: 'save', configuration: renamed, secret: replace('synthetic-uncommitted-key')}, {action: 'delete', connectionId: builtin.id}]}), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  await settings.put({action: 'delete', expectedRevision: 2, connectionId: custom.id});
+  unsubscribe();
+  await settings.put({action: 'save', expectedRevision: 3, configuration: {...builtin, enabled: false}, secret: keep});
+  assert.deepEqual(events, [
+    {ids: [builtin.id, custom.id], revisions: [1, 1]},
+    {ids: [custom.id], revisions: [1, 2]},
+    {ids: [custom.id], revisions: [1]},
+  ]);
+});
+
 test('a successful batch persists exactly once and a rejected later operation cannot publish its earlier session key', async t => {
   const f = await fixture(t), real = createVideoSettingsV2File(f.options); let saves = 0;
   const persistence = {load: real.load, async save(value: Parameters<typeof real.save>[0], signal?: AbortSignal) {saves++; await real.save(value, signal);}};

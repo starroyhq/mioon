@@ -23,6 +23,7 @@ const uri=(image: VideoAdapterImage)=>`data:${image.mimeType};base64,${image.bas
 const TASK_ID=/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 const RUNWAY_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const invalidTask=()=>providerError('INVALID_PROVIDER_RESPONSE','The provider response did not match the existing task.',{retryable:true});
+export const configuredTaskNotFound=()=>providerError('PROVIDER_TASK_NOT_FOUND','The provider could not find the requested video task.');
 
 /** OpenAI Videos sizes are WIDTHxHEIGHT strings. The resolution label names the
  * short edge; both edges are kept even, as video encoders require. */
@@ -79,6 +80,7 @@ function statusTask(id: string,task: Record<string,unknown>,key: string,running:
 
 export function configuredKlingTask(response: Record<string,unknown>,selection: VideoAdapterSelection,{id,externalId}: {id?: string;externalId?: string}): ConfiguredVideoTask|null {
   if(response.code!==0||!Array.isArray(response.data))throw invalidTask();
+  if(id!==undefined&&response.data.length===0)throw providerError('KLING_TASK_NOT_LISTED','Kling did not list the requested video task.');
   const matches=response.data.map(object).filter((task):task is Record<string,unknown>=>Boolean(task)&&(id!==undefined?task!.id===id:task!.external_id===externalId));
   if(matches.length===0){if(id!==undefined)throw invalidTask();return null;}
   if(matches.length!==1)throw invalidTask();

@@ -78,7 +78,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
-  application:null,reconcileWorkspaceState,reconcilePending(){},useCallback:<T>(fn: T): T =>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
+  application:null,reconcileWorkspaceState,reconcilePending(){},useCallback:<T>(fn: T): T =>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,providersRef:{current:[]},
   mioFollowCandidate:{current:null},setMioFollow(){},
   // This fixture owns no editing claims; match the empty-owner refresh wait.
   refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
@@ -90,7 +90,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   updateView:()=>{},URL,
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:(projectId: string)=>calls.push(['markOpened',projectId])}},
-  ...Object.fromEntries(['setBackupFailure','setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,(value: unknown)=>calls.push([name,value])])),
+  ...Object.fromEntries(['setBackupFailure','setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setRegenerationJobId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,(value: unknown)=>calls.push([name,value])])),
  } as unknown as SelectionEnvironment;
  env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,session:env.editorSession.current});
  env.isCurrent=(captured: { projectId: string | null; epoch: number; session: string; })=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&captured.session===env.editorSession.current;
