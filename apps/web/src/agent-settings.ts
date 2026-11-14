@@ -7,6 +7,7 @@ import type {AgentSettingsSnapshot,AgentServiceInput,AgentServiceSnapshot,AgentM
 import type {AgentTaskConnectionTest} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import {agentPresetPlatform,resolveAgentPresetBaseUrl,agentCredentialReceiverBinding,isAgentModelIdentifier} from '../../../packages/contracts/src/agent-provider-catalog.ts';
 import type {AgentPresetEntry,AgentPresetPlatform} from '../../../packages/contracts/src/agent-provider-catalog.ts';
+import {watchPendingSecretStorage} from './settings-secret-storage.ts';
 export {AGENT_PROTOCOLS,deriveAgentEndpoint};
 export type {AgentSettingsSnapshot,AgentServiceInput,AgentServiceSnapshot};
 export type AgentSettingsPreset=AgentPresetEntry;
@@ -22,7 +23,7 @@ export interface AgentSettingsState {
  phase:AgentSettingsPhase;snapshot:AgentSettingsSnapshot|null;draft:AgentSettingsDraft|null;
  serviceIntents:Record<string,AgentServiceIntent>;selectedKey:string;message:string;displayMessages:DisplayMessage[];recovery:'conflict'|'unknown'|null;
 }
-export interface AgentSettingsClient {read:()=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
+export interface AgentSettingsClient {read:(signal?:AbortSignal)=>Promise<unknown>;write:(input:unknown)=>Promise<unknown>}
 export interface AgentSettingsSessionOptions {client?:AgentSettingsClient;onChange?:(state:AgentSettingsState)=>void;newServiceKey?:()=>string}
 export interface AgentSettingsSecretSource {read:(serviceKey:string)=>string;clear:()=>void}
 const fields=['presetId','platformId','baseUrl','model','protocol'] as const;
@@ -90,8 +91,11 @@ export const agentSettingsDirty=(state:AgentSettingsState|null|undefined):boolea
  Object.values(state.serviceIntents).some(intent=>intent.action==='remove')));
 
 export function createAgentSettingsClient({ fetchImpl = (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init), timeoutMs = 12000 }: { fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>; timeoutMs?: number } = {}) {
-  async function request(method: string, body?: string): Promise<AgentSettingsSnapshot> {
+  async function request(method: string, body?: string, signal?: AbortSignal): Promise<AgentSettingsSnapshot> {
     const abort = new AbortController();
+    const stop = () => abort.abort();
+    signal?.addEventListener('abort', stop, {once: true});
+    if (signal?.aborted) stop();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const transport = (async () => {
       const response = await fetchImpl('/api/agent/settings', { method, credentials: 'same-origin', cache: 'no-store', signal: abort.signal,
@@ -108,9 +112,9 @@ export function createAgentSettingsClient({ fetchImpl = (input: RequestInfo | UR
         timer = setTimeout(() => { abort.abort(); reject(failure('NETWORK')); }, timeoutMs);
       })]) : await transport;
     } catch (error) { const code = failureCode(error); throw failure(code && (codes.has(code) || code === 'INVALID_RESPONSE') ? code : 'NETWORK'); }
-    finally { clearTimeout(timer); }
+    finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); }
   }
-  return { read: () => request('GET'), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
+  return { read: (signal?: AbortSignal) => request('GET', undefined, signal), write: (input: unknown) => request('PUT', JSON.stringify(input)) };
 }
 
 
@@ -145,7 +149,13 @@ const notices:Record<AgentSettingsSnapshot['notices'][number],DisplayMessage>={
  * reader and are cleared synchronously before dispatch; no state keeps them. */
 export function createAgentSettingsSession({client=createAgentSettingsClient(),onChange=()=>{},newServiceKey=()=>globalThis.crypto.randomUUID()}:AgentSettingsSessionOptions={}) {
  let state=initialAgentSettingsState(),active=true,visible=true,epoch=0;
- const publish=(patch:Partial<AgentSettingsState>)=>{if(active){state={...state,...patch};onChange(state);}};
+ const watchStorage=watchPendingSecretStorage(async signal=>{
+  const before=state.snapshot;if(!before)return;
+  const {storage}=safeAgentSettings(await client.read(signal));
+  if(!signal.aborted&&state.snapshot===before&&storage.reasonCode!=='OS_SECRET_STORE_PENDING')publish({snapshot:{...before,storage}});
+ });
+ const observeStorage=()=>watchStorage(active&&visible&&state.snapshot?.storage.reasonCode==='OS_SECRET_STORE_PENDING');
+ const publish=(patch:Partial<AgentSettingsState>)=>{if(active){state={...state,...patch};observeStorage();onChange(state);}};
  const current=(token:number)=>active&&token===epoch;
  const editable=()=>active&&visible&&agentSettingsEditable(state);
  const readyPatch=()=>({phase:state.recovery?state.phase:'ready' as const,message:state.recovery?state.message:'',displayMessages:state.recovery?state.displayMessages:[]});
@@ -266,10 +276,10 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
   });
  }
  return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,addModels,removeModel,selectMio,useLatest,acknowledge,save,
-  setVisible(value:boolean){visible=Boolean(value);},
+  setVisible(value:boolean){visible=Boolean(value);observeStorage();},
   setStorage(key:string,storage:string):boolean {if(!editable()||!service(key)||(storage!=='session'&&storage!=='persistent')||storage==='persistent'&&!state.snapshot?.storage.persistentAvailable)return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{action:'keep'},storage}}});return true;},
   removeKey(key:string,remove=true):boolean {if(!editable()||!service(key))return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{storage:'session'},action:remove?'remove':'keep'}},...readyPatch()});return true;},
-  dispose(){active=false;epoch++;state=initialAgentSettingsState();},
+  dispose(){active=false;watchStorage(false);epoch++;state=initialAgentSettingsState();},
  };
 }
 

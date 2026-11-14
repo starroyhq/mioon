@@ -11,9 +11,9 @@ export interface UseSubjectVariantsResult { state: SubjectVariantState | null; c
 
 // One controller for the window. A project or scope change starts a fresh state,
 // and the previous project's state is withheld until the new context is installed.
-export function useSubjectVariants({ scope, projectId, read, write, image, approve, settings, requestId, onVersions }: UseSubjectVariantsOptions): UseSubjectVariantsResult {
-  const callbacks = useRef({ read, write, image, approve, settings, onVersions });
-  callbacks.current = { read, write, image, approve, settings, onVersions };
+export function useSubjectVariants({ scope, projectId, read, write, image, approve, settings, mockAvailable, requestId, onVersions }: UseSubjectVariantsOptions): UseSubjectVariantsResult {
+  const callbacks = useRef({ read, write, image, approve, settings, mockAvailable, onVersions });
+  callbacks.current = { read, write, image, approve, settings, mockAvailable, onVersions };
   const [state, setState] = useState<SubjectVariantState | null>(null), controller = useRef<SubjectVariantController | null>(null);
   if (!controller.current) controller.current = createSubjectVariantController({
     read: (operation, input) => callbacks.current.read(operation, input),
@@ -21,6 +21,7 @@ export function useSubjectVariants({ scope, projectId, read, write, image, appro
     image: (operation, input) => callbacks.current.image(operation, input),
     approve: review => callbacks.current.approve(review),
     settings: () => callbacks.current.settings(),
+    mockAvailable: () => callbacks.current.mockAvailable?.() === true,
     ...(requestId ? { requestId } : {}),
     onChange: setState,
     onVersions: (subjectId, hidden) => callbacks.current.onVersions?.(subjectId, hidden),

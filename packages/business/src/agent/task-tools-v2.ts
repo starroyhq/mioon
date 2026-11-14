@@ -27,6 +27,7 @@ import {testProjectAppLibrary} from '../project-service-application.ts';
 import {hasStoreTable,isProjectLayout,storeDirectories} from '../store-layout.ts';
 import {registerStoreTransactionObserver,registerStoreTransactionFence} from '../store-runtime.ts';
 import type {OrdinaryServices} from '../services.ts';
+import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../provider-registry.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
@@ -435,11 +436,49 @@ export const listAgentTaskTools=():AgentTaskToolDefinition[]=>{
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
+function withoutMockProvider(schema:unknown):unknown{
+ if(!object(schema)||!object(schema.properties)||!object(schema.properties.providerId))throw Error('The generation tool must declare provider IDs');
+ const {properties}=schema,providerId=schema.properties.providerId;
+ if(typeof providerId.const==='string'&&providerId.const!=='mock')return schema;
+ if(!Array.isArray(providerId.enum))throw Error('The generation tool must declare a provider enum');
+ return {...schema,properties:{...properties,providerId:{...providerId,enum:providerId.enum.filter(id=>id!=='mock')}}};
+}
+
+function withoutMockGeneration(tool:AgentTaskToolDefinition):AgentTaskToolDefinition{
+ if(tool.operation==='image.generate'){
+  const parameters=tool.parameters;
+  if(!object(parameters)||!Array.isArray(parameters.anyOf))throw Error('The image tool must declare generation and edit branches');
+  return {...tool,description:'通过已配置的服务生成图像。官方 OpenAI 可选择单张项目内 PNG 作为编辑来源，原图保留。新请求须先准备 review 并批准；不自动替换镜头、引用或时间线',parameters:{...parameters,anyOf:parameters.anyOf.map(withoutMockProvider)}};
+ }
+ if(tool.operation==='generation.submit'){
+  const parameters=withoutMockProvider(tool.parameters);
+  if(!object(parameters)||!object(parameters.properties)||!object(parameters.properties.parameters)||!object(parameters.properties.parameters.properties))throw Error('The video tool must declare generation settings');
+  const settings=parameters.properties.parameters,fields={...parameters.properties.parameters.properties};
+  delete fields.scenario;
+  delete fields.delayMs;
+  return {...tool,description:'使用已配置的供应商提交镜头生成，原请求可以读取已保存回执。先查询可用服务和模型；提交遵循付费确认设置',parameters:{...parameters,properties:{...parameters.properties,parameters:{...settings,properties:fields}}}};
+ }
+ return tool;
+}
+
+export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false}:{diagnostic?:boolean}={}):AgentTaskToolDefinition[]{
+ const tools=diagnostic?listDiagnosticAgentTaskTools():listAgentTaskTools();
+ return mockAllowed?tools:tools.map(withoutMockGeneration);
+}
+
 export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const catalogProfile='native';
- const list=catalogProfile==='native'?listAgentTaskTools:listDiagnosticAgentTaskTools;
- const liveGenerationEnabled=()=>services.configuration.liveEnabled();
+ const {generationAvailability}=services;
+ const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed);
+ const diagnosticList=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
+ function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
+  if(operation!=='generation.submit'&&operation!=='image.generate')return;
+  if(input.providerId==='mock')return generationAvailability.mockAllowed?undefined:GENERATION_SERVICE_UNAVAILABLE;
+  const provider=typeof input.providerId==='string'?input.providerId:undefined;
+  if(operation==='image.generate'&&provider==='openai-compatible'&&generationAvailability.imageSelectionRequired())return 'IMAGE_SETTINGS_SELECTION_REQUIRED';
+  if(!(operation==='generation.submit'?generationAvailability.video(provider):generationAvailability.image(provider)))return GENERATION_SERVICE_UNAVAILABLE;
+ }
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
@@ -821,9 +860,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      // never mint a usable digest for a stripped or truncated observation.
      if(!isTimelineMixLoudnessResponse(result,parsed)||canonical(result)!==canonical(value))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度报告无法完整提供给助理');
      if(isTimelineLoudnessApplicableReport(result))result={...result,candidateDigest:await timelineLoudnessCandidateDigest(result)};
-    }else if(prepared.operation==='provider.list'&&Array.isArray(value)){
-     const enabled=liveGenerationEnabled();
-     result=projectResult(value.map(provider=>object(provider)?{...provider,liveGenerationEnabled:enabled}:provider));
     }else result=previsWrite(prepared.operation)?taskResult(prepared.operation,prepared.projectId,value):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
@@ -840,10 +876,11 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   return {projectId,items,nextAfter:rows.length>Number(limit)?String(rows[Number(limit)-1]!.id):null};
  }
  async function generateApprovedImage(input:unknown,prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<unknown>{
+  if(prepared.input.providerId==='openai-compatible'&&generationAvailability.imageSelectionRequired())throw new AppError('IMAGE_SETTINGS_SELECTION_REQUIRED','有多个自定义图片服务，请在生成面板里选择。',409,{mutationOutcome:'not_applied'});
   const profiles=await services.call('image.profile.list',{includeSettingsRevision:true});
   const items=object(profiles)&&Array.isArray(profiles.items)?profiles.items:[];
-  const profile=items.find(item=>object(item)&&item.providerId===prepared.input.providerId&&item.model===prepared.input.model);
-  if(!object(profile)||typeof profile.settingsRevision!=='number')fail('IMAGE_LIVE_DISABLED','图像配置尚未允许生成');
+  const profile=items.find(item=>object(item)&&item.enabled===true&&item.providerId===prepared.input.providerId&&item.model===prepared.input.model);
+  if(!object(profile)||typeof profile.settingsRevision!=='number')throw generationServiceUnavailable();
   const review=await services.call('image.review.prepare',{input,settingsRevision:profile.settingsRevision},{signal:context.signal});
   if(!object(review)||typeof review.id!=='string'||typeof review.revision!=='number')fail('IMAGE_REVIEW_INVALID','图像审批无法验证');
   context.beforeEffect();return services.imageApproval({projectId:prepared.projectId,reviewId:review.id,expectedRevision:review.revision});
@@ -1016,6 +1053,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,diagnosticList:listDiagnosticAgentTaskTools,liveGenerationEnabled,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList,generationServiceIssue,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

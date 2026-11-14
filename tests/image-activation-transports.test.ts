@@ -169,9 +169,6 @@ async function fixture(t: test.TestContext) {
     if (proxy) {proxy.closeAllConnections(); await new Promise(resolve => proxy.close(resolve));}
     await server.close(); await rm(root, {recursive: true, force: true});
   });
-  // The persisted workspace gate is independent from this synthetic official
-  // slot. Opt in without approving a request or changing the fake network.
-  await f.client.rpc('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   return f;
 }
 
@@ -198,6 +195,10 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
   await t.test('session configuration is separate, contains no credential response, and direct live RPC stays denied', async () => {
     const initial = (await f.request('/api/images/settings')).body.data;
     assert.equal(initial.revision, 0); assert.equal(initial.configuration.enabled, false); assert.equal(initial.secret.configured, false);
+    const unconfigured = f.snapshot(project.id);
+    await f.rpc('image.generate', inputFor(project.id), 'IMAGE_LIVE_DISABLED');
+    assert.equal(f.snapshot(project.id), unconfigured);
+    assert.equal(f.network.lookups, 0); assert.equal(f.network.posts, 0);
     const saved = await f.saveKey(0); assert.equal(saved.revision, 1); assert.equal(saved.secret.storage, 'session');
     assert.equal(saved.storage.sessionScope, 'server');
     const persisted = JSON.parse(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'));

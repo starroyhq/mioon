@@ -100,7 +100,7 @@ function fixture(options: FixtureOptions = {}): Fixture {
   };
   const reviewClient = { async approve(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'approve', review: structuredClone(value) as ReviewFixture }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input as Obj); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'reject', review: structuredClone(value) as ReviewFixture }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
   const settingsClient = { read: async () => options.settings || settings({ configuration: { ...DEFAULT_IMAGE_CONFIGURATION } }) }, customSettingsClient = { read: async () => options.customSettings || settings({ revision: 0, configuration: { ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION }, secret: { configured: false, storage: 'none' } }) };
-  const session = createImageGenerationSession({ projectId, api: api as never, storage: storage as never, reviewClient: reviewClient as never, settings: options.settings as never, customSettings: options.customSettings as never, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: (next: imageLogic.ImageGenerationState) => {changes.push(next as unknown as Obj);}, onGenerated: (...args: unknown[]) => {notifications.push(args);}, setTimer: (fn: () => void) => {const key = ++sequence; timers.set(key, fn); return key;}, clearTimer: (key: number | undefined) => {timers.delete(key!);}, ...(options.session as Obj) });
+  const session = createImageGenerationSession({ projectId, mockAvailable: true, api: api as never, storage: storage as never, reviewClient: reviewClient as never, settings: options.settings as never, customSettings: options.customSettings as never, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: (next: imageLogic.ImageGenerationState) => {changes.push(next as unknown as Obj);}, onGenerated: (...args: unknown[]) => {notifications.push(args);}, setTimer: (fn: () => void) => {const key = ++sequence; timers.set(key, fn); return key;}, clearTimer: (key: number | undefined) => {timers.delete(key!);}, ...(options.session as Obj) });
   return { session, api, reviewClient, settingsClient, customSettingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick(): Promise<boolean> { const [key, fn] = timers.entries().next().value || [undefined, undefined]; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
 }
 async function ready(f: Fixture): Promise<void> { await f.session.load(); f.session.edit('name', '测试图像'); f.session.edit('prompt', '清晨的山间小屋'); }
@@ -258,7 +258,7 @@ type UiNode = {type?: unknown; props: Obj & {children?: unknown; ref: {current: 
 const element = (type: unknown, props: Obj | null = {}, ...children: unknown[]): UiNode => ({type, props: {...(props ?? {}), children: children.length === 1 ? children[0] : children} as UiNode['props']});
 const nodes = (tree: unknown): UiNode[] => Array.isArray(tree) ? tree.flatMap((item: unknown) => nodes(item)) : tree !== null && typeof tree === 'object' && 'props' in tree ? [tree as UiNode, ...nodes((tree as UiNode).props.children)] : [];
 const depsEqual = (left: unknown, right: unknown): boolean => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value: unknown, index: number) => Object.is(value, right[index]));
-interface RenderOptions { languageStore?: Parameters<typeof creationTestDependency>[1]; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
+interface RenderOptions { mockAvailable?: boolean; onOpenSettings?: (slot: string) => unknown; languageStore?: Parameters<typeof creationTestDependency>[1]; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
 interface RenderSlot { [key: string]: unknown; value?: unknown; deps?: unknown; callback?: () => unknown; cleanup?: unknown }
 interface Harness {
   render(owner?: string): UiNode; find(id: string): UiNode; form(): UiNode;
@@ -324,7 +324,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
   const harness: Harness = {
     render(owner: string = currentProject): UiNode {
       currentProject = owner; index = 0; effects = [];
-      tree = renderComponent({projectId: owner, projectName: 'Test project', reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent});
+      tree = renderComponent({projectId: owner, projectName: 'Test project', mockAvailable: options.mockAvailable ?? true, onOpenSettings: options.onOpenSettings, reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}, onRevealAsset: options.onRevealAsset, projectAssets: options.projectAssets || [], editIntent: options.editIntent || null, isEditIntentCurrent: options.isEditIntentCurrent});
       for (const slot of effects) {if (typeof slots[slot].cleanup === 'function') (slots[slot].cleanup as () => void)(); slots[slot].cleanup = (slots[slot].callback as () => unknown)();}
       return tree;
     },
@@ -341,6 +341,58 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
   };
   return harness;
 }
+
+test('stable image generation with no service offers settings, preserves historical Mock, and makes no request', async () => {
+  const f = historyFixture(), opened: string[] = [];
+  const ui = renderer(f, {mockAvailable: false, onOpenSettings: slot => {opened.push(slot);}});
+  try {
+    ui.render(); await flush(); ui.render();
+    assert.equal(ui.find('image-provider-mock'), undefined);
+    assert.ok(ui.find('image-version-preview'), 'previously saved mock output stays visible');
+    assert.ok(ui.find('image-generation-no-service'));
+    ui.change('image-generation-name', 'New image'); ui.change('image-generation-prompt', 'New prompt');
+    assert.equal(ui.find('image-generate').props.disabled, true);
+    ui.form().props.onSubmit({preventDefault() {}});
+    ui.click('image-generation-configure'); await flush();
+    assert.deepEqual(opened, ['official']);
+    assert.equal(mutations(f).length, 0);
+    assert.equal(f.privateCalls.length, 0);
+  } finally {ui.unmount(); f.session.dispose();}
+});
+
+test('provider discovery updates Mock availability without replacing an unsaved image draft', async () => {
+  const f = fixture(), options = {mockAvailable: false}, ui = renderer(f, options);
+  try {
+    ui.render(); await flush(); ui.render();
+    ui.change('image-generation-name', 'Preserved name'); ui.change('image-generation-prompt', 'Preserved prompt');
+    options.mockAvailable = true; ui.render(); ui.render();
+    assert.ok(ui.find('image-provider-mock'));
+    ui.click('image-provider-mock');
+    assert.equal(ui.find('image-generate').props.disabled, false);
+    options.mockAvailable = false; ui.render(); ui.render();
+    assert.equal(ui.find('image-provider-mock'), undefined);
+    assert.equal(ui.find('image-generate').props.disabled, true);
+    assert.equal(ui.find('image-generation-name').props.value, 'Preserved name');
+    assert.equal(ui.find('image-generation-prompt').props.value, 'Preserved prompt');
+    ui.form().props.onSubmit({preventDefault() {}});
+    assert.equal(mutations(f).length, 0);
+  } finally {ui.unmount(); f.session.dispose();}
+});
+
+test('stable image generation with a saved service still prepares before explicit approval', async () => {
+  const f = fixture({settings: settings()}), ui = renderer(f, {mockAvailable: false});
+  try {
+    ui.render(); await flush(); ui.render();
+    assert.equal(ui.find('image-provider-mock'), undefined);
+    assert.equal(ui.find('image-generation-no-service'), undefined);
+    ui.change('image-generation-name', 'Paid image'); ui.change('image-generation-prompt', 'Confirm first');
+    assert.equal(ui.find('image-generate').props.disabled, false);
+    assert.equal(f.privateCalls.length, 0);
+    ui.click('image-generate'); await flush(); ui.render();
+    assert.equal(f.privateCalls.length, 1);
+    assert.equal(f.privateCalls[0]!.review.input.providerId, 'openai');
+  } finally {ui.unmount(); f.session.dispose();}
+});
 
 test('actual composer keeps draft across hidden tabs and invalidates old edit/submit handlers after reveal', async () => {
   const f = fixture(), ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-generation-name', '保留名称'); ui.change('image-generation-prompt', '保留描述'); assert.equal(ui.dirty, true);

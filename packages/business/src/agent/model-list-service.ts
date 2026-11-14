@@ -155,7 +155,8 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
  }
 
  const wrapped:AgentModelListSettingsPort={
-  get(options={}){const opts=context(options);return schedule(()=>read(opts));},
+  // Public redacted reads can show committed settings while a saved-key operation waits for Keychain.
+  get(options={}){return read(context(options));},
   put(input,options={}){
    const opts=context(options);
    return schedule(async()=>{

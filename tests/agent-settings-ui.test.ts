@@ -296,6 +296,49 @@ test('actual picker locks added and active models, stages only selected IDs, and
  }finally{h.unmount();}
 });
 
+test('Mio picker locks catalog suggestions already shown in settings without consuming a manual model slot',async()=>{
+ const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='openai')!;
+ const platform=initial.presets.find(item=>item.id==='openai')!.platforms.find(item=>item.id===entry.platformId)!;
+ const suggestion=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(suggestion);
+ entry.secret={configured:true,storage:'session'};
+ const result=listed([suggestion,'provider-only']),f=settingsUiFixture({initial});
+ const h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
+ try{
+  await ready(h);h.view('openai');await flush();h.render();
+  assert.ok(h.modelRow('openai',suggestion));
+  h.click('agent-settings-fetch-openai');await flush();h.render();
+  assert.deepEqual(h.pickerItems()?.map(item=>[item.id,item.added]),[[suggestion,true],['provider-only',false]]);
+  h.addPicked(suggestion);
+  assert.equal(h.picker()?.props.maxAdditions,AGENT_CONNECTION_LIMITS.manualModels-entry.manualModelIds.length);
+  assert.equal(h.latest().dirty,false);assert.equal(f.calls.length,0);
+  h.addPicked('provider-only');
+  assert.ok(h.modelRow('openai','provider-only'));
+  h.save();await flush();h.render();
+  assert.deepEqual(f.saved().services.find(item=>item.serviceKey==='openai')?.manualModelIds,[...entry.manualModelIds,'provider-only']);
+ }finally{h.unmount();}
+});
+
+test('discarding the Mio settings draft removes all picker additions and retains the original list',async()=>{
+ const initial=uiSettings(),entry=initial.services.find(item=>item.serviceKey===custom)!,active=initial.mioSelection!.modelId;
+ entry.manualModelIds=['manual-before'];entry.secret={configured:true,storage:'session'};initial.execution!.secret=entry.secret;
+ const result=listed(['manual-before',active,'first-addition','second-addition']),f=settingsUiFixture({initial});
+ const h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
+ const fetchModels=async()=>{h.click(`agent-settings-fetch-${custom}`);await flush();h.render();};
+ try{
+  await ready(h);h.view(custom);await flush();h.render();
+  const modelIds=()=>nodes(h.render()).map(node=>node.props['data-testid']).filter((testId):testId is string=>typeof testId==='string'&&testId.startsWith(`agent-settings-model-row-${custom}-`));
+  const before=modelIds();
+  await fetchModels();h.addPicked('first-addition','second-addition');
+  assert.ok(h.modelRow(custom,'first-addition'));assert.ok(h.modelRow(custom,'second-addition'));
+  assert.equal(h.latest().dirty,true);assert.equal(f.calls.length,0);
+  h.click('agent-settings-cancel');await flush();h.render();
+  assert.deepEqual(modelIds(),before);assert.equal(h.latest().dirty,false);assert.equal(h.find('agent-settings-save').props.disabled,true);
+  assert.deepEqual(f.saved(),initial);assert.equal(f.calls.length,0);
+  await fetchModels();
+  assert.deepEqual(h.pickerItems()?.map(item=>[item.id,item.added]),[['manual-before',true],[active,true],['first-addition',false],['second-addition',false]]);
+ }finally{h.unmount();}
+});
+
 test('actual Qwen detail without a list offers adapted models and selects one only in the unsaved Mio draft',async()=>{
  const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='qwen')!,platform=initial.presets.find(item=>item.id===entry.presetId)!.platforms.find(item=>item.id===entry.platformId)!,model=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(model);
  const f=settingsUiFixture({initial}),cacheCalls:string[]=[],listCalls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async input=>{cacheCalls.push(input.serviceKey);return {status:'miss'};},modelsList:async input=>{listCalls.push(input);return {outcome:'unavailable',reason:'not_provided'};}};

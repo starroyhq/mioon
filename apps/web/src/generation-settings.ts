@@ -82,6 +82,10 @@ export function providerModels(provider: GenerationProvider | null | undefined):
   return (provider?.models || []).map(model => typeof model === 'string' ? { id: model, name: model } : { ...model, id: model.id || model.name });
 }
 
+export const videoGenerationServiceAvailable = (providers: readonly GenerationProvider[]): boolean =>
+  providers.some(provider => provider.id !== 'runway' && provider.enabled !== false && providerModels(provider).some(model =>
+    Boolean(model.id) && providerStatus(generationProviderForModel(provider, model.id ?? '', model.modelEntryId)) === 'available'));
+
 export interface GenerationInputDimensions { min?: unknown; max?: unknown; matchAspectRatio?: unknown; minAspectRatio?: unknown; maxAspectRatio?: unknown; [key: string]: unknown }
 export interface GenerationInputRoleRule { implemented?: boolean; min?: unknown; max?: unknown; mimeTypes?: unknown; maxBytes?: unknown; maxDataUriBytes?: unknown; dimensions?: GenerationInputDimensions | null; [key: string]: unknown }
 export interface GenerationInputProfile {
@@ -135,7 +139,7 @@ export function generationProfileSelection(provider: GenerationProvider | null |
 }
 
 export function subjectVideoProfileIssue(provider: GenerationProvider | null | undefined, model: string | null | undefined): string {
-  if (provider?.id !== 'mock' && !(provider?.id === 'ark' && model === ARK_SUBJECT_MODEL)) return '主体图片视频仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商。';
+  if (provider?.id !== 'mock' && !(provider?.id === 'ark' && model === ARK_SUBJECT_MODEL)) return renderMessage('zh-Hans', message('connections.generation.subjectProvider'));
   const selection = generationProfileSelection(provider, model);
   if (selection.state !== 'ready' || !selection.profile) return selection.message || '主体输入配置尚未确认，请刷新服务商信息。';
   if (selection.profile.profileVersion !== SUBJECT_REFERENCE_PROFILE_VERSION || !selection.profile.inputs?.roles?.subject_reference?.implemented || !selection.profile.inputs.combinations?.some(roles => roles.length === 1 && roles[0] === 'subject_reference')) return '当前精确模型与区域尚未开放单张主体图片输入，请核对服务器配置。';
@@ -149,7 +153,7 @@ export const findGenerationProvider = (providers: readonly GenerationProvider[],
   : providers.find(item => !item.connectionId && item.id === providerId);
 
 export function generationProviderForModel(provider: GenerationProvider | undefined, model: string, entryId?: string): GenerationProvider | undefined {
-  if (!provider?.connectionId) return provider;
+  if (!provider?.connectionId || provider.enabled === false) return provider;
   const entry = providerModels(provider).find(item => entryId ? item.modelEntryId === entryId : item.id === model);
   const runtime = entry?.connectionCapabilities as GenerationProvider | undefined;
   return { ...provider, ...runtime, name: provider.name, models: provider.models, modelCapabilities: provider.modelCapabilities, modelEntryId: entry?.modelEntryId, videoModel: entry?.videoModel };
@@ -163,7 +167,7 @@ export function generationSelection(providers: readonly GenerationProvider[], op
   const available = providers.filter(item => item.id !== 'runway');
   const provider = options.connectionId ? available.find(item => item.connectionId === options.connectionId)
     : options.providerId ? available.find(item => !item.connectionId && item.id === options.providerId)
-    : available.find(item => item.mock && providerStatus(item) === 'available') || available.find(item => !item.connectionId);
+    : available.find(item => item.mock && providerStatus(item) === 'available') || available.find(item => !item.connectionId && providerStatus(item) === 'available');
   const models = providerModels(provider);
   const entry = options.modelEntryId ? models.find(item => item.modelEntryId === options.modelEntryId) : provider?.connectionId ? options.model ? models.find(item => item.id === options.model) : models[0] : undefined;
   const model = entry?.id || options.model || (!options.modelEntryId ? models[0]?.id : undefined) || '';
@@ -190,7 +194,7 @@ const inputIssueMessages: Record<string, string> = {
   UNKNOWN_INPUT_ROLE: '未识别此参考角色，不能自动推断用途。',
   UNSUPPORTED_ROLE_COMBINATION: '当前 Mioon 适配器未接入此参考组合，不会自动丢弃素材。',
   ROLE_COUNT_EXCEEDED: '所选参考角色的数量超过当前 Mioon 适配器限制。',
-  INVALID_REFERENCE_COUNT: '参考图数量不符合当前模型限制；首尾帧组合仅接入 Ark 与 Mock。',
+  INVALID_REFERENCE_COUNT: renderMessage('zh-Hans', message('connections.generation.issue.count')),
   UNSUPPORTED_REFERENCE_MIME: '当前 Mioon 适配器未接入此参考图片格式。',
   DUPLICATE_REFERENCE: '同一参考素材不能重复提交。',
   MODEL_LIFECYCLE_REVALIDATION_REQUIRED: '此模型已到生命周期复核日期，服务器已阻止新提交。请重新核验该精确模型；不会自动替换模型。',

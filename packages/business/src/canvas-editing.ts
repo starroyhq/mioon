@@ -14,7 +14,7 @@ import {assertCanvasEdgeEffects, canvasEdgeEvidence, planCanvasArchive} from './
 import {inspectCanvasDependencies} from './canvas-dependencies.ts';
 import {
   activeShotOrder, applyCanvasPatch, canvasError, canvasKey, canvasLimit, compareCanvasTargets, decodeCanvasPatch, encodeCanvasPatch, expectCanvasRows,
-  isCanvasGuardEvidence,
+  isCanvasGuardEvidence, isCanvasOrderOnlyRow,
   previousFields, readCanvasRow,
 } from './canvas-patch.ts';
 import type {CanvasGuardEvidence, CanvasPatch} from './canvas-patch.ts';
@@ -178,6 +178,19 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
         evidence[key] = (firstPosition.get(key) ?? position) < position ? {revision, since: position} : revision;
       } else evidence[key] = typeof previous === 'object' ? {...previous, revision} : revision;
     }
+    const guarded = new Set(patch.guards.map(canvasKey));
+    for (const row of patch.rows) {
+      const key = canvasKey(row);
+      if (!isCanvasOrderOnlyRow(row) || guarded.has(key)) continue;
+      const previous = evidence[key];
+      const prior = typeof previous === 'number' ? previous : previous?.revision;
+      // Order compaction advances the shared revision. Carry that advance into
+      // other actions only if their evidence already matched before the write.
+      if (prior === undefined || prior !== before.get(key)) continue;
+      const revision = readMioTargetRevision(db, projectId, row.kind, row.id) ??
+        canvasError('invalid-revision', {kind: row.kind, id: row.id});
+      evidence[key] = typeof previous === 'object' ? {...previous, revision} : revision;
+    }
     const revision = current.revision + 1;
     const encoded = JSON.stringify(evidence);
     if (Buffer.byteLength(encoded) > MAX_PATCH_BYTES) return canvasLimit();
@@ -186,8 +199,15 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       .run(projectId, position, revision, encoded);
     return {position, revision, evidence};
   }
-  const readGuardRevisions = (patch: CanvasPatch): Map<string, number> => new Map(patch.guards.map(target =>
-    [canvasKey(target), readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target)]));
+  function readGuardRevisions(current: HistoryState, patch: CanvasPatch): Map<string, number> {
+    const targets = new Map(patch.guards.map(target => [canvasKey(target), target]));
+    for (const row of patch.rows) {
+      const key = canvasKey(row);
+      if (isCanvasOrderOnlyRow(row) && Object.hasOwn(current.evidence, key)) targets.set(key, {kind: row.kind, id: row.id});
+    }
+    return new Map([...targets].map(([key, target]) =>
+      [key, readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target)]));
+  }
   function prune(): void {
     const rows = db.prepare(`SELECT position,length(CAST(beforePatch AS BLOB))+length(CAST(afterPatch AS BLOB)) AS bytes
       FROM main.canvas_history_entries WHERE projectId=? ORDER BY position DESC`).all(projectId);
@@ -231,7 +251,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     if (!isRevision(position) || current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
     const first = encodeCanvasPatch(before);
     if (Buffer.byteLength(first) + Buffer.byteLength(encodeCanvasPatch(after)) > MAX_PATCH_BYTES) return canvasLimit();
-    const revisions = readGuardRevisions(before);
+    const revisions = readGuardRevisions(current, before);
     applyCanvasPatch(store, before, after, at);
     const second = encodeCanvasPatch({...after, dependencyDigest: patchEvidence(after).digest});
     db.prepare('DELETE FROM main.canvas_history_entries WHERE projectId=? AND position>=?').run(projectId, position);
@@ -251,8 +271,9 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     if (effect.digest !== before.dependencyDigest) return canvasError('history-dependencies');
     if (current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
     assertCanvasEdgeEffects(store, after);
+    const revisions = readGuardRevisions(current, before);
     applyCanvasPatch(store, before, after, at);
-    return result(target.id, after.rows.length, saveState(current, current.position + (undo ? -1 : 1), after, new Map(), false));
+    return result(target.id, after.rows.length, saveState(current, current.position + (undo ? -1 : 1), after, revisions, false));
   }
   function receiptWindow() {
     const row = db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window WHERE singleton=1').get();

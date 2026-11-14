@@ -161,9 +161,9 @@ test('shard deadlines leave room for slow files and the shard environment disabl
   assert.equal(shardFileTimeoutMs(933.12), 2_919_360);
   assert.equal(shardFileTimeoutMs(3600), 10_920_000);
   assert.equal(shardFileTimeoutMs(undefined), 2_100_000);
-  const environment = toolingEnvironment({PATH: '/usr/bin', HOME: '/owned', NODE_OPTIONS: '--import=private-loader', NODE_PATH: '/private-modules', GH_TOKEN: 'private-gh-token', APPLE_API_KEY: 'private-key', MIOON_FFMPEG_PATH: '/owned/ffmpeg', MIOON_FFPROBE_PATH: '/owned/ffprobe'}, {mediaPaths: true});
+  const environment = toolingEnvironment({PATH: '/usr/bin', HOME: '/owned', NODE_OPTIONS: '--import=private-loader', NODE_PATH: '/private-modules', GH_TOKEN: 'private-gh-token', APPLE_API_KEY: 'private-key', ARK_API_KEY: 'fixture-key', MIOON_ENABLE_LIVE_PROVIDER: '1', MIOON_FFMPEG_PATH: '/owned/ffmpeg', MIOON_FFPROBE_PATH: '/owned/ffprobe'}, {mediaPaths: true});
   assert.equal(environment.NODE_OPTIONS, undefined); assert.equal(environment.NODE_PATH, undefined); assert.equal(environment.GH_TOKEN, undefined); assert.equal(environment.APPLE_API_KEY, undefined);
-  assert.equal(environment.MIOON_FFMPEG_PATH, '/owned/ffmpeg'); assert.equal(environment.MIOON_FFPROBE_PATH, '/owned/ffprobe'); assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER, '0');
+  assert.equal(environment.MIOON_FFMPEG_PATH, '/owned/ffmpeg'); assert.equal(environment.MIOON_FFPROBE_PATH, '/owned/ffprobe'); assert.equal(environment.ARK_API_KEY, undefined); assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER, undefined);
 });
 
 test('a file completing within three times its recorded duration has time left before its deadline', async () => {

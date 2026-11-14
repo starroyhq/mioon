@@ -134,6 +134,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
   try {const loaded = await persistence.load(); if (loaded) {state = validateVideoSettingsV2Envelope(loaded.envelope); if (loaded.notice !== null && loaded.notice !== VIDEO_SETTINGS_V1_RESET_NOTICE) throw Error(); notice = loaded.notice;}} catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_CORRUPT');}
   const check = () => {if (closing || activeSignal.aborted) fail('VIDEO_SETTINGS_CLOSED'); if (fault) throw fault;};
   const capabilities = (): VideoStorageV2 => {const value = validateStorage(typeof storage === 'function' ? storage() : storage); return storageBlocked || value.persistentAvailable && !secretCodec ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;};
+  const canUseVault = () => {const value = capabilities(); return !!secretCodec && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING');};
   const refresh = async (request?: AbortSignal) => {if (!secretCodec?.refreshStorage) return; try {await bounded(() => secretCodec.refreshStorage!(), operationSignal(request)); storageBlocked = false;} catch {storageBlocked = true;}};
   const schedule = <T>(operation: () => T | Promise<T>): Promise<T> => {
     if (closing || activeSignal.aborted) return Promise.reject(videoSettingsV2Error('VIDEO_SETTINGS_CLOSED'));
@@ -166,7 +167,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
   async function secretOf(credential: Credential, request?: AbortSignal): Promise<string | undefined> {
     if (!credential.encrypted) return sessions.get(credential.ref);
     await refresh(request); check();
-    if (!capabilities().persistentAvailable || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+    if (!canUseVault() || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     const plaintext = validateVideoSecretPlaintext(await bounded(() => secretCodec.decrypt(credential.encrypted!), operationSignal(request), {preserveCorruption: true}));
     check();
     if (plaintext.credentialRef !== credential.ref || !same(credentialRecipient(credential), [plaintext.connectionId, plaintext.providerId, plaintext.region, plaintext.workspaceId, plaintext.endpoint])) return fail('VIDEO_SETTINGS_CORRUPT');
@@ -175,7 +176,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
   async function storeSecret(nextSessions: Map<string, string>, credential: Credential, secret: Extract<VideoSecretUpdate, {action: 'replace'}>) {
     if (secret.storage === 'session') {nextSessions.set(credential.ref, secret.value); return;}
     await refresh(); check();
-    if (!capabilities().persistentAvailable || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+    if (!canUseVault() || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     const plaintext = JSON.stringify({version: 1, namespace: VIDEO_SECRET_NAMESPACE, credentialRef: credential.ref, connectionId: credential.connectionId, providerId: credential.providerId, region: credential.region, workspaceId: credential.workspaceId, endpoint: credential.endpoint, value: secret.value});
     validateVideoSecretPlaintext(plaintext);
     const encrypted = await bounded(() => secretCodec.encrypt(plaintext), activeSignal); check();
@@ -202,7 +203,13 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     const currentCredential = ref ? candidate.credentials.find(credential => credential.ref === ref) : undefined;
     let secretChanged = secret.action === 'remove' ? Boolean(currentCredential?.encrypted || ref && nextSessions.has(ref)) : secret.action === 'replace';
     if (secret.action === 'replace' && sameRecipient && currentCredential && material(ref) === secret.storage) {
-      const existing = await secretOf(currentCredential);
+      let existing: string | undefined;
+      try {existing = await secretOf(currentCredential);}
+      catch (error) {
+        // An explicit replacement may create a fresh reference. The damaged
+        // reference and its frozen tasks stay bound to their original bytes.
+        if (sanitizeVideoSettingsV2Error(error).code !== 'VIDEO_SETTINGS_CORRUPT') throw error;
+      }
       check(); secretChanged = existing !== secret.value;
     }
     if (current && same(current.configuration, configuration) && !secretChanged) return false;
@@ -251,7 +258,10 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     });
   }
   const service: VideoSettingsV2Service = {
-    get: () => schedule(async () => {await refresh(); check(); return snapshot();}),
+    async get() {
+      check(); await refresh(); check();
+      return snapshot();
+    },
     list() {ensureStable(); return state.connections.map(view);},
     select(connectionId, configurationRevision, modelEntryId) {
       ensureStable(); if (!videoSettingsSelectionV2Schema.safeParse({connectionId, configurationRevision, modelEntryId}).success) return fail('VIDEO_SETTINGS_VALIDATION');

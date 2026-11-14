@@ -13,6 +13,7 @@ import type {ImageSettingsResult} from './image-settings.ts';
 import type {ComfyImageSettingsResult, ComfyImageCheckResult, ComfyConnectorAvailability} from './comfy-image-settings.ts';
 import {settingsNavigationState} from './settings-navigation-state.ts';
 import type {GenerationDomainOutcome, GenerationSaveTicket} from './generation-services-settings.ts';
+import {watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 export type GenerationImageDomainKind = 'official' | 'custom' | 'comfy';
 export interface GenerationImageServicesClient {
@@ -100,7 +101,16 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   let probeOwner: string | null = null;
   let pending: AbortController | null = null, checking: AbortController | null = null, availabilityPending: AbortController | null = null;
   const inputs = new Map<string, Pick<HTMLInputElement, 'value'>>();
-  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; onChange(copy(state));}};
+  const watchStorage = watchPendingSecretStorage(async signal => {
+    const before = state.snapshot;
+    if (!before || !('storage' in before)) return;
+    const next = safeSnapshot(kind, await client.read(signal));
+    if (!signal.aborted && state.snapshot === before && 'storage' in next && next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') {
+      publish({snapshot: {...before, storage: next.storage}});
+    }
+  });
+  const observeStorage = () => watchStorage(live && pageVisible && !!state.snapshot && 'storage' in state.snapshot && state.snapshot.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; observeStorage(); onChange(copy(state));}};
   const baseline = () => state.snapshot ? draftsFor(state.snapshot) : [];
   const draftDirty = (draft: GenerationImageDraft) => {
     const before = baseline().find(item => item.id === draft.id);
@@ -126,7 +136,9 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     else if (state.probe) publish({probe: null});
   }
   function savedProbeTarget(draft: GenerationImageDraft) {
-    if (draft.secretAction !== 'keep' || draft.needsKey || !savedSecret(draft.id)?.configured || !state.snapshot) return null;
+    const saved = savedSecret(draft.id);
+    if (draft.secretAction !== 'keep' || draft.needsKey || !saved?.configured || !state.snapshot) return null;
+    if (saved.storage === 'persistent' && (!('storage' in state.snapshot) || !state.snapshot.storage.persistentAvailable)) return null;
     if ('connections' in state.snapshot) {
       const saved = state.snapshot.connections.find(item => item.connectionId === draft.id);
       if (!saved) return null;
@@ -309,10 +321,10 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
       } catch {if (live && page === pageEpoch && token === checkEpoch) publish({phase: 'error', check: null, notice: 'connections.comfy.notice.checkError'}); return false;}
     },
     cancelCheck,
-    setPageVisible(visible: boolean) {if (visible === pageVisible) return; pageVisible = visible; ++pageEpoch; ++requestEpoch; pending?.abort(); availabilityPending?.abort(); cancelCheck(); clearKeys();
+    setPageVisible(visible: boolean) {if (visible === pageVisible) return; pageVisible = visible; observeStorage(); ++pageEpoch; ++requestEpoch; pending?.abort(); availabilityPending?.abort(); cancelCheck(); clearKeys();
       if (!visible) {prepared?.dispose(); if (state.phase === 'saving' || state.phase === 'reconciling') publish({phase: 'blocked', recovery: 'unknown', notice: 'image.settings.notice.review'});}
       else if (!state.snapshot) void read();},
-    dispose() {clearKeys(); live = false; ++pageEpoch; ++requestEpoch; ++checkEpoch; pending?.abort(); checking?.abort(); availabilityPending?.abort(); prepared?.dispose(); inputs.clear();},
+    dispose() {clearKeys(); live = false; watchStorage(false); ++pageEpoch; ++requestEpoch; ++checkEpoch; pending?.abort(); checking?.abort(); availabilityPending?.abort(); prepared?.dispose(); inputs.clear();},
   };
 }
 export type GenerationImageServicesOwner = ReturnType<typeof createGenerationImageServicesOwner>;

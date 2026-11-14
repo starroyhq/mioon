@@ -253,7 +253,7 @@ test('built-in check and model discovery use one-time draft values and retain no
   assert.deepEqual(f.all('video:veo').filter(node => node.type === 'ModelEditor').map(node => {
     const model = node.props.model as {modelId: string; enabled: boolean};
     return [model.modelId, model.enabled];
-  }), [['veo-3.1-generate-preview', true], ['veo-test-video', false]]);
+  }), [['veo-3.1-generate-preview', true], ['veo-test-video', true]]);
   assert.equal(f.domain().navigation.dirty, true);
   assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-video-ui-draft/);
   f.domain().discard();
@@ -339,7 +339,7 @@ test('empty and unsupported model discovery remain read-only picker states', asy
   await flush();
   f.render();
   const unsupported = f.picker('video:kling')!;
-  assert.equal(unsupported.props.status, 'error');
+  assert.equal(unsupported.props.status, 'empty');
   assert.equal(unsupported.props.statusMessage, 'zh-Hans:settings.draftKey.listUnsupported');
   assert.deepEqual(unsupported.props.items, []);
   assert.equal(f.picker(f.keyA), undefined);

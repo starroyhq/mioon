@@ -148,12 +148,15 @@ test('trusted copy-to stages format 4 with retained named versions from either s
     assert.equal(copied.versions, f.versions.length);
     assert.deepEqual(await copies.copyTo(input), copied);
     const store = openProjectStore({projectFile: copied.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
+    let firstEpoch: unknown;
     try {
       assert.equal(store.historyState, 'current');
       assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
       assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
       assert.deepEqual(createProjectVersions(store).list({projectId: copied.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
       assert.deepEqual(readProjectContentStamp(store.db), {contentSequence: copied.contentSequence, contentToken: copied.contentToken});
+      firstEpoch = store.db.prepare('SELECT epoch FROM main.canvas_receipt_window').get()?.epoch;
+      assert.match(String(firstEpoch), /^[0-9a-f]{32}$/u);
     } finally {store.close();}
     const next = await copies.copyTo({sourceProjectId: copied.project.projectId, sourceFile: copied.project.projectFile,
       sourceIdentity: copied.project.fileIdentity, sourceStamp: {contentSequence: copied.contentSequence, contentToken: copied.contentToken},
@@ -164,6 +167,10 @@ test('trusted copy-to stages format 4 with retained named versions from either s
       assert.equal(second.historyState, 'current');
       assert.equal(second.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
       assert.equal(second.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      const window = second.db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window').get();
+      assert.match(String(window?.epoch), /^[0-9a-f]{32}$/u);
+      assert.notEqual(window?.epoch, firstEpoch);
+      assert.equal(window?.floor, 0);
     } finally {second.close();}
     assert.deepEqual(f.sourceFiles(), before);
   } finally {await copies.drain(); await manager.closeAll(); library.close();}

@@ -110,7 +110,7 @@
 .model-picker-row[data-selected],
 .model-picker-row:not([data-locked]):hover { background: var(--wb-card); }
 .model-picker-row[data-locked] { color: var(--wb-soft); cursor: default; }
-.model-picker-row > .wb-checkbox {
+.model-picker-row > :is(.wb-checkbox, .wb-radio) {
   flex: none;
   min-width: 14px;
   min-height: 14px;

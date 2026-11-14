@@ -9,6 +9,23 @@ export const mioSettingsMessages = {
     "en":"Models returned by {service}: {count}. Select models to add. Added models stay checked and can be removed in Settings.",
     "ja":"{service} から {count} 件のモデルが返されました。一覧に追加するモデルを選択してください。追加済みのモデルを削除するには設定の一覧を使用してください。"
   },
+  "settings.modelPicker.singleTitle": {"zh-Hans":"选择模型","zh-Hant":"選擇模型","en":"Choose a model","ja":"モデルを選択"},
+  "settings.modelPicker.singleResults": {
+    "zh-Hans":"{service} 这次返回了 {count} 个模型。每条连接只能使用一个模型。",
+    "zh-Hant":"{service} 這次傳回了 {count} 個模型。每條連線只能使用一個模型。",
+    "en":"Models returned by {service}: {count}. Each connection uses one model.",
+    "ja":"{service} から {count} 件のモデルが返されました。接続ごとに使用できるモデルは 1 件です。"
+  },
+  "settings.modelPicker.useModel": {"zh-Hans":"选用这个模型","zh-Hant":"選用這個模型","en":"Use this model","ja":"このモデルを使う"},
+  "settings.modelPicker.willUse": {"zh-Hans":"将选用","zh-Hant":"將選用","en":"Will use","ja":"使用予定"},
+  "settings.modelPicker.singleNote": {
+    "zh-Hans":"选用后仍需在设置页保存。","zh-Hant":"選用後仍須在設定頁儲存。",
+    "en":"Save Settings to apply your choice.","ja":"選択を反映するには設定を保存してください。"
+  },
+  "settings.modelPicker.officialModel": {
+    "zh-Hans":"此连接使用固定的图片模型。","zh-Hant":"此連線使用固定的圖片模型。",
+    "en":"This connection uses a fixed image model.","ja":"この接続では固定の画像モデルを使用します。"
+  },
   "settings.modelPicker.search": {"zh-Hans":"搜索模型","zh-Hant":"搜尋模型","en":"Search models","ja":"モデルを検索"},
   "settings.modelPicker.list": {"zh-Hans":"获取的模型","zh-Hant":"取得的模型","en":"Fetched models","ja":"取得したモデル"},
   "settings.modelPicker.selectAll": {"zh-Hans":"全选新模型","zh-Hant":"全選新模型","en":"Select all new","ja":"新規モデルをすべて選択"},

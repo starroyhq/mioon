@@ -133,7 +133,8 @@ function VideoServiceDetail(props: DetailProps) {
       }
     }
   };
-  const listedModels = modelPicker?.result?.models ?? [];
+  const pickerResult = modelPicker?.result;
+  const listedModels = pickerResult?.models ?? [];
   const draftModels = new Set(configuration.models.map(model => model.modelId));
   const addListedModels = (token: number, ids: readonly string[]) => {
     const open = picker.current;
@@ -171,6 +172,7 @@ function VideoServiceDetail(props: DetailProps) {
         {check.draft && <p className="helper muted">{t('settings.draftKey.resultHint')}</p>}
       </div>}
       <p>{t(saved?.secret.configured ? 'video.providers.configured' : 'video.providers.unconfigured')}</p>
+      {state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING' && <p className="helper muted" role="status" data-testid="video-keychain-pending">{t('connections.storage.keychainPending')}</p>}
       {saved?.secret.storage === 'persistent' && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' && <p className="helper muted" role="status" data-testid="video-key-storage-unavailable">{t('tasks.error.videoSecretStore')}</p>}
       {draft.secretAction === 'replace' && !draft.hasKey && <p role="status" data-testid="video-key-required">{t('generation.services.video.keyRequired')}</p>}
       <label>{t('video.providers.storage')}<WorkbenchSelect data-testid="video-key-storage" value={draft.storage} onChange={event => {if (usable()) session?.setStorage(draft.key, event.target.value as GenerationVideoDraft['storage']);}}><option value="">{t('video.providers.chooseStorage')}</option><option value="session">{t('video.providers.session')}</option><option value="persistent" disabled={!state.snapshot?.storage.persistentAvailable}>{t('video.providers.persistent')}</option></WorkbenchSelect></label><p className="helper muted">{t('connections.sessionLoss')}</p>
@@ -189,9 +191,10 @@ function VideoServiceDetail(props: DetailProps) {
         const added = draftModels.has(id);
         return {id, added, unavailable: !added && !videoModelEntrySchema.shape.modelId.safeParse(id).success};
       })}
-      status={!modelPicker.result ? 'loading' : modelPicker.result.result !== 'ok' ? 'error' : listedModels.length ? 'ready' : 'empty'}
-      statusMessage={modelPicker.result && (modelPicker.result.result !== 'ok' || !listedModels.length)
-        ? checkText({operation: 'models', draft: modelPicker.usesDraftKey, result: modelPicker.result}) : undefined}
+      status={!pickerResult ? 'loading' : pickerResult.result === 'ok' || pickerResult.result === 'unsupported'
+        ? listedModels.length ? 'ready' : 'empty' : 'error'}
+      statusMessage={pickerResult && (pickerResult.result !== 'ok' || !listedModels.length)
+        ? checkText({operation: 'models', draft: modelPicker.usesDraftKey, result: pickerResult}) : undefined}
       usesDraftKey={modelPicker.usesDraftKey}
       maxAdditions={Math.max(0, VIDEO_SETTINGS_LIMITS.models - configuration.models.length)}
       triggerRef={fetchModelsButton}

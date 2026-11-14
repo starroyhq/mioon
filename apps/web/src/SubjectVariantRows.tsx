@@ -18,6 +18,7 @@ type Render = ReturnType<typeof useI18n>['renderMessage'];
 export interface SubjectVariantShot { id: string; title?: string; orderIndex?: number; [key: string]: unknown }
 interface VariantRowContext {
   controller: SubjectVariantController;
+  mockAvailable?: boolean;
   /** The subject's loaded versions by ID; a finished item is named by its number. */
   versions: Readonly<Record<string, SubjectVersionResponse>>;
   /** True while the pane cannot act or another variant write is in flight or unknown. */
@@ -55,7 +56,7 @@ export interface SubjectVariantBatchRowProps extends VariantRowContext {
 // and below it why the batch cannot be undone yet. Nothing here resends on its
 // own: unsubmitted images wait for an explicit "continue", unknown results for
 // the task center.
-export function SubjectVariantBatchRow({ batch, shots, submitting, issues, controller, versions, disabled, admit, onShowTasks }: SubjectVariantBatchRowProps): ReactElement {
+export function SubjectVariantBatchRow({ batch, shots, submitting, issues, controller, mockAvailable = false, versions, disabled, admit, onShowTasks }: SubjectVariantBatchRowProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
   const progress = subjectVariantProgress(batch), paid = batch.providerId === 'openai';
@@ -84,7 +85,7 @@ export function SubjectVariantBatchRow({ batch, shots, submitting, issues, contr
     <div className={`subject-variant-batch-row${attention ? ' is-danger' : ''}`}>
       {moving ? <LoaderCircle size={13} className="subject-variant-spin" aria-hidden="true" /> : attention ? <CircleAlert size={13} aria-hidden="true" /> : <CircleCheck size={13} aria-hidden="true" />}
       <strong role="status">{summary}</strong>
-      {progress.pending > 0 && <Button variant="ghost" size="sm" data-testid={`subject-variant-continue-${batch.id}`} disabled={disabled || submitting} onClick={() => admit(continueSubmit)}>{t('subjects.variants.continue')}</Button>}
+      {(paid || mockAvailable) && progress.pending > 0 && <Button variant="ghost" size="sm" data-testid={`subject-variant-continue-${batch.id}`} disabled={disabled || submitting} onClick={() => admit(continueSubmit)}>{t('subjects.variants.continue')}</Button>}
       <Button variant="ghost" size="sm" data-testid={`subject-variant-undo-${batch.id}`} disabled={disabled || !batch.undo?.available} onClick={() => admit(undo)}>{t('subjects.variants.undo')}</Button>
     </div>
     {notes.map(note => <p key={note} className="subject-variant-item-note is-danger" role="alert">{note}</p>)}
@@ -106,7 +107,7 @@ export interface SubjectVariantItemTileProps extends VariantRowContext {
 // An image of a batch that has no version yet, in place in the version grid:
 // queued or generating, waiting to be submitted, failed (with a retry only when
 // the provider refused it or it was cancelled before sending) or unknown.
-export function SubjectVariantItemTile({ batch, item, submitting, controller, disabled, admit }: SubjectVariantItemTileProps): ReactElement {
+export function SubjectVariantItemTile({ batch, item, submitting, controller, mockAvailable = false, disabled, admit }: SubjectVariantItemTileProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
   const failed = item.status === 'failed' || item.status === 'cancelled', unknown = UNRESOLVED.has(item.status), waiting = item.status === 'pending';
@@ -120,7 +121,7 @@ export function SubjectVariantItemTile({ batch, item, submitting, controller, di
     <div className={`subject-variant-tile${failed ? ' is-failed' : unknown ? ' is-unknown' : ''}`}>
       <StatusIcon size={16} className={moving ? 'subject-variant-spin' : undefined} aria-hidden="true" />
       <span>{status}</span>
-      {subjectVariantRetryable(item) && <Button variant="outline" size="sm" data-testid={`subject-variant-retry-${batch.id}-${item.position}`} disabled={disabled} onClick={() => admit(retry)}><RotateCcw size={12} aria-hidden="true" />{t('subjects.variants.retry')}</Button>}
+      {(batch.providerId === 'openai' || mockAvailable) && subjectVariantRetryable(item) && <Button variant="outline" size="sm" data-testid={`subject-variant-retry-${batch.id}-${item.position}`} disabled={disabled} onClick={() => admit(retry)}><RotateCcw size={12} aria-hidden="true" />{t('subjects.variants.retry')}</Button>}
     </div>
     <span className="subject-version-label is-tag">{batch.kind === 'light' ? <Sun size={10} aria-hidden="true" /> : <Camera size={10} aria-hidden="true" />}{subjectVariantItemTag(batch, item, renderMessage)}</span>
     {failed && <span className="subject-variant-item-note is-danger">{t(item.status === 'cancelled' ? 'subjects.variants.item.cancelledReason' : 'subjects.variants.item.failedReason')}</span>}

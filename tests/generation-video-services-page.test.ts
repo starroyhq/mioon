@@ -46,9 +46,14 @@ test('six stable built-in drafts and clean preparation never create settings rec
   assert.equal(f.session.getState().drafts.find(draft => draft.key === 'video:wan')!.configuration.id, id);
 });
 
-test('selected listed video models are appended disabled to just their draft until the existing save commits', async t => {
+test('selected listed video models are appended enabled without changing existing models or writing before save', async t => {
   const f = await fixture(t);
   const key = 'video:ark';
+  const template = f.session.getState().drafts.find(draft => draft.key === key)!.configuration.models[0]!;
+  assert.equal(f.session.update(key, {models: [
+    {...template, enabled: false},
+    {...template, id: crypto.randomUUID(), modelId: 'doubao-seedance-2-0-existing', inputModes: ['text']},
+  ]}), true);
   const before = f.session.getState();
   const existing = before.drafts.find(draft => draft.key === key)!.configuration.models;
   const added = 'doubao-seedance-2-0-synthetic';
@@ -58,7 +63,7 @@ test('selected listed video models are appended disabled to just their draft unt
   assert.deepEqual(configuration.models.slice(0, -1), existing);
   assert.equal(configuration.models.length, existing.length + 1);
   const entry = configuration.models.at(-1)!;
-  assert.deepEqual([entry.modelId, entry.name, entry.enabled, entry.inputModes], [added, added, false, ['text', 'image', 'frames']]);
+  assert.deepEqual([entry.modelId, entry.name, entry.enabled, entry.inputModes], [added, added, true, ['text', 'image', 'frames']]);
   assert.equal(videoConnectionConfigurationV2Schema.safeParse(configuration).success, true);
   assert.deepEqual(after.drafts.filter(draft => draft.key !== key), before.drafts.filter(draft => draft.key !== key));
   assert.equal(generationVideoDirty(after), true);

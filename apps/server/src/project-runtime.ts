@@ -33,7 +33,6 @@ import { readOwnedTimelineAsset } from '@mioon/business/timeline-sources';
 import { createUiPreferences } from '@mioon/business/ui-preferences';
 import { createVideoSettingsV2 } from '@mioon/business/video/settings-v2';
 import { createVideoSettingsV2File } from '@mioon/business/video/settings-v2-file';
-import { createWorkspaceConfiguration } from '@mioon/business/workspace-configuration';
 import { AppError,isTimelineRenderRecord } from '@mioon/contracts';
 import { readPrivateFile,validateManagedDirectory,validateManagedFile,validatePrivateDirectory,writePrivateFileAtomic } from '@mioon/contracts/private-storage';
 import { randomUUID } from 'node:crypto';
@@ -92,7 +91,6 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly store: Store;
   readonly shutdown: AbortController;
   readonly deletionGate: ReturnType<typeof createProjectDeletionGate>;
-  readonly baseRoot?: string;
   readonly port: number;
   readonly serverPort: () => number | undefined;
   readonly listeningPort: () => number;
@@ -109,7 +107,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
 /** Shared assembly on a real kernel store and explicit application ports.
  * It neither opens a store nor binds a listener; drafts remain an unbound
  * factory until the host supplies its own context. */
-export async function composeProjectRuntime({store, shutdown, deletionGate, baseRoot = store.root, port, serverPort, listeningPort,
+export async function composeProjectRuntime({store, shutdown, deletionGate, port, serverPort, listeningPort,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
   comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings, deferBackgroundRecovery = false,
 }: ProjectRuntimeOptions) {
@@ -149,9 +147,9 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     if (failures.length) throw new AggregateError(failures, 'Project settings cleanup failed');
   };
   try {
-    const configuration=serviceApplication?.configuration ?? createWorkspaceConfiguration({root:application?.dataDir ?? baseRoot,env:process.env,...documents});
-    const providerEnv=configuration?.environment()??process.env;
-    const providers = createProviderRegistry({db: store.db, root,env:providerEnv});
+    // Electron supplies its compiled channel through the trusted server options.
+    const mockAllowed = localDraftChannel !== 'production';
+    const providers = createProviderRegistry({db: store.db, root});
     let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
     {
     if(suppliedAgentSettings)agentSettings=suppliedAgentSettings;
@@ -178,7 +176,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = settings?.comfy ?? await createComfySettings({directory:path.join(appRoot,'comfy-settings'),privateRoot:appRoot,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),env:providerEnv,signal: shutdown.signal,videoSettings,agentAuthorizations,deferBackgroundRecovery,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {...(serviceApplication?{application:serviceApplication}:{}),mockAllowed,signal: shutdown.signal,videoSettings,agentAuthorizations,deferBackgroundRecovery,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettingsV2:customImageSettings,customGateway:createCompatibleImageGatewayV2({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
@@ -242,7 +240,12 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
         editTasks!.reconcileStartup();
         backgroundActivated = true;
       },
-      startWorker: () => worker ??= startWorker(store, services, providers, {signal: shutdown.signal}),
+      startWorker: () => worker ??= startWorker(store, services, providers, {
+        signal: shutdown.signal,
+        ...(videoSecretCodec?.subscribeStorageAvailable
+          ? {subscribeVideoStorageAvailable: listener => videoSecretCodec.subscribeStorageAvailable!(listener)}
+          : {}),
+      }),
     };
   } catch (error) {
     shutdown.abort();

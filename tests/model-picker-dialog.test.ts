@@ -27,6 +27,7 @@ function mount(overrides: Partial<Picker> = {}) {
   const react = {
     Fragment: 'fragment',
     createElement: (type: string, props: RootNode['props'], ...children: RootTree[]) => ({type, props: {...props, children}}),
+    useId: () => 'test-model-radio',
     useRef: (value: unknown) => hooks[cursor++] ??= {current: value},
     useState(value: unknown) {
       const index = cursor++;
@@ -80,8 +81,14 @@ test('picker holds new choices locally, counts hidden selections, and locks exis
   assert.equal(picker.label('Beta')!.props.checked, false);
   assert.equal(picker.calls.length, 0);
   picker.click('全选新模型');
+  assert.match(text(picker.byId('model-picker-count')), /1/);
   picker.byId('model-picker-add').props.onClick();
-  assert.deepEqual(picker.calls, [['alpha', 'model-b']]);
+  assert.deepEqual(picker.calls, [['model-b']]);
+  picker.click('清空');
+  picker.label('搜索模型')!.props.onChange({target: {value: ''}});
+  picker.click('全选新模型');
+  picker.byId('model-picker-add').props.onClick();
+  assert.deepEqual(picker.calls, [['model-b'], ['alpha', 'model-b']]);
 });
 
 test('cancel, capacity, and non-ready states cannot publish a model', () => {
@@ -93,9 +100,27 @@ test('cancel, capacity, and non-ready states cannot publish a model', () => {
   assert.deepEqual(picker.calls, [['closed']]);
   for (const status of ['loading', 'error', 'empty'] as const) {
     const pending = mount({status, statusMessage: 'Synthetic status'});
-    assert.equal(pending.render().some(node => text(node) === 'Synthetic status'), true);
+    assert.equal(pending.render().some(node => text(node) === 'Synthetic status' && node.props.role === (status === 'error' ? 'alert' : 'status')), true);
     pending.byId('model-picker-add').props.onClick();
     assert.equal(pending.calls.length, 0);
     assert.equal(pending.label('alpha'), undefined);
   }
+});
+
+
+test('single choice uses one radio selection and publishes only on confirmation', () => {
+  const picker = mount({mode: 'single', items: [{id: 'current', added: true}, {id: 'alpha'}, {id: 'beta'}]});
+  assert.equal(picker.label('current')!.props.disabled, true);
+  assert.equal(picker.label('current')!.props.checked, true);
+  assert.equal(picker.label('alpha')!.props.type, 'radio');
+  assert.equal(picker.label('alpha')!.props.name, picker.label('beta')!.props.name);
+  assert.ok(!picker.render().some(node => node.type === 'Button' && text(node) === '全选新模型'));
+  picker.label('alpha')!.props.onChange({target: {checked: true}});
+  picker.label('beta')!.props.onChange({target: {checked: true}});
+  assert.equal(picker.label('alpha')!.props.checked, false);
+  assert.equal(picker.label('current')!.props.checked, false);
+  assert.equal(picker.label('beta')!.props.checked, true);
+  assert.deepEqual(picker.calls, []);
+  picker.click('选用这个模型');
+  assert.deepEqual(picker.calls, [['beta']]);
 });
