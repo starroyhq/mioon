@@ -213,10 +213,14 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
   const serviceIntents={...state.serviceIntents};delete serviceIntents[key];
   publish({draft:{...state.draft,services:state.draft.services.filter(item=>item.serviceKey!==key)},serviceIntents,selectedKey:state.selectedKey===key?'general':state.selectedKey,...readyPatch()});return true;
  }
- function addModel(key:string,value:string):boolean {
-  const found=service(key),model=value.trim();if(!found||!isAgentModelIdentifier(model)||found.manualModelIds.includes(model)||found.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels)return false;
-  return editService(key,{manualModelIds:[...found.manualModelIds,model]});
+ function addModels(key:string,values:readonly string[]):boolean {
+  const found=service(key);
+  if(!found||values.length===0||values.some(value=>!isAgentModelIdentifier(value)))return false;
+  const previous=new Set(found.manualModelIds),models=[...new Set(values)].filter(value=>!previous.has(value));
+  if(models.length===0||previous.size+models.length>AGENT_CONNECTION_LIMITS.manualModels)return false;
+  return editService(key,{manualModelIds:[...previous,...models]});
  }
+ const addModel=(key:string,value:string):boolean=>addModels(key,[value.trim()]);
  function removeModel(key:string,model:string):boolean {const found=service(key);return found?editService(key,{manualModelIds:found.manualModelIds.filter(id=>id!==model)}):false;}
  function selectMio(key:string,modelId:string):boolean {
   if(!editable()||!service(key)||!isAgentModelIdentifier(modelId)||!state.draft)return false;
@@ -274,7 +278,7 @@ export function createAgentSettingsSession({client=createAgentSettingsClient(),o
    }).catch(()=>{if(current(token))publish({phase:'blocked',message:'',displayMessages:[message('agent.settings.notice.blocked')]});return false;});
   });
  }
- return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,removeModel,selectMio,useLatest,acknowledge,save,
+ return {getState:():AgentSettingsState=>state,load:()=>read(),reload:()=>read({recover:Boolean(state.snapshot)}),view,editService,selectPlatform,selectProtocol,addCustom,canRemove,removeCustom,addModel,addModels,removeModel,selectMio,useLatest,acknowledge,save,
   setVisible(value:boolean){visible=Boolean(value);observeStorage();},
   setStorage(key:string,storage:string):boolean {if(!editable()||!service(key)||(storage!=='session'&&storage!=='persistent')||storage==='persistent'&&!state.snapshot?.storage.persistentAvailable)return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{action:'keep'},storage}}});return true;},
   removeKey(key:string,remove=true):boolean {if(!editable()||!service(key))return false;publish({serviceIntents:{...state.serviceIntents,[key]:{...state.serviceIntents[key]??{storage:'session'},action:remove?'remove':'keep'}},...readyPatch()});return true;},
