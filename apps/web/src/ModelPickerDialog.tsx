@@ -19,6 +19,7 @@ export interface ModelPickerItem {
 interface ModelPickerDialogProps {
   serviceName: string;
   items: readonly ModelPickerItem[];
+  returnedModelCount?: number;
   status: 'loading' | 'error' | 'empty' | 'ready';
   statusMessage?: string;
   usesDraftKey?: boolean;
@@ -31,7 +32,7 @@ interface ModelPickerDialogProps {
 
 /** Mount once per fetch. Only the parent can add models to the settings draft. */
 export default function ModelPickerDialog({serviceName, items, status, statusMessage, usesDraftKey = false,
-  mode = 'multiple', maxAdditions, onClose, onAdd, triggerRef}: ModelPickerDialogProps) {
+  mode = 'multiple', returnedModelCount = items.length, maxAdditions, onClose, onAdd, triggerRef}: ModelPickerDialogProps) {
   const {t} = useI18n();
   const radioName = useId(), single = mode === 'single';
   const search = useRef<HTMLInputElement | null>(null);
@@ -43,7 +44,8 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
   const available = ready ? items.filter(canSelect) : [];
   const selected = available.filter(item => selection.has(item.id)).map(item => item.id);
   const searchTerm = query.trim().toLowerCase();
-  const visible = items.filter(item => item.id.toLowerCase().includes(searchTerm) || item.label?.toLowerCase().includes(searchTerm));
+  const matchesSearch = (item: ModelPickerItem) => item.id.toLowerCase().includes(searchTerm) || item.label?.toLowerCase().includes(searchTerm);
+  const visible = items.filter(item => (single && item.added) || (ready && matchesSearch(item)));
   const visibleChoices = visible.filter(canSelect);
   const capacity = maxAdditions !== undefined && selected.length > maxAdditions ? maxAdditions : null;
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform);
@@ -68,7 +70,7 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
 
   return <Dialog open onOpenChange={open => {if (!open) onClose();}}>
     <WorkbenchDialogContent className="model-picker-dialog" data-testid="model-picker" title={t(single ? 'settings.modelPicker.singleTitle' : 'settings.modelPicker.title')}
-      description={ready ? t(single ? 'settings.modelPicker.singleResults' : 'settings.modelPicker.results', {service: serviceName, count: items.length}) : undefined}
+      description={ready ? t(single ? 'settings.modelPicker.singleResults' : 'settings.modelPicker.results', {service: serviceName, count: returnedModelCount}) : undefined}
       initialFocus={() => search.current ?? cancel.current} finalFocus={triggerRef} footer={footer}
       onKeyDown={event => {
         if (!search.current || event.defaultPrevented || event.altKey || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'f') return;
@@ -77,7 +79,7 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
         search.current.focus();
         search.current.select();
       }}>
-      {ready ? <>
+      {ready && <>
         <div className="model-picker-toolbar">
           <div className="model-picker-search">
             <Icon name="search" size={14} />
@@ -92,7 +94,9 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
           <WorkbenchButton type="button" size="compact" variant="ghost" disabled={!selected.length}
             onClick={() => setSelection(new Set())}>{t('settings.modelPicker.clear')}</WorkbenchButton>
         </div>
-        <ul className="model-picker-list" aria-label={t('settings.modelPicker.list')}>
+      </>}
+      {(ready || visible.length > 0) &&
+        <ul className="model-picker-list" aria-label={t(single ? 'settings.modelPicker.singleTitle' : 'settings.modelPicker.list')}>
           {visible.map(item => {
             const locked = item.active || item.added;
             const disabled = Boolean(locked || item.unavailable);
@@ -110,13 +114,14 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
                   : <input type="checkbox" className="wb-checkbox" checked={Boolean(locked || checked)} {...inputProps} />}
                 <span className="model-picker-name" title={item.id}>{item.label ?? item.id}</span>
                 {item.verified !== undefined && <WorkbenchBadge tone={item.verified ? 'success' : 'warning'}>{t(item.verified ? 'agent.settings.x6.adapted' : 'agent.settings.x6.unverified')}</WorkbenchBadge>}
-                <span className="model-picker-row-state">{item.active ? t('settings.modelPicker.inUse') : locked ? t('settings.modelPicker.added') :
+                <span className="model-picker-row-state">{item.active ? t('settings.modelPicker.inUse') : locked ? t(single ? 'settings.modelPicker.current' : 'settings.modelPicker.added') :
                   item.unavailable ? t('settings.modelPicker.unavailable') : checked ? t(single ? 'settings.modelPicker.willUse' : 'settings.modelPicker.willAdd') : null}</span>
               </label>
             </li>;
           })}
-        </ul>
-        {!visible.length && <p className="model-picker-status" role="status">{t('settings.modelPicker.noMatch')}</p>}
+        </ul>}
+      {ready ? <>
+        {!visible.some(matchesSearch) && <p className="model-picker-status" role="status">{t('settings.modelPicker.noMatch')}</p>}
         {statusMessage && <p className="model-picker-status" role="status">{statusMessage}</p>}
       </> : <p className="model-picker-status" role={status === 'error' ? 'alert' : 'status'}>
         {statusMessage ?? t(status === 'loading' ? 'agent.settings.models.loading' : status === 'empty' ? 'agent.settings.models.empty' : 'agent.settings.models.unreachable')}
