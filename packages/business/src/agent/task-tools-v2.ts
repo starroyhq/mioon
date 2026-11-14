@@ -17,6 +17,7 @@ import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,schemas,descriptions,operationEffect,parse,canonicalPrevisValue,isPrevisNodeRecord,isPrevisScene,isTimelineMutationResponse,isTimelineFormatReadResponse,timelineOutputPreset} from '@mioon/contracts';
 import {timelineFrameSetSchema} from '../../../contracts/src/timeline-format.ts';
 import {readGenerationAspectResponseRatio} from '../../../contracts/src/generation-aspect.ts';
+import {canonicalSceneInput} from '../../../contracts/src/scene-tasks.ts';
 import type {PrevisScene} from '@mioon/contracts';
 import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
@@ -27,8 +28,10 @@ import {readMioTargetRevision} from './mio-target-revisions.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import {hasStoreTable,isProjectLayout,storeDirectories} from '../store-layout.ts';
+import {safeSceneServiceError} from '../scene-tasks.ts';
 import {registerStoreTransactionObserver,registerStoreTransactionFence} from '../store-runtime.ts';
 import type {OrdinaryServices} from '../services.ts';
+import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../provider-registry.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
@@ -50,6 +53,9 @@ import {createMioAssembly} from './mio-assembly.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {restoreTimelineFrameSubtitles} from '../timeline.ts';
 import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
+import {canvasActiveCondition,canvasActiveEdgeCondition,hasCanvasArchives,isCanvasArchived,isCanvasEdgeHidden} from '../canvas-active.ts';
+import {hasRetainedCanvasDependency} from '../canvas-retained.ts';
+import type {CanvasTarget} from '../../../contracts/src/canvas-editing.ts';
 import {usesPrevisSchema,usesTimelineFrameTransaction} from '../store-capabilities.ts';
 import {AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
 import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
@@ -201,6 +207,17 @@ export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;b
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
 interface SnapshotEntry {kind:string;id:string;table:string;value:Value;revision:number}
 type Snapshot=Record<string,SnapshotEntry>;
+type ChangeEntry={before?:SnapshotEntry;after?:SnapshotEntry};
+function archivedCanvasTarget(db:Store['db'],kind:string,id:string,value?:Value):boolean{
+ if(kind==='shot'||kind==='node')return isCanvasArchived(db,kind==='shot'?'shots':'nodes',id);
+ return kind==='edge'&&isCanvasEdgeHidden(db,{id,source:value?.source,target:value?.target});
+}
+function archivedCanvasChange(db:Store['db'],entry:ChangeEntry):boolean{
+ const identity=entry.after??entry.before;
+ if(!identity)return false;
+ return archivedCanvasTarget(db,identity.kind,identity.id,identity.value)||
+  (identity.kind==='edge'&&entry.before!==undefined&&isCanvasEdgeHidden(db,entry.before.value));
+}
 const rowTables:Readonly<Record<string,string>>={shots:'shot',nodes:'node',edges:'edge',jobs:'job',assets:'asset',versions:'version',exports:'export'};
 const extraTables:Readonly<Record<string,{kind:string;id:string}>>={asset_ranges:{kind:'asset_range',id:'assetId'},asset_dispositions:{kind:'asset_disposition',id:'assetId'},asset_annotations:{kind:'asset_annotation',id:'assetId'},subjects:{kind:'subject',id:'id'},subject_versions:{kind:'subject_version',id:'id'},subject_bindings:{kind:'subject_binding',id:'id'},image_tasks:{kind:'image_task',id:'id'},image_groups:{kind:'image_group',id:'id'},image_versions:{kind:'image_version',id:'id'},frame_tasks:{kind:'frame_task',id:'id'}};
 const key=(kind:string,id:string):string=>`${kind}:${id}`;
@@ -262,9 +279,9 @@ function undoEntries(change:AgentTaskChange):Array<{before?:SnapshotEntry;after?
  }
  return entries.length===change.targets.length&&new Set(entries.map(entry=>key((entry.after??entry.before)!.kind,(entry.after??entry.before)!.id))).size===entries.length?entries:null;
 }
-function undoDisposition(change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[],revision:(target:AgentTaskTarget)=>number,claimed:(target:AgentTaskTarget)=>boolean):UndoDisposition{
+function undoDisposition(store:Store,change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[],revision:(target:AgentTaskTarget)=>number,claimed:(target:AgentTaskTarget)=>boolean):UndoDisposition{
  if(change.status!=='applied'||!change.reversible)return 'retain';
- const entries=undoEntries(change);if(!entries||!frameDependenciesMatch(change,current,expected)||expected.some(claimed))return 'blocked';
+ const entries=undoEntries(change);if(!entries||!frameDependenciesMatch(change,current,expected)||expected.some(claimed)||entries.some(entry=>archivedCanvasChange(store.db,entry)))return 'blocked';
  const unchanged=entries.every(entry=>{const identity=(entry.after??entry.before)!,found=current[key(identity.kind,identity.id)];return canonical(comparableUndo(found?.value,entry.after))===canonical(comparableUndo(entry.after?.value,entry.after));});
  if(expected.every(target=>revision(target)===target.revision))return unchanged?'undo':'blocked';
  // A revision mismatch alone also describes ABA or an incomplete compound
@@ -305,12 +322,24 @@ function projectFileImportUndo(store:Store,change:AgentTaskChange):{proof:Projec
  catch(error){if(object(error)&&error.code==='AGENT_TASK_INVALID_TARGET')return null;throw error;}
  return {proof,entry:{kind:'asset',table:'assets',id:proof.assetId,revision:proof.assetRevision,value:afterValue}};
 }
-function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>):UndoDisposition{
+/** An older Mio creation can still be compensated by removing its row, but
+ * no retained user canvas patch may depend on that identity for undo/redo. */
+function retainedCanvasDependency(store:Store,projectId:string,entries:ChangeEntry[]):boolean{
+ const deleted:CanvasTarget[]=[];
+ for(const {before,after} of entries){
+  if(before||!after)continue;
+  const {kind,id}=after;
+  if(kind==='shot'||kind==='node'||kind==='edge')deleted.push({kind,id});
+ }
+ return deleted.length>0&&hasRetainedCanvasDependency(store.db,projectId,deleted);
+}
+function undoDependencies(store:Store,change:AgentTaskChange,current:Snapshot,entries:ChangeEntry[]):UndoDisposition{
  if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
   const owned=projectFileImportUndo(store,change);if(!owned||!isProjectStore(store))return 'blocked';
   return readMioProjectImportDependencies(store,owned.proof.assetId).status==='clear'?'undo':'blocked';
  }
- const {db}=store,removedEdges=new Set(entries.filter(entry=>!entry.before&&entry.after?.kind==='edge').map(entry=>entry.after!.id));
+ const {db}=store;if(entries.some(entry=>archivedCanvasChange(db,entry))||retainedCanvasDependency(store,change.projectId,entries))return 'blocked';
+ const removedEdges=new Set(entries.filter(entry=>!entry.before&&entry.after?.kind==='edge').map(entry=>entry.after!.id));
  const timelineEntries=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
  if(timelineEntries.length){
   // Validate the same merged aggregate as actual compensation. Independent
@@ -373,7 +402,7 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
   if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   if(change.status!=='applied'||!change.reversible){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   const expected=agentTaskUndoTargets(change,chain);
-  let disposition=blocked?'blocked':undoDisposition(change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
+  let disposition=blocked?'blocked':undoDisposition(store,change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
   if(disposition==='blocked'){blocked=true;continue;}
   if(disposition!=='undo')continue;
   for(const entry of undoEntries(change)!){const identity=(entry.after??entry.before)!,id=key(identity.kind,identity.id);if(entry.before)current[id]=structuredClone(entry.before);else if(reversibleMetadata.has(identity.kind)){const value=defaultMetadataCompensation(identity.kind,identity.value);if(value)current[id]={...identity,value};else delete current[id];}else delete current[id];}
@@ -384,7 +413,7 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
 /** Recheck supersession within the same transaction as its journal record. */
 export function agentTaskChangeWasModified(store:Store,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
  assertProjectStore(store);
- return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
+ return undoDisposition(store,change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
 }
 function differences(before:Snapshot,after:Snapshot,frameTransaction=false):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
  const result:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
@@ -476,12 +505,50 @@ export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
+function withoutMockProvider(schema:unknown):unknown{
+ if(!object(schema)||!object(schema.properties)||!object(schema.properties.providerId))throw Error('The generation tool must declare provider IDs');
+ const {properties}=schema,providerId=schema.properties.providerId;
+ if(typeof providerId.const==='string'&&providerId.const!=='mock')return schema;
+ if(!Array.isArray(providerId.enum))throw Error('The generation tool must declare a provider enum');
+ return {...schema,properties:{...properties,providerId:{...providerId,enum:providerId.enum.filter(id=>id!=='mock')}}};
+}
+
+function withoutMockGeneration(tool:AgentTaskToolDefinition):AgentTaskToolDefinition{
+ if(tool.operation==='image.generate'){
+  const parameters=tool.parameters;
+  if(!object(parameters)||!Array.isArray(parameters.anyOf))throw Error('The image tool must declare generation and edit branches');
+  return {...tool,description:'通过已配置的服务生成图像。官方 OpenAI 可选择单张项目内 PNG 作为编辑来源，原图保留。新请求须先准备 review 并批准；不自动替换镜头、引用或时间线',parameters:{...parameters,anyOf:parameters.anyOf.map(withoutMockProvider)}};
+ }
+ if(tool.operation==='generation.submit'){
+  const parameters=withoutMockProvider(tool.parameters);
+  if(!object(parameters)||!object(parameters.properties)||!object(parameters.properties.parameters)||!object(parameters.properties.parameters.properties))throw Error('The video tool must declare generation settings');
+  const settings=parameters.properties.parameters,fields={...parameters.properties.parameters.properties};
+  delete fields.scenario;
+  delete fields.delayMs;
+  return {...tool,description:'使用已配置的供应商提交镜头生成，原请求可以读取已保存回执。先查询可用服务和模型；提交遵循付费确认设置',parameters:{...parameters,properties:{...parameters.properties,parameters:{...settings,properties:fields}}}};
+ }
+ return tool;
+}
+
+export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=false,frameTransaction=false}:{diagnostic?:boolean;frameTransaction?:boolean}={}):AgentTaskToolDefinition[]{
+ const tools=diagnostic?listDiagnosticAgentTaskTools():listAgentTaskTools(frameTransaction);
+ return mockAllowed?tools:tools.map(withoutMockGeneration);
+}
+
 export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
  const catalogProfile='native';
  const frameProject=usesTimelineFrameTransaction(store.db);
- const list=()=>listAgentTaskTools(frameProject);
- const liveGenerationEnabled=()=>services.configuration.liveEnabled();
+ const {generationAvailability}=services;
+ const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject});
+ const diagnosticList=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
+ function generationServiceIssue({operation,input}:PreparedAgentTaskTool):typeof GENERATION_SERVICE_UNAVAILABLE|'IMAGE_SETTINGS_SELECTION_REQUIRED'|undefined{
+  if(operation!=='generation.submit'&&operation!=='image.generate')return;
+  if(input.providerId==='mock')return generationAvailability.mockAllowed?undefined:GENERATION_SERVICE_UNAVAILABLE;
+  const provider=typeof input.providerId==='string'?input.providerId:undefined;
+  if(operation==='image.generate'&&provider==='openai-compatible'&&generationAvailability.imageSelectionRequired())return 'IMAGE_SETTINGS_SELECTION_REQUIRED';
+  if(!(operation==='generation.submit'?generationAvailability.video(provider):generationAvailability.image(provider)))return GENERATION_SERVICE_UNAVAILABLE;
+ }
  const testApplication=testProjectAppLibrary(store);
  const rules=injectedRules??(isProjectStore(store)&&testApplication?createMioProjectRules({store,application:testApplication}):undefined);
  const {db}=store;
@@ -560,18 +627,22 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  const owned=(table:string,id:unknown,projectId:string):Value=>{
   if(typeof id!=='string')return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');
   const row=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(id);if(!row||row.projectId!==projectId)return fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
-  const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');return record;
+  const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');
+  const kind=rowTables[table];
+  if(kind&&archivedCanvasTarget(db,kind,id,record))return fail('AGENT_TASK_TARGET_CHANGED','画布目标已删除，请重新读取当前画布');
+  return record;
  };
+ const liveShotIds=(projectId:string):string[]=>db.prepare(`SELECT id FROM shots WHERE projectId=? AND ${canvasActiveCondition(db)} ORDER BY id`).all(projectId).map(row=>String(row.id));
  async function parameterFeedback({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}){
   operation=taskToolOperation(operation);if(operation===AGENT_TASK_ASK_OPERATION)return agentTaskQuestionFeedback(input);
   if(operation===AGENT_TASK_SKILL_READ_OPERATION)return agentTaskSkillReadFeedback(input);
-  if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION)return agentTaskContinuityFeedback(input,shotId=>db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId===projectId);
+  if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION)return agentTaskContinuityFeedback(input,shotId=>db.prepare(`SELECT 1 FROM shots WHERE id=? AND projectId=? AND ${canvasActiveCondition(db)}`).get(shotId,projectId)!==undefined);
   if(operation===AGENT_TASK_GOAL_SET_OPERATION)return normalizeAgentTaskGoals(input)?null:{message:goalParameterMessage,issues:[{field:'conditions',reason:'invalid_value' as const}]};
   if(operation==='previs.scene.set'&&object(input)){
    rejectHostFields(input);
    // The current scene only adds the size check after exports are kept.
    let current:PrevisScene|undefined;
-   if(typeof input.nodeId==='string'){beforeTargetRead?.({kind:'node',id:input.nodeId});const node=store.get('nodes',input.nodeId);if(isPrevisNodeRecord(node)&&node.projectId===projectId)current=node.scene;}
+   if(typeof input.nodeId==='string'){beforeTargetRead?.({kind:'node',id:input.nodeId});const node=store.get('nodes',input.nodeId);if(isPrevisNodeRecord(node)&&node.projectId===projectId&&!isCanvasArchived(db,'nodes',input.nodeId))current=node.scene;}
    return agentTaskPrevisSceneFeedback(input,current);
   }
   if(operation!=='generation.submit'||!object(input))return null;
@@ -637,8 +708,13 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const parsed=agentTaskContinuityReportSchema.safeParse(input);
    if(!parsed.success)fail('VALIDATION_ERROR',`连续性检查参数无效：最多${AGENT_TASK_CONTINUITY_LIMITS.issues}条，每条一个类别、1-${AGENT_TASK_CONTINUITY_LIMITS.shots}个不重复的镜头和一句不超过${AGENT_TASK_CONTINUITY_LIMITS.text}字的说明`);
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
-   for(const issue of parsed.data.issues)for(const shotId of issue.shotIds)if(db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId!==projectId)fail('VALIDATION_ERROR','连续性检查引用的镜头不属于当前项目');
-   return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets:[],before:{}};
+   const shotIds=[...new Set(parsed.data.issues.flatMap(issue=>issue.shotIds))];
+   for(const shotId of shotIds){
+    if(db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId!==projectId)fail('VALIDATION_ERROR','连续性检查引用的镜头不属于当前项目');
+    if(isCanvasArchived(db,'shots',shotId))fail('AGENT_TASK_TARGET_CHANGED','连续性检查引用的镜头已删除');
+   }
+   const referencedTargets=hasCanvasArchives(db)?shotIds.map(id=>({kind:'shot',id,revision:readRevision(store,projectId,'shot',id)})):[];
+   return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets,before:{}};
   }
   // C8 v2: reading a previs scene only names one owned previs node.
   if(operation===AGENT_TASK_PREVIS_INSPECT_OPERATION){
@@ -712,10 +788,14 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    for(const entry of Object.values(before))if(frameChild(entry.kind))add(entry.kind,entry.id);
   }
   if(operation==='project.rename'||operation==='project.notes.set')add('project',projectId);
-  if(operation==='shot.reorder')for(const item of Object.values(before).filter(item=>item.kind==='shot'))add(item.kind,item.id);
+  const includesShots=operation==='shot.reorder'||operation==='timeline.seed';
+  const liveShots=includesShots&&hasCanvasArchives(db)?new Set(liveShotIds(projectId)):undefined;
+  const liveShot=(item:SnapshotEntry):boolean=>item.kind==='shot'&&(!liveShots||liveShots.has(item.id));
+  if(operation==='shot.reorder')for(const item of Object.values(before).filter(liveShot))add(item.kind,item.id);
   // Aggregate operations genuinely affect all these targets. A single clip or
   // subtitle edit deliberately does not claim the complete timeline revision.
-  if(['timeline.seed','timeline.loudness.apply','timeline.clip.splitAtScenes'].includes(operation))for(const item of Object.values(before).filter(item=>item.kind.startsWith('timeline_')||operation==='timeline.seed'&&item.kind==='shot'))add(item.kind,item.id);
+  if(['timeline.seed','timeline.loudness.apply','timeline.clip.splitAtScenes'].includes(operation))for(const item of Object.values(before))
+   if(item.kind.startsWith('timeline_')||operation==='timeline.seed'&&liveShot(item))add(item.kind,item.id);
   if(operation.startsWith('asset.range.'))add('asset_range',String(hostInput.assetId));
   if(operation==='asset.annotation.set')add('asset_annotation',String(hostInput.assetId));
   if(operation==='asset.disposition.set')add('asset_disposition',String(hostInput.assetId));
@@ -759,10 +839,15 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   if(prepared.operation===AGENT_TASK_ASK_OPERATION)fail('AGENT_TASK_INVALID_TOOL','提问由宿主等待用户回答，不会执行');
   const beforeEffect=():void=>{
    context.beforeEffect();
-   if(prepared.operation==='shot.reorder'){
-    const expected=Object.values(prepared.before).filter(item=>item.kind==='shot').map(item=>item.id).sort();
-    const current=db.prepare('SELECT id FROM shots WHERE projectId=? ORDER BY id').all(prepared.projectId).map(row=>String(row.id));
-    if(canonical(expected)!==canonical(current))fail('AGENT_TASK_TARGET_CHANGED','镜头集合已变化，请重新规划排序');
+   const archives=hasCanvasArchives(db);
+   if(archives)for(const {kind,id} of prepared.referencedTargets??prepared.targets){
+    // An endpoint archive can hide an edge without changing that edge's revision.
+    const value=kind==='edge'?store.get('edges',id):undefined;
+    if(archivedCanvasTarget(db,kind,id,object(value)?value:undefined))fail('AGENT_TASK_TARGET_CHANGED','画布目标已删除，请重新读取当前画布');
+   }
+   if(prepared.operation==='shot.reorder'||prepared.operation==='timeline.seed'&&archives){
+    const expected=(prepared.referencedTargets??prepared.targets).filter(target=>target.kind==='shot').map(target=>target.id).sort();
+    if(canonical(expected)!==canonical(liveShotIds(prepared.projectId)))fail('AGENT_TASK_TARGET_CHANGED','镜头集合已变化，请重新规划');
    }
   };
   const beforeTimelineFrameWrite=prepared.frameTransaction?(timeline:unknown):void=>{
@@ -880,7 +965,16 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    const parsed:unknown=parse(prepared.operation as OperationName,input);
     let value:unknown;
     try{value=prepared.operation==='image.generate'&&input.providerId!=='mock'?await generateApprovedImage(parsed,prepared,context):await services.call(prepared.operation,parsed,{signal:context.signal});}
-    catch(error){if(origin.effectFailure)throw origin.effectFailure;throw error;}
+    catch(error){
+     if(origin.effectFailure)throw origin.effectFailure;
+     if(prepared.operation==='scene.shots.create'&&error instanceof AppError&&error.code==='SCENE_PROJECT_ASPECT_UNSUPPORTED'){
+      const refused=safeSceneServiceError(error).details?.sceneOutcome;
+      if(object(refused)&&refused.status==='not_accepted'&&refused.operation===prepared.operation&&refused.projectId===prepared.projectId&&
+       refused.requestId===context.requestId&&refused.inputHash===createHash('sha256').update(canonicalSceneInput(parsed)).digest('hex'))
+       throw new AppError(error.code,error.message,error.status,{mutationOutcome:'not_applied'});
+     }
+     throw error;
+    }
     if(origin.effectFailure)throw origin.effectFailure;
     let result:AgentTaskJson;
     if(prepared.operation==='timeline.loudness.prepare'){
@@ -890,9 +984,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      // never mint a usable digest for a stripped or truncated observation.
      if(!isTimelineMixLoudnessResponse(result,parsed)||canonical(result)!==canonical(value))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度报告无法完整提供给助理');
      if(isTimelineLoudnessApplicableReport(result))result={...result,candidateDigest:await timelineLoudnessCandidateDigest(result)};
-    }else if(prepared.operation==='provider.list'&&Array.isArray(value)){
-     const enabled=liveGenerationEnabled();
-     result=projectResult(value.map(provider=>object(provider)?{...provider,liveGenerationEnabled:enabled}:provider));
     }else if(prepared.operation==='timeline.format.get'){
      if(!isTimelineFormatReadResponse(value,input))fail('AGENT_TASK_INVALID_TOOL_RESULT','画框读取不属于当前项目');
      result=projectResult(value);
@@ -904,17 +995,19 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   const limit=input.limit??20,after=input.after??'';
   if(Object.keys(input).some(field=>!['limit','after'].includes(field))||!Number.isInteger(limit)||Number(limit)<1||Number(limit)>20||typeof after!=='string'||after!==''&&!/^[a-f0-9-]{36}$/iu.test(after))fail('AGENT_TASK_INVALID_TOOL','画布观察参数无效');
   const table=operation==='node.inspect'?'nodes':'edges';
-  const rows=db.prepare(`SELECT id,projectId,CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND 32768 THEN data END AS data FROM ${table} WHERE projectId=? AND id>? ORDER BY id LIMIT ?`).all(projectId,after,Number(limit)+1);
+  const active=table==='nodes'?canvasActiveCondition(db,'item'):canvasActiveEdgeCondition(db,'item');
+  const rows=db.prepare(`SELECT id,projectId,CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND 32768 THEN data END AS data FROM ${table} item WHERE projectId=? AND id>? AND ${active} ORDER BY id LIMIT ?`).all(projectId,after,Number(limit)+1);
   const items=rows.slice(0,Number(limit)).map(row=>{if(typeof row.data!=='string'||row.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','画布记录无法验证');const value:unknown=JSON.parse(row.data);if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','画布记录无法验证');
    return projectResult(Object.fromEntries((table==='nodes'?['id','projectId','revision','type','label','text','assetId','position']:['id','projectId','kind','role','source','target']).filter(field=>Object.hasOwn(value,field)).map(field=>[field,value[field]])));
   });
   return {projectId,items,nextAfter:rows.length>Number(limit)?String(rows[Number(limit)-1]!.id):null};
  }
  async function generateApprovedImage(input:unknown,prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<unknown>{
+  if(prepared.input.providerId==='openai-compatible'&&generationAvailability.imageSelectionRequired())throw new AppError('IMAGE_SETTINGS_SELECTION_REQUIRED','有多个自定义图片服务，请在生成面板里选择。',409,{mutationOutcome:'not_applied'});
   const profiles=await services.call('image.profile.list',{includeSettingsRevision:true});
   const items=object(profiles)&&Array.isArray(profiles.items)?profiles.items:[];
-  const profile=items.find(item=>object(item)&&item.providerId===prepared.input.providerId&&item.model===prepared.input.model);
-  if(!object(profile)||typeof profile.settingsRevision!=='number')fail('IMAGE_LIVE_DISABLED','图像配置尚未允许生成');
+  const profile=items.find(item=>object(item)&&item.enabled===true&&item.providerId===prepared.input.providerId&&item.model===prepared.input.model);
+  if(!object(profile)||typeof profile.settingsRevision!=='number')throw generationServiceUnavailable();
   const review=await services.call('image.review.prepare',{input,settingsRevision:profile.settingsRevision},{signal:context.signal});
   if(!object(review)||typeof review.id!=='string'||typeof review.revision!=='number')fail('IMAGE_REVIEW_INVALID','图像审批无法验证');
   context.beforeEffect();return services.imageApproval({projectId:prepared.projectId,reviewId:review.id,expectedRevision:review.revision});
@@ -941,27 +1034,32 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   return ['succeeded','failed','cancelled','cancelled_before_dispatch','cancelled_before_start'].includes(String(state))?projectResult(value):null;
  }
  function recoverWait(prepared:PreparedAgentTaskTool):AgentTaskJson|null{if(prepared.operation!=='task.wait')fail('AGENT_TASK_INVALID_TOOL','此步骤不是等待任务');return readWaitResult(prepared.projectId,prepared.input);}
- function recoverLocalUnknown(prepared:PreparedAgentTaskTool,input:{runId:string;stepId:string;requestId:string}):AgentTaskLocalRecovery|null{
+ function recoverLocalUnknown(input:{projectId:string;runId:string;stepId:string;requestId:string}):AgentTaskLocalRecovery|null{
   const run=journal.run(input.runId),step=journal.step(input.stepId);
-  if(input.requestId!==step.id||run.projectId!==prepared.projectId||step.runId!==run.id||step.status!=='unknown'||step.result!==undefined||step.toolCall?.name!==list().find(tool=>tool.operation===prepared.operation)?.name)return null;
-  if(journal.snapshot(run.id).changes.some(change=>change.stepId===step.id))return null;
-  if(prepared.risk==='read_only'&&prepared.operation!=='task.wait')return {outcome:'not_applied',reason:'read_only'};
-  if(prepared.risk==='paid'){
+  if(input.requestId!==step.id||run.projectId!==input.projectId||step.runId!==run.id||step.status!=='unknown'||step.result!==undefined||!step.toolCall)return null;
+  // A dispatched step already has a validated name and tier. Its proof uses
+  // the original request, even if the former targets are no longer live.
+  const toolCall=step.toolCall,tool=list().find(item=>item.name===toolCall.name);
+  if(!tool||journal.snapshot(run.id).changes.some(change=>change.stepId===step.id))return null;
+  const {operation}=tool;
+  const tier=step.tier??prepare({projectId:input.projectId,operation,input:toolCall.arguments}).risk;
+  if(tier==='read_only'&&tool.risk==='read_only'&&operation!=='task.wait')return {outcome:'not_applied',reason:'read_only'};
+  if(tier==='paid'&&tool.risk==='paid'){
    // Only a worker dispatching a queued job or image task reaches a provider, and dispatch records the step's cost.
    // Acceptance commits that record, its request receipt and the v2 job origin in one transaction; with none of
    // them nothing was accepted, sent or billed. Any present record keeps the step for provider reconciliation.
-   const receipts=prepared.operation==='generation.submit'?["SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?"]:prepared.operation==='image.generate'?['SELECT 1 FROM image_requests WHERE requestId=?','SELECT 1 FROM image_tasks WHERE requestId=?']:null;
+   const receipts=operation==='generation.submit'?["SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?"]:operation==='image.generate'?['SELECT 1 FROM image_requests WHERE requestId=?','SELECT 1 FROM image_tasks WHERE requestId=?']:null;
    if(!receipts||step.cost!==undefined&&step.cost!=='pending')return null;
    if(receipts.some(sql=>db.prepare(sql).get(input.requestId))||db.prepare(`SELECT 1 FROM ${mioTable(db,'origins')} WHERE runId=? AND stepId=?`).get(input.runId,input.stepId))return null;
    return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   }
-  if(prepared.risk!=='local_reversible'||!reversibleOperations.includes(prepared.operation as typeof reversibleOperations[number]))return null;
+  if(tier!=='local_reversible'||!reversibleOperations.includes(operation as typeof reversibleOperations[number]))return null;
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
   // did. A present domain receipt is preserved for explicit result inspection.
   // A previs save always changes its node, so its v2 completion and Change
   // commit with it; a receipt pruned after newer saves cannot hide a commit.
-  const table=prepared.operation==='project.rename'||prepared.operation==='project.notes.set'?'project_mutation_requests':prepared.operation.startsWith('previs.')?'previs_requests':prepared.operation.startsWith('reference.')?'reference_requests':prepared.operation==='subject.binding.set'?'subject_requests':prepared.operation==='asset.range.set'?'asset_range_requests':prepared.operation==='asset.disposition.set'?'asset_disposition_requests':prepared.operation==='asset.annotation.set'?'asset_annotation_requests':prepared.operation.startsWith('timeline.')?'timeline_requests':prepared.operation.startsWith('edge.')?null:'mutation_requests';
+  const table=operation==='project.rename'||operation==='project.notes.set'?'project_mutation_requests':operation.startsWith('previs.')?'previs_requests':operation.startsWith('reference.')?'reference_requests':operation==='subject.binding.set'?'subject_requests':operation==='asset.range.set'?'asset_range_requests':operation==='asset.disposition.set'?'asset_disposition_requests':operation==='asset.annotation.set'?'asset_annotation_requests':operation.startsWith('timeline.')?'timeline_requests':operation.startsWith('edge.')?null:'mutation_requests';
   if(table&&db.prepare(`SELECT 1 FROM ${table} WHERE requestId=?`).get(input.requestId))return null;
   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
  }
@@ -970,7 +1068,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
  function currentTargets(projectId:string,targets:readonly Pick<AgentTaskTarget,'kind'|'id'>[]):AgentTaskJson[]{
   const saved=snapshot(store,projectId);
   return targets.slice(0,20).map(target=>{const value=saved[key(target.kind,target.id)]?.value;
-   return {kind:target.kind,id:target.id,value:value===undefined?null:target.kind==='node'&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):projectResult(value)};});
+   return {kind:target.kind,id:target.id,value:value===undefined||archivedCanvasTarget(db,target.kind,target.id,value)?null:target.kind==='node'&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):projectResult(value)};});
  }
  async function stageImport(input:{projectId:string;requestId:string;name:string;mimeType:string;dataBase64:string}):Promise<AgentTaskJson>{
   if(!store.get('projects',input.projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
@@ -1031,6 +1129,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(dependencies==='blocked')fail('AGENT_TASK_TARGET_CHANGED','目标已有新的依赖，无法撤销');
    if(dependencies==='retain'){context.retainInside(change,'保留生成记录及产物所需镜头');return {targets:[],retained:true};}
    context.beforeCompensation?.();
+   if(entries.some(entry=>archivedCanvasChange(db,entry))||retainedCanvasDependency(store,change.projectId,entries))fail('AGENT_TASK_TARGET_CHANGED','画布目标已删除或已有画布历史引用，无法撤销');
    const timelineTargets=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
    // References are removed before their source node/shot. Restoration inserts
    // the owning rows first, then edges, so all domain relations remain valid.
@@ -1082,6 +1181,6 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
 
- return {list,diagnosticList:listDiagnosticAgentTaskTools,liveGenerationEnabled,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,diagnosticList,generationServiceIssue,prepare,prepareProjectFileImport,lookupProjectFileImport,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

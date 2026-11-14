@@ -22,14 +22,14 @@ pnpm install --frozen-lockfile
 pnpm run doctor
 pnpm build
 test ! -e "$HOME/Mioon-core-trial-20261013" &&
-  env -u MIOON_TOKEN -u MIOON_DIST_DIR MIOON_DATA_DIR="$HOME/Mioon-core-trial-20261013" MIOON_ENABLE_LIVE_PROVIDER=0 pnpm start
+  env -u MIOON_TOKEN -u MIOON_DIST_DIR MIOON_DATA_DIR="$HOME/Mioon-core-trial-20261013" pnpm start
 ```
 
 最后两行仅在示例试用目录不存在时启动；若目录已存在，本次不会启动服务，请换一个确认未用过的名字并保持两处路径一致，不删除原目录。后续重开使用首次选定的同一目录；若当时选了别的名字，下面也要同步替换。先正常关闭旧服务，再执行：
 
 ```sh
 test -d "$HOME/Mioon-core-trial-20261013" &&
-  env -u MIOON_TOKEN -u MIOON_DIST_DIR MIOON_DATA_DIR="$HOME/Mioon-core-trial-20261013" MIOON_ENABLE_LIVE_PROVIDER=0 pnpm start
+  env -u MIOON_TOKEN -u MIOON_DIST_DIR MIOON_DATA_DIR="$HOME/Mioon-core-trial-20261013" pnpm start
 ```
 
 目录不存在就停下核对原路径，不创建替代项目，也不要手工删除工作区锁。
@@ -54,7 +54,7 @@ test -d "$HOME/Mioon-core-trial-20261013" &&
 - 普通工作区的[限定草稿恢复](RECOVERY-STORAGE-SCOPE.md)覆盖片段属性、镜头标题/提示词、成片名称，以及[最近项目定位](LAST-PROJECT.md)。明确持久化的业务意图保留原请求 ID；重开、恢复表单或只读核对不自动提交业务、生成或批准提案。本地草稿旁文件不进入当前备份；容量、保留规则及私密明文范围见各域说明。其他表单和最后未确认的输入不在保证内，屏幕上的草稿保存/失败提示才是该域的确认状态。原生成片名称强杀、HTTP/进程丢 ACK、正常退出分别有证据，不冒充所有原生崩溃或断电路径已覆盖。
 - [项目自动备份](PROJECT-BACKUPS.md)按项目保存独立文件，并通过 `project.backup.*` 检查或恢复成新项目文件。旧工作区离线备份、恢复副本和原生目录选择器已退役；当前没有备份设置面板。
 - 可选内置助手名为 Mio，在取得当前项目的发送授权后，可连续查看、修改和生成项目内容。连续尝试没有进展时会暂停，可撤销的本地操作默认直接执行，不可撤销的本地操作和付费操作默认需要确认；每处变化都有记录，可撤销的变化可以回退。Mio 不提供设置、备份恢复、任务处置或授权管理工具，结果未知时不会自动重发。模型调用本身也可能计费，首次核心试用不需要配置 Mio。用法见 [Mio 使用说明](MIO-GUIDE.zh-CN.md)，执行与恢复规则见 [Mio v2](AGENT-TASKS-V2.md)；外部 CLI/MCP 另按共享契约和原请求恢复规则使用。
-- Mock 是带标记的合成流程测试，不证明真实生成质量、角色一致性或供应商可用。真实模型仍需另行核实配置、明确素材范围与费用/预算批准；密钥只通过安全配置输入，永不发到聊天。视频的 `MIOON_ENABLE_LIVE_PROVIDER=0` 不是 Mio、Images、Comfy 等所有联网功能的总开关。
+- Mock 是带标记的合成流程测试，不证明真实生成质量、角色一致性或供应商可用。真实模型仍需另行核实配置、明确素材范围与费用/预算批准；密钥只通过安全配置输入，永不发到聊天。首次试用请使用未配置供应商密钥的终端。
 
 这里是本地、单用户、有限源码试用。没有自动云同步，也没有已验证的 Mac/Windows 安装包、签名/公证或自动更新承诺。Git 推送只同步选定源码，不传输你的项目/素材，也不建立这些平台或真实模型的认证。
 

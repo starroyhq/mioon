@@ -46,7 +46,7 @@ export const agentSettingsUpdateSchema=metadata.extend({secretActions:z.array(ag
 export type AgentSettingsUpdate=z.infer<typeof agentSettingsUpdateSchema>;
 export const agentExecutionSettingsSchema=z.object({revision,binding:agentSettingsBindingSchema,configuration:agentConfigurationSchema,secret:secretStatus}).strict();
 export type AgentExecutionSettings=z.infer<typeof agentExecutionSettingsSchema>;
-export const agentSettingsStorageSchema=z.object({persistentAvailable:z.boolean(),sessionScope:z.enum(['app','server']),reasonCode:z.enum(['WEB_SESSION_ONLY','OS_SECRET_STORE_UNAVAILABLE','LINUX_BASIC_TEXT']).nullable()}).strict();
+export const agentSettingsStorageSchema=z.object({persistentAvailable:z.boolean(),sessionScope:z.enum(['app','server']),reasonCode:z.enum(['WEB_SESSION_ONLY','OS_SECRET_STORE_UNAVAILABLE','OS_SECRET_STORE_PENDING','LINUX_BASIC_TEXT']).nullable()}).strict();
 export const agentSettingsSnapshotSchema=z.object({revision,services:z.array(agentServiceSnapshotSchema).min(9).max(19),mioSelection:agentMioSelectionSchema.nullable(),mioSelectionRevision:revision,execution:agentExecutionSettingsSchema.nullable(),storage:agentSettingsStorageSchema,presets:agentProviderCatalogSchema,scope:z.literal('settings_only'),verification:z.literal('not_tested'),notices:z.array(z.enum(AGENT_SETTINGS_NOTICES)).max(3)}).strict().superRefine((value,context)=>{
  collectionIssues(value,context);
  try{

@@ -5,24 +5,25 @@ import {Textarea} from '@mioon/ui/components/textarea';
 import {useConfirmation} from '@mioon/ui/components/workbench-confirm';
 import {message} from '../../../packages/i18n/src/index.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
-import {VIDEO_PROVIDER_NAMES, VIDEO_REGIONS, defaultVideoModels, normalizeCompatibleVideoBaseUrl} from '../../../packages/contracts/src/video-providers.ts';
-import type {CompatibleVideoCheckResult} from '../../../packages/contracts/src/video-providers.ts';
+import {VIDEO_PROVIDER_NAMES, VIDEO_REGIONS, defaultVideoModels} from '../../../packages/contracts/src/video-providers.ts';
+import type {DraftServiceProbeResult} from '../../../packages/contracts/src/draft-service-probe.ts';
+import type {VideoModelsListInput} from '../../../packages/contracts/src/generation-video-settings.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {WorkbenchSelect} from './WorkspaceControls.tsx';
 import {ModelEditor} from './VideoProviderSettings.tsx';
 import {useSettingsServicesPanel} from './SettingsServicesLayout.tsx';
 import {createSettingsNavigationReporter} from './settings-navigation-state.ts';
-import {compatibleServiceHost, createVideoSettingsClient, videoSettingsRequestEndpoint} from './video-settings.ts';
+import {compatibleServiceHost, createVideoSettingsClient, videoDraftProbeInput, videoSettingsRequestEndpoint} from './video-settings.ts';
 import type {VideoSettingsClient} from './video-settings.ts';
-import {createGenerationVideoServicesSession, generationVideoAvailable, generationVideoBusy, generationVideoDirty, initialGenerationVideoState} from './generation-video-services.ts';
+import {createGenerationVideoServicesSession, generationVideoAvailable, generationVideoBusy, generationVideoDirty, generationVideoDraftDirty, initialGenerationVideoState} from './generation-video-services.ts';
 import type {GenerationVideoDraft, GenerationVideoServicesSession, GenerationVideoState} from './generation-video-services.ts';
 import type {GenerationServiceDomain, GenerationServiceDomainOptions} from './generation-services-settings.ts';
 import './video-settings.css';
 
 const regions: Record<string, MessageKey> = {global: 'video.providers.region.global', 'cn-beijing': 'video.providers.region.beijing', 'ap-southeast-1': 'video.providers.region.singapore', cn: 'video.providers.region.cn', custom: 'video.providers.region.custom'};
 const documentVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
-type CheckResult = CompatibleVideoCheckResult | {result: 'failed'};
-function sameRecipient(baseUrl: string | undefined, saved: string | undefined): boolean {try {return Boolean(saved) && normalizeCompatibleVideoBaseUrl(baseUrl) === saved;} catch {return false;}}
+type ProbeOperation = VideoModelsListInput['operation'];
+interface ProbeDisplay {operation: ProbeOperation; draft: boolean; result: DraftServiceProbeResult}
 interface DetailProps {
   draft: GenerationVideoDraft;
   state: GenerationVideoState;
@@ -40,39 +41,69 @@ function VideoServiceDetail(props: DetailProps) {
   const {t} = useI18n(), confirm = useConfirmation(), panel = useSettingsServicesPanel();
   const {draft, state, session} = props, configuration = draft.configuration;
   const keyInput = useRef<HTMLInputElement | null>(null), mounted = useRef(false), current = useRef(props), active = useRef(false), checkEpoch = useRef(0), abort = useRef<AbortController | null>(null);
-  const [checking, setChecking] = useState(false), [check, setCheck] = useState<CheckResult | null>(null);
-  const checkText = (result: CheckResult): string => {
-    const status = 'httpStatus' in result ? String(result.httpStatus ?? '') : '';
-    switch (result.result) {case 'ok': return t('video.providers.check.ok'); case 'unauthorized': return t('video.providers.check.unauthorized', {status}); case 'unsupported': return t('video.providers.check.unsupported', {status}); case 'denied': return t('video.providers.check.denied'); case 'unreachable': return t('video.providers.check.unreachable'); case 'http_error': return t('video.providers.check.httpError', {status}); default: return t('video.providers.check.failed');}
+  const [checking, setChecking] = useState(false), [check, setCheck] = useState<ProbeDisplay | null>(null);
+  const checkText = ({operation, result}: ProbeDisplay): string => {
+    const status = String(result.httpStatus ?? '');
+    switch (result.result) {
+      case 'ok': return operation === 'models' ? result.models?.length
+        ? t('settings.draftKey.modelCount', {count: result.models.length}) : t('settings.draftKey.modelsEmpty') : t('settings.draftKey.success');
+      case 'unauthorized': return status ? t('video.providers.check.unauthorized', {status}) : t('settings.draftKey.unauthorized');
+      case 'unsupported': return t(operation === 'models' ? 'settings.draftKey.listUnsupported' : 'settings.draftKey.unavailable');
+      case 'denied': return t('video.providers.check.denied');
+      case 'unreachable': return t('video.providers.check.unreachable');
+      case 'http_error': return t('video.providers.check.httpError', {status});
+      default: return t('settings.draftKey.failed');
+    }
   };
   current.current = props; active.current = panel.active;
   const interactionAllowed = () => mounted.current && active.current && documentVisible() && current.current.session === session && current.current.interactionAllowed();
   const usable = () => interactionAllowed() && Boolean(current.current.session?.canEdit());
-  const invalidate = () => {++checkEpoch.current; abort.current?.abort(); abort.current = null; setChecking(false); setCheck(null); current.current.onCheckBusy(configuration.id, false);};
-  useLayoutEffect(() => {mounted.current = true; props.registerCheckCancel(draft.key, invalidate); return () => {mounted.current = false; ++checkEpoch.current; abort.current?.abort(); current.current.registerCheckCancel(draft.key, null); current.current.onCheckBusy(configuration.id, false);};}, []);
+  const invalidate = () => {++checkEpoch.current; abort.current?.abort(); abort.current = null; setChecking(false); setCheck(null); current.current.onCheckBusy(draft.key, false);};
+  useLayoutEffect(() => {mounted.current = true; props.registerCheckCancel(draft.key, invalidate); return () => {mounted.current = false; ++checkEpoch.current; abort.current?.abort(); current.current.registerCheckCancel(draft.key, null); current.current.onCheckBusy(draft.key, false);};}, []);
   useLayoutEffect(() => {if (!panel.active) invalidate();}, [panel.active]);
-  useLayoutEffect(() => {invalidate();}, [state.phase, configuration.region, configuration.workspaceId, configuration.baseUrl]);
+  useLayoutEffect(() => {invalidate();}, [state.phase, state.editorEpoch, configuration.region, configuration.workspaceId, configuration.baseUrl]);
   const change = (patch: Partial<typeof configuration>) => {
     if (!usable()) return; invalidate();
     if (patch.region !== undefined || patch.workspaceId !== undefined || patch.baseUrl !== undefined) props.clearKey(draft.key);
     session?.update(draft.key, patch);
   };
   const saved = state.snapshot?.connections.find(view => view.configuration.id === configuration.id);
-  const keyAvailable = Boolean(draft.hasKey || saved?.secret.configured && (saved.secret.storage !== 'persistent' || state.snapshot?.storage.persistentAvailable) && sameRecipient(configuration.baseUrl, saved.configuration.baseUrl));
-  const checkable = configuration.providerId === 'compatible' && panel.active && documentVisible() && props.interactionAllowed() && Boolean(session?.canEdit()) && !checking && Boolean(compatibleServiceHost(configuration)) && keyAvailable;
-  const runCheck = async () => {
-    const latest = current.current;
-    if (!usable() || abort.current || !latest.client.check || latest.draft.configuration.providerId !== 'compatible') return;
-    const value = keyInput.current?.value ?? '', owner = session, captured = structuredClone(latest.draft.configuration), token = ++checkEpoch.current;
-    const savedView = latest.state.snapshot?.connections.find(view => view.configuration.id === captured.id);
-    if (!compatibleServiceHost(captured) || !value && (!savedView?.secret.configured || savedView.secret.storage === 'persistent' && !latest.state.snapshot?.storage.persistentAvailable || !sameRecipient(captured.baseUrl, savedView.configuration.baseUrl))) return;
-    const controller = new AbortController(); abort.current = controller;
-    setCheck(null); setChecking(true); props.onCheckBusy(configuration.id, true);
+  const probeAvailable = draft.hasKey || Boolean(videoDraftProbeInput('check', configuration, draft.secretAction, '', saved, state.snapshot?.storage.persistentAvailable));
+  const checkable = panel.active && documentVisible() && props.interactionAllowed() && Boolean(session?.canEdit())
+    && !checking && Boolean(videoSettingsRequestEndpoint(configuration)) && probeAvailable;
+  const canCheck = Boolean(props.client.modelsList || configuration.providerId === 'compatible' && props.client.check);
+  const runProbe = async (operation: ProbeOperation): Promise<DraftServiceProbeResult | null> => {
+    const latest = current.current, owner = latest.session;
+    if (!usable() || abort.current || !owner) return null;
+    const observed = owner.getState();
+    const selected = observed.drafts.find(entry => entry.key === latest.draft.key);
+    if (!selected) return null;
+    const savedView = observed.snapshot?.connections.find(view => view.configuration.id === selected.configuration.id);
+    const input = videoDraftProbeInput(operation, selected.configuration, selected.secretAction,
+      keyInput.current?.value ?? '', savedView, observed.snapshot?.storage.persistentAvailable);
+    if (!input) return null;
+    const probe = latest.client.modelsList;
+    const legacy = !probe && operation === 'check' && input.providerId === 'compatible' ? latest.client.check : undefined;
+    if (!probe && !legacy) return null;
+    const token = ++checkEpoch.current, controller = new AbortController();
+    abort.current = controller;
+    setCheck(null); setChecking(true); props.onCheckBusy(draft.key, true);
+    const publishable = () => interactionAllowed() && current.current.session === owner && token === checkEpoch.current && abort.current === controller;
     try {
-      const result = await latest.client.check(value ? {source: 'draft', baseUrl: captured.baseUrl ?? '', value} : {source: 'saved', connectionId: captured.id, configurationRevision: savedView!.revision}, controller.signal);
-      if (interactionAllowed() && current.current.session === owner && token === checkEpoch.current && abort.current === controller) setCheck(result);
-    } catch {if (interactionAllowed() && token === checkEpoch.current && abort.current === controller) setCheck({result: 'failed'});}
-    finally {if (abort.current === controller) {abort.current = null; setChecking(false); current.current.onCheckBusy(configuration.id, false);}}
+      const result = probe ? await probe(input, controller.signal) : await legacy!(input.source === 'draft'
+        ? {source: 'draft', baseUrl: input.baseUrl!, value: input.value}
+        : {source: 'saved', connectionId: input.connectionId, configurationRevision: input.configurationRevision}, controller.signal);
+      if (!publishable()) return null;
+      setCheck({operation, draft: input.source === 'draft', result});
+      return result;
+    } catch {
+      if (publishable()) setCheck({operation, draft: input.source === 'draft', result: {result: 'failed'}});
+      return null;
+    } finally {
+      if (abort.current === controller) {
+        abort.current = null; setChecking(false); current.current.onCheckBusy(draft.key, false);
+      }
+    }
   };
   const remove = async () => {
     if (!usable() || configuration.providerId !== 'compatible') return;
@@ -95,15 +126,22 @@ function VideoServiceDetail(props: DetailProps) {
       <label>{t('generation.services.requestAddress')}<output data-testid="video-connection-endpoint">{videoSettingsRequestEndpoint(configuration)}</output></label>
       <label>{t('video.providers.key')}<Input ref={element => {keyInput.current = element; props.registerKey(draft.key, element);}} data-testid="video-connection-key" data-key-owner={draft.key} type="password" autoComplete="new-password" onChange={() => {if (!usable()) {if (keyInput.current) keyInput.current.value = ''; return;} invalidate(); session?.keyEdited(draft.key, Boolean(keyInput.current?.value));}}/></label>
       <p className="helper muted">{t('video.providers.keyHint')}</p>
+      {canCheck && <div className="video-compatible-check">
+        <Button type="button" data-testid="video-compatible-check" disabled={!checkable} onClick={() => {void runProbe('check');}}>{t(checking ? 'settings.draftKey.checking' : 'settings.draftKey.check')}</Button>
+      </div>}
+      {check && <div>
+        <p role={check.result.result === 'ok' ? 'status' : 'alert'} data-testid="video-compatible-check-result" data-result={check.result.result} className={`video-compatible-check-result ${check.result.result === 'ok' ? 'ok' : 'failed'}`}>{checkText(check)}</p>
+        {check.draft && <p className="helper muted">{t('settings.draftKey.resultHint')}</p>}
+      </div>}
       <p>{t(saved?.secret.configured ? 'video.providers.configured' : 'video.providers.unconfigured')}</p>
+      {state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING' && <p className="helper muted" role="status" data-testid="video-keychain-pending">{t('connections.storage.keychainPending')}</p>}
+      {saved?.secret.storage === 'persistent' && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' && <p className="helper muted" role="status" data-testid="video-key-storage-unavailable">{t('tasks.error.videoSecretStore')}</p>}
       {draft.secretAction === 'replace' && !draft.hasKey && <p role="status" data-testid="video-key-required">{t('generation.services.video.keyRequired')}</p>}
       <label>{t('video.providers.storage')}<WorkbenchSelect data-testid="video-key-storage" value={draft.storage} onChange={event => {if (usable()) session?.setStorage(draft.key, event.target.value as GenerationVideoDraft['storage']);}}><option value="">{t('video.providers.chooseStorage')}</option><option value="session">{t('video.providers.session')}</option><option value="persistent" disabled={!state.snapshot?.storage.persistentAvailable}>{t('video.providers.persistent')}</option></WorkbenchSelect></label><p className="helper muted">{t('connections.sessionLoss')}</p>
       <label className="video-check"><input type="checkbox" data-testid="video-remove-key" checked={draft.secretAction === 'remove'} onChange={event => {if (usable()) {invalidate(); props.clearKey(draft.key); session?.removeKey(draft.key, event.target.checked);}}}/>{t('video.providers.removeKey')}</label>
       <label className="video-check"><input type="checkbox" data-testid="video-connection-enabled" checked={configuration.enabled} onChange={event => change({enabled: event.target.checked})}/>{t('video.providers.enabled')}</label>
-      {configuration.providerId === 'compatible' && <div className="video-compatible-check"><Button type="button" data-testid="video-compatible-check" disabled={!checkable} onClick={() => {void runCheck();}}>{t(checking ? 'video.providers.checking' : 'video.providers.check')}</Button><span className="helper muted">{t('video.providers.checkHint')}</span></div>}
-      {check && <p role={check.result === 'ok' ? 'status' : 'alert'} data-testid="video-compatible-check-result" data-result={check.result} className={`video-compatible-check-result ${check.result === 'ok' ? 'ok' : 'failed'}`}>{checkText(check)}</p>}
       <details className="generation-video-models"><summary data-testid="video-models-summary">{t('generation.services.video.modelsCount', {count: configuration.models.length})}</summary>
-        <div className="video-catalog-heading"><h3>{t('video.providers.models')}</h3><Button type="button" data-testid="video-add-model" onClick={() => {const base = defaultVideoModels(configuration.providerId)[0]!; change({models: [...configuration.models, {...base, id: crypto.randomUUID(), modelId: '', name: ''}]});}}>{t('video.providers.addModel')}</Button></div>
+        <div className="video-catalog-heading"><h3>{t('video.providers.models')}</h3>{props.client.modelsList && <Button type="button" data-testid="video-fetch-models" disabled={!checkable} onClick={() => {void runProbe('models');}}>{t('settings.draftKey.list')}</Button>}<Button type="button" data-testid="video-add-model" onClick={() => {const base = defaultVideoModels(configuration.providerId)[0]!; change({models: [...configuration.models, {...base, id: crypto.randomUUID(), modelId: '', name: ''}]});}}>{t('video.providers.addModel')}</Button></div>
         {configuration.models.map((model, index) => <ModelEditor key={model.id} menuActions resetEpoch={state.editorEpoch} model={model} providerId={configuration.providerId} index={index} count={configuration.models.length} onChange={patch => change({models: configuration.models.map(item => item.id === model.id ? {...item, ...patch} : item)})} onMove={offset => {const models = [...configuration.models]; [models[index], models[index + offset]] = [models[index + offset]!, models[index]!]; change({models});}}/>)}
       </details>
       <details><summary>{t('video.providers.advanced')}</summary>{configuration.providerId === 'compatible' && <p data-testid="video-compatible-service-host">{compatibleServiceHost(configuration) ? t('video.providers.serviceHost', {host: compatibleServiceHost(configuration)}) : t('video.providers.serviceHostPending')}</p>}<label>{t(configuration.providerId === 'compatible' ? 'video.providers.extraHosts' : 'video.providers.hosts')}<Textarea data-testid="video-output-hosts" value={configuration.outputHosts.join('\n')} onChange={event => change({outputHosts: event.target.value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean)})}/></label><p className="helper muted">{t('video.providers.extraHostsHint')}</p></details>
@@ -142,7 +180,7 @@ export function useGenerationVideoServices(options: GenerationServiceDomainOptio
   const onCheckBusy = (key: string, value: boolean) => {const before = checks.current.has(key); if (value) checks.current.add(key); else checks.current.delete(key); if (before !== value && alive.current) {setCheckVersion(version => version + 1); report();}};
   const navigation = reporter.getState();
   return {
-    services: state.drafts.map(draft => ({key: draft.key, providerId: draft.configuration.providerId, kind: 'video', custom: draft.configuration.providerId === 'compatible', label: draft.configuration.providerId === 'compatible' ? draft.configuration.name : VIDEO_PROVIDER_NAMES[draft.configuration.providerId], configured: state.snapshot ? Boolean(state.snapshot.connections.find(view => view.configuration.id === draft.configuration.id)?.secret.configured) : null, available: generationVideoAvailable(state.snapshot, draft.configuration), content: <VideoServiceDetail key={draft.key} draft={draft} state={state} session={session.current} client={client} interactionAllowed={interactionAllowed} registerKey={(key, input) => {if (input) keys.current.set(key, input); else keys.current.delete(key);}} registerCheckCancel={(key, cancel) => {if (cancel) checkCancels.current.set(key, cancel); else checkCancels.current.delete(key);}} clearKey={clearKeys} clearAllKeys={clearKeys} onCheckBusy={onCheckBusy} onDeleted={() => latest.current.onSelect?.('general')}/> })),
+    services: state.drafts.map(draft => ({key: draft.key, providerId: draft.configuration.providerId, kind: 'video', custom: draft.configuration.providerId === 'compatible', label: draft.configuration.providerId === 'compatible' ? draft.configuration.name : VIDEO_PROVIDER_NAMES[draft.configuration.providerId], configured: state.snapshot ? Boolean(state.snapshot.connections.find(view => view.configuration.id === draft.configuration.id)?.secret.configured) : null, available: generationVideoAvailable(state.snapshot, draft.configuration), dirty: generationVideoDraftDirty(draft), content: <VideoServiceDetail key={draft.key} draft={draft} state={state} session={session.current} client={client} interactionAllowed={interactionAllowed} registerKey={(key, input) => {if (input) keys.current.set(key, input); else keys.current.delete(key);}} registerCheckCancel={(key, cancel) => {if (cancel) checkCancels.current.set(key, cancel); else checkCancels.current.delete(key);}} clearKey={clearKeys} clearAllKeys={clearKeys} onCheckBusy={onCheckBusy} onDeleted={() => latest.current.onSelect?.('general')}/> })),
     ready: Boolean(state.snapshot) && !generationVideoBusy(state) && !state.recovery && !checks.current.size,
     navigation,
     prepareSave() {cancelChecks(); if (!session.current || !latest.current.pageVisible || !documentVisible()) {clearKeys(); throw Error('Video settings are not ready to save.');} return session.current.prepareSave(key => keys.current.get(key)?.value ?? '', clearKeys);},

@@ -1,4 +1,4 @@
-import { statusDescriptor, providerDisplayName } from './creation-i18n.ts';
+import { jobStatusDescriptor, providerDisplayName, videoJobConnection } from './creation-i18n.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { Button } from '@mioon/ui/components/button';
@@ -10,6 +10,7 @@ import { activeJob, assetUrl, versionUrl } from './api.ts';
 import { REFERENCE_SOURCE_HANDLE, REFERENCE_TARGET_HANDLE, VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE } from './reference-connections.ts';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import CompactNodePlayer from './CompactNodePlayer.tsx';
+import { providerStatus } from './generation-settings.ts';
 import type { GenerationProvider } from './generation-settings.ts';
 import './board-redesign.css';
 import './board-timeline-status.css';
@@ -20,7 +21,7 @@ import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx'
 
 export interface NodeAssetView { id?: string; name?: string; mimeType?: string; width?: number; height?: number; url?: string; [key: string]: unknown }
 export interface NodeVersionView { id?: string; assetId?: string; url?: string; snapshot?: { aspectRatio?: string; duration?: number; [key: string]: unknown }; [key: string]: unknown }
-export interface NodeJobView { status?: string; progress?: unknown; [key: string]: unknown }
+export interface NodeJobView { status?: string; phase?: unknown; progress?: unknown; error?: unknown; providerJobId?: unknown; [key: string]: unknown }
 export interface NodeShotRecord {
   id: string;
   title?: string;
@@ -41,6 +42,7 @@ export interface ShotNodeData {
   onGenerate: (record: NodeShotRecord) => unknown;
   generationUnavailableReason?: DisplayMessage | string | null;
   generationProvider?: GenerationProvider | null;
+  configureGeneration?: () => unknown;
   referenceBusy?: boolean;
   referenceConnection?: boolean;
   referenceSourceLabel?: DisplayMessage | string | null;
@@ -125,6 +127,9 @@ const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData
   const { t, renderMessage } = useI18n();
   const { record, asset, version, job, index, onInspect, onGenerate } = data;
   const generating = !data.generationUnavailableReason && job && activeJob(job);
+  const canGenerate = providerStatus(data.generationProvider) === 'available';
+  const connection = videoJobConnection(job);
+  const jobStatus = renderMessage(connection?.status ?? jobStatusDescriptor(job));
   const progress = Math.round(Math.max(0, Math.min(100, Number(job?.progress) || 0)));
   const placed = data.timelineStatus;
   // The node itself selects the shot on click; these jump to the clip instead, so they must not bubble to it.
@@ -133,11 +138,16 @@ const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData
     <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.shotVisualInput')} title={t('shell.node.visualOnly')} />
     <Handle id={REFERENCE_TARGET_HANDLE} type="target" position={Position.Left} className="reference-handle" style={{ top: 66 }} aria-label={t('shell.node.referenceInput')} title={t('shell.node.referenceInputHint')} isConnectable={!data.referenceBusy && !data.referenceConnection && !record.referenceAssetIds?.length} />
     <span className="reference-port-label target-label">{t('shell.node.firstFrameInput')}</span>
-    <header className="node-header"><span className="node-number">{String(index + 1).padStart(2, '0')}</span><span className="node-title" title={record.title}>{record.title}</span><span className={`node-status-badge ${generating ? 'running' : job?.status === 'failed' ? 'failed' : version ? 'complete' : ''}`}>{generating ? renderMessage(statusDescriptor(job?.status)) : job?.status === 'failed' ? t('redesign.board.failed') : version ? t('redesign.board.completed') : t('redesign.board.waiting')}</span></header>
-    <div className="shot-media">{placed && data.onViewInEditing && <Button variant="ghost" className="node-timeline-view nodrag" data-testid={`shot-timeline-view-${record.id}`} onClick={viewInEditing}><Icon name="film" size={12} />{t('timeline.sync.viewInEditing')}<ArrowUpRight size={12} aria-hidden="true" /></Button>}{version ? <CompactNodePlayer sourceKey={version.id ?? ''} renderMedia={events => <Media asset={asset} version={version} {...events} />} /> : <Media asset={asset} version={version} />}{generating && <div className="node-generating"><span className="spinner" /><span>{progress}% · {renderMessage(statusDescriptor(job?.status))}</span><div className="node-progress" role="progressbar" aria-label={renderMessage(statusDescriptor(job?.status))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div></div>}</div>
-    <div className="node-body"><p>{record.prompt || t('shell.node.promptPlaceholder')}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating ? renderMessage(statusDescriptor(job?.status)) : version ? t('shell.node.versionSelected') : t('shell.node.awaitingGeneration')}</span><span className="spacer" /><span>{t('shell.node.referenceCount', { count: record.referenceAssetIds?.length || 0 })}</span></div></div>
+    <header className="node-header"><span className="node-number">{String(index + 1).padStart(2, '0')}</span><span className="node-title" title={record.title}>{record.title}</span><span className={`node-status-badge ${generating || connection ? 'running' : job?.status === 'failed' ? 'failed' : version ? 'complete' : ''}`}>{generating || connection ? jobStatus : job?.status === 'failed' ? t('redesign.board.failed') : version ? t('redesign.board.completed') : t('redesign.board.waiting')}</span></header>
+    <div className="shot-media">{placed && data.onViewInEditing && <Button variant="ghost" className="node-timeline-view nodrag" data-testid={`shot-timeline-view-${record.id}`} onClick={viewInEditing}><Icon name="film" size={12} />{t('timeline.sync.viewInEditing')}<ArrowUpRight size={12} aria-hidden="true" /></Button>}{version ? <CompactNodePlayer sourceKey={version.id ?? ''} renderMedia={events => <Media asset={asset} version={version} {...events} />} /> : <Media asset={asset} version={version} />}
+      {connection ? <div className="node-generating node-connection-status" role="status" data-testid={`shot-connection-${record.id}`}><span>{renderMessage(connection.detail)}{connection.continuation && <> {renderMessage(connection.continuation)}</>}</span></div>
+        : generating && <div className="node-generating"><span className="spinner" /><span>{progress}% · {jobStatus}</span><div className="node-progress" role="progressbar" aria-label={jobStatus} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div></div>}
+    </div>
+    <div className="node-body"><p>{record.prompt || t('shell.node.promptPlaceholder')}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating || connection ? jobStatus : version ? t('shell.node.versionSelected') : t('shell.node.awaitingGeneration')}</span><span className="spacer" /><span>{t('shell.node.referenceCount', { count: record.referenceAssetIds?.length || 0 })}</span></div></div>
     {data.referenceConnection && <Button variant="ghost" className="node-bound-reference nodrag" onClick={() => onInspect(record.id, 'settings')} title={renderMessage(data.referenceSourceLabel)}><Icon name="link" size={12} /><span>{t('shell.node.firstFrameSource', { name: renderMessage(data.referenceSourceLabel) })}</span></Button>}
-    <footer className="node-footer"><span className="node-output-spec">{version?.snapshot?.aspectRatio || record.aspectRatio} · {version?.snapshot?.duration || record.duration}s</span>{data.batchMark === 'edited' && <span className="node-batch-mark" data-testid={`shot-batch-mark-${record.id}`}><Icon name="pencil" size={11} />{t('scene.batch.editedMark')}</span>}{placed && <Button variant="ghost" className={`node-timeline-chip nodrag ${placed.stale ? 'is-stale' : ''}`} data-testid={`shot-timeline-chip-${record.id}`} title={t('timeline.sync.viewInEditing')} disabled={!data.onViewInEditing} onClick={viewInEditing}>{placed.stale ? <span className="timeline-status-dot" aria-hidden="true" /> : <Icon name="film" size={11} />}<span>{t(placed.stale ? 'timeline.sync.chip.stale' : 'timeline.sync.chip.onTimeline')}</span></Button>}<Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={13} />{t('shell.node.versionCount', { count: data.versionCount || 0 })}</Button><Button variant="ghost" className="node-generate nodrag" aria-label={t('shell.node.generateNamed', { name: record.title ?? '' })} title={renderMessage(data.generationUnavailableReason) || (data.generationProvider ? t('shell.node.generateProvider', { provider: providerDisplayName(data.generationProvider, t) }) : t('shell.node.chooseProvider'))} disabled={Boolean(data.generationUnavailableReason) || Boolean(generating) || Boolean(data.busy) || Boolean(data.referenceBusy)} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} /><span className="sr-only">{t('shell.generate')}</span></Button></footer>
+    <footer className="node-footer"><span className="node-output-spec">{version?.snapshot?.aspectRatio || record.aspectRatio} · {version?.snapshot?.duration || record.duration}s</span>{data.batchMark === 'edited' && <span className="node-batch-mark" data-testid={`shot-batch-mark-${record.id}`}><Icon name="pencil" size={11} />{t('scene.batch.editedMark')}</span>}{placed && <Button variant="ghost" className={`node-timeline-chip nodrag ${placed.stale ? 'is-stale' : ''}`} data-testid={`shot-timeline-chip-${record.id}`} title={t('timeline.sync.viewInEditing')} disabled={!data.onViewInEditing} onClick={viewInEditing}>{placed.stale ? <span className="timeline-status-dot" aria-hidden="true" /> : <Icon name="film" size={11} />}<span>{t(placed.stale ? 'timeline.sync.chip.stale' : 'timeline.sync.chip.onTimeline')}</span></Button>}<Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={13} />{t('shell.node.versionCount', { count: data.versionCount || 0 })}</Button>{data.configureGeneration && !generating ? <Button variant="ghost" className="node-generate nodrag"
+      data-testid={`shot-configure-generation-${record.id}`} title={t('generation.services.configureFirst')} aria-label={t('generation.services.openSettings')}
+      onClick={() => data.configureGeneration?.()}><Icon name="settings" size={13} /></Button> : <Button variant="ghost" className="node-generate nodrag" aria-label={canGenerate ? t('shell.node.generateNamed', { name: record.title ?? '' }) : t('shell.node.chooseProvider')} title={renderMessage(data.generationUnavailableReason) || (canGenerate && data.generationProvider ? t('shell.node.generateProvider', { provider: providerDisplayName(data.generationProvider, t) }) : t('shell.node.chooseProvider'))} disabled={Boolean(data.generationUnavailableReason) || Boolean(generating) || Boolean(data.busy) || Boolean(data.referenceBusy)} onClick={() => onGenerate(record)}><Icon name="sparkle" size={13} /><span className="sr-only">{t('shell.generate')}</span></Button>}</footer>
     <Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.shotVisualOutput')} title={t('shell.node.visualOnly')} />
   </article>;
 });

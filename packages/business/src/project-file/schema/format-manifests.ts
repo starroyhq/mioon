@@ -1,4 +1,5 @@
 import {FORMAT3_RELEASE_MANIFEST} from './format3-manifest.ts';
+import {FORMAT4_INITIAL_HISTORY_MANIFEST} from './history-v11-manifest.ts';
 import {FORMAT4_MANIFEST_CHANGES} from './manifest.ts';
 import type {SchemaManifest} from './manifest-check.ts';
 
@@ -10,7 +11,7 @@ function format4Manifest(kind: 'project' | 'history'): SchemaManifest {
 }
 
 const project4 = format4Manifest('project');
-const history11 = format4Manifest('history');
+const history4 = format4Manifest('history');
 
 export function projectManifestForVersion(version: number): SchemaManifest | undefined {
   if (version === FORMAT3_RELEASE_MANIFEST.project.version) return FORMAT3_RELEASE_MANIFEST.project;
@@ -20,6 +21,7 @@ export function projectManifestForVersion(version: number): SchemaManifest | und
 
 export function historyManifestForVersion(version: number): SchemaManifest | undefined {
   if (version === FORMAT3_RELEASE_MANIFEST.history.version) return FORMAT3_RELEASE_MANIFEST.history;
-  if (version === history11.version) return history11;
+  if (version === FORMAT4_INITIAL_HISTORY_MANIFEST.version) return FORMAT4_INITIAL_HISTORY_MANIFEST;
+  if (version === history4.version) return history4;
   return undefined;
 }

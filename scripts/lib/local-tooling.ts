@@ -139,7 +139,6 @@ export function nativeReadiness(platform: NodeJS.Platform = process.platform, ar
 // two deliberately selected executable overrides added for local tests.
 export function toolingEnvironment(source: NodeJS.ProcessEnv = process.env, {platform = process.platform, mediaPaths = false}: ToolingEnvironmentOptions = {}): Record<string, string> {
   const result = mediaEnvironment(source, {platform});
-  result.MIOON_ENABLE_LIVE_PROVIDER = '0';
   if (mediaPaths) for (const key of ['MIOON_FFMPEG_PATH', 'MIOON_FFPROBE_PATH']) {
     if (typeof source[key] === 'string' && source[key]) result[key] = source[key];
   }

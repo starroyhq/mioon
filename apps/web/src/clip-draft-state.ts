@@ -13,6 +13,7 @@ import type { ClipDraftFailure } from './clip-draft-client.ts';
 import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
 import type { AgentEditingProof } from './agent-editing-proof.ts';
 import type { ClipDraftKey, ClipDraftSource, ClipDraftRaw as LegacyClipDraftRaw, ClipDraftValue, ClipDraftWrite, ClipDraftDelete, ClipDraftEnvelope as WireEnvelope } from '../../../packages/contracts/src/local-drafts.ts';
+import type { ClipLayout } from '../../../packages/contracts/src/timeline-clip-layout.ts';
 export type { ClipDraftKey, ClipDraftSource, ClipDraftWrite, ClipDraftDelete } from '../../../packages/contracts/src/local-drafts.ts';
 export type ClipDraftRaw = LegacyClipDraftRaw & RawOpacityEnvelopeFields;
 /** Unsent local form state. None of these methods executes a business request. */
@@ -28,6 +29,7 @@ export interface ClipDraftContext extends ClipDraftKey {
   volumeEnvelopeEditable?: boolean;
   opacityEnvelopeEditable?: boolean;
   timelineRevision: number; source: ClipDraftSource; saved: ClipDraftRaw;
+  layout?: ClipLayout;
   collaboration?: AgentEditingProof | null;
 }
 export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scope: string; readonly serial: number; readonly generation: number }
@@ -48,7 +50,7 @@ const object = (value: unknown): value is Record<string, unknown> => Boolean(val
 const number = (value: ClipDraftNumber): number => typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) ? NaN : Number(value);
 
 /** No empty/whitespace numeric input is silently normalized to zero. */
-export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | null {
+export function clipDraftPatch(raw: ClipDraftRaw, readOnlyRect?: ClipDraftRaw['rect']): Record<string, unknown> | null {
   const patch: Record<string, unknown> = { name: raw.name, trackId: raw.trackId };
   if (!raw.name.length || raw.name.length > 200) return null;
   for (const field of ['startFrame', 'durationFrames', 'sourceInFrame', 'gain', 'fadeInFrames', 'fadeOutFrames'] as const) {
@@ -60,6 +62,9 @@ export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | nul
   if (Number(patch.startFrame) < 0 || Number(patch.durationFrames) < 1 || Number(patch.durationFrames) > 18000 || Number(patch.startFrame) + Number(patch.durationFrames) > 18000 || Number(patch.sourceInFrame) < 0 || Number(patch.gain) < 0 || Number(patch.gain) > 2) return null;
   const rect = Object.fromEntries(Object.entries(raw.rect).map(([key, value]) => [key, number(value)]));
   if (Object.values(rect).some(value => !Number.isSafeInteger(value) || value % 2 !== 0) || rect.x < 0 || rect.y < 0 || rect.width < 2 || rect.height < 2) return null;
+  // Local drafts still record the whole form. A recovered geometry edit must
+  // not be silently dropped when the clip now uses relative layout.
+  if (readOnlyRect && !sameClipDraftValue(rect, readOnlyRect)) return null;
   for (const field of ['fadeInFrames', 'fadeOutFrames']) if (own(patch, field) && (Number(patch[field]) < 0 || Number(patch[field]) > Number(patch.durationFrames))) return null;
   if (Number(patch.fadeInFrames ?? 0) + Number(patch.fadeOutFrames ?? 0) > Number(patch.durationFrames)) return null;
   if (own(raw, 'audioRole')) {
@@ -72,7 +77,7 @@ export function clipDraftPatch(raw: ClipDraftRaw): Record<string, unknown> | nul
   }
   const envelope = validateRawVolumeEnvelope(raw, Number(patch.durationFrames));
   if (!envelope.valid) return null;
-  return { ...patch, rect, ...envelope.fields };
+  return { ...patch, ...(!readOnlyRect && {rect}), ...envelope.fields };
 }
 export function clipDraftRaw(clip: Record<string, unknown>): ClipDraftRaw {
   const rect = object(clip.rect) ? clip.rect : {};
@@ -93,6 +98,7 @@ function acknowledged(value: unknown, context: ClipDraftContext, base: number, s
   const expectedEnvelope = validateRawVolumeEnvelope(expectedRaw, Number(patch.durationFrames));
   if (!expectedEnvelope.valid || !object(saved) || own(saved, 'volumeEnvelope') !== own(expectedEnvelope.fields, 'volumeEnvelope') || !sameClipDraftValue(saved.volumeEnvelope, expectedEnvelope.fields.volumeEnvelope)) return null;
   if (!object(saved) || clipAudioRoleChanged(saved, expectedRaw) || saved.assetId !== source.assetId || !Object.entries(patch).every(([key, expected]) => sameClipDraftValue(saved[key], expected))) return null;
+  if (context.layout && (!sameClipDraftValue(saved.layout, context.layout) || !sameClipDraftValue(saved.rect, context.saved.rect))) return null;
   if (['versionId', 'shotId', 'jobId'].some(key => own(source, key) !== own(saved, key) || (source as unknown as Record<string, unknown>)[key] !== saved[key])) return null;
   return saved;
 }
@@ -287,7 +293,7 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (composition) return false;
       if (key === 'volumeEnvelope') return controller.editVolumeEnvelope(value as RawVolumeEnvelope | null, capture());
       // No ordinary workspace edits opacity keyframes.
-      if (key === 'opacityEnvelope') return false;
+      if (key === 'opacityEnvelope' || key === 'rect' && context.layout) return false;
       if (key === 'audioRole' && (context.audioRoleEditable !== true || !context.connected || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict || !isClipAudioRole(value))) return false;
       if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'].includes(key)) return false;
       serial++; emit({ raw: { ...state.raw, [key]: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
@@ -327,7 +333,8 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     async save(onSave: (clipId: string, patch: Record<string, unknown>, baseRevision: number, options: { canExecute: () => boolean }) => Promise<unknown>): Promise<unknown> {
       if (!active || composition || deleting || discarding || !context.visible || !context.connected || context.busy || state.conflict || state.submitting || !state.dirty || state.candidate) return null;
-      const patch = clipDraftPatch(state.raw); if (!patch || own(state.raw, 'opacityEnvelope')) return null;
+      const patch = clipDraftPatch(state.raw, context.layout ? context.saved.rect : undefined);
+      if (!patch || own(state.raw, 'opacityEnvelope')) return null;
       // Unavailable role capability cannot block unrelated edits or silently drop
       // a recovered role change. An unchanged role is omitted from that request.
       if (context.audioRoleEditable !== true) {
@@ -340,14 +347,15 @@ export function createClipDraftController({ context: initial, client, validateTi
       if (context.volumeEnvelopeEditable !== true && envelopeChanged) return null;
       if (!envelopeChanged) delete patch.volumeEnvelope;
       const owner = generation, savedSerial = serial, original = copy(context), base = state.baseRevision, source = copy(state.source), expectedRaw = copy(state.raw);
+      const layoutCurrent = () => sameClipDraftValue(context.layout, original.layout);
       emit({ submitting: true, businessPending: false });
       await flush();
       if (!belongs(owner)) return null;
-      if (savedSerial !== serial || composition || deleting || discarding || context.busy || !context.visible || !context.connected || own(patch, 'audioRole') && context.audioRoleEditable !== true || own(patch, 'volumeEnvelope') && context.volumeEnvelopeEditable !== true || own(patch, 'opacityEnvelope') && context.opacityEnvelopeEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
+      if (savedSerial !== serial || composition || deleting || discarding || context.busy || !context.visible || !context.connected || !layoutCurrent() || own(patch, 'audioRole') && context.audioRoleEditable !== true || own(patch, 'volumeEnvelope') && context.volumeEnvelopeEditable !== true || own(patch, 'opacityEnvelope') && context.opacityEnvelopeEditable !== true || conflict()) { emit({ submitting: false, businessPending: false }); return null; }
       const stored = envelope ? copy(envelope) : null, localUnconfirmed = (!loaded || state.autosavePaused || state.phase === 'error');
       emit({ error: localUnconfirmed ? state.error : '', errorDisplay: localUnconfirmed ? state.errorDisplay : undefined });
       try {
-        const canExecute = () => !composition && !deleting && !discarding && serial === savedSerial && (!own(patch, 'volumeEnvelope') || context.volumeEnvelopeEditable === true) && (!own(patch, 'opacityEnvelope') || context.opacityEnvelopeEditable === true) && (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
+        const canExecute = () => !composition && !deleting && !discarding && serial === savedSerial && layoutCurrent() && (!own(patch, 'volumeEnvelope') || context.volumeEnvelopeEditable === true) && (!own(patch, 'opacityEnvelope') || context.opacityEnvelopeEditable === true) && (!own(patch, 'audioRole') || context.audioRoleEditable === true) && belongs(owner) && context.visible && context.connected && sameClipDraftValue(keyOf(context), keyOf(original)) && context.scope === original.scope && context.timelineRevision === base && sameClipDraftValue(context.source, source);
         emit({ businessPending: true });
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;

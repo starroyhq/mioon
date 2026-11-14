@@ -51,12 +51,11 @@ function shellHarness() {
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(locale) },
     '@mioon/ui/components/button': { Button: 'Button' },
     '@mioon/ui/components/workbench-icons': {WorkbenchIcon:'WorkbenchIcon'},
-    './GenerationLiveGateNotice.tsx': {__esModule: true, default: 'GenerationLiveGateNotice'},
     './LanguageControl.tsx': { __esModule: true, default: 'LanguageControl' },
     './icons.tsx': { __esModule: true, default: 'Icon' },
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './settings-window-state.ts': { isSettingsConnectionPage: (page: string) => slots.includes(page), normalizeSettingsPage: (page: string) => page === 'extensions' ? 'models' : page },
-    './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts', SettingsModelServices:'SettingsModelServices' },
+    './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts' },
   }).default;
   const panes = {agent: {type: 'form:agent', props: {'data-testid': 'owner-agent', value: 'retained-agent'}}};
   const generationServices = {type: 'form:generation', props: {'data-testid': 'owner-generation', value: 'retained-generation'}};
@@ -72,7 +71,6 @@ test('settings shell has seven categories and every fixed generation intention u
     for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
     for(const id of categories) assert.ok(find(tree,`settings-category-icon-${id}`));
     assert.equal(nodes(tree).some(node => node.props?.className === 'settings-service-nav' || node.props?.className === 'settings-service-back'), false);
-    assert.equal(nodes(tree).some(node => node.type === 'SettingsModelServices'), false);
     if (category === 'models') {
       assert.equal(find(tree, 'owner-generation'), h.generationServices);
       const provider = nodes(tree).find(node => node.type === 'WorkspaceVisibilityProvider' && nodes(node).some(child => Object.is(child, h.generationServices)));
@@ -556,11 +554,11 @@ function composerSettingsHandler(kind: string, callback: { (): Promise<unknown>;
     setSettingsSlot: () => assert.fail('The independent center must not select a legacy inline slot'),
     setPage: () => assert.fail('The independent center must not show a legacy inline page'),
   };
-  const code = source('ImageGeneration.tsx'), button = code.indexOf('data-testid="image-settings-open"');
-  const start = code.indexOf('onClick={', button) + 'onClick={'.length, end = code.indexOf('})}><Icon name="settings"', start) + 2;
-  assert.ok(button >= 0 && start > button && end > start);
+  const code = source('ImageGeneration.tsx'), declaration = 'const openSettings = ';
+  const start = code.indexOf(declaration) + declaration.length, end = code.indexOf('  return <section ref={recoveryRoot}', start);
+  assert.ok(start > declaration.length && end > start);
   (env as typeof env&{run:(action:(session:typeof env.session.current)=>unknown)=>unknown}).run = (action: (arg0: { setVisible(value: unknown): void; load: () => never; generate: () => never; send: () => never; }) => unknown) => action(env.session.current);
-  const click = Function('env', `with (env) { return (${stripSourceTypes(code.slice(start, end)).replace(/;\s*$/u, '')}); }`)(env);
+  const click = Function('env', `with (env) { return () => (${stripSourceTypes(code.slice(start, end)).trim().replace(/;$/u, '')})('official'); }`)(env);
   return { env, current, visibility, requests, click, get reads() { return reads; } };
 }
 

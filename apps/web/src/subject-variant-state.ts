@@ -40,6 +40,7 @@ export interface SubjectVariantOptions {
   approve: (review: ImageReviewResponse) => Promise<unknown>;
   /** The official image settings: a paid review is bound to their revision. */
   settings: () => Promise<unknown>;
+  mockAvailable?: () => boolean;
   requestId?: () => string;
   onChange?: (state: SubjectVariantState) => void;
   /** New versions were linked to this subject, or a batch's versions were hidden
@@ -92,13 +93,13 @@ export function subjectVariantOutputSize(version: Pick<SubjectVersionResponse, '
   try { return imageEditOutputSize(profile, version.width, version.height); } catch { return null; }
 }
 export interface SubjectVariantModel { providerId: SubjectVariantProviderId; model: string; available: boolean; paid: boolean; settingsRevision: number | null }
-/** GPT Image needs an enabled official connection with a saved key; the mock service always works. */
-export function subjectVariantModels(settings: unknown): SubjectVariantModel[] {
+/** GPT Image needs an enabled official connection with a saved key. */
+export function subjectVariantModels(settings: unknown, mockAvailable = false): SubjectVariantModel[] {
   const official = record(settings) && Number.isSafeInteger(settings.revision) && record(settings.configuration) && record(settings.secret) ? settings : null;
   const openai = Boolean(official && (official.configuration as Record<string, unknown>).enabled === true && (official.secret as Record<string, unknown>).configured === true);
   return [
     { providerId: 'openai', model: IMAGE_MODELS.openai, available: openai, paid: true, settingsRevision: openai ? official!.revision as number : null },
-    { providerId: 'mock', model: IMAGE_MODELS.mock, available: true, paid: false, settingsRevision: null },
+    ...(mockAvailable ? [{ providerId: 'mock' as const, model: IMAGE_MODELS.mock, available: true, paid: false, settingsRevision: null }] : []),
   ];
 }
 
@@ -124,7 +125,7 @@ const refusalKeys: Readonly<Record<string, RefusalKey>> = Object.freeze({
   SUBJECT_VARIANT_RETRY_UNAVAILABLE: 'subjects.variants.refused.retry', SUBJECT_VERSION_HIDDEN: 'subjects.variants.refused.hidden', SUBJECT_VARIANT_CAPACITY: 'subjects.variants.refused.capacity' });
 const refusalMessage = (error: unknown): DisplayMessage => message(refusalKeys[codeOf(error)] ?? 'subjects.variants.refused.changed');
 // Refused before anything started: nothing was sent or charged.
-const settingsRefusals = new Set(['IMAGE_SETTINGS_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_REVIEW_SETTINGS_CHANGED', 'IMAGE_SETTINGS_CONFLICT']);
+const settingsRefusals = new Set(['GENERATION_SERVICE_UNAVAILABLE', 'IMAGE_SETTINGS_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_REVIEW_SETTINGS_CHANGED', 'IMAGE_SETTINGS_CONFLICT']);
 const imageIssue = (error: unknown): DisplayMessage => {
   const code = codeOf(error);
   if (code === 'IMAGE_QUEUE_FULL' || code === 'IMAGE_GROUP_BUSY') return message('subjects.variants.submit.queueFull');
@@ -133,7 +134,7 @@ const imageIssue = (error: unknown): DisplayMessage => {
   return message('subjects.variants.submit.unknown');
 };
 
-export function createSubjectVariantController({ read, write, image, approve, settings, requestId = () => crypto.randomUUID(), onChange = () => {}, onVersions = () => {} }: SubjectVariantOptions) {
+export function createSubjectVariantController({ read, write, image, approve, settings, mockAvailable = () => false, requestId = () => crypto.randomUUID(), onChange = () => {}, onVersions = () => {} }: SubjectVariantOptions) {
   let state = initial(), epoch = 0, timer: ReturnType<typeof setTimeout> | null = null, visible = true, watched: string | null = null;
   const generations = new Map<string, number>();
   // Version IDs already reflected in the subject's version list, and those of
@@ -210,11 +211,11 @@ export function createSubjectVariantController({ read, write, image, approve, se
     } finally { if (current(captured)) schedule(); }
   }
   async function readSettings(): Promise<SubjectVariantModel[]> {
-    try { return subjectVariantModels(await settings()); } catch { return subjectVariantModels(null); }
+    try { return subjectVariantModels(await settings(), mockAvailable()); } catch { return subjectVariantModels(null, mockAvailable()); }
   }
   /** Submits each listed image that has no request yet, in order, and stops at the first failure. */
   async function submit(batch: SubjectVariantBatch, positions: readonly number[] = batch.items.filter(subjectVariantUnsubmitted).map(item => item.position)): Promise<boolean> {
-    if (!state.projectId || batch.projectId !== state.projectId || batch.state !== 'active' || state.busy) return false;
+    if (!state.projectId || batch.projectId !== state.projectId || batch.state !== 'active' || state.busy || batch.providerId === 'mock' && !mockAvailable()) return false;
     const captured = owner(), issues = { ...state.issues };
     for (const position of positions) delete issues[`${batch.id}:${position}`];
     emit({ busy: `submit:${batch.id}`, issues });
@@ -289,7 +290,7 @@ export function createSubjectVariantController({ read, write, image, approve, se
     readSettings,
     /** Records a batch and then submits its images; resolves once the batch is recorded. */
     async create(draft: SubjectVariantDraft): Promise<SubjectVariantBatch | null> {
-      if (!writable()) return null;
+      if (!writable() || draft.providerId === 'mock' && !mockAvailable()) return null;
       const input = freeze({ projectId: state.projectId, subjectId: draft.subjectId, sourceVersionId: draft.sourceVersionId, kind: draft.kind, items: draft.items.map(item => ({ ...item })), providerId: draft.providerId, model: draft.model, requestId: requestId() });
       if (!subjectVariantSchemas['subject.variants.create'].safeParse(input).success) return null;
       const batch = await mutate('subject.variants.create', input, draft.subjectId);
@@ -300,7 +301,7 @@ export function createSubjectVariantController({ read, write, image, approve, se
     submit: (batch: SubjectVariantBatch, positions?: readonly number[]): Promise<boolean> => writable() ? submit(batch, positions) : Promise.resolve(false),
     async retry(batch: SubjectVariantBatch, position: number): Promise<SubjectVariantBatch | null> {
       const item = batch.items[position - 1];
-      if (!writable() || batch.projectId !== state.projectId || batch.state !== 'active' || !item || !subjectVariantRetryable(item)) return null;
+      if (!writable() || batch.projectId !== state.projectId || batch.state !== 'active' || !item || !subjectVariantRetryable(item) || batch.providerId === 'mock' && !mockAvailable()) return null;
       const result = await mutate('subject.variants.retry', freeze({ projectId: state.projectId, batchId: batch.id, position, expectedRevision: batch.revision, requestId: requestId() }), batch.subjectId, item.attempt + 1);
       if (result) void submit(result, [position]);
       return result;
@@ -334,6 +335,14 @@ export function createSubjectVariantController({ read, write, image, approve, se
     async resend(): Promise<SubjectVariantBatch | null> {
       const pending = state.pending;
       if (!pending || state.busy) return null;
+      if (!mockAvailable()) {
+        if (pending.operation === 'subject.variants.create' && pending.input.providerId === 'mock') return null;
+        if (pending.operation === 'subject.variants.retry') {
+          const batchId = pending.input.batchId as string;
+          const batch = state.live[batchId] ?? state.lists[pending.subjectId]?.items.find(item => item.id === batchId);
+          if (batch?.providerId !== 'openai') return null;
+        }
+      }
       const batch = await mutate(pending.operation, pending.input, pending.subjectId, pending.attempt);
       if (batch && pending.operation === 'subject.variants.create') void submit(batch);
       if (batch && pending.operation === 'subject.variants.retry') void submit(batch, [pending.input.position as number]);

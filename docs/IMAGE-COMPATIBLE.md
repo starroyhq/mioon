@@ -237,7 +237,7 @@ PNG maximum. An incompatible response never triggers another request, a model
 change or a fallback. This is a conservative wire contract, not a claim that
 all “OpenAI-compatible” vendors work. Image edits/masks, reference uploads,
 batches, seed/size/quality controls and automatic image-to-video are excluded.
-Mock remains a labeled local test card and makes no promise to depict the prompt.
+Development and test builds can create labeled local Mock test cards. Stable builds keep existing cards readable without offering new Mock generation.
 
 ## Public request preparation, private paid approval
 

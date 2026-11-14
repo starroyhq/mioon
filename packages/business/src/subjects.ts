@@ -5,6 +5,7 @@ import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {HIDDEN_SUBJECT_VERSION_SQL,isSubjectVersionHidden,subjectVariantSchemaPresent} from './subject-variant-visibility.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {assertCanvasTargetActive,canvasActiveCondition,hasCanvasArchives} from './canvas-active.ts';
 import type {OwnedMediaGraphReader} from './inspection.ts';
 
 type SubjectRow = Record<string, unknown>;
@@ -139,8 +140,10 @@ export function createSubjectServices(store: SubjectStore,{canonical,now,readOnl
     rows=db.prepare(`SELECT ${columns('id,number')} FROM subject_versions WHERE projectId=? AND subjectId=? AND number>?${visible} ORDER BY number LIMIT ?`).all(input.projectId,input.subjectId as string,start as number,limit+1) as SubjectRow[];
     items=rows.slice(0,limit).map(row=>boundary.version(row.id,input.subjectId));
    }else{
-    const filter=input.shotId?'shotId':'subjectId',filterId=input[filter];if(input.shotId)boundary.shot(filterId);else boundary.subject(filterId);
-    rows=db.prepare(`SELECT ${bindingColumns} FROM subject_bindings WHERE projectId=? AND ${filter}=? AND id>? ORDER BY id LIMIT ?`).all(input.projectId,filterId as string,start as string,limit+1) as SubjectRow[];
+    const filter=input.shotId?'shotId':'subjectId',filterId=input[filter];
+    if(input.shotId){const shot=boundary.shot(filterId);assertCanvasTargetActive(db,'shots',shot.id as string);}else boundary.subject(filterId);
+    const active=hasCanvasArchives(db)?` AND EXISTS(SELECT 1 FROM project.shots s WHERE s.id=subject_bindings.shotId AND s.projectId=subject_bindings.projectId AND ${canvasActiveCondition(db,'s')})`:'';
+    rows=db.prepare(`SELECT ${bindingColumns} FROM subject_bindings WHERE projectId=? AND ${filter}=? AND id>?${active} ORDER BY id LIMIT ?`).all(input.projectId,filterId as string,start as string,limit+1) as SubjectRow[];
     items=rows.slice(0,limit).map(row=>boundary.bindingRow(row));
    }
    return {projectId:input.projectId,items,nextCursor:rows.length>limit?cursor(input,operation,operation==='subject.version.list'?(items.at(-1) as SubjectRow).number:(items.at(-1) as SubjectRow).id):null};
@@ -164,6 +167,7 @@ export function createSubjectServices(store: SubjectStore,{canonical,now,readOnl
      if(!creating){const saved=db.prepare('UPDATE subjects SET revision=?,headVersionId=?,updatedAt=? WHERE id=? AND projectId=? AND revision=?').run(revision,versionId,timestamp,id,input.projectId,input.expectedRevision);if(saved.changes!==1)invalid();}
      return createSubjectRecoveryBoundary(db,input).subject(id);
     }
+    assertCanvasTargetActive(db,'shots',input.shotId as string);
     const owner=context.subject as SubjectRow,current=context.current as SubjectRow|null,revision=(current?.revision as number|undefined)??0;
     conflict(owner as {revision: number;id: string},input.expectedSubjectRevision);conflict((current??{id:input.subjectId as string,revision:0}) as {revision: number;id: string},input.expectedRevision);advance(revision);
     if(input.role!==(owner.kind==='look'?'style':'subject'))throw new AppError('SUBJECT_ROLE_MISMATCH','look 只能绑定为 style，其他主体类型只能绑定为 subject',409);

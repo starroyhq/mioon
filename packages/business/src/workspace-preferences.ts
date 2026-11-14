@@ -57,7 +57,7 @@ function panelLayout(value: unknown, mode: string): {assetsWidth: number;inspect
 export function parseWorkspacePreferencesState(value: unknown): Record<string, unknown> {
   const s = object(value, ['version', 'activeMode', 'canvas', 'editing', 'shared'], ['state'], ['layout']);
   const c = object(s.canvas, ['viewport', 'selectedId', 'selectedEdgeId', 'inspectorTab', 'highlightedVersionId', 'storyboardOpen', 'miniMap'], ['state', 'canvas']);
-  const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled']);
+  const e = object(s.editing, ['selectedClipId', 'quickAssetId', 'previewKind', 'playhead', 'pixelsPerSecond', 'scrollLeft', 'scrollTop', 'timelineCollapsed'], ['state', 'editing'], ['snappingEnabled', 'aspectFrameSuggestionSeen']);
   const shared = object(s.shared, ['assetFilter', 'assetsCollapsed', 'inspectorCollapsed'], ['state', 'shared']);
   const legacyPanel = () => ({ assetsWidth: 260, inspectorWidth: 320,
     assetsCollapsed: bool(shared.assetsCollapsed, ['state', 'shared', 'assetsCollapsed']),
@@ -105,6 +105,7 @@ export function parseWorkspacePreferencesState(value: unknown): Record<string, u
       timelineCollapsed: bool(e.timelineCollapsed, ['state', 'editing', 'timelineCollapsed']),
       // Missing only in legacy v1 records; an explicit value must be boolean.
       snappingEnabled: Object.hasOwn(e, 'snappingEnabled') ? bool(e.snappingEnabled, ['state', 'editing', 'snappingEnabled']) : true,
+      ...(Object.hasOwn(e, 'aspectFrameSuggestionSeen') ? {aspectFrameSuggestionSeen: oneOf(e.aspectFrameSuggestionSeen, [true], ['state', 'editing', 'aspectFrameSuggestionSeen'])} : {}),
     },
     shared: {
       assetFilter: oneOf(shared.assetFilter, ['all', 'image', 'video', 'audio'], ['state', 'shared', 'assetFilter']),

@@ -2170,10 +2170,10 @@ const shellCoreMessages = {
     "ja": "キャンバスに追加"
   },
   "shell.generationConfirmTitle": {
-    "zh-Hans": "确认提交真实生成",
-    "zh-Hant": "確認提交實際生成",
-    "en": "Confirm real generation",
-    "ja": "実際の生成を確認"
+    "zh-Hans": "确认提交生成请求",
+    "zh-Hant": "確認送出生成請求",
+    "en": "Confirm generation request",
+    "ja": "生成リクエストの確認"
   },
   "shell.generationCosts": {
     "zh-Hans": "此操作会调用外部生成服务，可能产生费用",

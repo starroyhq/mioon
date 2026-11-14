@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities, videoTemplate } from '../packages/contracts/src/video-providers.ts';
 import type { VideoConnectionDescriptor, VideoExecutionBinding } from '../packages/contracts/src/video-providers.ts';
-import { generationSelection, generationParameters, videoConnectionProviders, generationInputIssue, generationProfileSelection, findGenerationProvider, prepareGenerationAspect } from '../apps/web/src/generation-settings.ts';
+import { generationSelection, generationParameters, videoConnectionProviders, generationInputIssue, generationProfileSelection, findGenerationProvider, prepareGenerationAspect, videoGenerationServiceAvailable } from '../apps/web/src/generation-settings.ts';
 import { renderMessage } from '../packages/i18n/src/index.ts';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -63,6 +63,16 @@ test('separate accounts of one provider keep their connection and model entry id
   const defaulted = generationSelection(providers, {}, shot); assert.equal(defaulted.provider, undefined, 'No paid connection is selected implicitly');
 });
 
+test('availability considers all enabled accounts without defaulting to one or reviving a stored Mock choice', () => {
+  const configured = descriptor(), disabled = {...descriptor(idB), enabled: false};
+  const providers = videoConnectionProviders([disabled, configured]);
+  assert.equal(videoGenerationServiceAvailable(providers), true);
+  assert.equal(videoGenerationServiceAvailable(videoConnectionProviders([disabled])), false);
+  assert.equal(generationSelection(providers, {}, shot).provider, undefined);
+  assert.equal(generationSelection(providers, {providerId: 'mock', model: 'mock-v1'}, shot).provider, undefined);
+  assert.equal(generationSelection(providers, {connectionId: idB}, shot).provider?.status, 'disabled');
+});
+
 test('a removed entry cannot reuse another entry even when raw model IDs match', () => {
   const d = descriptor(), providers = videoConnectionProviders([d]);
   const selected = generationSelection(providers, { connectionId: idA, model: d.models[0]!.entry.modelId, modelEntryId: idB }, shot);
@@ -94,11 +104,14 @@ test('resolution defaults and overrides preserve exact duration-resolution pairs
 
 test('models page SSR renders safe inactive controls without provider calls', () => {
   const script = `import {build} from 'esbuild';
-    const {outputFiles}=await build({stdin:{contents:${JSON.stringify("import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server.browser'; import VideoProviderSettings from './VideoProviderSettings.tsx'; import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm'; export const html=renderToStaticMarkup(<ConfirmationProvider><VideoProviderSettings active={false}/></ConfirmationProvider>);")},loader:'tsx',resolveDir:${JSON.stringify(resolve('apps/web/src'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
+    const {outputFiles}=await build({stdin:{contents:${JSON.stringify("import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server.browser'; import VideoProviderSettings from './VideoProviderSettings.tsx'; import GenerationServicesSettings from './GenerationServicesSettings.tsx'; import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm'; export const html=renderToStaticMarkup(<ConfirmationProvider><VideoProviderSettings active={false}/><GenerationServicesSettings active={false}/></ConfirmationProvider>);")},loader:'tsx',resolveDir:${JSON.stringify(resolve('apps/web/src'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     try { const {html}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(html);process.exit(0); } catch(error) { process.stderr.write(error.message); process.exit(1); }`;
   const html = execFileSync(process.execPath, ['--input-type=module'], { input: script, encoding: 'utf8', timeout: 30000 });
   assert.ok(html.includes('Seedance')); assert.doesNotMatch(html, /Runway|官方供应商/); assert.ok(html.includes('供应商')); assert.ok(html.includes('video-add-connection')); assert.ok(html.includes('disabled'));
   assert.ok(html.includes('video-provider-settings')); assert.doesNotMatch(html, /value="sk-|Bearer /);
+  assert.match(html, /generation-available-video/); assert.match(html, /generation-available-image/);
+  assert.match(html, /每家服务的密钥分开填写/);
+  assert.doesNotMatch(html, /settings-live-generation|generation-services-simulation|真实生成|本地模拟/);
 });
 
 test('duplicate exact Ark models select their own entry profile instead of an ambiguous merged profile', () => {

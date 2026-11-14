@@ -4,19 +4,22 @@ import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {s1PublicOperationSchemas} from '../packages/contracts/src/asset-generation.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,realpath,symlink,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,realpath,symlink,writeFile,readFile} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {crc32,deflateSync} from 'node:zlib';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {run as runMedia} from '../packages/business/src/media-runtime.ts';
-import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
+import {projectAgentTaskUndo,createAgentTaskTools,listAgentTaskToolsForChannel,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
+import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
@@ -64,8 +67,12 @@ function expandSchemaReferences(root:unknown,value:unknown=root):unknown{
  if(Object.hasOwn(value,'$ref')){const target=expandSchemaReferences(root,schemaReference(root,value.$ref));assert.ok(record(target));return {...target,...Object.fromEntries(Object.entries(value).filter(([key])=>key!=='$ref').map(([key,child])=>[key,expandSchemaReferences(root,child)]))};}
  return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,expandSchemaReferences(root,child)]));
 }
-async function fixture(t:TestContext,options:CreateServicesOptions={},providers:ReadonlyMap<string,Provider>=new Map()){
- const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-tools-v2-')),store=openStore(root),services=createServices(store,providers,options);
+async function fixture(t:TestContext,options:CreateServicesOptions={},providers:ReadonlyMap<string,Provider>=new Map(),candidate=false){
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-tools-v2-'));
+ const projectFile=path.join(root,'Film.mioon'),format4={};
+ if(candidate)createProjectFile(projectFile,{format4});
+ const store=candidate?openServerTestStore({projectFile,format4,locate:()=>({localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})},path.join(root,'app')):openStore(root);
+ const services=createServices(store,providers,options);
  const value=await services.call('project.create',{name:'Tools fixture'});if(!record(value)||typeof value.id!=='string')throw Error('Invalid test project');
  const projectId=value.id,journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
  const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic local task',configuration:mioFixtureConfiguration}).run;
@@ -103,7 +110,7 @@ test('Mio generation reports the accepted ratio from the frozen job only for asp
  assert.equal(Object.hasOwn(step.result,'snapshot'),false);
  assert.equal(Object.hasOwn(outcome.result,'snapshot'),false);
 });
-test('Mio provider observations expose the workspace live generation gate',async t=>{
+test('Mio provider observations expose availability without the retired workspace gate',async t=>{
  const provider:Provider={
   id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
   async submit(){throw Error('A catalog read cannot submit');},
@@ -117,7 +124,10 @@ test('Mio provider observations expose the workspace live generation gate',async
   f.services.configuration.set({expectedRevision:current.revision,liveGeneration});
   const {outcome}=await f.execute('provider.list',{});
   assert.ok(Array.isArray(outcome.result)&&outcome.result.length===1);
-  assert.equal(record(outcome.result[0])&&outcome.result[0].liveGenerationEnabled,liveGeneration);
+  assert.ok(record(outcome.result[0]));
+  assert.equal(outcome.result[0].enabled,true);
+  assert.equal(outcome.result[0].configured,true);
+  assert.equal(Object.hasOwn(outcome.result[0],'liveGenerationEnabled'),false);
  }
  assert.deepEqual(f.store.list('jobs',f.projectId),[]);
 });
@@ -207,6 +217,19 @@ test('all public operations have explicit admission; model cannot acquire admini
  for(const operation of ['project.rename','shot.update','timeline.clip.update','image.generate','generation.submit','task.wait','asset.importSelected','video.connection.list','export.activity.get','task.disposition.list'])assert.equal(names.has(operation),true,operation);
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',requestId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',projectId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
+});
+test('channel-aware Mio catalogs retain format 4 frame presets and remove mock only from release generation tools',()=>{
+ for(const mockAllowed of [true,false])for(const frameTransaction of [true,false]){
+  const tools=listAgentTaskToolsForChannel(mockAllowed,{frameTransaction});
+  const frame=tools.find(tool=>tool.operation==='timeline.format.set'),generation=tools.find(tool=>tool.operation==='generation.submit');
+  assert.ok(frame&&generation);
+  const presets=schemaAt(frame.parameters,['properties','presetId','enum']);
+  const providers=schemaAt(generation.parameters,['properties','providerId','enum']);
+  assert.ok(Array.isArray(presets)&&Array.isArray(providers));
+  assert.equal(presets.includes('ultrawide_1080'),frameTransaction);
+  assert.equal(providers.includes('mock'),mockAllowed);
+  assert.ok(schemaAt(generation.parameters,['properties','aspectSource']));
+ }
 });
 test('every actual model tool catalog has self-contained schema references in both protocols',async t=>{
  const f=await fixture(t),tools=f.tools.list(),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
@@ -327,16 +350,16 @@ test('journal write failure rolls back the domain mutation and no result receipt
  await assert.rejects(f.execute('shot.update',{shotId:shot.id,expectedRevision:shot.revision,patch:{title:'Must roll back'}},{failRecord:true}),{code:'SQLITE_FULL'});
  assert.equal((f.store.get('shots',shot.id) as Record<string,unknown>).title,'Before');assert.equal(f.journal.snapshot(f.run.id).changes.length,0);
  const step=f.journal.snapshot(f.run.id).steps.at(-1)!;f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
- const prepared=f.tools.prepare({projectId:f.projectId,operation:'shot.update',input:{shotId:shot.id,expectedRevision:1,patch:{title:'Must roll back'}}}),before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
- assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
- assert.equal(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:randomUUID()}),null);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
+ const before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+ assert.deepEqual(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
+ assert.equal(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:randomUUID()}),null);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
 });
 for(const operation of ['generation.submit','image.generate'] as const)test(`${operation}: an unknown paid step is provably not applied only while no acceptance, job origin or dispatch cost exists`,async t=>{
  const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){throw Error('No synthetic worker was started');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No synthetic output requested');}};
  const f=await fixture(t,{imageOptions:{autoRun:false}},new Map([['mock',provider]]));let input:Record<string,unknown>;
  if(operation==='generation.submit'){const created=await f.execute('shot.create',{title:'Paid unknown',duration:2});assert.ok(record(created.outcome.result));input={shotId:String(created.outcome.result.id),expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};}
  else input={name:'Paid unknown',prompt:'Synthetic',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}};
- const prepared=f.tools.prepare({projectId:f.projectId,operation,input}),accepted=()=>f.store.db.prepare(operation==='generation.submit'?'SELECT COUNT(*) AS n FROM jobs':'SELECT COUNT(*) AS n FROM image_tasks').get()!.n;
+ const accepted=()=>f.store.db.prepare(operation==='generation.submit'?'SELECT COUNT(*) AS n FROM jobs':'SELECT COUNT(*) AS n FROM image_tasks').get()!.n;
  for(const evidence of ['none','cost','origin','receipt'] as const){
   // A lost journal write rolls the whole acceptance back, as a crash before its commit would.
   await assert.rejects(f.execute(operation,input,{failRecord:true}),{code:'SQLITE_FULL'},evidence);assert.equal(accepted(),0,evidence);
@@ -345,7 +368,7 @@ for(const operation of ['generation.submit','image.generate'] as const)test(`${o
   if(evidence==='origin')f.store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(operation==='generation.submit'?'job':'image',randomUUID(),f.run.id,step.id,f.projectId,step.id,operation);
   // An acceptance without its v2 completion, as after a crash between the two commits.
   if(evidence==='receipt'){await f.services.call(operation,{...input,...(operation==='image.generate'?{projectId:f.projectId}:{}),requestId:step.id});assert.equal(accepted(),1);}
-  assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),evidence==='none'?{outcome:'not_applied',reason:'atomic_receipt_absent'}:null,evidence);
+  assert.deepEqual(f.tools.recoverLocalUnknown({projectId:f.projectId,runId:f.run.id,stepId:step.id,requestId:step.id}),evidence==='none'?{outcome:'not_applied',reason:'atomic_receipt_absent'}:null,evidence);
  }
 });
 test('same-value mutations complete the v2 receipt in the domain transaction even with no Change',async t=>{
@@ -732,7 +755,7 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
   release();await worker.tick();await worker.tick();assert.equal(posts,0);assert.equal((f.store.list('jobs',f.projectId)[0] as Record<string,unknown>).status,'queued');assert.equal(modelCalls,3);
  }finally{release();await worker?.stop();runtime.close();await runtime.drain();await settings.close();}
 });
-for(const action of ['send','revoke_task_authority','disable_workspace_live'] as const)test(`configured video v2 ${action} preserves the frozen connection credential and final dispatch gates`,async t=>{
+for(const action of ['send','revoke_task_authority','remove_connection_credential'] as const)test(`configured video v2 ${action} preserves the frozen connection credential and final dispatch gates`,async t=>{
  const directory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-video-settings-')),settings=await createVideoSettings({directory:path.join(directory,'settings'),privateRoot:directory});
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'ark',name:'Synthetic configured v2 Ark',region:'cn-beijing',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('ark')};
  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BOUND_VIDEO_KEY'}});
@@ -740,7 +763,7 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
  const bound:VideoSettingsService={...settings,async acquire(binding,signal){const key=await settings.acquire(binding,signal);enter();await barrier;return key;}};
  let posts=0,authorization='';const f=await fixture(t,{videoSettings:bound,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(_input,init)=>{if(init?.method==='POST'){posts++;authorization=new Headers(init.headers).get('Authorization')??'';}return new Response(JSON.stringify({id:'synthetic-configured-v2-task',status:'running'}),{headers:{'content-type':'application/json'}});}});
  t.after(async()=>{await settings.close();await rm(directory,{recursive:true,force:true});});
- await f.services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
+ await f.services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:false});
  const shot=await f.services.call('shot.create',{projectId:f.projectId,title:'Configured synthetic video',prompt:'Synthetic geometry moves',duration:4,aspectRatio:'9:16'});if(!record(shot))throw Error('Invalid shot');
  const listed=await f.execute('video.connection.list',{});assert.doesNotMatch(JSON.stringify(listed.outcome.result),/SYNTHETIC_BOUND_VIDEO_KEY|credentialRef/);
  const model=configuration.models[0]!;const accepted=await f.execute('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'ark',model:model.modelId,connectionId:configuration.id,configurationRevision:1,modelEntryId:model.id,parameters:{resolution:'720p'}});
@@ -748,11 +771,15 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
  const worker=startWorker(f.store,f.services,new Map());
  try{await entered;const original=f.store.list('jobs',f.projectId)[0] as Record<string,unknown>;
   if(action==='revoke_task_authority')allowed=false;
-  if(action==='disable_workspace_live')await f.services.call('workspace.settings.set',{expectedRevision:1,liveGeneration:false});
+  if(action==='remove_connection_credential')await settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'remove'}});
   release();await worker.tick();
   const current=f.store.list('jobs',f.projectId)[0] as Record<string,unknown>;assert.equal(current.id,original.id);assert.equal(f.store.list('jobs',f.projectId).length,1);
   if(action==='send'){assert.equal(posts,1);assert.equal(authorization,'Bearer SYNTHETIC_BOUND_VIDEO_KEY');assert.equal(current.status,'running');assert.equal(f.journal.step(accepted.step.id).cost,'submitted');}
-  else{assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);if(action==='revoke_task_authority'){assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);}else{assert.equal(current.status,'failed');assert.ok(record(current.error));assert.equal(current.error.code,'LIVE_GENERATION_DISABLED');}}
+  else{
+   assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);
+   assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);
+   if(action==='remove_connection_credential'){assert.equal(current.phase,'connection_required');assert.ok(record(current.error));assert.equal(current.error.code,'VIDEO_SETTINGS_NOT_CONFIGURED');}
+  }
  }finally{release();await worker.stop();}
 });
 
@@ -891,6 +918,7 @@ function storyboardPng(index:number):Buffer{
 }
 async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
  const bytes=mp4HeaderFixture('Synthetic storyboard reference; decoder replaced'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ await mkdir(path.join(f.root,'media'),{recursive:true,mode:0o700});
  await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});
  f.store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:3,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
  const ack=await f.services.call('scene.detect',{projectId:f.projectId,sourceAssetId:id,sourceHash:sha256,requestId:randomUUID()});assert.ok(record(ack));
@@ -898,6 +926,22 @@ async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
  throw Error('Synthetic detection did not finish');
 }
 const sceneState=(f:Awaited<ReturnType<typeof fixture>>,id:string):string=>String(f.store.db.prepare('SELECT state FROM scene_tasks WHERE id=?').get(id)!.state);
+test('Mio receives a proven format 4 storyboard refusal with no accepted task or request',async t=>{
+ const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:storyboardFrames as never}},new Map(),true);
+ const source=await storyboardSource(f);
+ const timeline=await f.services.call('timeline.get',{projectId:f.projectId});
+ assert.ok(record(timeline));
+ f.store.db.prepare('UPDATE timelines SET data=? WHERE projectId=?')
+  .run(JSON.stringify({...timeline,width:1600,height:1000}),f.projectId);
+ const tables=['scene_tasks','scene_requests','mio_job_origins'];
+ const snapshot=()=>tables.map(table=>f.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+ const before=snapshot();
+ await assert.rejects(f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1]}),
+  {code:'SCENE_PROJECT_ASPECT_UNSUPPORTED',status:409,details:{mutationOutcome:'not_applied'}});
+ assert.deepEqual(snapshot(),before);
+ assert.deepEqual(f.store.list('shots',f.projectId),[]);
+});
+
 test('storyboard acceptance binds its task to the step and a stopped run retires it before it starts',async t=>{
  const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:(async()=>{throw Error('A held storyboard must not decode');}) as never}});
  const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Paused'),{code:'AGENT_TASK_PAUSED'});});t.after(remove);
@@ -929,4 +973,76 @@ test('a storyboard built for the Assistant records its images and shots as one l
  assert.equal(projectAgentTaskUndo(f.store,f.projectId,late).get(late[0]!.id)?.undoDisposition,'retain','the user undoes the batch, not the run');
  const waited=await f.execute('task.wait',{kind:'scene',id:taskId});assert.ok(record(waited.step.result));assert.equal(waited.step.result.state,'succeeded');
  assert.ok(record(waited.step.result.undo)&&waited.step.result.undo.available===true);
+});
+
+
+test('candidate Mio live paging and execution ignore archived canvas while old receipts stay readable',async t=>{
+ const f=await fixture(t,{},new Map(),true),{store,tools,journal,run,projectId}=f;
+ const {requestEpoch,requestAfter}=canvasEditingResponses['canvas.history.get'].parse(await f.services.call('canvas.history.get',{projectId}));
+ const request=()=>createCanvasRequestId(requestEpoch,randomUUID(),Math.max(Date.now(),requestAfter+1));
+ const first=await f.shot('Archived shot'),second=await f.shot('Live shot');
+ const node=async(label:string)=>{
+  const result=await f.services.call('node.create',{projectId,type:'text',label,position:{x:0,y:0},requestId:randomUUID()});
+  assert.ok(record(result)&&typeof result.id==='string');return result.id;
+ };
+ const nodes=(await Promise.all([node('One'),node('Two'),node('Three')])).sort();
+ const [hiddenNode,firstLive,secondLive]=nodes as [string,string,string];
+ const created=await f.execute('edge.create',{source:hiddenNode,target:second.id});
+ assert.ok(record(created.outcome.result)&&typeof created.outcome.result.id==='string');
+ const hiddenEdge=created.outcome.result.id,edgeChange=created.changes[0]!;
+ const active=await f.execute('edge.create',{source:firstLive,target:secondLive});
+ assert.ok(record(active.outcome.result)&&typeof active.outcome.result.id==='string');
+ const pending=tools.prepare({projectId,operation:'edge.delete',input:{edgeId:hiddenEdge}});
+ const continuity={issues:[{category:'props',shotIds:[first.id],text:'Match the umbrella.'}]};
+ const pendingReport=tools.prepare({projectId,operation:'mioon_continuity_report',input:continuity});
+ const shotInput={shotId:first.id,expectedRevision:first.revision,patch:{title:'Check old receipt'}};
+ const archivedTargets=[{kind:'node',id:hiddenNode,revision:journal.targetRevision(projectId,'node',hiddenNode)},
+  {kind:'shot',id:first.id,revision:journal.targetRevision(projectId,'shot',first.id)}];
+ const archived=canvasEditingResponses['canvas.apply'].parse(await f.services.call('canvas.apply',{
+  projectId,operation:'archive',requestId:request(),historyRevision:0,targets:archivedTargets}));
+ assert.equal(journal.targetRevision(projectId,'edge',hiddenEdge),pending.targets[0]!.revision,
+  'the endpoint archive hides a decorative edge without modifying the edge itself');
+
+ const view=async(operation:string,input:Record<string,unknown>)=>{
+  const response=(await f.execute(operation,input)).outcome.result;
+  assert.ok(record(response)&&Array.isArray(response.items));return response;
+ };
+ const page=await view('node.inspect',{limit:1});
+ assert.deepEqual((page.items as Array<{id:string}>).map(item=>item.id),[firstLive]);
+ assert.equal(page.nextAfter,firstLive);
+ const next=await view('node.inspect',{limit:1,after:page.nextAfter});
+ assert.deepEqual((next.items as Array<{id:string}>).map(item=>item.id),[secondLive]);assert.equal(next.nextAfter,null);
+ const edges=await view('edge.inspect',{limit:1});
+ assert.deepEqual((edges.items as Array<{id:string}>).map(item=>item.id),[active.outcome.result.id]);assert.equal(edges.nextAfter,null);
+ assert.equal(collectTaskProjectOverview(store,projectId).counts.shots,1);
+ for(const [operation,input] of [['mioon_continuity_report',continuity],['shot.update',shotInput],['edge.delete',{edgeId:hiddenEdge}],
+  ['edge.create',{source:hiddenNode,target:secondLive}]] as const)
+  assert.throws(()=>tools.prepare({projectId,operation,input}),{code:'AGENT_TASK_TARGET_CHANGED'});
+ for(const prepared of [pending,pendingReport]){
+  const context={runId:run.id,stepId:randomUUID(),requestId:randomUUID(),beforeEffect:()=>{},recordInside:()=>assert.fail('archived target was written')};
+  await assert.rejects(tools.execute(prepared,context),{code:'AGENT_TASK_TARGET_CHANGED'});
+ }
+ assert.deepEqual(tools.currentTargets(projectId,[{kind:'node',id:hiddenNode},{kind:'edge',id:hiddenEdge}]),
+  [{kind:'node',id:hiddenNode,value:null},{kind:'edge',id:hiddenEdge,value:null}]);
+ assert.equal(journal.step(created.step.id).status,'completed');
+ assert.equal(projectAgentTaskUndo(store,projectId,[edgeChange]).get(edgeChange.id)?.undoDisposition,'blocked');
+ assert.throws(()=>f.undo(edgeChange),{code:'AGENT_TASK_TARGET_CHANGED'});
+ assert.ok(store.get('edges',hiddenEdge),'the hidden row and its receipt are retained');
+ const restored=canvasEditingResponses['canvas.apply'].parse(await f.services.call('canvas.apply',{
+  projectId,operation:'restore',requestId:request(),historyRevision:archived.history.revision,
+  targets:[{kind:'node',id:hiddenNode,revision:journal.targetRevision(projectId,'node',hiddenNode)}]}));
+ assert.equal(restored.history.revision,archived.history.revision+1);
+ // Simulate an older persisted uncertain step surviving independently of
+ // the current canvas (ordinary new archival blocks an unresolved effect).
+ const unknown=beginFixtureToolStep(journal,run.id,{tier:'local_reversible',toolCall:{id:randomUUID(),name:'mioon_shot_update',arguments:shotInput}});
+ journal.markDispatch(run.id,unknown.id);journal.updateStep(run.id,unknown.id,{status:'unknown'});
+ assert.deepEqual(tools.recoverLocalUnknown({projectId,runId:run.id,stepId:unknown.id,requestId:unknown.id}),
+  {outcome:'not_applied',reason:'atomic_receipt_absent'});
+ assert.ok(((await view('edge.inspect',{limit:2})).items as Array<{id:string}>).some(item=>item.id===hiddenEdge));
+ assert.equal(projectAgentTaskUndo(store,projectId,[edgeChange]).get(edgeChange.id)?.undoDisposition,'blocked',
+  'the now-live edge is still required by an older user patch');
+ assert.throws(()=>f.undo(edgeChange),{code:'AGENT_TASK_TARGET_CHANGED'});
+ const unrelated=await f.execute('node.create',{type:'text',position:{x:0,y:0},label:'Unrelated Mio node'});
+ assert.equal(projectAgentTaskUndo(store,projectId,unrelated.changes).get(unrelated.changes[0]!.id)?.undoDisposition,'undo');
+ f.undo(unrelated.changes[0]!);
 });

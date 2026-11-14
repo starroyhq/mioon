@@ -7,6 +7,7 @@ import type { ProjectWindowContext } from '../apps/web/src/desktop-window-client
 import { i18nTestModule } from './helpers/i18n.ts';
 import { createNativeCloseRegistry, installNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
 import type { createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
+import { installSettingsBootClose, retireSettingsBootClose } from '../apps/web/src/settings-boot-close.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import type { SettingsRenderProps } from '../apps/web/src/SettingsRoot.tsx';
@@ -160,13 +161,22 @@ test('DesktopRoot applies only its verified modal flag without replacing its edi
   receive(context({ settingsModalOpen: false })); assert.equal(render().props.blocked, false); h.dispose();
 });
 
-async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission> }) => Promise<boolean>, options: {initialSlot?: ProjectWindowContext['settingsSlot']; confirm?: () => Promise<boolean>} = {}) {
-  class Page extends Events {
-    location = { href: 'http://127.0.0.1:44123/' }; closeCalls = 0;
-    __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission>;
-    close() { this.closeCalls++; assert.fail('Renderer window.close must not bypass main-side close admission'); }
+class SettingsPage extends EventTarget {
+  location = { href: 'http://127.0.0.1:44123/settings.html' }; closeCalls = 0;
+  __mioonNativeCloseAdmission?: ReturnType<typeof createNativeCloseAdmission>;
+  __mioonFlushWorkspacePreferences?: () => Promise<boolean>;
+  close() { this.closeCalls++; assert.fail('Renderer window.close must not bypass main-side close admission'); }
+  beforeUnload(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    Object.defineProperty(event, 'returnValue', { writable: true, value: '' });
+    return this.dispatchEvent(event);
   }
-  const h = hooks(), page = new Page(), document = Object.assign(new Document(), { visibilityState: 'visible' });
+}
+
+async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, options: {
+  initialSlot?: ProjectWindowContext['settingsSlot']; confirm?: () => Promise<boolean>; page?: SettingsPage;
+} = {}) {
+  const h = hooks(), page = options.page ?? new SettingsPage(), document = Object.assign(new Document(), { visibilityState: 'visible' });
   const observation: boolean[] = [], pauseObservation = (paused: boolean) => { observation.push(paused); };
   const password = {value: 'SYNTHETIC_RETAINED_NATIVE_KEY'}, input = {type: 'input', key: 'key', props: {'data-testid': 'retained-native-key', ref: {current: password}}};
   const marker = { type: 'retained-settings-form', key: 'settings', props: { draft: 'synthetic unsaved key draft', children: [input] } };
@@ -179,6 +189,7 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
     './i18n/I18nProvider.tsx': {useI18n: () => i18nTestModule(locale).useI18n()}, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => options.confirm ?? (async () => false) },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
+    './settings-boot-close.ts': { retireSettingsBootClose },
     './settings-window-state.ts': { createSettingsWindowNavigation },
     './project-entry-identity.ts': {createProjectEntryIdentityOwner: (input: Parameters<typeof createProjectEntryIdentityOwner>[0]) => identity = createProjectEntryIdentityOwner(input)},
     './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './ProjectEntryIdentityStatus.tsx': { __esModule: true, default: 'identity-status' },
@@ -203,6 +214,39 @@ async function settingsPanel(onClose: (page: { __mioonNativeCloseAdmission?: Ret
     get context() {return settings;}, get props() {assert.ok(props); return props;}, get stateUpdates() {return h.updates;},
     button: find(tree, 'native-settings-panel-close').props.onClick as () => void, dispose: h.dispose, get requests() { return requests; } };
 }
+
+test('the settings shell can close before app load and its admission cannot carry over to dirty forms', async () => {
+  const page = new SettingsPage();
+  installSettingsBootClose(page);
+  const boot = page.__mioonNativeCloseAdmission;
+  assert.ok(boot);
+  assert.equal(await page.__mioonFlushWorkspacePreferences?.(), true);
+  const choice = () => ({ discardDirty: false, allowDrainFailure: false, expiresAt: Date.now() + 1000 });
+  const clean = boot.inspect('close');
+  assert.equal(clean.disposition, 'clean');
+  assert.equal(boot.commit(clean.token, choice()), true);
+  assert.equal(page.beforeUnload(), true);
+
+  const inFlight = boot.inspect('close');
+  assert.equal(boot.commit(inFlight.token, choice()), true);
+  const f = await settingsPanel(async () => false, { page });
+  const forms = page.__mioonNativeCloseAdmission;
+  assert.ok(forms);
+  assert.notEqual(forms, boot);
+  assert.equal(boot.commit(inFlight.token, choice()), false);
+  const dirty = forms.inspect('close');
+  assert.equal(dirty.disposition, 'dirty');
+  assert.equal(forms.commit(inFlight.token, choice()), false);
+  assert.equal(forms.commit(dirty.token, choice()), false);
+  assert.equal(page.beforeUnload(), false);
+  f.reportForm({ dirty: true, busy: true, blocked: false, version: 2 });
+  assert.equal(await page.__mioonFlushWorkspacePreferences?.(), false);
+  assert.equal(forms.inspect('close').disposition, 'blocked');
+  f.dispose();
+  assert.equal(page.__mioonNativeCloseAdmission, undefined);
+  assert.equal(page.__mioonFlushWorkspacePreferences, undefined);
+  assert.equal(page.beforeUnload(), true, 'the shell and form guards are both retired');
+});
 
 test('SettingsRoot requests main-side closure before renderer unload and cancelled native admission retains dirty owners', async () => {
   const f = await settingsPanel(async page => {

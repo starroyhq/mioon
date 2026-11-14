@@ -28,7 +28,7 @@ const job = (n: number, status: string) => ({ id: id(n), shotId: id(50), provide
 const defer = () => { let resolve!: (value: boolean) => void; const promise = new Promise<boolean>(done => { resolve = done; }); return { promise, resolve }; };
 const find = (tree: RootTree, testId: string) => nodes(tree).find(node => node.props['data-testid'] === testId);
 const button = (tree: RootTree, label: string) => nodes(tree).find((node: RootNode) => node.type === 'Button' && text(node) === label);
-const defaults = () => ({ activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] } });
+const defaults = () => ({ mockGenerationAvailable: true, activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] } });
 
 let rendered: Record<string, string>;
 before(() => {
@@ -188,6 +188,63 @@ test('task list selects one full detail, prioritizes unknown outcomes and preser
   assert.equal((panes().find(node => !node.props.hidden))!.props['data-task-detail-key'], running.id);
   assert.equal((find(tree, `task-select-${running.id}`))!.props['aria-pressed'], true);
   assert.deepEqual((h.calls as unknown), []);
+});
+
+test('stable task history retains Mock jobs but offers retry only for a real provider', () => {
+  const h = harness(), simulated = job(10, 'failed'), paid = {...job(11, 'failed'), providerId: 'ark'};
+  const props = {mockGenerationAvailable: false, jobs: [simulated, paid]};
+  const history = h.render({...props, selectedTaskId: simulated.id});
+  assert.ok(find(history, `job-${simulated.id}`));
+  assert.equal(find(history, `retry-job-${simulated.id}`), undefined);
+  assert.equal(h.calls.length, 0);
+  const real = h.render({...props, selectedTaskId: paid.id});
+  find(real, `retry-job-${paid.id}`)!.props.onClick();
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.calls[0]!.slice(0, 2), ['retryGeneration', paid]);
+});
+
+test('task center distinguishes automatic video credential recovery, action required, and legacy records in four languages', async () => {
+  const accepted = { ...job(12, 'running'), providerId: 'minimax', providerJobId: 'original-provider-task', progress: 0 };
+  const legacyError = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', retryable: true};
+  const cases = [
+    {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoSecretStore', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoConnectionDeleted', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_INVALID', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialInvalid', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_UNAVAILABLE', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialUnavailable', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: undefined, recovery: undefined, status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoConnectionUnclassified', result: 'tasks.error.videoOriginalTaskRetained'},
+  ] as const;
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const store = createLanguageStore({systemLanguages: [locale]});
+    await store.setPreference(locale);
+    const h = harness(store), {t} = createI18nTestContext(locale);
+    for (const scenario of cases) {
+      const {phase, cause, recovery} = scenario;
+      const error = cause ? {...legacyError, diagnostic: {kind: 'video_credential', cause, recovery}} : legacyError;
+      const tree = h.render({jobs: [{...accepted, phase, error}]});
+      const card = find(tree, `job-${accepted.id}`);
+      assert.ok(card);
+      assert.ok(text(card).includes(t(scenario.status)));
+      assert.ok(text(card).includes(t(scenario.detail)));
+      assert.ok(text(card).includes(t(scenario.result)));
+      assert.equal(text(card).includes(t('tasks.error.videoKeychainContinues')), cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+      assert.ok(text(card).includes(t('tasks.error.diagnosticCode', {code: cause ?? legacyError.code})));
+      assert.doesNotMatch(text(card), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
+      assert.equal(find(tree, `task-select-${accepted.id}`)?.props['data-warning'], recovery === 'user_action');
+      assert.equal(find(tree, `retry-job-${accepted.id}`), undefined);
+      assert.equal(find(tree, `reconcile-job-${accepted.id}`), undefined);
+      assert.equal(text(find(tree, `retry-video-connection-${accepted.id}`)), t('tasks.center.retryVideoConnection'));
+    }
+    assert.deepEqual(h.calls, []);
+    const error = {...legacyError, diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}};
+    const tree = h.render({jobs: [{...accepted, phase: 'connection_retrying', error}]});
+    find(tree, `retry-video-connection-${accepted.id}`)!.props.onClick();
+    assert.deepEqual(h.calls, [['run', `reconcile:${accepted.id}`, 'job.reconcile', {jobId: accepted.id}, message('tasks.center.videoConnectionCheckScheduled')]]);
+    const queued = h.render({jobs: [{...accepted, status: 'queued', providerJobId: null, phase: 'connection_retrying', error}]});
+    assert.equal(find(queued, `retry-video-connection-${accepted.id}`), undefined);
+    h.unmount();
+  }
 });
 
 test('switching task details revokes retained actions and pending confirmations without dispatching on selection', async () => {

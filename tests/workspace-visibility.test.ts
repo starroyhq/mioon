@@ -14,7 +14,7 @@ import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
-import {generationParameters} from '../apps/web/src/generation-settings.ts';
+import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
@@ -44,6 +44,7 @@ function treeNodes(tree: UiTree): UiElement[] {
   if (!tree || typeof tree !== 'object') return [];
   return [tree, ...treeNodes(tree.props?.children)];
 }
+const treeText = (node: UiTree): string => Array.isArray(node) ? node.map(treeText).join('') : node && typeof node === 'object' ? treeText(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
 function createHarness(file: string, exportName = 'default') {
   const slots: UiHook[] = [], frames = new Map<number,()=>void>(), elements = new Map<string,ReturnType<typeof makeElement>>(), modules = new Map<string,UiModule>();
   let cursor = 0, layouts: number[] = [], effects: number[] = [], nextFrame = 0, tree: UiTree;
@@ -90,6 +91,7 @@ function createHarness(file: string, exportName = 'default') {
     './previs/PrevisNode.tsx': { default: 'PrevisNode', __esModule: true },
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
+    './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
@@ -102,7 +104,7 @@ function createHarness(file: string, exportName = 'default') {
     './api.ts': { assetUrl, versionUrl, activeJob, mediaUrl, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
-    './generation-settings.ts': { generationParameters, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
+    './generation-settings.ts': { generationParameters, providerStatus, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
     './VideoFrameControls.tsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },
@@ -131,7 +133,9 @@ function createHarness(file: string, exportName = 'default') {
     );
     return module.exports;
   }
-  const Component = load(file)[exportName];
+  const [exportKey, memberKey] = exportName.split('.');
+  const exports = load(file);
+  const Component = memberKey ? (exports[exportKey] as unknown as UiModule['exports'])[memberKey] : exports[exportKey];
   function flush(queue: number[]) {
     for (const index of queue) { const slot = slots[index]; slot.cleanup?.(); slot.cleanup = slot.callback!(); }
   }
@@ -316,7 +320,6 @@ test('Inspector version cards expose stable version numbers and keep frozen deta
 });
 
 test('Wan history summaries prefer frozen generation duration and ratio with localized automatic values', () => {
-  const treeText = (node: UiTree): string => Array.isArray(node) ? node.map(treeText).join('') : node && typeof node === 'object' ? treeText(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const h = createHarness('Inspector.tsx'); h.locale = locale;
     const version = { id: 'version-one', shotId: 'shot-one', number: 1, model: 'wan3.0-video', createdAt: '2026-10-23T00:00:00Z',
@@ -352,6 +355,49 @@ test('Inspector exposes real generation progress and cancellation only continues
   for (const patch of [{ jobs: [{ id: 'unknown', shotId: 'shot-one', status: 'submission_unknown' }] }] as const) {
     const h = createHarness('Inspector.tsx'); h.render(inspectorProps({ tab: 'settings', onCancelJob: () => assert.fail('Must not cancel'), ...patch }));
     assert.equal(h.find('cancel-generation'), undefined); assert.equal(h.find('inspector-generation-progress'), undefined); h.unmount();
+  }
+});
+
+test('shot node and Inspector replace stalled video progress with Keychain guidance', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const node = createHarness('Nodes.tsx', 'nodeTypes.shot'), inspector = createHarness('Inspector.tsx');
+    node.locale = inspector.locale = locale;
+    const job = {id: 'running-one', shotId: 'shot-one', status: 'running', progress: 0, providerJobId: 'provider-task'};
+    const waiting = {...job, phase: 'connection_retrying', error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}}};
+    const data = {record: {id: job.shotId, title: 'Shot'}, index: 0, job: waiting, generationUnavailableReason: 'Unavailable', onInspect: noop, onGenerate: () => assert.fail('Must not generate')};
+    const nodeView = node.render({data});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null}));
+    const guidance = translate(locale, 'tasks.error.videoSecretStore');
+    const continuation = translate(locale, 'tasks.error.videoKeychainContinues');
+    assert.equal(treeText(node.find(`shot-connection-${job.shotId}`)), `${guidance} ${continuation}`);
+    const panel = inspector.find('inspector-generation-progress');
+    assert.ok(treeText(panel).includes(guidance));
+    assert.ok(treeText(panel).includes(continuation));
+    assert.ok(treeText(panel).includes(translate(locale, 'tasks.error.videoOriginalTaskRetained')));
+    for (const view of [nodeView, panel]) {
+      assert.doesNotMatch(treeText(view), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
+      assert.equal(treeNodes(view).some(element => element.props.role === 'progressbar'), false);
+    }
+    assert.equal(node.nodes().find(element => element.props.className === 'node-generate nodrag')?.props.disabled, true);
+    assert.equal(inspector.find('generate-shot').props.disabled, true);
+    const configured: string[] = [];
+    node.render({data: {...data, configureGeneration: () => configured.push('node')}});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null, configureGeneration: () => configured.push('inspector')}));
+    assert.ok(treeText(node.find(`shot-connection-${job.shotId}`)).includes(guidance));
+    assert.ok(treeText(inspector.find('inspector-generation-progress')).includes(guidance));
+    const nodeConfigure = node.find(`shot-configure-generation-${job.shotId}`)!;
+    const inspectorConfigure = inspector.find('video-generation-configure')!;
+    for (const button of [nodeConfigure, inspectorConfigure]) {
+      assert.ok(treeText(button).includes(translate(locale, 'generation.services.openSettings')) || button.props['aria-label'] === translate(locale, 'generation.services.openSettings'));
+      button.props.onClick();
+    }
+    assert.deepEqual(configured, ['node', 'inspector']);
+    assert.equal(inspector.find('generate-shot').props.disabled, true);
+    const polling = {...job, progress: 45};
+    node.render({data: {...data, job: polling, generationUnavailableReason: null}});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [polling], highlightedVersionId: null}));
+    for (const harness of [node, inspector]) assert.ok(harness.nodes().some(element => element.props.role === 'progressbar' && element.props['aria-valuenow'] === 45));
+    node.unmount(); inspector.unmount();
   }
 });
 

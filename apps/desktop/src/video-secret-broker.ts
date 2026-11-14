@@ -63,7 +63,7 @@ function validCiphertext(value: unknown): value is string {
 }
 function safeStorage(value: unknown): SafeStorage {
   if (!exactObject(value, ['persistentAvailable', 'sessionScope', 'reasonCode']) || typeof value.persistentAvailable !== 'boolean' ||
-      value.sessionScope !== 'server' || ![null, 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
+      value.sessionScope !== 'server' || ![null, 'OS_SECRET_STORE_PENDING', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
       value.persistentAvailable !== (value.reasonCode === null)) throw codecError();
   return {persistentAvailable: value.persistentAvailable, sessionScope: 'server',
     reasonCode: value.reasonCode as SafeStorage['reasonCode']};
@@ -179,14 +179,37 @@ export function createVideoSecretBroker({videoSecretCodec, send, isActive = () =
 export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort; timeout?: number}) {
   if (!port || typeof port.on !== 'function' || typeof port.postMessage !== 'function' ||
       !Number.isInteger(timeout) || timeout < 1 || timeout > 60000) throw codecError();
-  let closed = false, availability: VideoSecretStorage = unavailableStorage(), refreshing: Promise<VideoSecretStorage> | null = null, epoch = 0;
+  // null means the broker has not confirmed the state, including after a
+  // crypto timeout. A confirmed OS denial or basic-text backend stops polling.
+  let closed = false, availability: VideoSecretStorage | null = null, refreshing: Promise<VideoSecretStorage> | null = null, epoch = 0;
   const pending = new Map<string, PendingClientRequest>();
+  const storageListeners = new Set<() => void>();
+  const notifyStorageAvailable = (notify: () => void) => {
+    if (availability?.persistentAvailable && storageListeners.has(notify)) {
+      try { notify(); } catch { /* A consumer cannot change trusted availability. */ }
+    }
+  };
+  let storageTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopPolling = () => {
+    clearTimeout(storageTimer);
+    storageTimer = undefined;
+  };
+  const schedulePolling = () => {
+    if (closed || storageTimer || refreshing || !storageListeners.size ||
+        (availability && availability.reasonCode !== 'OS_SECRET_STORE_PENDING')) return;
+    storageTimer = setTimeout(() => {
+      storageTimer = undefined;
+      void refreshStorage().catch(() => {});
+    }, 500);
+    storageTimer.unref?.();
+  };
   const complete = (requestId: string, error: Error | null, value?: unknown) => {
     const entry = pending.get(requestId);
     if (!entry) return;
     pending.delete(requestId); clearTimeout(entry.timer);
     if (error) {
-      availability = unavailableStorage(); epoch++;
+      availability = null; epoch++;
+      schedulePolling();
       try { port.postMessage({type: CANCEL, version: VERSION, namespace: NAMESPACE, requestId}); } catch {}
       entry.reject(error);
     }
@@ -215,7 +238,9 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
   };
   const close = () => {
     if (closed) return;
-    closed = true; availability = unavailableStorage();
+    closed = true; availability = null;
+    stopPolling();
+    storageListeners.clear();
     port.removeListener?.('message', onMessage); port.removeListener?.('close', close);
     for (const requestId of pending.keys()) complete(requestId, codecError());
   };
@@ -237,25 +262,49 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
   const refreshStorage = (): Promise<VideoSecretStorage> => {
     if (closed) return Promise.reject(codecError());
     if (!refreshing) {
+      stopPolling();
       const currentEpoch = epoch;
       refreshing = request('status').then(value => {
         if (closed || currentEpoch !== epoch) throw codecError();
-        availability = safeStorage(value); return {...availability};
-      }).finally(() => { refreshing = null; });
+        const wasAvailable = availability?.persistentAvailable;
+        availability = safeStorage(value);
+        if (!wasAvailable && availability.persistentAvailable) {
+          for (const notify of [...storageListeners]) notifyStorageAvailable(notify);
+        }
+        return {...availability};
+      }).finally(() => {
+        refreshing = null;
+        schedulePolling();
+      });
     }
     return refreshing;
   };
+  const subscribeStorageAvailable = (listener: () => void): (() => void) => {
+    if (closed) return () => {};
+    // Each subscription has its own identity, including when a caller
+    // unsubscribes and immediately reuses the same listener.
+    const notify = () => listener();
+    storageListeners.add(notify);
+    if (availability?.persistentAvailable) notifyStorageAvailable(notify);
+    else schedulePolling();
+    return () => {
+      storageListeners.delete(notify);
+      if (!storageListeners.size) stopPolling();
+    };
+  };
   const crypto = async (operation: CodecOperation, input: unknown): Promise<unknown> => {
     if (!validInput(operation, input)) throw codecError('VIDEO_SECRET_CODEC_VALIDATION');
-    if (!(await refreshStorage()).persistentAvailable) throw codecError('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+    const status = await refreshStorage();
+    if (!status.persistentAvailable && status.reasonCode !== 'OS_SECRET_STORE_PENDING') throw codecError('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     return request(operation, input);
   };
   const client = {
     // The response allowlist already proved the ciphertext/plaintext is a string.
     encrypt(plaintext: string): Promise<string> { return crypto('encrypt', plaintext) as Promise<string>; },
     decrypt(ciphertext: string): Promise<string> { return crypto('decrypt', ciphertext) as Promise<string>; },
-    storage(): VideoSecretStorage { return {...availability}; },
+    storage(): VideoSecretStorage { return availability ? {...availability} : unavailableStorage(); },
     refreshStorage,
+    subscribeStorageAvailable,
     close
   };
   return Object.freeze(client);

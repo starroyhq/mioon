@@ -4,14 +4,16 @@ import type {SettingsContextOptions} from '@mioon/business/agent/settings';
 import {
   AGENT_MODEL_LIST_LIMITS, agentModelListRequestSchema, agentModelListResultSchema,
   agentModelListCacheRequestSchema, agentModelListCacheResultSchema,
+  agentDraftConnectionTestRequestSchema, agentDraftConnectionTestResultSchema,
 } from '../../../packages/contracts/src/agent-model-list.ts';
-import type {AgentModelListRequest, AgentModelListCacheRequest} from '../../../packages/contracts/src/agent-model-list.ts';
+import type {AgentModelListRequest, AgentModelListCacheRequest, AgentDraftConnectionTestRequest} from '../../../packages/contracts/src/agent-model-list.ts';
 
 interface ModelLists {
   list(input: AgentModelListRequest, options?: SettingsContextOptions): Promise<unknown>;
   cache(input: AgentModelListCacheRequest, options?: SettingsContextOptions): Promise<unknown>;
+  test(input: AgentDraftConnectionTestRequest, options?: SettingsContextOptions): Promise<unknown>;
 }
-const listRoute = '/api/agent/models/list', cacheRoute = '/api/agent/models/cache';
+const listRoute = '/api/agent/models/list', cacheRoute = '/api/agent/models/cache', testRoute = '/api/agent/models/test';
 function validation(): never {throw agentSettingsError('AGENT_SETTINGS_VALIDATION');}
 function send(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -43,7 +45,7 @@ async function readInput(req: IncomingMessage, res: ServerResponse, signal: Abor
  * isolated from project RPC, diagnostics and the bounded credential broker. */
 export function createAgentModelListHttp({models, signal, selfPort}: {models: ModelLists; signal: AbortSignal; selfPort: () => number | undefined}) {
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
-    if (url.pathname !== listRoute && url.pathname !== cacheRoute) return false;
+    if (url.pathname !== listRoute && url.pathname !== cacheRoute && url.pathname !== testRoute) return false;
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       send(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 POST。', details: {}, retryable: false}});
@@ -76,6 +78,11 @@ export function createAgentModelListHttp({models, signal, selfPort}: {models: Mo
           const key = parsed.data.credential.value;
           if (result.data.models.some(model => model.id.includes(key) || model.displayName?.includes(key))) throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');
         }
+      } else if (url.pathname === testRoute) {
+        const parsed = agentDraftConnectionTestRequestSchema.safeParse(input); if (!parsed.success) validation();
+        const result = agentDraftConnectionTestResultSchema.safeParse(await models.test(parsed.data, context));
+        if (!result.success) throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');
+        data = result.data;
       } else {
         const parsed = agentModelListCacheRequestSchema.safeParse(input); if (!parsed.success) validation();
         const result = agentModelListCacheResultSchema.safeParse(await models.cache(parsed.data, context));
@@ -84,8 +91,8 @@ export function createAgentModelListHttp({models, signal, selfPort}: {models: Mo
       }
       active.throwIfAborted(); send(res, 200, {ok: true, data});
     } catch (error) {
-      if (timedOut && req.complete && !signal.aborted && url.pathname === listRoute) {
-        send(res, 200, {ok: true, data: {outcome: 'unreachable', reason: 'timeout'}});
+      if (timedOut && req.complete && !signal.aborted && url.pathname !== cacheRoute) {
+        send(res, 200, {ok: true, data: {outcome: url.pathname === listRoute ? 'unreachable' : 'failed', reason: 'timeout'}});
         return true;
       }
       const safe = safeAgentSettingsError(error);

@@ -60,7 +60,7 @@ function fixture(t: TestContext) {
     runtime?.taskToolsV2?.dispose(); store.close(); library?.close();
   };
   t.after(async () => { await close(); rmSync(root, {recursive: true, force: true}); });
-  const options = {store, shutdown, deletionGate, baseRoot: projectDir, port: 4318, serverPort: () => 4318, listeningPort: () => 4318, comfyModule: 'skip' as const,
+  const options = {store, shutdown, deletionGate, port: 4318, serverPort: () => 4318, listeningPort: () => 4318, comfyModule: 'skip' as const,
     privateMediaDirectories: [library.dataDir, path.join(root, 'cache'), path.join(root, 'tmp')]};
   return {root, store, library, shutdown, options, close,
     compose: async (overrides: Partial<Pick<ProjectRuntimeOptions, 'application' | 'serviceApplication' | 'settings'>> = {}) => runtime = await composeProjectRuntime({...options, ...(library ? {application: library, serviceApplication: testApplication(library)} : {}), ...overrides}),

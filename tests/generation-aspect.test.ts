@@ -28,14 +28,14 @@ function configuredBinding(providerId: 'wan' | 'ark' | 'minimax', aspectRatios?:
     endpoint: resolveVideoEndpoint(providerId, region), credentialRef: randomUUID(), model: {...model, aspectRatios: aspectRatios ?? model.aspectRatios}, outputHosts: ['output.example']};
 }
 
-async function fixture(t: TestContext, binding?: VideoExecutionBinding) {
+async function fixture(t: TestContext, binding?: VideoExecutionBinding, {mockAllowed = true} = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-generation-aspect-')));
   const projectFile = path.join(root, 'project.mioon'), projectId = createProjectFile(projectFile);
   const store = openServerTestStore({projectFile, locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'),
     tempDir: path.join(root, 'tmp')}), format4: {approveUpgrade: () => true}}, path.join(root, 'app'));
   const providers = createProviderRegistry({db: store.db, root, env: {}});
   let providerCalls = 0;
-  const services = createServices(store, providers, {env: {}, profileNow: () => Date.UTC(2026, 10, 12),
+  const services = createServices(store, providers, {env: {}, mockAllowed, profileNow: () => Date.UTC(2026, 10, 12),
     ...(binding ? {videoSettings: {
       select(connectionId, revision, modelEntryId) {
         assert.deepEqual([connectionId, revision, modelEntryId], [binding.connectionId, binding.configurationRevision, binding.model.id]);
@@ -49,7 +49,6 @@ async function fixture(t: TestContext, binding?: VideoExecutionBinding) {
   });
   t.after(async () => { try { await services.drain(); store.close(); } finally { await rm(root, {recursive: true, force: true}); } });
   await services.call('project.create', {name: 'Generation aspect test'});
-  if (binding) await services.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   const format = async () => timelineFormatResponseSchema.parse(await services.call('timeline.format.get', {projectId}));
   const setFrame = async (presetId: string) => {
     const previous = await format();
@@ -110,6 +109,23 @@ test('mock rejects an unsupported project ratio and only submits an explicit sup
   assert.equal(savedShot.snapshot.aspectRatio, '9:16');
   assert.equal(Object.hasOwn(explicit.snapshot.parameters as ServiceRow, 'aspectRatio'), false);
   assert.equal(explicit.submissionCount, 0);
+  assert.equal(f.providerCalls(), 0);
+});
+
+test('production rejects fresh mock generation before checking its project ratio', async t => {
+  const f = await fixture(t, undefined, {mockAllowed: false}), shot = await f.shot(), portrait = await f.format();
+  const stale = f.input(shot, {kind: 'project', aspectRatio: '9:16', expectedTimelineRevision: portrait.timelineRevision});
+  const landscape = await f.setFrame('landscape_1080');
+  const unsupported = f.input(shot, {kind: 'project', aspectRatio: '16:9', expectedTimelineRevision: landscape.timelineRevision});
+  const writes = f.store.db.prepare('SELECT total_changes() AS n').get()?.n;
+  assert.equal(f.services.generationAvailability.video('mock'), false);
+  const providers = await f.services.call('provider.list', {}) as Array<{id: string}>;
+  assert.equal(providers.some(provider => provider.id === 'mock'), false);
+  for (const input of [stale, unsupported]) {
+    await assert.rejects(f.submit(input), {code: 'GENERATION_SERVICE_UNAVAILABLE', status: 409, details: {mutationOutcome: 'not_applied'}});
+  }
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()?.n, writes);
+  assert.equal(f.store.list('jobs').length, 0);
   assert.equal(f.providerCalls(), 0);
 });
 

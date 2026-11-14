@@ -1,4 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
+import {CANVAS_EDIT_LIMITS, canvasEditingResponses} from '../../../contracts/src/canvas-editing.ts';
+import {CANVAS_ARCHIVE_ORDER_FIELD, decodeCanvasPatch, isCanvasGuardEvidence, isCanvasOrderAnchor} from '../canvas-patch.ts';
 import {schemas} from '../../../contracts/src/index.ts';
 import {assetMediaRecordSchema} from '../../../contracts/src/asset-media.ts';
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
@@ -24,8 +26,8 @@ import {subjectVariantSnapshotSchema, isSubjectVariantMutationResponse} from '..
 import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION} from '../../../contracts/src/mio-project-import.ts';
-import {CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
@@ -164,13 +166,18 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       tree(item, source, depth + 1);
     }
   }
+  const duplicateKeys = db.prepare("SELECT 1 FROM json_tree(?) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1 LIMIT 1");
+  function parseStoredJson(raw: string): unknown {
+    // SQL checks duplicates before JSON.parse can erase a conflicting key.
+    try {
+      if (!duplicateKeys.get(raw)) return JSON.parse(raw);
+    } catch {deny('invalid');}
+    return deny('invalid');
+  }
   function decode(raw: unknown, source: string, maximum = limits.cellBytes): unknown {
     if (typeof raw !== 'string') deny('invalid');
     if (++cells > limits.cells || Buffer.byteLength(raw) > maximum || (bytes += Buffer.byteLength(raw)) > limits.totalBytes) deny('limit');
-    // SQL checks duplicates before JSON.parse can erase a conflicting key.
-    const duplicate = db.prepare("SELECT 1 FROM json_tree(?) WHERE typeof(key)='text' GROUP BY parent,key HAVING count(*)>1 LIMIT 1").get(raw);
-    if (duplicate) deny('invalid');
-    let value: unknown; try {value = JSON.parse(raw);} catch {deny('invalid');}
+    const value = parseStoredJson(raw);
     // The bound is checked before downstream recursive schema validators run.
     const pending = [{value, depth: 0}]; let count = 0;
     while (pending.length) {
@@ -193,13 +200,22 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (Object.hasOwn(value, 'projectId') && value.projectId !== store.projectId) deny('invalid');
     if (!Array.isArray(value.referenceAssetIds) || !Array.isArray(value.referenceAssets) || !uuid(value.shotId)) deny('invalid');
   }
-  function content(table: string, value: unknown, source: string, rowId?: unknown): void {
+  function content(table: string, raw: unknown, source: string, rowId?: unknown, archivedShot = false): void {
     if (table === 'projects') {
-      if (!object(value) || value.id !== store.projectId || !fields(value, dataFields.projects)) deny('invalid');
-    } else {owner(value); if (!uuid(value.id) || rowId !== undefined && value.id !== rowId) deny('invalid');}
-    if (!object(value)) deny('invalid');
-    if (table === 'shots') {if (!isReferenceShotRecord(value, {projectId: store.projectId})) deny('invalid');}
-    else if (table === 'timelines') {timeline(value, source); return;}
+      if (!object(raw) || raw.id !== store.projectId || !fields(raw, dataFields.projects)) deny('invalid');
+    } else {owner(raw); if (!uuid(raw.id) || rowId !== undefined && raw.id !== rowId) deny('invalid');}
+    if (!object(raw)) deny('invalid');
+    let value = raw;
+    if (table === 'shots') {
+      // Only real archived content rows, including a decoded version's rows,
+      // can carry private order anchors. Immutable public receipts stay strict.
+      if (archivedShot && Object.hasOwn(raw, CANVAS_ARCHIVE_ORDER_FIELD)) {
+        const {[CANVAS_ARCHIVE_ORDER_FIELD]: order, ...shot} = raw;
+        if (typeof raw.id !== 'string' || !isCanvasOrderAnchor(order, raw.id)) deny('invalid');
+        value = shot;
+      }
+      if (!isReferenceShotRecord(value, {projectId: store.projectId})) deny('invalid');
+    } else if (table === 'timelines') {timeline(value, source); return;}
     else if (table === 'nodes') {
       if (!fields(value, dataFields.nodes) || !['text', 'image', 'video', 'audio', 'asset', 'shot', 'previs'].includes(String(value.type))) deny('unsupported');
       if (value.type === 'previs' && !isPrevisNodeRecord(value)) deny('invalid');
@@ -292,11 +308,38 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     for (const schema of ['project', 'main', 'cache'] as const) {
       const expected = new Set<string>([...ignored[schema], ...Object.keys(consumerCells[schema])]);
       if (schema === 'main' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION) {
-        // CB will own the meaning of the retained canvas patches. Until that
-        // decoder ships, an empty ledger is the only proof of no consumers.
-        for (const table of CANVAS_HISTORY_TABLES) {
-          expected.add(table);
-          if (db.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get()) deny('unsupported');
+        for (const table of CANVAS_HISTORY_TABLES) expected.add(table);
+        // Canvas entries change position, order and archive fields only. They
+        // carry canvas IDs and dependency digests; the retained content rows
+        // scanned below are where asset references actually remain.
+        const entries = db.prepare('SELECT projectId,beforePatch,afterPatch FROM main.canvas_history_entries LIMIT ?');
+        let entryCount = 0;
+        for (const row of entries.iterate(CANVAS_EDIT_LIMITS.historyEntries + 1)) {
+          if (++entryCount > CANVAS_EDIT_LIMITS.historyEntries) deny('limit');
+          countRow();
+          if (row.projectId !== store.projectId) deny('invalid');
+          for (const raw of [row.beforePatch, row.afterPatch]) {
+            decode(raw, 'main.canvas_history_entries', 1024 * 1024);
+            try { decodeCanvasPatch(raw); } catch { deny('unsupported'); }
+          }
+        }
+        for (const row of db.prepare('SELECT projectId,evidence FROM main.canvas_history_state').iterate()) {
+          countRow();
+          const evidence = decode(row.evidence, 'main.canvas_history_state', 1024 * 1024);
+          if (row.projectId !== store.projectId || !object(evidence) || Object.entries(evidence).some(([key, revision]) =>
+            !/^(shot|node|edge):/u.test(key) || !uuid(key.slice(key.indexOf(':') + 1)) || !isCanvasGuardEvidence(revision))) deny('unsupported');
+        }
+        const windows = db.prepare('SELECT singleton,epoch,floor FROM main.canvas_receipt_window LIMIT 2').all();
+        if (windows.length > 1 || windows.some(row => row.singleton !== 1 || typeof row.epoch !== 'string' ||
+          !/^[a-f0-9]{32}$/u.test(row.epoch) || typeof row.floor !== 'number' || !Number.isSafeInteger(row.floor) || row.floor < 0)) deny('unsupported');
+        // Receipts carry only typed, asset-free acknowledgements. Check
+        // every retained shape without spending the asset traversal budget.
+        const receipts = db.prepare(`SELECT projectId,CASE WHEN typeof(response)='text'
+          AND length(CAST(response AS BLOB)) BETWEEN 2 AND 65536 THEN response END AS response FROM main.canvas_requests`);
+        for (const row of receipts.iterate()) {
+          if (typeof row.response !== 'string') deny('invalid');
+          const response = canvasEditingResponses['canvas.apply'].safeParse(parseStoredJson(row.response));
+          if (row.projectId !== store.projectId || !response.success || response.data.projectId !== store.projectId) deny('unsupported');
         }
       }
       for (const row of db.prepare(`SELECT name,type FROM ${schema}.sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' LIMIT 257`).iterate()) {
@@ -313,7 +356,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (schema !== 'project' || fk.to !== 'id' || typeof fk.from !== 'string' || fk.seq !== 0) deny('unsupported');
       if (db.prepare(`SELECT 1 FROM ${schema}.${quote(table)} WHERE ${quote(fk.from)} IS ? LIMIT 1`).get(assetId)) referenced(`${schema}.${table}.${fk.from}`);
     }
-    for (const relation of CROSS_FILE_RELATIONS) {
+    const relations = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
+    for (const relation of relations) {
       if (relation.parent.table !== 'assets') continue;
       const column = relation.child.columns[0];
       if (relation.parent.columns.length !== 1 || relation.parent.columns[0] !== 'id' || relation.child.columns.length !== 1 || typeof column !== 'string') deny('unsupported');
@@ -324,7 +368,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     for (const schema of ['project', 'main'] as const) for (const [table, columns] of Object.entries(consumerCells[schema])) {
       const info = db.prepare(`PRAGMA ${schema}.table_info(${quote(table)})`).all(), columnNames = new Set(info.map(row => row.name));
       const metadata = ['id', 'projectId', 'operation', 'requestId', 'kind', 'runId', 'stepId',
-        ...(table === 'local_clip_drafts' ? ['timelineId', 'clipId', 'revision'] : [])].filter(key => columnNames.has(key));
+        ...(table === 'local_clip_drafts' ? ['timelineId', 'clipId', 'revision'] : []),
+        ...(schema === 'project' && table === 'shots' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? ['archivedAt'] : [])].filter(key => columnNames.has(key));
       const maximum = table === 'local_clip_drafts' ? LOCAL_DRAFT_LIMITS.rowBytes
         : (INSPECTION_ROW_LIMITS as Readonly<Record<string, number>>)[table] ?? limits.cellBytes;
       const select = columns.flatMap(column => [`CASE WHEN ${quote(column)} IS NULL THEN NULL WHEN typeof(${quote(column)})='text'
@@ -339,7 +384,7 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
           if (row[column] === 0) deny('limit');
           const value = decode(row[column], source, maximum);
           if (schema === 'project' && ['projects', 'assets', 'shots', 'nodes', 'edges', 'versions', 'timelines', 'subject_versions', 'image_versions'].includes(table)) {
-            content(table, value, source, row.id);
+            content(table, value, source, row.id, table === 'shots' && typeof row.archivedAt === 'string');
             // content() has already validated the full timeline here.
             if (table === 'timelines') currentTimeline = value as TimelineRecord;
           } else if (table === 'local_clip_drafts') {
@@ -429,7 +474,10 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (document.tables.assets.some(asset => asset.id === assetId)) referenced('main.project_versions.assets');
       for (const [table, saved] of Object.entries(document.tables)) for (const item of saved) {
         countRow();
-        if (typeof item.data === 'string') content(table, decode(item.data, `main.project_versions.${table}`), `main.project_versions.${table}`, item.id);
+        if (typeof item.data === 'string') {
+          const archivedShot = table === 'shots' && document.projectFormatVersion === FORMAT4_PROJECT_SCHEMA_VERSION && typeof item.archivedAt === 'string';
+          content(table, decode(item.data, `main.project_versions.${table}`), `main.project_versions.${table}`, item.id, archivedShot);
+        }
       }
     }
     return clear;

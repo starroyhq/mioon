@@ -254,8 +254,8 @@ export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K
 export const descriptions: Record<string, string> = {
  ...projectBackupDescriptions,...projectVersionDescriptions,
  ...exportControlDescriptions,
- 'workspace.settings.get':'读取工作区设置',
- 'workspace.settings.set':'按修订号保存真实生成与自动备份设置',
+ 'workspace.settings.get':'读取旧版工作区设置客户端的兼容响应',
+ 'workspace.settings.set':'推进旧版工作区设置的修订号',
  ...taskDispositionDescriptions,
 ...projectHomeDescriptions,
 'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','video.connection.list':'查询界面配置的原厂视频连接和模型能力，不返回凭据','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};

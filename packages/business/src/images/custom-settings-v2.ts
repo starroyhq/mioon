@@ -144,6 +144,10 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
     return refreshBlocked || value.persistentAvailable && (!secretCodec?.encrypt || !secretCodec.decrypt)
       ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
   }
+  function canUseVault() {
+    const value = capabilities();
+    return Boolean(secretCodec?.encrypt && secretCodec.decrypt && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING'));
+  }
   function view(item: StoredConnection): CustomImageConnectionV2 {
     return {connectionId: item.connectionId, name: item.name, configurationRevision: item.configurationRevision,
       configuration: structuredClone(item.configuration), secret: {configured: Boolean(item.secret || sessions.has(item.connectionId)),
@@ -169,7 +173,7 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
     const expected = parse(customImageCredentialRequestV2Schema, raw), item = checkExpected(expected);
     if (!item.configuration.enabled) fail('IMAGE_SETTINGS_DISABLED');
     if (!isCompleteCustomImageConfigurationV2(item.configuration) || !item.secret && !sessions.has(item.connectionId)) fail('IMAGE_SETTINGS_NOT_CONFIGURED');
-    if (item.secret && !capabilities().persistentAvailable) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+    if (item.secret && !canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
     const secret = item.secret ?? sessions.get(item.connectionId);
     if (secret?.binding !== customImageCredentialBindingV2(item.connectionId, item.configuration)) fail('IMAGE_SETTINGS_CONFLICT');
     return true;
@@ -186,7 +190,7 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
       if (!isCompleteCustomImageConfigurationV2(configuration)) fail('IMAGE_SETTINGS_VALIDATION');
       if (secret.storage === 'session') return {secret: null, session: {binding, value: secret.value}};
       await refresh(); available();
-      if (!capabilities().persistentAvailable) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+      if (!canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
       const encrypted = await boundedOperation(() => secretCodec!.encrypt!(JSON.stringify({version: 2, namespace, connectionId: id, binding, value: secret.value})));
       available();
       const ciphertext = parse(customImageEncryptedV2Schema, encrypted, 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
@@ -261,7 +265,10 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
     } catch (error) {return Promise.reject(error);}
   }
   return Object.freeze({
-    get(): Promise<CustomImageSettingsV2Result> {return schedule(async () => {await refresh(); available(); return snapshot();});},
+    async get(): Promise<CustomImageSettingsV2Result> {
+      available(); await refresh(); available();
+      return snapshot();
+    },
     readCurrent(): CustomImageSettingsV2Result {available(); if (pending.size) fail('IMAGE_SETTINGS_CONFLICT'); return snapshot();},
     select(connectionId?: string): CustomImageConnectionV2 {
       available();
@@ -282,7 +289,7 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
         let apiKey: string | null = null;
         if (item.secret) {
           await refresh(signal); checkExpected(expected); if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
-          if (!capabilities().persistentAvailable) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+          if (!canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
           const plaintext = await boundedOperation(() => secretCodec!.decrypt!(item.secret!.encrypted), signal);
           checkExpected(expected); if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
           const decoded = validateCustomImageSecretPlaintextV2(plaintext);

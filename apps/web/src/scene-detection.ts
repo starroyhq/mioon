@@ -95,7 +95,7 @@ export const sceneSensitivityLevel = (value: number): 'low' | 'medium' | 'high' 
 
 const errorKeys: Readonly<Record<string, MessageKey>> = Object.freeze({
   SCENE_CAPACITY: 'scene.error.capacity', SCENE_QUEUE_FULL: 'scene.error.queueFull', SCENE_TASK_ACTIVE: 'scene.error.taskActive',
-  SCENE_SEGMENTS_INVALID: 'scene.error.segmentsInvalid', SCENE_UNDO_BLOCKED: 'scene.error.undoBlocked',
+  SCENE_SEGMENTS_INVALID: 'scene.error.segmentsInvalid', SCENE_PROJECT_ASPECT_UNSUPPORTED: 'scene.error.projectAspectUnsupported', SCENE_UNDO_BLOCKED: 'scene.error.undoBlocked',
   SCENE_REVISION_CONFLICT: 'scene.error.changed', SCENE_STATE_CONFLICT: 'scene.error.changed', SCENE_SOURCE_INVALID: 'scene.error.sourceInvalid',
   SCENE_PROFILE_UNSUPPORTED: 'scene.error.sourceInvalid', SCENE_SOURCE_CHANGED: 'scene.error.sourceChanged', SCENE_RESULT_CONFLICT: 'scene.error.resultConflict',
   SCENE_RESULT_STALE: 'scene.error.resultStale', SCENE_CUTS_INVALID: 'scene.error.cutsInvalid', SCENE_CUTS_LIMIT: 'scene.error.cutsLimit',
@@ -116,7 +116,7 @@ export const sceneStoryboardErrorMessage = (code: string | null | undefined): Di
 // Pre-write refusals the backend can prove under their own status, as in the client package.
 const refusalStatus: Readonly<Record<string, number>> = Object.freeze({ SCENE_CAPACITY: 507, SCENE_QUEUE_FULL: 409, SCENE_TASK_ACTIVE: 409, SCENE_REVISION_CONFLICT: 409,
   SCENE_STATE_CONFLICT: 409, SCENE_SOURCE_INVALID: 409, SCENE_SOURCE_CHANGED: 409, SCENE_RESULT_CONFLICT: 409, SCENE_RESULT_STALE: 409, SCENE_CUTS_INVALID: 409,
-  SCENE_SEGMENTS_INVALID: 409, SCENE_UNDO_BLOCKED: 409 });
+  SCENE_SEGMENTS_INVALID: 409, SCENE_PROJECT_ASPECT_UNSUPPORTED: 409, SCENE_UNDO_BLOCKED: 409 });
 const schemaFor = (operation: string) => Object.hasOwn(sceneSchemas, operation) ? sceneSchemas[operation as keyof typeof sceneSchemas] : null;
 /** True only for a refusal whose proof binds this exact operation, project, request and canonical input. */
 export async function sceneRequestNotAccepted(error: unknown, operation: string, input: unknown): Promise<boolean> {

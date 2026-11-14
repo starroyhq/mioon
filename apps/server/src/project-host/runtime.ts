@@ -12,6 +12,7 @@ import {createProjectServiceApplication} from '@mioon/business/project-service-a
 import {createProjectVersions} from '@mioon/business/project-versions/service';
 import {installProjectVersionCapture} from '@mioon/business/project-versions/capture';
 import {captureDailyProjectVersion} from '@mioon/business/project-versions/daily';
+import {readSnapshotProjectFormat} from '../../../../packages/business/src/project-versions/document.ts';
 import {isProjectVersionOperation, isProjectVersionResponse, projectVersionSchemas} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {ProjectVersionListInput, ProjectVersionSaveInput, ProjectVersionPreviewInput, ProjectVersionRestoreInput} from '../../../../packages/contracts/src/project-version-operations.ts';
 import type {IncomingMessage, ServerResponse} from 'node:http';
@@ -71,7 +72,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   const removeVersionCapture = installProjectVersionCapture(store, {assertMutationAllowed: assertVersionWrite});
   try {
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
-      baseRoot: library.dataDir, application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
+      application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
       agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});
   } catch (error) {
@@ -181,7 +182,12 @@ export async function composeHostedProject(context: ProjectHostContext, library:
       deletionGate.rpc(res, input.operation, input.input);
       const outputLocale = readOutputLocale(req, input.operation);
       const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {}, outputLocale ? {outputLocale} : undefined);
-      if (!res.destroyed && !res.writableEnded) json(res, 200, {ok: true, data});
+      if (!res.destroyed && !res.writableEnded) {
+        const response = input.operation === 'project.get'
+          ? {...(data as Record<string, unknown>), projectFormatVersion: readSnapshotProjectFormat(store.db)}
+          : data;
+        json(res, 200, {ok: true, data: response});
+      }
       return true;
     }
     if (route.kind === 'media' && ['GET', 'HEAD'].includes(req.method ?? '')) {

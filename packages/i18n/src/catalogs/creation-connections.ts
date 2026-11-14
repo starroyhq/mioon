@@ -32,6 +32,12 @@ export const connectionMessages = {
     "en": "The system provides only basic_text, which cannot securely persist keys. Keys remain only for this app session",
     "ja": "システムでは basic_text のみ利用でき、安全に永続保存できません。キーは今回のアプリ実行中のみ保持されます"
   },
+  "connections.storage.keychainPending": {
+    "zh-Hans": "正在等待钥匙串。如果 macOS 弹出授权窗口，请允许 Mioon 访问钥匙串。",
+    "zh-Hant": "正在等待鑰匙圈。如果 macOS 顯示授權視窗，請允許 Mioon 存取鑰匙圈。",
+    "en": "Waiting for Keychain. If macOS prompts you, allow Mioon to access Keychain.",
+    "ja": "キーチェーンへのアクセスを待っています。macOSで確認が表示されたら、Mioonによるキーチェーンへのアクセスを許可してください。"
+  },
   "connections.storage.unavailableReason": {
     "zh-Hans": "系统安全存储不可用，不能持久保存；可选择仅本次运行",
     "zh-Hant": "系統安全儲存無法使用，不能持久儲存；可選擇僅本次執行",
@@ -1677,10 +1683,10 @@ export const connectionMessages = {
     "ja": "サーバーの入力プロファイル評価を取得できていないため、現在送信できるか確認できません。更新して確認してください"
   },
   "connections.generation.subjectProvider": {
-    "zh-Hans": "主体图片视频仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商",
-    "zh-Hant": "主體圖片影片僅接入 Mock 與 Ark 的 doubao-seedance-2-5-260628，不會自動切換至其他模型或服務商",
-    "en": "Subject-image video is integrated only with Mock and Ark’s doubao-seedance-2-5-260628. Models and providers will not switch automatically",
-    "ja": "被写体画像からの動画生成は、Mock と Ark の doubao-seedance-2-5-260628 にのみ対応しています。他のモデルやプロバイダーに自動で切り替えることはありません"
+    "zh-Hans": "主体图片视频仅接入 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商",
+    "zh-Hant": "主體圖片影片僅接入 Ark 的 doubao-seedance-2-5-260628，不會自動切換至其他模型或服務商",
+    "en": "Subject-image video is integrated only with Ark’s doubao-seedance-2-5-260628. Models and providers will not switch automatically",
+    "ja": "被写体画像からの動画生成は、Ark の doubao-seedance-2-5-260628 にのみ対応しています。他のモデルやプロバイダーに自動で切り替えることはありません"
   },
   "connections.generation.subjectProfile": {
     "zh-Hans": "主体输入配置尚未确认，请刷新服务商信息",
@@ -1773,10 +1779,10 @@ export const connectionMessages = {
     "ja": "選択した参照の役割の数が、現在の Mioon アダプターの上限を超えています"
   },
   "connections.generation.issue.count": {
-    "zh-Hans": "参考图数量不符合当前模型限制；首尾帧组合仅接入 Ark 与 Mock",
-    "zh-Hant": "參考圖數量不符合目前模型限制；首尾影格組合僅接入 Ark 與 Mock",
-    "en": "The reference image count does not meet this model’s limits. First-and-last-frame combinations are supported only by Ark and Mock",
-    "ja": "参照画像の数が現在のモデルの制限を満たしていません。最初と最後のフレームの組み合わせは Ark と Mock のみ対応しています"
+    "zh-Hans": "参考图数量不符合当前模型限制；首尾帧组合需要支持首尾帧的模型",
+    "zh-Hant": "參考圖數量不符合目前模型限制；首尾影格組合需要支援首尾影格的模型",
+    "en": "The reference image count does not meet this model’s limits. Choose a model that supports first and last frames for this combination",
+    "ja": "参照画像の数が現在のモデルの制限を満たしていません。この組み合わせには最初と最後のフレームに対応するモデルを選んでください"
   },
   "connections.generation.issue.mime": {
     "zh-Hans": "当前 Mioon 适配器未接入此参考图片格式",
@@ -2042,10 +2048,24 @@ export const connectionMessages = {
   "generation.services.availableCount": {"zh-Hans":"{count} 家可用","zh-Hant":"{count} 家可用","en":"{count} available","ja":"{count} 件利用可能"},
   "generation.services.generalIntro": {"zh-Hans":"已填写密钥、启用且具有可用模型的本机服务。点击名称跳到详情；绿点不代表联网检查或生成已验证。","zh-Hant":"已填寫金鑰、啟用且具有可用模型的本機服務。點選名稱前往詳細資料；綠點不代表連線檢查或生成已驗證。","en":"Local services with an available key, enabled configuration and usable model. Select a name for details. A green dot does not verify connectivity or generation.","ja":"利用可能なキー、有効な設定、使用可能なモデルがあるローカルサービスです。名前を選ぶと詳細に移動します。緑の点は接続や生成の検証を意味しません。"},
   "generation.services.noneAvailable": {"zh-Hans":"暂没有可用的服务，请先配置并启用。","zh-Hant":"目前沒有可用的服務，請先設定並啟用。","en":"No services are available yet. Configure and enable a service first.","ja":"利用可能なサービスはまだありません。設定して有効にしてください。"},
+  "generation.services.configureFirst": {"zh-Hans":"暂没有可用的生成服务，请先在设置里配置并启用。","zh-Hant":"目前沒有可用的生成服務，請先在設定中設定並啟用。","en":"No generation services are available. Configure and enable one in Settings first.","ja":"利用可能な生成サービスがありません。先に設定でサービスを設定し、有効にしてください。"},
+  "generation.services.openSettings": {"zh-Hans":"打开生成服务设置","zh-Hant":"開啟生成服務設定","en":"Open generation service settings","ja":"生成サービス設定を開く"},
   "generation.services.unavailableCount": {"zh-Hans":"其他 {count} 家尚不可用","zh-Hant":"其他 {count} 家尚無法使用","en":"{count} other services are not yet available","ja":"他の {count} 件はまだ利用できません"},
-  "generation.services.simulationHint": {"zh-Hans":"生成占位视频和图片，用来走流程。真实生成关闭时，所有生成都用它。","zh-Hant":"生成預留影片和圖片，用來測試流程。真實生成關閉時，所有生成都使用它。","en":"Creates placeholder videos and images for trying the workflow. All generation uses it while live generation is off.","ja":"ワークフロー確認用の仮の動画と画像を作成します。実生成がオフの間は、すべての生成に使用します。"},
   "generation.services.separateKeys": {"zh-Hans":"每家服务的密钥分开填写：同一家公司的视频和图片服务也要分别填，和 Mio 的密钥互不相通。","zh-Hant":"每家服務的金鑰分開填寫：同一家公司的影片和圖片服務也須分別填寫，與 Mio 的金鑰不互通。","en":"Enter a separate key for each service, including video and image services from the same company. Mio uses its own keys.","ja":"同じ会社の動画と画像サービスも含め、サービスごとにキーを入力してください。Mio のキーとも共有されません。"},
   "generation.services.environment": {"zh-Hans":"环境变量 · 已配置","zh-Hant":"環境變數 · 已設定","en":"Environment variable · configured","ja":"環境変数 · 設定済み"},
+  "settings.draftKey.unsaved": {"zh-Hans":"已改 · 未保存","zh-Hant":"已修改 · 未儲存","en":"Edited · Unsaved","ja":"変更済み · 未保存"},
+  "settings.draftKey.footer": {"zh-Hans":"草稿 · 未保存","zh-Hant":"草稿 · 未儲存","en":"Draft · Unsaved","ja":"下書き · 未保存"},
+  "settings.draftKey.resultHint": {"zh-Hans":"检查使用当前草稿。保存后才会替换原设置。","zh-Hant":"檢查使用目前草稿。儲存後才會取代原設定。","en":"The check uses this draft. Save to replace the previous settings.","ja":"確認には現在の下書きを使います。保存すると元の設定が置き換わります。"},
+  "settings.draftKey.check": {"zh-Hans":"检查","zh-Hant":"檢查","en":"Check","ja":"確認"},
+  "settings.draftKey.list": {"zh-Hans":"获取模型","zh-Hant":"取得模型","en":"Get models","ja":"モデルを取得"},
+  "settings.draftKey.checking": {"zh-Hans":"正在连接…","zh-Hant":"正在連線…","en":"Connecting…","ja":"接続中…"},
+  "settings.draftKey.success": {"zh-Hans":"连接正常","zh-Hant":"連線正常","en":"Connection successful","ja":"接続できました"},
+  "settings.draftKey.unavailable": {"zh-Hans":"服务未提供此项检查","zh-Hant":"服務未提供此項檢查","en":"The service does not offer this check","ja":"このサービスはこの確認に対応していません"},
+  "settings.draftKey.failed": {"zh-Hans":"连接失败，请检查地址和密钥。","zh-Hant":"連線失敗，請檢查位址和金鑰。","en":"Connection failed. Check the address and key.","ja":"接続できませんでした。アドレスとキーを確認してください。"},
+  "settings.draftKey.listUnsupported": {"zh-Hans":"此服务不提供模型列表。","zh-Hant":"此服務不提供模型清單。","en":"This service does not provide a model list.","ja":"このサービスはモデル一覧を提供していません。"},
+  "settings.draftKey.modelsEmpty": {"zh-Hans":"服务未返回模型。","zh-Hant":"服務未傳回模型。","en":"The service returned no models.","ja":"サービスからモデルが返されませんでした。"},
+  "settings.draftKey.unauthorized": {"zh-Hans":"密钥未通过验证，请检查密钥或权限。","zh-Hant":"金鑰未通過驗證，請檢查金鑰或權限。","en":"The key was rejected. Check the key or its permissions.","ja":"キーが拒否されました。キーまたは権限を確認してください。"},
+  "settings.draftKey.modelCount": {"zh-Hans":"获取到 {count} 个模型","zh-Hant":"已取得 {count} 個模型","en":"Models found: {count}","ja":"{count} 件のモデルを取得しました"},
   "generation.services.saved": {"zh-Hans":"已保存","zh-Hant":"已儲存","en":"Saved","ja":"保存済み"},
   "generation.services.dirty": {"zh-Hans":"有未保存的更改","zh-Hant":"有未儲存的變更","en":"Unsaved changes","ja":"未保存の変更があります"},
   "generation.services.saving": {"zh-Hans":"正在分别保存各组设置…","zh-Hant":"正在分別儲存各組設定…","en":"Saving each group of settings…","ja":"各設定グループを保存中…"},

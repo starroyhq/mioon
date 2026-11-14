@@ -228,7 +228,7 @@ const proofCodes = new Set([
 ]);
 const envelopeProofCodes = new Set(['TIMELINE_VOLUME_ENVELOPE_INVALID','TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED','TIMELINE_VOLUME_ENVELOPE_LIMIT','TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED']);
 const colourProofCodes = new Set(['TIMELINE_IMAGE_AGGREGATE_BUDGET','TIMELINE_COLOUR_SOURCE_MISMATCH','TIMELINE_COLOUR_LOOK_UNAVAILABLE']);
-const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT']);
+const referenceProofCodes = new Set(['REVISION_CONFLICT', 'REFERENCE_CONNECTED', 'REFERENCE_SELECTION_EXISTS', 'INVALID_REFERENCE_SOURCE', 'INVALID_REFERENCE_EDGE', 'REFERENCE_REVISION_LIMIT', 'CANVAS_TARGET_ARCHIVED']);
 const subjectProofCodes = new Set(['REVISION_CONFLICT', 'SUBJECT_NO_CHANGE', 'SUBJECT_REVISION_LIMIT', 'SUBJECT_BINDING_LIMIT', 'SUBJECT_ROLE_MISMATCH']);
 export interface RequestNotAppliedProofOptions {operation?: string}
 export function hasRequestNotAppliedProof(error: unknown, input: unknown, {operation}: RequestNotAppliedProofOptions = {}): boolean {
@@ -285,14 +285,16 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   if ((SUBJECT_MUTATION_OPERATIONS as readonly string[]).includes(operation as string)) return Boolean(object(input) && uuid(request.projectId) && text(request.requestId, 8, 200) && object(details) &&
     (integer(failure.status, 400, 499) && ![401, 403].includes(failure.status as number) || failure.status === undefined && failure.definitive === true) &&
-    subjectProofCodes.has(failure.code as string) && ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
+    (subjectProofCodes.has(failure.code as string) || operation === 'subject.binding.set' && failure.code === 'CANVAS_TARGET_ARCHIVED') &&
+    ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
     details.mutationOutcome === 'not_applied' && details.operation === operation && details.projectId === request.projectId && details.requestId === request.requestId);
   // Reference rejections must be owner-checked by their own transaction and
   // explicitly bind every identity field. Legacy timeline proofs retain their
   // existing optional operation/project fields and original code allowlist.
   if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation as string)) return Boolean(object(input) && uuid(request.projectId) && text(request.requestId, 8, 200) && object(details) &&
     (integer(failure.status, 400, 499) && ![401, 403].includes(failure.status as number) || failure.status === undefined && failure.definitive === true) &&
-    referenceProofCodes.has(failure.code as string) && ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
+    (referenceProofCodes.has(failure.code as string) || operation === 'reference.detach' && failure.code === 'CANVAS_HISTORY_DEPENDENCY') &&
+    ['mutationOutcome', 'operation', 'projectId', 'requestId'].every(key => Object.hasOwn(details, key)) &&
     details.mutationOutcome === 'not_applied' && details.operation === operation && details.projectId === request.projectId && details.requestId === request.requestId);
   return Boolean(object(input) && text(request.requestId, 8, 200) && object(details) &&
     (integer(failure.status, 400, 499) && ![401, 403].includes(failure.status as number) || failure.status === undefined && failure.definitive === true) &&

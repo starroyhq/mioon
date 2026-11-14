@@ -339,6 +339,28 @@ componentTest('modal creation uses labeled shared inputs, 500-character directio
   assert.match(html, /role="dialog"/);
 });
 
+componentTest('verified format 4 hides project options and starts in portrait even with a retained format 3 draft', async () => {
+  const h = harness({newProjectFormatVersion: 3});
+  const legacy = showForm(h);
+  const legacyPreset = nodes(legacy).find((node: ElementNode) => node.type === 'input' && node.props.value === 'landscape_1080')!;
+  legacyPreset.props.onChange();
+  fill(h);
+  const modern = h.render({newProjectFormatVersion: 4});
+  assert.ok(find(modern, 'project-home-name'));
+  assert.doesNotMatch(h.html(modern), /project-home-description|project-home-presets|type="radio"/u);
+  await submit(h);
+  assert.deepEqual(h.calls, [['create', '新的故事', '', 'portrait_1080']]);
+  h.unmount();
+
+  const format3 = harness({newProjectFormatVersion: 3});
+  showForm(format3);
+  const current = fill(format3);
+  nodes(current).find((node: ElementNode) => node.type === 'input' && node.props.value === 'landscape_1080')!.props.onChange();
+  await submit(format3);
+  assert.deepEqual(format3.calls, [['create', '新的故事', '简短说明', 'landscape_1080']]);
+  format3.unmount();
+});
+
 componentTest('required-name and length validation reject programmatic invalid submissions', async () => {
   for (const [name, description] of [['   ', ''], ['n'.repeat(151), ''], ['valid', 'd'.repeat(501)]] as const) {
     const h = harness(); showForm(h); fill(h, name, description); await submit(h);

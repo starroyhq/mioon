@@ -248,12 +248,11 @@ test('typecheck reuses the shell-free reduced environment and existing interrupt
     const source = new EventEmitter(), child = new EventEmitter() as EventEmitter & {kill: (value: string) => void};
     const killed: string[] = []; child.kill = (value: string) => killed.push(value);
     const result = executeCommand(spec, {signalSource: source as unknown as NodeJS.Process,
-      env: toolingEnvironment({NODE_OPTIONS: '--require=untrusted', NODE_PATH: 'outside', HTTPS_PROXY: 'secret', MIOON_FFMPEG_PATH: 'outside'}),
+      env: toolingEnvironment({NODE_OPTIONS: '--require=untrusted', NODE_PATH: 'outside', HTTPS_PROXY: 'synthetic', ARK_API_KEY: 'synthetic-key', MIOON_ENABLE_LIVE_PROVIDER: '1', MIOON_FFMPEG_PATH: 'outside'}),
       spawnChild: ((command: string, args: readonly string[], options: import('node:child_process').SpawnOptions) => {
         assert.equal(command, process.execPath); assert.deepEqual(args, spec.args);
         assert.equal(options.shell, false); assert.equal(options.windowsHide, true); assert.equal(options.stdio, 'inherit');
-        assert.equal(options.env?.MIOON_ENABLE_LIVE_PROVIDER, '0');
-        for (const key of ['NODE_OPTIONS', 'NODE_PATH', 'HTTPS_PROXY', 'MIOON_FFMPEG_PATH']) assert.equal(options.env?.[key], undefined);
+        for (const key of ['NODE_OPTIONS', 'NODE_PATH', 'HTTPS_PROXY', 'ARK_API_KEY', 'MIOON_ENABLE_LIVE_PROVIDER', 'MIOON_FFMPEG_PATH']) assert.equal(options.env?.[key], undefined);
         return child;
       }) as never});
     source.emit(signal); child.emit('close', 0, null);

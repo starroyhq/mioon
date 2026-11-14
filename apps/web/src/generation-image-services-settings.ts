@@ -1,6 +1,10 @@
 import {canonicalImageInput} from '../../../packages/contracts/src/images.ts';
 import {imageSettingsResultSchema, imageSettingsUpdateSchema} from '../../../packages/contracts/src/image-settings.ts';
 import {normalizeCustomImageBaseUrl} from '../../../packages/contracts/src/image-compatible.ts';
+import {customImageProbeSchema, officialImageProbeSchema} from '../../../packages/contracts/src/draft-image-probe.ts';
+import type {CustomImageProbe, OfficialImageProbe} from '../../../packages/contracts/src/draft-image-probe.ts';
+import {draftServiceProbeResultSchema} from '../../../packages/contracts/src/draft-service-probe.ts';
+import type {DraftServiceProbeResult} from '../../../packages/contracts/src/draft-service-probe.ts';
 import {CUSTOM_IMAGE_SETTINGS_V2_LIMITS, DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, customImageBatchV2Schema, customImageSettingsV2ResultSchema} from '../../../packages/contracts/src/generation-image-settings.ts';
 import type {CustomImageConfigurationV2, CustomImageSettingsV2Result} from '../../../packages/contracts/src/generation-image-settings.ts';
 import {comfyImageSettingsResultSchema, comfyImageSettingsUpdateSchema, comfyImageCheckResultSchema, normalizeComfyImageBaseUrl} from '../../../packages/contracts/src/comfy-images.ts';
@@ -9,6 +13,7 @@ import type {ImageSettingsResult} from './image-settings.ts';
 import type {ComfyImageSettingsResult, ComfyImageCheckResult, ComfyConnectorAvailability} from './comfy-image-settings.ts';
 import {settingsNavigationState} from './settings-navigation-state.ts';
 import type {GenerationDomainOutcome, GenerationSaveTicket} from './generation-services-settings.ts';
+import {watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 export type GenerationImageDomainKind = 'official' | 'custom' | 'comfy';
 export interface GenerationImageServicesClient {
@@ -16,6 +21,7 @@ export interface GenerationImageServicesClient {
   write(input: unknown, signal?: AbortSignal): Promise<unknown>;
   readAvailability?(signal?: AbortSignal): Promise<unknown>;
   check?(input: {baseUrl: string; model: string}, signal?: AbortSignal): Promise<unknown>;
+  probe?(input: OfficialImageProbe | CustomImageProbe, signal?: AbortSignal): Promise<unknown>;
 }
 export type GenerationImageSnapshot = ImageSettingsResult | CustomImageSettingsV2Result | ComfyImageSettingsResult;
 type EditableConfiguration<T> = T extends object ? Omit<T, 'enabled' | 'baseUrl' | 'model'> & {enabled: boolean; baseUrl: string; model: string} : never;
@@ -29,6 +35,7 @@ export interface GenerationImageDomainState {
   snapshot: GenerationImageSnapshot | null; drafts: GenerationImageDraft[]; deleted: string[];
   recovery: 'conflict' | 'unknown' | null; notice: string | null; version: number;
   availability: ComfyConnectorAvailability | null; check: ComfyImageCheckResult | null;
+  probe: {id: string; operation: 'check' | 'models'; result: DraftServiceProbeResult} | null;
 }
 const copy = <T>(value: T): T => structuredClone(value);
 const same = (a: unknown, b: unknown) => canonicalImageInput(a) === canonicalImageInput(b);
@@ -53,7 +60,7 @@ export function createGenerationImageServicesClient(kind: GenerationImageDomainK
     try {
       const transport = (async () => {
         if (controller.signal.aborted) throw invalid();
-        const response = await fetchImpl(route, {method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+        const response = await fetchImpl(route, {method, credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
           ...(input === undefined ? {} : {headers: {'Content-Type': 'application/json'}, body: JSON.stringify(input)})});
         const value: unknown = await response.json();
         if (!response.ok || !isRecord(value) || value.ok !== true) {
@@ -70,7 +77,9 @@ export function createGenerationImageServicesClient(kind: GenerationImageDomainK
   }
   return {read: signal => request(routeFor(kind), 'GET', undefined, signal), write: (input, signal) => request(routeFor(kind), 'PUT', input, signal),
     readAvailability: signal => request('/api/images/comfy-availability', 'GET', undefined, signal),
-    check: (input, signal) => request('/api/images/comfy-check', 'POST', input, signal)};
+    ...(kind === 'comfy'
+      ? {check: (input, signal) => request('/api/images/comfy-check', 'POST', input, signal)}
+      : {probe: (input, signal) => request(routeFor(kind), 'POST', input, signal)})};
 }
 
 function safeSnapshot(kind: GenerationImageDomainKind, value: unknown): GenerationImageSnapshot {
@@ -87,11 +96,21 @@ function draftsFor(snapshot: GenerationImageSnapshot): GenerationImageDraft[] {
 /** One owner per file, never one owner per selected panel. State contains only
  * redacted drafts; the refs map holds DOM nodes and never copied passwords. */
 export function createGenerationImageServicesOwner(kind: GenerationImageDomainKind, {client = createGenerationImageServicesClient(kind), onChange = () => {}, interactionAllowed = () => true}: {client?: GenerationImageServicesClient; onChange?: (state: GenerationImageDomainState) => void; interactionAllowed?: () => boolean} = {}) {
-  let state: GenerationImageDomainState = {phase: 'loading', snapshot: null, drafts: [], deleted: [], recovery: null, notice: null, version: 0, availability: null, check: null};
+  let state: GenerationImageDomainState = {phase: 'loading', snapshot: null, drafts: [], deleted: [], recovery: null, notice: null, version: 0, availability: null, check: null, probe: null};
   let live = true, pageVisible = true, pageEpoch = 0, requestEpoch = 0, checkEpoch = 0, draftVersion = 0, prepared: GenerationSaveTicket | null = null;
+  let probeOwner: string | null = null;
   let pending: AbortController | null = null, checking: AbortController | null = null, availabilityPending: AbortController | null = null;
   const inputs = new Map<string, Pick<HTMLInputElement, 'value'>>();
-  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; onChange(copy(state));}};
+  const watchStorage = watchPendingSecretStorage(async signal => {
+    const before = state.snapshot;
+    if (!before || !('storage' in before)) return;
+    const next = safeSnapshot(kind, await client.read(signal));
+    if (!signal.aborted && state.snapshot === before && 'storage' in next && next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') {
+      publish({snapshot: {...before, storage: next.storage}});
+    }
+  });
+  const observeStorage = () => watchStorage(live && pageVisible && !!state.snapshot && 'storage' in state.snapshot && state.snapshot.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {state = {...state, ...patch, version: state.version + 1}; observeStorage(); onChange(copy(state));}};
   const baseline = () => state.snapshot ? draftsFor(state.snapshot) : [];
   const draftDirty = (draft: GenerationImageDraft) => {
     const before = baseline().find(item => item.id === draft.id);
@@ -110,12 +129,71 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     const snapshot = state.snapshot;
     return snapshot && 'connections' in snapshot ? snapshot.connections.find(item => item.connectionId === id)?.secret : snapshot && 'secret' in snapshot ? snapshot.secret : undefined;
   };
-  function cancelCheck() {
-    ++checkEpoch; checking?.abort(); checking = null;
-    if (state.phase === 'checking') publish({phase: 'ready', check: null});
+  function cancelCheck(id?: string) {
+    if (id && probeOwner !== id && state.probe?.id !== id && (kind !== 'comfy' || id !== 'image:comfy')) return;
+    ++checkEpoch; checking?.abort(); checking = null; probeOwner = null;
+    if (state.phase === 'checking') publish({phase: 'ready', check: null, probe: null});
+    else if (state.probe) publish({probe: null});
+  }
+  function savedProbeTarget(draft: GenerationImageDraft) {
+    const saved = savedSecret(draft.id);
+    if (draft.secretAction !== 'keep' || draft.needsKey || !saved?.configured || !state.snapshot) return null;
+    if (saved.storage === 'persistent' && (!('storage' in state.snapshot) || !state.snapshot.storage.persistentAvailable)) return null;
+    if ('connections' in state.snapshot) {
+      const saved = state.snapshot.connections.find(item => item.connectionId === draft.id);
+      if (!saved) return null;
+      try {
+        if (normalizeCustomImageBaseUrl(draft.configuration.baseUrl) !== saved.configuration.baseUrl) return null;
+      } catch {return null;}
+      return {source: 'saved' as const, connectionId: draft.id, configurationRevision: saved.configurationRevision};
+    }
+    return {source: 'saved' as const, configurationRevision: state.snapshot.revision};
+  }
+  function canProbe(id: string): boolean {
+    if (kind === 'comfy' || !editable() || !client.probe) return false;
+    const draft = state.drafts.find(item => item.id === id);
+    if (!draft || draft.secretAction === 'remove') return false;
+    if (!inputs.get(id)?.value) return !!savedProbeTarget(draft);
+    try {return kind === 'official' || Boolean(normalizeCustomImageBaseUrl(draft.configuration.baseUrl));}
+    catch {return false;}
+  }
+  async function checkCredential(id: string, operation: 'check' | 'models'): Promise<DraftServiceProbeResult | null> {
+    if (!canProbe(id) || !client.probe) return null;
+    const draft = state.drafts.find(item => item.id === id)!;
+    const value = inputs.get(id)?.value ?? '';
+    const credential = value ? {source: 'draft' as const, value} : savedProbeTarget(draft);
+    const parsed = kind === 'official'
+      ? officialImageProbeSchema.safeParse({operation, credential})
+      : customImageProbeSchema.safeParse({operation, credential, baseUrl: normalizeCustomImageBaseUrl(draft.configuration.baseUrl)});
+    if (!parsed.success) {
+      publish({probe: {id, operation, result: {result: 'failed'}}});
+      return null;
+    }
+    const controller = new AbortController();
+    checking = controller; probeOwner = id;
+    const token = ++checkEpoch;
+    const current = () => canInteract() && token === checkEpoch && checking === controller;
+    publish({phase: 'checking', probe: null});
+    try {
+      if (!current()) return null;
+      const response = await client.probe(parsed.data, controller.signal);
+      if (!current()) return null;
+      const result = draftServiceProbeResultSchema.parse(response);
+      if ((result.result === 'ok' && operation === 'models' && !result.models) ||
+          (operation === 'check' && result.models !== undefined) ||
+          (value && result.models?.some(model => model.id.includes(value)))) throw invalidResponse();
+      publish({phase: 'ready', probe: {id, operation, result}});
+      return result;
+    } catch {
+      if (current()) publish({phase: 'ready', probe: {id, operation, result: {result: 'failed'}}});
+      return null;
+    } finally {
+      if (checking === controller) {checking = null; probeOwner = null;}
+    }
   }
   async function read(recover = false): Promise<boolean> {
     if (!live || !pageVisible || prepared || state.phase === 'saving') return false;
+    cancelCheck();
     pending?.abort(); pending = new AbortController(); const signal = pending.signal, token = ++requestEpoch, page = pageEpoch;
     publish({phase: recover ? 'reconciling' : 'loading', notice: null});
     if (kind === 'comfy' && client.readAvailability) {
@@ -128,7 +206,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     try {
       const snapshot = safeSnapshot(kind, await client.read(signal));
       if (!live || token !== requestEpoch || page !== pageEpoch || !pageVisible) return false;
-      publish({snapshot, drafts: recover ? state.drafts : draftsFor(snapshot), deleted: recover ? state.deleted : [], check: null,
+      publish({snapshot, drafts: recover ? state.drafts : draftsFor(snapshot), deleted: recover ? state.deleted : [], check: null, probe: null,
         phase: recover ? 'review' : 'ready', recovery: recover ? state.recovery ?? 'unknown' : null,
         notice: recover ? 'image.settings.notice.review' : null}); return true;
     } catch {if (live && token === requestEpoch && page === pageEpoch) publish({phase: recover ? 'blocked' : 'load_error', notice: 'image.settings.notice.loadError'}); return false;}
@@ -182,7 +260,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     const expected = JSON.parse(body) as Record<string, unknown>;
     const stripSecrets = (value: Record<string, unknown>) => {if (isRecord(value.secret)) {const {value: _credential, ...redacted} = value.secret; value.secret = redacted;}};
     stripSecrets(expected); if (Array.isArray(expected.operations)) for (const operation of expected.operations) if (isRecord(operation)) stripSecrets(operation);
-    publish({phase: 'saving', notice: null});
+    publish({phase: 'saving', notice: null, probe: null});
     const version = draftVersion, page = pageEpoch; let used = false, disposed = false, started = false;
     const current = () => live && pageVisible && documentVisible() && page === pageEpoch && draftVersion === version && prepared === ticket;
     const ticket: GenerationSaveTicket = {
@@ -212,22 +290,23 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   }
   return {
     getState: () => copy(state), navigation: () => settingsNavigationState({dirty: dirty(), phase: state.phase, recovery: state.recovery}, state.version),
-    load: () => read(), reload: () => canInteract() ? read(!!state.snapshot) : Promise.resolve(false), prepareSave, clearKeys, savedSecret, interactionAllowed: canInteract,
+    load: () => read(), reload: () => canInteract() ? read(!!state.snapshot) : Promise.resolve(false), prepareSave, clearKeys, savedSecret, canProbe, checkCredential, interactionAllowed: canInteract,
+    isDirty(id: string) {const draft = state.drafts.find(item => item.id === id); return !!draft && draftDirty(draft);},
     registerKey(id: string, input: Pick<HTMLInputElement, 'value'> | null) {const previous = inputs.get(id); if (previous && previous !== input) previous.value = ''; if (input) inputs.set(id, input); else inputs.delete(id);},
-    keyChanged(id: string) {if (!editable()) return; ++draftVersion; publish({drafts: state.drafts.map(item => item.id === id ? {...item, hasKey: !!inputs.get(id)?.value, needsKey: !!inputs.get(id)?.value} : item)});},
+    keyChanged(id: string) {if (!editable()) return; ++draftVersion; publish({drafts: state.drafts.map(item => item.id === id ? {...item, hasKey: !!inputs.get(id)?.value, needsKey: !!inputs.get(id)?.value} : item), probe: state.probe?.id === id ? null : state.probe});},
     edit(id: string, patch: Partial<Pick<GenerationImageDraft, 'name' | 'storage' | 'secretAction'>>, configuration: Partial<Pick<Configuration, 'enabled' | 'baseUrl' | 'model'>> = {}) {
       if (!editable()) return false; const draft = state.drafts.find(item => item.id === id); if (!draft) return false;
       if (configuration.baseUrl !== undefined && configuration.baseUrl !== draft.configuration.baseUrl) {clearKeys(id); cancelCheck(); if (kind === 'comfy') configuration = {...configuration, model: ''};}
       if (kind === 'comfy' && configuration.model && !state.check?.checkpoints.includes(configuration.model)) return false;
       if (patch.secretAction === 'remove') {clearKeys(id); publish({drafts: state.drafts.map(item => item.id === id ? {...item, needsKey: false} : item)});}
       ++draftVersion;
-      publish({drafts: state.drafts.map(item => item.id === id ? {...item, ...patch, configuration: {...item.configuration, ...configuration}} : item), check: configuration.baseUrl !== undefined ? null : state.check, notice: 'image.settings.services.staged'}); return true;
+      publish({drafts: state.drafts.map(item => item.id === id ? {...item, ...patch, configuration: {...item.configuration, ...configuration}} : item), check: configuration.baseUrl !== undefined ? null : state.check, probe: state.probe?.id === id ? null : state.probe, notice: 'image.settings.services.staged'}); return true;
     },
     add(name: string): string | null {if (kind !== 'custom' || !editable() || !state.snapshot || state.drafts.length >= CUSTOM_IMAGE_SETTINGS_V2_LIMITS.connections) return null;
       const id = crypto.randomUUID().toLowerCase(); ++draftVersion; publish({drafts: [...state.drafts, {id, name, configuration: copy(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2), storage: '', secretAction: 'keep', hasKey: false, needsKey: false}], notice: 'image.settings.services.staged'}); return id;},
     remove(id: string, version: number): boolean {if (kind !== 'custom' || !editable() || state.version !== version || !state.drafts.some(item => item.id === id)) return false;
       clearKeys(id); ++draftVersion; const stored = baseline().some(item => item.id === id); publish({drafts: state.drafts.filter(item => item.id !== id), deleted: stored ? [...state.deleted, id] : state.deleted, notice: 'image.settings.services.staged'}); return true;},
-    discard() {if (!canInteract() || busy()) return; clearKeys(); ++draftVersion; if (state.snapshot) publish({drafts: draftsFor(state.snapshot), deleted: [], recovery: null, phase: 'ready', notice: null, check: null});},
+    discard() {if (!canInteract() || busy()) return; clearKeys(); ++draftVersion; if (state.snapshot) publish({drafts: draftsFor(state.snapshot), deleted: [], recovery: null, phase: 'ready', notice: null, check: null, probe: null});},
     acknowledge() {if (canInteract() && state.phase === 'review') publish({recovery: null, phase: 'ready', notice: 'image.settings.services.staged'});},
     async checkConnection(): Promise<boolean> {
       if (kind !== 'comfy' || !editable() || !client.check || state.availability?.state !== 'available') return false;
@@ -242,10 +321,10 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
       } catch {if (live && page === pageEpoch && token === checkEpoch) publish({phase: 'error', check: null, notice: 'connections.comfy.notice.checkError'}); return false;}
     },
     cancelCheck,
-    setPageVisible(visible: boolean) {if (visible === pageVisible) return; pageVisible = visible; ++pageEpoch; ++requestEpoch; pending?.abort(); availabilityPending?.abort(); cancelCheck(); clearKeys();
+    setPageVisible(visible: boolean) {if (visible === pageVisible) return; pageVisible = visible; observeStorage(); ++pageEpoch; ++requestEpoch; pending?.abort(); availabilityPending?.abort(); cancelCheck(); clearKeys();
       if (!visible) {prepared?.dispose(); if (state.phase === 'saving' || state.phase === 'reconciling') publish({phase: 'blocked', recovery: 'unknown', notice: 'image.settings.notice.review'});}
       else if (!state.snapshot) void read();},
-    dispose() {clearKeys(); live = false; ++pageEpoch; ++requestEpoch; ++checkEpoch; pending?.abort(); checking?.abort(); availabilityPending?.abort(); prepared?.dispose(); inputs.clear();},
+    dispose() {clearKeys(); live = false; watchStorage(false); ++pageEpoch; ++requestEpoch; ++checkEpoch; pending?.abort(); checking?.abort(); availabilityPending?.abort(); prepared?.dispose(); inputs.clear();},
   };
 }
 export type GenerationImageServicesOwner = ReturnType<typeof createGenerationImageServicesOwner>;

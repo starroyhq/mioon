@@ -5,6 +5,7 @@ import {parseVideoBinding,validateVideoSnapshot} from './video-providers.ts';
 import {effectiveVideoParameters} from './wan-video.ts';
 import {generationAspectSourceSchema,generationFixedAspectRatioSchema} from './generation-aspect.ts';
 import {generationReferenceRevisionsSchema} from './asset-media.ts';
+import {videoCredentialDiagnosticSchema} from './video-credential-diagnostic.ts';
 
 export const SUBJECT_GENERATION_KINDS=Object.freeze(['character','product','location'] as const);
 export type SubjectGenerationKind = (typeof SUBJECT_GENERATION_KINDS)[number];
@@ -119,7 +120,7 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  const job = result as Record<string, unknown>;
  if(!uuid(job.id)||!uuid(job.projectId)||job.requestId!==request.requestId||job.shotId!==request.shotId||job.providerId!==request.providerId||request.model&&job.model!==request.model||!text(job.model,1,100)||!integer(job.revision,1)||typeof job.status!=='string'||!statuses.includes(job.status)||!text(job.phase,1,100)||!integer(job.progress,0,100)||!integer(job.submissionCount,0)||!timestamp(job.createdAt)||!timestamp(job.updatedAt)||job.retryOfJobId!==expectedRetryOfJobId||!(job.providerJobId===null||text(job.providerJobId,1,200))||!(job.versionId===null||uuid(job.versionId))||!([null,'local_only'] as unknown[]).includes(job.cancelScope)||own(job,'nextPollAt')&&!integer(job.nextPollAt,0))return false;
  const jobError=job.error;
- if(jobError!==null&&(!fields(jobError,['code','message'],['retryable'])||!text(jobError.code,1,200)||!text(jobError.message,1,600)||own(jobError,'retryable')&&typeof jobError.retryable!=='boolean'))return false;
+ if(jobError!==null&&(!fields(jobError,['code','message'],['retryable','diagnostic'])||!text(jobError.code,1,200)||!text(jobError.message,1,600)||own(jobError,'retryable')&&typeof jobError.retryable!=='boolean'||own(jobError,'diagnostic')&&!videoCredentialDiagnosticSchema.safeParse(jobError.diagnostic).success))return false;
  const allowed=job.status==='failed'?['retry']:job.status==='submission_unknown'?['reconcile','cancel']:job.status==='cancelled'?['reconcile']:job.status==='succeeded'?[]:['cancel'];
  if(own(job,'allowedActions')&&!same(job.allowedActions,allowed))return false;
  if(options.projectId!==undefined&&job.projectId!==options.projectId)return false;

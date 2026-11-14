@@ -5,6 +5,9 @@ const revision = (column: string, first: number): string => `typeof(${column})='
 const json = (column: string, bytes: number): string =>
   `CASE WHEN length(CAST(${column} AS BLOB)) BETWEEN 2 AND ${bytes} AND json_valid(${column}) THEN json_type(${column})='object' ELSE 0 END`;
 const editOperations = "'archive','restore','move','paste','layout'";
+export const FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION = 11;
+/** 12 gives canvas receipts a bounded, replay-safe expiration window. */
+export const FORMAT4_HISTORY_SCHEMA_VERSION = 12;
 
 export const CANVAS_ARCHIVE_TABLES = ['shots', 'nodes', 'edges'] as const;
 export type CanvasArchiveTable = typeof CANVAS_ARCHIVE_TABLES[number];
@@ -30,7 +33,16 @@ export function canvasArchiveRevisionStatements(content: readonly string[]): rea
   });
 }
 
-/** Canvas receipts survive pruning of the undo stack. No FK to a prunable entry. */
+export const CANVAS_RECEIPT_ISSUED_AT = `issuedAt INTEGER CHECK(issuedAt IS NULL OR (${revision('issuedAt', 0)}))`;
+export const CANVAS_RECEIPT_WINDOW_SCHEMA = Object.freeze([
+  'CREATE INDEX canvas_requests_expiry ON canvas_requests(issuedAt,requestId)',
+  `CREATE TABLE canvas_receipt_window(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ epoch TEXT NOT NULL CHECK(length(epoch)=32 AND epoch NOT GLOB '*[^0-9a-f]*'),
+ floor INTEGER NOT NULL CHECK(${revision('floor', 0)}))`,
+]);
+
+/** Canvas receipts use their own expiry window, independent of the undo stack. */
 export const CANVAS_HISTORY_SCHEMA: readonly string[] = Object.freeze([
   `CREATE TABLE canvas_requests(
  requestId TEXT PRIMARY KEY NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),
@@ -38,9 +50,8 @@ export const CANVAS_HISTORY_SCHEMA: readonly string[] = Object.freeze([
  operation TEXT NOT NULL CHECK(operation IN (${editOperations},'undo','redo')),
  inputDigest TEXT NOT NULL CHECK(length(inputDigest)=64 AND inputDigest NOT GLOB '*[^a-f0-9]*'),
  response TEXT NOT NULL CHECK(${json('response', 65536)}),
- createdAt TEXT NOT NULL CHECK(${time('createdAt')}))`,
+ createdAt TEXT NOT NULL CHECK(${time('createdAt')}), ${CANVAS_RECEIPT_ISSUED_AT})`,
   "CREATE TRIGGER immutable_canvas_requests BEFORE UPDATE ON canvas_requests BEGIN SELECT RAISE(ABORT,'canvas request receipts are immutable');END",
-  "CREATE TRIGGER retain_canvas_requests BEFORE DELETE ON canvas_requests BEGIN SELECT RAISE(ABORT,'canvas request receipts must be retained');END",
   "CREATE TRIGGER reject_canvas_request_replacement BEFORE INSERT ON canvas_requests WHEN EXISTS(SELECT 1 FROM canvas_requests WHERE requestId=NEW.requestId) BEGIN SELECT RAISE(ABORT,'canvas request receipts cannot be replaced');END",
   `CREATE TABLE canvas_history_entries(
  id TEXT PRIMARY KEY NOT NULL CHECK(${uuid('id')}),
@@ -57,4 +68,5 @@ export const CANVAS_HISTORY_SCHEMA: readonly string[] = Object.freeze([
  position INTEGER NOT NULL CHECK(${revision('position', 0)}),
  revision INTEGER NOT NULL CHECK(${revision('revision', 1)}),
  evidence TEXT NOT NULL CHECK(${json('evidence', 1048576)}))`,
+  ...CANVAS_RECEIPT_WINDOW_SCHEMA,
 ]);

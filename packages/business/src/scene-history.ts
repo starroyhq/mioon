@@ -10,6 +10,8 @@ import type {SceneDetectTaskResponse,SceneShotsTaskResponse,SceneResult,SceneRes
  SceneShotsReceipt,SceneShotsOutcome,SceneUndoBlocker} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {sceneKeyframeAssetMatches} from './scene-keyframe-ownership.ts';
+import {canvasActiveCondition} from './canvas-active.ts';
+import {retainedCanvasDependencies} from './canvas-retained.ts';
 
 export const sceneServiceMessages: Readonly<Record<string,string>>=Object.freeze({
  SCENE_NOT_FOUND:'The scene record is unavailable for this project.',SCENE_RECORD_INVALID:'The saved scene record cannot be verified safely.',
@@ -23,6 +25,7 @@ export const sceneServiceMessages: Readonly<Record<string,string>>=Object.freeze
  SCENE_CUTS_INVALID:'Cuts must be strictly increasing frames inside the source.',
  SCENE_CUTS_LIMIT:'The detected cuts exceed the scene result limit. Lower the sensitivity or raise the shortest shot.',
  SCENE_SEGMENTS_INVALID:'The chosen segments are not segments of this scene result.',
+ SCENE_PROJECT_ASPECT_UNSUPPORTED:'The project frame does not match a supported storyboard format.',
  SCENE_UNDO_BLOCKED:'Some shots of this storyboard were generated, edited, connected or bound to a subject, so it can no longer be undone.',
  SCENE_DETECTION_FAILED:'Local scene detection failed.',SCENE_INTERRUPTED:'The local scene task was interrupted. No automatic retry will occur.',
  SCENE_PROFILE_UNSUPPORTED:'The source does not match the supported local scene detection profile.',SCENE_DECODE_INCOMPLETE:'The decoded frames do not cover the source duration.',
@@ -222,14 +225,13 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   if(outcome&&receipt)for(const keyframe of receipt.keyframes){const saved=assetRow(projectId,keyframe.assetId);if(!saved||!sceneKeyframeAssetMatches(saved,keyframe,projectId,receipt,row.requestId,input,snapshot.segments.find(entry=>entry[0]===keyframe.segment)))invalid();}
   return {kind:'shots',row,input,snapshot,receipt,outcome,dto:dto as SceneShotsTaskResponse};
  }
- /** Whether a built storyboard can still be undone, and why not: one reason
- * per shot, the first of missing, generated, connected, bound to a subject,
- * edited. Each relation is read once for the whole batch. */
+ /** Whether a built storyboard can still be undone, and why not. Return
+ * the first blocker per shot. Each relation is read once for the whole batch. */
  function undoState(view: SceneShotsView): SceneUndoState {
   const {outcome,receipt,snapshot}=view,projectId=view.row.projectId;if(!outcome||!receipt)invalid();
   const ids=JSON.stringify(outcome.shotIds),plan=sceneShotPlan(snapshot);
   const shots=new Map<string,Record<string, unknown>>();
-  for(const row of db.prepare(`SELECT ${text('id',36)},${text('data',262144)} FROM shots WHERE projectId=? AND id IN (SELECT value FROM json_each(?))`).all(projectId,ids)){
+  for(const row of db.prepare(`SELECT ${text('id',36)},${text('data',262144)} FROM shots WHERE projectId=? AND ${canvasActiveCondition(db)} AND id IN (SELECT value FROM json_each(?))`).all(projectId,ids)){
    const value=decode(row.data);if(!isRecord(value)||value.id!==row.id||value.projectId!==projectId)invalid();shots.set(String(row.id),value);
   }
   const generated=new Set(db.prepare("SELECT json_extract(data,'$.shotId') AS id FROM jobs WHERE projectId=? AND json_valid(data) AND json_extract(data,'$.shotId') IN (SELECT value FROM json_each(?))").all(projectId,ids).map(row=>row.id));
@@ -238,6 +240,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   // Cleared bindings stay as tombstones that still reference the shot.
   const bound=new Set((isProjectLayout(db)||db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='subject_bindings'").get())?
    db.prepare('SELECT shotId FROM subject_bindings WHERE projectId=? AND shotId IN (SELECT value FROM json_each(?))').all(projectId,ids).map(row=>row.shotId):[]);
+  const retained=retainedCanvasDependencies(db,projectId,outcome.shotIds.map(id=>({kind:'shot',id})));
   const blockers: SceneUndoBlocker[]=[];
   plan.forEach((entry,index)=>{
    const shotId=outcome.shotIds[index]!,shot=shots.get(shotId),segment=entry.segment;
@@ -245,6 +248,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
    if(generated.has(shotId)){blockers.push({segment,shotId,reason:'GENERATED'});return;}
    if(connected.has(shotId)){blockers.push({segment,shotId,reason:'CONNECTED'});return;}
    if(bound.has(shotId)){blockers.push({segment,shotId,reason:'SUBJECT_BOUND'});return;}
+   if(retained.has(`shot:${shotId}`)){blockers.push({segment,shotId,reason:'CANVAS_HISTORY'});return;}
    const created: Record<string, unknown>={title:entry.title,prompt:'',referenceAssetIds:[receipt.keyframes[index]!.assetId],aspectRatio:snapshot.aspectRatio,duration:entry.duration,parameters:{},selectedVersionId:null};
    const fields=SCENE_SHOT_CONTENT_FIELDS.filter(field=>canonical(shot[field]??null)!==canonical(created[field]??null));
    if(fields.length)blockers.push({segment,shotId,reason:'EDITED',fields:[...fields]});

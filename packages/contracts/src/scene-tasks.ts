@@ -33,9 +33,9 @@ const legacyWorkspaceSceneShotAspectRatios = ['9:16', '16:9', '1:1'] as const;
 // Rows of six at the canvas pitch of a shot card. Without a position the batch
 // starts below the existing canvas content.
 export const SCENE_SHOT_LAYOUT = Object.freeze({columns: 6, columnSpacing: 340, rowSpacing: 300, left: 80, top: 100, gap: 360});
-export const SCENE_UNDO_BLOCKERS = Object.freeze(['MISSING', 'EDITED', 'GENERATED', 'CONNECTED', 'SUBJECT_BOUND'] as const);
+export const SCENE_UNDO_BLOCKERS = Object.freeze(['MISSING', 'EDITED', 'GENERATED', 'CONNECTED', 'SUBJECT_BOUND', 'CANVAS_HISTORY'] as const);
 // Undo compares these fields with the created shot. Moving or reordering a
-// shot is layout, not an edit, so it never blocks undo.
+// shot is layout, not a content edit. Retained canvas actions are checked separately.
 export const SCENE_SHOT_CONTENT_FIELDS = Object.freeze(['title', 'prompt', 'referenceAssetIds', 'lastFrameAssetId', 'aspectRatio', 'duration', 'parameters', 'selectedVersionId'] as const);
 export const SCENE_LIMITS = Object.freeze({
   inputBytes: 16384, snapshotBytes: 8192, receiptBytes: 32768, outcomeBytes: 16384, taskBytes: 81920,
@@ -54,7 +54,7 @@ export const SCENE_LIMITS = Object.freeze({
 export const SCENE_STALE_REASONS = Object.freeze(['SOURCE_CHANGED', 'PROFILE_CHANGED'] as const);
 // Pre-write refusals whose rollback a fresh transaction can prove.
 export const SCENE_REFUSAL_CODES = Object.freeze(['SCENE_CAPACITY', 'SCENE_QUEUE_FULL', 'SCENE_TASK_ACTIVE', 'SCENE_REVISION_CONFLICT', 'SCENE_STATE_CONFLICT',
-  'SCENE_SOURCE_INVALID', 'SCENE_SOURCE_CHANGED', 'SCENE_RESULT_CONFLICT', 'SCENE_RESULT_STALE', 'SCENE_CUTS_INVALID', 'SCENE_SEGMENTS_INVALID', 'SCENE_UNDO_BLOCKED'] as const);
+  'SCENE_SOURCE_INVALID', 'SCENE_SOURCE_CHANGED', 'SCENE_RESULT_CONFLICT', 'SCENE_RESULT_STALE', 'SCENE_CUTS_INVALID', 'SCENE_SEGMENTS_INVALID', 'SCENE_PROJECT_ASPECT_UNSUPPORTED', 'SCENE_UNDO_BLOCKED'] as const);
 
 export const canonicalSceneInput = (value: unknown): string => JSON.stringify(value, (_key: string, item: unknown) =>
   item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);

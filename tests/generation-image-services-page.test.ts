@@ -146,3 +146,34 @@ test('captured autofill without an input event retains a redacted replacement in
   assert.equal(f.owner.navigation().dirty, false); f.owner.edit(a.id, {storage: 'session'}); a.field.value = 'synthetic-autofill-only'; ticket = f.owner.prepareSave()!; assert.equal(a.field.value, ''); ticket.dispose();
   assert.equal(f.owner.navigation().dirty, true); assert.throws(() => f.owner.prepareSave()); assert.equal(f.writes, 1); assert.doesNotMatch(JSON.stringify(f.states), /synthetic-autofill-only/);
 });
+
+test('Comfy checks a draft loopback endpoint and exposes its checkpoints without saving', async t => {
+  const baseUrl = 'http://127.0.0.1:8188';
+  const draftUrl = 'http://127.0.0.1:8190';
+  const snapshot = {revision: 4, configuration: {...DEFAULT_COMFY_IMAGE_CONFIGURATION, enabled: true, baseUrl, model: 'old.safetensors'},
+    readiness: {checked: true, checkedAt: '2026-11-13T12:00:00.000Z'}};
+  const calls: unknown[] = [];
+  const owner = createGenerationImageServicesOwner('comfy', {client: {
+    read: async () => snapshot,
+    write: async () => assert.fail('Check and discard cannot save'),
+    readAvailability: async () => ({schemaVersion: 1, connectorId: 'mioon.comfy-local', implementationVersion: '1', state: 'available', reason: 'ready', fixedForSession: true}),
+    check: async request => {
+      calls.push(request);
+      return {ok: true, baseUrl: request.baseUrl, comfyVersion: '0.39.0', checkpoints: ['draft.safetensors'], selectedCheckpointAvailable: false,
+        nodeClasses: ['CheckpointLoaderSimple', 'EmptyLatentImage', 'CLIPTextEncode', 'KSampler', 'VAEDecode', 'SaveImage']};
+    },
+  }});
+  t.after(() => owner.dispose());
+  await owner.load(); await flush();
+  assert.equal(owner.edit('image:comfy', {}, {baseUrl: draftUrl}), true);
+  assert.equal(await owner.checkConnection(), true);
+  assert.deepEqual(calls, [{baseUrl: draftUrl, model: ''}]);
+  assert.deepEqual(owner.getState().check?.checkpoints, ['draft.safetensors']);
+  assert.equal(owner.getState().drafts[0]?.configuration.model, '', 'the model is selected by the user');
+  assert.equal(owner.isDirty('image:comfy'), true);
+  assert.deepEqual(owner.getState().snapshot, snapshot);
+  owner.discard();
+  assert.equal(owner.getState().drafts[0]?.configuration.baseUrl, baseUrl);
+  assert.equal(owner.getState().check, null);
+  assert.equal(owner.isDirty('image:comfy'), false);
+});

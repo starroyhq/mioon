@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as agent from '../apps/web/src/agent-settings.ts';
+import * as agentProtocol from '../packages/contracts/src/agent-protocol.ts';
 import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
 import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
 import * as openAiFamilies from '../packages/contracts/src/agent-openai-model-family.ts';
@@ -76,6 +77,7 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
     if(name==='../../../packages/contracts/src/agent-openai-model-family.ts')return openAiFamilies;
     if(name==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
     if (name === './agent-settings.ts') return { ...agent, createAgentSettingsSession: (options?: agent.AgentSettingsSessionOptions|undefined) => agent.createAgentSettingsSession({ ...options, client: f.client as agent.AgentSettingsClient }) };
+    if (name === '../../../packages/contracts/src/agent-protocol.ts') return agentProtocol;
     if (name === './agent-model-list-session.ts') return { ...modelDiscovery, createAgentModelListSession: (options?: Parameters<typeof modelDiscovery.createAgentModelListSession>[0]) => modelDiscovery.createAgentModelListSession({ ...options, client: {
       modelsCache: async () => ({status:'hit',result:{outcome:'success',models:[],complete:true,source:'current_protocol',fetchedAt:'2026-11-04T00:00:00.000Z'}}),
       modelsList: async () => assert.fail('Navigation fixtures must not fetch a provider model list'),

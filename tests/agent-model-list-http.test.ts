@@ -16,7 +16,7 @@ import {createAgentModelListService} from '../packages/business/src/agent/model-
 import {connectionFor} from '../packages/business/src/agent/settings-envelope.ts';
 
 const token = 'synthetic-model-list-http-token';
-const listRoute = '/api/agent/models/list', cacheRoute = '/api/agent/models/cache';
+const listRoute = '/api/agent/models/list', cacheRoute = '/api/agent/models/cache', testRoute = '/api/agent/models/test';
 interface Envelope {ok: boolean; data?: unknown; error?: {code: string}}
 interface RequestOptions {method?: string; payload?: unknown; raw?: string; headers?: Record<string, string>; authenticated?: boolean}
 async function fixture(t: test.TestContext, handler: http.RequestListener = (_req, res) => {res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify({data: [{id: 'local-model'}]}));}) {
@@ -51,8 +51,8 @@ async function fixture(t: test.TestContext, handler: http.RequestListener = (_re
 test('model-list routes inherit token/cookie/Host/Origin admission and strict bounded POST input', async t => {
   const f = await fixture(t);
   const payload = {...f.location, credential: {source: 'none'}};
-  for (const route of [listRoute, cacheRoute]) {
-    const value = route === listRoute ? payload : f.location;
+  for (const route of [listRoute, cacheRoute, testRoute]) {
+    const value = route === testRoute ? {...payload, model: 'local-model'} : route === listRoute ? payload : f.location;
     assert.equal((await f.request(route, {payload: value, authenticated: false})).status, 401);
     assert.equal((await f.request(route, {payload: value, headers: {origin: 'https://evil.example.com'}})).status, 403);
     assert.equal((await f.request(route, {method: 'GET'})).status, 405);
@@ -118,10 +118,61 @@ test('input key is one-shot on the pinned list GET, and stale revision rejects b
   assert.equal(response.status, 200); assert.equal(JSON.stringify(response.body).includes(key), false);
   assert.deepEqual(observed, [{method: 'GET', url: '/v1/models', authorization: `Bearer ${key}`}]);
   assert.deepEqual(await readFile(path.join(f.root, 'agent-settings/settings.json')), before);
-  const files = await readdir(path.join(f.root, 'agent-settings/model-list-cache'));
-  for (const file of files) assert.equal((await readFile(path.join(f.root, 'agent-settings/model-list-cache', file), 'utf8')).includes(key), false);
+  await assert.rejects(readdir(path.join(f.root, 'agent-settings/model-list-cache')), {code: 'ENOENT'});
   const stale = await f.request(listRoute, {payload: {...f.location, expectedSettingsRevision: f.location.expectedSettingsRevision - 1, credential: {source: 'none'}}});
   assert.equal(stale.status, 409); assert.equal(stale.body.error?.code, 'AGENT_SETTINGS_CONFLICT'); assert.equal(f.requests, 1);
+});
+
+test('draft test authenticates exactly one fixed message and leaves settings, cache and journal untouched', async t => {
+  const seen: {method?:string;url?:string;key?:string;body:Record<string,unknown>}[] = [];
+  let accepted = true;
+  const draftKey = 'synthetic-one-shot-mio-draft-key', savedKey = 'synthetic-mio-saved-key';
+  const f = await fixture(t,async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const part of req) chunks.push(Buffer.from(part as Buffer));
+    seen.push({method:req.method,url:req.url,key:req.headers.authorization,body:JSON.parse(Buffer.concat(chunks).toString('utf8'))});
+    if (!accepted) {
+      res.writeHead(401, {'Content-Type': 'application/json'}).end(JSON.stringify({error:{message:draftKey}}));
+      return;
+    }
+    res.writeHead(200, {'Content-Type':'text/event-stream'});
+    res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:'OK '+draftKey},finish_reason:null}]})+'\n\n'+
+      'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');
+  });
+  const settings = async () => agentSettingsSnapshotSchema.parse((await f.request('/api/agent/settings',{method:'GET'})).body.data);
+  const save = async (value:string) => {
+    const current = await settings();
+    const response = await f.request('/api/agent/settings',{method:'PUT',payload:{expectedRevision:current.revision,
+      services:current.services.map(agentServiceInput),mioSelection:current.mioSelection,
+      secretActions:[{serviceKey:'ollama',action:'replace',storage:'session',value}]}});
+    assert.equal(response.status,200);
+    return agentSettingsSnapshotSchema.parse(response.body.data);
+  };
+  const initial = await save(savedKey);
+  const file = path.join(f.root,'agent-settings/settings.json'), before = await readFile(file), changes = f.changes();
+  const draft = {...f.location,expectedSettingsRevision:initial.revision,model:'local-model',credential:{source:'input',value:draftKey}};
+  assert.deepEqual((await f.request(testRoute,{payload:draft})).body,{ok:true,data:{outcome:'success'}});
+  accepted = false;
+  assert.deepEqual((await f.request(testRoute,{payload:draft})).body,{ok:true,data:{outcome:'failed',reason:'rejected'}});
+  accepted = true;
+  const saved = {...draft,credential:{source:'saved'}};
+  assert.deepEqual((await f.request(testRoute,{payload:saved})).body,{ok:true,data:{outcome:'success'}});
+  for (const patch of [{baseUrl:f.location.selection.baseUrl.replace(/:\d+\//u,':11501/')},{protocol:'responses'}]) {
+    assert.equal((await f.request(testRoute,{payload:{...saved,selection:{...saved.selection,...patch}}})).status,409);
+  }
+  assert.equal(f.requests,3);
+  assert.deepEqual(await readFile(file),before);
+  assert.equal(f.changes(),changes);
+  await assert.rejects(readdir(path.join(f.root,'agent-settings/model-list-cache')),{code:'ENOENT'});
+  const after = await save(draftKey);
+  assert.deepEqual((await f.request(testRoute,{payload:{...saved,expectedSettingsRevision:after.revision}})).body,{ok:true,data:{outcome:'success'}});
+  assert.deepEqual(seen.map(row=>row.key),[draftKey,draftKey,savedKey,draftKey].map(key=>'Bearer '+key));
+  for(const row of seen){
+    assert.equal(row.method,'POST');assert.equal(row.url,'/v1/chat/completions');
+    assert.equal(row.body.max_tokens,128);
+    assert.deepEqual(row.body.messages,[{role:'user',content:'Mioon connection test. Reply with the single word OK.'}]);
+    assert.equal(row.body.tools,undefined);assert.doesNotMatch(JSON.stringify(row.body),/synthetic-/u);
+  }
 });
 
 test('client disconnect cancels remote discovery and leaves no late cache', async t => {
@@ -144,7 +195,7 @@ test('provider failures stay safe data and never overwrite a good cache or start
     res.end(JSON.stringify(status === 200 ? {data: [{id: reflect ? key : 'cached-model'}]} : {message: key, secret: key}));
   });
   const input = {...f.location, credential: {source: 'input', value: key}};
-  const first = agentModelListResultSchema.parse((await f.request(listRoute, {payload: input})).body.data);
+  const first = agentModelListResultSchema.parse((await f.request(listRoute, {payload: {...f.location, credential: {source: 'none'}}})).body.data);
   assert.equal(first.outcome, 'success');
   for (const [httpStatus, outcome] of [[401, 'invalid_key'], [404, 'unavailable'], [500, 'unreachable']] as const) {
     status = httpStatus;
@@ -175,6 +226,7 @@ test('the application-entry deadline cancels pending discovery and returns a saf
       return new Promise((_resolve, reject) => options!.signal!.addEventListener('abort', () => reject(options!.signal!.reason), {once: true}));
     },
     async cache() {return {status: 'miss'};},
+    async test() {assert.fail('unexpected connection test');},
   }});
   const server = http.createServer((req, res) => {void handler(req, res, new URL(req.url!, 'http://127.0.0.1'));});
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -232,7 +284,7 @@ test('desktop model-list route traverses the real settings client and broker for
     assert.equal(listed.status, 200); assert.equal(listed.body.ok, true);
     const result = agentModelListResultSchema.parse(listed.body.data); assert.equal(result.outcome, 'success');
     const cached = await request(cacheRoute, location); assert.equal(cached.status, 200);
-    const cache = agentModelListCacheResultSchema.parse(cached.body.data); assert.equal(cache.status, 'hit');
+    const cache = agentModelListCacheResultSchema.parse(cached.body.data); assert.equal(cache.status, credential.source==='input'?'miss':'hit');
     if (cache.status === 'hit') assert.deepEqual(cache.result, result);
     for (const value of [listed.body, cached.body, [...entries.values()]]) {
       assert.equal(JSON.stringify(value).includes(inputKey), false); assert.equal(JSON.stringify(value).includes(savedKey), false);

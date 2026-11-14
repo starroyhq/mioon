@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomBytes, randomUUID} from 'node:crypto';
 import {closeSync, constants, copyFileSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, realpathSync, renameSync, rmSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
@@ -26,7 +26,8 @@ import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
 import type {SchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
 import {historyManifestForVersion, projectManifestForVersion} from './schema/format-manifests.ts';
-import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, writeFormat4HistoryVersionInside, writeFormat4ProjectVersionInside} from './schema/format4-upgrade.ts';
+import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, addFormat4ReceiptExpiryInside, writeFormat4HistoryVersionInside, writeFormat4ProjectVersionInside} from './schema/format4-upgrade.ts';
+import {FORMAT4_INITIAL_HISTORY_MANIFEST} from './schema/history-v11-manifest.ts';
 import {createFormat4UpgradeBackup, FORMAT4_RESTORE_ACTIVE} from './format4-backup.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
@@ -311,14 +312,20 @@ function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, pr
  * This merely identifies the transition: no table is changed before the
  * project is attached, locked and checked for external content changes. */
 function checkHistoryStructure(db: DatabaseSync, projectId: string, candidate = false): HistoryUpgrade | undefined {
-  if (candidate) {
-    checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION));
-    return;
-  }
   const definition = db.prepare(`SELECT sql FROM ${HISTORY}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
   const version = definition?.sql === SCHEMA_VERSION_TABLE_SQL
     ? db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${HISTORY}.schema_version`).get()
     : undefined;
+  if (candidate) {
+    const current = historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION)!;
+    if (version?.count === 1 && version.version === FORMAT4_INITIAL_HISTORY_MANIFEST.version) {
+      const from = FORMAT4_INITIAL_HISTORY_MANIFEST;
+      checkStructure(db, HISTORY, 'history', projectId, from);
+      return {from, toVersion: current.version, apply: addFormat4ReceiptExpiryInside};
+    }
+    checkStructure(db, HISTORY, 'history', projectId, current);
+    return;
+  }
   const upgrade = version?.count === 1 ? HISTORY_UPGRADES.find(candidate => candidate.from.version === version.version && candidate.toVersion === HISTORY_SCHEMA_VERSION) : undefined;
   checkStructure(db, HISTORY, 'history', projectId, upgrade?.from);
   return upgrade;
@@ -669,7 +676,7 @@ export function withFormat4RestoreLocks<T>(inputs: readonly Format4RestoreLockIn
 }
 
 /** Restore admits exact source profiles without opening the project as a
- * store. A manually restored v3 project may still have v11 local records. */
+ * store. A manually restored v3 project may still have candidate local records. */
 export function inspectLockedFormat4RestoreSource(db: DatabaseSync, database: 'project' | 'history', projectId: string): ProjectFormatIdentity | null {
   if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid(database, 'encoding', projectId);
   if (database === 'project') {
@@ -815,6 +822,27 @@ function attachDatabases(
       });
       observeUpgrade(db, format4, 'after-commit');
       verifySources();
+    } else if (upgrade && useFormat4) {
+      if (!admission) throw invalid('history', 'metadata', projectId);
+      inTransaction(db, () => {
+        verifySources();
+        const from = checkHistoryStructure(db, projectId, true);
+        if (from?.from !== upgrade.from) throw invalid('history', 'schema-version', projectId);
+        upgrade.apply(db);
+        if (format4) observeUpgrade(db, format4, 'before-version-write');
+        writeFormat4HistoryVersionInside(db, upgrade.from.version);
+        checkStructure(db, HISTORY, 'history', projectId, historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION));
+        checkProjectStructure(db, PROJECT, identity.formatVersion, projectId);
+        if (foreignKeyCheck(db).length !== 0) throw invalid('history', 'foreign-key', projectId);
+        const nextAdmission = classifyHistoryStamp(db, false);
+        if (nextAdmission.state !== admission.state || !sameContentStamp(nextAdmission.file, current) ||
+          nextAdmission.seen.contentSequence !== admission.seen.contentSequence ||
+          nextAdmission.seen.contentToken !== admission.seen.contentToken) throw invalid('history', 'metadata', projectId);
+        if (format4) observeUpgrade(db, format4, 'before-commit');
+        verifySources();
+      });
+      if (format4) observeUpgrade(db, format4, 'after-commit');
+      verifySources();
     } else if (upgrade) {
       const transition = upgrade;
       inTransaction(db, () => {
@@ -844,7 +872,20 @@ function attachDatabases(
     if (staged) inTransaction(db,()=>db.exec('DELETE FROM cache.previs_thumbnails; DELETE FROM cache.waveform_cache'));
     installCrossFileTriggers(db, useFormat4);
     if (historyAdmission.state === 'diverged') installDivergedWriteGuards(db);
-    else openProjectJournal(db);
+    else {
+      openProjectJournal(db);
+      // Persist the generation before any client can read it. A staged
+      // replacement stays empty until its first ordinary writable open.
+      if (useFormat4 && !staged && !db.prepare('SELECT 1 FROM main.canvas_receipt_window WHERE singleton=1').get()) {
+        database = 'history';
+        inTransaction(db, () => {
+          verifySources();
+          db.prepare('INSERT INTO main.canvas_receipt_window(singleton,epoch,floor) VALUES(1,?,0)')
+            .run(randomBytes(16).toString('hex'));
+          verifySources();
+        });
+      }
+    }
     const held: readonly HeldFile[] = [
       [projectKey, 'project'],
       [historyKey, 'history'],

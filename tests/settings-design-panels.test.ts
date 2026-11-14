@@ -13,7 +13,7 @@ import * as fileFormat from '../apps/web/src/project-file/format.ts';
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
 const flush = () => new Promise(setImmediate);
-function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}, locale: Parameters<typeof i18nTestModule>[0] = 'zh-Hans') {
+function harness<File extends 'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}, locale: Parameters<typeof i18nTestModule>[0] = 'zh-Hans') {
   const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: string|number|boolean|RootNode|RootTree[]|null|undefined, props: Record<string,unknown> = { active: true, ...initialProps };
   const react = {
     createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
@@ -32,7 +32,6 @@ function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages
     if (name === './project-file/format.ts') return fileFormat;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
     if (name === './LocalRecordsPanel.tsx') return {__esModule:true,default:'LocalRecordsPanel'};
-    if (name === './GenerationLiveGateNotice.tsx') return {notifyGenerationLiveGateChanged() {}};
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name === './workspace-native-client.ts') return {workspaceNativeBridge: () => undefined};
     if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
@@ -46,44 +45,7 @@ function harness<File extends 'GenerationLiveGateNotice.tsx'|'SettingsExtraPages
   };
 }
 
-const workspaceSettings=(enabled: boolean)=>({formatVersion:1,revision:0,liveGeneration:enabled});
-for (const enabled of [false, true]) test(`service panel shows the persisted live gate ${enabled} independently from missing credentials and checks only local metadata`, async () => {
-  const calls: unknown[][] = [], missing = ['ARK_API_KEY', ...enabled ? [] : ['MIOON_ENABLE_LIVE_PROVIDER']];
-  const h = harness('SettingsExtraPages.tsx', 'SettingsModelServices', {
-    './workspace-info-client.ts': {},
-    './workspace-settings-client.ts': {readWorkspaceSettings:async()=>workspaceSettings(enabled)},
-    './browser-rpc.ts': { browserRpc: async (...args: unknown[]) => { calls.push(args); return [{ id: 'ark', configured: false, enabled: false, configuration: { missing } }, { id: 'veo', configured: false }, { id: 'mock', configured: true, enabled: true }]; } },
-  });
-  h.render(); await flush(); h.render();
-  assert.equal((h.find('settings-live-generation'))!.props.checked, enabled);
-  assert.equal((h.find('settings-live-generation'))!.props.disabled, false);
-  assert.match(text(h.tree), /Seedance 2\.5.*Veo 3\.1.*本地模拟/u);
-  assert.doesNotMatch(text(h.tree), /刷新项目列表/u);
-  assert.deepEqual(nodes(h.tree).map(node => node.props?.['data-testid']).filter((id) => id?.startsWith('settings-service-check-')), ['settings-service-check-ark', 'settings-service-check-veo', 'settings-service-check-minimax', 'settings-service-check-vidu']);
-  assert.doesNotMatch(text(h.tree), /Runway/u); assert.match(text(h.tree), /环境变量连接/u);
-  (h.find('settings-service-check-ark'))!.props.onClick(); h.render(); await flush(); h.render();
-  assert.equal(calls.length, 2); assert.ok(calls.every(([operation, input]) => operation === 'provider.list' && Object.keys(input as object).length === 0));
-  h.unmount();
-});
-
-test('failed service discovery leaves the live gate unknown instead of presenting a configured provider as enabled', async () => {
-  const h = harness('SettingsExtraPages.tsx', 'SettingsModelServices', { './workspace-info-client.ts': {}, './workspace-settings-client.ts':{readWorkspaceSettings:async()=>{throw Error('synthetic private settings');}}, './browser-rpc.ts': { browserRpc: async () => { throw Error('synthetic private diagnostic'); } } });
-  h.render(); await flush(); h.render();
-  assert.equal((h.find('settings-live-generation'))!.props.checked, false);
-  assert.match(text(h.tree), /尚未检测/u); assert.doesNotMatch(text(h.tree), /synthetic private/u);
-  assert.match(text(nodes(h.tree).find((node)=>node.type==='footer')),/状态未确认/);
-  h.unmount();
-});
-
-test('live switch waits for the persisted revision and stale hidden callbacks cannot enable generation',async()=>{
- let value=workspaceSettings(false),resolve!:()=>void;const writes: unknown[]=[];
- const h=harness('SettingsExtraPages.tsx','SettingsModelServices',{'./workspace-info-client.ts':{},'./browser-rpc.ts':{browserRpc:async()=>[]},'./workspace-settings-client.ts':{readWorkspaceSettings:async()=>value,saveWorkspaceSettings:(input: {liveGeneration:boolean})=>{writes.push(input);return new Promise<ReturnType<typeof workspaceSettings>>(done=>{resolve=()=>{value={...value,revision:1,liveGeneration:input.liveGeneration};done(value);};});}}});
- h.render();await flush();h.render();const edit=(h.find('settings-live-generation'))!.props.onCheckedChange;edit(true);h.render();
- assert.equal((h.find('settings-live-generation'))!.props.checked,false);assert.equal((h.find('settings-live-generation'))!.props.disabled,true);assert.deepEqual(writes,[{expectedRevision:0,liveGeneration:true}]);
- (resolve)!();await flush();h.render();await flush();h.render();assert.equal((h.find('settings-live-generation'))!.props.checked,true);
- h.render({active:false});edit(false);assert.equal(writes.length,1);assert.match(text(h.tree),/更改立即保存在本机/);h.unmount();
-});
-
+const workspaceSettings=()=>({formatVersion:1,revision:0});
 test('video tool cards expose actual versions and missing capabilities after one bounded local check, without requiring a manual first check', async () => {
   const calls: unknown[] = [], diagnostics = { ffmpeg: { path: '/local/ffmpeg', available: true, version: 'ffmpeg version synthetic' }, ffprobe: { path: '/local/ffprobe', available: true, version: 'ffprobe version synthetic' }, capabilities: { libx264: true, aac: true, drawtext: false, subtitles: false } };
   const h = harness('SettingsVideoTools.tsx', 'default', { './SettingsMediaToolsDownload.tsx': { default: () => { calls.push('download card'); return null; } }, './workspace-info-client.ts': { workspaceToolsBridge: () => undefined, readWorkspaceInfo: async (_signal:AbortSignal|undefined,view:string) => {assert.equal(view,'metadata');return { tools: { ffmpeg: '/local/ffmpeg', ffprobe: '/local/ffprobe' } };}, checkConfiguredMediaTools: async () => { calls.push('check'); return diagnostics; } } });
@@ -199,7 +161,7 @@ test('workspace settings preserve directory, usage and cleanup information witho
   const calls: string[] = [];
   const h = harness('SettingsWorkspace.tsx','default',{
     './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async(_signal:AbortSignal|undefined,view:string)=>{assert.equal(view,'storage');calls.push('info');return {dataDirectory:'/private/current-data',usage:{bytes:1024,complete:false},storage:{records:{bytes:3000000,files:3,complete:true},cache:{bytes:2000000,files:2,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:2};}},
-    './workspace-settings-client.ts': {readWorkspaceSettings:async()=>{calls.push('settings');return workspaceSettings(false);}},
+    './workspace-settings-client.ts': {readWorkspaceSettings:async()=>{calls.push('settings');return workspaceSettings();}},
   });
   t.after(()=>h.unmount());h.render();await flush();h.render();
   assert.deepEqual(calls,['info','settings']);
@@ -213,7 +175,7 @@ test('workspace settings preserve directory, usage and cleanup information witho
 test('workspace storage warns only about displayed incomplete roots and scales small byte counts',async t=>{
  const h=harness('SettingsWorkspace.tsx','default',{
   './workspace-info-client.ts':{workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/data',usage:{bytes:0,complete:true},storage:{records:{bytes:320,files:1,complete:true},cache:{bytes:8000,files:1,complete:false},cacheDirectory:'/private/cache'},pendingProjectCleanup:0})},
-  './workspace-settings-client.ts':{readWorkspaceSettings:async()=>workspaceSettings(false)},
+  './workspace-settings-client.ts':{readWorkspaceSettings:async()=>workspaceSettings()},
  });t.after(()=>h.unmount());h.render();await flush();h.render();
  assert.match(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/320 B/);assert.match(text(h.tree),/8 KB/);assert.doesNotMatch(text(h.tree),/0 MB/);
 });
@@ -221,21 +183,10 @@ test('hidden workspace settings abort pending reads and a late failure cannot pu
   let reject!: (reason:unknown)=>void;const signals: AbortSignal[]=[];let reads=0;
   const h = harness('SettingsWorkspace.tsx','default',{
     './workspace-info-client.ts': {workspaceToolsBridge:()=>undefined,readWorkspaceInfo:async()=>({dataDirectory:'/private/current-data',usage:{bytes:1024,complete:true},storage:{records:{bytes:0,files:0,complete:true},cache:{bytes:0,files:0,complete:true},cacheDirectory:'/private/external-cache'},pendingProjectCleanup:0})},
-    './workspace-settings-client.ts': {readWorkspaceSettings:async(signal:AbortSignal)=>{signals.push(signal);if(++reads===1)return new Promise((_yes,no)=>{reject=no;});return workspaceSettings(false);}},
+    './workspace-settings-client.ts': {readWorkspaceSettings:async(signal:AbortSignal)=>{signals.push(signal);if(++reads===1)return new Promise((_yes,no)=>{reject=no;});return workspaceSettings();}},
   });
   t.after(()=>h.unmount());h.render();h.render({active:false});assert.equal(signals[0].aborted,true);
   h.render({active:true});await flush();h.render();reject(Object.assign(Error('private stale error'),{code:'NETWORK'}));await flush();h.render();
   assert.equal(reads,2);assert.doesNotMatch(text(h.tree),/private stale error|状态未确认/);
   assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);
-});
-
-test('generation detail gate notices stop hidden reads and react only after the persisted live toggle changes', async () => {
-  let enabled = false, opens = 0; const first = Promise.withResolvers<ReturnType<typeof workspaceSettings>>(), signals: AbortSignal[] = []; let reads = 0;
-  const h = harness('GenerationLiveGateNotice.tsx', 'default', {'./workspace-settings-client.ts': {readWorkspaceSettings: (signal: AbortSignal) => {signals.push(signal); return ++reads === 1 ? first.promise : Promise.resolve(workspaceSettings(enabled));}}}, {pageKey: 'custom', onOpen: () => {opens++;}});
-  h.render(); h.render({active: false}); assert.equal(signals[0]!.aborted, true); first.resolve(workspaceSettings(false)); await flush(); h.render();
-  assert.equal(h.find('generation-live-disabled'), undefined);
-  h.render({active: true, pageKey: 'official'}); await flush(); h.render(); const notice = h.find('generation-live-disabled'); assert.ok(notice);
-  assert.match(text(notice), /真实生成已关闭.*连接设置仍可保存/); nodes(notice).find(node => node.type === 'Button')!.props.onClick(); assert.equal(opens, 1);
-  enabled = true; h.exports.notifyGenerationLiveGateChanged(); await flush(); h.render(); assert.equal(h.find('generation-live-disabled'), undefined);
-  h.unmount();
 });

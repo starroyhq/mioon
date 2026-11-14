@@ -2,7 +2,8 @@ import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 type FormatContext=format.TimelineFormatContext&{scope:string;projectId:string;[key:string]:unknown};
 type FormatDeferred=ReturnType<typeof deferred>;
 type ComponentView=(props:Record<string,unknown>)=>ElementNode;
-interface ComponentModule{exports:{default:ComponentView;WorkbenchInspectorTabs:ComponentView;AgentDockPane:ComponentView}}
+interface ComponentModule{exports:{default:ComponentView;WorkbenchInspectorTabs:ComponentView;AgentDockPane:ComponentView;
+  AspectFrameMenu:ComponentView;AspectFrameFeedback:ComponentView;AspectFrameSuggestion:ComponentView;AspectFrameExportRatio:ComponentView}}
 type ExtractedApp<S extends string>=S extends 'async function saveTimelineFormat('? (intent:format.TimelineFormatIntent)=>Promise<{status:string}>:(...args:unknown[])=>Promise<boolean>;
 import type {ElementTree, ElementNode, HookSlot} from './helpers/strict-timeline-audio-harness-types.ts';
 import * as creationI18n from '../apps/web/src/creation-i18n.ts';
@@ -29,11 +30,14 @@ const standaloneMediaGate=(()=>{
 assert.equal((standaloneMediaGate.useProjectMediaReadGate as ()=>unknown)(),null);
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as exportRange from '../apps/web/src/export-range-state.ts';
+import * as sourceRange from '../apps/web/src/source-range-state.ts';
 import * as format from '../apps/web/src/timeline-format-state.ts';
+import * as aspect from '../apps/web/src/aspect-frame-state.ts';
 import { createTimelineDeliveryNameController } from '../apps/web/src/export-delivery-state.ts';
 import * as deliveryHistory from '../apps/web/src/export-delivery-state.ts';
 import { createLocalDeliveryController } from '../apps/web/src/local-delivery-state.ts';
 import * as contracts from '@mioon/contracts';
+import * as outputGeometry from '../packages/contracts/src/timeline-output-geometry.ts';
 import * as audio from '../apps/web/src/clip-audio-state.ts';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
@@ -194,7 +198,7 @@ const textOf = (tree: ElementTree) :string => Array.isArray(tree) ? tree.map(tex
 const read = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (target, name) => (target as Record<PropertyKey,unknown>)[name] ?? String(name) });
 function component(name:string,imports:Record<string,unknown> = {}) {
-  const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: (current: unknown) => ({ current }), useState: (value: () => unknown) => [typeof value === 'function' ? value() : value, () => {}] } as {createElement:typeof element;useEffect():void;useLayoutEffect():void;useRef(current:unknown):{current:unknown};useState(value:unknown):unknown[];default?:unknown}; (react as typeof react & {default: unknown}).default = react;
+  const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: (current: unknown) => ({ current }), useState: (value: () => unknown) => [typeof value === 'function' ? value() : value, () => {}], useId: () => 'frame-menu-title' } as {createElement:typeof element;useEffect():void;useLayoutEffect():void;useRef(current:unknown):{current:unknown};useState(value:unknown):unknown[];useId():string;default?:unknown}; (react as typeof react & {default: unknown}).default = react;
   const module = {exports:{}} as ComponentModule;
   Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (key: string) => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './project-media-read-gate.tsx' ? standaloneMediaGate : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
@@ -249,6 +253,155 @@ test('actual monitor header and preflight summary use their own saved dimensions
   const summary = { fps: 30, width: 1080, height: 1080, durationFrames: 90, trackCount: 1, clipCount: 1, assetCount: 1 };
   const report = Panel({ state: { phase: 'ready', report: { timelineRevision: 1, checkedAt: '2026-10-11T00:00:00Z', issues: [], summary, checks: { checkedAssets: 1, totalAssets: 1, bytesHashed: 0 } } } });
   assert.match(textOf(report), /1080 × 1080 · 30 fps/); assert.doesNotMatch(textOf(report), /1920/);
+});
+
+const loadFrameControls = () => component('AspectFrameControls.tsx', {
+  '../../../packages/contracts/src/timeline-output-geometry.ts': outputGeometry,
+});
+const byTestId = (tree: ElementTree, id: string) => nodes(tree).find(node => node.props['data-testid'] === id);
+
+test('frame menu offers exactly six choices in either short-edge tier and only sends a changed ratio', () => {
+  const {AspectFrameMenu} = loadFrameControls();
+  const ratios = ['9:16', '16:9', '1:1', '4:3', '3:4', '21:9'];
+  const dimensions = [
+    [720, ['720×1280', '1280×720', '720×720', '960×720', '720×960', '1680×720']],
+    [1080, ['1080×1920', '1920×1080', '1080×1080', '1440×1080', '1080×1440', '2520×1080']],
+  ] as const;
+  const selected: unknown[] = [];
+  for (const [shortEdge, expected] of dimensions) {
+    const props = {ratio: '9:16', shortEdge, onSelect: (ratio: unknown) => selected.push(ratio)};
+    const tree = AspectFrameMenu(props);
+    const options = nodes(tree).filter(node => node.type === 'DropdownMenuRadioItem');
+    assert.deepEqual(options.map(option => option.props.value), ratios);
+    assert.deepEqual(options.map(option => textOf(nodes(option).find(node => node.props.className === 'aspect-frame-dimensions'))), expected);
+    assert.match(textOf(options[0]), /9:16 竖屏/);
+    assert.match(textOf(options[1]), /16:9 横屏/);
+    assert.match(textOf(options[2]), /1:1 方形/);
+    assert.match(textOf(tree), /缩放和偏移会保留/);
+    const group = nodes(tree).find(node => node.type === 'DropdownMenuRadioGroup')!;
+    assert.equal(group.props.value, props.ratio);
+    group.props.onValueChange('follow');
+    group.props.onValueChange(props.ratio);
+    group.props.onValueChange('21:9');
+    const locked = AspectFrameMenu({...props, disabled: true});
+    assert.equal(byTestId(locked, 'aspect-frame-trigger')!.props.disabled, true);
+    assert.ok(nodes(locked).filter(node => node.type === 'DropdownMenuRadioItem').every(node => node.props.disabled === true));
+    nodes(locked).find(node => node.type === 'DropdownMenuRadioGroup')!.props.onValueChange('16:9');
+  }
+  assert.deepEqual(selected, ['21:9', '21:9']);
+});
+
+test('frame feedback reports changes, delegates Undo and dismiss, and keeps the first-clip choice explicit', () => {
+  const {AspectFrameFeedback, AspectFrameSuggestion} = loadFrameControls();
+  const events: string[] = [];
+  const props = {
+    ratio: '9:16', shortEdge: 1080, onSelect() { assert.fail('Choosing an action must use its explicit callback'); },
+    changed: {ratio: '16:9', clips: 8, onUndo: () => events.push('undo'), onDismiss: () => events.push('dismiss')},
+    suggestion: {ratio: '16:9', onChange: () => events.push('accept'), onKeep: () => events.push('keep')},
+  };
+  const feedback = AspectFrameFeedback(props);
+  assert.match(textOf(byTestId(feedback, 'aspect-frame-changed')), /已改为 16:9 横屏 · 8 个片段已重新放进画框/);
+  byTestId(feedback, 'aspect-frame-undo')!.props.onClick();
+  nodes(feedback).find(node => node.props['aria-label'] === '关闭')!.props.onClick();
+  assert.equal(byTestId(AspectFrameFeedback({...props, changed: {...props.changed, undoDisabled: true}}), 'aspect-frame-undo')!.props.disabled, true);
+  const suggestion = AspectFrameSuggestion(props);
+  assert.match(textOf(suggestion), /这段素材是 16:9，要把画框改成一样吗？/);
+  assert.equal(textOf(byTestId(suggestion, 'aspect-frame-suggestion-accept')), '改成 16:9');
+  assert.equal(textOf(byTestId(suggestion, 'aspect-frame-suggestion-keep')), '保持 9:16');
+  byTestId(suggestion, 'aspect-frame-suggestion-accept')!.props.onClick();
+  byTestId(suggestion, 'aspect-frame-suggestion-keep')!.props.onClick();
+  const locked = AspectFrameSuggestion({...props, disabled: true});
+  assert.equal(byTestId(locked, 'aspect-frame-suggestion-accept')!.props.disabled, true);
+  assert.equal(byTestId(locked, 'aspect-frame-suggestion-keep')!.props.disabled, undefined);
+  assert.equal(AspectFrameSuggestion({...props, suggestion: null}), null);
+  for (const [key, text] of [
+    ['timeline.aspectFrame.locked', '先确认待处理的时间线编辑'],
+    ['timeline.aspectFrame.conflict', '项目或时间线已有新版本，请查看最新画面比例后重试'],
+  ] as const) {
+    const alert = byTestId(AspectFrameFeedback({...props, changed: null, error: message(key)}), 'aspect-frame-error')!;
+    assert.equal(alert.props.role, 'alert');
+    assert.equal(textOf(alert), text);
+  }
+  assert.deepEqual(events, ['undo', 'dismiss', 'accept', 'keep']);
+});
+
+test('monitor and export settings keep the legacy UI unless authoritative aspect controls are passed', () => {
+  const controls = loadFrameControls();
+  const Preview = component('Preview.tsx', {
+    './AspectFrameControls.tsx': controls,
+    './workspace-visibility.tsx': {useWorkspaceVisibility: () => true},
+    './api.ts': {assetUrl: () => '', mediaUrl},
+    './Timeline.tsx': {assetKind: () => 'video'},
+    './source-range-state.ts': sourceRange,
+  }).default;
+  const aspectFrame = {ratio: '16:9', shortEdge: 1080, onSelect() {}};
+  const viewTypes = [controls.AspectFrameMenu, controls.AspectFrameFeedback, controls.AspectFrameSuggestion];
+  for (const kind of ['source', 'timeline']) {
+    const base = {kind, timeline: timeline('landscape_1080'), playhead: 0};
+    const legacy = Preview(base), current = Preview({...base, aspectFrame});
+    assert.ok(nodes(legacy).every(node => !viewTypes.includes(node.type as ComponentView)));
+    assert.deepEqual(nodes(current).filter(node => viewTypes.includes(node.type as ComponentView)).map(node => node.type), viewTypes);
+    assert.equal(textOf(nodes(current).find(node => node.props.className === 'edit-preview-format')), '1920×1080 · 30fps');
+  }
+  const unmaterialized = Preview({kind: 'timeline', timeline: null, playhead: 0, aspectFrame});
+  assert.equal(textOf(nodes(unmaterialized).find(node => node.props.className === 'edit-preview-format')), '1920×1080 · 30fps');
+  const exportProps = {
+    timeline: timeline('landscape_1080'),
+    value: {resolution: 'native', rateControl: {mode: 'crf', quality: 'standard'}},
+    onChange() {},
+  };
+  const Settings = component('TimelineExportSettings.tsx', {'./AspectFrameControls.tsx': controls}).default;
+  const legacy = Settings(exportProps);
+  const current = Settings({...exportProps, aspectFrameRatio: aspectFrame.ratio});
+  const row = nodes(current).find(node => node.type === controls.AspectFrameExportRatio)!;
+  assert.ok(nodes(legacy).every(node => node.type !== controls.AspectFrameExportRatio));
+  const ratioView = controls.AspectFrameExportRatio(row.props);
+  assert.equal(ratioView.type, 'dl');
+  assert.match(textOf(ratioView), /画面比例16:9（在剪辑中修改）/);
+  assert.ok(nodes(ratioView).every(node => !['Button', 'button', 'input', 'select', 'WorkbenchSelect'].includes(String(node.type))));
+  assert.ok(byTestId(legacy, 'export-resolution'));
+  assert.ok(byTestId(current, 'export-resolution'));
+});
+
+test('a changed aspect frame uses the existing preview refresh action and keeps frozen playback metadata', () => {
+  const controls = loadFrameControls();
+  const Preview = component('Preview.tsx', {
+    './AspectFrameControls.tsx': controls,
+    './PreviewPlaybackControls.tsx': {default: 'PreviewPlaybackControls', __esModule: true},
+    './workspace-visibility.tsx': {useWorkspaceVisibility: () => true},
+    './api.ts': {assetUrl: () => '', mediaUrl},
+    './Timeline.tsx': {assetKind: () => 'video'},
+    './source-range-state.ts': sourceRange,
+  }).default;
+  const current = {...timeline('landscape_1080', 2), durationFrames: 90};
+  const frozen = {...timeline('portrait_1080', 1), durationFrames: 30};
+  const job = {id: id(7), projectId, assetId: id(8), mode: 'timeline', purpose: 'preview',
+    status: 'succeeded', timelineRevision: 1, snapshot: {timeline: frozen}};
+  const rendered: string[] = [];
+  const aspectFrame = {ratio: '16:9', shortEdge: 1080, onSelect() {},
+    changed: {ratio: '16:9', clips: 1, onUndo() {}, onDismiss() {}}};
+  const base = {kind: 'timeline', timeline: current, playhead: 75, aspectFrame,
+    onRender: (purpose: string) => rendered.push(purpose)};
+
+  const tree = Preview({...base, job});
+  const header = nodes(tree).find(node => node.props.className === 'edit-preview-format')!;
+  assert.equal(textOf(header), '1920×1080 · 30fps');
+  assert.match(String(header.props.title), /9:16 · 1080 × 1920 · 30 fps/);
+  const feedback = nodes(tree).find(node => node.type === controls.AspectFrameFeedback)!;
+  assert.ok(byTestId(controls.AspectFrameFeedback(feedback.props), 'aspect-frame-undo'));
+  const playback = nodes(tree).find(node => node.type === 'PreviewPlaybackControls')!;
+  assert.equal(playback.props.duration, 30);
+  assert.match(String(playback.props.metadata), /9:16 · 1080 × 1920 · 30 fps/);
+
+  const notices = nodes(tree).filter(node => node.props['data-testid'] === 'preview-stale');
+  assert.equal(notices.length, 1);
+  const actions = nodes(notices[0]).filter(node => textOf(node) === '更新预览' && typeof node.props.onClick === 'function');
+  assert.equal(actions.length, 1);
+  assert.deepEqual(rendered, []);
+  actions[0].props.onClick();
+  assert.deepEqual(rendered, ['preview']);
+  const updated = Preview({...base, job: {...job, timelineRevision: 2, snapshot: {timeline: current}}});
+  assert.equal(byTestId(updated, 'preview-stale'), undefined);
 });
 
 test('actual inspector bounds follow landscape and square timelines and reject odd or overflowing rectangles', () => {
@@ -423,6 +576,83 @@ test('actual format save callback uses only the existing durable timeline lane a
   f.ack(); await pending;
 });
 
+test('format 4 frame selection keeps the short edge and both revisions, and rejects legacy or foreign geometry', () => {
+  const state = {projectFormatVersion: 4, project: {id: projectId, revision: 3}, timeline: timeline('portrait_720', 9)};
+  const frame = aspect.aspectFrameSnapshot(state, 'project:1')!;
+  assert.deepEqual([frame.ratio, frame.shortEdge], ['9:16', 720]);
+  assert.equal(aspect.aspectFrameIntent(frame, '9:16', id(10)), null);
+  for (const ratio of outputGeometry.TIMELINE_OUTPUT_RATIOS.slice(1)) {
+    assert.deepEqual(aspect.aspectFrameIntent(frame, ratio, id(10))?.input, {
+      projectId, requestId: id(10), expectedProjectRevision: 3, expectedRevision: 9,
+      presetId: outputGeometry.timelineOutputPresetForRatio(ratio, 720)?.id,
+    });
+  }
+  assert.equal(aspect.aspectFrameSnapshot({...state, projectFormatVersion: 3}, 'project:1'), null);
+  assert.equal(aspect.aspectFrameSnapshot({...state, projectFormatVersion: undefined}, 'project:1'), null);
+  assert.equal(aspect.aspectFrameSnapshot({...state, timeline: {...state.timeline, projectId: id(20)}}, 'project:1'), null);
+  assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'video/mp4', width: 1920, height: 1080}), '16:9');
+  assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'image/png', width: 1000, height: 700}), null);
+  assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'audio/mpeg', width: 1920, height: 1080}), null);
+});
+
+test('actual format 4 selection reports locked edits and refreshes conflicts without resubmitting', async () => {
+  const stamp = '2026-10-11T00:00:00Z';
+  const frame = aspect.aspectFrameSnapshot({projectFormatVersion: 4, project: {id: projectId, revision: 3}, timeline: timeline('portrait_720', 2)}, 'project:1')!;
+  let latest = frame, pending = false, outcome = 'applied';
+  let error: unknown = null, change: unknown, refreshes = 0;
+  const requests: format.TimelineFormatIntent[] = [];
+  const select = appFunction('async function selectAspectFrame(', 'function subtitleContext(', {
+    ...aspect, viewRef: {current: {activeMode: 'editing'}}, readAspectFrame: () => latest,
+    timelineFormatContext: () => ({connected: true, pending}), aspectFrameHasDrafts: () => false, isBusy: () => false,
+    setAspectError: (value: unknown) => { error = value; }, setAspectChange: (value: unknown) => { change = value; },
+    setAspectSuggestion() {}, requestId: () => id(10), captureTaskWorkspaceIntent: () => null, readTaskRevealContext: () => null,
+    refresh: async () => { refreshes++; },
+    saveTimelineFormat: async (intent: format.TimelineFormatIntent, options: {canExecute: () => boolean}) => {
+      assert.equal(options.canExecute(), true);
+      requests.push(intent);
+      return outcome === 'applied'
+        ? {status: outcome, timeline: {...timeline('landscape_720', 3), clips: [{id: id(5)}], updatedAt: stamp}}
+        : {status: 'rejected', error: {code: outcome}};
+    },
+  });
+  pending = true;
+  await select(frame, '16:9');
+  assert.deepEqual(error, {scope: frame.scope, message: message('timeline.aspectFrame.locked')});
+  assert.equal(requests.length, 0);
+
+  pending = false;
+  latest = {...frame, projectRevision: 4};
+  await select(frame, '16:9');
+  assert.equal(refreshes, 1);
+  assert.equal(requests.length, 0);
+  assert.deepEqual(error, {scope: frame.scope, message: message('timeline.aspectFrame.conflict')});
+
+  outcome = 'REVISION_CONFLICT';
+  await select(latest, '16:9');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].input.expectedProjectRevision, 4);
+  assert.deepEqual(error, {scope: frame.scope, message: message('timeline.aspectFrame.conflict')});
+  assert.equal(change, undefined);
+
+  outcome = 'TIMELINE_FORMAT_LOCKED';
+  await select(latest, '16:9');
+  assert.equal(requests.length, 2);
+  assert.deepEqual(error, {scope: frame.scope, message: message('timeline.aspectFrame.locked')});
+
+  outcome = 'applied';
+  await select(latest, '16:9');
+  assert.equal(requests.length, 3);
+  assert.equal(error, null);
+  const saved = {scope: frame.scope, timelineId, revision: 3, ratio: '16:9', clips: 1} as const;
+  assert.deepEqual(change, saved);
+  const history = {undoEntry: {id: id(6), operation: 'timeline.format.set'}};
+  const current = {...frame, ratio: saved.ratio, revision: 3};
+  assert.equal(aspect.aspectFrameUndoEntry(saved, current, history), id(6));
+  assert.equal(aspect.aspectFrameUndoEntry(saved, {...current, revision: 4}, history), null);
+  assert.equal(aspect.aspectFrameUndoEntry(saved, {...current, scope: 'project:2'}, history), null);
+  assert.equal(aspect.aspectFrameUndoEntry(saved, current, {undoEntry: {...history.undoEntry, operation: 'timeline.clip.add'}}), null);
+});
+
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
   transformSync(app, { loader: 'tsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
@@ -433,8 +663,9 @@ test('App keeps both Properties subpages mounted and keeps format dirtiness outs
   }
   assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);
   assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
-  assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/); assert.match(app, /visible=\{propertiesPage === 'format'\}/);
-  const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  function subtitleContext()'));
+  assert.match(app, /visible=\{propertiesPage === 'inspector' \|\| propertiesPage === 'subtitle' && workspaceMode === 'canvas'\}/);
+  assert.match(app, /id="properties-format-pane" visible=\{data\.projectFormatVersion !== 4 && propertiesPage === 'format'\}/);
+  const open = app.slice(app.indexOf('  function openTimelineFormat()'), app.indexOf('  const aspectScope'));
   assert.doesNotMatch(open, /guardNavigation|setInspectorEpoch|setSelected|setQuickAsset|setSourceDirty|discardDraft/);
   const wrapper = read('AgentWorkspace.tsx'); assert.match(wrapper, /hidden=\{!shown\} inert=\{!shown\}/);
   const controls = read('WorkspaceControls.tsx'); assert.match(controls, /if \(!visible\) \{ setOpen\(false\)/); assert.match(controls, /inert=\{!popup.visible\}/);

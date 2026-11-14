@@ -4,6 +4,7 @@ import { Button } from '@mioon/ui/components/button';
 import Icon from './icons.tsx';
 import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.ts';
 import type { TimelineExportSettings as ExportSettings } from '@mioon/contracts/timeline-export-float';
+import type { TimelineOutputRatio } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import type { ReactNode } from 'react';
 import type { DisplayMessage, MessageArguments, MessageKey } from '../../../packages/i18n/src/index.ts';
 
@@ -20,6 +21,7 @@ export interface TimelineExportPreflightProps {
   preview: ReactNode; recovery: ReactNode; recoveryRequired?:boolean; loudness?:ReactNode; state?: PreflightStateView | null; projectName?: string | null;
   timeline?: { durationFrames?: number; clips?: readonly unknown[]; [key: string]: unknown } | null;
   exportSettings?: ExportSettings | null; settingsDisabled?: boolean; onSettingsChange: (value: ExportSettings) => unknown;
+  aspectFrameRatio?: TimelineOutputRatio | null;
   deliveryName?: string; deliveryNameError?: unknown; deliveryNameDisabled?: boolean; onDeliveryNameChange: (value: string) => unknown;
   rangeDraft?: unknown; exportRange?: unknown; rangeError?: unknown; rangeDisabled?: boolean; onRangeChange: (value: unknown) => unknown;
   canCheck?: boolean; exportBusy?: boolean; pendingExport?: boolean; dirty?: boolean; onCheck: () => unknown;
@@ -44,7 +46,7 @@ import './export-content-choice.css';
 
 // Presentation only: the parent owns the saved context, explicit read, and
 // durable render submission. Hidden tabs retain this view without starting work.
-export default function TimelineExportPreflight({ contentChoice = null, preview, recovery,recoveryRequired=true,loudness, state, projectName, timeline, exportSettings, settingsDisabled, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport, renderRecord, onTasks, downloadEnabled,fileRecoveryEnabled, reviewVersion,projectId,activity,output,onCancel,cancelBusy,onClose,onHistory,onReexport,onLocateClip }: TimelineExportPreflightProps): React.ReactElement {
+export default function TimelineExportPreflight({ contentChoice = null, preview, recovery,recoveryRequired=true,loudness, state, projectName, timeline, exportSettings, settingsDisabled, aspectFrameRatio, onSettingsChange, deliveryName = '', deliveryNameError, deliveryNameDisabled, onDeliveryNameChange, rangeDraft, exportRange, rangeError, rangeDisabled, onRangeChange, canCheck, exportBusy, pendingExport, dirty, onCheck, onExport, onUncheckedExport, renderRecord, onTasks, downloadEnabled,fileRecoveryEnabled, reviewVersion,projectId,activity,output,onCancel,cancelBusy,onClose,onHistory,onReexport,onLocateClip }: TimelineExportPreflightProps): React.ReactElement {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const phase = state?.phase || 'idle', report = state?.report ?? null, summary = report?.summary;
   const oldReport = Boolean(report && ['checking', 'stale', 'error'].includes(phase));
@@ -73,7 +75,7 @@ export default function TimelineExportPreflight({ contentChoice = null, preview,
     <div className="export-preflight-body">
       <ExportWorkflowSection steps={[2]} className="export-settings-primary">{choice}<div className="export-timeline-settings" hidden={storyboard} inert={storyboard}><TimelineDeliveryName value={deliveryName} error={pass(deliveryNameError)} disabled={deliveryNameDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onDeliveryNameChange} />
       <div className="export-settings-field export-destination-row"><label>{t('redesign.export.saveTo')}</label><output>{t('redesign.export.managedLocation')}</output></div>
-      <TimelineExportSettings timeline={timeline} value={exportSettings} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} />
+      <TimelineExportSettings timeline={timeline} value={exportSettings} aspectFrameRatio={aspectFrameRatio} disabled={settingsDisabled || exportBusy || pendingExport} onChange={onSettingsChange} />
       <ExportRangeControls draft={pass(rangeDraft)} value={pass(exportRange)} durationFrames={timeline?.durationFrames} error={pass(rangeError)} disabled={rangeDisabled || settingsDisabled || exportBusy || pendingExport} onChange={onRangeChange} />
       {loudness&&<div className="export-settings-field export-loudness-row" data-testid="export-loudness-row"><span>{t('redesign.export.loudnessLabel')}</span><div>{loudness}</div></div>}</div></ExportWorkflowSection>
       <ExportWorkflowSection steps={[2]} className="export-settings-recovery"><details open={recoveryRequired} data-testid="export-recovery-details"><summary>{t('recovery.delivery.label')}</summary>{recovery}</details></ExportWorkflowSection>

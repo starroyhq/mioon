@@ -4,7 +4,7 @@ import type {DesktopSafeStorage, DesktopSecretCodec, SecretOperationOptions} fro
 import {videoSettingsError, validateVideoSecretPlaintext} from '../../../packages/business/src/video/settings.ts';
 
 /** Video-only session scope; video configuration/revision stay in the utility. */
-export type VideoSecretReasonCode = 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
+export type VideoSecretReasonCode = 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
 export interface VideoSecretStorage {
   readonly persistentAvailable: boolean;
   readonly sessionScope: 'server';

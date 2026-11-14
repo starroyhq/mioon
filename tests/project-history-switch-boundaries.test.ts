@@ -72,7 +72,7 @@ test('an available format 4 capability leaves a staged format 3 history switch o
  }finally{opened.release();}
 });
 
-test('an explicitly admitted format 4 history switch resumes after commit with history 11 and its archived version intact',t=>{
+test('an explicitly admitted format 4 history switch resumes after commit with the current candidate history and its archived version intact',t=>{
  const root=mkdtempSync(path.join(tmpdir(),'history-switch-format4-')),projectFile=path.join(root,'project.mioon'),projectId=randomUUID();
  t.after(()=>rmSync(root,{recursive:true,force:true}));
  const location={localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')};
@@ -81,8 +81,10 @@ test('an explicitly admitted format 4 history switch resumes after commit with h
  const open={projectFile,locate:()=>location,format4:candidate.format4};
  const nodeId=randomUUID(),archiveBatchId=randomUUID(),archivedAt='2026-11-12T00:00:00.000Z';
  const seed=createProjectStore({...open,projectId});
- let versionId:string;
+ let versionId:string,originalEpoch:unknown;
  try{
+  originalEpoch=seed.db.prepare('SELECT epoch FROM main.canvas_receipt_window WHERE singleton=1').get()?.epoch;
+  assert.match(String(originalEpoch),/^[0-9a-f]{32}$/u);
   ensureProjectRow(seed,{name:'Saved version'});
   seed.put('nodes',{id:nodeId,projectId,type:'text',label:'Archived text',text:'',revision:1});
   seed.db.prepare("UPDATE project.nodes SET archivedAt=?,archiveBatchId=?,archiveReason='user-delete' WHERE id=?").run(archivedAt,archiveBatchId,nodeId);
@@ -120,12 +122,19 @@ test('an explicitly admitted format 4 history switch resumes after commit with h
  assert.throws(()=>recoverHistorySwitch({...candidate,onBoundary:point=>{if(point==='after-commit')throw Error('stop after format 4 commit');}}),/stop after format 4 commit/u);
  const result=recoverHistorySwitch(candidate);
  assert.equal(result?.requestId,input.requestId);
+ const freshHistory=new DatabaseSync(historyFile,{readOnly:true});
+ try{
+  for(const table of CANVAS_HISTORY_TABLES)assert.equal(freshHistory.prepare(`SELECT count(*) n FROM main.${table}`).get()?.n,0);
+ }finally{freshHistory.close();}
  const reopened=openProjectStore(open);
  try{
   assert.equal(reopened.historyState,'current');
   assert.equal(reopened.db.prepare('PRAGMA project.user_version').get()?.user_version,FORMAT4_PROJECT_SCHEMA_VERSION);
   assert.equal(reopened.db.prepare('SELECT version FROM main.schema_version').get()?.version,FORMAT4_HISTORY_SCHEMA_VERSION);
-  for(const table of CANVAS_HISTORY_TABLES)assert.equal(reopened.db.prepare(`SELECT count(*) n FROM main.${table}`).get()?.n,0);
+  const window=reopened.db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window WHERE singleton=1').get()!;
+  assert.match(String(window.epoch),/^[0-9a-f]{32}$/u);
+  assert.notEqual(window.epoch,originalEpoch);
+  assert.equal(window.floor,0);
   assert.deepEqual({...reopened.db.prepare('SELECT archivedAt,archiveBatchId,archiveReason FROM project.nodes WHERE id=?').get(nodeId)},
    {archivedAt,archiveBatchId,archiveReason:'user-delete'});
   assert.ok(createProjectVersions(reopened).list({projectId}).versions.some(version=>version.id===versionId));

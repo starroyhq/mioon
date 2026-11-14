@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
+import {videoCredentialDiagnostic} from '../packages/business/src/video/credential.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {defaultVideoModels,resolveVideoEndpoint,VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId} from '../packages/contracts/src/video-providers.ts';
@@ -23,7 +24,8 @@ function png(width=360,height=640):Buffer {
 function bindingFor(providerId:VideoProviderId,templateId?:VideoTemplateId):VideoExecutionBinding {
   const model=defaultVideoModels(providerId).find(model=>!templateId||model.templateId===templateId)!;
   const region=VIDEO_REGIONS[providerId][0]!;
-  return {version:1,connectionId:randomUUID(),configurationRevision:1,providerId,region,workspaceId:'',endpoint:resolveVideoEndpoint(providerId,region),credentialRef:randomUUID(),model,outputHosts:['result.example']};
+  const endpoint=providerId==='compatible'?'https://api.example.com/v1':resolveVideoEndpoint(providerId,region);
+  return {version:1,connectionId:randomUUID(),configurationRevision:1,providerId,region,workspaceId:'',endpoint,credentialRef:randomUUID(),model,outputHosts:['result.example']};
 }
 function taskId(binding:VideoExecutionBinding):string{return binding.providerId==='runway'?'123e4567-e89b-42d3-a456-426614174000':binding.providerId==='veo'?`models/${binding.model.modelId}/operations/task-123`:'task-123';}
 function receipt(binding:VideoExecutionBinding):unknown {
@@ -42,7 +44,8 @@ function completed(binding:VideoExecutionBinding,url='https://result.example/out
 }
 async function fixture(t:import('node:test').TestContext,providerId:VideoProviderId,templateId?:VideoTemplateId,bindingOptions:Partial<Pick<VideoExecutionBinding,'region'|'outputHosts'>>={}) {
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-runtime-')));t.after(()=>rm(root,{recursive:true,force:true}));
-  const binding={...bindingFor(providerId,templateId),...bindingOptions};binding.endpoint=resolveVideoEndpoint(providerId,binding.region);
+  const binding={...bindingFor(providerId,templateId),...bindingOptions};
+  if(bindingOptions.region)binding.endpoint=resolveVideoEndpoint(providerId,bindingOptions.region);
   const bytes=png(),file=path.join(root,'frame.png');await writeFile(file,bytes);
   const asset={id:randomUUID(),path:file,mimeType:'image/png',sizeBytes:bytes.length,width:360,height:640,sha256:createHash('sha256').update(bytes).digest('hex'),role:'first_frame'};
   const calls:Array<{url:string;init:RequestInit}> = [],queue:Array<Response|Error>=[];let key='PRIVATE-KEY',acquisitions=0,time=Date.UTC(2026,9,20);
@@ -90,6 +93,44 @@ for(const family of ['ark','veo','minimax','vidu','kling']as const)test(`${famil
   if(family==='veo')assert.deepEqual(view(list(body.instances)[0]!.image),{bytesBase64Encoded:f.bytes.toString('base64'),mimeType:'image/png'});
   if(family==='vidu'){assert.deepEqual(body.images,[`data:image/png;base64,${f.bytes.toString('base64')}`]);assert.equal(body.aspect_ratio,undefined);assert.match(f.calls[0]!.url,/\/img2video$/);}
   if(family==='kling'){assert.deepEqual(body.contents,[{type:'prompt',text:f.snapshot.prompt},{type:'first_frame',url:f.bytes.toString('base64')}]);assert.equal(view(body.settings).aspect_ratio,undefined);assert.match(f.calls[0]!.url,/\/image-to-video\/kling-3\.0$/);}
+});
+
+const submitEntries: Array<[VideoProviderId,VideoTemplateId?]> = [...entries,['wan','wan30-v1'],['compatible']];
+for(const [family,templateId] of submitEntries)test(`${family}/${templateId??'default'} acquires a credential before any submit request or dispatch fence`,async t=>{
+  const f=await fixture(t,family,templateId);
+  if(templateId!=='wan27-t2v')f.snapshot.referenceAssets=[f.asset];
+  f.key('');
+  let dispatchFences=0;
+  await assert.rejects(f.provider.submit(f.snapshot,{
+    requestId:'synthetic-request',
+    beforeSubmit:()=>{dispatchFences++;},
+  }),{code:'VIDEO_CREDENTIAL_UNAVAILABLE',beforeDispatch:true});
+  assert.equal(f.acquisitions(),1);
+  assert.equal(dispatchFences,0);
+  assert.equal(f.calls.length,0);
+});
+
+for(const {code,cause,recovery} of [
+  {code:'VIDEO_SETTINGS_STORAGE_UNAVAILABLE',cause:'VIDEO_SETTINGS_STORAGE_UNAVAILABLE',recovery:'automatic'},
+  {code:'synthetic-private-detail',cause:'VIDEO_CREDENTIAL_UNAVAILABLE',recovery:'user_action'},
+  {code:null,cause:'VIDEO_CREDENTIAL_INVALID',recovery:'user_action'},
+])test(`${cause} keeps its credential recovery classification without exposing raw details or reaching HTTP`,async t=>{
+  for(const family of ['minimax','wan'] as const){
+    const {binding,root,snapshot}=await fixture(t,family);
+    const provider=createConfiguredVideoProvider({root,binding,now:()=>Date.UTC(2026,9,20),acquireCredential:async()=>{
+      if(code===null)return ' synthetic-private-detail';
+      throw Object.assign(Error('synthetic-private-detail'),{code,detail:'synthetic-private-detail'});
+    },fetchImpl:async()=>assert.fail('A credential failure cannot contact a provider')});
+    await assert.rejects(family==='wan'?provider.submit(snapshot,{requestId:'synthetic-request'}):provider.poll(taskId(binding),{}),error=>{
+      assert.ok(error instanceof Error);
+      assert.equal(view(error).code,'VIDEO_CREDENTIAL_UNAVAILABLE');
+      assert.equal(view(error).beforeDispatch,true);
+      assert.deepEqual(videoCredentialDiagnostic(error),{kind:'video_credential',cause,recovery});
+      assert.equal(error.cause,undefined);
+      assert.doesNotMatch(error.message+JSON.stringify(error),/synthetic-private-detail/);
+      return true;
+    });
+  }
 });
 
 test('Kling reconciliation queries its stable external ID and never creates a task',async t=>{

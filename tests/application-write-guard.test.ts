@@ -11,6 +11,7 @@ import path from 'node:path';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createProjectStore, openProjectStore} from '../packages/business/src/project-file/store.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createServices, hash} from '../packages/business/src/services.ts';
 import type {WorkspaceSettings} from '../packages/contracts/src/workspace-configuration.ts';
@@ -56,11 +57,12 @@ function fixture(t: TestContext) {
   return {root, library, libraries, store, owner, ports, services, changes, shot};
 }
 
-async function versionFixture(t: TestContext) {
+async function versionFixture(t: TestContext, upgradeToFormat4 = false) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-version-write-'));
   const directories = serverAppDirectories(root), library = openAppLibrary({dataDir: root}), libraries = new Set<AppLibrary>([library]);
   const entry = createProjectFiles({name: 'Version write guard'}, {directories, registry: library.registry, identity: library.projectFileIdentity});
-  const store = openProjectStore({projectFile: entry.projectFile, locate: id => projectLocation(directories, id)});
+  const store = openProjectStore({projectFile: entry.projectFile, locate: id => projectLocation(directories, id),
+    ...(upgradeToFormat4 ? {format4: {approveUpgrade: () => true}} : {})});
   const owner = new AbortController(), options = {port: 0, comfyModule: 'skip' as const};
   const app = await composeApplicationRuntime(library, options, owner.signal, () => undefined);
   const runtime = await composeHostedProject({projectId: entry.projectId, store, directories, signal: owner.signal, relocate() {}},
@@ -177,7 +179,7 @@ test('project and configuration writes use application admission independently o
   assert.ok(f.store.get('shots', shot.id));
   const settings = await f.services.call('workspace.settings.set', patch(before)) as WorkspaceSettings;
   assert.equal(settings.revision, before.revision + 1);
-  assert.equal(settings.liveGeneration, !before.liveGeneration);
+  assert.equal(settings.liveGeneration, true);
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
   assert.equal(Object.hasOwn(f.services, 'backups'), false);
   await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION'});
@@ -272,6 +274,23 @@ test('a reopened B1 owner cannot authorize old ordinary or trusted media mutatio
     assert.equal(response.error.message, invalid.message, operation);
     assert.deepEqual(await f.snapshot(replacement), before, `${operation} cannot write either real library or temp files`);
   }
+});
+
+test('hosted project.get reports the open project file format independently of timeline geometry', async t => {
+  const dimensions: {width: number; height: number}[] = [];
+  for (const format of [PROJECT_FILE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION]) {
+    await t.test(`format ${format}`, async child => {
+      const {store, rpc} = await versionFixture(child, format === FORMAT4_PROJECT_SCHEMA_VERSION);
+      const {project, timeline, projectFormatVersion} = await rpc<{
+        project: {id: string}; timeline: {width: number; height: number}; projectFormatVersion: number;
+      }>('project.get', {projectId: store.projectId});
+      assert.equal(project.id, store.projectId);
+      assert.equal(projectFormatVersion, format);
+      dimensions.push({width: timeline.width, height: timeline.height});
+    });
+  }
+  assert.equal(dimensions.length, 2);
+  assert.deepEqual(dimensions[0], dimensions[1]);
 });
 
 test('hosted manual versions use application admission while list and preview remain read-only', async t => {
@@ -422,6 +441,6 @@ test('configuration ACK follows its own real B1 commit and failed/nested transac
   assert.equal(notifications, 1);
   const persisted = JSON.parse(f.library.documents.read('workspace-settings-v1.json')!);
   assert.equal(persisted.revision, saved.revision);
-  assert.equal(persisted.liveGeneration, saved.liveGeneration);
+  assert.equal(persisted.liveGeneration, true);
   assert.equal(f.library.db.isTransaction, false);
 });

@@ -5,6 +5,7 @@ export function creationParameter(value: unknown): string | number {
 
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import { videoCredentialDiagnosticSchema } from '@mioon/contracts/video-credential-diagnostic';
 /** Known backend statuses are display-mapped, never rewritten in saved jobs. */
 export function statusDescriptor(status: unknown): DisplayMessage {
   switch (status) {
@@ -22,8 +23,45 @@ export function statusDescriptor(status: unknown): DisplayMessage {
     default: return message('tasks.status.unknown');
   }
 }
-export function jobStatusDescriptor(job: { phase?: unknown; status?: unknown } | null | undefined): DisplayMessage {
-  return job?.phase === 'output_review_required' ? message('tasks.status.outputReview') : statusDescriptor(job?.status);
+type JobDisplay = { phase?: unknown; status?: unknown; error?: unknown; providerJobId?: unknown };
+
+const videoConnectionDetails = {
+  VIDEO_SETTINGS_CONFLICT: 'tasks.error.videoSettingsBusy',
+  VIDEO_SETTINGS_CLOSED: 'tasks.error.videoSettingsRestarting',
+  VIDEO_SETTINGS_STORAGE_UNAVAILABLE: 'tasks.error.videoSecretStore',
+  VIDEO_SETTINGS_SAVE_FAILED: 'tasks.error.videoSettingsSaveUnconfirmed',
+  VIDEO_SETTINGS_CORRUPT: 'tasks.error.videoSettingsUnreadable',
+  VIDEO_SETTINGS_NOT_CONFIGURED: 'tasks.error.videoCredentialMissing',
+  VIDEO_SETTINGS_DELETED: 'tasks.error.videoConnectionDeleted',
+  VIDEO_SETTINGS_UNAVAILABLE: 'tasks.error.videoSettingsUnavailable',
+  VIDEO_BINDING_INVALID: 'tasks.error.videoBindingInvalid',
+  VIDEO_CREDENTIAL_UNAVAILABLE: 'tasks.error.videoCredentialUnavailable',
+  VIDEO_CREDENTIAL_INVALID: 'tasks.error.videoCredentialInvalid',
+} as const;
+
+export function videoJobConnection(job: JobDisplay | null | undefined) {
+  if (!job?.error || (job.phase !== 'connection_required' && job.phase !== 'connection_retrying') ||
+    (job.status !== 'queued' && job.status !== 'running' && job.status !== 'downloading')) return null;
+  const diagnostic = videoCredentialDiagnosticSchema.safeParse(typeof job.error === 'object' && 'diagnostic' in job.error ? job.error.diagnostic : undefined);
+  const cause = diagnostic.success ? diagnostic.data.cause : null;
+  const requiresAction = diagnostic.success && diagnostic.data.recovery === 'user_action';
+  const hasProviderTask = typeof job.providerJobId === 'string' && job.providerJobId.length > 0;
+  const legacyCode = safeTaskErrorCode(job.error);
+  return {
+    diagnosticCode: cause ?? (legacyCode && Object.hasOwn(videoConnectionDetails, legacyCode) ? legacyCode : null),
+    requiresAction,
+    status: message(requiresAction ? 'tasks.status.videoConnectionRequired' : 'tasks.status.videoConnectionWaiting'),
+    detail: message(cause ? videoConnectionDetails[cause] : 'tasks.error.videoConnectionUnclassified'),
+    continuation: cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' ? message('tasks.error.videoKeychainContinues') : null,
+    canCheckAgain: hasProviderTask && (job.status === 'running' || job.status === 'downloading'),
+    result: hasProviderTask ? message(cause === 'VIDEO_SETTINGS_CORRUPT' || cause === 'VIDEO_SETTINGS_NOT_CONFIGURED' || cause === 'VIDEO_SETTINGS_DELETED'
+      ? 'tasks.error.videoResultAtProvider' : 'tasks.error.videoOriginalTaskRetained') : null,
+  };
+}
+
+export function jobStatusDescriptor(job: JobDisplay | null | undefined): DisplayMessage {
+  if (job?.phase === 'output_review_required') return message('tasks.status.outputReview');
+  return videoJobConnection(job)?.status ?? statusDescriptor(job?.status);
 }
 export const outputReviewDescriptor = message('tasks.outputReviewDisclosure');
 export const workspaceHeldDescriptor = message('tasks.heldReason');

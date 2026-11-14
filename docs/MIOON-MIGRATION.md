@@ -15,7 +15,7 @@ MIOON_BASE_URL=http://127.0.0.1:4318 MIOON_TOKEN_FILE=/absolute/data/access-toke
 
 - npm workspace：`@mioon/*`；CLI：`mioon`；桌面可执行文件：`mioon` / `mioon-dev`
 - MCP server 名称：`mioon`；发现工具：`mioon_schema`、`mioon_doctor`、`mioon_capabilities`。业务操作及对应工具名称不变
-- 配置环境变量统一为 `MIOON_*`，包括 `MIOON_DATA_DIR`、`MIOON_CONNECTION_FILE`、`MIOON_BASE_URL`、`MIOON_TOKEN_FILE`、`MIOON_TOKEN`、`MIOON_FFMPEG_PATH`、`MIOON_FFPROBE_PATH`、`MIOON_DESKTOP_USER_DATA` 和 `MIOON_ENABLE_LIVE_PROVIDER`
+- 配置环境变量统一为 `MIOON_*`，包括 `MIOON_DATA_DIR`、`MIOON_CONNECTION_FILE`、`MIOON_BASE_URL`、`MIOON_TOKEN_FILE`、`MIOON_TOKEN`、`MIOON_FFMPEG_PATH`、`MIOON_FFPROBE_PATH`和 `MIOON_DESKTOP_USER_DATA`
 - 服务商自身的密钥/区域变量名称保持不变。只有当前名称启用功能；旧环境变量不会被读取，旧 CLI 与包名没有兼容别名
 - Web 会话 cookie 改为 `mioon_session`。浏览器需要重新登录一次；Electron 自动建立本地会话。登录时清除旧 cookie
 

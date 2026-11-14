@@ -109,7 +109,7 @@ async function assertClosedApplicationReads(f: Awaited<ReturnType<typeof fixture
     const policy = await f.json<{policy: AgentTaskPolicy; readOnly: boolean}>('/api/agent/tasks/v2/policy');
     assert.equal(policy.status, 200); assert.equal(policy.body.data!.readOnly, false);
     const settings = await f.json('/api/agent/settings'); assert.equal(settings.status, 200);
-    const workspace = await f.rpc<{liveGeneration: boolean}>(null, 'workspace.settings.get'); assert.equal(workspace.liveGeneration, false);
+    const workspace = await f.rpc<{liveGeneration: boolean}>(null, 'workspace.settings.get'); assert.equal(workspace.liveGeneration, true);
     const summaries = await f.rpc<ProjectSummary[]>(null, 'project.summary.list'); assert.equal(summaries.length, 2);
     const diagnostic = await f.json<{test: AgentDiagnosticSummary}>('/api/agent/tasks/v2/diagnostics/latest');
     assert.equal(diagnostic.status, 200); assert.deepEqual(diagnostic.body.data, {test: latest});

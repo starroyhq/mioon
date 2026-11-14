@@ -77,7 +77,7 @@ export function validateVideoSecretPlaintext(value:unknown):VideoSecretPlaintext
  }catch{return fail('VIDEO_SETTINGS_CORRUPT');}
 }
 function validateStorage(value:unknown):VideoStorage {
- if(!exact(value,['persistentAvailable','sessionScope','reasonCode'])||typeof value.persistentAvailable!=='boolean'||!['app','server'].includes(value.sessionScope as string)||![null,'WEB_SESSION_ONLY','OS_SECRET_STORE_UNAVAILABLE','LINUX_BASIC_TEXT'].includes(value.reasonCode as string|null)||value.persistentAvailable!==(value.reasonCode===null))return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+ if(!exact(value,['persistentAvailable','sessionScope','reasonCode'])||typeof value.persistentAvailable!=='boolean'||!['app','server'].includes(value.sessionScope as string)||![null,'WEB_SESSION_ONLY','OS_SECRET_STORE_UNAVAILABLE','OS_SECRET_STORE_PENDING','LINUX_BASIC_TEXT'].includes(value.reasonCode as string|null)||value.persistentAvailable!==(value.reasonCode===null))return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
  return {persistentAvailable:value.persistentAvailable,sessionScope:value.sessionScope as VideoStorage['sessionScope'],reasonCode:value.reasonCode as string|null};
 }
 async function bounded<T>(operation:()=>T|Promise<T>,signal?:AbortSignal):Promise<T> {
@@ -92,6 +92,7 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
  try{state=await persistence.load()??state;}catch{fault=videoSettingsError('VIDEO_SETTINGS_CORRUPT');}
  const check=()=>{if(closing||activeSignal.aborted)fail('VIDEO_SETTINGS_CLOSED');if(fault)throw fault;};
  const capabilities=():VideoStorage=>{const value=validateStorage(typeof storage==='function'?storage():storage);return storageBlocked||value.persistentAvailable&&!secretCodec?{...value,persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'}:value;};
+ const canUseVault = () => {const value = capabilities(); return !!secretCodec && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING');};
  const refresh=async(signal_?:AbortSignal)=>{if(!secretCodec?.refreshStorage)return;try{await bounded(()=>secretCodec.refreshStorage!(),operationSignal(signal_));storageBlocked=false;}catch{storageBlocked=true;}};
  const schedule=<T>(operation:()=>T|Promise<T>):Promise<T>=>{if(closing||activeSignal.aborted)return Promise.reject(videoSettingsError('VIDEO_SETTINGS_CLOSED'));const next=tail.then(()=>{check();return operation();}).catch(error=>{if(activeSignal.aborted)throw videoSettingsError('VIDEO_SETTINGS_CLOSED');throw error;});tail=next.catch(()=>{});return next;};
  const material=(ref:string|null):'none'|'session'|'persistent'=>!ref?'none':state.credentials.find(item=>item.ref===ref)?.encrypted?'persistent':sessions.has(ref)?'session':'none';
@@ -102,7 +103,7 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
  const assertBinding=(input:unknown):VideoExecutionBinding=>{ensureStable();let selected:VideoExecutionBinding;try{selected=parseVideoBinding(input);}catch{return fail('VIDEO_BINDING_INVALID');}const historical=state.history.find(item=>item.configuration.id===selected.connectionId&&item.revision===selected.configurationRevision);if(!historical||!same(binding(historical,selected.model.id),selected))return fail('VIDEO_BINDING_INVALID');if(material(selected.credentialRef)==='none')return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return selected;};
  async function secretOf(credential:Credential,requestSignal?:AbortSignal):Promise<string|undefined> {
   if(!credential.encrypted)return sessions.get(credential.ref);
-  await refresh(requestSignal);check();if(!capabilities().persistentAvailable||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+  await refresh(requestSignal);check();if(!canUseVault()||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
   const plaintext=validateVideoSecretPlaintext(await bounded(()=>secretCodec.decrypt(credential.encrypted!),operationSignal(requestSignal)));
   if(plaintext.credentialRef!==credential.ref||!same(credentialRecipient(credential),[plaintext.connectionId,plaintext.providerId,plaintext.region,plaintext.workspaceId,plaintext.endpoint]))return fail('VIDEO_SETTINGS_CORRUPT');
   return plaintext.value;
@@ -110,12 +111,12 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
  async function storeSecret(nextSessions:Map<string,string>,credential:Credential,secret:Extract<VideoSecretUpdate,{action:'replace'}>) {
   credential.encrypted=null;nextSessions.delete(credential.ref);
   if(secret.storage==='session'){nextSessions.set(credential.ref,secret.value);return;}
-  await refresh();check();if(!capabilities().persistentAvailable||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+  await refresh();check();if(!canUseVault()||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
   const plaintext=JSON.stringify({version:1,namespace:VIDEO_SECRET_NAMESPACE,credentialRef:credential.ref,connectionId:credential.connectionId,providerId:credential.providerId,region:credential.region,workspaceId:credential.workspaceId,endpoint:credential.endpoint,value:secret.value});
   validateVideoSecretPlaintext(plaintext);const encrypted=await bounded(()=>secretCodec.encrypt(plaintext),activeSignal);check();if(!validCiphertext(encrypted))return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');credential.encrypted=encrypted;
  }
  return Object.freeze({
-  get:()=>schedule(async()=>{await refresh();check();return snapshot();}),
+  async get(){check();await refresh();check();return snapshot();},
   list(){ensureStable();return state.connections.map(view);},
   select(connectionId:string,configurationRevision:number,modelEntryId:string){ensureStable();const entry=state.connections.find(item=>item.configuration.id===connectionId);if(!entry||entry.revision!==configurationRevision)return fail('VIDEO_SETTINGS_CONFLICT');const model=entry.configuration.models.find(item=>item.id===modelEntryId);if(!entry.configuration.enabled||entry.configuration.archived||!model?.enabled||model.archived)return fail('VIDEO_SETTINGS_DISABLED');const selected=binding(entry,modelEntryId);if(!videoOutputHosts(selected).length)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');assertBinding(selected);return selected;},
   assertBinding(input:unknown){assertBinding(input);},
