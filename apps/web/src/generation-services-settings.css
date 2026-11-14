@@ -16,7 +16,8 @@
 .generation-services .generation-image-enable > [data-slot="switch"] { flex: none; margin-top: 2px; }
 .generation-services .generation-image-enable small { display: block; margin-top: 4px; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
 .generation-service-heading [data-slot="badge"] { font-size: 10px; }
-.generation-service-configured { margin-left: auto; }
+.generation-service-configured { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.generation-service-unsaved { color: var(--wb-warning); }
 .generation-services-general { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.65; }
 .generation-services-general h3 { color: var(--wb-text); margin-block: 0 8px; font-size: var(--wb-text-label); }
 .generation-services-general > h3 { margin-top: 24px; }

@@ -10,7 +10,7 @@ import * as contracts from '../packages/contracts/src/video-providers.ts';
 import type {CompatibleVideoCheckResult} from '../packages/contracts/src/video-providers.ts';
 import type {CompatibleVideoCheck} from '../packages/contracts/src/video-providers.ts';
 import type {VideoSettingsClient} from '../apps/web/src/video-settings.ts';
-import type {VideoSettingsSnapshotV2} from '../packages/contracts/src/generation-video-settings.ts';
+import type {VideoModelsListInput, VideoSettingsSnapshotV2} from '../packages/contracts/src/generation-video-settings.ts';
 import type {GenerationServiceDomain} from '../apps/web/src/generation-services-settings.ts';
 
 interface Element {type: unknown; props: Record<string, unknown>}
@@ -20,7 +20,7 @@ function nodes(value: unknown): Element[] {return Array.isArray(value) ? value.f
 function invoke(element: Element, method: string, ...args: unknown[]) {const callback = element.props[method]; assert.equal(typeof callback, 'function'); return (callback as (...args: unknown[]) => unknown)(...args);}
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 const flush = async () => {for (let index = 0; index < 6; index++) await new Promise<void>(resolve => setImmediate(resolve));};
-function fixture({check, write, storage}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']} = {}) {
+function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']} = {}) {
   const a = newVideoConnection('compatible'), b = newVideoConnection('compatible'); a.name = 'A'; b.name = 'B'; a.baseUrl = b.baseUrl = 'https://api.example.com/v1';
   let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'session'}})), storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
   if (storage) {
@@ -30,7 +30,7 @@ function fixture({check, write, storage}: Partial<VideoSettingsClient> & {storag
   const keyA = `video:${a.id}`, keyB = `video:${b.id}`;
   const hooks = new Map<string, Hook[]>(), inputs = new Map<string, {value: string}>(), trees = new Map<string, unknown>(), reports: navigation.SettingsNavigationState[] = [];
   let context = 'domain', cursor = 0, effects: Array<() => void> = [], pageVisible = true, selected = keyA, locale = 'zh-Hans', confirmValue: boolean | Promise<boolean> = true, interaction = true, domain: GenerationServiceDomain;
-  const client: VideoSettingsClient = {read: async () => structuredClone(snapshot), write: write ?? (async update => {assert.ok([...inputs.values()].every(input => !input.value)); if (update.action !== 'batch') throw Error('Expected batch'); for (const operation of update.operations) {if (operation.action === 'delete') snapshot.connections = snapshot.connections.filter(view => view.configuration.id !== operation.connectionId); else {const previous = snapshot.connections.find(view => view.configuration.id === operation.configuration.id); snapshot.connections = [...snapshot.connections.filter(view => view.configuration.id !== operation.configuration.id), {configuration: operation.configuration, revision: 2, secret: operation.secret.action === 'replace' ? {configured: true, storage: operation.secret.storage} : previous?.secret ?? {configured: false, storage: 'none'}}];}} snapshot.revision++; return structuredClone(snapshot);}), check};
+  const client: VideoSettingsClient = {read: async () => structuredClone(snapshot), write: write ?? (async update => {assert.ok([...inputs.values()].every(input => !input.value)); if (update.action !== 'batch') throw Error('Expected batch'); for (const operation of update.operations) {if (operation.action === 'delete') snapshot.connections = snapshot.connections.filter(view => view.configuration.id !== operation.connectionId); else {const previous = snapshot.connections.find(view => view.configuration.id === operation.configuration.id); snapshot.connections = [...snapshot.connections.filter(view => view.configuration.id !== operation.configuration.id), {configuration: operation.configuration, revision: 2, secret: operation.secret.action === 'replace' ? {configured: true, storage: operation.secret.storage} : previous?.secret ?? {configured: false, storage: 'none'}}];}} snapshot.revision++; return structuredClone(snapshot);}), check, modelsList};
   const react = {
     createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {return {type, props: {...props, children}};},
     useRef(initial: unknown) {const list = hooks.get(context)!; const index = cursor++; return (list[index] ??= {value: {current: initial}}).value;},
@@ -53,6 +53,7 @@ function fixture({check, write, storage}: Partial<VideoSettingsClient> & {storag
     if (name === '@mioon/ui/components/textarea') return {Textarea: 'textarea'};
     if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select'};
     if (name === './VideoProviderSettings.tsx') return {ModelEditor: 'ModelEditor'};
+    if (name === './ModelPickerDialog.tsx') return {__esModule: true, default: 'ModelPickerDialog'};
     if (name.endsWith('.css')) return {};
     assert.fail('Unexpected video domain dependency: ' + name);
   }, module, module.exports);
@@ -75,6 +76,7 @@ function fixture({check, write, storage}: Partial<VideoSettingsClient> & {storag
   const find = (key: string, id: string) => {const found = nodes(trees.get(key)).find(item => item.props['data-testid'] === id); assert.ok(found, `${key}:${id}`); return found;};
   render();
   return {keyA, keyB, inputs, reports, render, find, client, all: (key: string) => nodes(trees.get(key)),
+    picker: (key: string) => nodes(trees.get(key)).find(item => item.type === 'ModelPickerDialog'),
     domain: () => domain,
     type(key: string, value: string) {inputs.get(key)!.value = value; invoke(find(key, 'video-connection-key'), 'onChange'); render();},
     select(key: string) {selected = key; render();},
@@ -196,4 +198,213 @@ test('late checks cannot publish after selection, address edit, save, hide or ow
 for (const result of ['ok', 'unauthorized', 'unsupported', 'unreachable', 'denied'] as const) test(`compatible checks retain the ${result} presentation without changing configured facts`, async () => {
   const f = fixture({check: async () => ({result, httpStatus: result === 'unauthorized' ? 401 : result === 'unsupported' ? 404 : 200})}); await flush(); f.render(); invoke(f.find(f.keyA, 'video-compatible-check'), 'onClick'); await flush(); f.render();
   assert.equal(f.find(f.keyA, 'video-compatible-check-result').props['data-result'], result); assert.equal(f.domain().services.find(service => service.key === f.keyA)!.configured, true); f.unmount();
+});
+
+
+test('built-in check and model discovery use one-time draft values and retain no password in UI state', async () => {
+  const requests: VideoModelsListInput[] = [];
+  let writes = 0;
+  const f = fixture({
+    modelsList: async input => {
+      requests.push(structuredClone(input));
+      return input.operation === 'models' ? {result: 'ok', models: [{id: 'veo-3.1-generate-preview'}, {id: 'veo-test-video'}, {id: 'veo-test-not-selected'}]} : {result: 'ok'};
+    },
+    write: async () => {writes++; throw Error('Unexpected save');},
+  });
+  await flush();
+  f.render();
+  f.select('video:veo');
+  f.type('video:veo', 'synthetic-video-ui-draft');
+  assert.equal(f.domain().services.find(service => service.key === 'video:veo')?.dirty, true);
+  invoke(f.find('video:veo', 'video-compatible-check'), 'onClick');
+  await flush();
+  f.render();
+  invoke(f.find('video:veo', 'video-fetch-models'), 'onClick');
+  f.render();
+  assert.equal(f.picker('video:veo')?.props.status, 'loading');
+  await flush();
+  f.render();
+  assert.deepEqual(requests, [
+    {operation: 'check', source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value: 'synthetic-video-ui-draft'},
+    {operation: 'models', source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value: 'synthetic-video-ui-draft'},
+  ]);
+  assert.equal(f.find('video:veo', 'video-compatible-check-result').props['data-result'], 'ok');
+  const picker = f.picker('video:veo')!;
+  assert.equal(picker.props.status, 'ready');
+  assert.equal(picker.props.usesDraftKey, true);
+  assert.deepEqual(picker.props.items, [
+    {id: 'veo-3.1-generate-preview', added: true, unavailable: false},
+    {id: 'veo-test-video', added: false, unavailable: false},
+    {id: 'veo-test-not-selected', added: false, unavailable: false},
+  ]);
+  assert.equal(f.all('video:veo').some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'veo-test-video'), false);
+  const visibleProps = {...picker.props};
+  assert.deepEqual(Object.keys(visibleProps).sort(), [
+    'children', 'items', 'key', 'maxAdditions', 'onAdd', 'onClose', 'serviceName',
+    'status', 'statusMessage', 'triggerRef', 'usesDraftKey',
+  ]);
+  assert.doesNotMatch(JSON.stringify(visibleProps), /synthetic-video-ui-draft/);
+  invoke(picker, 'onAdd', ['veo-not-returned']);
+  f.render();
+  assert.equal(f.picker('video:veo')?.props.status, 'ready');
+  invoke(picker, 'onAdd', ['veo-test-video']);
+  f.render();
+  assert.equal(f.picker('video:veo'), undefined);
+  assert.deepEqual(f.all('video:veo').filter(node => node.type === 'ModelEditor').map(node => {
+    const model = node.props.model as {modelId: string; enabled: boolean};
+    return [model.modelId, model.enabled];
+  }), [['veo-3.1-generate-preview', true], ['veo-test-video', false]]);
+  assert.equal(f.domain().navigation.dirty, true);
+  assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-video-ui-draft/);
+  f.domain().discard();
+  f.render();
+  assert.equal(f.inputs.get('video:veo')?.value, '');
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(writes, 0);
+  f.unmount();
+});
+
+test('video model discovery lists IDs outside the existing video contract without staging them', async () => {
+  const valid = 'synthetic-model:preview';
+  const invalid = ['vendor/synthetic-model', 'v'.repeat(101)];
+  const f = fixture({modelsList: async () => ({result: 'ok', models: [...invalid, valid].map(id => ({id}))})});
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const picker = f.picker(f.keyA)!;
+  assert.equal(picker.props.status, 'ready');
+  assert.deepEqual(picker.props.items, [
+    ...invalid.map(id => ({id, added: false, unavailable: true})),
+    {id: valid, added: false, unavailable: false},
+  ]);
+  invoke(picker, 'onAdd', [invalid[0]!, valid]);
+  f.render();
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(f.picker(f.keyA)?.props.status, 'ready');
+  invoke(picker, 'onAdd', [valid]);
+  f.render();
+  assert.equal(f.picker(f.keyA), undefined);
+  assert.deepEqual(f.all(f.keyA).filter(node => node.type === 'ModelEditor').map(node => (node.props.model as {modelId: string}).modelId), ['sora-2', valid]);
+  f.unmount();
+});
+
+test('cancel closes the model picker, aborts the request, and discards late results without writes', async () => {
+  const pending = deferred<Awaited<ReturnType<NonNullable<VideoSettingsClient['modelsList']>>>>();
+  const signals: (AbortSignal | undefined)[] = [];
+  let writes = 0;
+  const f = fixture({
+    modelsList: async (input, requestSignal) => {
+      assert.equal(input.source, 'saved');
+      signals.push(requestSignal);
+      return pending.promise;
+    },
+    write: async () => {writes++; throw Error('Unexpected save');},
+  });
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  f.render();
+  const picker = f.picker(f.keyA)!;
+  assert.equal(picker.props.status, 'loading');
+  assert.equal(picker.props.usesDraftKey, false);
+  invoke(picker, 'onClose');
+  assert.equal(signals[0]?.aborted, true);
+  pending.resolve({result: 'ok', models: [{id: 'synthetic-late-video'}]});
+  await flush();
+  f.render();
+  assert.equal(f.picker(f.keyA), undefined);
+  assert.equal(f.domain().navigation.dirty, false);
+  assert.equal(f.domain().prepareSave(), null);
+  assert.equal(writes, 0);
+  f.unmount();
+});
+
+test('empty and unsupported model discovery remain read-only picker states', async () => {
+  const f = fixture({modelsList: async input => input.providerId === 'kling' ? {result: 'unsupported'} : {result: 'ok', models: []}});
+  await flush();
+  f.render();
+  invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const empty = f.picker(f.keyA)!;
+  assert.equal(empty.props.status, 'empty');
+  assert.equal(empty.props.statusMessage, 'zh-Hans:settings.draftKey.modelsEmpty');
+  assert.deepEqual(empty.props.items, []);
+  assert.equal(f.domain().navigation.dirty, false);
+  f.select('video:kling');
+  f.type('video:kling', 'synthetic-unsupported-maker');
+  invoke(f.find('video:kling', 'video-fetch-models'), 'onClick');
+  await flush();
+  f.render();
+  const unsupported = f.picker('video:kling')!;
+  assert.equal(unsupported.props.status, 'error');
+  assert.equal(unsupported.props.statusMessage, 'zh-Hans:settings.draftKey.listUnsupported');
+  assert.deepEqual(unsupported.props.items, []);
+  assert.equal(f.picker(f.keyA), undefined);
+  f.unmount();
+});
+
+test('model picker preserves the video check messages for provider and transport failures', async () => {
+  for (const [result, message] of [
+    ['unreachable', 'video.providers.check.unreachable'], ['failed', 'settings.draftKey.failed'],
+  ] as const) {
+    const f = fixture({modelsList: async () => ({result})});
+    await flush();
+    f.render();
+    invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+    await flush();
+    f.render();
+    const picker = f.picker(f.keyA)!;
+    assert.equal(picker.props.status, 'error');
+    assert.equal(picker.props.statusMessage, `zh-Hans:${message}`);
+    assert.equal(f.domain().navigation.dirty, false);
+    f.unmount();
+  }
+});
+
+test('a model picker retained by stale callbacks cannot add to another service or after a recipient edit', async () => {
+  for (const action of ['select', 'address', 'key']) {
+    const f = fixture({modelsList: async () => ({result: 'ok', models: [{id: 'synthetic-old-video'}]})});
+    await flush();
+    f.render();
+    invoke(f.find(f.keyA, 'video-fetch-models'), 'onClick');
+    await flush();
+    f.render();
+    const stale = f.picker(f.keyA)!;
+    assert.equal(stale.props.status, 'ready');
+    if (action === 'select') f.select(f.keyB);
+    if (action === 'address') invoke(f.find(f.keyA, 'video-connection-base-url'), 'onChange', {target: {value: 'https://new.example.com/v2'}});
+    if (action === 'key') f.type(f.keyA, 'synthetic-new-key');
+    invoke(stale, 'onAdd', ['synthetic-old-video']);
+    f.render();
+    for (const key of [f.keyA, f.keyB]) {
+      assert.equal(f.picker(key), undefined);
+      assert.equal(f.all(key).some(node => node.props.model && (node.props.model as {modelId?: unknown}).modelId === 'synthetic-old-video'), false);
+    }
+    f.unmount();
+  }
+});
+
+test('a saved password cannot be reused by a retained callback after the draft address changes', async () => {
+  const requests: VideoModelsListInput[] = [];
+  const f = fixture({modelsList: async input => {requests.push(input); return {result: 'ok', models: []};}});
+  await flush();
+  f.render();
+  const button = f.find(f.keyA, 'video-fetch-models');
+  invoke(f.find(f.keyA, 'video-connection-base-url'), 'onChange', {target: {value: 'https://new.example.com/v2'}});
+  // Even before React commits the new props, the event reads the live draft.
+  invoke(button, 'onClick');
+  await flush();
+  assert.deepEqual(requests, []);
+  f.render();
+  assert.equal(f.find(f.keyA, 'video-fetch-models').props.disabled, true);
+  f.type(f.keyA, 'synthetic-new-video-ui-draft');
+  invoke(button, 'onClick');
+  await flush();
+  assert.deepEqual(requests, [
+    {operation: 'models', source: 'draft', providerId: 'compatible', region: 'custom', workspaceId: '', baseUrl: 'https://new.example.com/v2', value: 'synthetic-new-video-ui-draft'},
+  ]);
+  f.unmount();
 });

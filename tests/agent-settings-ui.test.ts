@@ -6,6 +6,7 @@ import * as logic from '../apps/web/src/agent-settings.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as modelDiscovery from '../apps/web/src/agent-model-list-session.ts';
 import * as modelRows from '../apps/web/src/agent-model-list-rows.ts';
+import * as agentProtocol from '../packages/contracts/src/agent-protocol.ts';
 import * as openAiFamilies from '../packages/contracts/src/agent-openai-model-family.ts';
 import type {AgentModelListClient} from '../apps/web/src/agent-model-list-session.ts';
 import type {AgentModelListResult,AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
@@ -99,7 +100,8 @@ const listed=(ids:string[]=[]):AgentModelListSuccess=>({outcome:'success',models
 function adaptedUiSettings():AgentSettingsSnapshot{
  const initial=uiSettings();for(const preset of initial.presets){preset.supportedModelHints=agentAdaptedModelHints(preset.id);for(const platform of preset.platforms)platform.supportedModelHints=agentAdaptedModelHints(preset.id);}return initial;
 }
-function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()}){
+function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()},
+ testDraftConnection:typeof modelDiscovery.testAgentDraftConnection=async()=>({outcome:'success'})){
  const hooks:Hook[]=[],dom=new Map<string,{value:string}>(),listeners=new Set<()=>void>(),reports:navigation.SettingsNavigationState[]=[];let cursor=0,pending:Array<()=>void>=[],tree:unknown,visible=true,locale:Locale='zh-Hans';
  const document={hidden:false,addEventListener:(_name:string,fn:()=>void)=>listeners.add(fn),removeEventListener:(_name:string,fn:()=>void)=>listeners.delete(fn)};
  const element=(type:unknown,props:Record<string,unknown>|null,...children:unknown[]):Element=>{
@@ -119,9 +121,10 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
   if(id==='../../../packages/i18n/src/index.ts')return i18n;if(id==='../../../packages/contracts/src/agent-connection-settings.ts')return {AGENT_CONNECTION_LIMITS};
   if(id==='./settings-navigation-state.ts')return navigation;if(id==='./workspace-visibility.tsx')return {useWorkspaceVisibility:()=>visible};
   if(id==='./agent-settings.ts')return {...logic,createAgentSettingsSession:(options:logic.AgentSettingsSessionOptions)=>logic.createAgentSettingsSession({...options,client})};
-  if(id==='./agent-model-list-session.ts')return {...modelDiscovery,createAgentModelListSession:(options:Parameters<typeof modelDiscovery.createAgentModelListSession>[0])=>modelDiscovery.createAgentModelListSession({...options,client:discovery})};
+  if(id==='./agent-model-list-session.ts')return {...modelDiscovery,testAgentDraftConnection:testDraftConnection,createAgentModelListSession:(options:Parameters<typeof modelDiscovery.createAgentModelListSession>[0])=>modelDiscovery.createAgentModelListSession({...options,client:discovery})};
   if(id==='./agent-model-list-rows.ts')return modelRows;
   if(id==='./ModelPickerDialog.tsx')return {__esModule:true,default:'ModelPickerDialog'};
+  if(id==='../../../packages/contracts/src/agent-protocol.ts')return agentProtocol;
   if(id==='../../../packages/contracts/src/agent-openai-model-family.ts')return openAiFamilies;
   if(id==='./SettingsServicesLayout.tsx')return {__esModule:true,default:'ServicesLayout'};
   if(id==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
@@ -360,6 +363,7 @@ test('actual key typing dispatches nothing; explicit check and fetch use one-sho
  const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(h.find('agent-settings-model-list-status-openai').props['data-phase'],'idle');assert.equal(calls.length,0);
  h.key('openai','synthetic-secret-openai');await flush();h.render();assert.equal(calls.length,0);
  h.click('agent-settings-check-key-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(h.picker(),undefined);assert.equal(h.modelRow('openai','new-model'),undefined);assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.keyValue('openai'),'synthetic-secret-openai');assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');
+ assert.ok(h.find('agent-settings-key-check-result-openai'));assert.ok(h.find('agent-settings-service-dirty-openai'));
  h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,2);assert.deepEqual(calls[1]!.credential,{source:'input',value:'synthetic-secret-openai'});assert.equal(h.picker()?.props.usesDraftKey,true);assert.equal(h.modelRow('openai','new-model'),undefined);h.addPicked('new-model');
  assert.ok(h.modelRow('openai','new-model'));h.click('agent-settings-use-openai-new-model');assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assertNoSecrets(h.reports);h.unmount();
 });
@@ -372,10 +376,29 @@ test('actual address editing waits for an explicit fetch; incomplete addresses n
  h.change('agent-settings-base-url-ollama','http://');invoke(h.find('agent-settings-base-url-ollama'),'onBlur');h.render();await flush();h.render();assert.equal(calls.length,1);assert.equal(h.find('agent-settings-fetch-ollama').props.disabled,true);assert.equal(f.calls.length,0);h.unmount();
 });
 
-test('actual protocol change waits for an explicit fetch and retains the entered key without saving a Mio selection',async()=>{
+test('explicit fetch after a protocol change uses the new descriptor and the entered key without saving',async()=>{
  const initial=uiSettings(),openai=initial.services.find(entry=>entry.serviceKey==='openai')!;openai.protocol='chat_completions';openai.manualModelIds=['gpt-4.1-mini'];
  const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
- const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();h.key('openai','synthetic-secret');h.change('agent-settings-protocol-openai','responses');await flush();h.render();assert.equal(calls.length,0);h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.selection.protocol,'responses');assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret'});assert.equal(h.keyValue('openai'),'synthetic-secret');assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.serviceKey,custom);h.unmount();
+ const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();h.key('openai','synthetic-secret');h.change('agent-settings-protocol-openai','responses');await flush();h.render();assert.equal(calls.length,0);
+ h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(calls[0]!.selection.protocol,'responses');assert.deepEqual(calls[0]!.credential,{source:'input',value:'synthetic-secret'});assert.equal(h.keyValue('openai'),'synthetic-secret');assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.serviceKey,custom);h.unmount();
+});
+
+test('a test of the current Mio draft uses its typed key and model, and clears its result on discard',async()=>{
+ const f=settingsUiFixture(),calls:Parameters<typeof modelDiscovery.testAgentDraftConnection>[0][]=[];
+ const h=uiHarness(f.client,undefined,async input=>{calls.push(input);return {outcome:'success'};});
+ await ready(h);h.view(custom);await flush();h.render();
+ h.key(custom,'synthetic-secret-custom');h.click(`agent-settings-draft-test-${custom}`);await flush();h.render();
+ assert.equal(calls.length,1);
+ assert.equal(calls[0]?.model,f.saved().mioSelection?.modelId);
+ assert.deepEqual(calls[0]?.credential,{source:'input',value:'synthetic-secret-custom'});
+ assert.ok(h.find(`agent-settings-draft-test-result-${custom}`));
+ assert.equal(h.keyValue(custom),'synthetic-secret-custom');
+ assert.equal(f.calls.length,0);
+ h.click('agent-settings-cancel');await flush();h.render();
+ assert.equal(h.keyValue(custom),'');
+ assert.equal(nodes(h.render()).some(node=>node.props['data-testid']===`agent-settings-draft-test-result-${custom}`),false);
+ assertNoSecrets(h.reports);
+ h.unmount();
 });
 
 test('actual selected detail can list with its own saved key before it becomes the saved Mio selection',async()=>{

@@ -6,6 +6,9 @@ import {customImageSettingsV2Error, sanitizeCustomImageSettingsV2Error} from '@m
 import type {createCustomImageSettingsV2} from '@mioon/business/images/custom-settings-v2';
 import {CUSTOM_IMAGE_SETTINGS_V2_LIMITS, customImageSettingsV2ResultSchema} from '../../../packages/contracts/src/generation-image-settings.ts';
 import {generationImageServiceSchemas} from '../../../packages/contracts/src/generation-image-services.ts';
+import {officialImageProbeSchema, customImageProbeSchema} from '../../../packages/contracts/src/draft-image-probe.ts';
+import {draftServiceProbeResultSchema} from '../../../packages/contracts/src/draft-service-probe.ts';
+import {probeImageService} from '@mioon/business/images/draft-probe';
 import {safeImageReviewError} from '@mioon/business/images/reviews';
 import {safeImageServiceError} from '@mioon/business/images';
 import {rejectProjectMismatch} from './project-host/request.ts';
@@ -23,6 +26,7 @@ export interface ImageHttpOptions {
   approve: (input: unknown) => unknown;
   reject: (input: unknown) => unknown;
   signal?: AbortSignal;
+  probeFetch?: typeof fetch;
 }
 const json = (res: ServerResponse, status: number, value: unknown): void => {if(res.destroyed||res.writableEnded)return;if(res.headersSent){res.destroy();return;}res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
 const errorField = (error: unknown, name: string): unknown => error !== null && typeof error === 'object' && name in error ? (error as Record<string, unknown>)[name] : undefined;
@@ -38,14 +42,14 @@ async function body(req: IncomingMessage, res: ServerResponse, max: number): Pro
 /** Existing server Host/Origin/session authentication runs before this route.
  * These fixed user actions are intentionally absent from RPC/CLI/MCP/Agent
  * catalogs. They are not a cryptographic attestation of a physical human click. */
-export function createImageHttp({settings,customSettings,generationServices,approve,reject,signal}: ImageHttpOptions) {
+export function createImageHttp({settings,customSettings,generationServices,approve,reject,signal,probeFetch}: ImageHttpOptions) {
  return async (req: IncomingMessage, res: ServerResponse, url: URL, address?: ProjectAddress): Promise<boolean> => {
   if(!/^\/api\/images(?:\/|$)/u.test(url.pathname))return false;
   const customSettingsRoute=url.pathname==='/api/images/custom-settings',settingsRoute=customSettingsRoute||url.pathname==='/api/images/settings',servicesRoute=url.pathname==='/api/images/services',approval=url.pathname==='/api/images/reviews/approve',rejection=url.pathname==='/api/images/reviews/reject';
   try{
    if(Buffer.byteLength(req.url ?? '')>2048||url.search)throw invalid();
    if(!settingsRoute&&!approval&&!rejection&&!servicesRoute||servicesRoute&&(!address||!generationServices)){json(res,404,{ok:false,error:{code:'NOT_FOUND',message:'图像接口不存在',details:{},retryable:false}});return true;}
-   const methods=settingsRoute?['GET','PUT']:['POST'];if(!methods.includes(req.method ?? '')){res.setHeader('Allow',methods.join(', '));json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'图像接口请求方法无效',details:{},retryable:false}});return true;}
+   const methods=settingsRoute?['GET','PUT','POST']:['POST'];if(!methods.includes(req.method ?? '')){res.setHeader('Allow',methods.join(', '));json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'图像接口请求方法无效',details:{},retryable:false}});return true;}
    if(settingsRoute&&!(customSettingsRoute?customSettings:settings))throw Object.assign(Error(),{code:'IMAGE_SETTINGS_CLOSED'});
    let result: unknown;
    if(req.method==='GET') {
@@ -55,7 +59,26 @@ export function createImageHttp({settings,customSettings,generationServices,appr
     const input=await body(req,res,customSettingsRoute?CUSTOM_IMAGE_SETTINGS_V2_LIMITS.updateBytes:settingsRoute?IMAGE_SETTINGS_LIMITS.updateBytes:servicesRoute?IMAGE_REVIEW_LIMITS.intentBytes:1024);
     if(!settingsRoute&&!servicesRoute&&rejectProjectMismatch(res,address,input))return true;
     if(signal?.aborted)throw Object.assign(Error(),{code:'IMAGE_SERVICE_STOPPED',status:503});
-    if(customSettingsRoute) {
+    if(settingsRoute&&req.method==='POST') {
+     if(address||url.hash)throw invalid();
+     const observer=new AbortController();
+     const abort=()=>observer.abort();
+     req.once('aborted',abort); res.once('close',abort);
+     const active=signal?AbortSignal.any([signal,observer.signal]):observer.signal;
+     const options={signal:active,fetchImpl:probeFetch};
+     try {
+      if(req.aborted||res.destroyed) abort();
+      if(customSettingsRoute) {
+       const parsed=customImageProbeSchema.safeParse(input); if(!parsed.success)throw invalid();
+       result=await probeImageService({kind:'custom',input:parsed.data,settings:customSettings!},options);
+      } else {
+       const parsed=officialImageProbeSchema.safeParse(input); if(!parsed.success)throw invalid();
+       result=await probeImageService({kind:'official',input:parsed.data,settings:settings!},options);
+      }
+      if(active.aborted)throw Object.assign(Error(),{code:'IMAGE_SERVICE_STOPPED',status:503});
+      result=draftServiceProbeResultSchema.parse(result);
+     } finally {req.off('aborted',abort); res.off('close',abort);}
+    } else if(customSettingsRoute) {
      const {action,...update}=input as Record<string,unknown>;
      let stored:unknown;
      if(action==='create')stored=await customSettings!.create(update);
