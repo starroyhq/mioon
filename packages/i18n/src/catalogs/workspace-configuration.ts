@@ -1,6 +1,5 @@
 import type {MessageCatalog} from '../types.ts';
 export const workspaceConfigurationMessages={
- 'workspace.settings.liveHelp':{'zh-Hans':'允许使用已配置的真实生成服务；仍需逐次确认图像费用','zh-Hant':'允許使用已設定的真實生成服務；仍須逐次確認影像費用',en:'Allow configured live generation services; image charges still require confirmation for each request',ja:'設定済みの実サービス生成を許可します。画像の料金はリクエストごとに確認します'},
  'workspace.settings.instant':{'zh-Hans':'更改立即保存在本机','zh-Hant':'變更立即儲存在本機',en:'Changes save locally immediately',ja:'変更はすぐにローカル保存されます'},
  'workspace.settings.reading':{'zh-Hans':'正在读取设置','zh-Hant':'正在讀取設定',en:'Reading settings',ja:'設定を読み込み中'},
  'workspace.settings.readOnly':{'zh-Hans':'服务器配置 · 只读','zh-Hant':'伺服器設定 · 唯讀',en:'Server configuration · read only',ja:'サーバー設定・読み取り専用'},

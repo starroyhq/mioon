@@ -98,7 +98,7 @@ test('header actions and native settings remain reachable without locale or resi
   assert.match(css, /\.dock-workbench\.dock-narrow \.topbar > \.language-control \{[^}]*grid-row: 1;[^}]*grid-column: 3 \/ span 2;/u);
 });
 
-test('known workspace/storage diagnostics retain actionable meaning without exposing raw server text', () => {
+test('known workspace, storage and video recovery diagnostics retain actionable meaning without exposing raw server text', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('function readableError(error'), app.indexOf('function Modal('));
   const readableError = Function('msg', `${stripSourceTypes(source,{loader:'tsx'})}; return readableError;`)(message) as (error: { code?: string; message?: string; displayMessage?: DisplayMessage }) => { key: MessageKey; displayMessage?: DisplayMessage };
@@ -106,6 +106,9 @@ test('known workspace/storage diagnostics retain actionable meaning without expo
     STORAGE_MIGRATION_BLOCKED: 'shell.error.storageMigration',
     WORKSPACE_INTENT_ALREADY_PINNED: 'shell.error.workspacePinned',
     LAST_PROJECT_SCOPE_MISMATCH: 'shell.error.lastProjectScope',
+    VIDEO_TASK_NOT_FOUND: 'tasks.error.videoProviderCannotFindTask',
+    VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT: 'tasks.error.videoReplacementCannotFindTask',
+    VIDEO_REPLACEMENT_NOT_AUTHORIZED: 'tasks.error.videoReplacementNotAuthorized',
   };
   for (const [code, key] of Object.entries(cases)) {
     const error = { code, message: 'Raw provider diagnostic 私有內容' }, before = structuredClone(error), descriptor = readableError(error);

@@ -177,7 +177,7 @@ test('child environment excludes secrets/proxies/loader injection and supports W
     MIOON_FFMPEG_PATH: 'C:\\tools 中\\ffmpeg.exe', MIOON_FFPROBE_PATH: 'C:\\tools 中\\ffprobe.exe'};
   const env = toolingEnvironment(source, {platform: 'win32', mediaPaths: true});
   assert.equal(env.PATH, source.Path); assert.equal(env.SystemRoot, source.SYSTEMROOT); assert.equal(env.USERPROFILE, source.USERPROFILE);
-  assert.equal(env.MIOON_ENABLE_LIVE_PROVIDER, '0');
+  assert.equal(env.MIOON_ENABLE_LIVE_PROVIDER, undefined);
   assert.equal(env.MIOON_FFMPEG_PATH, source.MIOON_FFMPEG_PATH);
   assert.doesNotMatch(JSON.stringify(env), /SYNTHETIC|unsafe|outside/);
   assert.equal(toolingEnvironment(source, {platform: 'win32'}).MIOON_FFMPEG_PATH, undefined);
@@ -314,10 +314,10 @@ test('dependency containment is segment-aware for POSIX and Windows drive/case r
   assert.equal(isContainedPath('C:\\Repo\\node_modules', 'C:\\Repo\\elsewhere\\entry.js', path.win32), false);
 });
 
-test('real child receives only the explicit environment and live calls remain disabled', async t => {
+test('real test child does not inherit provider credentials or a legacy flag', async t => {
   const {directory} = await fixture(t); const script = path.join(directory, 'environment.mjs');
-  await writeFile(script, "if (process.env.SYNTHETIC_UNFAMILIAR_SECRET || process.env.HTTPS_PROXY || process.env.NODE_OPTIONS || process.env.MIOON_ENABLE_LIVE_PROVIDER !== '0') process.exit(9);\n");
-  const result = await executeCommand({command: process.execPath, args: [script], cwd: directory}, {env: toolingEnvironment({SYNTHETIC_UNFAMILIAR_SECRET: 'sentinel', HTTPS_PROXY: 'sentinel', NODE_OPTIONS: '--bad'})});
+  await writeFile(script, "if (process.env.SYNTHETIC_UNFAMILIAR_SECRET || process.env.HTTPS_PROXY || process.env.NODE_OPTIONS || process.env.MIOON_ENABLE_LIVE_PROVIDER || process.env.ARK_API_KEY) process.exit(9);\n");
+  const result = await executeCommand({command: process.execPath, args: [script], cwd: directory}, {env: toolingEnvironment({SYNTHETIC_UNFAMILIAR_SECRET: 'sentinel', HTTPS_PROXY: 'sentinel', NODE_OPTIONS: '--bad', MIOON_ENABLE_LIVE_PROVIDER: '1', ARK_API_KEY: 'synthetic-key'})});
   assert.equal(result.code, 0);
 });
 

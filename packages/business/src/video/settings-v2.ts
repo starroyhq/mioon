@@ -28,8 +28,8 @@ export interface VideoSettingsV2Service {
   select(connectionId: string, configurationRevision: number, modelEntryId: string): VideoExecutionBinding;
   assertBinding(binding: unknown): void;
   acquire(binding: unknown, signal?: AbortSignal): Promise<string>;
-  replacementForResult(binding: unknown): string | null;
-  acquireResultCredential(binding: unknown, replacementRef: string, signal?: AbortSignal): Promise<string>;
+  replacementForResult(binding: unknown): {credentialRef:string; connectionRevision:number} | null;
+  acquireResultCredential(binding: unknown, replacement: {credentialRef:string; connectionRevision:number}, signal?: AbortSignal): Promise<string>;
   acquireForProbe(connectionId: string, configurationRevision: number, target: VideoModelsListRecipient, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   acquireCompatible(connectionId: string, configurationRevision: number, signal?: AbortSignal): Promise<{endpoint: string; value: string}>;
   close(): Promise<void>;
@@ -170,13 +170,14 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (material(selected.credentialRef) === 'none') return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
     return selected;
   };
-  const replacementForResult = (input: unknown): string | null => {
+  const replacementForResult = (input: unknown) => {
     const selected = assertFrozenBinding(input);
     const current = state.connections.find(entry => entry.configuration.id === selected.connectionId);
     if (!current?.credentialRef || current.revision <= selected.configurationRevision ||
         current.credentialRef === selected.credentialRef || material(current.credentialRef) === 'none') return null;
     const frozenRecipient = [selected.connectionId, selected.providerId, selected.region, selected.workspaceId, selected.endpoint];
-    return same(recipient(current.configuration), frozenRecipient) ? current.credentialRef : null;
+    return same(recipient(current.configuration), frozenRecipient)
+      ? {credentialRef:current.credentialRef, connectionRevision:current.revision} : null;
   };
   async function secretOf(credential: Credential, request?: AbortSignal): Promise<string | undefined> {
     if (!credential.encrypted) return sessions.get(credential.ref);
@@ -297,13 +298,14 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED'); return value;
     });},
     replacementForResult,
-    acquireResultCredential(input, replacementRef, request) {return schedule(async () => {
+    acquireResultCredential(input, replacement, request) {return schedule(async () => {
       const verify = (): void => {
         if (request?.aborted) fail('VIDEO_SETTINGS_CLOSED');
-        if (replacementForResult(input) !== replacementRef) fail('VIDEO_SETTINGS_CONFLICT');
+        const current = replacementForResult(input);
+        if (current?.credentialRef !== replacement.credentialRef || current.connectionRevision !== replacement.connectionRevision) fail('VIDEO_SETTINGS_CONFLICT');
       };
       verify();
-      const credential = state.credentials.find(entry => entry.ref === replacementRef)!;
+      const credential = state.credentials.find(entry => entry.ref === replacement.credentialRef)!;
       const value = await secretOf(credential, request);
       verify();
       if (!value) return fail('VIDEO_SETTINGS_NOT_CONFIGURED');

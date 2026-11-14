@@ -127,9 +127,14 @@ test('Ark subject still requires the exact approved hash even for claimed genera
  const f=await fixture(t,{approved:false});f.subjectVersion.provenance.kind='generated';
  await assert.rejects(f.provider.submit(f.snapshot),{code:'REFERENCE_NOT_APPROVED'});assert.equal(f.calls.length,0);
 });
-test('Ark subject metadata never enables construction-time or disabled-provider HTTP',async t=>{
- const f=await fixture(t),provider=createArkProvider({root:f.root,env:{ARK_API_KEY:'INERT-SUBJECT-FIXTURE',ARK_APPROVED_ASSET_SHA256:f.asset.sha256},fetchImpl:(()=>assert.fail('Network forbidden')) as unknown as typeof fetch});
- assert.equal(provider.capabilities.enabled,false);assert.equal(provider.validate(f.snapshot),true);await assert.rejects(provider.submit(f.snapshot),{code:'PROVIDER_DISABLED'});
+test('Ark subject validation stays offline and submission requires a configured server credential',async t=>{
+ const f=await fixture(t),approval={ARK_APPROVED_ASSET_SHA256:f.asset.sha256};
+ const fetchImpl:typeof fetch=async()=>assert.fail('Network forbidden');
+ const ready=createArkProvider({root:f.root,env:{...approval,ARK_API_KEY:'INERT-SUBJECT-FIXTURE'},fetchImpl});
+ assert.equal(ready.capabilities.enabled,true);assert.equal(ready.validate(f.snapshot),true);
+ const missing=createArkProvider({root:f.root,env:{...approval,MIOON_ENABLE_LIVE_PROVIDER:'1'},fetchImpl});
+ assert.equal(missing.capabilities.enabled,false);assert.deepEqual(missing.capabilities.configuration.missing,['ARK_API_KEY']);
+ assert.equal(missing.validate(f.snapshot),true);await assert.rejects(missing.submit(f.snapshot),{code:'PROVIDER_DISABLED'});
 });
 for(const [name,alter,code] of [
  ['changed bytes',async (f: Awaited<ReturnType<typeof fixture>>)=>{const bytes=Buffer.from(f.bytes);bytes[bytes.length-1]^=1;await writeFile(f.file,bytes);},'REFERENCE_CHANGED'],

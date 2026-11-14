@@ -244,8 +244,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   checkpoint(signal);
   let j=recordValue(get('jobs',original.id)) as JobRecord|null;
   if(!j)return;
-  let provider:Pick<Provider,'capabilities'|'poll'|'download'>|undefined;
-  const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal};
+  let provider:ReturnType<NonNullable<OrdinaryServices['resolveGenerationResultProvider']>>;
+  const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),providerAcceptedAt:j.providerAcceptedAt,signal};
   let acceptedProviderId: string|null=null,guardJob=j,postPermitted=false,blockedGate=false;
   const submissionCount=numberValue(j.submissionCount)??0;
   const nextPollAt=numberValue(j.nextPollAt);
@@ -329,7 +329,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     // Receipt persistence is the sole intentional write permitted after abort.
     // awaitProvider only delivers receipts inside its bounded settlement window.
     const latest=recordValue(get('jobs',j.id)) as JobRecord|null;
-    if(latest)services.saveJob(latest,{providerJobId:acceptedProviderId,...latest.status==='cancelled'?{}:{status:'running',phase:'polling',progress:5,error:null}});
+    if(latest)services.saveJob(latest,{providerJobId:acceptedProviderId,...(j.providerId==='kling'&&acceptedProviderId?{providerAcceptedAt:now()}:{}),...latest.status==='cancelled'?{}:{status:'running',phase:'polling',progress:5,error:null}});
     return;
    }
    if(j.status==='submission_unknown') {
@@ -354,9 +354,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     credentialRetries.delete(j.id);
     const latestStatus=stringValue(property(get('jobs',j.id),'status'));
     if(latestStatus==='cancelled')return;
-    if(remote.status==='failed'){services.saveJob(j,{status:'failed',phase:'provider_failed',error:typeof remote.error==='object'?remote.error:{code:'GENERATION_FAILED',message:remote.error||'供应商任务失败',retryable:true}});return;}
-    if(remote.status!=='succeeded'){services.saveJob(j,{...(['connection_required','connection_retrying'].includes(j.phase??'')?{phase:'polling'}:{}),progress:remote.progress==null?j.progress:Math.round(remote.progress*100),nextPollAt:Date.now()+(numberValue(property(provider!.capabilities,'minPollIntervalMs'))||350),error:null});return;}
-    j=services.saveJob(j,{status:'downloading',phase:'downloading',progress:90,nextPollAt:0,error:null}) as JobRecord;
+    const credentialState=provider!.resultCredentialState?.();
+    if(remote.status==='failed'){services.saveJob(j,{...credentialState,status:'failed',phase:'provider_failed',error:typeof remote.error==='object'?remote.error:{code:'GENERATION_FAILED',message:remote.error||'供应商任务失败',retryable:true}});return;}
+    if(remote.status!=='succeeded'){services.saveJob(j,{...credentialState,...(['connection_required','connection_retrying'].includes(j.phase??'')?{phase:'polling'}:{}),progress:remote.progress==null?j.progress:Math.round(remote.progress*100),nextPollAt:Date.now()+(numberValue(property(provider!.capabilities,'minPollIntervalMs'))||350),error:null});return;}
+    j=services.saveJob(j,{...credentialState,status:'downloading',phase:'downloading',progress:90,nextPollAt:0,error:null}) as JobRecord;
    }
    if(j.status==='downloading') {
     checkpoint(signal);
@@ -390,6 +391,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      await rename(part,file);checkpoint(signal);
     }
     if(stringValue(property(get('jobs',j.id),'status'))==='cancelled')return;
+    const credentialState=provider?.resultCredentialState?.();
+    const originalRejected=credentialState?.originalResultCredentialRejected?{originalResultCredentialRejected:true}:{};
     if(!artifact&&!provider!.capabilities.mock) {
      const binding=readVideoBinding(j.snapshot),wan30=Boolean(binding&&isWan30Binding(binding)),seedance=Boolean(binding&&isSeedance25Binding(binding));
      const effective=binding?effectiveVideoParameters(binding,j.snapshot):null;
@@ -398,21 +401,26 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      // Seedance's documented 480p 21:9 size, 992×432, is 1.6% off the exact ratio.
      const actualRatio=info.width/info.height,expectedRatio=Number(ratioWidth)/Number(ratioHeight),tolerance=seedance?0.02:0.01;
      if(!Number.isFinite(actualRatio)||actualRatio<=0||(expectedAspectRatio==='adaptive'?actualRatio<1/8||actualRatio>8:Math.abs(actualRatio/expectedRatio-1)>tolerance)) {
-      services.saveJob(j,{status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_ASPECT_RATIO_MISMATCH',message:'供应商已完成，但下载的视频比例与镜头要求不符。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
+      services.saveJob(j,{...originalRejected,status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_ASPECT_RATIO_MISMATCH',message:'供应商已完成，但下载的视频比例与镜头要求不符。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
       return;
      }
      if(wan30&&(!Number.isFinite(info.duration)||info.duration<1.85||info.duration>30.15||effective!.durationSeconds!==-1&&Math.abs(info.duration-Number(effective!.durationSeconds))>0.25)){
-      services.saveJob(j,{status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_DURATION_MISMATCH',message:'供应商已完成，但视频时长不符合冻结的 Wan 模型要求。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
+      services.saveJob(j,{...originalRejected,status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_DURATION_MISMATCH',message:'供应商已完成，但视频时长不符合冻结的 Wan 模型要求。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
       return;
      }
      // Seedance 2.5 renders whole seconds at 24 fps plus one frame; an automatic
      // duration stays inside its documented 4–30 second range.
      if(seedance&&(!Number.isFinite(info.duration)||info.duration<3.85||info.duration>30.15||effective!.durationSeconds!==-1&&Math.abs(info.duration-Number(effective!.durationSeconds))>0.25)){
-      services.saveJob(j,{status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_DURATION_MISMATCH',message:'供应商已完成，但视频时长不符合冻结的 Seedance 生成时长。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
+      services.saveJob(j,{...originalRejected,status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_DURATION_MISMATCH',message:'供应商已完成，但视频时长不符合冻结的 Seedance 生成时长。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
       return;
      }
     }
     checkpoint(signal);
+    if(credentialState?.resultCredentialRecovery){
+     const recorded=saveGenerationGuarded(j,credentialState);
+     if(!recorded)return;
+     j=recorded as JobRecord;
+    }
     if(projectOwner&&!artifact)artifact=writeOutputArtifact(projectOwner,{owner,kind:'generation',sourceIdentity,stageFile:part,info},checkOutput);
     const published=projectOwner&&artifact?await publishProjectOutput(projectOwner,{owner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'generated',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes},{signal,beforeEffect:checkOutput}):null;
     const publishedReference=published?(({relativePath:_path,...locator})=>locator)(published):null;
@@ -446,6 +454,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const recordedDiagnostic=videoCredentialDiagnostic(error);
    const credentialDiagnostic=recordedDiagnostic??(errorCode?.startsWith('VIDEO_SETTINGS_')
     ? videoCredentialDiagnostic({code:'VIDEO_CREDENTIAL_UNAVAILABLE'}) : undefined);
+   const originalRejected=provider?.resultCredentialState?.().originalResultCredentialRejected;
    if(credentialDiagnostic){
     if(signal.aborted&&j.status!=='submitting')return;
     // A paused user-action task releases its background lease. A transient
@@ -457,6 +466,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const delay=retry?.cause===credentialDiagnostic.cause?Math.min(retry.delay*2,300_000):5_000;
     const scheduledAt=credentialDiagnostic.cause==='VIDEO_SETTINGS_STORAGE_UNAVAILABLE'&&attemptStorageEpoch<storageEpoch?0:Date.now()+delay;
     if(latest&&saveGenerationGuarded(latest,{
+     ...(originalRejected?{originalResultCredentialRejected:true}:{}),
      ...(definitelyUnsubmitted?{status:'queued',submissionCount}:unconfirmedSubmit?{status:'submission_unknown',...(acceptedProviderId?{providerJobId:acceptedProviderId}:{})}:{}),
      phase:unconfirmedSubmit?'reconciliation_required':automatic?'connection_retrying':'connection_required',
      error:{code:recordedDiagnostic&&errorCode?errorCode:'VIDEO_CREDENTIAL_UNAVAILABLE',message:'视频任务无法使用原连接。',retryable:automatic,diagnostic:credentialDiagnostic},
@@ -480,7 +490,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      return;
     }
     const uncertain=Boolean(property(error,'uncertain')||acceptedProviderId||signal.aborted);
-    services.saveJob(latest,{status:uncertain?'submission_unknown':'failed',phase:uncertain?'reconciliation_required':'submit_failed',...(acceptedProviderId?{providerJobId:acceptedProviderId}:{}),error:safeError(uncertain?{code:'SUBMISSION_UNKNOWN',uncertain:true}:error),nextPollAt:Date.now()+800});
+    services.saveJob(latest,{status:uncertain?'submission_unknown':'failed',phase:uncertain?'reconciliation_required':'submit_failed',...(acceptedProviderId?{providerJobId:acceptedProviderId,...(j.providerId==='kling'?{providerAcceptedAt:now()}: {})}:{}),error:safeError(uncertain?{code:'SUBMISSION_UNKNOWN',uncertain:true}:error),nextPollAt:Date.now()+800});
     if(property(error,'terminationUnconfirmed'))persistMediaPause('jobs',j.id,'');
    } else if(signal.aborted) {
     // Poll/download cancellation preserves the existing task and snapshot. A
@@ -488,7 +498,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(property(error,'terminationUnconfirmed'))persistMediaPause('jobs',j.id,'');
     return;
    } else if(j.providerId==='mock'&&j.status==='downloading'&&errorCode==='MOCK_RENDERER_UNSUPPORTED')services.saveJob(latest as JobRecord,{status:'failed',phase:'provider_failed',error:{...safeError(error),retryable:false},nextPollAt:0});
-   else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest as JobRecord,{error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
+   else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest as JobRecord,{...(originalRejected?{originalResultCredentialRejected:true}:{}),error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
    else saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});
   }
  }

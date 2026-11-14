@@ -52,7 +52,7 @@ async function fixture(t:import('node:test').TestContext,providerId:VideoProvide
   const provider=createConfiguredVideoProvider({root,binding,now:()=>time,acquireCredential:async()=>{acquisitions++;return key;},fetchImpl:async(input,init)=>{calls.push({url:String(input),init:init??{}});const response=queue.shift();if(response instanceof Error)throw response;if(!response)throw Error('Real HTTP forbidden');return response;}});
   const duration=binding.model.durationResolutionMap[0]!.duration[0]!,resolution=binding.model.durationResolutionMap[0]!.resolution[0]!;
   const snapshot={providerId,model:binding.model.modelId,prompt:'Synthetic shapes move slowly.',aspectRatio:RATIO,duration,parameters:{resolution} as Record<string,unknown>,referenceAssets:binding.model.inputModes.includes('text')?[]:[asset]};
-  return {root,binding,provider,asset,bytes,snapshot,calls,queue,key:(value:string)=>{key=value;},acquisitions:()=>acquisitions,advance:()=>{time+=20000;}};
+  return {root,binding,provider,asset,bytes,snapshot,calls,queue,key:(value:string)=>{key=value;},acquisitions:()=>acquisitions,now:()=>time,advance:(ms=20000)=>{time+=ms;}};
 }
 
 const entries:Array<[VideoProviderId,VideoTemplateId?]>=[['runway'],['ark'],['veo'],['minimax'],['vidu'],['kling'],['wan','wan27-t2v'],['wan','wan27-i2v']];
@@ -122,6 +122,26 @@ test('a Kling lookup by exact task ID treats an empty success as missing, and fo
     await assert.rejects(f.provider.poll(id,{}),{code:'INVALID_PROVIDER_RESPONSE'});
   }
   assert.deepEqual(f.calls.map(call=>call.url),Array(4).fill('https://api-singapore.klingai.com/tasks?task_ids=task-123'));
+});
+
+test('a freshly accepted Kling task with an empty successful listing stays queued only inside the bounded observation window',async t=>{
+  const f=await fixture(t,'kling'),id=taskId(f.binding);
+  const providerAcceptedAt=new Date(f.now()).toISOString();
+  f.advance(59_999);
+  f.queue.push(json({code:0,data:[]}));
+  assert.deepEqual(await f.provider.poll(id,{providerAcceptedAt}),{status:'running',progress:0});
+  await assert.rejects(f.provider.download(id,path.join(f.root,'pending.mp4'),{providerAcceptedAt}),{code:'PROVIDER_NOT_READY'});
+  await assert.rejects(f.provider.poll(id,{providerAcceptedAt:'invalid'}),{code:'PROVIDER_TASK_NOT_FOUND'});
+  await assert.rejects(f.provider.poll(id,{providerAcceptedAt:new Date(f.now()+1).toISOString()}),{code:'PROVIDER_TASK_NOT_FOUND'});
+  f.advance(1);
+  // Classify at read time so a cached observation cannot extend the window.
+  await assert.rejects(f.provider.poll(id,{providerAcceptedAt}),{code:'PROVIDER_TASK_NOT_FOUND'});
+  assert.deepEqual(f.calls.map(call=>call.init.method),['GET']);
+
+  f.advance();
+  f.queue.push(json({message:'task not found'},404));
+  await assert.rejects(f.provider.poll(id,{providerAcceptedAt:new Date(f.now()).toISOString()}),{code:'PROVIDER_TASK_NOT_FOUND'});
+  assert.deepEqual(f.calls.map(call=>call.init.method),['GET','GET']);
 });
 
 test('submit, other status errors, and CDN HTTP 404 retain separate diagnoses',async t=>{

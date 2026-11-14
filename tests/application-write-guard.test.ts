@@ -179,7 +179,7 @@ test('project and configuration writes use application admission independently o
   assert.ok(f.store.get('shots', shot.id));
   const settings = await f.services.call('workspace.settings.set', patch(before)) as WorkspaceSettings;
   assert.equal(settings.revision, before.revision + 1);
-  assert.equal(settings.liveGeneration, !before.liveGeneration);
+  assert.equal(settings.liveGeneration, true);
   assert.ok(f.library.documents.read('workspace-settings-v1.json'));
   assert.equal(Object.hasOwn(f.services, 'backups'), false);
   await assert.rejects(f.services.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'UNKNOWN_OPERATION'});
@@ -441,6 +441,6 @@ test('configuration ACK follows its own real B1 commit and failed/nested transac
   assert.equal(notifications, 1);
   const persisted = JSON.parse(f.library.documents.read('workspace-settings-v1.json')!);
   assert.equal(persisted.revision, saved.revision);
-  assert.equal(persisted.liveGeneration, saved.liveGeneration);
+  assert.equal(persisted.liveGeneration, true);
   assert.equal(f.library.db.isTransaction, false);
 });

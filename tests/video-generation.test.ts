@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord,ServiceRow} from '../packages/business/src/services.ts';
@@ -72,7 +73,7 @@ function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
   return {entered:entered.promise,release:()=>released.resolve()};
  }};
 }
-async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfigurationV2['providerId'],liveGeneration=true,modelId='',desktop=false}={}){
+async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfigurationV2['providerId'],modelId='',desktop=false}={}){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-generation-'))),secretCodec=codec();
  const directory=path.join(root,'video-settings'),desktopVault=desktop?desktopVideoVault(secretCodec):undefined;
  let desktopConnection=desktopVault?.connect();
@@ -92,7 +93,6 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  const videoFetch:typeof fetch=async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return response(request.url,request.init);};
  const registry=()=>createProviderRegistry({db:store.db,root,env:{}});
  let providers=registry(),services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});
- if(liveGeneration)await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const configuration:VideoConnectionConfigurationV2={id:randomUUID(),providerId,name:VIDEO_PROVIDER_NAMES[providerId],region:providerId==='ark'||providerId==='wan'?'cn-beijing':providerId==='compatible'?'custom':'global',workspaceId:'',enabled:true,outputHosts:['output.example'],models:defaultVideoModels(providerId),...(providerId==='compatible'?{baseUrl:'https://old.example/v1'}:{})};
  if(modelId)configuration.models[0]!.modelId=modelId;
  const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:persistent?'persistent' as const:'session' as const});
@@ -195,21 +195,25 @@ test('historical MiniMax uncertain submission never falls back or resubmits afte
  await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});assert.equal(f.store.list('jobs').length,1);
 });
 
-test('configured video submission and explicit retry require the persisted workspace live opt-in',async t=>{
- const f=await fixture(t,{liveGeneration:false});
- assert.equal(f.services.configuration.get().liveGeneration,false);assert.equal(f.services.configuration.get().revision,0);
- const input=f.input(),denial={code:'LIVE_GENERATION_DISABLED',status:409,details:{mutationOutcome:'not_applied'}};
- await assert.rejects(f.services.call('generation.submit',input),denial);assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
- assert.equal(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId),undefined);
- await f.live(true);const job=await f.submit();await f.tick();await f.stop();
+test('configured video submits by default and retries despite a persisted false preference',async t=>{
+ const f=await fixture(t);
+ assert.equal(f.services.configuration.get().revision,0);
+ assert.equal(f.services.generationAvailability.video(f.configuration.providerId,f.configuration.models[0]!.modelId),true);
+ const input=f.input(),job=await f.services.call('generation.submit',input) as JobRecord;
+ assert.equal(f.calls.length,0);
+ assert.ok(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId));
+ await f.tick();await f.stop();
  assert.equal(f.job(job.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
  f.services.saveJob(f.job(job.id),{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'synthetic definitive failure'}});
  const before=structuredClone(f.job(job.id)),retryInput={jobId:job.id,requestId:randomUUID()};
- await f.live(false);await assert.rejects(f.services.call('job.retry',retryInput),denial);
- assert.deepEqual(f.job(job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
- await f.live(true);const retry=await f.services.call('job.retry',retryInput) as JobRecord;
+ const library=testProjectAppLibrary(f.store);assert.ok(library);
+ library.documents.write('workspace-settings-v1.json',JSON.stringify({formatVersion:1,revision:7,liveGeneration:false}));
+ assert.equal(f.services.configuration.get().liveGeneration,true);
+ const retry=await f.services.call('job.retry',retryInput) as JobRecord;
+ assert.deepEqual(f.job(job.id),before);
  assert.equal(retry.retryOfJobId,job.id);assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();
  assert.equal(f.job(retry.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,2);
+ assert.deepEqual(JSON.parse(library.documents.read('workspace-settings-v1.json')!),{formatVersion:1,revision:7,liveGeneration:false});
 });
 
 for(const [problem,code] of [
@@ -236,37 +240,35 @@ test('a reference revision disagreement rejects video generation before creating
  assert.equal(f.store.db.prepare("SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?").get(input.requestId),undefined);
 });
 
-test('revoking the workspace live switch after queueing prevents every generation POST until an explicit enabled retry',async t=>{
- const f=await fixture(t),job=await f.submit();await f.live(false);await f.tick();await f.stop();
- assert.equal(f.job(job.id).status,'failed');assert.equal((f.job(job.id).error as ServiceRow).code,'LIVE_GENERATION_DISABLED');
- assert.equal(f.job(job.id).submissionCount,0);assert.equal(f.calls.length,0);assert.equal(f.store.list('versions').length,0);
- await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'LIVE_GENERATION_DISABLED'});
- await f.live(true);assert.equal(f.calls.length,0);const retry=await f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}) as JobRecord;
- assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();
- assert.equal(f.job(retry.id).status,'running');assert.equal(f.job(job.id).status,'failed');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+test('legacy settings update between queueing and video dispatch has no effect',async t=>{
+ const f=await fixture(t),job=await f.submit();
+ await f.live(false);await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'running');assert.equal(f.job(job.id).submissionCount,1);
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ assert.equal(f.store.list('versions').length,0);
+ assert.equal((await f.services.call('generation.submit',{...f.input(),requestId:job.requestId}) as JobRecord).id,job.id);
+ assert.equal(f.store.list('jobs').length,1);
 });
 
-test('revoking live generation after the submitting claim is fenced before the paid POST without uncertain acceptance',async t=>{
+test('legacy settings update inside the submitting claim cannot change or duplicate the approved job',async t=>{
  const f=await fixture(t),job=await f.submit(),snapshot=structuredClone(job.snapshot),saveGenerationGuarded=f.services.saveGenerationGuarded;
- let revoked=0;
+ let updates=0;
  f.services.saveGenerationGuarded=(candidate,patch)=>{
   const saved=saveGenerationGuarded(candidate,patch);
   if(saved&&patch.status==='submitting'){
    assert.equal(saved.status,'submitting');assert.equal(saved.submissionCount,1);assert.equal(f.calls.length,0);
-   f.services.configuration.set({expectedRevision:f.services.configuration.get().revision,liveGeneration:false});revoked++;
+   f.services.configuration.set({expectedRevision:f.services.configuration.get().revision,liveGeneration:false});updates++;
   }
   return saved;
  };
  await f.tick();await f.stop();f.services.saveGenerationGuarded=saveGenerationGuarded;
- const blocked=f.job(job.id);
- assert.equal(revoked,1);assert.equal(blocked.status,'failed');assert.equal(blocked.phase,'input_preflight_failed');
- assert.equal((blocked.error as ServiceRow).code,'LIVE_GENERATION_DISABLED');assert.equal(blocked.submissionCount,0);assert.equal(blocked.providerJobId,null);
- assert.deepEqual(blocked.snapshot,snapshot);assert.deepEqual(blocked.snapshot.executionBinding,snapshot.executionBinding);
- assert.equal(f.calls.length,0);assert.equal(f.store.list('versions').length,0);
- await f.live(true);await f.tick();await f.stop();assert.equal(f.job(job.id).status,'failed');assert.equal(f.calls.length,0);
- const retry=await f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}) as JobRecord;
- assert.equal(retry.retryOfJobId,job.id);assert.deepEqual(retry.snapshot,snapshot);await f.tick();
- assert.equal(f.job(retry.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ const submitted=f.job(job.id);
+ assert.equal(updates,1);assert.equal(submitted.status,'running');
+ assert.equal(submitted.submissionCount,1);assert.equal(submitted.providerJobId,'original-task');
+ assert.deepEqual(submitted.snapshot,snapshot);assert.deepEqual(submitted.snapshot.executionBinding,snapshot.executionBinding);
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);assert.equal(f.store.list('versions').length,0);
+ await f.live(true);await f.tick();await f.stop();assert.equal(f.job(job.id).status,'running');
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
 });
 
 test('configured directory is read-only and paid requests require the complete exact connection selection',async t=>{
@@ -319,7 +321,7 @@ test('known task recovery downloads and publishes one decoded immutable version 
  await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
  const bytes=await readFile(video),job=await f.submit();await f.tick();await f.stop();assert.equal(f.job(job.id).providerJobId,'original-task');
  const next=structuredClone(f.configuration);next.region='cn';await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:f.secret('new-synthetic-key')});
- await f.settings.put({action:'save',expectedRevision:2,configuration:{...next,enabled:false},secret:{action:'keep'}});await f.live(false);await f.restart();assert.equal(f.services.configuration.get().liveGeneration,false);
+ await f.settings.put({action:'save',expectedRevision:2,configuration:{...next,enabled:false},secret:{action:'keep'}});await f.live(false);await f.restart();assert.equal(f.services.configuration.get().liveGeneration,true);
  f.reply((url,init)=>{assert.notEqual(init.method,'POST');if(url.startsWith('https://output.example/')){assert.equal(new Headers(init.headers).get('Authorization'),null);return new Response(bytes);}assert.ok(url.startsWith('https://api.minimax.io/'));assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');return json({task:{id:'original-task',status:'succeeded',content:{url:'https://output.example/result.mp4'}}});});
  f.ready(job.id);await f.tick();assert.equal(f.job(job.id).status,'succeeded');assert.equal(f.store.list('versions').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
  const version=f.store.list('versions')[0] as ServiceRow;assert.equal(version.jobId,job.id);assert.equal((version.snapshot as ServiceRow).executionConnectionName,f.configuration.name);
@@ -600,7 +602,102 @@ test('Q17-C a replacement account that cannot find the paid task pauses until an
  await f.settings.put({action:'save',expectedRevision:2,configuration:f.configuration,secret:f.secret('recovered-account-synthetic-key')});
  await f.services.call('job.reconcile',{jobId:submitted.id});
  await f.tick();
+ assertPublished(3);
+ assert.deepEqual(f.job(submitted.id).resultCredentialRecovery,{connectionRevision:3,recoveredAt:new Date().toISOString()});
+});
+
+test('Q17-C an original account task lookup 404 pauses without trying the replacement key',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{persistent:true}),job=await f.submit();
+ await f.tick();await f.stop();
+ const submitted=f.job(job.id);
+ await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
+ f.reply(()=>new Response('synthetic missing-task detail',{status:404}));
+ await f.tick();
+ const paused=f.job(job.id);
+ await desktopTaskDiagnostic(f,paused,'VIDEO_TASK_NOT_FOUND','user_action');
+ assert.equal(paused.status,'running');
+ assert.equal(paused.phase,'connection_required');
+ assert.equal(paused.providerJobId,submitted.providerJobId);
+ assert.deepEqual(paused.snapshot,submitted.snapshot);
+ assert.equal(paused.resultCredentialRecovery,undefined);
+ assert.deepEqual(f.calls.map(({init})=>[init.method,new Headers(init.headers).get('Authorization')]),[
+  ['POST','Bearer original-synthetic-key'],['GET','Bearer original-synthetic-key'],
+ ]);
+ t.mock.timers.setTime(Date.now()+600_000);
+ await f.tick();await f.restart();await f.tick();
+ assert.equal(f.calls.length,2);
+});
+
+for(const status of [401,403])test(`Q17-C replacement account HTTP ${status} pauses without automatic credential requests`,async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{persistent:true}),job=await f.submit();
+ await f.tick();await f.stop();
+ const submitted=f.job(job.id);
+ await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
+ f.reply((_url,init)=>new Response('synthetic denied detail',{
+  status:new Headers(init.headers).get('Authorization')==='Bearer original-synthetic-key'?(status===401?403:401):status,
+ }));
+ await f.tick();
+ const paused=f.job(job.id);
+ await desktopTaskDiagnostic(f,paused,'VIDEO_REPLACEMENT_NOT_AUTHORIZED','user_action');
+ assert.doesNotMatch(JSON.stringify(paused.error),/synthetic denied detail|replacement-synthetic-key/);
+ assert.equal(paused.status,'running');
+ assert.equal(paused.phase,'connection_required');
+ assert.equal(paused.providerJobId,submitted.providerJobId);
+ assert.equal(paused.submissionCount,1);
+ assert.deepEqual(paused.snapshot,submitted.snapshot);
+ assert.equal(paused.resultCredentialRecovery,undefined);
+ t.mock.timers.setTime(Date.now()+600_000);
+ await f.tick();await f.restart();await f.tick();
+ assert.deepEqual(f.calls.map(({init})=>[init.method,new Headers(init.headers).get('Authorization')]),[
+  ['POST','Bearer original-synthetic-key'],['GET','Bearer original-synthetic-key'],['GET','Bearer replacement-synthetic-key'],
+ ]);
+});
+
+test('Q17-C a confirmed rejection sticks across polling and restart and audits only successful result recovery',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const {f,submitted,assertPublished}=await desktopPaidTask(t);
+ const output=await readFile(path.join(f.root,'minimax-output.mp4')),outputUrl='https://output.example/recovered.mp4';
+ let completed=false;
+ f.reply((url,init)=>{
+  const authorization=new Headers(init.headers).get('Authorization');
+  assert.equal(init.method,'GET');
+  if(url===outputUrl){assert.equal(authorization,null);return new Response(output);}
+  assert.match(url,/\/query\/video_generation\/original-task$/);
+  if(authorization==='Bearer original-synthetic-key')return new Response('{}',{status:401});
+  assert.equal(authorization,'Bearer replacement-synthetic-key');
+  return json({task:{id:'original-task',...(completed?{status:'succeeded',content:{url:outputUrl}}:{status:'running'})}});
+ });
+ await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
+ await f.tick();
+ const running=f.job(submitted.id);
+ assert.equal(running.phase,'polling');
+ assert.equal(running.resultCredentialRecovery,undefined);
+ t.mock.timers.setTime(Number(running.nextPollAt));
+ await f.tick();
+ const polled=f.job(submitted.id);
+ assert.equal(polled.phase,'polling');
+ assert.equal(polled.resultCredentialRecovery,undefined);
+ await f.restart();
+ completed=true;
+ t.mock.timers.setTime(Number(polled.nextPollAt));
+ await f.tick();await f.stop();
  assertPublished(4);
+ assert.deepEqual(f.calls.map(({init})=>[init.method,new Headers(init.headers).get('Authorization')]),[
+  ['POST','Bearer original-synthetic-key'],['GET','Bearer original-synthetic-key'],
+  ['GET','Bearer replacement-synthetic-key'],['GET','Bearer replacement-synthetic-key'],
+  ['GET','Bearer replacement-synthetic-key'],['GET',null],
+ ]);
+ const marker={connectionRevision:2,recoveredAt:new Date().toISOString()};
+ const result=f.job(submitted.id);
+ const publicResult=await f.services.call('job.get',{jobId:submitted.id}) as JobRecord;
+ const project=await f.services.call('project.get',{projectId:f.projectId}) as {jobs:JobRecord[]};
+ assert.deepEqual(result.resultCredentialRecovery,marker);
+ assert.deepEqual(publicResult.resultCredentialRecovery,marker);
+ assert.deepEqual(project.jobs.find(job=>job.id===submitted.id)?.resultCredentialRecovery,marker);
+ assert.equal(Object.hasOwn(publicResult,'originalResultCredentialRejected'),false);
+ assert.doesNotMatch(JSON.stringify(publicResult.resultCredentialRecovery),/synthetic-key|credentialRef|encrypted/);
 });
 
 test('Q17-C an address change cannot send a replacement key to either service for a frozen task',async t=>{
@@ -747,6 +844,39 @@ test('Kling external task reconciliation binds the existing task without a repla
  await f.live(false);
  f.reply((url,init)=>{assert.equal(init.method,'GET');assert.ok(url.includes('external_task_ids='));return json({code:0,data:[{id:'recovered-kling-task',external_id:job.requestId,status:'processing',outputs:[]}]});});
  f.ready(job.id);await f.tick();assert.equal(f.job(job.id).providerJobId,'recovered-kling-task');assert.equal(f.job(job.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+});
+
+test('Q17-C a fresh Kling receipt tolerates an empty task list within one minute',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{providerId:'kling',persistent:true}),job=await f.submit();
+ f.reply((url,init)=>{
+  if(init.method==='POST')return json({code:0,data:{id:'recent-kling-task',status:'submitted'}});
+  assert.equal(init.method,'GET');
+  assert.equal(url,'https://api-singapore.klingai.com/tasks?task_ids=recent-kling-task');
+  return json({code:0,data:[]});
+ });
+ const acceptedAt=Date.now();
+ await f.tick();await f.stop();
+ const accepted=f.job(job.id);
+ assert.equal(accepted.providerAcceptedAt,new Date(acceptedAt).toISOString());
+ assert.equal(accepted.providerJobId,'recent-kling-task');
+ const publicJob=await f.services.call('job.get',{jobId:job.id}) as JobRecord;
+ assert.equal(Object.hasOwn(publicJob,'providerAcceptedAt'),false);
+ t.mock.timers.setTime(acceptedAt+59_999);
+ await f.tick();await f.stop();
+ const pending=f.job(job.id);
+ assert.equal(pending.status,'running');assert.equal(pending.phase,'polling');assert.equal(pending.error,null);
+ assert.equal(f.calls.length,2);
+ await f.restart();
+ t.mock.timers.setTime(Number(pending.nextPollAt));
+ await f.tick();
+ const paused=f.job(job.id);
+ await desktopTaskDiagnostic(f,paused,'VIDEO_TASK_NOT_FOUND','user_action');
+ assert.equal(paused.phase,'connection_required');
+ assert.equal(paused.providerJobId,accepted.providerJobId);
+ assert.equal(paused.providerAcceptedAt,accepted.providerAcceptedAt);
+ assert.deepEqual(paused.snapshot,accepted.snapshot);
+ assert.deepEqual(f.calls.map(({init})=>init.method),['POST','GET','GET']);
 });
 
 test('old environment generations do not acquire a newly configured UI connection',async t=>{

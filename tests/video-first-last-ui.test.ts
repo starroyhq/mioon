@@ -238,6 +238,31 @@ test('regeneration does not cancel an older task before review or submit across 
   }
 });
 
+test('a shot without a generation service offers settings and cannot generate', async () => {
+  const opened: string[] = [];
+  const h = harness({providers: [], generationOptions: {}, configureGeneration: () => {opened.push('models');}});
+  assert.match(text(h.find('video-generation-no-service')), /请先在设置里配置并启用/u);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  await h.click('generate-shot');
+  assert.deepEqual(h.generated, []);
+  await h.click('video-generation-configure');
+  assert.deepEqual(opened, ['models']);
+});
+
+test('a paused unsubmitted task can be cancelled while generation settings are unavailable', async () => {
+  const opened: string[] = [];
+  const job: ReplacementJob = {id:id(93),shotId,projectId,status:'queued',phase:'connection_required',providerJobId:null,submissionCount:0,
+    error:{code:'VIDEO_CREDENTIAL_INVALID',diagnostic:{kind:'video_credential',cause:'VIDEO_CREDENTIAL_INVALID',recovery:'user_action'}}};
+  const h = harness({providers:[],generationOptions:{},jobs:[job],configureGeneration:()=>{opened.push('models');},
+    onCancelJob:()=>{},onRegenerate:()=>assert.fail('No paid generation service was configured')});
+  assert.match(h.text(), /这次还没提交，没有扣费/);
+  assert.equal(h.find('cancel-generation')!.props.disabled, false);
+  assert.equal(h.find('regenerate-unsubmitted-video')!.props.disabled, true);
+  await h.click('video-generation-configure');
+  assert.deepEqual(opened, ['models']);
+  h.unmount();
+});
+
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {
   for (const dirty of [false, true]) {
     const f = configuredConnectionFixture(), h = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options });

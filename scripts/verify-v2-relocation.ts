@@ -1,4 +1,5 @@
 /** Verify a copied sample against this or a clean-installed checkout. */
+import {toolingEnvironment} from './lib/local-tooling.ts';
 import {spawn} from 'node:child_process';import {once} from 'node:events';import {mkdtemp,cp,readFile,writeFile,mkdir,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';import net from 'node:net';import {randomUUID,createHash} from 'node:crypto';import {fileURLToPath} from 'node:url';
 interface RpcEnvelope<T> {readonly ok: boolean; readonly data: T; readonly error?: unknown}
 interface Project {readonly id: string; readonly name: string}
@@ -9,7 +10,7 @@ interface RenderJob {readonly id: string; readonly status: string; readonly url?
 const original=fileURLToPath(new URL('..',import.meta.url)),repo=path.resolve(process.argv[2]||original),folder=await mkdtemp(path.join(tmpdir(),'workbench-v2-relocation-')),data=path.join(folder,'data');
 await cp(path.join(repo,'examples/multitrack-project'),data,{recursive:true});
 const s=net.createServer();s.listen(0,'127.0.0.1');await once(s,'listening');const port=(s.address() as net.AddressInfo).port;await new Promise(r=>s.close(r));const base=`http://127.0.0.1:${port}`,token='relocation-local-'+randomUUID();
-const backend=spawn(process.execPath,['server/index.ts'],{cwd:repo,env:{...process.env,PORT:String(port),MIOON_DATA_DIR:data,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAYML_API_SECRET:'',RUNWAY_MAX_GENERATIONS:'0'},stdio:['ignore','pipe','pipe']});let log='';backend.stdout.on('data',(b: Buffer)=>log+=b);backend.stderr.on('data',(b: Buffer)=>log+=b);const pause=(ms: number)=>new Promise(r=>setTimeout(r,ms));
+const backend=spawn(process.execPath,['server/index.ts'],{cwd:repo,env:{...toolingEnvironment(process.env,{mediaPaths:true}),PORT:String(port),MIOON_DATA_DIR:data,MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});let log='';backend.stdout.on('data',(b: Buffer)=>log+=b);backend.stderr.on('data',(b: Buffer)=>log+=b);const pause=(ms: number)=>new Promise(r=>setTimeout(r,ms));
 const rpc=async <T>(operation: string,input: unknown={}): Promise<T>=>{const r=await fetch(base+'/api/rpc',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({operation,input})});const b=await r.json() as RpcEnvelope<T>;if(!b.ok)throw Error(JSON.stringify(b));return b.data;};
 const bytes=async (url: string): Promise<Buffer>=>{const r=await fetch(base+url,{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw Error('Media unavailable '+r.status);return Buffer.from(await r.arrayBuffer());};const sha=(buf: Buffer)=>createHash('sha256').update(buf).digest('hex');
 try{

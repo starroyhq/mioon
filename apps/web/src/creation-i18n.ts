@@ -5,7 +5,7 @@ export function creationParameter(value: unknown): string | number {
 
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import { videoCredentialDiagnosticSchema } from '@mioon/contracts/video-credential-diagnostic';
+import { videoCredentialDiagnosticSchema, videoResultCredentialRecoverySchema } from '@mioon/contracts/video-credential-diagnostic';
 /** Known backend statuses are display-mapped, never rewritten in saved jobs. */
 export function statusDescriptor(status: unknown): DisplayMessage {
   switch (status) {
@@ -25,6 +25,11 @@ export function statusDescriptor(status: unknown): DisplayMessage {
 }
 type JobDisplay = { phase?: unknown; status?: unknown; error?: unknown; providerJobId?: unknown; submissionCount?: unknown };
 
+export function videoResultCredentialRecovery(value: unknown) {
+  const audit = videoResultCredentialRecoverySchema.safeParse(value);
+  return audit.success ? audit.data : null;
+}
+
 const videoConnectionDetails = {
   VIDEO_SETTINGS_CONFLICT: 'tasks.error.videoSettingsBusy',
   VIDEO_SETTINGS_CLOSED: 'tasks.error.videoSettingsRestarting',
@@ -37,7 +42,9 @@ const videoConnectionDetails = {
   VIDEO_BINDING_INVALID: 'tasks.error.videoBindingInvalid',
   VIDEO_CREDENTIAL_UNAVAILABLE: 'tasks.error.videoCredentialUnavailable',
   VIDEO_CREDENTIAL_INVALID: 'tasks.error.videoCredentialInvalid',
+  VIDEO_TASK_NOT_FOUND: 'tasks.error.videoProviderCannotFindTask',
   VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT: 'tasks.error.videoReplacementCannotFindTask',
+  VIDEO_REPLACEMENT_NOT_AUTHORIZED: 'tasks.error.videoReplacementNotAuthorized',
 } as const;
 
 export function unsubmittedVideoConnection(job: JobDisplay | null | undefined): boolean {
@@ -67,7 +74,7 @@ export function videoJobConnection(job: JobDisplay | null | undefined) {
       case 'VIDEO_SETTINGS_DELETED':
         result = message('tasks.error.videoResultAtProvider');
         break;
-      case 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT': // The detail already gives the two recovery paths.
+      case 'VIDEO_TASK_NOT_FOUND': case 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT': case 'VIDEO_REPLACEMENT_NOT_AUTHORIZED':
         break;
       default:
         result = message('tasks.error.videoOriginalTaskRetained');

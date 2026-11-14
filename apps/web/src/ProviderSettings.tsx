@@ -56,7 +56,7 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
           <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="provider-details-toggle" data-testid="provider-details-toggle"><span>{t('generation.provider.viewInstructions')}</span><Icon name="down" size={13} /></CollapsibleTrigger>
           <CollapsibleContent className="provider-details-content" data-testid="provider-details-content">
             <p>{t('generation.provider.verifyBeforeEnabling')}</p>
-            {prefix ? <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.enableInstruction')}</li><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider?.id ?? '') && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider?.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}<li>{t('generation.provider.approvalInstruction')}</li></ul> : <p>{t('generation.provider.unknownInstructions')}</p>}
+            {prefix ? <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider?.id ?? '') && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider?.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}<li>{t('generation.provider.approvalInstruction')}</li></ul> : <p>{t('generation.provider.unknownInstructions')}</p>}
           </CollapsibleContent>
         </Collapsible>
       </>}
@@ -67,6 +67,7 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
     <div className="section-heading"><span>{t('generation.provider.heading')}</span><Icon name="bolt" size={15} /></div>
     <Label className="sr-only" htmlFor="provider">{t('generation.provider.provider')}</Label>
     <WorkbenchSelect id="provider" data-testid="provider-select" value={generationProviderIdentity(provider)} renderOption={option => <span className="provider-brand-label"><ProviderBrandIcon providerId={available.find(item => generationProviderIdentity(item) === option.value)?.id} /><span>{option.label}</span></span>} onChange={e => { const next = available.find(item => generationProviderIdentity(item) === e.target.value); if (next) onChange({ providerId: next.id, connectionId: next.connectionId, modelEntryId: undefined, model: '', inputMode: undefined, parameters: undefined }); }}>
+      {!provider && <option value="" disabled>{t('shell.node.chooseProvider')}</option>}
       {available.map(item => <option key={generationProviderIdentity(item)} value={generationProviderIdentity(item)}>{providerDisplayName(item, t)} · {renderMessage(providerStatusDescriptor(item))}{item.mock ? ` · ${t('generation.provider.localSimulation')}` : item.connectionId ? ` · ${item.providerRegion || ''}` : ` · ${t('video.providers.environment')}`}</option>)}
     </WorkbenchSelect>
     <Label className="field-label" htmlFor="model">{t('generation.provider.model')}</Label>

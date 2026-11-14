@@ -86,10 +86,10 @@ try {
     for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) assert.equal(wire[FuseV1Options[name]], 48);
     for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) assert.equal(wire[FuseV1Options[name]], 49);
     record('packaged-identity-and-security-fuses', { channel, appId: identity.appId });
-    const env: NodeJS.ProcessEnv = { ...process.env, HOME:qaHome, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME:path.join(directory,'cache'), MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe', MIOON_ENABLE_LIVE_PROVIDER: '0',
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME:qaHome, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME:path.join(directory,'cache'), MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe',
       // Deliberately conflicting runtime values must not change the embedded channel.
       NODE_ENV: channel === 'production' ? 'development' : 'production', MIOON_DESKTOP_CHANNEL: channel === 'production' ? 'development' : 'production' };
-    for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MIOON_DESKTOP_USER_DATA', 'MIOON_DESKTOP_SMOKE_OUTPUT', ...providerEnvironmentKeys.filter(key => key !== 'MIOON_ENABLE_LIVE_PROVIDER')]) delete env[key];
+    for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MIOON_DESKTOP_USER_DATA', 'MIOON_DESKTOP_SMOKE_OUTPUT', ...providerEnvironmentKeys]) delete env[key];
     const child = launch(binary, env), userData = path.join(configHome, identity.appId), descriptorFile = path.join(userData, 'mcp-connection.json');
     const descriptor = await waitFor<Discovery>(async () => {
       if (child.exitCode !== null || child.signalCode) throw new Error(`App exited: ${child.log}`);

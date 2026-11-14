@@ -68,7 +68,7 @@ test('workspace settings agree across public transports; retired workspace entri
   const enabled = (await cli('workspace.settings.set', {expectedRevision: initial.revision, liveGeneration: true})).data as {revision: number; liveGeneration: boolean};
   assert.equal(enabled.liveGeneration, true);
   const disabled = (await mcp('workspace.settings.set', {expectedRevision: enabled.revision, liveGeneration: false})).data as {liveGeneration: boolean};
-  assert.equal(disabled.liveGeneration, false);
+  assert.equal(disabled.liveGeneration, true, 'an old client cannot turn generation off');
   const project = await rpc('project.create', {name: 'Backup transport project'}) as {id: string};
   assert.equal((await rpc('project.list') as {id: string}[])[0]!.id, project.id);
   await client.close(); await server.close();

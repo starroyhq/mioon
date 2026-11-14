@@ -72,7 +72,7 @@ function harness(operations: readonly string[]|undefined = contracts.DURABLE_EDI
   }
   const Component = load('TaskCenter.tsx').default;
   const callbacks = Object.fromEntries(['run', 'retryGeneration', 'onInspectJob', 'onRecover', 'onReload', 'onAdopt'].map(name => [name, (...args:unknown[]) => calls.push([name, ...args])]));
-  const defaults = { captureView: () => () => h.current, taskViewScope: 'original-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, context: () => 'original-context', isCurrent: () => true, confirm: async () => true, ...callbacks };
+  const defaults = { mockGenerationAvailable: true, captureView: () => () => h.current, taskViewScope: 'original-task-view', activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, context: () => 'original-context', isCurrent: () => true, confirm: async () => true, ...callbacks };
   return Object.assign(h, { calls, disclosureProps, render(patch?: { [s: string]: unknown; }|ArrayLike<unknown>|undefined) {
     cursor = 0; layouts = []; const tree = Component({ ...defaults, ...patch } as unknown as Parameters<typeof Component>[0]);
     for (const index of layouts) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback!(); }

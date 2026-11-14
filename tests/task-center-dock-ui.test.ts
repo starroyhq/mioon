@@ -28,7 +28,7 @@ const job = (n: number, status: string) => ({ id: id(n), shotId: id(50), provide
 const defer = () => { let resolve!: (value: boolean) => void; const promise = new Promise<boolean>(done => { resolve = done; }); return { promise, resolve }; };
 const find = (tree: RootTree, testId: string) => nodes(tree).find(node => node.props['data-testid'] === testId);
 const button = (tree: RootTree, label: string) => nodes(tree).find((node: RootNode) => node.type === 'Button' && text(node) === label);
-const defaults = () => ({ activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] } });
+const defaults = () => ({ mockGenerationAvailable: true, activeCount: 0, pending: [], busy: {}, jobs: [], data: { shots: [], assets: [], jobs: [] }, reconcileIds: {}, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] } });
 
 let rendered: Record<string, string>;
 before(() => {
@@ -190,6 +190,19 @@ test('task list selects one full detail, prioritizes unknown outcomes and preser
   assert.deepEqual((h.calls as unknown), []);
 });
 
+test('stable task history retains Mock jobs but offers retry only for a real provider', () => {
+  const h = harness(), simulated = job(10, 'failed'), paid = {...job(11, 'failed'), providerId: 'ark'};
+  const props = {mockGenerationAvailable: false, jobs: [simulated, paid]};
+  const history = h.render({...props, selectedTaskId: simulated.id});
+  assert.ok(find(history, `job-${simulated.id}`));
+  assert.equal(find(history, `retry-job-${simulated.id}`), undefined);
+  assert.equal(h.calls.length, 0);
+  const real = h.render({...props, selectedTaskId: paid.id});
+  find(real, `retry-job-${paid.id}`)!.props.onClick();
+  assert.equal(h.calls.length, 1);
+  assert.deepEqual(h.calls[0]!.slice(0, 2), ['retryGeneration', paid]);
+});
+
 test('task center distinguishes automatic video credential recovery, action required, and legacy records in four languages', async () => {
   const accepted = { ...job(12, 'running'), providerId: 'minimax', providerJobId: 'original-provider-task', progress: 0 };
   const legacyError = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', retryable: true};
@@ -200,7 +213,9 @@ test('task center distinguishes automatic video credential recovery, action requ
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoRecoverWithOriginalAccount'},
     {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_INVALID', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialInvalid', result: 'tasks.error.videoRecoverWithOriginalAccount'},
     {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_UNAVAILABLE', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialUnavailable', result: 'tasks.error.videoRecoverWithOriginalAccount'},
+    {phase: 'connection_required', cause: 'VIDEO_TASK_NOT_FOUND', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoProviderCannotFindTask', result: null},
     {phase: 'connection_required', cause: 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoReplacementCannotFindTask', result: null},
+    {phase: 'connection_required', cause: 'VIDEO_REPLACEMENT_NOT_AUTHORIZED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoReplacementNotAuthorized', result: null},
     {phase: 'connection_required', cause: undefined, recovery: undefined, status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoConnectionUnclassified', result: 'tasks.error.videoOriginalTaskRetained'},
   ] as const;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
@@ -232,6 +247,31 @@ test('task center distinguishes automatic video credential recovery, action requ
     assert.deepEqual(h.calls, [['run', `reconcile:${accepted.id}`, 'job.reconcile', {jobId: accepted.id}, message('tasks.center.videoConnectionCheckScheduled')]]);
     const queued = h.render({jobs: [{...accepted, status: 'queued', providerJobId: null, phase: 'connection_retrying', error}]});
     assert.equal(find(queued, `retry-video-connection-${accepted.id}`), undefined);
+    h.unmount();
+  }
+});
+
+test('task details show only the validated replacement credential recovery audit in each language', async () => {
+  const resultCredentialRecovery = {connectionRevision: 3, recoveredAt: stamp};
+  const completed = {...job(12, 'succeeded'), providerId: 'minimax', providerJobId: 'original-provider-task'};
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const h = harness(locale), {t, formatDate, formatNumber} = createI18nTestContext(locale);
+    const tree = h.render({jobs: [{...completed, resultCredentialRecovery}]});
+    const card = find(tree, `job-${completed.id}`);
+    const details = nodes(card).find(node => node.type === 'details');
+    const audit = find(details, 'video-credential-recovery-audit');
+    assert.equal(text(audit), t('tasks.center.videoCredentialRecoveryAudit', {
+      revision: formatNumber(3), time: formatDate(stamp, {dateStyle: 'medium', timeStyle: 'medium'}),
+    }));
+    for (const value of [
+      undefined, {...resultCredentialRecovery, recoveredAt: 'UNTRUSTED_PRIVATE_MESSAGE'},
+      {...resultCredentialRecovery, connectionRevision: 0}, {...resultCredentialRecovery, credentialRef: 'UNTRUSTED_PRIVATE_MESSAGE'},
+    ]) {
+      const malformed = h.render({jobs: [{...completed, resultCredentialRecovery: value}]});
+      assert.equal(find(malformed, 'video-credential-recovery-audit'), undefined);
+      assert.doesNotMatch(text(malformed), /UNTRUSTED_PRIVATE_MESSAGE/);
+    }
+    assert.deepEqual(h.calls, []);
     h.unmount();
   }
 });

@@ -98,10 +98,12 @@ export interface SubjectVariantDialogProps {
   blocked: boolean;
   notice?: DisplayMessage | null;
   onClose: () => void;
+  mockAvailable?: boolean;
+  onConfigureGeneration?: (() => unknown) | undefined;
 }
 // 09-10b / 09-10b-1 / 09-10d: one batch is either up to eight camera positions or
 // one lighting change, edited from one source version and confirmed once.
-export default function SubjectVariantDialog({ subject, versions, initialSourceId, assets, controller, blocked, notice = null, onClose }: SubjectVariantDialogProps): ReactElement {
+export default function SubjectVariantDialog({ subject, versions, initialSourceId, assets, controller, blocked, notice = null, onClose, mockAvailable = false, onConfigureGeneration }: SubjectVariantDialogProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
   const gate = useProjectMediaReadGate();
@@ -127,8 +129,8 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
     void imageTransparency(assetUrl(asset), abort.signal).then(transparent => { if (!cancelled) setOpacity({ key: opacityKey, transparent }); });
     return () => { cancelled = true; abort.abort(); };
   }, [opacityKey]);
-  const choices = models ?? subjectVariantModels(null);
-  const providerId: SubjectVariantProviderId = providerChoice ?? (choices.find(choice => choice.providerId === 'openai')?.available ? 'openai' : 'mock');
+  const choices = models ?? subjectVariantModels(null, mockAvailable);
+  const providerId = choices.find(choice => choice.providerId === providerChoice)?.providerId ?? choices.find(choice => choice.available)?.providerId ?? 'openai';
   const model = choices.find(choice => choice.providerId === providerId)!;
   const sourceIssue: SubjectVariantSourceIssue | null = subjectVariantSourceIssue(source, asset, providerId) ?? (opacityKey && opacity?.key === opacityKey && opacity.transparent ? 'transparent' : null);
   const checking = !mediaReadable || Boolean(opacityKey && opacity?.key !== opacityKey);
@@ -182,13 +184,16 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
           {sourceIssue ? <div className="subject-variant-source-issue" role="alert" data-testid="subject-variant-source-issue"><p><CircleAlert size={12} aria-hidden="true" />{t('subjects.variants.sourceUnusable')}</p><p>{t(issueKeys[sourceIssue])}</p></div>
             : <p className="subject-variant-source-check" data-testid="subject-variant-source-check">{checking ? t('subjects.variants.sourceChecking') : <><CircleCheck size={12} aria-hidden="true" />{formatLabel(source.mimeType)} · {source.width}×{source.height} · {t('subjects.variants.sourceUsable')}</>}</p>}
           <Label htmlFor="subject-variant-model">{t('subjects.variants.model')}</Label>
-          <WorkbenchSelect id="subject-variant-model" data-testid="subject-variant-model" value={providerId} disabled={submitting} onChange={event => { if (['mock', 'openai'].includes(event.target.value)) setProviderChoice(event.target.value as SubjectVariantProviderId); }}>
+          <WorkbenchSelect id="subject-variant-model" data-testid="subject-variant-model" value={providerId} disabled={submitting} onChange={event => { const choice = choices.find(item => item.providerId === event.target.value && item.available); if (choice) setProviderChoice(choice.providerId); }}>
             <option value="openai" disabled={!choices.find(choice => choice.providerId === 'openai')?.available}>{t('subjects.variants.modelOpenAI')}</option>
-            <option value="mock">{t('subjects.variants.modelMock')}</option>
+            {choices.some(choice => choice.providerId === 'mock') && <option value="mock">{t('subjects.variants.modelMock')}</option>}
             <option value="openai-compatible" disabled>{t('subjects.variants.modelCompatible')}</option>
             <option value="comfy-local" disabled>{t('subjects.variants.modelComfy')}</option>
           </WorkbenchSelect>
-          {models && !choices.find(choice => choice.providerId === 'openai')?.available && <p className="subject-helper">{t('subjects.variants.modelOpenAIUnavailable')}</p>}
+          {models && !choices.some(choice => choice.available) && <div className="subject-helper" data-testid="subject-variant-no-service">
+            <p role="status">{t('generation.services.configureFirst')}</p>
+            {onConfigureGeneration && <Button type="button" variant="ghost" size="sm" data-testid="subject-variant-configure" onClick={onConfigureGeneration}>{t('generation.services.openSettings')}</Button>}
+          </div>}
         </aside>
         <section className="subject-variant-main">
           {tab === 'angle' ? <div className="subject-variant-angles" data-testid="subject-variant-angles">
@@ -236,7 +241,7 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
           <footer className="subject-variant-footer">
             <div className="subject-variant-summary">{sourceIssue ? <span>{t('subjects.variants.sourceRequired')}</span> : <><span>{t('subjects.variants.summary', { count: specs.length, name: subject.name })}</span>{sizeLabel && <small>{t('subjects.variants.sizeLine', { size: sizeLabel })}</small>}</>}</div>
             <div className="subject-variant-actions"><Button variant="ghost" size="sm" disabled={submitting} onClick={onClose}>{t('common.cancel')}</Button><Button size="sm" data-testid="subject-variant-generate" disabled={!ready} onClick={() => { void generate(); }}><Sparkles size={13} aria-hidden="true" />{tab === 'angle' ? t('subjects.variants.generate', { count: specs.length }) : t('subjects.variants.generateOne')}</Button></div>
-            <p className="subject-variant-cost">{model.paid ? t('subjects.variants.costPaid') : t('subjects.variants.costMock')}</p>
+            {model.available && <p className="subject-variant-cost">{model.paid ? t('subjects.variants.costPaid') : t('subjects.variants.costMock')}</p>}
             {notice && <p className="subject-warning" role="alert">{renderMessage(notice)}</p>}
           </footer>
         </section>

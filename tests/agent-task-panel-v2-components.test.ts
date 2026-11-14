@@ -273,7 +273,7 @@ test('an unknown paid step can be marked failed after checking the task center; 
   }finally{h.unmount();}
 });
 
-test('a paid video submission blocked by live generation can be marked failed without provider reconciliation',()=>{
+test('an archived paid video rejection can be marked failed without provider reconciliation',()=>{
   for(const [locale,notSubmitted] of [
     ['zh-Hans','请求未提交'],
     ['zh-Hant','請求未送出'],
@@ -303,12 +303,27 @@ test('a paid video submission blocked by live generation can be marked failed wi
       h.state.snapshot!.run.status='failed';
       h.render();
       const failure=renderedText(h.find(`agent-task-step-error-${stepId}`));
-      for(const key of ['redesign.settings.models','generation.services.general','redesign.settings.liveGeneration','generation.services.save'] as const){
-        assert.ok(failure.includes(translate(locale,key)),locale);
-      }
+      assert.ok(failure.includes(translate(locale,'agent.task.error.generationServiceUnavailable')),locale);
       assert.ok(!failure.includes('UNTRUSTED_DIAGNOSTIC'),locale);
     }finally{h.unmount();}
   }
+});
+
+test('a configuration denial only displays no charges when the receipt proves non-submission', () => {
+  const h = harness({status: 'failed'});
+  try {
+    const step = h.state.snapshot!.steps[0]!;
+    step.error = {code: 'GENERATION_SERVICE_UNAVAILABLE', message: 'synthetic'};
+    const receipt = {code: step.error.code, mutationOutcome: 'not_applied', submitted: false, generationCharged: false};
+    step.result = {error: receipt};
+    h.render();
+    assert.match(renderedText(h.find(`agent-task-generation-unsubmitted-${stepId}`)), /未提交.*未产生费用/u);
+    h.find(`agent-task-error-settings-${stepId}`)!.props.onClick();
+    assert.deepEqual(h.calls, [['settings', 'models']]);
+    step.result = {error: {...receipt, submitted: true}};
+    h.render();
+    assert.equal(h.find(`agent-task-generation-unsubmitted-${stepId}`), undefined);
+  } finally {h.unmount();}
 });
 
 test('recovery still requests reconciliation for a different error, cost evidence, or a wait step',()=>{
@@ -483,7 +498,7 @@ test('Mio explains each execution safeguard and offers an ordinary resume after 
 });
 
 test('failure settings links route by stable error code and unknown diagnostics add no misleading destination',()=>{
-  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['AGENT_SETTINGS_CONFLICT','agent'],['PROVIDER_DISABLED','models'],['LIVE_GENERATION_DISABLED','models'],['PREFLIGHT_STALE',undefined],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]] as const){
+  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['AGENT_SETTINGS_CONFLICT','agent'],['PROVIDER_DISABLED','models'],['LIVE_GENERATION_DISABLED','models'],['GENERATION_SERVICE_UNAVAILABLE','models'],['PREFLIGHT_STALE',undefined],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]] as const){
     const h=harness({status:'failed'});try{h.state.snapshot!.steps[0].error={code,message:'UNTRUSTED_DIAGNOSTIC'};h.render();const link=h.find(`agent-task-error-settings-${stepId}`);if(page){assert.ok(link);link.props.onClick();assert.deepEqual(h.calls,[['settings',page]]);}else assert.equal(link,undefined);}finally{h.unmount();}
   }
 });

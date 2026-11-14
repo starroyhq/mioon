@@ -7,7 +7,7 @@ import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/bu
 import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
-import {listAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
+import {listAgentTaskToolsForChannel} from '@mioon/business/agent/task-tools-v2';
 import {createApplicationPolicy} from '@mioon/business/agent/application-policy-v2';
 import {openAppLibrary, isAppLibraryHeld, projectFileIdentity} from '@mioon/business/app-db/index';
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
@@ -308,11 +308,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
-      imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, mockAllowed: channel !== 'production'}).list(),
+      imageProfiles: input => listImageProfiles({...app.profileDependencies, mockAllowed: channel !== 'production'}, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
-    const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: {list: listAgentTaskTools},
+    const appDiagnostics = createAgentDiagnosticsHttp({settings: app.agentSettings, authorizations: app.authorizations, tools: {list: () => listAgentTaskToolsForChannel(channel !== 'production')},
       policy: policy.policy, selfPort: listeningPort, hasProject: id => appLibrary.registry.get(id) !== null});
     const hosts = new Set<string>(), origins = new Set<string>();
     const authenticated = (req: IncomingMessage): boolean => {
@@ -493,5 +493,3 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     library?.close(); lock.release(); throw error;
   }
 }
-
-function createProjectServiceEnvironment(library: NonNullable<ReturnType<typeof openAppLibrary>>) { return createProjectServiceApplication(library).configuration.environment(); }

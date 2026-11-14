@@ -9,6 +9,7 @@ import {Readable} from 'node:stream';
 import type {RequestOptions} from 'node:https';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createCustomImageSettingsV2} from '../packages/business/src/images/custom-settings-v2.ts';
 import {createCompatibleImageGatewayV2} from '../packages/business/src/images/gateway.ts';
@@ -80,7 +81,6 @@ async function fixture(t: test.TestContext, {withB = true, autoRun = true, bound
   const net = network(await realPng(), barrier), gateway = createCompatibleImageGatewayV2({settings: guardedSettings, lookup: net.lookup, httpsRequest: net.httpsRequest});
   const services = createServices(store, new Map(), {env: {}, imageOptions: {autoRun, customSettingsV2: settings, customGateway: gateway}});
   t.after(async () => {barrier.release.resolve(); await services.drain(); await settings.close(); store.close(); await rm(root, {recursive: true, force: true});});
-  await services.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   await services.call('project.create', {name: 'Explicit image service reviews'});
   const projectId = store.projectId, a = randomUUID(), b = randomUUID();
   const item = (id: string): CustomImageConnectionV2 => {const found = settings.readCurrent().connections.find(entry => entry.connectionId === id); assert.ok(found); return found;};
@@ -126,7 +126,14 @@ function assertFrozen(f: Awaited<ReturnType<typeof fixture>>, review: Awaited<Re
 }
 
 test('explicit A keeps its own frozen review and paid key after adding and editing same-model B', async t => {
-  const f = await fixture(t, {withB: false}), input = f.input(), review = await f.prepare(f.a, input, 1, 'ja'); assertFrozen(f, review, input);
+  const f = await fixture(t, {withB: false}), input = f.input();
+  const library=testProjectAppLibrary(f.store);assert.ok(library);
+  library.documents.write('workspace-settings-v1.json', JSON.stringify({formatVersion:1, revision:4, liveGeneration:false}));
+  assert.equal(f.services.generationAvailability.image(input.providerId,input.model),true);
+  await assert.rejects(f.services.call('image.generate',input),{code:'IMAGE_REVIEW_REQUIRED'});
+  assert.equal(f.net.lookups,0);assert.equal(f.net.posts.length,0);
+  const review = await f.prepare(f.a, input, 1, 'ja'); assertFrozen(f, review, input);
+  assert.equal(f.net.lookups,0);assert.equal(f.net.posts.length,0);
   assert.deepEqual(await f.prepare(f.a, input, 1, 'en'), review);
   const stored = String(f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent);
   await f.add(f.b, KEY_B); assert.equal(f.item(f.a).configurationRevision, f.item(f.b).configurationRevision);
@@ -139,6 +146,7 @@ test('explicit A keeps its own frozen review and paid key after adding and editi
   assert.deepEqual(f.acquisitions, [{connectionId: f.a, configurationRevision: 1, configuration: configuration()}]);
   assert.equal(String(f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent), stored);
   assert.equal((await f.readReview(review.id)).postAttempts, 1);
+  assert.deepEqual(JSON.parse(library.documents.read('workspace-settings-v1.json')!), {formatVersion:1, revision:4, liveGeneration:false});
 });
 
 test('the second of two identical services dispatches its explicitly selected key through the complete review lifecycle', async t => {

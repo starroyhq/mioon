@@ -72,7 +72,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   const removeVersionCapture = installProjectVersionCapture(store, {assertMutationAllowed: assertVersionWrite});
   try {
     project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
-      baseRoot: library.dataDir, application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
+      application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
       agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});
   } catch (error) {
