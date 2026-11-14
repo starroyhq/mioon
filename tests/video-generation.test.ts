@@ -39,15 +39,20 @@ function codec(){
  return {encrypt(value:string){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(value),cipher.final(),cipher.getAuthTag()]).toString('base64');},decrypt(value:string){const bytes=Buffer.from(value,'base64'),cipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));cipher.setAuthTag(bytes.subarray(-16));return Buffer.concat([cipher.update(bytes.subarray(12,-16)),cipher.final()]).toString();}};
 }
 function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
- const gates:Array<{entered:()=>void;available:Promise<boolean>}>=[];
+ const gates:Array<{entered:()=>void;released:Promise<void>}>=[];
  const openMain=()=>createDesktopVideoSecretCodec({
    appId:desktopIdentity.identityForChannel('production').appId,platform:'darwin',timeout:150,
    safeStorage:{
     encryptString(){assert.fail('Desktop macOS used synchronous encryption');},
     decryptString(){assert.fail('Desktop macOS used synchronous decryption');},
-    async isAsyncEncryptionAvailable(){const gate=gates.shift();gate?.entered();return gate?gate.available:true;},
+    async isAsyncEncryptionAvailable(){return true;},
     async encryptStringAsync(value){return Buffer.from(secretCodec.encrypt(value),'base64');},
-    async decryptStringAsync(value){return {result:secretCodec.decrypt(value.toString('base64')),shouldReEncrypt:false};}
+    async decryptStringAsync(value){
+     const result=secretCodec.decrypt(value.toString('base64'));
+     const gate=result.startsWith('{')?gates.shift():undefined;
+     if(gate){gate.entered();await gate.released;}
+     return {result,shouldReEncrypt:false};
+    }
    }
  });
  let videoSecretCodec=openMain();
@@ -57,10 +62,10 @@ function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
   const client=createVideoSecretClient({port});
   return {client,close(){client.close();broker.close();}};
  }
- return {connect,reopenMain(){videoSecretCodec=openMain();},blockNextProbe(){
-  const entered=Promise.withResolvers<void>(),available=Promise.withResolvers<boolean>();
-  gates.push({entered:()=>entered.resolve(),available:available.promise});
-  return {entered:entered.promise,release:(result=true)=>available.resolve(result)};
+ return {connect,reopenMain(){videoSecretCodec=openMain();},blockNextDecrypt(){
+  const entered=Promise.withResolvers<void>(),released=Promise.withResolvers<void>();
+  gates.push({entered:()=>entered.resolve(),released:released.promise});
+  return {entered:entered.promise,release:()=>released.resolve()};
  }};
 }
 async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfigurationV2['providerId'],modelId='',desktop=false}={}){
@@ -76,11 +81,13 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
   return createVideoSettingsV2({directory,privateRoot:root,...(persistent?{secretCodec,storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null}}:{})});
  };
  let store=openStore(root),settings=await openSettings(),worker:ReturnType<typeof startWorker>|null=null;
+ let acquireOverride: typeof settings.acquire | undefined;
+ const settingsPort=()=>({...settings,acquire: (...args: Parameters<typeof settings.acquire>)=>(acquireOverride??settings.acquire)(...args)});
  const calls:Array<{url:string;init:RequestInit}>=[];
  let response:(url:string,init:RequestInit)=>Response|Promise<Response>=(url,init)=>{if(init.method==='POST')return json({task_id:'original-task'});return json({task:{id:'original-task',status:'running'}});};
  const videoFetch:typeof fetch=async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return response(request.url,request.init);};
  const registry=()=>createProviderRegistry({db:store.db,root,env:{}});
- let providers=registry(),services=createServices(store,providers,{videoSettings:settings,videoFetch,profileNow:frozenDate});
+ let providers=registry(),services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});
  const configuration:VideoConnectionConfigurationV2={id:randomUUID(),providerId,name:VIDEO_PROVIDER_NAMES[providerId],region:providerId==='ark'?'cn-beijing':providerId==='wan'?'cn-beijing':'global',workspaceId:'',enabled:true,outputHosts:['output.example'],models:defaultVideoModels(providerId)};
  if(modelId)configuration.models[0]!.modelId=modelId;
  const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:persistent?'persistent' as const:'session' as const});
@@ -90,13 +97,14 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  const input=()=>({shotId:String(shot.id),expectedRevision:Number(shot.revision),requestId:randomUUID(),providerId,model:configuration.models[0]!.modelId,connectionId:configuration.id,configurationRevision:1,modelEntryId:configuration.models[0]!.id});
  const f={root,configuration,secret,calls,shot,input,projectId:String(project.id),desktopVault,
   get store(){return store;},get settings(){return settings;},get services(){return services;},
+  overrideAcquire(value?: typeof settings.acquire){acquireOverride=value;},
   reply(fn:typeof response){response=fn;},
   job(id:string){return store.get('jobs',id) as JobRecord;},
   async submit(change:Record<string,unknown>={}){return await services.call('generation.submit',{...input(),...change}) as JobRecord;},
   async live(enabled:boolean){return services.call('workspace.settings.set',{expectedRevision:services.configuration.get().revision,liveGeneration:enabled});},
-  async tick(){worker??=startWorker(store,services,providers);await worker.tick();},
+  async tick(subscribeVideoStorageAvailable=desktopConnection?.client.subscribeStorageAvailable){worker??=startWorker(store,services,providers,{...(subscribeVideoStorageAvailable?{subscribeVideoStorageAvailable}:{})});await worker.tick();},
   async stop(){await worker?.stop();worker=null;},
-  async restart({reopenApp=false}={}){await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();if(reopenApp)desktopVault?.reopenMain();store=openStore(root);desktopConnection=desktopVault?.connect();settings=await openSettings();providers=registry();services=createServices(store,providers,{videoSettings:settings,videoFetch,profileNow:frozenDate});},
+  async restart({reopenApp=false}={}){await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();if(reopenApp)desktopVault?.reopenMain();store=openStore(root);desktopConnection=desktopVault?.connect();settings=await openSettings();providers=registry();services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});},
   ready(id:string){services.saveJob(f.job(id),{nextPollAt:0});},
  };
  t.after(async()=>{await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();await rm(root,{recursive:true,force:true});});
@@ -420,7 +428,7 @@ test('Q17 MiniMax treats a settings save during a Mio task query as temporary an
  // The provider captures Date.now at construction for its GET cache.
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
  const {f,submitted,assertIdentity,assertPublished,setReady}=await desktopPaidTask(t,{mio:true});
- const probe=f.desktopVault!.blockNextProbe();
+ const probe=f.desktopVault!.blockNextDecrypt();
  t.after(()=>probe.release());
  const pollStarted=Date.now();
  const poll=f.tick();
@@ -450,24 +458,108 @@ test('Q17 MiniMax treats a settings save during a Mio task query as temporary an
 
 test('Q17 MiniMax resumes the original query when macOS vault authorization completes after a timeout',async t=>{
  const {f,submitted,assertIdentity,assertPublished}=await desktopPaidTask(t);
- const probe=f.desktopVault!.blockNextProbe();
+ const probe=f.desktopVault!.blockNextDecrypt();
  t.after(()=>probe.release());
  const pollStarted=Date.now();
  await f.tick();
  await probe.entered;
  const waiting=f.job(submitted.id);
  assertIdentity();assert.equal(f.calls.length,1);
- probe.release();
  await desktopTaskDiagnostic(f,waiting,'VIDEO_SETTINGS_STORAGE_UNAVAILABLE','automatic');
  assert.equal(waiting.phase,'connection_retrying');
  assert.ok(Number(waiting.nextPollAt)>pollStarted);
- t.mock.timers.enable({apis:['Date'],now:Number(waiting.nextPollAt)});
- await f.tick();await f.stop();
+ const completed=Promise.withResolvers<void>();
+ const pending=setInterval(()=>{if(f.job(submitted.id).status==='succeeded')completed.resolve();},20);
+ const deadline=setTimeout(()=>completed.reject(Error('The original task was not woken before its scheduled retry')),3000);
+ probe.release();
+ try {await completed.promise;} finally {clearInterval(pending);clearTimeout(deadline);}
+ await f.stop();
+ assert.ok(Date.now()<Number(waiting.nextPollAt));
  assertPublished();
  const settings=await f.settings.get();
  assert.deepEqual(settings.storage,{persistentAvailable:true,reasonCode:null,sessionScope:'server'});
  assert.equal(settings.connections[0]!.secret.storage,'persistent');
  assert.doesNotMatch(JSON.stringify(settings),/original-synthetic-key|credentialRef|encrypted/);
+});
+
+test('Q17-B transient credential errors back off to five minutes and a manual check wakes the same paid task',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t),job=await f.submit();
+ await f.tick();
+ const submitted=f.job(job.id),snapshot=structuredClone(submitted.snapshot);
+ let attempts=0;
+ f.overrideAcquire(async()=>{attempts++;throw Object.assign(Error('synthetic settings conflict'),{code:'VIDEO_SETTINGS_CONFLICT'});});
+ for(const delay of [5_000,10_000,20_000,40_000,80_000,160_000,300_000,300_000]){
+  const before=attempts;
+  await f.tick();
+  const waiting=f.job(job.id);
+  assert.equal(waiting.phase,'connection_retrying');
+  assert.equal(waiting.nextPollAt,Date.now()+delay);
+  assert.equal(attempts,before+1);
+  t.mock.timers.setTime(Number(waiting.nextPollAt)-1);
+  await f.tick();
+  assert.equal(attempts,before+1);
+  t.mock.timers.setTime(Number(waiting.nextPollAt));
+ }
+ t.mock.timers.setTime(Date.now()-1);
+ f.overrideAcquire();
+ await assert.rejects(f.services.call('job.reconcile',{jobId:job.id,providerJobId:'different-task'}),{code:'TASK_ID_CONFLICT'});
+ await f.services.call('job.reconcile',{jobId:job.id});
+ await f.tick();
+ assert.deepEqual(f.calls.map(call=>call.init.method),['POST','GET']);
+ const resumed=f.job(job.id);
+ assert.equal(resumed.phase,'polling');assert.equal(resumed.error,null);
+ assert.equal(resumed.submissionCount,1);assert.equal(resumed.providerJobId,submitted.providerJobId);
+ assert.equal(resumed.requestId,submitted.requestId);assert.deepEqual(resumed.snapshot,snapshot);
+});
+
+for(const [cause,recovery] of [['VIDEO_CREDENTIAL_UNAVAILABLE','throw'],['VIDEO_CREDENTIAL_INVALID','return']] as const)
+test(`Q17-B ${recovery} from credential acquisition pauses queued work without a POST or background retry`,async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const f=await fixture(t,{persistent:true}),job=await f.submit(),snapshot=structuredClone(job.snapshot);
+ let attempts=0;
+ f.overrideAcquire(async()=>{
+  attempts++;
+  const claiming=f.job(job.id);
+  assert.equal(claiming.status,'submitting');
+  assert.equal(claiming.submissionCount,1);
+  if(recovery==='throw')throw Object.assign(Error('synthetic private detail'),{code:'UNRECOGNIZED_PRIVATE_CODE'});
+  return 'invalid key with spaces';
+ });
+ await f.tick();
+ const waiting=f.job(job.id);
+ await desktopTaskDiagnostic(f,waiting,cause,'user_action');
+ assert.equal(waiting.status,'queued');assert.equal(waiting.phase,'connection_required');
+ assert.equal(waiting.submissionCount,0);assert.equal(waiting.providerJobId,null);
+ assert.deepEqual(waiting.snapshot,snapshot);assert.equal(f.store.list('jobs').length,1);
+ t.mock.timers.setTime(Date.now()+600_000);
+ await f.tick();
+ assert.equal(attempts,1);assert.equal(f.calls.length,0);
+ await f.restart();await f.tick();
+ assert.equal(attempts,1);
+ assert.equal(f.job(job.id).phase,'connection_required');
+ assert.equal(f.calls.length,0);
+});
+
+test('Q17-B replacing a corrupt persistent key configures a new binding and preserves the original paid task',async t=>{
+ const {f,submitted,assertIdentity}=await desktopPaidTask(t);
+ const binding=submitted.snapshot.executionBinding as VideoExecutionBinding;
+ const file=path.join(f.root,'video-settings','settings.json');
+ const state=JSON.parse(await readFile(file,'utf8'));
+ state.credentials[0].encrypted=Buffer.from('synthetic-corrupt-ciphertext').toString('base64');
+ await writeFile(file,JSON.stringify(state));
+ await f.restart();await f.tick();
+ await desktopTaskDiagnostic(f,f.job(submitted.id),'VIDEO_SETTINGS_CORRUPT','user_action');
+ assertIdentity();assert.equal(f.calls.length,1);
+ await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret()});
+ const current=f.settings.select(binding.connectionId,2,binding.model.id);
+ assert.notEqual(current.credentialRef,binding.credentialRef);
+ assert.equal(await f.settings.acquire(current),'original-synthetic-key');
+ await assert.rejects(f.settings.acquire(binding),{code:'VIDEO_SETTINGS_CORRUPT'});
+ await f.services.call('job.reconcile',{jobId:submitted.id});
+ await f.tick();
+ await desktopTaskDiagnostic(f,f.job(submitted.id),'VIDEO_SETTINGS_CORRUPT','user_action');
+ assertIdentity();assert.equal(f.calls.length,1);
 });
 
 test('Q17 MiniMax retains a paid task when a settings save loses file ownership and recovers it on restart',async t=>{

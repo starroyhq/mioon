@@ -13,7 +13,7 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     import ProviderSettings from './ProviderSettings.tsx';
     const capabilities = { id: 'local-model', name: 'Local model', inputModes: ['text'], durations: [4, 8], aspectRatios: ['9:16'] };
     const base = { id: 'example', name: 'Example', modelCapabilities: [capabilities], configuration: {
-      missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS ', 'MIOON_ENABLE_LIVE_PROVIDER'],
+      missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS '],
       requirements: ['Long server-only setup instructions', 'Long server-only setup instructions'],
     } };
     export const markup = Object.fromEntries(['not_configured', 'disabled', 'available', 'mock'].map(status => {

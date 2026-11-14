@@ -338,11 +338,13 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     const outcome = operation.then((value: unknown) => ({value}), (error: unknown) => ({code: (error as {code?: string}).code})).finally(() => { settled = true; });
     await entered.promise;
     assert.equal(entries, 1); assert.equal(nativeFinished, false); assert.equal(settled, false);
+    const pendingStatus = {value: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'}};
+    if (phase === 'status') assert.deepEqual(await outcome, pendingStatus);
     const target = requests.findLast((message: Record<string, unknown>) => message.type === 'image-secret-codec-request' && message.operation === phase);
     assert.ok(target);
     const beatsAtEntry = beats; beatTarget = beatsAtEntry + 3;
     await beatsReady.promise;
-    assert.ok(beats >= beatsAtEntry + 3); assert.equal(nativeFinished, false); assert.equal(settled, false);
+    assert.ok(beats >= beatsAtEntry + 3); assert.equal(nativeFinished, false); assert.equal(settled, phase === 'status');
     queueMicrotask(() => {
       quitEntered = true;
       quit = stopBackendForQuit({backend: supervisor, onUnconfirmed: () => unconfirmed.resolve(), cleanup: () => {
@@ -356,16 +358,17 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     assert.equal(supervisor.child, child); assert.equal(kills, 1);
     // An overdue absolute confirmation may precede the nested force timer.
     assert.ok(forcedChildren.length <= 1); assert.ok(forcedChildren.every(owned => owned === child));
-    assert.equal(nativeFinished, false); assert.equal(settled, false);
-    assert.ok(!replies.some((message: Record<string, unknown>) => message.requestId === target.requestId));
+    assert.equal(nativeFinished, false); assert.equal(settled, phase === 'status');
+    const beforeQuit = replies.filter((message: Record<string, unknown>) => message.requestId === target.requestId);
+    assert.equal(beforeQuit.length, phase === 'status' ? 1 : 0);
     child.emit('exit', 0); assert.deepEqual(await quit!, {ok: true});
     assert.equal(quitFinished, true); assert.equal(cleanup, true); assert.equal(supervisor.child, null);
     assert.equal(nativeFinished, false, 'Quit cleanup and stop budgets progressed before native settlement');
     client.close();
-    assert.deepEqual(await outcome, {code: 'IMAGE_SECRET_CODEC_UNAVAILABLE'});
+    assert.deepEqual(await outcome, phase === 'status' ? pendingStatus : {code: 'IMAGE_SECRET_CODEC_UNAVAILABLE'});
     gate.resolve(); await turn();
     assert.equal(nativeFinished, true); assert.equal(entries, 1);
-    assert.ok(!replies.some((message: Record<string, unknown>) => message.requestId === target.requestId && message.ok));
+    assert.deepEqual(replies.filter((message: Record<string, unknown>) => message.requestId === target.requestId), beforeQuit);
     assert.equal(client.storage().persistentAvailable, false);
   });
 }
@@ -377,7 +380,7 @@ test('real codec uses only async APIs, preserves old wrapper and never reencrypt
   const old = f.seal(JSON.stringify({version: 1, appId: APP_ID, plaintext: SENTINEL})).toString('base64');
   const before = f.calls.length;
   assert.equal(await codec.decrypt(old), SENTINEL);
-  assert.deepEqual(f.calls.slice(before), ['status', 'encrypt', 'decrypt', 'decrypt']);
+  assert.deepEqual(f.calls.slice(before), ['decrypt']);
   const encrypted = await codec.encrypt(SENTINEL);
   assert.deepEqual(JSON.parse(f.open(Buffer.from(encrypted, 'base64'))), {version: 1, appId: APP_ID, plaintext: SENTINEL});
   assert.equal(await codec.decrypt(encrypted), SENTINEL);
@@ -421,6 +424,21 @@ test('bounds, canonical base64, appId and wrapper shape remain enforced', async 
   }
 });
 
+test('raw native decrypt rejection distinguishes corrupt ciphertext from loss of vault access', async t => {
+  const f = vault(), codec = codecFor(f), encrypted = await codec.encrypt(SENTINEL);
+  t.after(() => codec.close());
+  const invalid = Buffer.alloc(32).toString('base64');
+  await assert.rejects(codec.decrypt(invalid), {code: 'AGENT_SETTINGS_CORRUPT'});
+  assert.equal(codec.storage().persistentAvailable, true);
+  assert.equal(await codec.decrypt(encrypted), SENTINEL);
+  f.before = async method => { if (method !== 'status') throw Error(SENTINEL); };
+  await assert.rejects(codec.decrypt(encrypted), (error: unknown) => {
+    assert.equal((error as {code?: string}).code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+    return safeError(error);
+  });
+  assert.equal(codec.storage().reasonCode, 'OS_SECRET_STORE_UNAVAILABLE');
+});
+
 for (const method of ['encrypt', 'decrypt']) {
   test('actual credential ' + method + ' failure is sanitized after a successful probe and preserves committed settings', async t => {
     const f = vault(), codec = codecFor(f), persistence = memory();
@@ -442,7 +460,7 @@ for (const method of ['encrypt', 'decrypt']) {
   });
 }
 
-test('async native wait leaves the JS loop responsive; a fresh probe recovers after late Keychain approval', async t => {
+test('a redacted pending status leaves the event loop responsive and observes late Keychain approval', async t => {
   const f = vault(), gate = deferred(), entered = deferred();
   f.before = async method => { if (method === 'status') { entered.resolve(); await gate.promise; } };
   const codec = codecFor(f, {timeout: 30});
@@ -450,98 +468,96 @@ test('async native wait leaves the JS loop responsive; a fresh probe recovers af
   const pending = codec.refreshStorage(); await entered.promise;
   let pulse = false; await new Promise<void>(resolve => { setImmediate(() => { pulse = true; resolve(); }); });
   assert.equal(pulse, true); assert.deepEqual(f.calls, ['status']);
-  assert.equal((await pending).persistentAvailable, false);
+  assert.deepEqual(await pending, {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_PENDING'});
+  const replacement = codecFor(f); t.after(() => replacement.close());
+  codec.close();
   gate.resolve(); await turn();
   assert.equal(codec.storage().persistentAvailable, false);
-  assert.deepEqual(f.calls, ['status']);
-  const replacement = codecFor(f); t.after(() => replacement.close());
   assert.equal((await replacement.refreshStorage()).persistentAvailable, true);
-  assert.deepEqual(f.calls, ['status', 'status', 'encrypt', 'decrypt']);
-  assert.equal(codec.storage().persistentAvailable, true);
+  assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt']);
 });
 
-test('timing out one vault caller preserves another caller’s in-flight encryption', async t => {
+test('timing out and canceling callers waiting on the same Keychain probe preserve another caller’s encryption', async t => {
   const f = vault(), statusGate = deferred(), encryptGate = deferred(), encryptEntered = deferred();
-  let firstStatus = true;
   f.before = async (method, value) => {
-    if (method === 'status' && firstStatus) { firstStatus = false; await statusGate.promise; }
+    if (method === 'status') await statusGate.promise;
     if (method === 'encrypt' && asString(value).startsWith('{')) { encryptEntered.resolve(); await encryptGate.promise; }
   };
-  const short = codecFor(f, {timeout: 30}), long = codecFor(f);
+  const short = codecFor(f, {timeout: 30}), long = codecFor(f), canceled = new AbortController();
   t.after(() => { statusGate.resolve(); encryptGate.resolve(); short.close(); long.close(); });
-  const status = short.refreshStorage();
+  const timedOut = assert.rejects(short.encrypt('short-expired'), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  const aborted = assert.rejects(long.encrypt('long-canceled', {signal: canceled.signal}), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  canceled.abort();
   const encryption = long.encrypt(SENTINEL);
   void encryption.catch(() => {});
+  await Promise.all([timedOut, aborted]);
+  assert.deepEqual(f.calls, ['status']);
+  statusGate.resolve();
   await encryptEntered.promise;
-  assert.equal((await status).persistentAvailable, false);
+  assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt', 'encrypt']);
+  assert.equal((await short.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
   encryptGate.resolve();
   const encrypted = await encryption;
-  statusGate.resolve(); await turn();
   assert.equal(await long.decrypt(encrypted), SENTINEL);
 });
 
-test('native capacity survives repeated broker/codec replacement and releases only on real settlement', async t => {
-  const f = vault(), gates: Array<Pending<unknown>> = [], pairs: Array<ReturnType<typeof imagePair>> = [];
-  f.before = async method => { if (method === 'status') { const gate = deferred(); gates.push(gate); await gate.promise; } };
-  t.after(() => { for (const pair of pairs) pair.close(); for (const gate of gates) gate.resolve(); });
-  for (let i = 0; i < 16; i++) {
-    const pair = imagePair(imageFor(f)); pairs.push(pair);
-    const pending = pair.client.refreshStorage().catch((error: unknown) => (error as {code?: string}).code);
-    await turn(); pair.close(); await pending; await turn();
-  }
-  assert.equal(gates.length, 16);
-  const overflow = imagePair(imageFor(f)); pairs.push(overflow);
-  assert.equal((await overflow.client.refreshStorage()).persistentAvailable, false);
-  assert.equal(gates.length, 16);
-  gates[0].resolve(); await turn();
-  const replacement = imagePair(imageFor(f)); pairs.push(replacement);
-  const pending = replacement.client.refreshStorage(); await turn();
-  assert.equal(gates.length, 17);
-  gates[16].resolve(); assert.equal((await pending).persistentAvailable, true);
+test('replacing more than sixteen Images brokers coalesces redacted status on the one pending native probe', async t => {
+  const f = vault(), gate = deferred(), pairs = Array.from({length: 20}, () => imagePair(imageFor(f)));
+  f.before = async method => { if (method === 'status') await gate.promise; };
+  t.after(() => { for (const pair of pairs) pair.close(); gate.resolve(); });
+  const snapshots = await Promise.all(pairs.map(pair => pair.client.refreshStorage()));
+  for (const snapshot of snapshots) assert.deepEqual(snapshot, {
+    persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'
+  });
+  for (const pair of pairs) pair.close();
+  assert.deepEqual(f.calls, ['status']);
+  gate.resolve(); await turn();
+  const replacement = imagePair(imageFor(f)); t.after(() => replacement.close());
+  assert.equal((await replacement.client.refreshStorage()).persistentAvailable, true);
+  assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt']);
 });
 
-test('canceling Images status does not invalidate concurrent Agent encryption on the shared vault', async t => {
-  const f = vault(), codec = codecFor(f), encryptGate = deferred(), entered = deferred(), statusGate = deferred();
-  let holdStatus = false;
+test('replacing an Images broker does not invalidate concurrent Agent encryption on the shared vault', async t => {
+  const f = vault(), codec = codecFor(f), encryptGate = deferred(), entered = deferred();
   f.before = async (method, value) => {
-    if (method === 'status' && holdStatus) await statusGate.promise;
     if (method === 'encrypt' && asString(value).startsWith('{')) { entered.resolve(); await encryptGate.promise; }
   };
   const pending = codec.encrypt(SENTINEL);
-  await entered.promise; holdStatus = true;
+  await entered.promise;
   const pair = imagePair(imageFor(f));
-  t.after(() => { statusGate.resolve(); encryptGate.resolve(); pair.close(); codec.close(); });
-  const status = pair.client.refreshStorage().catch((error: unknown) => (error as {code?: string}).code);
-  await turn(); pair.close(); await status;
-  holdStatus = false; encryptGate.resolve();
+  t.after(() => { encryptGate.resolve(); pair.close(); codec.close(); });
+  assert.equal((await pair.client.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  pair.close();
+  assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt', 'encrypt']);
+  encryptGate.resolve();
   const encrypted = await pending;
   assert.equal(codec.storage().persistentAvailable, true);
   assert.equal(await codec.decrypt(encrypted), SENTINEL);
-  statusGate.resolve(); await turn();
   assert.equal((await codecFor(f).refreshStorage()).persistentAvailable, true);
 });
 
-for (const phase of ['status', 'probe-encrypt', 'credential-encrypt']) {
-  test('stale ' + phase + ' rejection cannot poison a successfully refreshed replacement codec', async t => {
-    const f = vault(), codec = codecFor(f), gate = deferred(), entered = deferred();
-    let active = true, held = false;
-    f.before = async (method, value) => {
-      const match = phase === 'status' ? method === 'status' : method === 'encrypt' &&
-        (phase === 'probe-encrypt' ? asString(value).startsWith('mioon-vault-probe:') : asString(value).startsWith('{'));
-      if (match && !held) { held = true; entered.resolve(); await gate.promise; }
-    };
-    const pending = codec.encrypt(SENTINEL, {isActive: () => active}).then(() => 'unexpected-success', (error: unknown) => (error as {code?: string}).code);
-    t.after(() => { gate.resolve(); codec.close(); });
-    await entered.promise; active = false;
-    const replacement = codecFor(f); t.after(() => replacement.close());
-    assert.equal((await replacement.refreshStorage()).persistentAvailable, true);
-    gate.reject(Error(SENTINEL));
-    assert.equal(await pending, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE');
-    assert.equal(replacement.storage().persistentAvailable, true);
-    const encrypted = await replacement.encrypt(SENTINEL);
-    assert.equal(await replacement.decrypt(encrypted), SENTINEL);
-  });
-}
+test('a timed-out native credential request holds the single slot and its late failure cannot poison another owner', async t => {
+  const f = vault(), codec = codecFor(f, {timeout: 30}), replacement = codecFor(f), gate = deferred(), entered = deferred();
+  t.after(() => { gate.resolve(); codec.close(); replacement.close(); });
+  assert.equal((await codec.refreshStorage()).persistentAvailable, true);
+  let credentialRequests = 0;
+  f.before = async (method, value) => {
+    if (method === 'encrypt' && asString(value).startsWith('{') && ++credentialRequests === 1) {
+      entered.resolve(); await gate.promise;
+    }
+  };
+  const expired = assert.rejects(codec.encrypt(SENTINEL), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  await entered.promise;
+  const waiting = replacement.encrypt(SENTINEL);
+  void waiting.catch(() => {});
+  await expired;
+  assert.equal((await replacement.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal(credentialRequests, 1);
+  gate.reject(Error(SENTINEL));
+  const encrypted = await waiting;
+  assert.equal(credentialRequests, 2);
+  assert.equal(await replacement.decrypt(encrypted), SENTINEL);
+});
 
 test('broker releases canceled logical requests when a codec ignores options and returns late', async () => {
   const gates: Array<Pending<unknown>> = [], messages: Array<Record<string, unknown>> = [], unavailable = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
@@ -724,16 +740,17 @@ test('initial async status is bounded and legacy keys are never decrypted, prese
     assert.deepEqual(persistence.value, original); assert.equal(persistence.saves, 0);
     const snapshot = await engine.get();
     assert.equal(snapshot.storage.persistentAvailable, operation !== 'status'); assert.equal(execution(snapshot).secret.configured, false);
+    assert.equal(snapshot.storage.reasonCode, operation === 'status' ? 'OS_SECRET_STORE_PENDING' : null);
     assert.ok(snapshot.notices.includes('LEGACY_KEYS_CLEARED')); assert.equal(oldDecrypts, 0);
     gate.resolve(); await turn();
-    assert.equal(codec.storage().persistentAvailable, operation !== 'status');
+    assert.equal(codec.storage().persistentAvailable, true);
     assert.equal((await engine.get()).storage.persistentAvailable, true); assert.equal(oldDecrypts, 0);
     const session = await engine.put(update(4, 'session'));
     assert.equal(execution(session).secret.storage, 'session');
   }
 });
 
-test('startup abort returns without waiting for the native Promise and never enables a late vault', async t => {
+test('startup abort returns without waiting for the native Promise; the process-wide probe can serve another owner', async t => {
   const f = vault(), codec = codecFor(f), gate = deferred(), entered = deferred(), controller = new AbortController();
   f.before = async method => { if (method === 'status') { entered.resolve(); await gate.promise; } };
   let initialized = false;
@@ -745,7 +762,8 @@ test('startup abort returns without waiting for the native Promise and never ena
   assert.deepEqual(f.calls, ['status']);
   await pending;
   gate.resolve(); await turn();
-  assert.equal(codec.storage().persistentAvailable, false);
+  assert.equal((await codecFor(f).refreshStorage()).persistentAvailable, true);
+  assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt']);
   assert.match(readFileSync(new URL('apps/desktop/src/main.ts', root), 'utf8'), /appId: identity\.appId, signal: startup\.signal/);
 });
 

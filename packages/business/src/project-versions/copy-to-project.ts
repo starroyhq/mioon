@@ -61,8 +61,18 @@ export function copyProjectVersionsToNewProjectInside(source: DatabaseSync, targ
   const targetFormat = readSnapshotProjectFormat(target);
   const targetHistory = target.prepare('SELECT version FROM main.schema_version').all();
   if (targetHistory.length !== 1 || typeof targetHistory[0].version !== 'number') throw invalid('target-history-format');
-  for (const table of historyTablesForVersion(targetHistory[0].version)) if (table !== 'mio_storage_counters' && target.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get())
-    throw invalid('target-not-empty');
+  for (const table of historyTablesForVersion(targetHistory[0].version)) {
+    if (table === 'mio_storage_counters') continue;
+    if (table === 'canvas_receipt_window') {
+      // Opening an isolated format 4 target can initialize its own epoch.
+      // A populated cutoff still means the target has been used.
+      const window = target.prepare('SELECT singleton,epoch,floor FROM main.canvas_receipt_window LIMIT 2').all();
+      if (window.length > 1 || window.some(row => row.singleton !== 1 || row.floor !== 0 ||
+        typeof row.epoch !== 'string' || !/^[0-9a-f]{32}$/u.test(row.epoch))) throw invalid('target-not-empty');
+      continue;
+    }
+    if (target.prepare(`SELECT 1 FROM main.${quote(table)} LIMIT 1`).get()) throw invalid('target-not-empty');
+  }
   const counters = target.prepare('SELECT bytes,rows FROM main.mio_storage_counters').all();
   if (counters.length !== 1 || counters[0].bytes !== 0 || counters[0].rows !== 1 || target.prepare('SELECT 1 FROM main.project_history_resolution LIMIT 1').get())
     throw invalid('target-not-empty');

@@ -173,7 +173,7 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are a
 - `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象，返回批次和当前目标修订。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
 - `canvas.apply` 原子提交删除、恢复、移动或整理。格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
 - `canvas.history.get` 返回画布游标、两边动作以及各自的 `undoConflict` 和 `redoConflict`。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。
-- 写入携带 `historyRevision`，并用 `createCanvasRequestId(requestEpoch, uuid, issuedAt)` 生成 `requestId`。从 `canvas.history.get` 取 `requestEpoch` 和 `requestAfter`。时间戳是大于 `requestAfter` 的 Unix 毫秒，最多比服务时钟快两分钟。成功写入后，该代际随本机记录保留。
+- 写入携带 `historyRevision`，并用 `createCanvasRequestId(requestEpoch, uuid, issuedAt)` 生成 `requestId`。从 `canvas.history.get` 取 `requestEpoch` 和 `requestAfter`。时间戳是大于 `requestAfter` 的 Unix 毫秒，最多比服务时钟快两分钟。候选项目以可写方式打开时保存代际，首次编辑前重开同一份本机记录仍可使用原键。
 - 响应丢失时，七天窗口内用同一请求 ID 原样重试可取回原回执。写入时清理已过期的回执并推进持久截止时间。活跃窗口暂满时返回 `CANVAS_RECEIPT_WINDOW_FULL` 和最早可重试时间。回执过期或本机记录已更换且查不到原回执时，返回 `CANVAS_REQUEST_OUTCOME_UNKNOWN`，客户端须先重新读取画布核对结果。
 
 ### Private last-project locator（已退役）

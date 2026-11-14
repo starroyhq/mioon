@@ -67,6 +67,12 @@ const archiveColumns = (db: DatabaseSync) => CANVAS_ARCHIVE_TABLES.map(table =>
   db.prepare(`PRAGMA project.table_info(${table})`).all().map(column => column.name));
 const canvasTables = (db: DatabaseSync) => db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' AND name LIKE 'canvas_%' ORDER BY name").all().map(row => row.name);
 const expectedCanvasTables = ['canvas_history_entries', 'canvas_history_state', 'canvas_receipt_window', 'canvas_requests'];
+function canvasReceiptWindow(db: DatabaseSync) {
+  const row = db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window WHERE singleton=1').get()!;
+  assert.match(String(row.epoch), /^[0-9a-f]{32}$/u);
+  assert.equal(row.floor, 0);
+  return {...row};
+}
 
 function fileIdentity(file: string) {
   const info = lstatSync(file, {bigint: true});
@@ -176,8 +182,34 @@ test('format 4 is opt-in for fresh kernel creation', () => {
     mkdirSync(root, {mode: 0o700});
     const {projectFile, location} = releaseProjectPaths(root);
     const store = createProjectStore({projectFile, locate: () => location, ...(format4 === undefined ? {} : {format4})});
-    try {assert.deepEqual(versions(store.db), expected);} finally {store.close();}
+    try {
+      assert.deepEqual(versions(store.db), expected);
+      if (format4) canvasReceiptWindow(store.db);
+      else assert.deepEqual(canvasTables(store.db), []);
+    } finally {store.close();}
   }
+});
+
+test('ordinary format 4 open backfills a missing receipt window without touching project bytes', () => {
+  const f = fixture('v0.1.1', 'current-candidate-missing-receipt-window');
+  const initial = f.open(approve);
+  try {
+    canvasReceiptWindow(initial.db);
+    initial.db.exec('DELETE FROM main.canvas_receipt_window');
+  } finally {initial.close();}
+  const projectBytes = readFileSync(f.projectFile);
+  const first = f.open(candidateRead);
+  let epoch: unknown;
+  try {
+    epoch = canvasReceiptWindow(first.db).epoch;
+    assert.equal(first.db.prepare('SELECT count(*) AS count FROM main.canvas_requests').get()?.count, 0);
+    assert.deepEqual(pair(first), f.evidence.stamp);
+    first.db.exec('UPDATE main.canvas_receipt_window SET floor=17');
+  } finally {first.close();}
+  const reopened = f.open(candidateRead);
+  try {assert.deepEqual({...reopened.db.prepare('SELECT epoch,floor FROM main.canvas_receipt_window').get()}, {epoch, floor: 17});}
+  finally {reopened.close();}
+  assert.deepEqual(readFileSync(f.projectFile), projectBytes);
 });
 
 function replaceHistoryWithFrozenProfile(f: Fixture, version: PreviousHistoryVersion): void {
@@ -243,7 +275,7 @@ test('the frozen format 4 history upgrades in place with exact receipt bytes and
     assert.deepEqual([f.projectFile, f.historyFile].map(fileIdentity), identities);
     assert.deepEqual({...store.db.prepare('SELECT response,issuedAt FROM main.canvas_requests').get()}, {response, issuedAt: null});
     assert.equal(store.db.prepare('SELECT resourceId FROM main.idempotency').get()?.resourceId, 'resource');
-    assert.equal(store.db.prepare('SELECT * FROM main.canvas_receipt_window').get(), undefined);
+    canvasReceiptWindow(store.db);
     assert.throws(() => store.db.exec("UPDATE main.canvas_requests SET issuedAt=1"), /are immutable/u);
     assert.throws(() => store.db.exec('INSERT OR REPLACE INTO main.canvas_requests SELECT * FROM main.canvas_requests'), /cannot be replaced/u);
     store.db.exec('DELETE FROM main.canvas_requests');
@@ -280,6 +312,7 @@ test('the format 4 history migration preserves a diverged content pair and write
     assert.equal(store.historyAdmission.seen.contentToken, differentToken);
     assert.deepEqual(readProjectContentStamp(store.db), f.evidence.stamp);
     assert.equal(readVersion(store.db, 'PRAGMA query_only'), 1);
+    assert.equal(store.db.prepare('SELECT singleton FROM main.canvas_receipt_window').get(), undefined);
   } finally {store.close();}
   assert.deepEqual(readFileSync(f.projectFile), projectBytes);
 });

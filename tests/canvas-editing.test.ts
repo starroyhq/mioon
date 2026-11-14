@@ -237,6 +237,25 @@ test('undo and redo check their own guards and never rebase an older externally 
   assert.equal((f.store.get('nodes', card.id) as {label:string}).label, 'Edited externally');
 });
 
+test('order-only changes carry forward matching evidence without blessing a different revision', t => {
+  const f = fixture(t), first = f.shot(0), second = f.shot(1);
+  const move = (x: number) => f.call('canvas.apply', {operation: 'move', historyRevision: f.call('canvas.history.get').revision,
+    requestId: f.requestId(), moves: [{...f.expectTarget(second), position: {x, y: 0}}]});
+  move(12);
+  f.edit('archive', [first]);
+  f.undo();
+  assert.equal(f.call('canvas.history.get').undoConflict, false);
+  f.undo();
+  assert.deepEqual((f.store.get('shots', second.id) as {position: object}).position, {x: 0, y: 0});
+  f.redo();
+  f.store.put('shots', {...f.store.get('shots', second.id) as object, id: second.id, projectId: f.projectId, title: 'External edit'});
+  f.redo();
+  f.undo();
+  assert.equal(f.call('canvas.history.get').undoConflict, true);
+  assert.throws(f.undo, {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'history-revision'}});
+  assert.deepEqual(f.order(), [first.id, second.id]);
+});
+
 test('a full-size layout fits one history entry and undoes in one step', t => {
   const f = fixture(t);
   const cards = f.store.tx(() => Array.from({length: CANVAS_EDIT_LIMITS.targets}, () => f.node()));
@@ -301,6 +320,21 @@ test('expired or lost-history request keys cannot execute again, including after
   assert.notEqual(f.call('canvas.history.get').requestEpoch, oldEpoch);
   assert.throws(() => f.call('canvas.apply', first), {code: 'CANVAS_REQUEST_OUTCOME_UNKNOWN'});
   assert.equal(f.call('canvas.apply', {...first, requestId: f.requestId(), moves: [{...f.expectTarget(card), position: {x: 0, y: 0}}]}).affected, 0);
+});
+
+test('the first request key survives a reopen before any canvas mutation', t => {
+  const f = fixture(t), card = f.node(), db = f.store.db;
+  const content = readProjectContentStamp(db), changes = db.prepare('SELECT total_changes() AS n').get()?.n;
+  const history = f.call('canvas.history.get'), requestId = f.requestId();
+  assert.equal(db.prepare('SELECT total_changes() AS n').get()?.n, changes);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM main.canvas_requests').get()?.n, 0);
+  f.reopen();
+  assert.equal(f.call('canvas.history.get').requestEpoch, history.requestEpoch);
+  assert.deepEqual(readProjectContentStamp(f.store.db), content);
+  const result = f.call('canvas.apply', {operation: 'move', requestId, historyRevision: history.revision,
+    moves: [{...f.expectTarget(card), position: {x: 1, y: 0}}]});
+  assert.equal(result.affected, 1);
+  assert.equal(result.history.revision, 1);
 });
 
 test('a full receipt window reports retry time and makes space when old keys expire', t => {
@@ -392,8 +426,6 @@ for (const boundary of ['before-commit','after-commit'] as const) {
   test(`SIGKILL ${boundary} keeps archive, cursor, and receipt together`, {skip: process.platform === 'win32'}, t => {
     const f = fixture(t), shot = f.shot(0);
     const input = {projectId: f.projectId, operation:'archive', requestId: f.requestId(), historyRevision: 0, targets: [f.expectTarget(shot)]};
-    const {requestEpoch} = f.call('canvas.history.get');
-    f.store.db.prepare('INSERT INTO main.canvas_receipt_window VALUES(1,?,0)').run(requestEpoch);
     f.store.close();
     const killed = spawnSync(process.execPath, [worker, JSON.stringify({projectFile:f.projectFile, location:f.location,input,boundary,clock:Date.parse(date)})], {
       stdio:'ignore', timeout:60000,

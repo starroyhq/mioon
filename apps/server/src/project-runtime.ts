@@ -240,7 +240,12 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
         editTasks!.reconcileStartup();
         backgroundActivated = true;
       },
-      startWorker: () => worker ??= startWorker(store, services, providers, {signal: shutdown.signal}),
+      startWorker: () => worker ??= startWorker(store, services, providers, {
+        signal: shutdown.signal,
+        ...(videoSecretCodec?.subscribeStorageAvailable
+          ? {subscribeVideoStorageAvailable: listener => videoSecretCodec.subscribeStorageAvailable!(listener)}
+          : {}),
+      }),
     };
   } catch (error) {
     shutdown.abort();

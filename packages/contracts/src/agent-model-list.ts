@@ -17,6 +17,14 @@ export const agentModelListCredentialSchema=z.discriminatedUnion('source',[
 const requestFields={serviceKey:agentServiceKeySchema,expectedSettingsRevision:revision,selection:agentModelListSelectionSchema};
 export const agentModelListRequestSchema=z.object({...requestFields,credential:agentModelListCredentialSchema}).strict().refine(value=>bytes(value)<=AGENT_MODEL_LIST_LIMITS.requestBytes);
 export type AgentModelListRequest=z.infer<typeof agentModelListRequestSchema>;
+export const agentDraftConnectionTestRequestSchema=z.object({...requestFields,model:agentProviderConfigurationSchema.shape.model,credential:agentModelListCredentialSchema}).strict().refine(value=>bytes(value)<=AGENT_MODEL_LIST_LIMITS.requestBytes);
+export type AgentDraftConnectionTestRequest=z.infer<typeof agentDraftConnectionTestRequestSchema>;
+export const agentDraftConnectionTestResultSchema=z.discriminatedUnion('outcome',[
+ z.object({outcome:z.literal('success')}).strict(),
+ z.object({outcome:z.literal('failed'),reason:z.enum(['required','rejected','permission_denied','not_found','connection_failed','timeout','rate_limited','server_error','policy','test_failed'])}).strict(),
+]);
+export type AgentDraftConnectionTestResult=z.infer<typeof agentDraftConnectionTestResultSchema>;
+
 export const agentModelListCacheRequestSchema=z.object(requestFields).strict().refine(value=>bytes(value)<=AGENT_MODEL_LIST_LIMITS.requestBytes);
 export type AgentModelListCacheRequest=z.infer<typeof agentModelListCacheRequestSchema>;
 export const agentListedModelSchema=z.object({id:z.string().refine(value=>isAgentModelIdentifier(value)&&safeDisplay(value)),displayName:z.string().min(1).max(256).refine(safeDisplay).optional(),adaptation:z.enum(['adapted','unverified'])}).strict();

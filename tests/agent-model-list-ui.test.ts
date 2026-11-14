@@ -25,6 +25,19 @@ test('five outcomes preserve the last matching observation and do not invent ver
  for(const result of results){let fetch=0;const session=createAgentModelListSession({client:{modelsCache:async()=>({status:'hit',result:success(['old-model'])}),modelsList:async()=>{fetch++;return result;}}});await session.open(input(),()=>({source:'saved'}));await session.refresh(input(),()=>({source:'saved'}));assert.equal(session.getState().openai?.phase,result.outcome);assert.deepEqual(session.getState().openai?.observation?.models.map(model=>model.id),['old-model']);assert.equal(fetch,1);assert.equal('verification'in session.getState().openai!,false);session.dispose();}
 });
 
+test('a reflected draft key cannot enter the renderer model list or its change notifications',async()=>{
+ const key='synthetic-draft-secret', emitted:unknown[]=[];
+ const session=createAgentModelListSession({onChange:view=>emitted.push(view),client:{
+  modelsCache:async()=>({status:'miss'}),
+  modelsList:async()=>success([`prefix-${key}`]),
+ }});
+ await session.refresh(input(),()=>({source:'input',value:key}));
+ assert.equal(session.getState().openai?.phase,'error');
+ assert.equal(session.getState().openai?.observation,null);
+ assert.ok(!JSON.stringify(emitted).includes(key));
+ session.dispose();
+});
+
 test('switching detail, hiding, invalidating, changing selection, removing and disposal discard late results and cancel the request',async()=>{
  for(const action of ['switch','hide','invalidate','change','remove','dispose']){
   const pending=held<AgentModelListSuccess>();let signal:AbortSignal|undefined;const session=createAgentModelListSession({client:{modelsCache:async()=>({status:'miss'}),modelsList:async(_request,options)=>{signal=options.signal;return pending.promise;}}});
@@ -76,9 +89,27 @@ test('a failed or pending refresh supplements adapted rows even while retaining 
 
 test('browser client uses authenticated no-store POSTs, strict bounds and never reflects remote errors or key text',async()=>{
  const requests:Array<{url:RequestInfo|URL;options?:RequestInit}>=[];const client=createAgentModelListClient({fetchImpl:async(url,options)=>{requests.push({url,options});return Response.json({ok:true,data:String(url).endsWith('/cache')?{status:'miss'}:success()});}}),controller=new AbortController();
- await client.modelsCache(input(),{signal:controller.signal});await client.modelsList({...input(),credential:{source:'input',value:'synthetic-secret'}},{signal:controller.signal});assert.deepEqual(requests.map(request=>request.url),['/api/agent/models/cache','/api/agent/models/list']);for(const request of requests){assert.equal(request.options?.method,'POST');assert.equal(request.options?.credentials,'same-origin');assert.equal(request.options?.cache,'no-store');assert.doesNotMatch(String(request.url),/synthetic-secret/);}
+ await client.modelsCache(input(),{signal:controller.signal});await client.modelsList({...input(),credential:{source:'input',value:'synthetic-secret'}},{signal:controller.signal});assert.deepEqual(requests.map(request=>request.url),['/api/agent/models/cache','/api/agent/models/list']);for(const request of requests){assert.equal(request.options?.method,'POST');assert.equal(request.options?.credentials,'same-origin');assert.equal(request.options?.cache,'no-store');assert.equal(request.options?.redirect,'error');assert.doesNotMatch(String(request.url),/synthetic-secret/);}
  for(const body of [{ok:false,error:{message:'synthetic-secret'}},{ok:true,data:{...success(),private:'synthetic-secret'}},{ok:true,data:success(),private:'synthetic-secret'}]){const bad=createAgentModelListClient({fetchImpl:async()=>Response.json(body)});await assert.rejects(bad.modelsList({...input(),credential:{source:'none'}},{signal:controller.signal}),error=>{assert.doesNotMatch(String(error),/synthetic-secret/);return true;});}
  const large=createAgentModelListClient({fetchImpl:async()=>new Response('x'.repeat(256*1024+1025))});await assert.rejects(large.modelsCache(input(),{signal:controller.signal}));
+});
+
+test('browser draft connection test sends only a local no-store POST and rejects reflected response fields',async()=>{
+ const request={...input(),model:'test-model',credential:{source:'input',value:'synthetic-secret'}} as const;
+ let calls=0;
+ const client=createAgentModelListClient({fetchImpl:async(url,options)=>{
+  calls++;
+  assert.equal(url,'/api/agent/models/test');
+  assert.equal(options?.redirect,'error');
+  assert.equal(options?.cache,'no-store');
+  assert.equal(options?.credentials,'same-origin');
+  assert.deepEqual(JSON.parse(String(options?.body)),request);
+  return Response.json({ok:true,data:calls===1?{outcome:'success'}:{outcome:'failed',reason:request.credential.value}});
+ }});
+ const signal=new AbortController().signal;
+ assert.deepEqual(await client.connectionTest(request,{signal}),{outcome:'success'});
+ await assert.rejects(client.connectionTest(request,{signal}),error=>{assert.doesNotMatch(String(error),/synthetic-secret/);return true;});
+ assert.equal(calls,2);
 });
 
 test('browser enforces the complete local envelope at the exact 256 KiB boundary and rejects one extra byte',async()=>{

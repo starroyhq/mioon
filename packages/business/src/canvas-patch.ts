@@ -37,6 +37,8 @@ export interface CanvasRow extends CanvasTarget {
 export interface CanvasPatchRow extends CanvasTarget {
   readonly fields: CanvasFields;
 }
+export const isCanvasOrderOnlyRow = ({kind, fields}: CanvasPatchRow): boolean =>
+  kind === 'shot' && fields.orderIndex !== undefined && fields.archive === undefined && fields.position === undefined;
 export interface CanvasOrderAnchor {
   readonly id: string;
   readonly previous: string | null;
@@ -112,9 +114,10 @@ export function decodeCanvasPatch(raw: unknown): CanvasPatch {
     !Array.isArray(guards) || guards.length > CANVAS_EDIT_LIMITS.effects || !guards.every(item => target(item) && Object.keys(item).length === 2) ||
     !Array.isArray(anchors) || anchors.length > CANVAS_EDIT_LIMITS.targets || !anchors.every(isAnchor) ||
     order !== null && (!Array.isArray(order) || order.length > CANVAS_EDIT_LIMITS.effects || !order.every(isProjectId))) return canvasError('invalid-history');
-  const guardKeys = new Set(guards.map(canvasKey));
-  if (new Set(rows.map(canvasKey)).size !== rows.length || guardKeys.size !== guards.length || rows.some(row => !guardKeys.has(canvasKey(row))) ||
-    new Set(anchors.map(item => item.id)).size !== anchors.length || order && new Set(order).size !== order.length) return canvasError('invalid-history');
+  const guardKeys = new Set(guards.map(canvasKey)), orderIds = new Set(order ?? []);
+  if (new Set(rows.map(canvasKey)).size !== rows.length || guardKeys.size !== guards.length ||
+    rows.some(row => !guardKeys.has(canvasKey(row)) && !(isCanvasOrderOnlyRow(row) && orderIds.has(row.id))) ||
+    new Set(anchors.map(item => item.id)).size !== anchors.length || order && orderIds.size !== order.length) return canvasError('invalid-history');
   return {version: 1, rows, guards, anchors, order, dependencyDigest};
 }
 

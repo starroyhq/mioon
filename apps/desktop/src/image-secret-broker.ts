@@ -63,7 +63,7 @@ function validCiphertext(value: unknown): value is string {
 }
 function safeStorage(value: unknown): SafeStorage {
   if (!exactObject(value, ['persistentAvailable', 'sessionScope', 'reasonCode']) || typeof value.persistentAvailable !== 'boolean' ||
-      value.sessionScope !== 'server' || ![null, 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
+      value.sessionScope !== 'server' || ![null, 'OS_SECRET_STORE_PENDING', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
       value.persistentAvailable !== (value.reasonCode === null)) throw codecError();
   return {persistentAvailable: value.persistentAvailable, sessionScope: 'server',
     reasonCode: value.reasonCode as SafeStorage['reasonCode']};
@@ -247,7 +247,8 @@ export function createImageSecretClient({port, timeout = 2000}: {port: CodecPort
   };
   const crypto = async (operation: CodecOperation, input: unknown): Promise<unknown> => {
     if (!validInput(operation, input)) throw codecError('IMAGE_SECRET_CODEC_VALIDATION');
-    if (!(await refreshStorage()).persistentAvailable) throw codecError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+    const status = await refreshStorage();
+    if (!status.persistentAvailable && status.reasonCode !== 'OS_SECRET_STORE_PENDING') throw codecError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
     return request(operation, input);
   };
   const client = {

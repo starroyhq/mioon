@@ -58,7 +58,10 @@ test('an unavailable OS vault never falls back silently or restores the old pers
   let available = true, encryptions = 0, decryptions = 0;
   const encrypt = (value: string) => {encryptions++; const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv); return Buffer.concat([iv, cipher.update(value), cipher.final(), cipher.getAuthTag()]);};
   const decrypt = (value: Buffer) => {decryptions++; const cipher = createDecipheriv('aes-256-gcm', key, value.subarray(0, 12)); cipher.setAuthTag(value.subarray(-16)); return Buffer.concat([cipher.update(value.subarray(12, -16)), cipher.final()]).toString();};
-  const safeStorage: DesktopSafeStorage = {isEncryptionAvailable: () => available, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: encrypt, decryptString: decrypt, isAsyncEncryptionAvailable: async () => available, encryptStringAsync: async value => encrypt(value), decryptStringAsync: async value => ({result: decrypt(value), shouldReEncrypt: false})};
+  const safeStorage: DesktopSafeStorage = {isEncryptionAvailable: () => available, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: encrypt, decryptString: decrypt, isAsyncEncryptionAvailable: async () => available, encryptStringAsync: async value => encrypt(value), decryptStringAsync: async value => {
+    if (!available) throw Error('Synthetic vault became unavailable');
+    return {result: decrypt(value), shouldReEncrypt: false};
+  }};
   const main = createDesktopVideoSecretCodec({safeStorage, appId: desktopIdentity.identityForChannel('development').appId, platform: 'darwin'});
   let storage = await main.storage();
   const settings = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root, storage: () => storage, secretCodec: {...main, refreshStorage: async () => {storage = await main.storage();}}});

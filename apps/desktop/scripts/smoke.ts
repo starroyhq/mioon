@@ -13,7 +13,7 @@ const output = process.env.MIOON_DESKTOP_SMOKE_OUTPUT || path.join(directory, 'r
 await mkdir(path.dirname(output), { recursive: true });
 // Seed a fresh registered project; no historical database or Chromium state is copied.
 await seedDesktopQaProject(path.join(directory, 'user-data/data'));
-const env: NodeJS.ProcessEnv = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output };;
+const env: NodeJS.ProcessEnv = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output };
 for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys]) delete env[name];
 const args = [path.join(desktop, 'build')];
 if (process.env.MIOON_DESKTOP_HEADLESS === '1') args.unshift('--ozone-platform=headless');

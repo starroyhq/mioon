@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomBytes, randomUUID} from 'node:crypto';
 import {closeSync, constants, copyFileSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readSync, realpathSync, renameSync, rmSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
@@ -872,7 +872,20 @@ function attachDatabases(
     if (staged) inTransaction(db,()=>db.exec('DELETE FROM cache.previs_thumbnails; DELETE FROM cache.waveform_cache'));
     installCrossFileTriggers(db, useFormat4);
     if (historyAdmission.state === 'diverged') installDivergedWriteGuards(db);
-    else openProjectJournal(db);
+    else {
+      openProjectJournal(db);
+      // Persist the generation before any client can read it. A staged
+      // replacement stays empty until its first ordinary writable open.
+      if (useFormat4 && !staged && !db.prepare('SELECT 1 FROM main.canvas_receipt_window WHERE singleton=1').get()) {
+        database = 'history';
+        inTransaction(db, () => {
+          verifySources();
+          db.prepare('INSERT INTO main.canvas_receipt_window(singleton,epoch,floor) VALUES(1,?,0)')
+            .run(randomBytes(16).toString('hex'));
+          verifySources();
+        });
+      }
+    }
     const held: readonly HeldFile[] = [
       [projectKey, 'project'],
       [historyKey, 'history'],

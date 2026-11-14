@@ -31,7 +31,7 @@ export const customImageSecretUpdateV2Schema = z.discriminatedUnion('action', [
     value: z.string().min(1).max(CUSTOM_IMAGE_SETTINGS_V2_LIMITS.secretBytes).regex(/^[\x21-\x7e]+$/)}).strict(),
 ]);
 export const customImageStorageV2Schema = z.object({persistentAvailable: z.boolean(), sessionScope: z.enum(['app', 'server']),
-  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT']).nullable()}).strict()
+  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable()}).strict()
   .refine(value => value.persistentAvailable === (value.reasonCode === null), 'Inconsistent storage capabilities');
 const secretState = z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
   .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state');
