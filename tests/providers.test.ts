@@ -31,7 +31,7 @@ async function runway(t: test.TestContext, responses: unknown[] = [], options: {
   const file = path.join(root, 'synthetic.png'); await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const calls: [string, RequestInit & {body: string; headers: Record<string, string>}][] = [], queue = [...responses];
-  const env = { RUNWAYML_API_SECRET: 'offline-fixture-secret', MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
+  const env = { RUNWAYML_API_SECRET: 'offline-fixture-secret', RUNWAY_APPROVED_ASSET_SHA256: sha256, ...options.env };
   const fetchImpl: typeof fetch = async (...args) => {
     calls.push(args as unknown as (typeof calls)[number]);
     const response = queue.shift();
@@ -160,8 +160,9 @@ test('mock rejects unsupported capabilities and unsafe output paths', async t =>
   await assert.rejects(provider.download(providerJobId, path.join(root, '..', 'escape.mp4')), { code: 'UNSAFE_PATH' });
 });
 
-test('Runway is disabled by default and construction never fetches', async t => {
-  const { provider, input, calls } = await runway(t, [], { env: { MIOON_ENABLE_LIVE_PROVIDER: '0' } });
+test('Runway requires its credential and construction never fetches', async t => {
+  const { provider, input, calls } = await runway(t, [], { env: { RUNWAYML_API_SECRET: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+  assert.equal(provider.capabilities.configured, false);
   assert.equal(provider.capabilities.enabled, false);
   assert.equal(provider.capabilities.liveVerified, false);
   await assert.rejects(provider.submit(input), { code: 'PROVIDER_DISABLED' });
@@ -170,7 +171,9 @@ test('Runway is disabled by default and construction never fetches', async t => 
 });
 
 test('Runway sends exactly one documented POST with approved data URI, server auth, ratio and seed', async t => {
-  const { provider, input, calls } = await runway(t, [json({ id: ID })]);
+  const { provider, input, calls } = await runway(t, [json({ id: ID })], {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  assert.equal(provider.capabilities.configured, true);
+  assert.equal(provider.capabilities.enabled, true);
   assert.deepEqual(await provider.submit(input, { requestId: 'contract-test' }), { providerJobId: ID });
   assert.equal(calls.length, 1);
   const [url, init] = calls[0];

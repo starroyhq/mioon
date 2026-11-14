@@ -62,7 +62,7 @@ async function fixture(t: TestContext,{autoRun=true}: {autoRun?: boolean}={}){
   },
   subjectNow:async()=>(await call<{items: Subject[]}>('subject.list',{projectId})).items.find(item=>item.id===subject.id)!,
   versions:async()=>(await call<{items: Version[]}>('subject.version.list',{projectId,subjectId:subject.id})).items,
-  async restart(){await services.drain?.();store.close();store=openStore(root);services=createServices(store,new Map(),{imageOptions:{autoRun}});},
+  async restart(mockAllowed=true){await services.drain?.();store.close();store=openStore(root);services=createServices(store,new Map(),{mockAllowed,imageOptions:{autoRun}});},
   async stop(){await services.drain?.();store.close();closed=true;},
  };
  t.after(async()=>{if(!closed){await services.drain?.();store.close();}rmSync(root,{recursive:true,force:true});});
@@ -146,6 +146,22 @@ test('only an image that failed or was cancelled before dispatch is retried, und
  assert.equal(isSubjectVariantMutationResponse('subject.variants.retry',input,retried),true);
  assert.deepEqual([retried.revision,retried.items[0]!.attempt,retried.items[0]!.status,retried.items[0]!.imageInput.requestId],[2,2,'pending',subjectVariantImageRequestId(batch.id,1,2)]);
  assert.deepEqual(await f.call('subject.variants.retry',input),retried,'exact replay returns the original acknowledgement');
+});
+
+test('stable admission refuses new Mock variant batches and retries without affecting prior batches',async t=>{
+ const f=await fixture(t,{autoRun:false}),batch=await f.create([angle('high')]);
+ const task=await f.call<{id:string;revision:number}>('image.generate',batch.items[0]!.imageInput);
+ await f.call('image.task.cancelQueued',{projectId:f.projectId,taskId:task.id,expectedRevision:task.revision,requestId:randomUUID()});
+ const cancelled=await f.get(batch);assert.equal(cancelled.items[0]!.status,'cancelled');
+ await f.restart(false);
+ const tables=['subject_variant_batches','subject_variant_items','subject_variant_requests','image_tasks','image_requests'];
+ const snapshot=()=>tables.map(table=>f.store.db.prepare('SELECT * FROM '+table+' ORDER BY rowid').all());
+ const before=snapshot();
+ const denial={code:'GENERATION_SERVICE_UNAVAILABLE',status:409};
+ await assert.rejects(f.create([angle('front')]),denial);
+ await assert.rejects(f.call('subject.variants.retry',{projectId:f.projectId,batchId:batch.id,position:1,expectedRevision:cancelled.revision,requestId:randomUUID()}),denial);
+ assert.deepEqual(snapshot(),before);
+ assert.deepEqual(await f.get(batch),cancelled);
 });
 
 test('exact replay, request conflicts and provable refusals',async t=>{

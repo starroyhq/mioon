@@ -43,6 +43,7 @@ import {isCompleteComfyImageConfiguration,getComfyImageDestination} from '../../
 import {IMAGE_REVIEW_DESTINATION} from '../../contracts/src/image-reviews.ts';
 import type {OutputLocale} from '../../contracts/src/output-locale.ts';
 import {generatedImageAssetName,recordOutputLocale} from './output-asset-names.ts';
+import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from './provider-registry.ts';
 
 type ImageSettingsService=Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettingsV2=Awaited<ReturnType<typeof createCustomImageSettingsV2>>;
@@ -54,7 +55,7 @@ type ImageFault=(stage: string,details?: Record<string, unknown>)=>unknown;
 type GenerateImage=(snapshot: unknown,context: {signal?: AbortSignal; beforeDispatch?: unknown; sourceBytes?: unknown; settingsRevision?: unknown; configuration?: unknown})=>Promise<ImageAdapterResult>;
 export interface ImageServicesOptions {
  signal?: AbortSignal;
- assertLiveAllowed?: ()=>void;
+ mockAllowed?: boolean;
  generate?: GenerateImage;
  autoRun?: boolean;
  deferRecovery?: boolean;
@@ -86,19 +87,21 @@ type ImageHandlerContext = {signal?: AbortSignal|null; outputLocale?: OutputLoca
 export interface ImageService {
  readonly activateBackground: ()=>void;
  readonly isBusy: ()=>boolean;
+ readonly available: (providerId?: string, model?: string)=>boolean;
+ readonly selectionRequired: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: ImageHandlerContext)=>unknown>>;
  readonly drain: ()=>Promise<void>;
  readonly approveReviewed: ImageReviewService['readForApproval'] extends (...args: never[])=>unknown?(approval: unknown)=>unknown:never;
  readonly rejectReview: (input: unknown)=>unknown;
  readonly generationServices: (operation: GenerationImageServiceOperation, input: unknown, outputLocale?: OutputLocale)=>unknown;
 }
-export type ImageProfileDependencies=Pick<ImageServicesOptions,'settings'|'customSettings'|'customSettingsV2'|'comfySettings'|'liveGateway'|'customGateway'|'comfyConnector'>;
+export type ImageProfileDependencies=Pick<ImageServicesOptions,'settings'|'customSettings'|'customSettingsV2'|'comfySettings'|'liveGateway'|'customGateway'|'comfyConnector'|'mockAllowed'>;
 /** Pure catalog projection: no store, task history, adapter call or I/O. */
-export function listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector}:ImageProfileDependencies={},input:{includeSettingsRevision?:boolean}={}):ImageProfileList {
- const profiles: ImageProfileList={items:[{providerId:'mock',model:IMAGE_MODELS.mock,name:'Mock 本地图像流程测试',enabled:true,isMock:true,evidence:'deterministic-mock',options:{...IMAGE_FIXED_OPTIONS}},{providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI Images · 未启用',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:{...IMAGE_FIXED_OPTIONS}}],liveEnabled:false};
+export function listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector,mockAllowed=true}:ImageProfileDependencies={},input:{includeSettingsRevision?:boolean}={}):ImageProfileList {
+ const profiles: ImageProfileList={items:[...(mockAllowed?[{providerId:'mock',model:IMAGE_MODELS.mock,name:'Mock 本地图像流程测试',enabled:true,isMock:true,evidence:'deterministic-mock',options:{...IMAGE_FIXED_OPTIONS}}]:[]),{providerId:'openai',model:IMAGE_MODELS.openai,name:'OpenAI Images · 未启用',enabled:false,isMock:false,evidence:'offline-tested-not-live',options:{...IMAGE_FIXED_OPTIONS}}],liveEnabled:false};
   const value=structuredClone(profiles);
   const withRevision=(profile: ImageProfileItem,state: {revision?: unknown}|undefined): ImageProfileItem=>{if(input.includeSettingsRevision===true){const revision=state?.revision;if(Number.isSafeInteger(revision)&&(revision as number)>0)profile.settingsRevision=revision as number;}return profile;};
-  try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);const liveItem=value.items[1];if(liveItem){liveItem.enabled=value.liveEnabled;liveItem.name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';withRevision(liveItem,state);}}catch{/* settings absence is not readiness */}
+  try{const state=settings?.[IMAGE_SETTINGS_READ_CURRENT]();value.liveEnabled=Boolean(live&&state?.configuration.enabled&&state?.secret.configured);const liveItem=value.items.find(item=>item.providerId==='openai');if(liveItem){liveItem.enabled=value.liveEnabled;liveItem.name=value.liveEnabled?'OpenAI Images · 需逐次确认':'OpenAI Images · 未启用';withRevision(liveItem,state);}}catch{/* settings absence is not readiness */}
   try{const state=customSettings?.[IMAGE_SETTINGS_READ_CURRENT]();if(state&&isCompleteCustomImageConfiguration(state.configuration)){const enabled=Boolean(compatible&&state.configuration.enabled&&state.secret.configured);value.items.push(withRevision({providerId:'openai-compatible',model:state.configuration.model,name:enabled?'自定义 Images · 需逐次确认':'自定义 Images · 未启用',enabled,isMock:false,evidence:'offline-tested-not-live',options:state.configuration.options},state));value.liveEnabled||=enabled;}}catch{/* settings absence is not readiness */}
   if(customSettingsV2){
    const state=customSettingsV2.readCurrent(),ambiguous=state.connections.length>1;
@@ -132,6 +135,7 @@ interface ImageOwnerRecord {
  readonly comfySettings?: ComfySettingsService;
  readonly comfyConnector?: ComfyConnector;
  readonly comfyModuleAvailability?: unknown;
+ readonly mockAllowed: boolean;
  readonly service: ImageService;
 }
 const owners=new WeakMap<DatabaseSync,ImageOwnerRecord>();
@@ -172,10 +176,10 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
  * user approval; injected dependencies are trusted tests, never RPC options. */
 // S0: each real project owns this queue/connection. The historical Global
 // limits are connection-local; queuedPerProject=8 remains the tighter limit.
-export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,deferRecovery=false,fault=noop,settings,liveGateway,customSettings,customSettingsV2,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
+export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,deferRecovery=false,fault=noop,settings,liveGateway,customSettings,customSettingsV2,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,mockAllowed=true}: ImageServicesOptions={}): ImageService {
  assertProjectStore(store);
  const old=owners.get(store.db);
- if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.deferRecovery!==deferRecovery||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customSettingsV2!==customSettingsV2||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
+ if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.deferRecovery!==deferRecovery||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customSettingsV2!==customSettingsV2||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability||old.mockAllowed!==mockAllowed)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
  const {db,tx}=store,queue: ImageAttempt[]=[],pending=new Map<string,ImageAttempt>(),active=new Set<Promise<unknown>>();
  const releaseProjectMedia=registerProjectMediaStore(store);
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
@@ -192,13 +196,19 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  };
  const reviews=createImageReviewServices(store,{signal,fault,
   getSettings:(providerId: string,connectionId?: string)=>{
-   assertLiveAllowed?.();
    if(providerId==='openai-compatible'&&customSettingsV2){const current=customSettingsV2.select(connectionId);return {revision:current.configurationRevision,configurationRevision:current.configurationRevision,connectionId:current.connectionId,configuration:current.configuration,enabled:current.configuration.enabled,destination:isCompleteCustomImageConfigurationV2(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null};}
    if(providerId==='comfy-local'){comfyAdmission.assertAvailable();const current=readComfyCurrent();if(!current)return {revision:0,enabled:false,destination:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled&&current.readiness?.checked),destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};}
    const current=readImageCurrent(selectedSettings(providerId) as ImageSettingsService|undefined);if(!current)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled),destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
-  assertSettings:({revision,configuration,connectionId,configurationRevision},providerId)=>{assertLiveAllowed?.();if(providerId==='openai-compatible'&&customSettingsV2)return customSettingsV2.assertCurrent({connectionId,configurationRevision,configuration});return assertCurrentSettings(providerId,expectedSettings(revision,configuration));}});
+  assertSettings:({revision,configuration,connectionId,configurationRevision},providerId)=>{if(providerId==='openai-compatible'&&customSettingsV2)return customSettingsV2.assertCurrent({connectionId,configurationRevision,configuration});return assertCurrentSettings(providerId,expectedSettings(revision,configuration));}});
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettingsV2?createCompatibleImageGatewayV2({settings:customSettingsV2}):customSettings?createCompatibleImageGateway({settings:customSettings}):null);
+ const profiles=(input: {includeSettingsRevision?:boolean}={})=>listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector,mockAllowed},input);
+ const selectionRequired=(): boolean=>{
+  try{return Boolean(compatible&&customSettingsV2&&customSettingsV2.readCurrent().connections.length>1);}catch{return false;}
+ };
+ const available=(providerId?:string,model?:string)=>profiles().items.some(item=>item.enabled&&
+  (providerId===undefined||item.providerId===providerId)&&(model===undefined||item.model===model));
+ const assertMockAllowed=(providerId:string):void=>{if(!mockAllowed&&providerId==='mock')throw generationServiceUnavailable();};
  const selectedGateway=(providerId: string): Gateways|ComfyConnector|null=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:providerId==='comfy-local'?comfyConnector??null:null;
  const selectedApiGateway=(providerId: string): Gateways|null=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:null;
  const history=createImageHistoryReaders(store),{schemaPresent,project,reader,task,group,reviewBinding,prior}=history;
@@ -239,6 +249,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   let value: ImageTaskView;
   if(operation==='image.generate'){
    const generation=toInput(input);
+   assertMockAllowed(generation.providerId);
    if(generation.providerId==='comfy-local')comfyAdmission.assertAvailable();
    if(generation.providerId!=='mock'){
     const serviceSettings=generation.providerId==='openai-compatible'?customSettingsV2:undefined;
@@ -280,11 +291,11 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  // Async edit preflights cannot prove durable nonacceptance from a missing row.
  // Keep their original key; only the existing synchronous legacy refusal path
  // emits operation-bound absence evidence.
- const proofCodes=new Set(['IMAGE_LIVE_DISABLED','IMAGE_REVIEW_REQUIRED','IMAGE_CAPACITY','IMAGE_QUEUE_FULL','IMAGE_GROUP_BUSY','IMAGE_REVISION_CONFLICT','IMAGE_STATE_CONFLICT','IMAGE_RESULT_INVALID']);
+ const proofCodes=new Set([GENERATION_SERVICE_UNAVAILABLE,'IMAGE_LIVE_DISABLED','IMAGE_REVIEW_REQUIRED','IMAGE_CAPACITY','IMAGE_QUEUE_FULL','IMAGE_GROUP_BUSY','IMAGE_REVISION_CONFLICT','IMAGE_STATE_CONFLICT','IMAGE_RESULT_INVALID']);
  function notAccepted(cause: unknown,operation: string,input: ImageMutationInput): void {
   const code=property(cause,'code');
   if(input.purpose!=='edit'&&typeof code==='string'&&proofCodes.has(code)&&!db.isTransaction){
-   try{project(input.projectId as string);if(input.taskId)task(input.projectId as string,input.taskId);if(input.groupId)group(input.projectId as string,input.groupId);if(!db.prepare('SELECT 1 FROM image_requests WHERE requestId=?').get(input.requestId as string)){if(isRecord(cause))cause.details={imageOutcome:{status:'not_accepted',projectId:input.projectId,operation,requestId:input.requestId,inputHash:hash(input)}};}}catch{/* absence evidence remains unknown */}
+   try{project(input.projectId as string);if(input.taskId)task(input.projectId as string,input.taskId);if(input.groupId)group(input.projectId as string,input.groupId);if(!db.prepare('SELECT 1 FROM image_requests WHERE requestId=?').get(input.requestId as string)){if(isRecord(cause))cause.details={...(isRecord(cause.details)?cause.details:{}),imageOutcome:{status:'not_accepted',projectId:input.projectId,operation,requestId:input.requestId,inputHash:hash(input)}};}}catch{/* absence evidence remains unknown */}
   }
  }
  function mutate(operation: string,input: ImageMutationInput,approval?: unknown,verified?: VerifiedEditSource|null,outputLocale?: OutputLocale): unknown {
@@ -304,6 +315,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   if(operation==='image.task.cancelQueued'||operation==='image.generate'&&input.purpose!=='edit')return mutate(operation,input,approval,undefined,outputLocale);
   owner();project(input.projectId as string);const replay=prior(operation,input);
   if(replay){if(approval)reviews.verifyReplay(toInput(input),replay.id,approval);return replay;}
+  if(operation==='image.generate')assertMockAllowed(input.providerId);
   const target=operation==='image.generate'?null:task(input.projectId as string,input.taskId as string),generation=target?.input??input;
   if(generation.purpose!=='edit')return mutate(operation,input,approval,undefined,outputLocale);
   const expected=target?.snapshot.sourceImage??(approval?reviews.sourceForApproval(approval):undefined);
@@ -357,12 +369,13 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    if(original.row.state!=='queued')return;
    effectGate();
    const projection={providerId:original.snapshot.providerId,model:original.snapshot.model,prompt:original.snapshot.prompt,options:original.snapshot.options,...imageEditFields(original.snapshot)};
+   assertMockAllowed(projection.providerId);
    const liveReview=projection.providerId!=='mock'?reviews.getForTask(entry.projectId,entry.id):null;
    const gateway=selectedGateway(projection.providerId);
    if(liveReview&&!gateway)fail('IMAGE_LIVE_DISABLED',403);
    const apiGateway=selectedApiGateway(projection.providerId);
    const source=original.input.purpose==='edit'?await editSources.verify(toInput(original.input) as ImageGenerationInput,original.snapshot.sourceImage):null;
-   const dispatch=(): void=>{effectGate();if(liveReview)assertLiveAllowed?.();if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{effectGate();if(liveReview)assertLiveAllowed?.();const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview){reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);recordAgentTaskJobDispatch(db,'image',entry.id);}const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
+   const dispatch=(): void=>{effectGate();if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{effectGate();const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview){reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);recordAgentTaskJobDispatch(db,'image',entry.id);}const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
    if(projection.providerId==='comfy-local'){
     if(!liveReview||!('execution' in liveReview)||!('configuration' in liveReview))fail('IMAGE_REVIEW_REQUIRED',403);
     await awaitProvider(()=>comfyConnector!.submit({execution:liveReview.execution,config:liveReview.configuration,signal,beforeSubmit:dispatch}),signal,{submit:true});
@@ -387,7 +400,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
      if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});
      else if(checked.dto.dispatched)change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});
      else if(stopped||signal.aborted)change(checked,{state:'interrupted_before_dispatch',errorCode:'IMAGE_INTERRUPTED'},{allowStopped:true});
-     else{const code=property(cause,'code');change(checked,{state:'failed',errorCode:typeof code==='string'&&messages[code]?code:checked.snapshot.providerId==='openai-compatible'&&typeof code==='string'&&customPreDispatchCodes.has(code)?code:'IMAGE_STORAGE_FAILED'},{release:true,allowStopped:true});}
+     else{const code=property(cause,'code');change(checked,{state:'failed',errorCode:typeof code==='string'&&(messages[code]||code===GENERATION_SERVICE_UNAVAILABLE)?code:checked.snapshot.providerId==='openai-compatible'&&typeof code==='string'&&customPreDispatchCodes.has(code)?code:'IMAGE_STORAGE_FAILED'},{release:true,allowStopped:true});}
     });
    }catch{diagnose();}
   }
@@ -415,7 +428,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   }catch{diagnose();}}
  }
 
- const handlers: Record<string,(input: unknown,context?: ImageHandlerContext)=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listImageProfiles({settings,customSettings,customSettingsV2,comfySettings,liveGateway:live,customGateway:compatible,comfyConnector},isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown,context?: ImageHandlerContext)=>mutateWithSource(operation,input as unknown as ImageMutationInput,undefined,context?.outputLocale)]))};
+ const handlers: Record<string,(input: unknown,context?: ImageHandlerContext)=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>profiles(isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown,context?: ImageHandlerContext)=>mutateWithSource(operation,input as unknown as ImageMutationInput,undefined,context?.outputLocale)]))};
  const removeResumer=setAgentTaskJobResumer(db,'image',runId=>{for(const row of db.prepare(`SELECT t.id,t.projectId FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.dispatched=0 ORDER BY t.createdAt,t.id`).all(runId)){const entry=pending.get(String(row.id));if(entry)entry.resumeRequested=true;else enqueue(String(row.id),String(row.projectId),false);}});
  const removeStopper=setAgentTaskJobStopper(db,'image',(runId,stepId)=>{for(const row of db.prepare(`SELECT t.id,t.projectId,t.revision FROM image_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted_before_dispatch') AND t.dispatched=0 ORDER BY t.id`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'image',String(row.id),()=>{
   try{handlers['image.task.cancelQueued']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
@@ -436,7 +449,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const parsed=generationImageServiceSchemas['image.service.list'].safeParse(raw);if(!parsed.success)throw new TypeError('Invalid image service list request');project(parsed.data.projectId);
   return generationImageServiceListResponseSchema.parse({projectId:parsed.data.projectId,items:customSettingsV2?.readCurrent().connections??[]});
  };
- const service: ImageService={handlers,drain,activateBackground,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject,generationServices};
- owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,deferRecovery,fault,settings,liveGateway,customSettings,customSettingsV2,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,service});
+ const service: ImageService={handlers,drain,activateBackground,available,selectionRequired,isBusy:()=>active.size>0||pending.size>0,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject,generationServices};
+ owners.set(db,{root:store.root,signal:ownerSignal,generate,autoRun,deferRecovery,fault,settings,liveGateway,customSettings,customSettingsV2,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,mockAllowed,service});
  try{if(!deferRecovery)activateBackground();}catch(error){releaseProjectMedia();owners.delete(db);throw error;}return service;
 }

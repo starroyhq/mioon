@@ -128,9 +128,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-actions { flex: none; position: static; margin-top: 0; min-height: var(--wb-action-bar); }
 .settings-center-content > .settings-connection-panes { flex: 1; min-height: 0; overflow: hidden; }
 .settings-center .agent-settings-page { border: 0; border-radius: 0; background: transparent; overflow: hidden; }
-.settings-live-generation { display: flex; align-items: center; gap: var(--wb-space-3); padding: var(--wb-space-3); margin-bottom: var(--wb-space-5); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); }
-.settings-live-generation > div { flex: 1; min-width: 0; }
-.settings-live-generation p { margin-top: var(--wb-space-1); color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
 .settings-services dd { display: flex; align-items: center; gap: var(--wb-space-5); }
 .settings-services dl > div { min-height: var(--wb-action-bar); }
 .settings-center-content > section:has(> .settings-video-tools) { display: flex; overflow: hidden; padding-bottom: 0; }

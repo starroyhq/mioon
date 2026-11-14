@@ -1,3 +1,4 @@
+import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from './provider-registry.ts';
 import {markBackgroundTaskChanged} from './background-task-events.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {randomUUID,randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
@@ -60,7 +61,7 @@ const RUNNING=new Set(['queued','dispatching','receiving','persisting','succeede
 const RETRYABLE=new Set(['failed','cancelled_before_dispatch']);
 const EDIT_ORIGINS=new Set(['user-import','generated','synthetic-mock','extracted-frame']);
 
-export function createSubjectVariantServices(store: SubjectVariantStore,{deferRecovery=false}: {deferRecovery?: boolean}={}): SubjectVariantService {
+export function createSubjectVariantServices(store: SubjectVariantStore,{deferRecovery=false,mockAllowed=true}: {deferRecovery?: boolean;mockAllowed?: boolean}={}): SubjectVariantService {
  assertProjectStore(store);
  const {db,tx}=store,secret=randomBytes(32);let backgroundActive=false;
  const schemaPresent=(): boolean=>subjectVariantSchemaPresent(db);
@@ -169,6 +170,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore,{deferRe
    if(isSubjectVersionHidden(db,input.sourceVersionId))fail('SUBJECT_VERSION_HIDDEN');
    const asset=decode((db.prepare(`SELECT ${text('data',65536)} FROM assets WHERE id=? AND projectId=? LIMIT 1`).get(version.assetId,input.projectId) as {data?: unknown}|undefined)?.data) as Row;
    const profile=imageEditProfile(input.providerId,input.model);if(!profile)fail('SUBJECT_VARIANT_SOURCE_UNSUPPORTED');
+   if(!mockAllowed&&input.providerId==='mock')throw generationServiceUnavailable();
    const source={assetId:version.assetId,sha256:version.sha256,mimeType:version.mimeType,width:version.width,height:version.height,byteLength:asset.sizeBytes,number:version.number};
    const issue=sourceIssue(source,version.provenance,profile!);
    if(issue)throw failure('SUBJECT_VARIANT_SOURCE_UNSUPPORTED',409,{reason:issue});
@@ -204,6 +206,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore,{deferRe
    const item=view.items[input.position-1];if(!item)fail('SUBJECT_VARIANT_STATE_CONFLICT');
    const task=imageTask(input.projectId,item!.imageRequestId);
    if(item!.versionId||!task||!RETRYABLE.has(task.state))fail('SUBJECT_VARIANT_RETRY_UNAVAILABLE');
+   if(!mockAllowed&&view.snapshot.providerId==='mock')throw generationServiceUnavailable();
    if(item!.attempt>=SUBJECT_VARIANT_LIMITS.attempts)fail('SUBJECT_VARIANT_CAPACITY',507);
    const timestamp=now(),attempt=item!.attempt+1;
    if(db.prepare('UPDATE subject_variant_items SET attempt=?,imageRequestId=?,revision=revision+1,updatedAt=? WHERE batchId=? AND position=? AND revision=?')
@@ -282,7 +285,7 @@ export function createSubjectVariantServices(store: SubjectVariantStore,{deferRe
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
   try{return read();}finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
  }
- const refusals=new Set(['SUBJECT_VARIANT_REVISION_CONFLICT','SUBJECT_VARIANT_STATE_CONFLICT','SUBJECT_VARIANT_KIND_UNSUPPORTED','SUBJECT_VARIANT_SOURCE_UNSUPPORTED',
+ const refusals=new Set([GENERATION_SERVICE_UNAVAILABLE,'SUBJECT_VARIANT_REVISION_CONFLICT','SUBJECT_VARIANT_STATE_CONFLICT','SUBJECT_VARIANT_KIND_UNSUPPORTED','SUBJECT_VARIANT_SOURCE_UNSUPPORTED',
   'SUBJECT_VARIANT_QUEUE_FULL','SUBJECT_VARIANT_RETRY_UNAVAILABLE','SUBJECT_VARIANT_UNDO_BLOCKED','SUBJECT_VERSION_HIDDEN','SUBJECT_VARIANT_CAPACITY']);
  /** An error label alone never proves nonacceptance: a fresh transaction must
  * find the project and no receipt for this exact request ID. */

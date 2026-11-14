@@ -67,7 +67,7 @@ export function testProjectAppLibrary(value: unknown): AppLibrary | undefined {
 export function testProjectServiceApplication(value: unknown, env: NodeJS.ProcessEnv = process.env): ServiceApplicationPorts | undefined {
   const library = testProjectAppLibrary(value);
   if (!library || !isProjectStore(value)) return undefined;
-  // Only the database owner is shared. Per-service environment admission keeps
-  // the old caller-specific live-generation gate; settings still share B1 data.
+  // Only the database owner is shared. Embedded catalog adapters still use the
+  // caller's environment; application settings share B1 data.
   return createProjectServiceApplication(library, undefined, env);
 }

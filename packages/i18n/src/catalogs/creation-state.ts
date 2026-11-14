@@ -655,10 +655,10 @@ export const creationStateMessages = {
     "ja": "ソース画像がバックエンドの検証に通らなかったため、今回のリクエストは受け付けられていません。現在のプロジェクトの完全な PNG、JPEG、WebP（50 MB未満、各辺4096ピクセル以下）を使ってください。PNG は不透明・8ビット・非インターレースである必要があります"
   },
   "image.state.liveDisabled": {
-    "zh-Hans": "真实图像调用尚未启用，本次未被接受",
-    "zh-Hant": "實際圖像呼叫尚未啟用，此次未被接受",
-    "en": "Live image calls are not enabled; this request was not accepted",
-    "ja": "実際の画像呼び出しが有効でないため、今回のリクエストは受け付けられませんでした"
+    "zh-Hans": "暂没有可用的图像生成服务，请在设置里配置并启用",
+    "zh-Hant": "目前沒有可用的圖像生成服務，請在設定中設定並啟用",
+    "en": "No image generation service is available. Configure and enable one in Settings",
+    "ja": "利用可能な画像生成サービスがありません。設定でサービスを設定し、有効にしてください"
   },
   "image.state.groupBusy": {
     "zh-Hans": "此组有未结束或结果未知的任务，本次未被接受。请查看原任务",
@@ -763,10 +763,10 @@ export const creationStateMessages = {
     "ja": "各辺は最大4096ピクセルです"
   },
   "image.state.editProvidersOnly": {
-    "zh-Hans": "图像编辑仅支持 Mock 和 OpenAI 官方连接",
-    "zh-Hant": "圖像編輯僅支援 Mock 與 OpenAI 官方連線",
-    "en": "Image editing supports only Mock and the official OpenAI connection",
-    "ja": "画像編集は Mock と OpenAI 公式接続のみに対応します"
+    "zh-Hans": "图像编辑需要 OpenAI 官方连接",
+    "zh-Hant": "圖像編輯需要 OpenAI 官方連線",
+    "en": "Image editing requires the official OpenAI connection",
+    "ja": "画像編集には OpenAI 公式接続が必要です"
   },
   "image.state.sourceRequired": {
     "zh-Hans": "请选择当前项目的一张源图",
@@ -835,10 +835,10 @@ export const creationStateMessages = {
     "ja": "元のリクエストが見つかりました。再生成はしていません"
   },
   "image.state.settingsUnverifiable": {
-    "zh-Hans": "暂时无法核验图像设置。付费生成已暂停，Mock 与已保存记录仍可使用",
-    "zh-Hant": "目前無法核驗圖像設定。付費生成已暫停，仍可使用 Mock 與已儲存記錄",
-    "en": "Image settings cannot be verified right now. Paid generation is paused; Mock and saved records remain available",
-    "ja": "画像設定を現在検証できません。有料生成を停止していますが、Mock と保存済みの記録は利用できます"
+    "zh-Hans": "暂时无法核验图像设置。付费生成已暂停，仍可查看已保存记录",
+    "zh-Hant": "目前無法核驗圖像設定。付費生成已暫停，仍可檢視已儲存記錄",
+    "en": "Image settings cannot be verified right now. Paid generation is paused. Saved records are still available",
+    "ja": "画像設定を現在検証できません。有料生成を停止していますが、保存済みの記録は利用できます"
   },
   "image.state.remoteIdentityReadFailed": {
     "zh-Hans": "暂时无法读取此任务的本地远端身份记录。没有查询 ComfyUI 或重新提交生成",

@@ -7,6 +7,7 @@ import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
+import {toolingEnvironment} from './lib/local-tooling.ts';
 
 interface RpcEnvelope<T> {readonly ok: boolean; readonly data: T; readonly error?: unknown}
 interface Project {readonly id: string; readonly name: string}
@@ -27,7 +28,7 @@ const data=path.resolve(process.env.MIOON_V2_DEMO_DIR||path.join(root,'examples/
 const evidence=path.join(root,'evidence/v2-demo');await mkdir(evidence,{recursive:true});ensurePrivateDirectory(data,{create:true});
 const socket=net.createServer();socket.listen(0,'127.0.0.1');await once(socket,'listening');const port=(socket.address() as net.AddressInfo).port;await new Promise(r=>socket.close(r));
 const token='timeline-synthetic-demo-'+randomUUID(),base=`http://127.0.0.1:${port}`;
-let output='';const server=spawn(process.execPath,['server/index.ts'],{cwd:root,env:{...process.env,PORT:String(port),MIOON_DATA_DIR:data,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0',RUNWAYML_API_SECRET:'',RUNWAY_MAX_GENERATIONS:'0'},stdio:['ignore','pipe','pipe']});
+let output='';const server=spawn(process.execPath,['server/index.ts'],{cwd:root,env:{...toolingEnvironment(process.env,{mediaPaths:true}),PORT:String(port),MIOON_DATA_DIR:data,MIOON_TOKEN:token},stdio:['ignore','pipe','pipe']});
 server.stdout.on('data',(b: Buffer)=>output+=b);server.stderr.on('data',(b: Buffer)=>output+=b);
 const pause=(ms: number)=>new Promise(r=>setTimeout(r,ms));
 const rpc=async <T>(operation: string,input: unknown={}): Promise<T>=>{const r=await fetch(base+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});const b=await r.json() as RpcEnvelope<T>;if(!b.ok)throw Error(`${operation}: ${JSON.stringify(b.error)}`);return b.data;};

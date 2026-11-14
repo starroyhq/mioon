@@ -57,7 +57,6 @@ command -v ffprobe
 ```sh
 export MIOON_FFMPEG_PATH="/实际安装位置/ffmpeg"
 export MIOON_FFPROBE_PATH="/实际安装位置/ffprobe"
-export MIOON_ENABLE_LIVE_PROVIDER=0
 ```
 
 核对工具输出：
@@ -90,7 +89,7 @@ export MIOON_ENABLE_LIVE_PROVIDER=0
 node scripts/tooling.ts doctor
 node scripts/tooling.ts test --suite=portable --concurrency=1
 node scripts/tooling.ts build --channel=development
-MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
+pnpm desktop
 ```
 
 当前应用源码为 TypeScript（如 `apps/desktop/src/*.ts`、`apps/desktop/scripts/*.ts`）；桌面 builder 配置来自 typed `apps/desktop/builder-config.ts`，构建时生成到忽略的 `apps/desktop/.generated/`，不再有手写 `.cjs` / `.mjs` 入口。
@@ -133,7 +132,7 @@ export MIOON_DESKTOP_USER_DATA="$HOME/Library/Application Support/app.starroy.mi
 4. 完全退出 Mioon，再按同一条启动命令打开，重新进入同一项目，检查素材、片段和已完成导出。
 5. 想试生成流程时，创建镜头并只选带“本地模拟”标记的 `Mock · simulated motion`，使用“正常完成”场景。模拟 MP4 带有 SIMULATED MOCK 标记，它验证流程，不会根据提示词生成真实 AI 画面；模拟视频本身不带音频。
 
-先使用无关紧要的试用素材。首次验收不要输入供应商、Mio 或 Images 密钥，不配置或调用 Mio 模型；官方/自定义 Images 与 ComfyUI 保持未启用，也不点击 ComfyUI 的连接检查（检查本身会发送 HTTP）。不要用重要项目测试中断或恢复。MIOON_ENABLE_LIVE_PROVIDER=0 是视频供应商的开关，不应把它当作所有模型联网调用的总开关。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
+先使用无关紧要的试用素材。首次验收不要输入供应商、Mio 或 Images 密钥，不配置或调用 Mio 模型；官方/自定义 Images 与 ComfyUI 保持未启用，也不点击 ComfyUI 的连接检查（检查本身会发送 HTTP）。不要用重要项目测试中断或恢复。首次试用请确认启动终端未配置供应商密钥。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
 
 ## 任务中心与恢复的范围
 
@@ -182,7 +181,7 @@ export MIOON_DESKTOP_USER_DATA="$HOME/Library/Application Support/app.starroy.mi
 ```sh
 env -u MIOON_TOKEN -u MIOON_DIST_DIR \
 PORT=4318 MIOON_DATA_DIR="$HOME/Library/Application Support/Mioon Browser Trial" \
-MIOON_ENABLE_LIVE_PROVIDER=0 pnpm start
+pnpm start
 ```
 
 此命令沿用当前终端里已确认的 MIOON_FFMPEG_PATH 和 MIOON_FFPROBE_PATH，并仅为这次启动排除已有的令牌和网页目录覆盖变量。保持终端运行，打开 http://127.0.0.1:4318 ，以终端实际显示的地址为准。首次启动会创建只供本机账户读取的 access-token；在另一个本机终端读取它，并只填入这个本机登录框：

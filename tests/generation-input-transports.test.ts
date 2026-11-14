@@ -51,15 +51,16 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
  assert.ok(!JSON.stringify(discovery).includes(token)&&!JSON.stringify(failure).includes('relativePath'));
  // A configured Wan model is discoverable through every transport, while the
- // persisted live switch prevents this parity test from dispatching any media.
+ // a deliberately mismatched model prevents this parity test from dispatching any media.
  const connection:VideoConnectionConfigurationV2={id:randomUUID(),providerId:'wan',name:VIDEO_PROVIDER_NAMES.wan,region:'cn-beijing',workspaceId:'test-workspace',enabled:true,outputHosts:['output.example'],models:defaultVideoModels('wan').filter(model=>model.templateId==='wan30-v1')};
  const saved=await fetch(url!+'/api/video-providers/settings',{method:'PUT',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',expectedRevision:0,configuration:connection,secret:{action:'replace',value:'synthetic-wan-parity-key',storage:'session'}})});
  assert.equal(saved.status,200);
  const directory=await http('video.connection.list',{});
  assert.equal(directory.ok,true);assert.deepEqual(await cli(['video','connection','list'],env),directory);assert.deepEqual(await mcp('video_connection_list'),directory);
- const wanInput={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',requestId:randomUUID(),connectionId:connection.id,configurationRevision:1,modelEntryId:connection.models[0]!.id,videoInput:{version:1,mode:'text',images:[],prompt:'No network generation.'},parameters:{durationSeconds:-1,aspectRatio:'adaptive',resolution:'480P',generateAudio:false,promptExtend:false,watermark:true}};
- const disabled=await http('generation.submit',wanInput);assert.equal(disabled.error?.code,'LIVE_GENERATION_DISABLED');
- assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify({projectId:project.id,...wanInput})],env,3),disabled);assert.deepEqual(await mcp('generation_submit',{projectId:project.id,...wanInput}),disabled);
+ assert.equal((await http('workspace.settings.set',{expectedRevision:0,liveGeneration:false})).ok,true);
+ const wanInput={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',model:'synthetic-mismatched-model',requestId:randomUUID(),connectionId:connection.id,configurationRevision:1,modelEntryId:connection.models[0]!.id,videoInput:{version:1,mode:'text',images:[],prompt:'No network generation.'},parameters:{durationSeconds:-1,aspectRatio:'adaptive',resolution:'480P',generateAudio:false,promptExtend:false,watermark:true}};
+ const refused=await http('generation.submit',wanInput);assert.equal(refused.error?.code,'VIDEO_BINDING_INVALID');
+ assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify({projectId:project.id,...wanInput})],env),refused);assert.deepEqual(await mcp('generation_submit',{projectId:project.id,...wanInput}),refused);
  const schema=await cli(['schema','generation.submit'],env);assert.match(JSON.stringify(schema),/videoInput/);assert.match(JSON.stringify(schema),/durationSeconds/);
  assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
 });

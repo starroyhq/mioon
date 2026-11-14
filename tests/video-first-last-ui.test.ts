@@ -167,6 +167,17 @@ function appGenerationFlow({ providers, options, currentShot }: {providers: Gene
   return { ...methods,generate:async(...args:Parameters<GenerationMethods['generate']>)=>{methods.generate(...args);await new Promise<void>(resolve=>setImmediate(resolve));}, state, scope };
 }
 
+test('a shot without a generation service offers settings and cannot generate', async () => {
+  const opened: string[] = [];
+  const h = harness({providers: [], generationOptions: {}, configureGeneration: () => {opened.push('models');}});
+  assert.match(text(h.find('video-generation-no-service')), /请先在设置里配置并启用/u);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  await h.click('generate-shot');
+  assert.deepEqual(h.generated, []);
+  await h.click('video-generation-configure');
+  assert.deepEqual(opened, ['models']);
+});
+
 test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {
   for (const dirty of [false, true]) {
     const f = configuredConnectionFixture(), h = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options });

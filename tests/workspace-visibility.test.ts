@@ -14,7 +14,7 @@ import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
-import {generationParameters} from '../apps/web/src/generation-settings.ts';
+import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
@@ -104,7 +104,7 @@ function createHarness(file: string, exportName = 'default') {
     './api.ts': { assetUrl, versionUrl, activeJob, mediaUrl, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
-    './generation-settings.ts': { generationParameters, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
+    './generation-settings.ts': { generationParameters, providerStatus, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
     './VideoFrameControls.tsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },
@@ -379,6 +379,19 @@ test('shot node and Inspector replace stalled video progress with Keychain guida
       assert.equal(treeNodes(view).some(element => element.props.role === 'progressbar'), false);
     }
     assert.equal(node.nodes().find(element => element.props.className === 'node-generate nodrag')?.props.disabled, true);
+    assert.equal(inspector.find('generate-shot').props.disabled, true);
+    const configured: string[] = [];
+    node.render({data: {...data, configureGeneration: () => configured.push('node')}});
+    inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null, configureGeneration: () => configured.push('inspector')}));
+    assert.ok(treeText(node.find(`shot-connection-${job.shotId}`)).includes(guidance));
+    assert.ok(treeText(inspector.find('inspector-generation-progress')).includes(guidance));
+    const nodeConfigure = node.find(`shot-configure-generation-${job.shotId}`)!;
+    const inspectorConfigure = inspector.find('video-generation-configure')!;
+    for (const button of [nodeConfigure, inspectorConfigure]) {
+      assert.ok(treeText(button).includes(translate(locale, 'generation.services.openSettings')) || button.props['aria-label'] === translate(locale, 'generation.services.openSettings'));
+      button.props.onClick();
+    }
+    assert.deepEqual(configured, ['node', 'inspector']);
     assert.equal(inspector.find('generate-shot').props.disabled, true);
     const polling = {...job, progress: 45};
     node.render({data: {...data, job: polling, generationUnavailableReason: null}});

@@ -107,7 +107,7 @@ node apps/cli/src/index.ts image profile list --input '{"includeSettingsRevision
 
 MCP 是 `image_profile_list`，同一严格 JSON。默认 `{}`（或 false）保留旧响应；显式 true 只增加来自同一安全快照的正安全整数。Mock、缺失、0、无效或不可读版本不猜测；未完整配置的 custom/Comfy 项仍不返回。无当前值就停在这里，请用户配置，不猜 `1`、不借其他槽版本，不用私有 HTTP 获取设置。此读不返回 endpoint/key/secret/settings，不探测、不解密、不准备、不批准。历史 review 的版本不证明当前配置；设置变化仍由原 CAS 拒绝，不自动改已保留意图或重分配 key。
 
-`enabled` 和 `configured` 不是付费批准或实测兼容性。Images 专用配置与视频/内置聊天 Agent 配置不同；`MIOON_ENABLE_LIVE_PROVIDER=0` 也不是所有模型联网功能的总开关。
+`enabled` 和 `configured` 不是付费批准或实测兼容性。Images、视频和内置聊天 Agent 分别配置。
 
 ### 3.2 外部 Agent：本地写入准备，不批准、不生成
 

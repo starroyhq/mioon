@@ -100,16 +100,16 @@ export const operationMessages = {
     "ja": "現在のプロジェクトが所有する検証済み書き出しファイルの場所とメタデータを読み取ります。呼び出し元が指定したパスやコマンドの実行は受け付けません"
   },
   "operation.workspace.settings.get": {
-    "zh-Hans": "读取当前本地工作区的真实生成与自动备份设置",
-    "zh-Hant": "讀取目前本機工作區的真實生成與自動備份設定",
-    "en": "Read the current local workspace settings for live generation and automatic backups",
-    "ja": "現在のローカルワークスペースの実生成と自動バックアップの設定を読み取ります"
+    "zh-Hans": "读取旧版工作区设置客户端的兼容响应和修订号",
+    "zh-Hant": "讀取舊版工作區設定用戶端的相容回應和修訂版號",
+    "en": "Read the compatibility response and revision for legacy workspace settings clients",
+    "ja": "旧版のワークスペース設定クライアント向けの互換応答とリビジョンを読み取ります"
   },
   "operation.workspace.settings.set": {
-    "zh-Hans": "按设置修订号保存当前本地工作区的真实生成与自动备份设置",
-    "zh-Hant": "按設定修訂版號儲存目前本機工作區的真實生成與自動備份設定",
-    "en": "Save live-generation and automatic-backup settings for the current local workspace against the settings revision",
-    "ja": "設定のリビジョンを照合し、現在のローカルワークスペースの実生成と自動バックアップの設定を保存します"
+    "zh-Hans": "按当前修订号推进旧版工作区设置的修订号",
+    "zh-Hant": "依目前的修訂版號更新舊版工作區設定的修訂版號",
+    "en": "Advance the legacy workspace settings revision after checking the current revision",
+    "ja": "現在のリビジョンを照合して旧版のワークスペース設定のリビジョンを更新します"
   },
   "operation.task.disposition.list": {
     "zh-Hans": "只读查询明确项目任务的本地处置标记，不调度、对账或重试任务",
@@ -748,10 +748,10 @@ export const operationMessages = {
     "ja": "UIで設定した公式動画接続とモデルの機能を読み取り専用で確認します。認証情報の公開、メディアの読み取り、プロバイダーへの接続、生成タスクの作成は行いません"
   },
   "operation.generation.submit": {
-    "zh-Hans": "用稳定requestId提交生成（默认仅模拟）",
-    "zh-Hant": "用穩定requestId提交生成（預設僅模擬）",
-    "en": "Submit generation using a stable requestId (simulation only by default)",
-    "ja": "安定したrequestIdを使用して生成を送信します（既定ではシミュレーションのみ）"
+    "zh-Hans": "用稳定 requestId 向已配置的生成服务提交镜头任务",
+    "zh-Hant": "用穩定 requestId 向已設定的生成服務送出鏡頭工作",
+    "en": "Submit a shot to a configured generation service using a stable requestId",
+    "ja": "安定した requestId を使用して設定済みの生成サービスにショットを送信します"
   },
   "operation.job.get": {
     "zh-Hans": "读取任务和可恢复错误",

@@ -98,15 +98,13 @@ async function boundedJson(response: Response, signal?: AbortSignal): Promise<un
 export function liveConfiguration(env: NodeJS.ProcessEnv, keyName: string, prefix: string): LiveConfiguration {
   const secret = typeof env[keyName] === 'string' ? env[keyName].trim() : '';
   const configured = Boolean(secret);
-  const enabled = () => configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
   return {
-    secret, configured, get enabled() { return enabled(); },
-    get status() { return !configured ? 'not_configured' : enabled() ? 'available' : 'disabled'; },
+    secret, configured, enabled: configured, status: configured ? 'available' : 'not_configured',
     configuration: {
-      missing: [...(!configured ? [keyName] : []), ...(env.MIOON_ENABLE_LIVE_PROVIDER !== '1' ? ['MIOON_ENABLE_LIVE_PROVIDER'] : [])],
-      requirements: [keyName, 'MIOON_ENABLE_LIVE_PROVIDER=1', `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
+      missing: configured ? [] : [keyName],
+      requirements: [keyName, `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
     },
-    ensureEnabled() { if (!enabled()) throw providerError('PROVIDER_DISABLED', 'Live provider calls are disabled or its server credential is missing.'); },
+    ensureEnabled() { if (!configured) throw providerError('PROVIDER_DISABLED', 'The server credential for this provider is missing.'); },
   };
 }
 

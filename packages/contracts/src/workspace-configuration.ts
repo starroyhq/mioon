@@ -1,5 +1,6 @@
 import {z} from 'zod';
 
+// Preserve the legacy wire shape while the application ignores the retired flag.
 const revision=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const workspaceSettingsSchema=z.object({
   formatVersion:z.literal(1),revision,liveGeneration:z.boolean(),

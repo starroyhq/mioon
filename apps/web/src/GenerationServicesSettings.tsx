@@ -1,7 +1,6 @@
 import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {Badge} from '@mioon/ui/components/badge';
-import {Switch} from '@mioon/ui/components/switch';
 import {useConfirmation} from '@mioon/ui/components/workbench-confirm';
 import {message} from '../../../packages/i18n/src/index.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
@@ -11,11 +10,9 @@ import {useGenerationVideoServices} from './GenerationVideoServices.tsx';
 import {useGenerationOfficialImageService, useGenerationCustomImageServices, useGenerationComfyService} from './GenerationImageServices.tsx';
 import {saveGenerationServiceDomains} from './generation-services-settings.ts';
 import type {GenerationServiceDetail, GenerationServiceDomain, GenerationSaveResult} from './generation-services-settings.ts';
-import {createGenerationLiveSettings, generationLiveSettingsDirty, initialGenerationLiveSettings} from './generation-services-live-setting.ts';
 import {createSettingsNavigationReporter} from './settings-navigation-state.ts';
 import type {SettingsNavigationState} from './settings-navigation-state.ts';
 import type {SettingsPage} from './settings-window-state.ts';
-import {notifyGenerationLiveGateChanged} from './GenerationLiveGateNotice.tsx';
 import {browserRpc} from './browser-rpc.ts';
 import ProviderBrandIcon from './ProviderBrandIcon.tsx';
 import Icon from './icons.tsx';
@@ -23,7 +20,6 @@ import './generation-services-settings.css';
 
 const environmentVariables = {ark: 'ARK_API_KEY', veo: 'GEMINI_API_KEY', minimax: 'MINIMAX_API_KEY', vidu: 'VIDU_API_KEY'} as const;
 const intentKey = (page: SettingsPage) => page === 'official' ? 'image:official' : page === 'comfy' ? 'image:comfy' : page === 'custom' ? 'image:custom' : 'general';
-type LiveOwner = ReturnType<typeof createGenerationLiveSettings>;
 type DomainId = 'video' | 'custom' | 'official' | 'comfy';
 
 /** One retained owner for all generation settings. The shared X6 layout alone
@@ -34,18 +30,18 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   const {t} = useI18n(), confirm = useConfirmation();
   const [documentVisible, setDocumentVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const pageVisible = active && documentVisible;
-  const [selected, setSelected] = useState(() => intentKey(page)), [live, setLive] = useState(initialGenerationLiveSettings);
+  const [selected, setSelected] = useState(() => intentKey(page));
   const [saving, setSaving] = useState(false), [result, setResult] = useState<GenerationSaveResult | null>(null), [, redraw] = useState(0);
-  const [environment, setEnvironment] = useState<Record<string, boolean> | null>(null), [simulation, setSimulation] = useState<boolean | null>(null);
-  const reporter = useRef(createSettingsNavigationReporter()).current, liveOwner = useRef<LiveOwner | null>(null);
+  const [environment, setEnvironment] = useState<Record<string, boolean> | null>(null);
+  const reporter = useRef(createSettingsNavigationReporter()).current;
   const reports = useRef(new Map<DomainId, SettingsNavigationState>()), domains = useRef<readonly GenerationServiceDomain[]>([]);
   const owner = useRef({mounted: true, active: pageVisible, saving: false, selectionVersion: 0});
   owner.current.active = pageVisible;
   const publish = useCallback(() => {
-    const values = [...reports.current.values()], current = liveOwner.current?.getState();
-    const busy = owner.current.saving || values.some(value => value.busy) || current && ['loading', 'saving', 'reconciling'].includes(current.phase);
-    const blocked = values.some(value => value.blocked) || Boolean(current?.recovery) || current?.phase === 'blocked';
-    const dirty = values.some(value => value.dirty) || Boolean(current && generationLiveSettingsDirty(current));
+    const values = [...reports.current.values()];
+    const busy = owner.current.saving || values.some(value => value.busy);
+    const blocked = values.some(value => value.blocked);
+    const dirty = values.some(value => value.dirty);
     reporter.update({phase: busy ? 'saving' : blocked ? 'blocked' : 'ready', dirty, recovery: blocked ? 'review' : null});
     if (owner.current.mounted) redraw(value => value + 1);
   }, [reporter]);
@@ -65,7 +61,7 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   domains.current = [video, custom, official, comfy];
   const services = [...video.services, ...official.services, ...comfy.services, ...custom.services];
   const navigation = reporter.getState();
-  const ready = Boolean(live.snapshot) && domains.current.every(domain => domain.ready);
+  const ready = domains.current.every(domain => domain.ready);
   const serviceKeys = services.map(service => service.key).join('|');
 
   useLayoutEffect(() => {
@@ -74,14 +70,10 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   }, [onNavigationStateChange, reporter, publish]);
   useLayoutEffect(() => {
     owner.current.mounted = true;
-    const session = createGenerationLiveSettings({onChange: state => {setLive(state); publish();}, onConfirmed: notifyGenerationLiveGateChanged});
-    liveOwner.current = session;
-    return () => {owner.current.mounted = false; session.dispose(); for (const domain of domains.current) domain.clearKeys(); if (liveOwner.current === session) liveOwner.current = null;};
-  }, [publish]);
+    return () => {owner.current.mounted = false; for (const domain of domains.current) domain.clearKeys();};
+  }, []);
   useLayoutEffect(() => {
-    const session = liveOwner.current; session?.setVisible(pageVisible);
     if (!pageVisible) for (const domain of domains.current) domain.clearKeys();
-    else if (session?.getState().phase === 'loading') void session.load();
   }, [pageVisible]);
   useLayoutEffect(() => {if (active) {setSelected(intentKey(page)); owner.current.selectionVersion++;}}, [active, page, entryVersion]);
   useLayoutEffect(() => {
@@ -93,7 +85,7 @@ export default function GenerationServicesSettings({active, page = 'models', ent
     if (typeof document === 'undefined') return;
     const changed = () => {
       const visible = document.visibilityState !== 'hidden';
-      if (!visible) {owner.current.active = false; liveOwner.current?.setVisible(false); for (const domain of domains.current) domain.clearKeys();}
+      if (!visible) {owner.current.active = false; for (const domain of domains.current) domain.clearKeys();}
       setDocumentVisible(visible);
     };
     document.addEventListener('visibilitychange', changed);
@@ -106,9 +98,8 @@ export default function GenerationServicesSettings({active, page = 'models', ent
       if (!current || !Array.isArray(value)) return;
       const next: Record<string, boolean> = {};
       for (const provider of value) if (provider && typeof provider === 'object' && typeof provider.id === 'string' && Object.hasOwn(environmentVariables, provider.id) && typeof provider.configured === 'boolean') next[provider.id] = provider.configured;
-      const mock = value.find(provider => provider && typeof provider === 'object' && provider.id === 'mock');
-      setEnvironment(next); setSimulation(typeof mock?.enabled === 'boolean' ? mock.enabled : null);
-    }).catch(() => {if (current) {setEnvironment(null); setSimulation(null);}});
+      setEnvironment(next);
+    }).catch(() => {if (current) setEnvironment(null);});
     return () => {current = false; abort.abort();};
   }, [pageVisible]);
 
@@ -116,10 +107,7 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   const save = () => {
     if (!allowed() || !ready || navigation.busy || navigation.blocked || !navigation.dirty) return;
     owner.current.saving = true; setSaving(true); setResult(null); publish();
-    const session = liveOwner.current!;
-    const gate = (enabled: boolean) => ({clearKeys() {}, prepareSave: () => session.getState().draft === enabled ? session.prepareSave() : null});
-    // The gate is closed before any other file; an opening is committed last.
-    void saveGenerationServiceDomains([gate(false), ...domains.current, gate(true)]).then(outcome => {
+    void saveGenerationServiceDomains(domains.current).then(outcome => {
       if (owner.current.mounted) setResult(outcome);
     }).finally(() => {owner.current.saving = false; if (owner.current.mounted) {setSaving(false); publish();}});
   };
@@ -129,7 +117,7 @@ export default function GenerationServicesSettings({active, page = 'models', ent
     if (!await confirm(message('generation.services.discardConfirm'))) return;
     if (!allowed() || version !== reporter.getState().version || selection !== owner.current.selectionVersion) return;
     for (const domain of domains.current) {domain.clearKeys(); domain.discard();}
-    liveOwner.current?.discard(); setResult(null); publish();
+    setResult(null); publish();
   };
   const countLabel = (items: readonly GenerationServiceDetail[]) => items.some(item => item.available === null) ? t('redesign.settings.statusUnknown') : t('generation.services.availableCount', {count: items.filter(item => item.available).length});
   const serviceIcon = (service: GenerationServiceDetail, size: number) => service.kind === 'image' ? <Icon name="image" size={size} style={{color: 'var(--wb-image-edge)'}} /> : <ProviderBrandIcon providerId={service.providerId} size={size} />;
@@ -154,12 +142,8 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   </section>;
   const general = <div className="generation-services-general">
     {domains.current.map((domain, index) => domain.notice && <React.Fragment key={index}>{domain.notice}</React.Fragment>)}
-    <section className="generation-services-live"><div><h3>{t('redesign.settings.liveGeneration')}</h3><p id="generation-live-help">{t('workspace.settings.liveHelp')}</p></div><Switch id="settings-live-generation" data-testid="settings-live-generation" checked={live.draft === true} disabled={!pageVisible || saving || !live.snapshot || Boolean(live.recovery)} aria-label={t('redesign.settings.liveGeneration')} aria-describedby="generation-live-help" onCheckedChange={enabled => {if (allowed()) liveOwner.current?.setEnabled(enabled);}} /></section>
-    {live.phase === 'load_error' && <p role="alert">{t('generation.services.readFailed')} <Button type="button" onClick={() => {if (allowed()) void liveOwner.current?.load();}}>{t('video.providers.reload')}</Button></p>}
-    {live.recovery && <div role="alert" className="generation-services-recovery"><p>{t('generation.services.unknown')}</p><Button type="button" disabled={!pageVisible || saving || live.phase === 'reconciling'} onClick={() => {if (allowed()) void liveOwner.current?.reload();}}>{t('video.providers.reload')}</Button><Button type="button" disabled={!pageVisible || saving || live.phase !== 'review'} onClick={() => {if (allowed()) liveOwner.current?.useLatest();}}>{t('video.providers.useLatest')}</Button><Button type="button" disabled={!pageVisible || saving || live.phase !== 'review'} onClick={() => {if (allowed()) liveOwner.current?.acknowledge();}}>{t('video.providers.reviewDraft')}</Button></div>}
     <h3>{t('generation.services.availableTitle')}</h3><p>{t('generation.services.generalIntro')}</p>
     <div className="generation-available-cards">{availableCard('video', videoServices)}{availableCard('image', imageServices)}</div>
-    <section className="generation-services-simulation"><h3>{t('redesign.settings.localSimulation')} <Badge>{t(simulation === null ? 'redesign.settings.statusUnknown' : simulation ? 'workspace.tools.supported' : 'workspace.tools.missing')}</Badge></h3><p>{t('generation.services.simulationHint')}</p></section>
     <p className="generation-services-isolation"><Icon name="lock" size={14} />{t('generation.services.separateKeys')}</p>
   </div>;
   const footerState = saving ? 'saving' : result && result.state !== 'saved' ? result.state : navigation.blocked ? 'blocked' : !ready ? navigation.busy ? 'saving' : 'error' : navigation.dirty ? 'dirty' : 'saved';
@@ -170,7 +154,6 @@ export default function GenerationServicesSettings({active, page = 'models', ent
     panels={[{key: 'general', content: general}, {key: 'image:custom', content: <div className="generation-services-custom-overview">{custom.notice}<p>{t('image.settings.services.choose')}</p>{imageServices.filter(service => service.custom).map(service => <Button key={service.key} type="button" variant="outline" onClick={() => select(service.key)}>{service.label}</Button>)}</div>},
       ...services.map(service => ({key: service.key, content: <div className="generation-service-detail" data-kind={service.kind}>
         <header className="generation-service-heading">{serviceIcon(service, 24)}<h3>{service.label}</h3><Badge>{t(service.custom ? service.kind === 'video' ? 'generation.services.customVideo' : 'generation.services.customImage' : service.kind === 'video' ? 'generation.services.videoGroup' : 'generation.services.imageGroup')}</Badge><span className="generation-service-configured"><Badge>{t(service.configured === null ? 'redesign.settings.statusUnknown' : service.configured ? 'redesign.settings.configured' : 'redesign.settings.notConfigured')}</Badge>{service.dirty && <Badge variant="outline" className="generation-service-unsaved" data-testid="generation-service-unsaved">{t('settings.draftKey.unsaved')}</Badge>}</span></header>
-        {live.snapshot?.liveGeneration === false && <p className="generation-services-live-notice" role="status">{t('redesign.settings.liveDisabled')} <Button type="button" variant="ghost" onClick={() => select('general')}>{t('redesign.settings.openLiveGeneration')}</Button></p>}
         <fieldset className="generation-service-fields" disabled={saving}>{service.content}</fieldset>
         {service.kind === 'video' && environment?.[service.providerId] && Object.hasOwn(environmentVariables, service.providerId) && <p className="generation-services-environment"><span>{t('generation.services.environment')}</span><code>{environmentVariables[service.providerId as keyof typeof environmentVariables]}</code></p>}
       </div>}))]}
