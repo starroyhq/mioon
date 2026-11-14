@@ -208,11 +208,14 @@ test('task center distinguishes automatic video credential recovery, action requ
   const legacyError = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', retryable: true};
   const cases = [
     {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoSecretStore', result: 'tasks.error.videoOriginalTaskRetained'},
-    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoRecoverWithOriginalAccount'},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoConnectionDeleted', result: 'tasks.error.videoResultAtProvider'},
-    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoResultAtProvider'},
-    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_INVALID', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialInvalid', result: 'tasks.error.videoOriginalTaskRetained'},
-    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_UNAVAILABLE', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialUnavailable', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoRecoverWithOriginalAccount'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_INVALID', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialInvalid', result: 'tasks.error.videoRecoverWithOriginalAccount'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_UNAVAILABLE', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialUnavailable', result: 'tasks.error.videoRecoverWithOriginalAccount'},
+    {phase: 'connection_required', cause: 'VIDEO_TASK_NOT_FOUND', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoProviderCannotFindTask', result: null},
+    {phase: 'connection_required', cause: 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoReplacementCannotFindTask', result: null},
+    {phase: 'connection_required', cause: 'VIDEO_REPLACEMENT_NOT_AUTHORIZED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoReplacementNotAuthorized', result: null},
     {phase: 'connection_required', cause: undefined, recovery: undefined, status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoConnectionUnclassified', result: 'tasks.error.videoOriginalTaskRetained'},
   ] as const;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
@@ -227,7 +230,8 @@ test('task center distinguishes automatic video credential recovery, action requ
       assert.ok(card);
       assert.ok(text(card).includes(t(scenario.status)));
       assert.ok(text(card).includes(t(scenario.detail)));
-      assert.ok(text(card).includes(t(scenario.result)));
+      if (scenario.result) assert.ok(text(card).includes(t(scenario.result)));
+      if (scenario.result !== 'tasks.error.videoOriginalTaskRetained') assert.equal(text(card).includes(t('tasks.error.videoOriginalTaskRetained')), false);
       assert.equal(text(card).includes(t('tasks.error.videoKeychainContinues')), cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
       assert.ok(text(card).includes(t('tasks.error.diagnosticCode', {code: cause ?? legacyError.code})));
       assert.doesNotMatch(text(card), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
@@ -247,6 +251,31 @@ test('task center distinguishes automatic video credential recovery, action requ
   }
 });
 
+test('task details show only the validated replacement credential recovery audit in each language', async () => {
+  const resultCredentialRecovery = {connectionRevision: 3, recoveredAt: stamp};
+  const completed = {...job(12, 'succeeded'), providerId: 'minimax', providerJobId: 'original-provider-task'};
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const h = harness(locale), {t, formatDate, formatNumber} = createI18nTestContext(locale);
+    const tree = h.render({jobs: [{...completed, resultCredentialRecovery}]});
+    const card = find(tree, `job-${completed.id}`);
+    const details = nodes(card).find(node => node.type === 'details');
+    const audit = find(details, 'video-credential-recovery-audit');
+    assert.equal(text(audit), t('tasks.center.videoCredentialRecoveryAudit', {
+      revision: formatNumber(3), time: formatDate(stamp, {dateStyle: 'medium', timeStyle: 'medium'}),
+    }));
+    for (const value of [
+      undefined, {...resultCredentialRecovery, recoveredAt: 'UNTRUSTED_PRIVATE_MESSAGE'},
+      {...resultCredentialRecovery, connectionRevision: 0}, {...resultCredentialRecovery, credentialRef: 'UNTRUSTED_PRIVATE_MESSAGE'},
+    ]) {
+      const malformed = h.render({jobs: [{...completed, resultCredentialRecovery: value}]});
+      assert.equal(find(malformed, 'video-credential-recovery-audit'), undefined);
+      assert.doesNotMatch(text(malformed), /UNTRUSTED_PRIVATE_MESSAGE/);
+    }
+    assert.deepEqual(h.calls, []);
+    h.unmount();
+  }
+});
+
 test('switching task details revokes retained actions and pending confirmations without dispatching on selection', async () => {
   const h = harness(), uncertain = job(11, 'submission_unknown'), running = job(12, 'running'), decision = defer();
   const props = { jobs: [uncertain, running], confirm: () => decision.promise };
@@ -255,6 +284,31 @@ test('switching task details revokes retained actions and pending confirmations 
   tree = h.render(props); const waiting = (button(find(tree, `job-${running.id}`), '停止等待'))!.props.onClick();
   (find(tree, `task-select-${uncertain.id}`))!.props.onClick(); h.render(props); (decision.resolve)!(true); await waiting;
   retained(); assert.deepEqual((h.calls as unknown), [], 'An old selected card cannot revive after a leave-return');
+});
+
+test('unsubmitted video connection failures show a no-charge cancellation and route regeneration to the saved shot', async () => {
+  for (const cause of ['VIDEO_SETTINGS_CORRUPT', 'VIDEO_CREDENTIAL_UNAVAILABLE', 'VIDEO_CREDENTIAL_INVALID']) {
+    const h = harness(), queued = {...job(12, 'queued'), providerId: 'minimax', phase: 'connection_required', providerJobId: null, submissionCount: 0,
+      error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', diagnostic: {kind: 'video_credential', cause, recovery: 'user_action'}}};
+    const tree = h.render({jobs: [queued], data: {shots: [{id: queued.shotId, title: 'Original shot'}]}});
+    const regenerate = find(tree, `regenerate-unsubmitted-video-${queued.id}`);
+    const cancel = find(tree, `cancel-unsubmitted-video-${queued.id}`);
+    assert.ok(regenerate && cancel);
+    assert.equal(regenerate.props.disabled, undefined);
+    assert.match(text(find(tree, `job-${queued.id}`)), /这次还没提交，没有扣费/);
+    assert.equal(find(tree, `retry-video-connection-${queued.id}`), undefined);
+    assert.equal(find(tree, `retry-job-${queued.id}`), undefined);
+    regenerate.props.onClick();
+    assert.equal(h.calls.length, 1);
+    assert.deepEqual(h.calls[0].slice(0, 2), ['onInspectJob', queued]);
+    assert.equal(h.calls[0][3], 'regenerate');
+    await cancel.props.onClick();
+    assert.deepEqual(h.calls[1].slice(0, 4), ['run', `cancel:${queued.id}`, 'job.cancel', {jobId: queued.id}]);
+    const cancelled = h.render({jobs: [{...queued, status: 'cancelled', phase: 'cancelled_before_dispatch', error: null}]});
+    assert.equal(find(cancelled, `reconcile-job-${queued.id}`), undefined);
+    assert.match(text(find(cancelled, `job-${queued.id}`)), /这次还没提交，没有扣费/);
+    h.unmount();
+  }
 });
 
 test('local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions', () => {

@@ -59,7 +59,7 @@ test('the actual App refresh rechecks renderer session after an asynchronous edi
       mioFollowCandidate:{current:null},setMioFollow:noop,
       rpc:async()=>snapshot,readGenerationProviderDirectory:async()=>({providers:[],videoUnavailable:false}),importSession:{current:{active:true}},
       projectResponseMatches:()=>true,application:null,refreshAgentEditingTargets:async()=>{entered();await held;},
-      reconcilePending:()=>{published++;},dataRef:{current:null},emptyData:{},setData:noop,setProviders:noop,setVideoDirectoryUnavailable:noop,setLastSync:noop,setOnline:noop,setPending:noop,pendingForProject:()=>[],
+      reconcilePending:()=>{published++;},dataRef:{current:null},emptyData:{},setData:noop,providersRef:{current:[]},setProviders:noop,setVideoDirectoryUnavailable:noop,setLastSync:noop,setOnline:noop,setPending:noop,pendingForProject:()=>[],
       clipDraftRef:{current:null},viewRef:{current:{}},reconcileWorkspaceState:(view:unknown)=>view,viewReady:{current:false},setView:noop,preferencesRef:{current:null},notify:noop,setAuth:noop,readableError:()=>''};
     const refresh=evaluateExpression<()=>Promise<unknown>>(fragment,'refresh',Object.keys(env),Object.values(env));
     const reading=refresh();await started;if(switchOrigin)editorSession.current='another-renderer-session';release();const result=await reading;

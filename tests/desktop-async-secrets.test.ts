@@ -495,7 +495,7 @@ test('timing out and canceling callers waiting on the same Keychain probe preser
   statusGate.resolve();
   await encryptEntered.promise;
   assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt', 'encrypt']);
-  assert.equal((await short.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal((await short.refreshStorage()).reasonCode, null);
   encryptGate.resolve();
   const encrypted = await encryption;
   assert.equal(await long.decrypt(encrypted), SENTINEL);
@@ -526,7 +526,7 @@ test('replacing an Images broker does not invalidate concurrent Agent encryption
   await entered.promise;
   const pair = imagePair(imageFor(f));
   t.after(() => { encryptGate.resolve(); pair.close(); codec.close(); });
-  assert.equal((await pair.client.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal((await pair.client.refreshStorage()).reasonCode, null);
   pair.close();
   assert.deepEqual(f.calls, ['status', 'encrypt', 'decrypt', 'encrypt']);
   encryptGate.resolve();
@@ -551,7 +551,7 @@ test('a timed-out native credential request holds the single slot and its late f
   const waiting = replacement.encrypt(SENTINEL);
   void waiting.catch(() => {});
   await expired;
-  assert.equal((await replacement.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal((await replacement.refreshStorage()).reasonCode, null);
   assert.equal(credentialRequests, 1);
   gate.reject(Error(SENTINEL));
   const encrypted = await waiting;

@@ -46,6 +46,8 @@ import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts
 import {getWan30Capability,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
 import type {VideoGenerationSettings} from './video/generation.ts';
 import {isVideoBindingHistoryUnavailable} from './video/settings-v2.ts';
+import {videoCredentialDiagnostic} from './video/credential.ts';
+import type {VideoResultCredentialRecovery} from '../../contracts/src/video-credential-diagnostic.ts';
 import {generationImageServiceSchemas} from '../../contracts/src/generation-image-services.ts';
 import type {GenerationImageServiceOperation} from '../../contracts/src/generation-image-services.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
@@ -132,6 +134,14 @@ export interface CreateServicesOptions {
 }
 type AudioPreviewService=ReturnType<typeof createTimelineAudioPreviewCoordinator>;
 type InspectionService=ReturnType<typeof createInspectionServices>;
+type OriginalVideoCredentialRejection={credentialRef:string;connectionRevision:number};
+type VideoResultCredentialState={
+ originalResultCredentialRejected?:OriginalVideoCredentialRejection|null;
+ resultCredentialRecovery?:VideoResultCredentialRecovery;
+};
+type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & {
+ resultCredentialState?(): VideoResultCredentialState;
+};
 /** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
  activateBackground: ()=>void;
@@ -152,6 +162,7 @@ export interface OrdinaryServices {
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
  resolveGenerationProvider?: (job: JobRecord)=>Provider|undefined;
+ resolveGenerationResultProvider?: (job: JobRecord,signal?: AbortSignal)=>GenerationResultProvider|undefined;
  updateShotInProject: (projectId: string,input: unknown)=>Promise<unknown>;
  moveTimelineClipInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
  setTimelineClipGainInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
@@ -190,6 +201,9 @@ export interface JobRecord extends ServiceRow {
  phase?: string|null;
  snapshot: ServiceRow;
  providerJobId?: string|null;
+ providerAcceptedAt?: string;
+ originalResultCredentialRejected?: OriginalVideoCredentialRejection|null|true;
+ resultCredentialRecovery?: VideoResultCredentialRecovery;
  retryOfJobId?: string|null;
  submissionCount?: number;
 }
@@ -276,22 +290,114 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const provider=providers.get(providerId);
   if(!mockAllowed&&(providerId==='mock'||(provider&&isMockGenerationProvider(provider))))throw generationServiceUnavailable();
  };
- const configuredVideoProviders=new Map<string,Provider>();
- const boundProvider=(binding:VideoExecutionBinding):Provider=>{
+ const configuredVideoProviders=new Map<string,ReturnType<typeof createConfiguredVideoProvider>>();
+ const configuredProvider=(binding:VideoExecutionBinding,settings:VideoGenerationSettings)=>{
+  const key=canonical(binding);let provider=configuredVideoProviders.get(key);
+  if(!provider){provider=createConfiguredVideoProvider({root,binding,acquireCredential:()=>settings.acquire(binding,ownerSignal),...(videoFetch?{fetchImpl:videoFetch}:{})});configuredVideoProviders.set(key,provider);}
+  return provider;
+ };
+ const boundProvider=(binding:VideoExecutionBinding)=>{
   if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
   try {videoSettings.assertBinding(binding);} catch (error) {
    if(isVideoBindingHistoryUnavailable(error))throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','原任务绑定的视频连接历史不可用。',409);
    throw error;
   }
-  const key=canonical(binding);let provider=configuredVideoProviders.get(key);
-  if(!provider){provider=createConfiguredVideoProvider({root,binding,acquireCredential:()=>videoSettings.acquire(binding,ownerSignal),...(videoFetch?{fetchImpl:videoFetch}:{})});configuredVideoProviders.set(key,provider);}
-  return provider;
+  return configuredProvider(binding,videoSettings);
  };
  const resolveGenerationProvider=(job:JobRecord):Provider|undefined=>{
   const binding=readVideoBinding(job.snapshot);
   if(!binding)return providers.get(job.providerId);
   if(binding.providerId!==job.providerId||binding.model.modelId!==job.model)throw new AppError('VIDEO_BINDING_INVALID','任务身份与连接绑定不一致。');
   return boundProvider(binding);
+ };
+ const resolveGenerationResultProvider=(job:JobRecord,signal?:AbortSignal):GenerationResultProvider|undefined=>{
+  const knownId=job.providerJobId;
+  const selected=readVideoBinding(job.snapshot);
+  const acquireResultCredential=videoSettings?.acquireResultCredential;
+  if(!knownId||!selected||!videoSettings?.replacementForResult||!acquireResultCredential)return resolveGenerationProvider(job);
+  const binding=selected;
+  if(binding.providerId!==job.providerId||binding.model.modelId!==job.model)throw new AppError('VIDEO_BINDING_INVALID','任务身份与连接绑定不一致。');
+  let replacement:ReturnType<NonNullable<VideoGenerationSettings['replacementForResult']>>;
+  try {replacement=videoSettings.replacementForResult(binding);}
+  catch(error){
+   if(isVideoBindingHistoryUnavailable(error))throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','原任务绑定的视频连接历史不可用。',409);
+   throw error;
+  }
+  if(replacement)currentGenerationClaim(db,job);
+  const readSignal=ownerSignal&&signal?AbortSignal.any([ownerSignal,signal]):ownerSignal??signal;
+  // A separate provider keeps cached observations in the replacement account.
+  // Its outward surface admits only the persisted task ID and read operations.
+  const provider=replacement&&createConfiguredVideoProvider({
+   root,binding,acquireCredential:()=>acquireResultCredential.call(videoSettings,binding,replacement,readSignal),
+   ...(videoFetch?{fetchImpl:videoFetch}:{}),
+  });
+  const previousRejection=job.originalResultCredentialRejected;
+  const originalIdentity={credentialRef:binding.credentialRef,connectionRevision:binding.configurationRevision};
+  const matchesOriginal=previousRejection&&previousRejection!==true&&
+   previousRejection.credentialRef===originalIdentity.credentialRef&&previousRejection.connectionRevision===originalIdentity.connectionRevision;
+  let originalRejection:VideoResultCredentialState['originalResultCredentialRejected']=previousRejection&&!matchesOriginal?null:undefined;
+  // Only a rejection of this exact original credential can skip it, and only
+  // when an eligible replacement actually exists. A resumed original lookup
+  // must go to the provider even inside the cache interval of the denied GET.
+  let usingReplacement=Boolean(provider&&matchesOriginal),refreshOriginal=Boolean(previousRejection);
+  let recovery:VideoResultCredentialRecovery|undefined;
+  const rejected=(error:unknown):boolean=>{
+   const status=property(error,'httpStatus');
+   return (status===401||status===403)&&property(error,'code')===`PROVIDER_HTTP_${status}`;
+  };
+  const taskMissing=(error:unknown):boolean=>property(error,'code')==='PROVIDER_TASK_NOT_FOUND';
+  const originalUnavailable=()=>new AppError('VIDEO_CREDENTIAL_UNAVAILABLE','原密钥没有权限查询这个任务。请在原连接保存原账户的密钥。',409);
+  async function observe<T>(id:string,read:(source:GenerationResultProvider)=>Promise<T>):Promise<T>{
+   if(id!==knownId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
+   if(!usingReplacement){
+    try{
+     const original=boundProvider(binding);
+     if(refreshOriginal){original.invalidateTaskObservation(id);refreshOriginal=false;}
+     const value=await read(original);
+     if(previousRejection||originalRejection)originalRejection=null;
+     return value;
+    }
+    catch(error){
+     if(taskMissing(error)){
+      if(previousRejection||originalRejection)originalRejection=null;
+      throw new AppError('VIDEO_TASK_NOT_FOUND','服务商找不到这个任务。',404);
+     }
+     const denied=rejected(error);
+     if(denied)originalRejection=originalIdentity;
+     const cause=videoCredentialDiagnostic(error)?.cause;
+     if(!denied&&
+        cause!=='VIDEO_SETTINGS_CORRUPT'&&cause!=='VIDEO_SETTINGS_NOT_CONFIGURED'&&
+        cause!=='VIDEO_CREDENTIAL_INVALID'&&cause!=='VIDEO_CREDENTIAL_UNAVAILABLE')throw error;
+     if(!provider)throw denied?originalUnavailable():error;
+    }
+   }
+   if(!provider)throw originalUnavailable();
+   try{
+    checkpoint(readSignal);
+    const value=await read(provider);
+    usingReplacement=true;
+    return value;
+   }
+   catch(error){
+    if(rejected(error))throw new AppError('VIDEO_REPLACEMENT_NOT_AUTHORIZED','新密钥也没有权限查询这个任务。',409);
+    if(taskMissing(error))
+     throw new AppError('VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT','新密钥查不到原任务。请使用原账户密钥，或到原服务商获取结果。',409);
+    throw error;
+   }
+  }
+  return {
+   capabilities:configuredProvider(binding,videoSettings).capabilities,
+   poll:(id,context)=>observe(id,source=>source.poll(id,context)),
+   async download(id,destination,context){
+    const result=await observe(id,source=>source.download(id,destination,context));
+    if(usingReplacement&&replacement)recovery={connectionRevision:replacement.connectionRevision,recoveredAt:now()};
+    return result;
+   },
+   resultCredentialState:()=>({
+    ...(originalRejection!==undefined?{originalResultCredentialRejected:originalRejection}:{}),
+    ...(recovery?{resultCredentialRecovery:recovery}:{}),
+   }),
+  };
  };
  const bindingRole=(bindings: unknown,index: number): unknown=>Array.isArray(bindings)?property(bindings[index],'role'):undefined;
  const hasLastFrameRole=(value: unknown): boolean=>Array.isArray(value)&&value.some(reference=>property(reference,'role')==='last_frame');
@@ -651,11 +757,21 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(profilePolicy||usesInputProfiles(providers.get(old.providerId)))assertGenerationJobOwnership(db,old);
    return createJob(newInput,old.snapshot as unknown as JobRecord,old.id,null,outputLocale);
   },
-  'job.cancel':(input: ServiceRow)=>{const j=required('jobs',stringValue(input.jobId) as string) as JobRecord;if(hasSubjectGeneration(j.snapshot))currentGenerationClaim(db,j);if(['succeeded','failed','cancelled'].includes(j.status))return subjectDisclosure('jobs',j);return subjectDisclosure('jobs',saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}}));},
+  'job.cancel':(input: ServiceRow)=>{
+   const j=required('jobs',stringValue(input.jobId) as string) as JobRecord;
+   if(hasSubjectGeneration(j.snapshot))currentGenerationClaim(db,j);
+   if(['succeeded','failed','cancelled'].includes(j.status))return subjectDisclosure('jobs',j);
+   if(j.status==='queued'&&j.phase==='connection_required'&&j.providerJobId==null&&j.submissionCount===0){
+    const cancelled=saveGenerationGuarded(j,{status:'cancelled',phase:'cancelled_before_dispatch',cancelScope:null,error:null,nextPollAt:0});
+    if(!cancelled)throw new AppError('GENERATION_STATE_CHANGED','任务状态已更改，请刷新后再试',409);
+    return subjectDisclosure('jobs',cancelled);
+   }
+   return subjectDisclosure('jobs',saveJob(j,{status:'cancelled',phase:'local_wait_stopped',cancelScope:'local_only',error:{code:'LOCAL_WAIT_STOPPED',message:'已停止本地等待；供应商任务未确认取消，可能仍会完成或计费',retryable:true}}));
+  },
   'job.reconcile':async (input: ServiceRow,{signal:callSignal=ownerSignal}: ServiceHandlerContext={})=>{
    checkpoint(callSignal);
    const j=required('jobs',stringValue(input.jobId) as string) as JobRecord,subjectMode=hasSubjectGeneration(j.snapshot),
-    context={jobId:j.id,requestId:j.requestId,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal:callSignal};
+    context={jobId:j.id,requestId:j.requestId,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),providerAcceptedAt:stringValue(j.providerAcceptedAt),signal:callSignal};
    const claim=()=>{if(subjectMode)currentGenerationClaim(db,j);};claim();
    // Paid task observation is not gated by current source availability or a new
    // provider profile. Identity is rechecked after awaits; disclosure is checked
@@ -669,21 +785,41 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     if(!scheduled)throw new AppError('GENERATION_STATE_CHANGED','任务状态已更改，请刷新后再试',409);
     return disclose(scheduled);
    }
-   if(['succeeded','failed','queued','submitting'].includes(j.status)){if(input.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return disclose(j);}
+   if(['succeeded','failed','queued','submitting'].includes(j.status)||
+      (j.status==='cancelled'&&j.phase==='cancelled_before_dispatch'&&j.providerJobId==null&&j.submissionCount===0)){
+    if(input.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);
+    return disclose(j);
+   }
    if(input.providerJobId&&j.providerJobId&&input.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
    if(input.providerJobId){
     const requested=String(input.providerJobId);
     const owner=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===requested&&sameVideoExecutionDomain(property(other,'snapshot'),j.snapshot));if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);
     if(j.providerId==='mock'){const own=await awaitProvider(()=>{const mock=providers.get('mock');if(!mock)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');return mock.reconcile(j.requestId,context);},callSignal);checkpoint(callSignal);claim();if(!isRecord(own)||own.providerJobId!==requested)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}
    }
-   const p=resolveGenerationProvider(j);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
+   const knownId=j.providerJobId;
+   const original=knownId?undefined:resolveGenerationProvider(j);
+   const p:GenerationResultProvider|undefined=knownId?resolveGenerationResultProvider(j,callSignal??undefined):original;
+   if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
    const snapshotCapabilities=property(j.snapshot,'capabilities');
    if(property(snapshotCapabilities,'region')&&p.capabilities.region!==property(snapshotCapabilities,'region'))throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
-   const found: {providerJobId: string}|null=input.providerJobId?{providerJobId:String(input.providerJobId)}:j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>p.reconcile(j.requestId,context),callSignal).then(value=>isRecord(value)&&typeof value.providerJobId==='string'?{providerJobId:value.providerJobId}:null);checkpoint(callSignal);claim();
+   const id=knownId||stringValue(input.providerJobId);
+   let found=id?{providerJobId:id}:null;
+   if(!found&&original){
+    const result=await awaitProvider(()=>original.reconcile(j.requestId,context),callSignal);
+    if(isRecord(result)&&typeof result.providerJobId==='string')found={providerJobId:result.providerJobId};
+   }
+   checkpoint(callSignal);claim();
    if(!found)return disclose(saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}}));
-   await awaitProvider(()=>p.poll(found.providerJobId,context),callSignal);checkpoint(callSignal);claim();
+   try {await awaitProvider(()=>p.poll(found.providerJobId,context),callSignal);}
+   catch(error){
+    checkpoint(callSignal);claim();
+    const credentialState=p.resultCredentialState?.();
+    if(credentialState?.originalResultCredentialRejected!==undefined)saveGenerationGuarded(j,credentialState);
+    throw error;
+   }
+   checkpoint(callSignal);claim();
    const competing=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===found.providerJobId&&sameVideoExecutionDomain(property(other,'snapshot'),j.snapshot));if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);
-   return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
+   return disclose(saveJob(j,{...p.resultCredentialState?.(),status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
   'export.create':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=liveCanvas('shots',stringValue(input.projectId) as string).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));recordOutputLocale(db,e.id,h,outputLocale);return e;}),
@@ -818,5 +954,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

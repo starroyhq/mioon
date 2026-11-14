@@ -136,7 +136,7 @@ export function desktopSecretStorage(safeStorage: DesktopSafeStorage, platform: 
   if (platform === 'linux') return linuxDesktopSecretStorage(safeStorage);
   if (platform !== 'darwin') return unavailableStorage();
   const state = vaultState(safeStorage);
-  if (state?.phase === 'probing' || (state?.phase === 'ready' && state.busy)) {
+  if (state?.phase === 'probing') {
     return {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_PENDING'};
   }
   return state?.phase === 'ready'
@@ -217,9 +217,9 @@ export function createDesktopSecretCodec({ safeStorage, appId, platform = proces
     async refreshStorage(options: SecretOperationOptions = {}): Promise<SecretStorageState> {
       if (!state || !active(options)) return unavailableStorage();
       initializeVault(state, safeStorage);
-      // Collect immediately resolved operations before reporting a pending
-      // Keychain request. This gives up the event loop once, independent of native completion.
-      if (state.phase === 'probing' || state.busy) await new Promise<void>(resolve => setImmediate(resolve));
+      // Give a cold proof one event loop turn. Occupying the initialized
+      // crypto slot leaves availability unchanged.
+      if (state.phase === 'probing') await new Promise<void>(resolve => setImmediate(resolve));
       return active(options) ? storage() : unavailableStorage();
     },
     async encrypt(plaintext: string, options?: SecretOperationOptions): Promise<string> {

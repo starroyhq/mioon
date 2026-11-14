@@ -4,6 +4,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoConnectionDescriptor} from '../../../contracts/src/video-providers.ts';
 import type {VideoSettingsService} from './settings.ts';
+import type {VideoSettingsV2Service} from './settings-v2.ts';
 import type {VideoConnectionView} from '../../../contracts/src/video-providers.ts';
 import type {VideoConnectionViewV2} from '../../../contracts/src/generation-video-settings.ts';
 import type {GenerationSource,GenerationAsset,PreparedGenerationInputs} from '../generation-inputs.ts';
@@ -12,7 +13,7 @@ import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 
 export type VideoGenerationSettings = Pick<VideoSettingsService, 'select' | 'assertBinding' | 'acquire'> & {
  list(): (VideoConnectionView | VideoConnectionViewV2)[];
-};
+} & Partial<Pick<VideoSettingsV2Service, 'replacementForResult' | 'acquireResultCredential'>>;
 export function listVideoConnections(settings:VideoGenerationSettings|undefined,asOf:string):VideoConnectionDescriptor[]{
  return (settings?.list()??[]).map(view=>{
   const c=view.configuration,archived='archived' in c&&c.archived===true;

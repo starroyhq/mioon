@@ -132,10 +132,41 @@ test('new digest render rejects drift after CAS, but exact replay returns origin
  const legacy=await f.services.call('timeline.render',{...f.input(),requestId:randomUUID(),purpose:'preview'});assert.equal(legacy.status,'queued');assert.ok(!Object.hasOwn(legacy,'preflightSnapshotHash'));
 });
 
-test('one active check has no queue; time budget cancels late work without writes',async t=>{
- const gate=deferred(),entered=deferred();let probes=0;const f=await fixture(t,{limits:{...EXPORT_PREFLIGHT_LIMITS,timeoutMs:35},probe:async()=>{probes++;(entered.resolve)!();await gate.promise;return meta();}});await f.seed();const before=f.state(),writes=f.writes();
- const pending=f.call();await entered.promise;const busy=await f.call();assert.equal(busy.status,'incomplete');assert.equal(busy.issues[0].code,'PREFLIGHT_BUSY');
- const result=await pending;assert.equal(result.status,'incomplete');assert.equal(result.issues[0].code,'PREFLIGHT_TIMEOUT');const returned=clone(result);(gate.resolve)!();await tick();await tick();assert.deepEqual(result,returned);assert.equal(probes,1);assert.equal(f.writes(),writes);assert.deepEqual(f.state(),before);
+test('one active check has no queue; time budget cancels late work without writes', {timeout: 15_000}, async t => {
+ const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+ let probes = 0;
+ const f = await fixture(t, {probe: async () => { probes++; entered.resolve(); await gate.promise; return meta(); }});
+ await f.seed();
+ const before = f.state(), writes = f.writes();
+ // Arm the deadline deterministically. Under load the source checks can take
+ // more than 35 ms on their own, before there is any probe to release entry.
+ const realSetTimeout = setTimeout, realClearTimeout = clearTimeout;
+ t.mock.timers.enable({apis: ['setTimeout']});
+ const pending = f.call();
+ const premature = pending.then(result => assert.fail(`Preflight settled before the probe entered: ${result.issues[0]?.code ?? result.status}`));
+ const entryDeadline = Promise.withResolvers<never>();
+ const entryTimer = realSetTimeout(() => entryDeadline.reject(Error('Still waiting for preflight source checks to enter the probe')), 10_000);
+ try {
+  await Promise.race([entered.promise, premature, entryDeadline.promise]);
+  const busy = await f.call();
+  assert.equal(busy.status, 'incomplete');
+  assert.equal(busy.issues[0].code, 'PREFLIGHT_BUSY');
+  t.mock.timers.tick(EXPORT_PREFLIGHT_LIMITS.timeoutMs);
+  const result = await pending;
+  assert.equal(result.status, 'incomplete');
+  assert.equal(result.issues[0].code, 'PREFLIGHT_TIMEOUT');
+  const returned = clone(result);
+  gate.resolve();
+  await f.preflight.drain();
+  assert.deepEqual(result, returned);
+  assert.equal(probes, 1);
+  assert.equal(f.writes(), writes);
+  assert.deepEqual(f.state(), before);
+ } finally {
+  realClearTimeout(entryTimer);
+  gate.resolve();
+  t.mock.timers.reset();
+ }
 });
 
 test('drain cancels pending read and late probe completion cannot publish or read a closed store',async t=>{

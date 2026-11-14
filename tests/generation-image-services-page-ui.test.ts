@@ -176,6 +176,7 @@ test('image Check and Get models use the current password input and put safe res
   ui.fetchModels(id);
   assert.equal(ui.picker()?.status, 'loading');
   assert.equal(ui.picker()?.usesDraftKey, true);
+  assert.deepEqual(ui.picker()?.items, [{id: 'same-model', added: true, unavailable: false}]);
   assert.equal(probes[1]?.request.operation, 'models');
   ui.select(b.key);
   assert.equal(probes[1]?.signal?.aborted, true);
@@ -188,7 +189,7 @@ test('image Check and Get models use the current password input and put safe res
   const ready = ui.picker();
   assert.equal(ready?.status, 'ready');
   assert.equal(ready?.mode, 'single');
-  assert.deepEqual(ready?.items.map(item => item.id), ['model-a']);
+  assert.deepEqual(ready?.items.map(item => item.id), ['same-model', 'model-a']);
   assert.equal(ui.fields.get(passwordId)?.value, 'synthetic-q21-draft');
   assert.equal(f.writes, 0);
 });
@@ -198,7 +199,7 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   const f = await fixture(), ui = harness(f.client);
   t.after(async () => {ui.unmount(); await f.settings.close();});
   const tooLong = 'a'.repeat(121);
-  f.client.probe = async () => ({result: 'ok', models: [{id: 'same-model'}, {id: 'model-a'}, {id: 'model-b'}, {id: tooLong}]});
+  f.client.probe = async () => ({result: 'ok', models: [{id: 'model-a'}, {id: 'model-b'}, {id: tooLong}]});
   ui.render(); await flush(); const [a, b] = ui.render().services;
   assert.ok(a && b);
   const id = a.key.slice(6);
@@ -206,8 +207,12 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   const picker = ui.picker()!;
   assert.equal(picker.status, 'ready');
   assert.equal(picker.mode, 'single');
-  assert.equal(picker.items.find(item => item.id === 'same-model')?.added, true);
-  assert.equal(picker.items.find(item => item.id === tooLong)?.unavailable, true);
+  assert.deepEqual(picker.items, [
+    {id: 'same-model', added: true, unavailable: false},
+    {id: 'model-a', added: false, unavailable: false},
+    {id: 'model-b', added: false, unavailable: false},
+    {id: tooLong, added: false, unavailable: true},
+  ]);
   picker.onAdd(['model-a', 'model-b']); picker.onAdd(['unlisted']); picker.onAdd([tooLong]);
   ui.render();
   assert.equal(ui.find(`${id}-model`).props.value, 'same-model');
@@ -233,23 +238,30 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   assert.equal(saved.find(item => item.connectionId === id)?.secret.configured, true);
 });
 
-test('official image picker identifies the fixed model and shows other returned models without allowing a change', async () => {
+test('official image picker pins the fixed model first whether or not discovery includes it', async () => {
   const fixedModel = DEFAULT_IMAGE_CONFIGURATION.model;
+  let models: Array<{id: string}> = [];
   const ui = harness({
     read: async () => ({revision: 1, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: true, storage: 'session'},
       storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}),
-    probe: async () => ({result: 'ok', models: [{id: fixedModel}, {id: 'other-model'}]}),
+    probe: async () => ({result: 'ok', models}),
     write: async () => assert.fail('Fixed model discovery is read-only'),
   }, undefined, 'official');
   try {
     ui.render(); await flush(); ui.render(); ui.select('image:official');
-    ui.fetchModels('image-official'); await flush(); ui.render();
-    const picker = ui.picker()!;
-    assert.equal(picker.status, 'ready');
-    assert.equal(picker.mode, 'single');
-    assert.match(picker.statusMessage ?? '', /固定/);
-    assert.deepEqual(picker.items, [{id: fixedModel, added: true, unavailable: false}, {id: 'other-model', added: false, unavailable: true}]);
-    picker.onAdd(['other-model']); picker.onClose(); ui.render();
-    assert.equal(ui.domain().navigation.dirty, false);
+    for (const returnedIds of [['other-model'], ['other-model', fixedModel], []]) {
+      models = returnedIds.map(id => ({id}));
+      ui.fetchModels('image-official'); await flush(); ui.render();
+      const picker = ui.picker()!;
+      assert.equal(picker.status, returnedIds.length ? 'ready' : 'empty');
+      assert.equal(picker.mode, 'single');
+      if (returnedIds.length) assert.match(picker.statusMessage ?? '', /固定/);
+      assert.deepEqual(picker.items, [
+        {id: fixedModel, added: true, unavailable: false},
+        ...returnedIds.filter(id => id !== fixedModel).map(id => ({id, added: false, unavailable: true})),
+      ]);
+      picker.onAdd(['other-model']); picker.onClose(); ui.render();
+      assert.equal(ui.domain().navigation.dirty, false);
+    }
   } finally {ui.unmount();}
 });

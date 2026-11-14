@@ -14,6 +14,8 @@ export interface ProviderContext {
   readonly requestId?: string;
   readonly jobId?: string;
   readonly providerRegion?: unknown;
+  /** Local timestamp of the persisted provider acceptance receipt. */
+  readonly providerAcceptedAt?: string;
   readonly signal?: AbortSignal | null;
   readonly beforeSubmit?: () => void;
   readonly [key: string]: unknown;

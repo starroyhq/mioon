@@ -6,7 +6,14 @@ const automatic = z.enum([
 const userAction = z.enum([
   'VIDEO_SETTINGS_SAVE_FAILED', 'VIDEO_SETTINGS_CORRUPT', 'VIDEO_SETTINGS_NOT_CONFIGURED', 'VIDEO_SETTINGS_DELETED',
   'VIDEO_SETTINGS_UNAVAILABLE', 'VIDEO_BINDING_INVALID', 'VIDEO_CREDENTIAL_UNAVAILABLE', 'VIDEO_CREDENTIAL_INVALID',
+  'VIDEO_TASK_NOT_FOUND', 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT', 'VIDEO_REPLACEMENT_NOT_AUTHORIZED',
 ]);
+
+export const videoResultCredentialRecoverySchema = z.object({
+  connectionRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  recoveredAt: z.string().max(32).datetime(),
+}).strict();
+export type VideoResultCredentialRecovery = z.infer<typeof videoResultCredentialRecoverySchema>;
 
 // Never persist arbitrary exception messages, provider payloads, or key material.
 const currentDiagnostic = z.discriminatedUnion('recovery', [

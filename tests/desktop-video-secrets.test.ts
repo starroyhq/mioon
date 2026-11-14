@@ -49,13 +49,16 @@ for (const platform of ['darwin', 'linux'] as const) test('Video status polling 
   assert.equal(wakes, 0);
 });
 
-test('a Video subscriber learns cached ready storage before starting its worker without another IPC', async t => {
+test('an initial ready snapshot and subscribing to it produce no recovery notification', async t => {
   const f = connected();
   t.after(() => f.close());
+  let initial = 0;
+  f.client.subscribeStorageAvailable(() => { initial++; });
   assert.equal((await f.client.refreshStorage()).persistentAvailable, true);
   let active = 0;
   const unsubscribe = f.client.subscribeStorageAvailable(() => { active++; });
-  assert.equal(active, 1);
+  assert.equal(initial, 0);
+  assert.equal(active, 0);
   unsubscribe();
   assert.equal(f.port.sent.length, 1);
 });
@@ -129,7 +132,8 @@ test('Video crypto joins the held Keychain slot while redacted settings status r
   await entered.promise;
   const second = video.decrypt(encryptedVideo);
   const status = await video.refreshStorage();
-  assert.equal(status.reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal(status.persistentAvailable, true);
+  assert.equal(status.reasonCode, null);
   assert.equal(nativeDecrypts, 1);
   assert.ok(port.sent.some(value => (value as {operation?: string}).operation === 'decrypt'));
   gate.resolve();
@@ -138,7 +142,7 @@ test('Video crypto joins the held Keychain slot while redacted settings status r
   assert.equal(nativeDecrypts, 2);
 });
 
-test('Video polls again after a warm native deadline and observes the held slot settling', async t => {
+test('Video observes ready storage after a warm native deadline without bypassing worker backoff', async t => {
   const safeStorage = vault(), gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const decrypt = safeStorage.decryptStringAsync;
   let heldDecrypts = 0, hold = false;
@@ -156,25 +160,25 @@ test('Video polls again after a warm native deadline and observes the held slot 
   let wakes = 0;
   f.client.subscribeStorageAvailable(() => { wakes++; });
   await Promise.resolve();
-  assert.equal(wakes, 1);
+  assert.equal(wakes, 0);
   hold = true;
   const failure = assert.rejects(f.client.decrypt(encrypted), {code: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'});
   await entered.promise;
   t.mock.timers.tick(30);
   await failure;
   assert.equal(heldDecrypts, 1);
-  assert.equal(wakes, 1);
+  assert.equal(wakes, 0);
   assert.equal(f.client.storage().reasonCode, 'OS_SECRET_STORE_UNAVAILABLE');
   const sent = f.port.sent.length;
   t.mock.timers.tick(500);
   assert.equal(f.port.sent.length, sent + 1);
-  assert.equal((await f.client.refreshStorage()).reasonCode, 'OS_SECRET_STORE_PENDING');
+  assert.equal((await f.client.refreshStorage()).reasonCode, null);
   gate.resolve();
   await turn();
   t.mock.timers.tick(500);
   await turn();
   assert.equal(f.client.storage().persistentAvailable, true);
-  assert.equal(wakes, 2);
+  assert.equal(wakes, 0);
   assert.equal(heldDecrypts, 1);
 });
 

@@ -149,7 +149,7 @@ function harness(dispatch:(operation:string,input:Record<string,unknown>)=>unkno
   if (projectSnapshot) {
     const refreshScope = { ...scope, ...projectOpening, application: null, refreshAgentEditingTargets: async () => { await Promise.allSettled([]); }, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: (callback?: unknown) => callback, emptyData: {}, projectEpoch: { current: 1 },
       mioFollowCandidate: { current: null }, setMioFollow() {},
-      setProviders: (value: null) => { state.providers = value; }, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline: (value: null) => { state.online = value; }, reconcileWorkspaceState, readGenerationProviderDirectory,
+      providersRef: { current: [] }, setProviders: (value: null) => { state.providers = value; }, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline: (value: null) => { state.online = value; }, reconcileWorkspaceState, readGenerationProviderDirectory,
       viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete (refreshScope as {refresh?: unknown}).refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope)) as typeof scope.refresh;
