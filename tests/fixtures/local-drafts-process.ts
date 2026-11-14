@@ -6,7 +6,8 @@ import {isProjectId} from '../../packages/contracts/src/project-file.ts';
 import {installWireGuard} from '../helpers/inspection-wire-fixture.ts';
 import type {InspectApplication,InspectProject} from '../../apps/server/src/index.ts';
 
-const guard = installWireGuard({auditPath: process.argv[2]});
+// The real directory endpoint uses its own fixed filesystem-only process.
+const guard = installWireGuard({auditPath: process.argv[2], allowProjectCatalog: true});
 const {startServer} = await import('../../apps/server/src/index.ts');
 const {schemaObjects} = await import('../helpers/project-database.ts');
 const {readProjectState,changeMarks} = await import('../helpers/project-state.ts');
