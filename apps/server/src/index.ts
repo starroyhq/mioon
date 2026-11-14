@@ -77,7 +77,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 type LocalDraftChannel = WorkspaceInfo['channel'];
 type TaskFault = NonNullable<Parameters<typeof createEditTasks>[0]['fault']>;
 interface SecretOperationOptions {signal?: AbortSignal | undefined; isActive?: (() => boolean) | undefined}
-interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly sessionScope: 'server'; readonly reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
+interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly sessionScope: 'server'; readonly reasonCode: 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
 /** Trusted utility-only codec surface; never supplied from HTTP/environment. */
 interface ImageSecretCodecPort {
   storage(options?: SecretOperationOptions): ImageSecretStorageState;
@@ -107,7 +107,7 @@ export interface ServerOptions {
   agentSettings?: AgentSettingsPort;
   agentSecretCodecFactory?:(options:{directory:string;channel:LocalDraftChannel})=>Promise<{secretCodec:SecretCodec;storage:()=>PublicStorage;close:()=>void}>;
   imageSecretCodec?: ImageSecretCodecPort;
-  videoSecretCodec?: ImageSecretCodecPort;
+  videoSecretCodec?: ImageSecretCodecPort & {subscribeStorageAvailable?(listener: () => void): () => void};
   imageNetwork?: ImageNetworkSeam;
   comfyNetwork?: ComfyNetworkSeam;
   comfyModule?: ComfyModuleMode;

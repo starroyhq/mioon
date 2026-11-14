@@ -639,6 +639,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    // provider profile. Identity is rechecked after awaits; disclosure is checked
    // only after safe progress is saved, and cannot authorize another submission.
    const disclose=(value: ServiceRow)=>subjectDisclosure('jobs',value);
+   if((j.status==='running'||j.status==='downloading')&&j.providerJobId&&
+      (j.phase==='connection_required'||j.phase==='connection_retrying')){
+    if(input.providerJobId&&input.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
+    if(j.nextPollAt===0||j.phase==='connection_retrying'&&typeof j.nextPollAt==='number'&&j.nextPollAt<=Date.now())return disclose(j);
+    const scheduled=saveGenerationGuarded(j,{nextPollAt:0});
+    if(!scheduled)throw new AppError('GENERATION_STATE_CHANGED','任务状态已更改，请刷新后再试',409);
+    return disclose(scheduled);
+   }
    if(['succeeded','failed','queued','submitting'].includes(j.status)){if(input.providerJobId)throw new AppError('INVALID_RECONCILIATION_STATE','当前任务状态不允许绑定供应商任务',409);return disclose(j);}
    if(input.providerJobId&&j.providerJobId&&input.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
    if(input.providerJobId){

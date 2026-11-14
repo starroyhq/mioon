@@ -59,10 +59,10 @@ export const creationExtraMessages = {
     ja: '前回の動画サービス設定の保存結果を確認できませんでした。ローカルサービスを再起動して保存済みの設定を読み込み直してください。',
   },
   'tasks.error.videoSettingsUnreadable': {
-    'zh-Hans': '已保存的视频服务设置无法通过验证。请检查原连接的设置。',
-    'zh-Hant': '已儲存的影片服務設定無法通過驗證。請檢查原連線的設定。',
-    en: 'The saved video service settings could not be verified. Check the settings for the original connection.',
-    ja: '保存済みの動画サービス設定を検証できませんでした。元の接続の設定を確認してください。',
+    'zh-Hans': '原连接保存的密钥或设置已损坏。为以后使用，请在视频服务设置中重新输入密钥。',
+    'zh-Hant': '原連線儲存的金鑰或設定已損毀。若要繼續使用此服務，請在影片服務設定中重新輸入金鑰。',
+    en: 'The saved key or settings for the original connection are damaged. Re-enter the key in video service settings for future use.',
+    ja: '元の接続に保存されたキーまたは設定が破損しています。今後も利用するには、動画サービス設定でキーを入力し直してください。',
   },
   'tasks.error.videoCredentialMissing': {
     'zh-Hans': '此任务原来绑定的密钥已不可用。重新输入密钥只会配置新任务。',
@@ -88,11 +88,29 @@ export const creationExtraMessages = {
     en: 'The connection originally bound to this task does not match the saved settings. Check the original connection.',
     ja: 'このタスクに紐づいていた接続が保存済みの設定と一致しません。元の接続を確認してください。',
   },
-  'tasks.error.videoCredentialTemporary': {
-    'zh-Hans': '暂时无法读取此任务的密钥。密钥可用后，任务会自动继续。',
-    'zh-Hant': '暫時無法讀取此工作的金鑰。金鑰恢復可用後，工作會自動繼續。',
-    en: 'The key for this task is temporarily unavailable. The task will continue automatically once it can read the key.',
-    ja: 'このタスクのキーを一時的に読み込めません。キーが読み込めるようになるとタスクは自動で続行されます。',
+  'tasks.error.videoCredentialUnavailable': {
+    'zh-Hans': '无法读取此任务的密钥。请检查原连接和系统安全存储。',
+    'zh-Hant': '無法讀取此工作的金鑰。請檢查原連線和系統安全儲存空間。',
+    en: 'The key for this task could not be read. Check the original connection and system secure storage.',
+    ja: 'このタスクのキーを読み込めませんでした。元の接続とシステムのセキュアストレージを確認してください。',
+  },
+  'tasks.error.videoCredentialInvalid': {
+    'zh-Hans': '读取到的密钥格式无效。请检查原连接保存的密钥。',
+    'zh-Hant': '讀取到的金鑰格式無效。請檢查原連線儲存的金鑰。',
+    en: 'The key that was read has an invalid format. Check the saved key for the original connection.',
+    ja: '読み込んだキーの形式が無効です。元の接続に保存されたキーを確認してください。',
+  },
+  'tasks.center.retryVideoConnection': {
+    'zh-Hans': '重新检查原任务',
+    'zh-Hant': '重新檢查原工作',
+    en: 'Check original task again',
+    ja: '元のタスクを再確認',
+  },
+  'tasks.center.videoConnectionCheckScheduled': {
+    'zh-Hans': '已安排检查原任务',
+    'zh-Hant': '已安排檢查原工作',
+    en: 'Original task check scheduled',
+    ja: '元のタスクの確認を予約しました',
   },
   'tasks.error.videoOriginalTaskRetained': {
     'zh-Hans': '应用保留了服务商上的原任务，恢复时只查询或下载结果。',

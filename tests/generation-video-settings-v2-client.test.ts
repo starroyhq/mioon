@@ -81,3 +81,30 @@ test('v2 transport rejects legacy restoration and uppercase saved check identiti
   await assert.rejects(client.write(invalid as unknown as VideoSettingsUpdateV2), {code: 'VIDEO_SETTINGS_VALIDATION'});
   await assert.rejects(client.check!({source: 'saved', connectionId: 'ABCDEF12-0000-4000-8000-000000000001', configurationRevision: 1}), {code: 'VIDEO_SETTINGS_VALIDATION'}); assert.equal(requests, 0);
 });
+
+
+test('video model checks use a private one-shot POST and discard echoed draft credentials', async () => {
+  const value = 'synthetic-video-v2-client-draft-key';
+  const observations: string[] = [];
+  let omitModels = false;
+  const client = createVideoSettingsClient({fetchImpl: async (input, options) => {
+    assert.equal(input, '/api/video-providers/models/list');
+    assert.equal(options?.method, 'POST');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.cache, 'no-store');
+    observations.push(String(options.body));
+    return new Response(JSON.stringify({ok: true, data: omitModels ? {result: 'ok'} : {result: 'ok', models: [{id: 'video-model-1'}, {id: value}]}}));
+  }});
+  const target = {source: 'draft', providerId: 'veo', region: 'global', workspaceId: '', value} as const;
+  assert.deepEqual(await client.modelsList!({...target, operation: 'models'}), {result: 'ok', models: [{id: 'video-model-1'}]});
+  assert.deepEqual(await client.modelsList!({...target, operation: 'check'}), {result: 'ok'});
+  const abort = new AbortController();
+  abort.abort();
+  await assert.rejects(client.modelsList!({...target, operation: 'models'}, abort.signal), {code: 'NETWORK'});
+  assert.deepEqual(observations.map(value => JSON.parse(value)), [
+    {...target, operation: 'models'}, {...target, operation: 'check'},
+  ]);
+  omitModels = true;
+  await assert.rejects(client.modelsList!({...target, operation: 'models'}), {code: 'NETWORK'});
+});

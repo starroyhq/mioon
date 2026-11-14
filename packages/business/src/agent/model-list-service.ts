@@ -1,5 +1,5 @@
-import {AGENT_MODEL_LIST_LIMITS,agentModelListRequestSchema,agentModelListCacheRequestSchema,agentModelListResultSchema} from '../../../contracts/src/agent-model-list.ts';
-import type {AgentModelListRequest,AgentModelListCacheRequest,AgentModelListResult,AgentModelListCacheResult,AgentModelListSelection} from '../../../contracts/src/agent-model-list.ts';
+import {AGENT_MODEL_LIST_LIMITS,agentModelListRequestSchema,agentModelListCacheRequestSchema,agentModelListResultSchema,agentDraftConnectionTestRequestSchema} from '../../../contracts/src/agent-model-list.ts';
+import type {AgentModelListRequest,AgentModelListCacheRequest,AgentModelListResult,AgentModelListCacheResult,AgentModelListSelection,AgentDraftConnectionTestResult} from '../../../contracts/src/agent-model-list.ts';
 import type {AgentServiceSnapshot,AgentSettingsSnapshot} from '../../../contracts/src/agent-connection-settings.ts';
 import {agentSettingsSnapshotSchema} from '../../../contracts/src/agent-connection-settings.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentSettingsResult,sanitizeAgentCredentialResult} from './settings.ts';
@@ -8,6 +8,10 @@ import {agentSettingsError,agentCredentialBinding} from './config.ts';
 import {connectionFor,serviceBinding} from './settings-envelope.ts';
 import {parseAgentModelListSelection,resolveAgentModelListDescriptor,adaptAgentModelListModels} from './model-list-descriptors.ts';
 import {fetchAgentModelList} from './model-list.ts';
+import {buildTaskModelRequest,createTaskGateway} from './task-gateway-v2.ts';
+import type {TaskGateway} from './task-gateway-v2.ts';
+import {agentChatHttpStatus,errorCode} from './chat-errors.ts';
+import {agentChatProfile,agentModelThinkingTier,agentModelTokenLimits} from './model-profiles.ts';
 import type {AgentModelListCacheIdentity,AgentModelListCacheStore} from './model-list-cache.ts';
 
 export interface AgentModelListSettingsPort{
@@ -24,10 +28,43 @@ const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const conflict=():never=>{throw agentSettingsError('AGENT_SETTINGS_CONFLICT');};
 const validation=():never=>{throw agentSettingsError('AGENT_SETTINGS_VALIDATION');};
 
+const draftTestText='Mioon connection test. Reply with the single word OK.';
+function draftTestBody(configuration: Parameters<typeof buildTaskModelRequest>[0],selfPort?:number):string{
+ const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:draftTestText}],[],selfPort)) as Record<string,unknown>;
+ const protocol=configuration.protocol;
+ const tokenField=protocol==='chat_completions'?agentChatProfile(configuration).tokenField:protocol==='responses'?'max_output_tokens':'max_tokens';
+ // Allow a small reply plus a reasoning reserve for models that cannot turn it off.
+ const replyTokens=128,reasoningReserve=1024;
+ const cap=replyTokens+(agentModelThinkingTier(configuration)==='required'?reasoningReserve:0);
+ body[tokenField]=Math.min(cap,agentModelTokenLimits(configuration).outputTokens);
+ // This isolated prompt has no project prefix worth caching.
+ delete body.system;
+ if(protocol==='responses')delete body.instructions;
+ if(protocol!=='responses')body.messages=[{role:'user',content:draftTestText}];
+ return JSON.stringify(body);
+}
+
+function testFailure(error:unknown):AgentDraftConnectionTestResult{
+ const status=agentChatHttpStatus(error);
+ if(status===401)return {outcome:'failed',reason:'rejected'};
+ if(status===403)return {outcome:'failed',reason:'permission_denied'};
+ if(status===404)return {outcome:'failed',reason:'not_found'};
+ if(status===429)return {outcome:'failed',reason:'rate_limited'};
+ if(status!==undefined&&status>=500&&status<=599)return {outcome:'failed',reason:'server_error'};
+ switch(errorCode(error)){
+  case 'AGENT_CHAT_NETWORK_DENIED':return {outcome:'failed',reason:'policy'};
+  case 'AGENT_CHAT_CONNECT_FAILED':return {outcome:'failed',reason:'connection_failed'};
+  case 'AGENT_CHAT_TIMEOUT':return {outcome:'failed',reason:'timeout'};
+  case 'AGENT_CHAT_KEY_REQUIRED':return {outcome:'failed',reason:'required'};
+  default:return {outcome:'failed',reason:'test_failed'};
+ }
+}
+
+
 /** The application's single settings-write admission is also the cache commit
  * admission. Desktop main still owns encryption; no list payload crosses its
  * credential broker. Network work never holds this queue. */
-export function createAgentModelListService({settings:owner,cache:store,fetch:fetchList=fetchAgentModelList,selfPort=()=>undefined,signal}:{settings:AgentModelListSettingsPort;cache?:AgentModelListCacheStore;fetch?:typeof fetchAgentModelList;selfPort?:()=>number|undefined;signal?:AbortSignal}){
+export function createAgentModelListService({settings:owner,cache:store,fetch:fetchList=fetchAgentModelList,gateway=createTaskGateway(),selfPort=()=>undefined,signal}:{settings:AgentModelListSettingsPort;cache?:AgentModelListCacheStore;fetch?:typeof fetchAgentModelList;gateway?:TaskGateway;selfPort?:()=>number|undefined;signal?:AbortSignal}){
  const lifetime=new AbortController(),epochs=new Map<string,number>(),pending=new Map<string,AbortController>();
  let tail:Promise<unknown>=Promise.resolve(),closed=false;
  const closeSignal=()=>lifetime.abort();signal?.addEventListener('abort',closeSignal,{once:true});if(signal?.aborted)closeSignal();
@@ -69,8 +106,57 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
   return {snapshot,entry,selection,identity};
  }
  function invalidate(serviceKey:string):void{epochs.set(serviceKey,(epochs.get(serviceKey)??0)+1);pending.get(serviceKey)?.abort();pending.delete(serviceKey);}
+ function ensureSavedRecipient(frozen:FrozenList,options:SettingsContextOptions):void{
+  const entry=frozen.entry;
+  if(!entry)return conflict();
+  const saved=connectionFor(entry,'connection-validation',options);
+  if(saved.baseUrl!==frozen.selection.baseUrl||saved.protocol!==frozen.selection.protocol||agentCredentialBinding(saved)!==agentCredentialBinding({...frozen.selection,model:'connection-validation'}))conflict();
+ }
+ async function credential(input:AgentModelListRequest,frozen:FrozenList,opts:SettingsContextOptions,current:()=>void):Promise<string|null>{
+  if(input.credential.source==='input')return input.credential.value;
+  if(input.credential.source==='none')return null;
+  const entry=frozen.entry,acquire=owner[AGENT_CREDENTIAL_ACQUIRE];
+  if(!entry||!acquire)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+  ensureSavedRecipient(frozen,opts);
+  // Acquire only the complete saved service via the existing trusted broker.
+  const saved=connectionFor(entry,frozen.snapshot.mioSelection?.serviceKey===entry.serviceKey?frozen.snapshot.mioSelection.modelId:'connection-validation',opts);
+  const expected:AgentCredentialRequest={purpose:'model_list',expectedRevision:frozen.snapshot.revision,configuration:saved,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:frozen.snapshot.mioSelectionRevision}};
+  const acquired=await wait(schedule(async()=>{
+   current();
+   const latest=freeze(await read(opts),input,opts);
+   if(!latest.entry||latest.entry.revision!==entry.revision)conflict();
+   return sanitizeAgentCredentialResult(await acquire.call(owner,expected,ownerContext(opts)),expected);
+  }),opts);
+  current();
+  return acquired.apiKey;
+ }
+ async function run<T>(input:AgentModelListRequest,options:SettingsContextOptions,onTimeout:T,operation:(frozen:FrozenList,opts:SettingsContextOptions,current:()=>void)=>Promise<T>):Promise<T>{
+  const controller=new AbortController(),timeout=new AbortController();
+  const timer=setTimeout(()=>timeout.abort(),AGENT_MODEL_LIST_LIMITS.totalTimeoutMs);
+  const opts=context({...options,signal:AbortSignal.any([controller.signal,timeout.signal,...(options.signal?[options.signal]:[])])});
+  let epoch=0;
+  const current=()=>{checkpoint(opts);if(epochs.get(input.serviceKey)!==epoch)conflict();};
+  try{
+   const frozen=await wait(schedule(async()=>{
+    const frozen=freeze(await read(opts),input,opts);
+    invalidate(input.serviceKey);
+    epoch=epochs.get(input.serviceKey)!;
+    pending.set(input.serviceKey,controller);
+    return frozen;
+   }),opts);
+   return await operation(frozen,opts,current);
+  }catch(error){
+   if(timeout.signal.aborted&&!lifetime.signal.aborted&&!options.signal?.aborted)return onTimeout;
+   throw error;
+  }finally{
+   clearTimeout(timer);
+   if(pending.get(input.serviceKey)===controller)pending.delete(input.serviceKey);
+  }
+ }
+
  const wrapped:AgentModelListSettingsPort={
-  get(options={}){const opts=context(options);return schedule(()=>read(opts));},
+  // Public redacted reads can show committed settings while a saved-key operation waits for Keychain.
+  get(options={}){return read(context(options));},
   put(input,options={}){
    const opts=context(options);
    return schedule(async()=>{
@@ -104,55 +190,72 @@ export function createAgentModelListService({settings:owner,cache:store,fetch:fe
    }),opts);
   },
   async list(raw:unknown,options:SettingsContextOptions={}):Promise<AgentModelListResult>{
-   const started=Date.now(),parsed=agentModelListRequestSchema.safeParse(raw);if(!parsed.success)return validation();
-   const input:AgentModelListRequest=parsed.data,controller=new AbortController(),timeout=new AbortController();
-   const timer=setTimeout(()=>timeout.abort(),Math.max(0,AGENT_MODEL_LIST_LIMITS.totalTimeoutMs-(Date.now()-started)));
-   const opts=context({...options,signal:AbortSignal.any([controller.signal,timeout.signal,...(options.signal?[options.signal]:[])])});
-   let epoch=0;
-   try{
-    const frozen=await wait(schedule(async()=>{
-     const frozen=freeze(await read(opts),input,opts);invalidate(input.serviceKey);epoch=epochs.get(input.serviceKey)!;pending.set(input.serviceKey,controller);return frozen;
-    }),opts);
-    const current=()=>{checkpoint(opts);if(epochs.get(input.serviceKey)!==epoch)conflict();};
+   const parsed=agentModelListRequestSchema.safeParse(raw);
+   if(!parsed.success)return validation();
+   const input=parsed.data;
+   return run<AgentModelListResult>(input,options,{outcome:'unreachable',reason:'timeout'},async(frozen,opts,current)=>{
     const descriptor=resolveAgentModelListDescriptor(frozen.selection,opts);
     if(!descriptor)return {outcome:'unavailable',reason:'not_provided'};
-    let apiKey:string|null=null;
-    if(input.credential.source==='input')apiKey=input.credential.value;
-    else if(input.credential.source==='saved'){
-     const entry=frozen.entry;if(!entry||!owner[AGENT_CREDENTIAL_ACQUIRE])throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
-     const saved=connectionFor(entry,frozen.snapshot.mioSelection?.serviceKey===entry.serviceKey?frozen.snapshot.mioSelection.modelId:'connection-validation',opts);
-     // Protocol may be a same-recipient draft, but acquisition is made against
-     // the saved complete configuration, never that draft or a guessed model.
-     if(agentCredentialBinding(saved)!==agentCredentialBinding({...frozen.selection,model:'connection-validation'}))conflict();
-     const expected:AgentCredentialRequest={purpose:'model_list',expectedRevision:frozen.snapshot.revision,configuration:saved,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:frozen.snapshot.mioSelectionRevision}};
-     const acquired=await wait(schedule(async()=>{current();const latest=freeze(await read(opts),input,opts);if(!latest.entry||latest.entry.revision!==entry.revision)conflict();return sanitizeAgentCredentialResult(await owner[AGENT_CREDENTIAL_ACQUIRE]!(expected,ownerContext(opts)),expected);}),opts);
-     current();apiKey=acquired.apiKey;
-    }else{
+    // An input key belongs to the endpoint chosen in this draft, never a
+    // different protocol's fallback. The pinned Ollama list stays local.
+    if(input.credential.source==='input'&&descriptor.source==='same_platform_compatible')return {outcome:'unavailable',reason:'not_provided'};
+    if(input.credential.source==='none'){
      if(!descriptor.allowNone)return {outcome:'invalid_key',reason:'required'};
      if(descriptor.local&&frozen.entry?.secret.configured){
       const saved=connectionFor(frozen.entry);
       if(agentCredentialBinding(saved)===agentCredentialBinding({...frozen.selection,model:'connection-validation'}))return validation();
      }
     }
+    const apiKey=await credential(input,frozen,opts,current);
     if(!apiKey&&!descriptor.allowNone)return {outcome:'invalid_key',reason:'required'};
     current();
-    // Input credentials and acquired plaintext remain scoped to this one call.
     const result=agentModelListResultSchema.parse(await wait(fetchList({selection:frozen.selection,apiKey,signal:opts.signal,selfPort:opts.selfPort}),opts));
-    apiKey=null;
-    return await wait(schedule(async()=>{
-     current();const latest=freeze(await read(opts),input,opts);current();
-     if(result.outcome==='success'&&frozen.identity&&latest.identity&&equal(frozen.identity,latest.identity)){
-      // Keep admission until atomic publication is done. A queued save/delete
-      // cannot enter between the final witness check and this write.
+    if(apiKey&&result.outcome==='success'&&result.models.some(model=>model.id.includes(apiKey)||model.displayName?.includes(apiKey)))return {outcome:'unreachable',reason:'invalid_response'};
+    return wait(schedule(async()=>{
+     current();
+     const latest=freeze(await read(opts),input,opts);
+     current();
+     if(input.credential.source!=='input'&&result.outcome==='success'&&frozen.identity&&latest.identity&&equal(frozen.identity,latest.identity)){
+      // Cache publication shares settings-write admission. Input results belong
+      // only to their request even when the recipient is already saved.
       try{await store?.write(frozen.identity,result);}catch{}
       current();
      }
      return result;
     }),opts);
-   }catch(error){
-    if(timeout.signal.aborted&&!lifetime.signal.aborted&&!options.signal?.aborted)return {outcome:'unreachable',reason:'timeout'};
-    throw error;
-   }finally{clearTimeout(timer);if(pending.get(input.serviceKey)===controller)pending.delete(input.serviceKey);}
+   });
+  },
+  async test(raw:unknown,options:SettingsContextOptions={}):Promise<AgentDraftConnectionTestResult>{
+   const parsed=agentDraftConnectionTestRequestSchema.safeParse(raw);
+   if(!parsed.success)return validation();
+   const {model,...input}=parsed.data;
+   return run<AgentDraftConnectionTestResult>(input,options,{outcome:'failed',reason:'timeout'},async(frozen,opts,current)=>{
+    const configuration={...frozen.selection,model};
+    const apiKey=await credential(input,frozen,opts,current);
+    if(!apiKey&&configuration.presetId!=='ollama')return {outcome:'failed',reason:'required'};
+    let result:AgentDraftConnectionTestResult={outcome:'failed',reason:'test_failed'};
+    try{
+     const body=draftTestBody(configuration,opts.selfPort);
+     current();
+     const observe=async()=>{
+      for await(const item of gateway({configuration,body,apiKey,signal:opts.signal,selfPort:opts.selfPort,beforeSubmit:current})){
+       current();
+       if(item.type==='done'&&item.output.text.trim()&&!item.output.toolCalls.length)return {outcome:'success'} as const;
+      }
+      return {outcome:'failed',reason:'test_failed'} as const;
+     };
+     result=await wait(observe(),opts);
+    }catch(error){
+     current();
+     result=testFailure(error);
+    }
+    return wait(schedule(async()=>{
+     current();
+     freeze(await read(opts),input,opts);
+     current();
+     return result;
+    }),opts);
+   });
   },
   async close(){closed=true;lifetime.abort();signal?.removeEventListener('abort',closeSignal);for(const controller of pending.values())controller.abort();pending.clear();await tail;},
  };

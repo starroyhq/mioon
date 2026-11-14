@@ -135,3 +135,41 @@ test('legacy reset notice is visible for an empty collection and can be dismisse
   const close = nodes(domain.notice).find(item => item.type === 'Button'); assert.ok(close); (close.props.onClick as () => void)();
   assert.equal(ui.render().notice, undefined); ui.visible(false); ui.visible(true); assert.equal(ui.render().notice, undefined); assert.equal(reads, 1); assert.equal(snapshot.notice, 'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET'); ui.unmount();
 });
+
+test('image Check and Get models use the current password input and put safe results beside the owning field', async t => {
+  const f = await fixture(), probes: Array<{request: Parameters<NonNullable<GenerationImageServicesClient['probe']>>[0]; signal?: AbortSignal}> = [];
+  let finish: ((value: unknown) => void) | undefined;
+  f.client.probe = (request, signal) => {probes.push({request, signal}); return new Promise(resolve => {finish = resolve;});};
+  const ui = harness(f.client);
+  t.after(async () => {ui.unmount(); await f.settings.close();});
+  ui.render(); await flush(); const [a,b] = ui.render().services;
+  assert.ok(a && b);
+  const id = a.key.slice(6);
+  const passwordId = `${id}-key`;
+  ui.select(a.key);
+  ui.key(passwordId, 'synthetic-q21-draft');
+  assert.equal(ui.domain().services.find(item => item.key === a.key)?.dirty, true);
+  assert.equal(ui.domain().services.find(item => item.key === b.key)?.dirty, false);
+  const check = ui.find(`${id}-key-check`);
+  assert.equal(check.props.disabled, false);
+  (check.props.onClick as () => void)();
+  ui.render();
+  assert.equal(ui.find(`${id}-model-list`).props.disabled, true);
+  assert.deepEqual(probes[0]?.request, {operation:'check',baseUrl:'https://images.example/v1',credential:{source:'draft',value:'synthetic-q21-draft'}});
+  finish?.({result:'unauthorized',httpStatus:401}); await flush(); ui.render();
+  assert.equal(ui.find(`${id}-probe-result`).props.role, 'alert');
+  assert.equal(ui.fields.get(passwordId)?.value, 'synthetic-q21-draft');
+
+  (ui.find(`${id}-model-list`).props.onClick as () => void)();
+  assert.equal(probes[1]?.request.operation, 'models');
+  ui.select(b.key);
+  assert.equal(probes[1]?.signal?.aborted, true);
+  finish?.({result:'ok',models:[{id:'model-a'}]}); await flush(); ui.render();
+  assert.ok(!ui.elements().some(item => item.props['data-testid'] === `${id}-probe-result`));
+  ui.select(a.key);
+  (ui.find(`${id}-model-list`).props.onClick as () => void)();
+  finish?.({result:'ok',models:[{id:'model-a'}]}); await flush(); ui.render();
+  assert.equal(ui.find(`${id}-probe-result`).props.role, 'status');
+  assert.equal(ui.fields.get(passwordId)?.value, 'synthetic-q21-draft');
+  assert.equal(f.writes, 0);
+});

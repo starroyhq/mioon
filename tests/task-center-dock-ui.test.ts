@@ -197,6 +197,9 @@ test('task center distinguishes automatic video credential recovery, action requ
     {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoSecretStore', result: 'tasks.error.videoOriginalTaskRetained'},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoResultAtProvider'},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoConnectionDeleted', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoResultAtProvider'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_INVALID', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialInvalid', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_required', cause: 'VIDEO_CREDENTIAL_UNAVAILABLE', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialUnavailable', result: 'tasks.error.videoOriginalTaskRetained'},
     {phase: 'connection_required', cause: undefined, recovery: undefined, status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoConnectionUnclassified', result: 'tasks.error.videoOriginalTaskRetained'},
   ] as const;
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
@@ -218,8 +221,15 @@ test('task center distinguishes automatic video credential recovery, action requ
       assert.equal(find(tree, `task-select-${accepted.id}`)?.props['data-warning'], recovery === 'user_action');
       assert.equal(find(tree, `retry-job-${accepted.id}`), undefined);
       assert.equal(find(tree, `reconcile-job-${accepted.id}`), undefined);
+      assert.equal(text(find(tree, `retry-video-connection-${accepted.id}`)), t('tasks.center.retryVideoConnection'));
     }
     assert.deepEqual(h.calls, []);
+    const error = {...legacyError, diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}};
+    const tree = h.render({jobs: [{...accepted, phase: 'connection_retrying', error}]});
+    find(tree, `retry-video-connection-${accepted.id}`)!.props.onClick();
+    assert.deepEqual(h.calls, [['run', `reconcile:${accepted.id}`, 'job.reconcile', {jobId: accepted.id}, message('tasks.center.videoConnectionCheckScheduled')]]);
+    const queued = h.render({jobs: [{...accepted, status: 'queued', providerJobId: null, phase: 'connection_retrying', error}]});
+    assert.equal(find(queued, `retry-video-connection-${accepted.id}`), undefined);
     h.unmount();
   }
 });

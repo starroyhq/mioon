@@ -157,7 +157,9 @@ bytes. URLs accept no query arguments.
 - Returned secret `storage` is `none`, `session` or `persistent`.
   `sessionScope` in the implemented server/desktop route is `server`.
   `reasonCode` is `null` when persistent storage is available, otherwise
-  `WEB_SESSION_ONLY`, `OS_SECRET_STORE_UNAVAILABLE` or `LINUX_BASIC_TEXT`.
+  `WEB_SESSION_ONLY`, `OS_SECRET_STORE_PENDING`, `OS_SECRET_STORE_UNAVAILABLE`
+  or `LINUX_BASIC_TEXT`. A pending Keychain operation leaves committed
+  configuration readable while persistent-key actions wait for availability.
 
 Custom `GET /api/images/custom-settings` instead returns
 `{revision,connections,storage,notice}`. Its PUT requires an explicit `create`,

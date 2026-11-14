@@ -340,18 +340,21 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop settings pers
 
 for (const platform of ['linux', 'darwin'] as const) test('desktop v3 legacy projection never decrypts or retains old keys and new keys keep the native channel wrapper (' + platform + ')', async t => {
   const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-legacy-desktop-'));
-  const safeStorage = fakeVault(), appId = 'app.starroy.mioon.dev';
-  const vault = asyncCodec({safeStorage, appId, platform});
+  const appId = 'app.starroy.mioon.dev';
+  const vault = asyncCodec({safeStorage: fakeVault(), appId, platform});
   const {protocol, ...configuration} = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini'};
   const binding = JSON.stringify([configuration.presetId,configuration.platformId,configuration.baseUrl]);
   const encrypted = await vault.encrypt(JSON.stringify({version: 1, binding, value: DUMMY_KEY}));
+  vault.close();
   const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
   await mkdir(directory, {mode: 0o700});
   const bytes = JSON.stringify({version: 1, revision: 12, configuration, secret: {binding, encrypted}});
   await writeFile(file, bytes, {mode: 0o600});
-  const decrypt = safeStorage.decryptString!; let reads = 0;
-  safeStorage.decryptString = value => { reads++; return decrypt(value); };
-  safeStorage.isEncryptionAvailable = () => false;
+  // Model a fresh process with denied keychain access. The synthetic
+  // modules share the fixture key, but each owns its own native initializer.
+  const safeStorage = fakeVault({available: false}); let reads = 0;
+  const deniedDecrypt = safeStorage.decryptString!;
+  safeStorage.decryptString = value => { reads++; return deniedDecrypt(value); };
   let engine = await createDesktopAgentSettings({safeStorage, userData, appId, platform});
   t.after(async () => { await engine.close(); await rm(userData, {recursive: true, force: true}); });
   const port = pairedPort(), replies: SentMessage[] = [];
@@ -367,14 +370,15 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop v3 legacy pro
   const stored = JSON.parse(await readFile(file, 'utf8'));
   assert.equal(stored.version,3);assert.ok(stored.services.every((entry:{secret:unknown})=>entry.secret===null));assert.equal(JSON.stringify(stored).includes(encrypted),false);assert.equal(reads,0);
   assert.ok(replies.every(reply => reply.version === 1)); replies.forEach(assertSanitized);
-  await engine.close(); safeStorage.isEncryptionAvailable = () => true;
-  engine = await createDesktopAgentSettings({safeStorage: fakeVault(), userData, appId, platform});
+  await engine.close();
+  const reopenedStorage = fakeVault();
+  engine = await createDesktopAgentSettings({safeStorage: reopenedStorage, userData, appId, platform});
   const restored = await engine.get();
   const active=execution(restored);assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:active.revision,configuration:active.configuration,binding:active.binding})).apiKey,null);
   const entered=await engine.put({...replacement(restored),services:restored.services.map(agentServiceInput)}),current=execution(entered);
   assert.equal((await engine[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:current.revision,configuration:current.configuration,binding:current.binding})).apiKey,DUMMY_KEY);
   const fresh=JSON.parse(await readFile(file,'utf8')).services.find((entry:{serviceKey:string})=>entry.serviceKey==='openai').secret;
-  const wrapper=JSON.parse(decrypt(Buffer.from(fresh.encrypted,'base64')));
+  const wrapper=JSON.parse(reopenedStorage.decryptString(Buffer.from(fresh.encrypted,'base64')));
   assert.equal(wrapper.version, 1); assert.equal(wrapper.appId, appId);
   const payload=JSON.parse(wrapper.plaintext);assert.equal(payload.version,2);assert.equal(payload.serviceKey,'openai');assert.equal(payload.binding,fresh.binding);assert.equal(payload.value,DUMMY_KEY);assert.notEqual(payload.binding,binding);
 });
