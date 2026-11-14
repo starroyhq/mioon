@@ -113,7 +113,7 @@ function canvasStoryboardApp() {
     assetsCollapsed: false, inspectorCollapsed: false, isBusy: () => false, online: true, auth: true,
     canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
     menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
-    storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
+    canvasEditingEnabled: false, storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
     projectEpoch: {current: 1}, navigationEpoch: {current: 1}, panelIntent: {current: 1},
     propertiesPage: 'inspector', menuPlaybackEpoch: {current: 1}, menuRemovalEpoch: {current: 1},
     audioPreview: {state: {plan: null, continuousPlan: null, phase: 'idle', positionFrame: null}}, timelineAudioPreviewPosition,
@@ -157,6 +157,25 @@ for (const change of ['batch', 'revision', 'proof', 'lifetime', 'closed', 'termi
   } finally {f.dispose();}
 });
 
+test('format-4 native history is independent and rejects a delayed edit against a prior history action', async () => {
+  const app = canvasStoryboardApp();
+  const history = {historyScope: 'canvas-revision-1', canUndo: true, canRedo: true,
+    undo: () => app.calls.push('canvas-undo'), redo: () => app.calls.push('canvas-redo')};
+  app.bindings.canvasEditingEnabled = true; app.bindings.canvasEditing = history;
+  const f = await fixture(app.execute, app.scope, app.read);
+  try {
+    f.holdMessages();
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    history.historyScope = 'canvas-revision-2';
+    f.deliver();
+    assert.deepEqual(app.calls, []);
+    f.controller.refresh(); await flush();
+    assert.equal(f.host.send(f.contents, 'edit-redo'), true);
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    assert.deepEqual(app.calls, ['canvas-redo', 'canvas-undo']);
+  } finally {f.dispose();}
+});
+
 test('actual canvas availability requires the current project, live batch and unblocked undo proof', () => {
   const app = canvasStoryboardApp(); assert.equal(app.read().commands['edit-undo'], true);
   for (const key of ['toastBlocked', 'webSettingsOpen']) {
@@ -176,8 +195,8 @@ test('desktop canvas shortcuts have one native owner while Web retains the story
   const calls: string[] = [];
   for (const desktop of [true, false]) {
     const listeners = new Map<string, (event: unknown) => void>(); let cleanup: unknown;
-    Function('useEffect', 'storyboardToast', 'nativeMenuBridge', 'workspaceMode', 'toastBlocked', 'timelineHistoryActionForKey', 'hasOpenWorkbenchModal', 'document', 'undoStoryboard', 'window', code)(
-      (effect: () => unknown) => {cleanup = effect();}, {taskId: 'batch-a'}, desktop ? {} : null, 'canvas', false,
+    Function('useEffect', 'storyboardToast', 'nativeMenuBridge', 'workspaceMode', 'toastBlocked', 'canvasEditingEnabled', 'timelineHistoryActionForKey', 'hasOpenWorkbenchModal', 'document', 'undoStoryboard', 'window', code)(
+      (effect: () => unknown) => {cleanup = effect();}, {taskId: 'batch-a'}, desktop ? {} : null, 'canvas', false, false,
       timelineHistoryActionForKey, () => false, {}, (id: string) => calls.push(id),
       {addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener), removeEventListener: (name: string) => listeners.delete(name)},
     );

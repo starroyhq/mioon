@@ -1,14 +1,17 @@
 import {createHash, createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {
-  CANVAS_EDIT_LIMITS, canvasEditingResponses, canvasEditingSchemas, canvasEditingWrites, readCanvasRequestId,
+  CANVAS_EDIT_LIMITS, canvasArchiveMediaSchema, canvasArchiveNodeTypeSchema, canvasEditingResponses, canvasEditingSchemas,
+  canvasEditingWrites, readCanvasRequestId,
 } from '../../contracts/src/canvas-editing.ts';
 import type {
-  CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
+  CanvasArchiveItem, CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
   CanvasHistoryInput, CanvasHistoryView, CanvasTarget,
 } from '../../contracts/src/canvas-editing.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {hasCanvasArchives} from './canvas-active.ts';
+import {validAssetLocator} from './asset-reference-record.ts';
+import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import {assertCanvasEdgeEffects, canvasEdgeEvidence, planCanvasArchive} from './canvas-archive.ts';
 import {inspectCanvasDependencies} from './canvas-dependencies.ts';
@@ -138,21 +141,80 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       versions: effect.versions, clips: effect.clips, blocked: effect.blocked, confirmation, historyRevision};
   }
   function archived(input: CanvasArchiveListInput) {
-    const limit = input.limit ?? CANVAS_EDIT_LIMITS.archivedPage;
-    const rows = db.prepare(`SELECT kind,id FROM (
-      SELECT 'shot' AS kind,id FROM project.shots WHERE projectId=? AND archiveReason='user-delete'
-      UNION ALL SELECT 'node',id FROM project.nodes WHERE projectId=? AND archiveReason='user-delete'
-      UNION ALL SELECT 'edge',id FROM project.edges WHERE projectId=? AND archiveReason='user-delete'
-    ) WHERE (id,kind)>(?,?) ORDER BY id,kind LIMIT ?`).all(projectId, projectId, projectId, input.after?.id ?? '', input.after?.kind ?? '', limit + 1);
-    const items = rows.slice(0, limit).map(value => {
-      const item = value as unknown as CanvasTarget;
-      const {kind, id, archive, revision, data} = readCanvasRow(store, item);
-      if (!archive) return canvasError('invalid-record');
-      const label = data.title ?? data.label;
-      return {kind, id, archive, revision, label: typeof label === 'string' ? label.slice(0, 512) : ''};
-    });
-    const last = items.at(-1);
-    return {projectId, items, next: rows.length > limit && last ? {id:last.id, kind:last.kind} : null};
+    const outer = db.isTransaction;
+    if (!outer) db.exec('BEGIN DEFERRED');
+    try {
+      const limit = input.limit ?? CANVAS_EDIT_LIMITS.archivedPage;
+      const scope = "projectId=? AND archivedAt IS NOT NULL AND archiveReason='user-delete'";
+      const total = db.prepare(`SELECT
+        (SELECT count(*) FROM project.shots WHERE ${scope}) +
+        (SELECT count(*) FROM project.nodes WHERE ${scope}) +
+        (SELECT count(*) FROM project.edges WHERE ${scope}) AS total`).get(projectId, projectId, projectId)?.total;
+      const rows = db.prepare(`SELECT kind,id FROM (
+        SELECT 'shot' AS kind,id FROM project.shots WHERE ${scope}
+        UNION ALL SELECT 'node',id FROM project.nodes WHERE ${scope}
+        UNION ALL SELECT 'edge',id FROM project.edges WHERE ${scope}
+      ) WHERE (id,kind)>(?,?) ORDER BY id,kind LIMIT ?`).all(projectId, projectId, projectId, input.after?.id ?? '', input.after?.kind ?? '', limit + 1);
+      const page = rows.slice(0, limit).map(row => {
+        const {kind,id} = row;
+        if ((kind !== 'shot' && kind !== 'node' && kind !== 'edge') || !isProjectId(id)) return canvasError('invalid-record');
+        return readCanvasRow(store, {kind,id});
+      });
+      const shots = page.filter(row => row.kind === 'shot').map(({id, data}) => [id, isProjectId(data.selectedVersionId) ? data.selectedVersionId : null] as const);
+      const versions = archivedVersions(shots);
+      const items = page.map(({kind, id, archive, revision, data}): CanvasArchiveItem => {
+        if (!archive) return canvasError('invalid-record');
+        const type = canvasArchiveNodeTypeSchema.safeParse(data.type);
+        const nodeType = kind === 'node' && type.success ? type.data : null;
+        const shot = versions.get(id);
+        const media = kind === 'shot' ? archiveMedia(shot?.assetId, 'video') :
+          nodeType === 'image' || nodeType === 'video' ? archiveMedia(data.assetId, nodeType) : null;
+        const label = nodeType === 'text' ? data.label || data.text : data.title ?? (data.label || media?.name);
+        return {kind, id, archive, revision, label: typeof label === 'string' ? label.slice(0, 512) : '',
+          nodeType, versions: kind === 'shot' ? shot?.versions ?? 0 : 0, preview: media?.preview ?? null};
+      });
+      const last = items.at(-1);
+      return {projectId, total, items, ...readProjectContentStamp(db),
+        next: rows.length > limit && last ? {id:last.id, kind:last.kind} : null};
+    } finally {
+      if (!outer && db.isTransaction) db.exec('COMMIT');
+    }
+  }
+  function archivedVersions(shots: readonly (readonly [string, string | null])[]) {
+    const stats = new Map<string, {versions: number; assetId: unknown}>();
+    if (!shots.length) return stats;
+    // Decode bounded metadata in SQLite and return stats for this page's shots.
+    const rows = db.prepare(`WITH owned AS (
+      SELECT id,jobId,CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${INSPECTION_ROW_LIMITS.versions}
+        AND json_valid(data) THEN data END AS data FROM project.versions WHERE projectId=?
+    ), projected AS (
+      SELECT id,jobId,json_extract(data,'$.shotId') AS shotId,
+        json_extract(data,'$.assetId') AS assetId
+      FROM owned WHERE id=json_extract(data,'$.id') AND jobId=json_extract(data,'$.jobId')
+        AND json_extract(data,'$.projectId')=?
+    )
+    SELECT shotId, count(*) AS versions,
+      max(CASE WHEN id=json_extract(?, '$."' || shotId || '"') THEN assetId END) AS assetId
+    FROM projected WHERE shotId IN (SELECT value FROM json_each(?)) GROUP BY shotId`)
+      .all(projectId, projectId, JSON.stringify(Object.fromEntries(shots)), JSON.stringify(shots.map(([id]) => id)));
+    for (const row of rows) {
+      if (!isProjectId(row.shotId) || !isRevision(row.versions)) return canvasError('invalid-record');
+      stats.set(row.shotId, {versions: row.versions, assetId: row.assetId});
+    }
+    return stats;
+  }
+  function archiveMedia(assetId: unknown, kind: 'image' | 'video') {
+    if (!isProjectId(assetId)) return null;
+    const row = db.prepare(`SELECT CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${INSPECTION_ROW_LIMITS.assets}
+      AND json_valid(data) THEN data END AS data FROM project.assets WHERE projectId=? AND id=?`).get(projectId, assetId);
+    if (typeof row?.data !== 'string') return null;
+    const asset = JSON.parse(row.data);
+    if (!asset || asset.id !== assetId || asset.projectId !== projectId || !validAssetLocator(db, asset)) return null;
+    const preview = canvasArchiveMediaSchema.safeParse({assetId, mimeType: asset.mimeType});
+    // Only disclose the identity. The existing project media gate decides
+    // if its current locator is readable, including outside access.
+    return preview.success && preview.data.mimeType.startsWith(`${kind}/`)
+      ? {preview: preview.data, name: typeof asset.name === 'string' ? asset.name : ''} : null;
   }
   function saveState(current: HistoryState, position: number, patch: CanvasPatch, before: ReadonlyMap<string, number>,
     newEntry: boolean): HistoryState {

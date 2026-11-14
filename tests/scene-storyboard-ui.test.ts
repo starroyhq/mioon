@@ -200,9 +200,9 @@ test('the workbench wires storyboards into the dialog, the canvas, the inspector
   const read = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
   const app = read('App.tsx'), dialog = read('SceneDetectionDialog.tsx');
   assert.match(app, /if \(task\.kind === 'shots'\) \{ storyboardSettled\(task\); return; \}/);
-  assert.match(app, /\{storyboardPanel \?\? previsPanel \?\? <Inspector protectEditing=/, 'the batch takes the inspector while it is selected');
+  assert.match(app, /<\/aside> : storyboardPanel \?\? previsPanel \?\? <Inspector protectEditing=/, 'the batch takes the inspector while it is selected');
   assert.match(app, /<StoryboardBatchFrame shotIds=\{storyboardSummary\.shotIds\}/);
-  assert.match(app, /onPaneClick=\{\(\) => \{ setSelectedEdgeId\(null\); setStoryboardBatch\(null\); \}\}/);
+  assert.match(app, /onPaneClick=\{\(\) => \{ if \(canvasEditingEnabled\) void selectCanvasCards\(new Set\(\)\); else \{ setSelectedEdgeId\(null\); setStoryboardBatch\(null\); \} \}\}/);
   assert.match(app, /<StoryboardToast key=\{storyboardToast\.taskId\}/);
   assert.match(app, /timelineHistoryActionForKey\(event, \{ modalOpen: hasOpenWorkbenchModal\(document\) \}\) !== 'undo'/);
   assert.match(app, /initialChoice=\{sceneTarget\.choice \?\? null\}/);

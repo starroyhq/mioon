@@ -12,7 +12,8 @@ const revision = z.number().int().safe().nonnegative();
 const id = projectIdSchema;
 const requestId = z.string().min(8).max(200).refine(value =>
   !value.includes('\u0000') && [...value].length >= 8 && (value as string & {isWellFormed(): boolean}).isWellFormed());
-const requestEpoch = z.string().regex(/^[0-9a-f]{32}$/u);
+const token = z.string().regex(/^[0-9a-f]{32}$/u);
+const requestEpoch = token;
 const currentKey = /^([0-9a-f]{32})\.(\d{13})\.([0-9a-f-]{36})$/u;
 
 export function createCanvasRequestId(epoch: string, nonce: string, issuedAt = Date.now()): string {
@@ -50,7 +51,7 @@ export const canvasEditingSchemas = Object.freeze({
     z.object({...commit, operation: z.literal('archive'), ...archiveAction}).strict(),
     z.object({...commit, operation: z.literal('restore'), ...archiveAction, batchId: id.optional()}).strict(),
     z.object({...commit, operation: z.literal('move'), moves}).strict(),
-    z.object({...commit, operation: z.literal('layout'), moves, contentSequence: revision, contentToken: z.string().regex(/^[0-9a-f]{32}$/u)}).strict(),
+    z.object({...commit, operation: z.literal('layout'), moves, contentSequence: revision, contentToken: token}).strict(),
   ]),
   'canvas.history.get': z.object(project).strict(),
   'canvas.history.undo': z.object(commit).strict(),
@@ -78,14 +79,23 @@ const historyResponse = z.object({revision, undo: historyAction.nullable(), redo
   conflict: z.boolean()}).strict();
 const blocked = z.object({kind: z.string(), id: z.string(), reason: z.string()}).strict();
 const archiveInfo = z.object({at: z.string().datetime(), batchId: id, reason: z.enum(['user-delete', 'undo-create', 'reference-source'])}).strict();
+export const canvasArchiveNodeTypeSchema = z.enum(['text', 'image', 'video', 'audio', 'previs']);
+export const canvasArchiveMediaSchema = z.object({
+  assetId: id, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm']),
+}).strict();
+const archiveItem = target.extend({archive: archiveInfo, revision, label: z.string().max(512),
+  nodeType: canvasArchiveNodeTypeSchema.nullable(), versions: revision, preview: canvasArchiveMediaSchema.nullable(),
+});
+export type CanvasArchiveItem = z.infer<typeof archiveItem>;
 const result = z.object({projectId: id, actionId: id.nullable(), affected: z.number().int().nonnegative(),
-  history: historyResponse, contentSequence: revision, contentToken: z.string().regex(/^[0-9a-f]{32}$/u)}).strict();
+  history: historyResponse, contentSequence: revision, contentToken: token}).strict();
 export const canvasEditingResponses = Object.freeze({
   'canvas.archive.preview': z.object({projectId: id, targets: selected, affected: z.number().int().nonnegative(),
     versions: z.number().int().nonnegative(), clips: z.number().int().nonnegative(),
     blocked: z.array(blocked), confirmation: confirmation.nullable(), historyRevision: revision}).strict(),
-  'canvas.archive.list': z.object({projectId: id, next: archiveCursor.nullable(),
-    items: z.array(target.extend({archive: archiveInfo, revision, label: z.string()})).max(CANVAS_EDIT_LIMITS.archivedPage)}).strict(),
+  'canvas.archive.list': z.object({projectId: id, total: revision, next: archiveCursor.nullable(),
+    contentSequence: revision, contentToken: token,
+    items: z.array(archiveItem).max(CANVAS_EDIT_LIMITS.archivedPage)}).strict(),
   'canvas.apply': result,
   'canvas.history.get': historyResponse.extend({requestEpoch, requestAfter: revision, undoConflict: z.boolean(), redoConflict: z.boolean()}),
   'canvas.history.undo': result,

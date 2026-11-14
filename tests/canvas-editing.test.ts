@@ -112,6 +112,76 @@ test('archive of a first-frame source preserves the manual asset and hides both 
   } finally { try { await services.drain(); } finally { library.close(); } }
 });
 
+test('archive pages share a read-only snapshot stamp and project-scoped preview metadata', t => {
+  const f = fixture(t), hash = 'a'.repeat(64);
+  function asset(mimeType: 'image/png' | 'video/mp4') {
+    const id = f.id(), extension = mimeType === 'image/png' ? 'png' : 'mp4';
+    return f.store.put('assets', {id, projectId: f.projectId, mimeType, name: 'Fixture asset', sha256: hash,
+      sizeBytes: 100, referenceRevision: 1, reference: {pathForm: 'relative', path: `media/${id}.${extension}`,
+        volume: null, sizeBytes: 100, mtimeMs: 1, sampledSha256: hash, fullSha256: hash}});
+  }
+  const image = asset('image/png'), movie = asset('video/mp4'), formerMovie = asset('video/mp4');
+  const selectedVersionId = f.id(), otherVersionId = f.id();
+  const generated = f.shot(0, {title: 'Generated', selectedVersionId});
+  const unfinished = f.shot(1, {title: 'Unfinished', selectedVersionId: otherVersionId});
+  const third = f.shot(2, {referenceAssetIds: [image.id]});
+  for (const [id, shotId, assetId] of [
+    [selectedVersionId, generated.id, movie.id], [f.id(), generated.id, formerMovie.id], [otherVersionId, third.id, movie.id],
+  ] as const) f.store.put('versions', {id, projectId: f.projectId, jobId: f.id(), shotId, assetId, sha256: hash});
+  const imageNode = f.node('image', {label: '', assetId: image.id});
+  const text = f.node('text', {label: '', text: 'Opening line'});
+  const orphan = f.node('image', {assetId: f.id()});
+  const connection = f.edge(imageNode, third, {kind: 'reference', role: 'first_frame', sourceAssetId: image.id});
+  const hidden = f.node('text');
+  f.store.db.prepare(`UPDATE project.nodes SET archivedAt=?,archiveBatchId=?,archiveReason='undo-create' WHERE id=?`).run(date, f.id(), hidden.id);
+
+  const selected = [generated, unfinished, imageNode, text, orphan];
+  f.edit('archive', selected);
+  assert.ok(f.archived(connection));
+  const before = readProjectContentStamp(f.store.db);
+  const changes = () => f.store.db.prepare('SELECT total_changes() AS value').get()?.value;
+  const changesBefore = changes();
+  const first = f.call('canvas.archive.list', {limit: 2});
+  assert.equal(first.total, selected.length);
+  assert.deepEqual({contentSequence:first.contentSequence,contentToken:first.contentToken}, before);
+  assert.ok(first.next);
+  const last = f.call('canvas.archive.list', {after: first.next});
+  assert.equal(last.total, first.total);
+  assert.equal(last.contentToken, first.contentToken);
+  assert.equal(last.contentSequence, first.contentSequence);
+  assert.equal(last.next, null);
+  assert.equal(changes(), changesBefore);
+  assert.equal(f.store.db.isTransaction, false);
+
+  const items = [...first.items, ...last.items];
+  assert.deepEqual(items.map(item => item.id), selected.map(item => item.id).sort());
+  for (const item of items) {
+    assert.equal(item.archive.at, date);
+    assert.equal(item.archive.reason, 'user-delete');
+    assert.equal(item.revision, f.expectTarget(item).revision);
+  }
+  const byId = new Map(items.map(item => [item.id, item]));
+  assert.deepEqual(byId.get(generated.id)?.preview, {assetId: movie.id, mimeType: 'video/mp4'});
+  assert.equal(byId.get(generated.id)?.versions, 2);
+  assert.equal(byId.get(unfinished.id)?.preview, null, 'a different shot cannot supply a selected version');
+  assert.equal(byId.get(unfinished.id)?.versions, 0);
+  assert.equal(byId.get(imageNode.id)?.nodeType, 'image');
+  assert.equal(byId.get(imageNode.id)?.label, image.name);
+  assert.deepEqual(byId.get(imageNode.id)?.preview, {assetId: image.id, mimeType: 'image/png'});
+  assert.equal(byId.get(text.id)?.nodeType, 'text');
+  assert.equal(byId.get(text.id)?.label, 'Opening line');
+  assert.equal(byId.get(text.id)?.preview, null);
+  assert.equal(byId.get(orphan.id)?.preview, null);
+  assert.doesNotMatch(JSON.stringify(items), /media\//);
+  assert.throws(() => f.call('canvas.archive.list', {projectId: f.id()}), {code: 'VALIDATION_ERROR'});
+
+  f.edit('restore', [text]);
+  const after = f.call('canvas.archive.list');
+  assert.notEqual(after.contentToken, first.contentToken);
+  assert.equal(after.total, first.total - 1);
+  assert.ok(!after.items.some(item => item.id === text.id));
+});
+
 test('shot archive undo restores exact story order, explicit recovery uses surviving anchors', t => {
   const f = fixture(t), shots = [f.shot(0), f.shot(1), f.shot(2), f.shot(3), f.shot(4)];
   f.edit('archive', [shots[2]!,shots[1]!]);
