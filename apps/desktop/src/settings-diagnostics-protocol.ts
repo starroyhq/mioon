@@ -2,7 +2,7 @@ export const SETTINGS_DIAGNOSTICS_CHANNEL = 'mioon:settings-diagnostics:v1';
 
 const readStages = ['workspace-directory', 'workspace-identity', 'appearance', 'workspace-storage', 'workspace-settings', 'workspace-records',
   'video-tools', 'video-tools-status', 'video-tools-check', 'agent-settings', 'agent-policy', 'agent-connection-test', 'agent-authorizations',
-  'generation-live', 'generation-provider-list', 'generation-video', 'generation-image-official', 'generation-image-custom',
+  'generation-provider-list', 'generation-video', 'generation-image-official', 'generation-image-custom',
   'generation-comfy', 'generation-comfy-availability', 'about'] as const;
 export type SettingsDiagnosticsRead = typeof readStages[number];
 type BootPhase = 'start' | 'import' | 'ready' | 'failed';

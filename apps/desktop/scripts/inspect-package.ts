@@ -34,13 +34,13 @@ const files = asar.listPackage(archive);
 assert.ok(files.length > 10);
 assert.equal(files.some((file: string) => file.startsWith('/node_modules')), false);
 assert.equal(files.some((file: string) => /\/(?:data|workspace|media|\.env|access-token|mcp-token|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(file)), false);
-const allowed = new Set(['main.cjs', 'backend.cjs', ...(!historicalV3 ? ['preload.cjs'] : []), 'package.json', 'web', 'licenses']);
+const allowed = new Set(['main.cjs', 'backend.cjs', ...(!historicalV3 ? ['project-catalog.cjs', 'preload.cjs'] : []), 'package.json', 'web', 'licenses']);
 if (!historicalV3) allowed.add('icons');
 for (const file of files) {
   assert.ok(allowed.has(file.split('/')[1]), `Unexpected ASAR entry: ${file}`);
   assert.equal(Boolean(asar.statFile(archive, file.slice(1), false).link), false, 'No packaged symlink');
 }
-for (const file of historicalV3 ? [] : ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/settings.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) {
+for (const file of historicalV3 ? [] : ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'web/settings.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) {
   assert.deepEqual(asar.extractFile(archive, file), await readFile(path.join(root, 'apps/desktop/build', file)), `Packaged ${file} must equal verified staging`);
 }
 if (!historicalV3) await verifySettingsWarmAssets(file => asar.extractFile(archive, `web/${file}`).toString('utf8'));

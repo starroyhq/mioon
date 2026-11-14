@@ -164,8 +164,9 @@ export function RecentProjectCard(props: RecentProjectCardProps): ReactElement {
   const meta = missing
     ? <><span className="pf-card-status">{t('projectFile.home.missing')}</span>{!nativeGrid && <span>{t('projectFile.home.lastSeen', { place: lastSeenLabel(project.projectFile, homeDirectory) })}</span>}</>
     : availability.state === 'locked' ? <>{folder}<span className="pf-card-status" data-tone="warning">{t('projectFile.home.locked')}</span></>
-      : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(invalidLabel)}</span>{folder}</>
-        : nativeGrid ? <>{date}{aspect}</> : <>{folder}{!nativeList && date}</>;
+      : availability.state === 'busy' ? <><span className="pf-card-status">{t('projectFile.home.checking')}</span>{folder}</>
+        : availability.state === 'invalid' ? <><span className="pf-card-status" data-tone={availability.reason === 'read-only' ? 'warning' : 'danger'}>{t(invalidLabel)}</span>{folder}</>
+          : nativeGrid ? <>{date}{aspect}</> : <>{folder}{!nativeList && date}</>;
   const metaTone = missing ? 'danger' : availability.state === 'invalid' && availability.reason === 'read-only' ? 'warning' : undefined;
   const locate = missing && onLocate && <WorkbenchButton variant="ghost" size="compact" disabled={busy} className="pf-card-locate" data-testid={`pf-card-locate-${project.projectId}`} onClick={() => { if (!current.current.busy && current.current.item.project.projectId === project.projectId) current.current.onLocate?.(project.projectId); }}>{t('projectFile.home.locate')}</WorkbenchButton>;
   const waiting = waitingProject && <div className="pf-card-waiting" data-testid={`pf-card-waiting-${project.projectId}`}>{t('projectFile.home.waitingCard', {count: waitingProject.taskCount})}</div>;

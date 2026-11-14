@@ -8,6 +8,7 @@ import type {App, BrowserWindow, Cookie, Session, WebContents, WebPreferences} f
 import { validateManagedFile } from '@mioon/contracts/private-storage';
 import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
 import { rpcPathFor } from '../../../packages/contracts/src/project-addressing.ts';
+import type {TimelineRecord} from '../../../packages/contracts/src/timeline-replacement.ts';
 import type {DesktopIdentity, DesktopPaths} from './config.ts';
 import type {BackendReady, BackendRuntime, BackendSupervisor} from './supervisor.ts';
 
@@ -20,7 +21,7 @@ interface ExportJob {
   readonly id: string; readonly status: string; readonly error?: unknown;
   readonly assetId?: string; readonly url: string;
 }
-interface TimelineSummary { readonly clips: readonly unknown[]; readonly revision: number }
+type TimelineSummary = Pick<TimelineRecord, 'clips' | 'revision' | 'width' | 'height' | 'fps' | 'durationFrames'>;
 interface MediaStatus { readonly status: number; readonly bytes: number; readonly mime: string | null }
 interface DecodedVideo {
   readonly width: number; readonly height: number; readonly duration: number;
@@ -60,8 +61,12 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   let selectedProjectId: string | null = null;
   // Opening an already-owned project focuses its existing window; it does not
   // create another window or change main's most recently created-window slot.
-  const currentWindow = (): BrowserWindow | null => selectedProjectId ? getProjectWindow(selectedProjectId) ?? getWindow() : getWindow();
-  const requiredWindow = (): BrowserWindow => currentWindow()!;
+  const currentWindow = (): BrowserWindow | null => selectedProjectId ? getProjectWindow(selectedProjectId) ?? null : getWindow();
+  const requiredWindow = (): BrowserWindow => {
+    const window = currentWindow();
+    assert.ok(window && !window.isDestroyed(), 'The current smoke window must be live');
+    return window;
+  };
   const record = (name: string, details: object = {}) => { checks.push({ name, ok: true, ...details }); console.info('Desktop smoke:', name); };
   const evaluate = (expression: string): Promise<unknown> => requiredWindow().webContents.executeJavaScript(expression, true);
   // Same addresses as the renderer: app-level at /api/rpc, the rest at its project.
@@ -218,20 +223,34 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   const interrupted = await enqueue();
   await waitForLongMediaChild();
   await restart();
-  await waitExport(interrupted.id, fixture.id);
+  const recovered = await waitExport(interrupted.id, fixture.id);
+  assert.ok(recovered.assetId);
   record('graceful-restart-interrupts-and-recovers-active-render');
 
   await waitEntry();
-  const alreadySelected = await evaluate(`window.__mioonProjectWindow.context().then(context=>context.initialProjectId===${JSON.stringify(fixture.id)})`);
-  const launcherEntry = !alreadySelected && await evaluate(`Boolean(document.querySelector('[data-testid="project-home-open-${fixture.id}"]')?.getBoundingClientRect().width)`);
-  if (launcherEntry) await evaluate(`document.querySelector('[data-testid="project-home-open-${fixture.id}"]').click(); true`);
-  else if (!alreadySelected) {
-    await evaluate(`document.querySelector('[data-testid="project-switcher"]').click(); true`);
-    await waitFor<boolean>(() => evaluate(`Boolean([...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent.trim()===${JSON.stringify(fixture.name)}))`) as Promise<boolean>, 'project menu target');
-    await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent.trim()===${JSON.stringify(fixture.name)}).click(); true`);
-  }
+  const launcher = requiredWindow();
+  const launcherCard = JSON.stringify(`[data-testid="pf-card-open-${fixture.id}"]:not(:disabled)`);
+  await waitFor<boolean>(() => launcher.webContents.executeJavaScript(`(async () => {
+    const context = await window.__mioonProjectWindow?.context();
+    const card = context?.role === 'launcher' && document.querySelector(${launcherCard});
+    if (!card || !card.getBoundingClientRect().width) return false;
+    card.click();
+    return true;
+  })()`, true), 'fixture card enabled in native launcher');
   selectedProjectId = fixture.id;
-  await waitFor<boolean>(() => evaluate(`Boolean(document.querySelector('[data-testid="project-switcher"]')?.textContent.includes(${JSON.stringify(fixture.name)}) && document.querySelector('[data-testid="workspace-editing"]'))`) as Promise<boolean>, 'target native project ready');
+  await waitFor<boolean>(async () => {
+    const editor = currentWindow();
+    if (!editor || editor.isDestroyed()) return false;
+    return editor.webContents.executeJavaScript(`(async () => {
+      const context = await window.__mioonProjectWindow?.context();
+      return context?.role === 'editor' && context.editorProjectId === ${JSON.stringify(fixture.id)} &&
+        context.editorPhase === 'ready' && !context.leaseRevoked &&
+        Boolean(document.querySelector('[data-testid="project-switcher"]')?.textContent.includes(${JSON.stringify(fixture.name)}) &&
+          document.querySelector('[data-testid="workspace-editing"]:not(:disabled)'));
+    })()`, true);
+  }, 'target native project ready');
+  assert.notEqual(requiredWindow(), launcher, 'Opening the launcher card must target a different native window');
+  record('native-launcher-card-opens-its-project-editor');
   await evaluate(`document.querySelector('[data-testid="workspace-editing"]').click(); true`);
   await waitFor<boolean>(() => evaluate(`Boolean(document.querySelector('[data-testid="project-switcher"]')?.textContent.includes(${JSON.stringify(fixture.name)}) && document.querySelector('[data-testid="timeline-panel"]') && document.querySelectorAll('[data-testid^="timeline-clip-"]').length >= 4 && !document.body.innerText.includes('正在打开项目'))`) as Promise<boolean>, 'final project and timeline ready');
   await evaluate(`window.__desktopTestPreventUnload = event => { event.preventDefault(); event.returnValue = false; }; window.addEventListener('beforeunload', window.__desktopTestPreventUnload); true`);
@@ -245,7 +264,11 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   await evaluate(`document.querySelector('[data-testid="workspace-editing"]').click(); true`);
   await waitFor<boolean>(() => evaluate(`Boolean(document.querySelector('[data-testid="central-preview"]:not(.workspace-hidden)'))`) as Promise<boolean>, 'preview workspace visible');
   await evaluate(`document.querySelector('[data-testid="preview-timeline-mode"]').click(); true`);
-  await waitFor<boolean>(() => evaluate(`Boolean(document.querySelector('[data-testid="timeline-preview-video"]'))`) as Promise<boolean>, 'rendered timeline video present');
+  const recoveredMedia = projectMediaPath(fixture.id, recovered.assetId);
+  await waitFor<boolean>(() => evaluate(`(() => {
+    const video = document.querySelector('[data-testid="timeline-preview-video"]');
+    return Boolean(video?.currentSrc && new URL(video.currentSrc).pathname === ${JSON.stringify(recoveredMedia)});
+  })()`) as Promise<boolean>, 'recovered timeline video present');
   const decoded = await evaluate(`(async () => {
     const video = document.querySelector('[data-testid="timeline-preview-video"]');
     video.muted = true;
@@ -256,8 +279,11 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
     video.pause();
     return {width:video.videoWidth,height:video.videoHeight,duration:video.duration,readyState:video.readyState,currentTime:video.currentTime};
   })()`) as DecodedVideo;
-  assert.equal(decoded.width, 720); assert.equal(decoded.height, 1280);
-  assert.ok(decoded.duration >= 9.9 && decoded.duration <= 10.1); assert.ok(decoded.readyState >= 2);
+  assert.equal(decoded.width, timeline.width);
+  assert.equal(decoded.height, timeline.height);
+  assert.ok(Math.abs(decoded.duration - timeline.durationFrames / timeline.fps) <= 1 / timeline.fps);
+  assert.ok(decoded.readyState >= 2);
+  assert.ok(decoded.currentTime >= 3 && decoded.currentTime < decoded.duration, 'The recovered render must play at the requested position');
   record('shared-react-ui-stable-and-real-timeline-video-decoded', decoded);
   assert.equal(await evaluate(`Boolean([...document.querySelectorAll('[role="dialog"]')].some(dialog=>dialog.getBoundingClientRect().width>0))`),false,'The accepted editor must be visible without a retained dialog');
   await mkdir(path.dirname(output), { recursive: true });

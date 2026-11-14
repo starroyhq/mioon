@@ -157,7 +157,7 @@ export async function trashFixture(t: TestContext, options: {mode?: 'completed' 
   const serverOptions: ServerOptions = {dataDir, port: 0, token,
     ...(options.headless ? {} : {projectTrash: port}), inspectProject: read => {inspect = read;}, inspectApplication: read => {application = read;}};
   const server = await startServer(serverOptions); active = server;
-  const registration = server.projectEntries.listRecent().registered.find(entry => entry.project.projectId === source.projectId)!.project;
+  const registration = (await server.projectEntries.listRecent()).registered.find(entry => entry.project.projectId === source.projectId)!.project;
   assert.equal(isProjectFileHeld(registration.fileIdentity), false);
   const input = (): ProjectDeleteInput => ({requestId: randomUUID(), projectId: source.projectId, projectFile: sourceFile,
     fileIdentity: {...registration.fileIdentity}, expectedRevision: revision, confirmTrash: true});

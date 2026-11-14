@@ -347,7 +347,7 @@ for (const operation of ['project.duplicate', 'project.save-as'] as const)
     assert.equal(preview.status, 200, JSON.stringify(preview.body)); assert.ok(preview.body.data);
     assert.equal(preview.body.data.restoreAvailable, true, JSON.stringify(preview.body));
     assert.equal(preview.body.data.projectId, copy.project.projectId); assert.equal(preview.body.data.version.id, f.manualId);
-    assert.equal(f.native.listRecent().registered.filter(entry => entry.project.projectId === copy.project.projectId).length, 1);
+    assert.equal((await f.native.listRecent()).registered.filter(entry => entry.project.projectId === copy.project.projectId).length, 1);
   });
 
 test('copy authenticates before validation and refuses malformed/private/existing targets without source or application writes', async t => {
@@ -488,7 +488,7 @@ test('concurrent identical copy requests share one receipt while a competing key
   const [a, b] = await Promise.all([first, same]); assert.equal(a.status, 200, JSON.stringify(a.body)); assert.deepEqual(b, a);
   const copy = projectCopyResponseSchema.parse(a.body.data);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE operation=? AND requestId=?').get('project.duplicate', input.requestId)!.n), 1);
-  assert.equal(f.native.listRecent().registered.filter(entry => entry.project.projectId === copy.project.projectId).length, 1);
+  assert.equal((await f.native.listRecent()).registered.filter(entry => entry.project.projectId === copy.project.projectId).length, 1);
 });
 
 test('a target installed after preparation is preserved and never registered as this copy', async t => {
@@ -500,7 +500,7 @@ test('a target installed after preparation is preserved and never registered as 
   denied(await pending, 409, 'PROJECT_COPY_TARGET_CHANGED');
   assert.equal(readFileSync(input.projectFile, 'utf8'), 'External target won the race'); assert.deepEqual(f.sourceFiles(), before);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
-  assert.equal(f.native.listRecent().registered.length, 1);
+  assert.equal((await f.native.listRecent()).registered.length, 1);
 });
 
 test('copy replay preserves later edits on a held target and never regrants a revoked directory', async t => {
@@ -547,7 +547,7 @@ for (const damage of ['corrupt', 'occupied'] as const) test(`${damage} source hi
   denied(result, damage === 'corrupt' ? 422 : 409, damage === 'corrupt' ? 'PROJECT_INVALID' : 'PROJECT_LOCKED');
   assert.equal(existsSync(input.projectFile), false); assert.deepEqual(f.sourceFiles(), before);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
-  assert.equal(f.native.listRecent().registered.length, 1);
+  assert.equal((await f.native.listRecent()).registered.length, 1);
 });
 
 for (const mode of ['aborted', 'reopened-library'] as const) test(`the ${mode} application owner cannot write through its old copy capability`, async t => {

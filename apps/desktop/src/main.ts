@@ -12,7 +12,7 @@ import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme, net, screen } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {createMediaToolsInstaller} from './media-tools.ts';
@@ -489,6 +489,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
       modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined), agentSettings,
+      projectCatalog: {modulePath: path.join(app.getAppPath(), 'project-catalog.cjs'), createChannel: () => new MessageChannelMain()},
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
       videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }),
       projectTrash: process.platform === 'darwin' ? {trashItem: file => shell.trashItem(file),

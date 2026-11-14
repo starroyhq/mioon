@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
-import {chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {request} from 'node:http';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
@@ -11,6 +11,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
 import {createProjectEntries} from '../apps/server/src/project-entries.ts';
+import {createNodeProjectCatalogClient} from '../apps/server/src/project-catalog-client.ts';
+import {scanProjectCatalogFile} from '../apps/server/src/project-catalog-scan.ts';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
@@ -37,7 +39,8 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false} = {}) {
+async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false,
+  projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined} = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
   const dataDir = path.join(root, 'app'), projectsDir = externalProjectsRoot ? path.join(root, 'selected-projects') : path.join(dataDir, 'projects');
   let server: Server | undefined;
@@ -83,7 +86,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
     if (externalProjectsRoot) library.registry.upsert({...library.registry.get(b.projectId)!, projectFile: bFile});
   } finally {library.close();}
   let inspect!: InspectProject, inspectApplication!: InspectApplication,backupAttempts=0;
-  server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel,
+  server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel, projectCatalogClient, projectCatalogTimeoutMsForTest,
     inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;},
     ...(rejectBackup?{projectBackupCopyForTest:async()=>{backupAttempts++;throw Error('Metadata reads must not start backups');}}:{})});
   const owned = server;
@@ -144,12 +147,12 @@ function restoreFsMocks(t: TestContext): void {
   syncBuiltinESMExports();
 }
 
-function registry(f: Fixture): readonly RecentProject[] {
-  return f.server.projectEntries.listRecent().registered.map(entry => entry.project);
+async function registry(f: Fixture): Promise<readonly RecentProject[]> {
+  return (await f.server.projectEntries.listRecent()).registered.map(entry => entry.project);
 }
 
 test('application catalog retains the physical application identity and reads metadata without a runtime or legacy route', async t => {
-  const f = await fixture(t), before = registry(f);
+  const f = await fixture(t), before = await registry(f);
   const a = f.hold(f.a.projectId), b = f.hold(f.b.projectId);
   const entries = await f.catalog(), again = await f.catalog();
   assert.equal(entries.version, 1); assert.match(entries.appLibraryScope, /^[a-f0-9]{64}$/u);
@@ -158,7 +161,7 @@ test('application catalog retains the physical application identity and reads me
   assert.deepEqual(new Set(entries.registered.map(entry => entry.project.projectId)), new Set([f.a.projectId, f.b.projectId]));
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.a.projectId)!.coverUrl, `/api/project-covers/${f.a.projectId}`);
   assert.equal(entries.registered.find(entry => entry.project.projectId === f.b.projectId)!.coverUrl, null);
-  assert.deepEqual(registry(f), before, 'listing does not change successful-open timestamps or registrations');
+  assert.deepEqual(await registry(f), before, 'listing does not change successful-open timestamps or registrations');
   assert.equal(entries.appLibraryScope, calculateWorkspaceScope({channel: 'web', root: f.dataDir,
     directory: lstatSync(f.dataDir), db: lstatSync(path.join(f.dataDir, 'app-library.db'))}));
   for (const method of ['GET', 'PUT']) {
@@ -213,7 +216,7 @@ test('a catalog shares one private identity scan but checks each project and ref
   });
   const secret = path.join(directories.dataDir, 'private-settings.json');
   let reads: string[] = [], rejectRefresh = false;
-  const guard = createApplicationFileGuard(directories, {metadata(file) {
+  const guard = createApplicationFileGuard(directories, {async catalogMetadata(file) {
     reads.push(file);
     if (file === directories.dataDir && rejectRefresh) throw new Error('Synthetic unavailable private root');
     const stat = lstatSync(file, {bigint: true, throwIfNoEntry: false});
@@ -230,7 +233,9 @@ test('a catalog shares one private identity scan but checks each project and ref
     finally { rmSync(root, {recursive: true, force: true}); }
   });
   const {control} = createProjectEntries({manager, registry, projectsDir: directories.projectsDir, channel: 'web', signal: shutdown.signal,
-    readScope: () => 'a'.repeat(64), createProject: async () => assert.fail('Catalog must not create a project'), refreshSummaries() {}, assertProjectFile: guard});
+    readScope: () => 'a'.repeat(64), createProject: async () => assert.fail('Catalog must not create a project'), refreshSummaries() {}, assertProjectFile: guard,
+    catalogClient: {async scan(inputs) {return inputs.map(scanProjectCatalogFile);}, close() {}},
+  });
   const opened: string[] = [];
   const open = fs.openSync;
   t.mock.method(fs, 'openSync', (file: Parameters<typeof open>[0], flags: Parameters<typeof open>[1], mode?: Parameters<typeof open>[2]) => {
@@ -240,21 +245,21 @@ test('a catalog shares one private identity scan but checks each project and ref
   syncBuiltinESMExports();
   t.after(() => restoreFsMocks(t));
 
-  const readCatalog = () => {
+  const readCatalog = async () => {
     reads = [];
-    return control.listRecent().registered.map(entry => entry.availability);
+    return (await control.listRecent()).registered.map(entry => entry.availability);
   };
-  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'invalid', reason: 'format-newer'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'invalid', reason: 'format-newer'}]);
   assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
-  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 0);
   assert.deepEqual(opened, candidates);
 
   writeFileSync(secret, '{}', {mode: 0o600});
   opened.length = 0;
-  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'available'}]);
   assert.equal(reads.filter(file => file === directories.dataDir).length, 1);
   assert.ok(reads.includes(secret), 'the second read refreshes private identities before reading any project header');
-  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 1);
+  for (const file of candidates) assert.equal(reads.filter(candidate => candidate === file).length, 0);
   assert.deepEqual(opened, [], 'a same-generation hint avoids opening the stable file, and the private guard still rejects a previously cached inode');
 
   const stable = candidates[0]!, bytes = readFileSync(stable), previousMtime = fs.statSync(stable).mtime;
@@ -262,16 +267,30 @@ test('a catalog shares one private identity scan but checks each project and ref
   writeFileSync(stable, bytes);
   fs.utimesSync(stable, previousMtime, new Date(previousMtime.getTime() + 2000));
   opened.length = 0;
-  assert.deepEqual(readCatalog(), [{state: 'invalid', reason: 'format-newer'}, {state: 'available'}]);
+  assert.deepEqual(await readCatalog(), [{state: 'invalid', reason: 'format-newer'}, {state: 'available'}]);
   assert.deepEqual(opened, [stable], 'a changed generation is read again');
 
   rejectRefresh = true;
-  assert.deepEqual(readCatalog(), [{state: 'available'}, {state: 'available'}]);
+  opened.length = 0;
+  assert.deepEqual(await readCatalog(), [{state: 'available'}, {state: 'available'}]);
   assert.deepEqual(reads, [directories.dataDir], 'a failed snapshot exposes no project header hints');
+  assert.deepEqual(opened, []);
 });
 
-test('application identity GET bypasses private tree scans and slow project-file opens', async t => {
-  const f = await fixture(t, 'production'), route = '/api/project-entries/identity';
+test('identity and preferences respond while HTTP and native callers share one catalog scan', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  const client = createNodeProjectCatalogClient();
+  let batches = 0, headerOpens = 0;
+  const f = await fixture(t, 'production', {projectCatalogClient: {
+    async scan(inputs) {
+      batches++;
+      headerOpens += inputs.filter(input => input.checkHeader && input.file === f.b.projectFile).length;
+      entered.resolve();
+      await resume.promise;
+      return client.scan(inputs);
+    },
+    close() {resume.resolve(); client.close();},
+  }}), route = '/api/project-entries/identity';
   const cache = path.join(f.dataDir, 'cache', 'synthetic-tree');
   mkdirSync(cache, {recursive: true});
   for (let index = 0; index < 16; index++) {
@@ -279,17 +298,8 @@ test('application identity GET bypasses private tree scans and slow project-file
     mkdirSync(folder);
     for (let item = 0; item < 64; item++) writeFileSync(path.join(folder, String(item)), '');
   }
-  let slowOpens = 0, cacheScans = 0, projectStats = 0;
-  const open = fs.openSync, readdir = fs.readdirSync, lstat = fs.lstatSync;
-  const delay = new Int32Array(new SharedArrayBuffer(4));
-  const injectedDelayMs = 120;
-  t.mock.method(fs, 'openSync', (file: Parameters<typeof open>[0], flags: Parameters<typeof open>[1], mode?: Parameters<typeof open>[2]) => {
-    if (file === f.b.projectFile) {
-      slowOpens++;
-      Atomics.wait(delay, 0, 0, injectedDelayMs);
-    }
-    return open(file, flags, mode);
-  });
+  let cacheScans = 0, projectStats = 0, asynchronousScans = 0;
+  const readdir = fs.readdirSync, lstat = fs.lstatSync, readdirAsync = fs.promises.readdir;
   t.mock.method(fs, 'lstatSync', (file: Parameters<typeof lstat>[0], options?: Parameters<typeof lstat>[1]) => {
     if (file === f.b.projectFile) projectStats++;
     return lstat(file, options);
@@ -297,6 +307,10 @@ test('application identity GET bypasses private tree scans and slow project-file
   t.mock.method(fs, 'readdirSync', (file: Parameters<typeof readdir>[0], options: Parameters<typeof readdir>[1]) => {
     if (file === cache) cacheScans++;
     return readdir(file, options);
+  });
+  t.mock.method(fs.promises, 'readdir', (file: Parameters<typeof readdirAsync>[0], options: Parameters<typeof readdirAsync>[1]) => {
+    if (file === cache) asynchronousScans++;
+    return readdirAsync(file, options);
   });
   syncBuiltinESMExports();
   t.after(() => restoreFsMocks(t));
@@ -325,25 +339,171 @@ test('application identity GET bypasses private tree scans and slow project-file
     assert.equal(body.ok, true);
     return projectEntryIdentitySchema.parse(body.data);
   };
-  const from = performance.now();
-  const identity = await readIdentity(), identityMs = performance.now() - from;
+  const identity = await readIdentity();
   assert.deepEqual(await readIdentity(), identity);
-  assert.deepEqual({slowOpens, cacheScans, projectStats}, {slowOpens: 0, cacheScans: 0, projectStats: 0});
-  const coldStart = performance.now();
-  const catalog = await f.catalog(), coldCatalogMs = performance.now() - coldStart;
-  assert.equal(slowOpens, 1);
-  assert.equal(cacheScans, 2, 'recovery and header hints each take a fresh private identity snapshot');
-  assert.ok(projectStats > 0);
-  assert.ok(coldCatalogMs >= injectedDelayMs);
+  assert.deepEqual({batches, cacheScans, asynchronousScans, projectStats}, {batches: 0, cacheScans: 0, asynchronousScans: 0, projectStats: 0});
+  const listing = f.catalog();
+  // Observe possible early failures even if the scanner was never reached.
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before the scan'))]);
+  const nativeList = f.server.projectEntries.listRecent();
+  try {
+    assert.deepEqual(await readIdentity(), identity);
+    const other = await f.fetch('/api/ui-preferences');
+    assert.equal(other.status, 200);
+    await other.arrayBuffer();
+    assert.deepEqual({batches, cacheScans, asynchronousScans, projectStats}, {batches: 1, cacheScans: 0, asynchronousScans: 1, projectStats: 0});
+  } finally {resume.resolve();}
+  const catalog = await listing;
+  assert.deepEqual(await nativeList, catalog);
+  assert.equal(headerOpens, 1);
   assert.deepEqual(identity, {appLibraryScope: catalog.appLibraryScope, instanceId: catalog.instanceId});
-  const warmStart = performance.now();
   assert.deepEqual(await f.catalog(), catalog);
-  assert.equal(slowOpens, 1, 'subsequent catalogs retain the guarded same-generation header result');
-  t.diagnostic(`1,024 synthetic cache files and one ${injectedDelayMs} ms open: identity ${identityMs.toFixed(1)} ms, cold catalog ${coldCatalogMs.toFixed(1)} ms, warm catalog ${(performance.now() - warmStart).toFixed(1)} ms`);
+  assert.equal(headerOpens, 1, 'subsequent catalogs retain the guarded same-generation header result');
+  assert.equal(asynchronousScans, 2, 'a later catalog takes a new private identity snapshot');
+});
+
+test('a delayed format hint cannot be applied to a changed project file', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  const client = createNodeProjectCatalogClient();
+  let pauseFirst = true;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogClient: {
+    async scan(inputs) {
+      const results = await client.scan(inputs);
+      if (pauseFirst) {
+        pauseFirst = false;
+        assert.equal(results[inputs.findIndex(input => input.file === f.b.projectFile)]?.format?.newer, true);
+        entered.resolve();
+        await resume.promise;
+      }
+      return results;
+    },
+    close() {resume.resolve(); client.close();},
+  }});
+  const listing = f.catalog();
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before the scan'))]);
+  try {
+    const file = f.b.projectFile;
+    const bytes = readFileSync(file);
+    bytes.writeUInt32BE(PROJECT_FILE_SCHEMA_VERSION, 60);
+    writeFileSync(file, bytes);
+    const mtime = fs.statSync(file).mtime;
+    fs.utimesSync(file, mtime, new Date(mtime.getTime() + 2000));
+  } finally {resume.resolve();}
+  assert.deepEqual((await listing).registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'busy'});
+  assert.deepEqual((await f.catalog()).registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'available'});
+});
+
+test('a failed or timed out catalog scan serves registration metadata and admits a fresh scan', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>();
+  let mode: 'normal' | 'failure' | 'stall' = 'normal';
+  let scans = 0;
+  let cancelled: AbortSignal | undefined;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+    async scan(inputs, signal) {
+      scans++;
+      if (mode === 'failure') throw Error('Synthetic scanner transport closed');
+      if (mode === 'stall') {
+        cancelled = signal;
+        entered.resolve();
+        return new Promise(() => {});
+      }
+      return inputs.map(scanProjectCatalogFile);
+    },
+    close() {},
+  }});
+  const candidateStatus = (value: ProjectEntriesResponse) => value.registered.find(item => item.project.projectId === f.b.projectId)?.availability;
+  const data = await f.catalog();
+  assert.deepEqual(candidateStatus(data), {state: 'invalid', reason: 'format-newer'});
+  mode = 'failure';
+  const degraded = await f.catalog();
+  assert.deepEqual(degraded.registered.map(item => item.project), data.registered.map(item => item.project));
+  assert.deepEqual(candidateStatus(degraded), {state: 'available'}, 'transport loss omits the prior format hint');
+  mode = 'stall';
+  const listing = f.catalog();
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before scanner was reached'))]);
+  const overlap = f.server.projectEntries.listRecent();
+  assert.deepEqual(await listing, degraded);
+  assert.deepEqual(await overlap, degraded);
+  assert.equal(cancelled?.aborted, true);
+  assert.equal(scans, 3, 'both callers joined the same bounded attempt');
+  mode = 'normal';
+  assert.deepEqual(await f.catalog(), data);
+  assert.equal(scans, 4, 'the next read creates a new flight');
+});
+
+test('inconclusive inspection preserves a known lock or shows the project as busy', async t => {
+  let phase: 'locked' | 'changed' | 'clean' = 'locked';
+  const f = await fixture(t, 'production', {projectCatalogClient: {
+    async scan(inputs) {
+      return inputs.map(input => {
+        if (phase === 'changed') return {recovery: 'changed'};
+        if (phase === 'locked' && input.file === f.a.projectFile) return {recovery: {state: 'locked'}};
+        return scanProjectCatalogFile(input);
+      });
+    },
+    close() {},
+  }});
+  const states = (data: ProjectEntriesResponse) => [f.a, f.b].map(({projectId}) => data.registered.find(row => row.project.projectId === projectId)?.availability.state);
+  assert.deepEqual(states(await f.catalog()), ['locked', 'available']);
+  phase = 'changed';
+  assert.deepEqual(states(await f.catalog()), ['locked', 'busy']);
+  phase = 'clean';
+  assert.deepEqual(states(await f.catalog()), ['available', 'available']);
+});
+
+test('a stalled metadata read releases the directory flight and ignores its late result', {timeout: 10_000}, async t => {
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), resumed = Promise.withResolvers<void>();
+  let scans = 0, stall = true;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+    async scan(inputs) {scans++; return inputs.map(scanProjectCatalogFile);},
+    close() {},
+  }});
+  const original = fs.promises.lstat;
+  t.mock.method(fs.promises, 'lstat', async (file: Parameters<typeof original>[0], options: Parameters<typeof original>[1]) => {
+    if (stall && file === f.b.projectFile) {
+      stall = false;
+      entered.resolve();
+      await resume.promise;
+      resumed.resolve();
+    }
+    return original(file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {resume.resolve(); restoreFsMocks(t);});
+  const listing = f.catalog();
+  await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before reading metadata'))]);
+  const degraded = await listing;
+  assert.equal(degraded.registered.length, 2);
+  assert.equal(scans, 0);
+  const fresh = await f.catalog();
+  assert.deepEqual(fresh.registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'invalid', reason: 'format-newer'});
+  resume.resolve();
+  await resumed.promise;
+  assert.deepEqual(await f.catalog(), fresh);
+  assert.equal(scans, 2);
+});
+
+test('a held database at a journal alias leaves the project checking and preserves the holder', async t => {
+  const scanned: string[] = [];
+  const f = await fixture(t, 'production', {projectCatalogClient: {
+    async scan(inputs) {scanned.push(...inputs.map(input => input.file)); return inputs.map(scanProjectCatalogFile);},
+    close() {},
+  }});
+  const journal = f.a.projectFile + '-journal', holder = f.hold(f.b.projectId);
+  const availability = async () => (await f.catalog()).registered.find(item => item.project.projectId === f.a.projectId)?.availability;
+  assert.deepEqual(await availability(), {state: 'available'});
+  scanned.length = 0;
+  linkSync(f.b.projectFile, journal);
+  try {
+    assert.deepEqual(await availability(), {state: 'busy'});
+    assert.deepEqual(scanned, []);
+    assert.equal(holder.db.prepare('SELECT 1 AS value').get()?.value, 1);
+  } finally {rmSync(journal);}
+  assert.deepEqual(await availability(), {state: 'available'});
 });
 
 test('single registration metadata preserves closed project files, records and B1 rows without opening or backing up',async t=>{
-  const f=await fixture(t,'web',{rejectBackup:true}),beforeRegistry=registry(f);
+  const f=await fixture(t,'web',{rejectBackup:true}),beforeRegistry=await registry(f);
   const tree=(directory:string):unknown=>existsSync(directory)?readdirSync(directory,{recursive:true}).map(String).sort().map(name=>{
     const file=path.join(directory,name),stat=lstatSync(file);
     return{name,directory:stat.isDirectory(),bytes:stat.isFile()?readFileSync(file).toString('base64'):null};
@@ -371,12 +531,12 @@ test('single registration metadata preserves closed project files, records and B
     assert.equal(first.entry.coverUrl,project.projectId===f.a.projectId?`/api/project-covers/${project.projectId}`:null);
     assert.equal(Object.hasOwn(first,'registered'),false);
     assert.equal(isProjectFileHeld(expected.fileIdentity),false);assert.equal(f.backupAttempts(),0);
-    assert.deepEqual(application(),beforeApplication);assert.deepEqual(files(),beforeFiles);assert.deepEqual(registry(f),beforeRegistry);
+    assert.deepEqual(application(),beforeApplication);assert.deepEqual(files(),beforeFiles);assert.deepEqual(await registry(f),beforeRegistry);
   }
 });
 
 test('single registration metadata requires authenticated exact canonical GET with no query or body controls',async t=>{
-  const f=await fixture(t,'web',{rejectBackup:true}),route=`/api/project-entries/${f.a.projectId}`,before=registry(f);
+  const f=await fixture(t,'web',{rejectBackup:true}),route=`/api/project-entries/${f.a.projectId}`,before=await registry(f);
   assert.equal((await fetch(f.server.url+route)).status,401);
   const foreign=await f.json(route,{headers:{origin:'https://foreign.invalid'}});assert.equal(foreign.status,403);assert.equal(foreign.body.error!.code,'ORIGIN_REJECTED');
   for(const query of [`projectId=${f.a.projectId}`,'path=%2Foutside','projectFile=%2Foutside','root=%2Foutside','cursor=1']){
@@ -391,7 +551,7 @@ test('single registration metadata requires authenticated exact canonical GET wi
   for(const tail of ['not-an-id','AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',encoded,encodeURIComponent(f.a.projectId+'/extra'),f.a.projectId+'/',f.a.projectId+'/extra']){
     const result=await f.json('/api/project-entries/'+tail);assert.equal(result.status,404);assert.equal(result.body.ok,false);
   }
-  assert.equal(f.backupAttempts(),0);assert.deepEqual(registry(f),before);
+  assert.equal(f.backupAttempts(),0);assert.deepEqual(await registry(f),before);
 });
 
 for (const firstRead of ['http', 'trusted'] as const) {
@@ -400,7 +560,7 @@ for (const firstRead of ['http', 'trusted'] as const) {
     const f = await fixture(t, 'production'), windowId = randomUUID();
     const opened = await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId});
     const editor = f.native(f.a.projectId), closed = f.hold(f.b.projectId);
-    const before = f.server.projectEntries.listRecent();
+    const before = await f.server.projectEntries.listRecent();
     const previous = before.registered.find(entry => entry.project.projectId === f.a.projectId)!.project;
     const closedBefore = before.registered.find(entry => entry.project.projectId === f.b.projectId)!;
     assert.equal(closedBefore.project.lastOpenedAt, null);
@@ -433,8 +593,8 @@ for (const firstRead of ['http', 'trusted'] as const) {
       assetId: asset.id, trackId: track.id, startFrame: 15, durationFrames: 30});
     // Each endpoint is the first summary read in its own case. Calling the old
     // summary RPC (or the other catalog) first would hide a stale-cache bug.
-    const refreshed = firstRead === 'http' ? await f.catalog() : f.server.projectEntries.listRecent();
-    const other = firstRead === 'http' ? f.server.projectEntries.listRecent() : await f.catalog();
+    const refreshed = firstRead === 'http' ? await f.catalog() : await f.server.projectEntries.listRecent();
+    const other = firstRead === 'http' ? await f.server.projectEntries.listRecent() : await f.catalog();
     for (const entries of [refreshed, other]) {
       const current = entries.registered.find(entry => entry.project.projectId === f.a.projectId)!;
       assert.deepEqual(current.availability, {state: 'open'});
@@ -461,17 +621,17 @@ test('web catalog lists only registered files below its project root and never s
   const peer = await f.server.projectEntries.create({name: 'Prefix peer', parentDir: prefixPeer});
   const candidate = path.join(f.projectsDir, 'unregistered.mioon');
   const candidateId = createProjectFile(candidate), candidateBytes = readFileSync(candidate);
-  const before = registry(f), data = await f.catalog();
+  const before = await registry(f), data = await f.catalog();
   assert.deepEqual(new Set(data.registered.map(entry => entry.project.projectId)), new Set([f.a.projectId, f.b.projectId]));
-  assert.ok(registry(f).some(entry => entry.projectId === external.projectId));
-  assert.ok(registry(f).some(entry => entry.projectId === peer.projectId));
+  assert.ok((await registry(f)).some(entry => entry.projectId === external.projectId));
+  assert.ok((await registry(f)).some(entry => entry.projectId === peer.projectId));
   for(const projectId of [external.projectId,peer.projectId,candidateId]){
     const single=await f.json(`/api/project-entries/${projectId}`);assert.equal(single.status,404);assert.equal(single.body.error!.code,'PROJECT_NOT_FOUND');
   }
   const selected=await f.json(`/api/project-entries/${f.a.projectId}`);assert.equal(selected.status,200);
   assert.equal(projectEntryResponseSchema.parse(selected.body.data).entry.project.projectFile,f.a.projectFile);
-  assert.ok(!registry(f).some(entry => entry.projectId === candidateId));
-  assert.deepEqual(registry(f), before); assert.deepEqual(readFileSync(candidate), candidateBytes);
+  assert.ok(!(await registry(f)).some(entry => entry.projectId === candidateId));
+  assert.deepEqual(await registry(f), before); assert.deepEqual(readFileSync(candidate), candidateBytes);
   const missing = await f.server.projectEntries.create({name: 'Missing'});
   rmSync(missing.projectFile);
   assert.deepEqual((await f.catalog()).registered.find(entry => entry.project.projectId === missing.projectId)!.availability, {state: 'missing'});
@@ -486,7 +646,7 @@ for (const channel of ['production', 'development'] as const) {
     const entry = await f.server.projectEntries.create({name: 'Native external', parentDir: outside});
     const held = f.hold(entry.projectId), data = await f.catalog();
     assert.ok(data.registered.some(item => item.project.projectId === entry.projectId));
-    assert.deepEqual(data, f.server.projectEntries.listRecent());
+    assert.deepEqual(data, await f.server.projectEntries.listRecent());
     const single=await f.json(`/api/project-entries/${entry.projectId}`);assert.equal(single.status,200);
     assert.deepEqual(projectEntryResponseSchema.parse(single.body.data).entry,data.registered.find(item=>item.project.projectId===entry.projectId));
     assert.equal(held.db.isOpen, true);
@@ -494,7 +654,7 @@ for (const channel of ['production', 'development'] as const) {
 }
 
 test('catalog enforces authentication, origin, a read-only exact route and no query or body path controls', async t => {
-  const f = await fixture(t), before = registry(f);
+  const f = await fixture(t), before = await registry(f);
   assert.equal((await fetch(f.server.url + '/api/project-entries')).status, 401);
   const foreign = await f.json('/api/project-entries', {headers: {origin: 'https://foreign.invalid'}});
   assert.equal(foreign.status, 403); assert.equal(foreign.body.error!.code, 'ORIGIN_REJECTED');
@@ -512,18 +672,18 @@ test('catalog enforces authentication, origin, a read-only exact route and no qu
     const response = await f.json('/api/project-entries' + suffix, {method: 'POST'});
     assert.equal(response.status, 404);
   }
-  assert.deepEqual(registry(f), before);
+  assert.deepEqual(await registry(f), before);
 });
 
 test('trusted and public creation reject the same invalid names before any directory or registry changes', async t => {
   const f = await fixture(t), parentDir = path.join(f.root, 'selected parent'); mkdirSync(parentDir);
   writeFileSync(path.join(parentDir, 'keep.txt'), 'preserve selected parent');
-  const before = registry(f), projects = readdirSync(f.projectsDir).sort(), selected = readdirSync(parentDir).sort();
+  const before = await registry(f), projects = readdirSync(f.projectsDir).sort(), selected = readdirSync(parentDir).sort();
   for (const name of ['', '   ', '.', '..', '.hidden', 'trailing.', 'a/b', 'a\\b', 'bad\u0000name', 'CON.txt', 'lpt1', ' padded ']) {
     await assert.rejects(() => f.server.projectEntries.create({name, parentDir}), {code: 'VALIDATION_ERROR', status: 400});
     const response = await f.rpc('project.create', {name});
     assert.equal(response.status, 400); assert.equal(response.body.error!.code, 'VALIDATION_ERROR');
-    assert.deepEqual(registry(f), before); assert.deepEqual(readdirSync(f.projectsDir).sort(), projects);
+    assert.deepEqual(await registry(f), before); assert.deepEqual(readdirSync(f.projectsDir).sort(), projects);
     assert.deepEqual(readdirSync(parentDir).sort(), selected);
   }
   assert.equal(readFileSync(path.join(parentDir, 'keep.txt'), 'utf8'), 'preserve selected parent');
@@ -554,9 +714,9 @@ test('trusted creation initializes description and preset at each selected locat
     assert.equal(timeline.fps, 30); store.close();
     assert.equal(entry.lastOpenedAt, null, 'creation alone is not a successful editor open');
   }
-  const original = readFileSync(projectFile), before = registry(f);
+  const original = readFileSync(projectFile), before = await registry(f);
   await assert.rejects(() => f.server.projectEntries.create({name: 'Do not overwrite', projectFile}), {code: 'PROJECT_FILE_EXISTS', status: 409});
-  assert.deepEqual(readFileSync(projectFile), original); assert.deepEqual(registry(f), before);
+  assert.deepEqual(readFileSync(projectFile), original); assert.deepEqual(await registry(f), before);
   assert.equal(readFileSync(path.join(parentDir, 'keep.txt'), 'utf8'), 'retain parent');
   assert.deepEqual(readdirSync(parentDir).sort(), ['Chosen.mioon', 'Folder Project', 'keep.txt']);
 });
@@ -564,7 +724,7 @@ test('trusted creation initializes description and preset at each selected locat
 test('failed initialization removes only its new exact file and preserves the selected empty parent', async t => {
   const f = await fixture(t), parentDir = path.join(f.root, 'selected empty parent'); mkdirSync(parentDir);
   const identity = lstatSync(parentDir, {bigint: true}), records = path.join(f.dataDir, 'records');
-  const before = registry(f), projectFile = path.join(parentDir, 'Not initialized.mioon');
+  const before = await registry(f), projectFile = path.join(parentDir, 'Not initialized.mioon');
   // Fail companion creation after the selected project file was created. This
   // uses the real filesystem boundary instead of introducing a server fault seam.
   chmodSync(records, 0o500);
@@ -574,7 +734,7 @@ test('failed initialization removes only its new exact file and preserves the se
   const after = lstatSync(parentDir, {bigint: true});
   assert.equal(after.dev, identity.dev); assert.equal(after.ino, identity.ino);
   assert.deepEqual(readdirSync(parentDir), []); assert.equal(existsSync(projectFile), false);
-  assert.deepEqual(registry(f), before);
+  assert.deepEqual(await registry(f), before);
 });
 
 test('public project.create uses the same complete initialization without exposing native path selection', async t => {
@@ -586,7 +746,7 @@ test('public project.create uses the same complete initialization without exposi
   const db = f.native(projectId);
   assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
   assert.equal((await f.catalog()).newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
-  assert.equal(f.server.projectEntries.listRecent().newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal((await f.server.projectEntries.listRecent()).newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
   const row = db.prepare('SELECT data FROM project.projects WHERE id=?').get(projectId);
   assert.equal(object(JSON.parse(String(row!.data))).description, 'Public description');
   const timeline = db.prepare('SELECT data FROM project.timelines WHERE projectId=?').get(projectId);
@@ -630,11 +790,11 @@ test('native open registers the original selected file, while missing and locked
   assert.equal(after.dev, identity.dev); assert.equal(after.ino, identity.ino);
   const db = f.native(selectedId);
   f.server.projectEntries.release({windowId}); await eventually(() => !db.isOpen, 'selected file window releases its native owner');
-  const held = f.hold(f.a.projectId), before = registry(f);
+  const held = f.hold(f.a.projectId), before = await registry(f);
   await assert.rejects(() => f.server.projectEntries.openPath({projectFile: f.a.projectFile, windowId: randomUUID()}), {code: 'PROJECT_LOCKED'});
   assert.equal(held.db.isOpen, true); assert.equal(held.db.prepare('SELECT 1 AS value').get()!.value, 1);
   await assert.rejects(() => f.server.projectEntries.openPath({projectFile: path.join(f.root, 'missing.mioon'), windowId: randomUUID()}), {code: 'PROJECT_MISSING'});
-  assert.deepEqual(registry(f), before, 'failed opens do not advance successful-open metadata');
+  assert.deepEqual(await registry(f), before, 'failed opens do not advance successful-open metadata');
 });
 
 test('window bindings share duplicate intent and a project runtime, reject retargeting, and release only their own lease', async t => {
@@ -661,39 +821,39 @@ test('window bindings share duplicate intent and a project runtime, reject retar
 test('provisional native opens update recent metadata once and only for a live ready window', async t => {
   const f = await fixture(t, 'production'), control = f.server.projectEntries;
   const cancelled = randomUUID(), ready = randomUUID(), contextId = randomUUID();
-  const lastOpenedAt = (projectId: string) => registry(f).find(entry => entry.projectId === projectId)!.lastOpenedAt;
+  const lastOpenedAt = async (projectId: string) => (await registry(f)).find(entry => entry.projectId === projectId)!.lastOpenedAt;
   const uiRecent = async () => {
     const response = await f.json<{recentOpened: Record<string, string>}>('/api/ui-preferences');
     assert.equal(response.status, 200);
     return response.body.data!.recentOpened;
   };
-  assert.equal(lastOpenedAt(f.a.projectId), null);
-  assert.equal(lastOpenedAt(f.b.projectId), null);
+  assert.equal(await lastOpenedAt(f.a.projectId), null);
+  assert.equal(await lastOpenedAt(f.b.projectId), null);
 
   const first = await control.acquire({projectId: f.a.projectId, expectedProjectFile: f.a.projectFile,
     windowId: cancelled, deferRecent: true});
   assert.equal(first.project.lastOpenedAt, null);
-  assert.equal(lastOpenedAt(f.a.projectId), null);
+  assert.equal(await lastOpenedAt(f.a.projectId), null);
   control.release({windowId: cancelled});
   await assert.rejects(async () => control.markOpened!({windowId: cancelled, contextId}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
 
   const second = await control.openPath({projectFile: f.b.projectFile, windowId: ready, deferRecent: true});
   assert.equal(second.project.lastOpenedAt, null);
   await assert.rejects(async () => control.markOpened!({windowId: randomUUID(), contextId}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
-  assert.equal(lastOpenedAt(f.a.projectId), null);
-  assert.equal(lastOpenedAt(f.b.projectId), null, 'no ready acknowledgement has been received');
+  assert.equal(await lastOpenedAt(f.a.projectId), null);
+  assert.equal(await lastOpenedAt(f.b.projectId), null, 'no ready acknowledgement has been received');
   assert.deepEqual(await uiRecent(), {});
   assert.equal(await control.markOpened!({windowId: ready, contextId}), true);
-  assert.ok(lastOpenedAt(f.b.projectId));
-  assert.equal(lastOpenedAt(f.a.projectId), null);
-  assert.deepEqual(await uiRecent(), {[f.b.projectId]: lastOpenedAt(f.b.projectId)}, 'both records use the exact accepted open time');
+  assert.ok(await lastOpenedAt(f.b.projectId));
+  assert.equal(await lastOpenedAt(f.a.projectId), null);
+  assert.deepEqual(await uiRecent(), {[f.b.projectId]: await lastOpenedAt(f.b.projectId)}, 'both records use the exact accepted open time');
   const changes = f.application(db => db.prepare('SELECT total_changes() n').get()!.n);
   assert.equal(await control.markOpened!({windowId: ready, contextId}), true);
   assert.equal(f.application(db => db.prepare('SELECT total_changes() n').get()!.n), changes, 'repeated readiness performs no application write');
   assert.equal(await control.markOpened!({windowId: ready, contextId: randomUUID()}), true);
   assert.ok(Number(f.application(db => db.prepare('SELECT total_changes() n').get()!.n)) > Number(changes),
     'a reloaded editor can record its new document readiness');
-  assert.deepEqual(await uiRecent(), {[f.b.projectId]: lastOpenedAt(f.b.projectId)});
+  assert.deepEqual(await uiRecent(), {[f.b.projectId]: await lastOpenedAt(f.b.projectId)});
   control.release({windowId: ready});
 });
 
@@ -729,7 +889,7 @@ test('exclusive project closure notifies each bound window and observer failures
   await f.server.projectEntries.acquire({projectId: f.a.projectId, windowId: one});
   await f.server.close();
   assert.equal(revoked.length, 2, 'an unsubscribed owner receives no shutdown event');
-  assert.throws(() => f.server.projectEntries.listRecent(), {code: 'PROJECT_HOST_STOPPED'});
+  await assert.rejects(f.server.projectEntries.listRecent(), {code: 'PROJECT_HOST_STOPPED'});
   await assert.rejects(async () => f.server.projectEntries.acquire({projectId: f.a.projectId, windowId: randomUUID()}), {code: 'PROJECT_HOST_STOPPED'});
 });
 
@@ -742,7 +902,7 @@ test('shutdown during acquisition rejects pending delivery and releases the real
   });
   await Promise.all([f.server.close(), rejected]);
   const reopened = f.hold(f.a.projectId); assert.equal(reopened.db.isOpen, true); reopened.close();
-  assert.throws(() => f.server.projectEntries.listRecent(), {code: 'PROJECT_HOST_STOPPED'});
+  await assert.rejects(f.server.projectEntries.listRecent(), {code: 'PROJECT_HOST_STOPPED'});
 });
 
 test('the same native window identifier belongs independently to each backend instance', async t => {
@@ -750,7 +910,7 @@ test('the same native window identifier belongs independently to each backend in
   const a = await first.server.projectEntries.acquire({projectId: first.a.projectId, windowId});
   const b = await second.server.projectEntries.acquire({projectId: second.a.projectId, windowId});
   assert.equal(a.project.projectId, first.a.projectId); assert.equal(b.project.projectId, second.a.projectId);
-  assert.notEqual(first.server.projectEntries.listRecent().instanceId, second.server.projectEntries.listRecent().instanceId);
+  assert.notEqual((await first.server.projectEntries.listRecent()).instanceId, (await second.server.projectEntries.listRecent()).instanceId);
   const firstDb = first.native(first.a.projectId), secondDb = second.native(second.a.projectId);
   first.server.projectEntries.release({windowId});
   await eventually(() => !firstDb.isOpen, 'only the first backend binding releases');

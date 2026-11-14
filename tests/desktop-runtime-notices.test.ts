@@ -297,7 +297,7 @@ test('non-Mac runtime notices remain a no-op; external fonts verify with unchang
       await config.afterExtract(context);
       await config.afterPack(context);
     }
-    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(config.files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
     assert.equal(config.asar, true);
     assert.equal(config.npmRebuild, false);
     assert.equal(config.publish, null);

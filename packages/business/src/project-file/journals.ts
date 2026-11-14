@@ -1,4 +1,5 @@
-import {closeSync, copyFileSync, fstatSync, ftruncateSync, lstatSync, openSync, readdirSync, readFileSync, readSync, statSync} from 'node:fs';
+import {closeSync, constants, copyFileSync, fstatSync, ftruncateSync, lstatSync, openSync, readdirSync, readFileSync, readSync, statSync} from 'node:fs';
+import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 
@@ -42,11 +43,13 @@ function readAt(fd: number, length: number, position: number): Buffer {
  * writes the header magic only after the page records are synced, and it rolls
  * such a journal back unless a process holds the database's lock. A journal
  * cut to 0 bytes after a commit, or one whose header is still zero, is not hot. */
-export function isHotJournal(journal: string): boolean {
-  const info = lstatSync(journal, {throwIfNoEntry: false});
-  if (!info?.isFile() || info.size === 0) return false;
-  const fd = openSync(journal, 'r');
+export function isHotJournal(journal: string, assertObservation?: (info: BigIntStats | undefined) => void): boolean {
+  const info = lstatSync(journal, {bigint: true, throwIfNoEntry: false});
+  assertObservation?.(info);
+  if (!info?.isFile() || info.size === 0n) return false;
+  const fd = openSync(journal, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
+    if (assertObservation) assertObservation(fstatSync(fd, {bigint: true}));
     const first = readAt(fd, 1, 0);
     return first.length === 1 && first[0] !== 0;
   } finally {
@@ -128,9 +131,9 @@ export function isSuperJournalInUse(superJournal: string): boolean {
 /** Copy a rollback journal for isolated validation. A valid master-journal
  * pseudo-record is stripped so recovery cannot follow/delete source paths.
  * An ambiguous tail is refused; source files are never opened for writing. */
-export function copyIsolatedRecoveryJournal(source: string, destination: string): void {
-  const master = superJournalNamedBy(source);
-  copyFileSync(source,destination);
+export function copyIsolatedRecoveryJournal(source: string, destination: string, copy: (source: string, destination: string) => void = copyFileSync): void {
+  copy(source, destination);
+  const master = superJournalNamedBy(destination);
   const fd = openSync(destination,'r+');
   try {
     const size = fstatSync(fd).size;

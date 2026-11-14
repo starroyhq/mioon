@@ -78,17 +78,18 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
 test('package inspector streams exact native ASAR and binary bytes and validates external delivered resources',async()=>{
  const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.ts',import.meta.url),'utf8');
  assert.match(source,/await verifyArchiveMember\(tarball, `\$\{artifactBase\}\/resources\/app\.asar`, archive\)/);assert.match(source,/await verifyArchiveMember\(tarball, `\$\{artifactBase\}\/\$\{path\.basename\(binary\)\}`, binary\)/);
- assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
+ assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['project-catalog\.cjs', 'preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
  assert.match(source,/historicalV3\?null:await verifySubtitleResourceTarball\(tarball,artifactBase\)/);assert.match(source,/archivedSubtitleResourcesMatchNativePackage:true/);
 });
 
-test('actual ASAR root allowlist adds current preload and icons while preserving historical v3 exclusions',async()=>{
+test('actual ASAR root allowlist adds current catalog utility, preload and icons while preserving historical v3 exclusions',async()=>{
  const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.ts',import.meta.url),'utf8');
  const match=source.match(/^(const allowed = new Set\([^\n]+\);\nif \(!historicalV3\) allowed\.add\('icons'\);)$/m);assert.ok(match,'bounded current and historical root allowlist');
  const inspect=Function('historicalV3',`${match[1]} return allowed;`);
  const legacy=['main.cjs','backend.cjs','package.json','web','licenses'];
  assert.deepEqual([...inspect(true)],legacy);
- assert.deepEqual([...inspect(false)],['main.cjs','backend.cjs','preload.cjs','package.json','web','licenses','icons']);
+ assert.deepEqual([...inspect(false)],['main.cjs','backend.cjs','project-catalog.cjs','preload.cjs','package.json','web','licenses','icons']);
+ assert.equal(inspect(true).has('project-catalog.cjs'),false);
  assert.equal(inspect(true).has('preload.cjs'),false);
  assert.equal(inspect(true).has('icons'),false);
  for(const historical of [true,false])for(const extra of ['preload.js','preload-other.cjs','node_modules','data','subtitles','access-token','mcp-connection.json'])assert.equal(inspect(historical).has(extra),false,`${extra} must remain excluded`);

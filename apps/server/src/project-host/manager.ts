@@ -114,12 +114,19 @@ export interface ListedProject {
   readonly availability: ProjectAvailability;
 }
 
+type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'};
+export type CatalogRecovery = {readonly result: RecoveryResult} | {readonly error: unknown} | {readonly pending: true};
+type InspectCatalog = (projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean) => Promise<ReadonlyMap<string, CatalogRecovery>>;
+
 export interface ProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime> {
   /** Registered projects with what S0a's recovery found, opening none: every
    * registered project not open here goes through recoverProjectFile first. A
    * missing one is looked for by file identity in the background; once found
    * its registration moves, and the next list() shows the new path. */
   list(): readonly ListedProject[];
+  /** Supplies closed-file observations asynchronously; open and exclusive
+   * projects always use the live host state. */
+  listForCatalog(inspect: InspectCatalog): Promise<readonly ListedProject[]>;
   /** Creates and registers a project file; does not open it. */
   create(input: CreateProjectInput): Promise<RecentProject>;
   /** Opens a file by path: the host of the same file (by file identity) if it
@@ -312,7 +319,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** Tail of each project's queue of exclusive operations. */
   const exclusive = new Map<string, Promise<void>>();
   /** What the last recovery found for each project that is not open. */
-  const recoveries = new Map<string, ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'}>();
+  const recoveries = new Map<string, {registration: RecentProject; result: RecoveryResult | {readonly state: 'busy'}}>();
   /** Searches by file identity for projects the recovery found missing. */
   const searches = new Map<string, Promise<void>>();
   let stopped = false;
@@ -673,24 +680,40 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   /** One recovery: `recovered` is reported, `missing` starts a search by file
    * identity; `locked`, `invalid` and the rest are kept for list(). */
   function recover(registration: RecentProject): void {
+    let observed: CatalogRecovery;
+    try { observed = {result: maintenance.recoverProjectFile(registration.projectFile)}; }
+    catch (error) { observed = {error}; }
+    recordRecovery(registration, observed);
+  }
+
+  function recordRecovery(registration: RecentProject, observed: CatalogRecovery | undefined, inspect?: InspectCatalog): void {
     const {projectId} = registration;
-    let result: ProjectFileRecovery;
-    try {
-      result = maintenance.recoverProjectFile(registration.projectFile);
-    } catch (error) {
+    const previous = recoveries.get(projectId);
+    const wasLocked = previous?.result.state === 'locked' && sameRegistration(previous.registration, registration);
+    if (!observed) {
+      if (!wasLocked) recoveries.delete(projectId);
+      return;
+    }
+    if ('pending' in observed) {
+      if (!wasLocked) recoveries.set(projectId, {registration, result: {state: 'busy'}});
+      return;
+    }
+    if ('error' in observed) {
+      const {error} = observed;
       const code = errorCode(error);
       if (code === 'PROJECT_FORMAT_NEWER') {
-        recoveries.set(projectId, {state: 'invalid', reason: 'format-newer'});
+        recoveries.set(projectId, {registration, result: {state: 'invalid', reason: 'format-newer'}});
         return;
       }
-      if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId,{state:'access-denied'});
+      if (code === 'PROJECT_ACCESS_DENIED' || code === 'EACCES' || code === 'EPERM') recoveries.set(projectId, {registration, result: {state: 'access-denied'}});
       else recoveries.delete(projectId);
       emit({type: 'maintenance-failed', projectId, error});
       return;
     }
-    recoveries.set(projectId, result);
+    const {result} = observed;
+    recoveries.set(projectId, {registration, result});
     if (result.state === 'recovered') emit({type: 'recovered', projectId});
-    if (result.state === 'missing') void search(registration);
+    if (result.state === 'missing') void search(registration, inspect);
   }
 
   /** Every registered project this process does not have open, once. */
@@ -707,7 +730,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   /** Moves the registration of a missing project to where its file identity
    * is found, then recovers it there; one search per project at a time. */
-  function search(registration: RecentProject): Promise<void> {
+  const closed = (projectId: string): boolean => !entries.has(projectId) && !exclusive.has(projectId);
+  const sameRegistration = (left: RecentProject, right: RecentProject): boolean =>
+    left.projectFile === right.projectFile && left.fileIdentity.dev === right.fileIdentity.dev && left.fileIdentity.ino === right.fileIdentity.ino;
+  const isCurrent = (registration: RecentProject): boolean => {
+    if (stopped || !closed(registration.projectId)) return false;
+    const current = registry.get(registration.projectId);
+    return current !== null && sameRegistration(current, registration);
+  };
+
+  function search(registration: RecentProject, inspect?: InspectCatalog): Promise<void> {
     const {projectId} = registration;
     const running = searches.get(projectId);
     if (running) return running;
@@ -715,10 +747,15 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       try {
         const found = await registry.findMoved(registration);
         const current = registry.get(projectId);
-        if (found === null || !current || current.projectFile !== registration.projectFile || entries.has(projectId) || exclusive.has(projectId)) return;
+        if (stopped || found === null || !current || !sameRegistration(current, registration) || !closed(projectId)) return;
         const moved: RecentProject = {...current, projectFile: path.resolve(found)};
         registry.upsert(moved);
-        recover(moved);
+        if (!inspect) recover(moved);
+        else {
+          const observed = (await inspect([moved], isCurrent)).get(projectId);
+          const latest = registry.get(projectId);
+          if (!stopped && latest && sameRegistration(latest, moved) && closed(projectId)) recordRecovery(latest, observed, inspect);
+        }
       } catch (error) {
         emit({type: 'maintenance-failed', projectId, error});
       } finally {
@@ -729,10 +766,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return task;
   }
 
-  function availabilityOf(projectId: string): ProjectAvailability {
+  function availabilityOf(project: RecentProject): ProjectAvailability {
+    const {projectId} = project;
     if (entries.has(projectId)) return {state: 'open'};
     if (exclusive.has(projectId)) return {state: 'busy'};
-    const result = recoveries.get(projectId);
+    const observation = recoveries.get(projectId);
+    const result = observation && sameRegistration(observation.registration, project) ? observation.result : undefined;
     if (!result || result.state === 'clean' || result.state === 'recovered') return {state: 'available'};
     if (result.state === 'open-here') return {state: 'open'};
     return result.state === 'invalid' ? {state: 'invalid', reason: result.reason} : {state: result.state};
@@ -1018,7 +1057,23 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   function list(): readonly ListedProject[] {
     sweep();
-    return registry.list().map(project => Object.freeze({project, availability: availabilityOf(project.projectId)}));
+    return registry.list().map(project => Object.freeze({project, availability: availabilityOf(project)}));
+  }
+
+  async function listForCatalog(inspect: InspectCatalog): Promise<readonly ListedProject[]> {
+    assertRunning();
+    const candidates = registry.list().filter(project => closed(project.projectId));
+    const observed = candidates.length ? await inspect(candidates, isCurrent) : new Map<string, CatalogRecovery>();
+    assertRunning();
+    const current = registry.list();
+    const before = new Map(candidates.map(project => [project.projectId, project]));
+    for (const project of current) {
+      const previous = before.get(project.projectId);
+      if (previous && sameRegistration(previous, project) && closed(project.projectId)) {
+        recordRecovery(project, observed.get(project.projectId), inspect);
+      }
+    }
+    return current.map(project => Object.freeze({project, availability: availabilityOf(project)}));
   }
 
   /** A thenable result means the callback kept working past this call. */
@@ -1107,5 +1162,5 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       : {...task, phase: 'archived', reason: 'PROJECT_HISTORY_ARCHIVED', revision: (task.revision ?? 0) + 1}));
   }
 
-  return Object.freeze({list, create, openPath, prepareAcquire, acquire, markWindowOpened, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
+  return Object.freeze({list, listForCatalog, create, openPath, prepareAcquire, acquire, markWindowOpened, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status, resolveHistory});
 }
