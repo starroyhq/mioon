@@ -401,7 +401,7 @@ export class BackendSupervisor extends EventEmitter {
           catalog = undefined;
           if (backendExitCode !== undefined) finishExit(backendExitCode);
           else if (!settled) {
-            fail(new Error('本地项目目录服务启动失败'));
+            fail(new Error('本地服务启动通信失败'));
             kill('startup-communication-failed');
           }
         });
