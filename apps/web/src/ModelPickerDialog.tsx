@@ -1,5 +1,5 @@
 import {useId, useRef, useState} from 'react';
-import type {RefObject} from 'react';
+import type {ChangeEvent, RefObject} from 'react';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {Input} from '@mioon/ui/components/input';
 import {WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
@@ -97,11 +97,17 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
             const locked = item.active || item.added;
             const disabled = Boolean(locked || item.unavailable);
             const checked = !disabled && selection.has(item.id);
+            const inputProps = {
+              disabled,
+              'aria-label': item.label ?? item.id,
+              onChange: (event: ChangeEvent<HTMLInputElement>) => {if (!disabled) toggle(item.id, event.target.checked);},
+            };
             return <li key={item.id}>
               <label className="model-picker-row" data-locked={disabled || undefined} data-selected={checked || undefined}>
-                <input type={single ? 'radio' : 'checkbox'} className={single ? 'wb-radio' : 'wb-checkbox'} name={single ? radioName : undefined}
-                  checked={Boolean(checked || locked && (!single || selected.length === 0))} disabled={disabled}
-                  aria-label={item.label ?? item.id} onChange={event => {if (!disabled) toggle(item.id, event.target.checked);}} />
+                {single
+                  ? <Input type="radio" className="wb-radio" name={radioName}
+                    checked={Boolean(checked || locked && selected.length === 0)} {...inputProps} />
+                  : <input type="checkbox" className="wb-checkbox" checked={Boolean(locked || checked)} {...inputProps} />}
                 <span className="model-picker-name" title={item.id}>{item.label ?? item.id}</span>
                 {item.verified !== undefined && <WorkbenchBadge tone={item.verified ? 'success' : 'warning'}>{t(item.verified ? 'agent.settings.x6.adapted' : 'agent.settings.x6.unverified')}</WorkbenchBadge>}
                 <span className="model-picker-row-state">{item.active ? t('settings.modelPicker.inUse') : locked ? t('settings.modelPicker.added') :

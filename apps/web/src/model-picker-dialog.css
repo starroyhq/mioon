@@ -117,6 +117,14 @@
   margin: 0;
   padding: 0;
 }
+.model-picker-row > .wb-radio {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .model-picker-row > .wb-checkbox:not(:checked) {
   appearance: none;
   border: 1px solid var(--wb-line-strong);
