@@ -48,8 +48,9 @@ test('services sharing one TEST application keep each caller environment admissi
   const disabled = createServices(store, new Map(), {env: {}});
   const enabled = createServices(store, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '1'}});
   t.after(async () => {await disabled.drain(); await enabled.drain(); store.close();});
-  assert.equal(disabled.configuration.liveEnabled(), false);
-  assert.equal(enabled.configuration.liveEnabled(), true);
+  assert.equal(disabled.configuration.environment().MIOON_ENABLE_LIVE_PROVIDER, undefined);
+  assert.equal(enabled.configuration.environment().MIOON_ENABLE_LIVE_PROVIDER, '1');
+  assert.deepEqual(disabled.configuration.get(), enabled.configuration.get(), 'legacy adapter opt-in is not a persisted preference');
   const library = testProjectAppLibrary(store); assert.ok(library);
   assert.equal(library.documents.read('workspace-settings-v1.json'), null, 'environment defaults do not overwrite app settings');
   assert.equal(disabled.configuration.root, library.dataDir); assert.equal(enabled.configuration.root, library.dataDir);

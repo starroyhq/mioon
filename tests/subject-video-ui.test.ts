@@ -155,7 +155,7 @@ test('exact server v3 Ark and Mock accept square references independently of out
     assert.equal(settings.generationInputIssue(shot(), p, p.models[0], assets, 'subject', { subjectReference: reference() }), '');
   }
   const p = provider();
-  for (const providerId of ['runway', 'veo', 'minimax', 'vidu']) { const other = provider(providerId); assert.match(settings.subjectVideoProfileIssue(other, other.models[0]), /仅接入 Mock 与 Ark/); }
+  for (const providerId of ['runway', 'veo', 'minimax', 'vidu']) { const other = provider(providerId); assert.match(settings.subjectVideoProfileIssue(other, other.models[0]), /仅接入 Ark/); }
   assert.match(settings.subjectVideoProfileIssue(p, `${p.models[0]}-other`), /不会自动切换/);
   assert.match(settings.subjectVideoProfileIssue({ ...p, inputProfiles: [] }, p.models[0]), /唯一输入配置/);
   assert.match(settings.generationInputIssue(shot(), p, p.models[0], assets, 'subject'), /明确选择/);

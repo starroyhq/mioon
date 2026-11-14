@@ -23,7 +23,7 @@ async function fixture(t: test.TestContext,env={}){
   submit:(shot: { id: unknown; revision: unknown; })=>services.call('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),providerId:'ark'}),
  };
 }
-const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'synthetic-not-a-real-credential',GEMINI_API_KEY:'synthetic-not-a-real-google-key'};
+const env={ARK_API_KEY:'synthetic-not-a-real-credential',GEMINI_API_KEY:'synthetic-not-a-real-google-key'};
 
 test('provider registry exposes model-specific safe readiness without credential values',async t=>{
  const f=await fixture(t),caps=await f.services.call('provider.list',{});
@@ -36,6 +36,10 @@ test('provider registry exposes model-specific safe readiness without credential
  assert.equal(Object.hasOwn(enabled,'budget'),false);
  assert.doesNotMatch(JSON.stringify(caps),/MAX_GENERATIONS|maxGenerations|usedGenerations|remainingGenerations/);
  assert.ok(!JSON.stringify(enabled).includes(env.ARK_API_KEY));assert.ok(!JSON.stringify(caps).includes('apiKey'));
+ const partial=createProviderRegistry({db:f.store.db,root:f.store.root,env:{VIDU_API_KEY:'synthetic-not-a-real-vidu-key'}});
+ const vidu=normalizedCapabilities(partial.get('vidu')!);
+ assert.equal(vidu.status,'not_configured');assert.equal(vidu.enabled,false);
+ assert.deepEqual(vidu.configuration.missing,['VIDU_OUTPUT_HOSTS']);
 });
 
 test('unsupported duration, reference mode and parameters fail before any job exists',async t=>{
@@ -83,18 +87,27 @@ test('obsolete count settings do not affect readiness and are excluded from the 
   assert.doesNotMatch(JSON.stringify(result),/MAX_GENERATIONS/);
  }
  const source=Object.fromEntries(providerEnvironmentKeys.map(k=>[k,'test-value']));
- const forwarded=utilityEnvironment({...source,ARK_MAX_GENERATIONS:'1',NODE_OPTIONS:'bad',UNRELATED_API_KEY:'not-forwarded'}, {ffmpeg:'/bin/ffmpeg',ffprobe:'/bin/ffprobe'});
+ const forwarded=utilityEnvironment({...source,ARK_MAX_GENERATIONS:'1',NODE_OPTIONS:'bad',UNRELATED_API_KEY:'not-forwarded',MIOON_ENABLE_LIVE_PROVIDER:'1'}, {ffmpeg:'/bin/ffmpeg',ffprobe:'/bin/ffprobe'});
  for(const key of providerEnvironmentKeys)assert.equal(forwarded[key],'test-value');
  assert.ok(!providerEnvironmentKeys.some(key=>key.endsWith('_MAX_GENERATIONS')));
  assert.equal(forwarded.ARK_MAX_GENERATIONS,undefined);
+ assert.equal(forwarded.MIOON_ENABLE_LIVE_PROVIDER,undefined);
  assert.equal(forwarded.NODE_OPTIONS,undefined);assert.equal(forwarded.UNRELATED_API_KEY,undefined);
 });
 
-test('removing the count cap retains the explicit live switch and credential gates',async t=>{
- for(const configuration of [{},{MIOON_ENABLE_LIVE_PROVIDER:'1'},{ARK_API_KEY:'inert-offline-key',ARK_MAX_GENERATIONS:'999'}]){
+test('environment readiness depends on the credential and ignores the retired live flag',async t=>{
+ for(const configuration of [{},{MIOON_ENABLE_LIVE_PROVIDER:'1'}]){
   const f=await fixture(t,configuration),shot=await f.shot({duration:4,referenceAssetIds:[]});
   await assert.rejects(f.submit(shot),{code:'PROVIDER_DISABLED'});
   assert.equal(f.store.list('jobs').length,0);
+ }
+ for(const flag of [undefined,'0','1']){
+  const f=await fixture(t,{ARK_API_KEY:'inert-offline-key',MIOON_ENABLE_LIVE_PROVIDER:flag}),shot=await f.shot({duration:4,referenceAssetIds:[]});
+  const caps=(await f.services.call('provider.list',{})).find(provider=>provider.id==='ark')!;
+  assert.equal(caps.status,'available');assert.equal(caps.enabled,true);
+  assert.deepEqual(caps.configuration.missing,[]);
+  assert.doesNotMatch(JSON.stringify(caps),/MIOON_ENABLE_LIVE_PROVIDER|inert-offline-key/);
+  const job=await f.submit(shot);assert.equal(job.status,'queued');assert.equal(job.submissionCount,0);
  }
 });
 

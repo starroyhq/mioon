@@ -67,7 +67,7 @@ function fixture(config: FixtureConfig = {}): Fixture {
     throw Error(operation);
   }) as (...args: unknown[]) => unknown;
   const reviewClient = { approve: async (value: Record<string, unknown>): Promise<unknown> => { approvals.push(structuredClone(value)); return config.approve ? config.approve(value, data, accept) : accept(value.input as Record<string, unknown>); }, reject: async (value: Record<string, unknown>): Promise<unknown> => { const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = [result]; return result; } };
-  const sessionOptions = { projectId, api, reviewClient, storage, settings: settings(), requestId: () => requestId, setTimer: () => 1, clearTimer() {} };
+  const sessionOptions = { projectId, mockAvailable: true, api, reviewClient, storage, settings: settings(), requestId: () => requestId, setTimer: () => 1, clearTimer() {} };
   const session = logic.createImageGenerationSession(sessionOptions as unknown as Parameters<typeof logic.createImageGenerationSession>[0]);
   return { session, sessionOptions, api, reviewClient, storage, data, calls, approvals, settingsClient: { read: async () => settings() }, customSettingsClient: { read: async () => { throw Error('Not configured'); } } };
 }
@@ -220,7 +220,7 @@ function renderer(f: Fixture): Harness {
   const harness: Harness = {
     render(next: string = owner): UiNode {
       owner = next; index = 0; effects = [];
-      tree = renderComponent({projectId: owner, projectName: 'Project', projectAssets: [sourceAsset(), sourceAsset({id: id(21), sha256: 'b'.repeat(64), name: 'Second.png'})], reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}});
+      tree = renderComponent({projectId: owner, projectName: 'Project', mockAvailable: true, projectAssets: [sourceAsset(), sourceAsset({id: id(21), sha256: 'b'.repeat(64), name: 'Second.png'})], reviewClient: f.reviewClient, settingsClient: f.settingsClient, customSettingsClient: f.customSettingsClient, onDirtyChange: (value: unknown) => {dirty = value === true;}});
       for (const slot of effects) {slots[slot].cleanup = (slots[slot].fn as () => unknown)();}
       return tree;
     },

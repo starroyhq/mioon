@@ -21,7 +21,7 @@ interface Outcome {code: number | null; signal: NodeJS.Signals | null}
 interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
 export function smokeEnvironment(source: NodeJS.ProcessEnv, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
-  return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
+  return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
 }
 type DiagnosticStatus = 'ok' | 'missing' | 'unsafe' | 'oversized' | 'invalid' | 'changed' | 'unavailable';
 type SafeBackendDiagnostic = Pick<ExitDiagnosticRecord,'event'|'classification'|'reason'|'state'|'expected'|'forced'|'exitConfirmed'|'shutdownFailed'|'mediaExitConfirmed'|'code'|'termination'>;

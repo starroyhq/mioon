@@ -55,7 +55,7 @@ test('Mac instructions use the real serialized Web-desktop build and existing st
     assert.ok(guide.includes(line));
     assert.doesNotThrow(() => parseArguments(line.slice('node scripts/tooling.ts '.length).split(' ')));
   }
-  assert.ok(guide.includes('MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop'));
+  assert.match(guide, /^pnpm desktop$/m);
   assert.equal(application.scripts.desktop, 'pnpm --filter @mioon/desktop start');
   assert.equal(desktop.scripts.start, 'electron build');
   for (const [name, channel, config] of [['package:mac', 'production', 'electron-builder.cjs'],
@@ -97,7 +97,7 @@ test('first trial uses tracked synthetic inputs and keeps separate model setting
     assert.match(document, /ComfyUI/);
     assert.match(document, /(?:连接检查|检查本身会发送 HTTP)/);
   }
-  assert.match(guide, /MIOON_ENABLE_LIVE_PROVIDER=0[^\n]*不应[^\n]*总开关/);
+  assert.match(guide, /启动终端未配置供应商密钥/);
   assert.match(checklist, /异步 safeStorage 候选/);
   assert.match(desktopDoc, /专用设置及 Electron safeStorage 接入已实现/);
   assert.doesNotMatch(desktopDoc, /尚未实现[^\n]*系统密钥链凭据配置/);

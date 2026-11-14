@@ -59,15 +59,24 @@ export function agentTaskRunFailure(run:Pick<AgentTaskRun,'status'|'pauseReason'
 }
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
-  if (['IMAGE_SETTINGS_SELECTION_REQUIRED', 'GENERATION_FAILED', 'LIVE_GENERATION_DISABLED', 'PROVIDER_ERROR', 'PROVIDER_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'PROVIDER_GENERATION_FAILED', 'PROVIDER_NOT_READY', 'PROVIDER_POLL_TIMEOUT', 'PROVIDER_CONFIGURATION', 'PROVIDER_DISABLED', 'PROVIDER_REGION_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_NETWORK_DENIED', 'IMAGE_TIMEOUT', 'COMFY_SETTINGS_CHECK_REQUIRED', 'COMFY_SETTINGS_DISABLED', 'COMFY_SETTINGS_NOT_CONFIGURED', 'COMFY_CONNECTION_FAILED', 'COMFY_NETWORK_DENIED', 'COMFY_TIMEOUT'].includes(code)) return 'models';
+  if (['IMAGE_SETTINGS_SELECTION_REQUIRED', 'GENERATION_FAILED', 'GENERATION_SERVICE_UNAVAILABLE', 'LIVE_GENERATION_DISABLED', 'PROVIDER_ERROR', 'PROVIDER_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'PROVIDER_GENERATION_FAILED', 'PROVIDER_NOT_READY', 'PROVIDER_POLL_TIMEOUT', 'PROVIDER_CONFIGURATION', 'PROVIDER_DISABLED', 'PROVIDER_REGION_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_NETWORK_DENIED', 'IMAGE_TIMEOUT', 'COMFY_SETTINGS_CHECK_REQUIRED', 'COMFY_SETTINGS_DISABLED', 'COMFY_SETTINGS_NOT_CONFIGURED', 'COMFY_CONNECTION_FAILED', 'COMFY_NETWORK_DENIED', 'COMFY_TIMEOUT'].includes(code)) return 'models';
   if (['AGENT_TASK_SETTINGS_CHANGED', 'AGENT_SETTINGS_CONFLICT', 'AGENT_TASK_CONSENT_REQUIRED', 'AGENT_AUTHORIZATION_REQUIRED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR'].includes(code)) return 'agent';
 };
-// The video submission checks this switch before creating a job. A wait can
-// report the same code for a job that already exists.
+// Historical video submissions could record this rejection as unknown. A wait
+// with the same code can refer to a job that already exists.
 const isUnsubmittedVideoGeneration = (step: AgentTaskStep): boolean =>
   step.kind === 'tool' && step.tier === 'paid' && step.status === 'unknown' &&
   step.toolCall?.name === 'mioon_generation_submit' && step.error?.code === 'LIVE_GENERATION_DISABLED' &&
   (step.cost === undefined || step.cost === 'pending');
+const generationServiceDenied = (step: AgentTaskStep): boolean => {
+  if (step.error?.code !== 'GENERATION_SERVICE_UNAVAILABLE') return false;
+  const result = step.result;
+  const proof = result && typeof result === 'object' && !Array.isArray(result) ? result.error : null;
+  return Boolean(proof && typeof proof === 'object' && !Array.isArray(proof)
+    && proof.code === step.error.code && proof.mutationOutcome === 'not_applied'
+    && proof.submitted === false && proof.generationCharged === false);
+};
+
 // Completed read-only steps (a method, the project, the generation services) stay low-key (09-09); a question keeps its own line.
 const readIcon = (step: AgentTaskStep): string | undefined => step.kind === 'tool' && step.status === 'completed' && step.tier === 'read_only' && step.toolCall?.name !== 'mioon_ask' ? step.toolCall?.name === 'mioon_skill_read' ? 'book' : 'search' : undefined;
 const modelText = (step: AgentTaskStep): string => step.text || (step.result && typeof step.result === 'object' && !Array.isArray(step.result) && typeof step.result.text === 'string' ? step.result.text : '');
@@ -408,6 +417,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           {(canvas || timeline) && <div className="mio-follow-links">{([['canvas', canvas], ['timeline', timeline]] as const).map(([mode, target]) => target && <Button key={mode} variant="ghost" size="compact" className="mio-follow-link" data-testid={`mio-follow-${mode}-${step.id}`} disabled={!visible} onClick={() => {
             if (visibility.current && canInteract() && mioFollowTargetExists?.(target) !== false) onMioFollowLocate?.(target);
           }}><Icon name="locate" size={12} />{t(`agent.follow.${mode}`)}<Icon name="arrow" size={12} /></Button>)}</div>}
+          {generationServiceDenied(step) && <p className="mio-secondary" data-testid={`agent-task-generation-unsubmitted-${step.id}`}>{t('agent.panel.generationNotSubmitted')}</p>}
           {step.cost && <p data-testid={`agent-task-cost-${step.id}`} className="mio-secondary">{t(`agent.task.cost.${step.cost}`)}</p>}
           {step.error && <div className="mio-error-card"><p role="alert" data-testid={`agent-task-step-error-${step.id}`}>{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(step.error.code))})}</p><div className="mio-failure-actions">{run.status==='failed'&&!settingsChanged&&step.status==='failed'&&step===steps.at(-1)&&unknown.length===0&&!steps.some(item=>item.status==='dispatch_started')&&<Button size="compact" data-testid={`agent-task-retry-${step.id}`} disabled={blocked||backgroundPending} onClick={()=>{void act('retry',{stepId:step.id});}}><Icon name="undo" />{t('agent.panel.retry')}</Button>}{detail(step,firstRepairs)}</div>{errorSettings(step.error.code) && <Button variant="ghost" className="mio-settings-link" data-testid={`agent-task-error-settings-${step.id}`} onClick={event => { if (visibility.current) onSettings(errorSettings(step.error!.code), event?.nativeEvent); }} disabled={!visible}>{t(`agent.panel.errorSettings.${errorSettings(step.error.code)!}`)} <Icon name="arrow" /></Button>}</div>}
         </article>;})}</div></details>}

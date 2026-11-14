@@ -136,7 +136,7 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
   const ui = {
     render() {
       cursor = 0; effects = [];
-      tree = module.exports.default({ nativeCloseRegistry: observedRegistry, projectId, projectName: 'Project', onClose() {}, onSettings() {}, ...fixture });
+      tree = module.exports.default({ nativeCloseRegistry: observedRegistry, projectId, projectName: 'Project', mockAvailable: true, onClose() {}, onSettings() {}, ...fixture });
       for (const node of nodes(tree)) if (node.props.ref) (node.props.ref as {current:unknown}).current ||= { value: '', scrollTop: 0, scrollHeight: 0 };
       for (const index of effects) { hooks[index].cleanup?.(); hooks[index].cleanup = hooks[index].fn!(); }
       return tree;

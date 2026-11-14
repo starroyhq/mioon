@@ -69,7 +69,7 @@ test('native child environment cannot inherit provider, GitHub, Apple or Node in
   const source = {HOME: '/private/home', PATH: '/usr/bin', DISPLAY: ':99', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/private/bus', GH_TOKEN: 'private-gh', GITHUB_TOKEN: 'private-gh2', APPLE_API_PRIVATE_KEY: 'private-apple', GEMINI_API_KEY: 'private-provider', ARK_API_KEY: 'private-ark', NODE_OPTIONS: '--require malicious', ELECTRON_RUN_AS_NODE: '1', MIOON_ENABLE_LIVE_PROVIDER: '1'};
   const env = smokeEnvironment(source, '/private/synthetic', '/usr/bin/ffmpeg', '/usr/bin/ffprobe');
   assert.deepEqual(cleanEnvironment(source), {PATH: '/usr/bin', HOME: '/private/home', DISPLAY: ':99', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/private/bus'});
-  assert.equal(env.MIOON_ENABLE_LIVE_PROVIDER, '0'); assert.equal(env.MIOON_DESKTOP_USER_DATA, '/private/synthetic');
+  assert.equal(env.MIOON_ENABLE_LIVE_PROVIDER, undefined); assert.equal(env.MIOON_DESKTOP_USER_DATA, '/private/synthetic');
   for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'APPLE_API_PRIVATE_KEY', 'GEMINI_API_KEY', 'ARK_API_KEY', 'NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE']) assert.equal(env[key], undefined);
 });
 

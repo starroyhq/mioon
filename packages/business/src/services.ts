@@ -39,7 +39,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
 import {operationEffect} from '@mioon/contracts';
 import type {OperationName} from '@mioon/contracts';
-import {normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
+import {generationServiceUnavailable,isMockGenerationProvider,normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
@@ -120,6 +120,8 @@ export interface CreateServicesOptions {
  env?: NodeJS.ProcessEnv;
  signal?: AbortSignal;
  profileNow?: ()=>number;
+ /** Host-owned release policy; it cannot be set by a request. */
+ mockAllowed?: boolean;
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
  sceneOptions?: Parameters<typeof createSceneServices>[1];
@@ -139,6 +141,12 @@ export interface OrdinaryServices {
  isQuiescent: ()=>boolean;
  isBusy: ()=>boolean;
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
+ generationAvailability: Readonly<{
+  mockAllowed: boolean;
+  image(providerId?:string,model?:string):boolean;
+  imageSelectionRequired():boolean;
+  video(providerId?:string,model?:string):boolean;
+ }>;
  assertMutationAllowed(): void;
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
@@ -210,7 +218,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,mockAllowed=true,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,videoSettings,videoFetch,deferBackgroundRecovery=false}: CreateServicesOptions={}): OrdinaryServices {
  assertProjectStore(inputStore);
  const store = inputStore;
  const backgroundTasks=createProjectBackgroundState(store);
@@ -253,9 +261,23 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const profilePolicy=usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const runtimeEnv=configuration.environment();
  const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,runtimeEnv,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const videoConnections=()=>listVideoConnections(videoSettings,currentProfileDate());
+ const availableProviders=()=>[...providers.values()].filter(provider=>mockAllowed||!isMockGenerationProvider(provider));
+ const videoAvailable=(providerId?:string,model?:string):boolean=>{
+  if(availableProviders().some(provider=>{
+   if(providerId!==undefined&&provider.id!==providerId)return false;
+   const capabilities=capabilitiesFor(provider);
+   return capabilities.enabled&&capabilities.configured&&(model===undefined||provider.capabilities.models.some(candidate=>(typeof candidate==='string'?candidate:candidate.id)===model));
+  }))return true;
+  return videoConnections().some(connection=>(providerId===undefined||connection.providerId===providerId)&&connection.models.some(({entry,capabilities})=>
+   (model===undefined||entry.modelId===model)&&capabilities.enabled&&capabilities.configured&&capabilities.inputProfileEvaluations.every(evaluation=>evaluation.ok)));
+ };
+ const assertMockAllowed=(providerId:string):void=>{
+  const provider=providers.get(providerId);
+  if(!mockAllowed&&(providerId==='mock'||(provider&&isMockGenerationProvider(provider))))throw generationServiceUnavailable();
+ };
  const configuredVideoProviders=new Map<string,Provider>();
  const boundProvider=(binding:VideoExecutionBinding):Provider=>{
-
   if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
   try {videoSettings.assertBinding(binding);} catch (error) {
    if(isVideoBindingHistoryUnavailable(error))throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','原任务绑定的视频连接历史不可用。',409);
@@ -277,7 +299,6 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const binding=readVideoBinding(source);
   if(source.videoInput!==undefined&&!binding)throw new AppError('UNSUPPORTED_INPUT_ROLE',providerId==='ark'?'Seedance 图片输入需要明确的 Seedance 2.5 连接。':'Wan 图片输入需要明确的 Wan 3.0 连接。');
   if(binding){
-   configuration.assertLiveEnabled();
    if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
    const p=boundProvider(binding),c=videoBindingCapabilities(binding,{asOf:currentProfileDate()});
    if(!c.configured)throw new AppError('VIDEO_SETTINGS_INCOMPLETE','请先配置此连接的输出域名。',409);
@@ -285,6 +306,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    const executionConnectionName=frozen?source.executionConnectionName:videoSettings?.list().find(view=>view.configuration.id===binding.connectionId)?.configuration.name;
    return {p,model:binding.model.modelId,assets:prepared.assets,referenceAssetIds:prepared.assets.map(asset=>asset.id),capabilities:c,inputFields:{...prepared.fields,...(typeof executionConnectionName==='string'?{executionConnectionName}:{})}};
   }
+  assertMockAllowed(providerId);
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),models=Array.isArray(property(c,'models'))?property(c,'models') as unknown[]:[],first=models[0],
    model=requestedModel||(typeof first==='string'?first:stringValue(property(first,'id')));
@@ -300,9 +322,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(hasSubjectGeneration(source)&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现主体参考视频输入',400,{providerId,model});
   const hasLastFrame=(frozen?hasLastFrameRole(source.referenceBindings):hasLastFrameRole(selection.references))||source.lastFrameAssetId!=null;
   if(hasLastFrame&&!['ark','mock'].includes(providerId))throw new AppError('UNSUPPORTED_INPUT_ROLE','此供应商尚未实现首尾帧输入；不会忽略尾帧',400,{providerId,model});
-  // Config checks never reveal credentials. Live calls still require the
-  // adapter's explicit backend enable switch and credential configuration.
-  if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','真实供应商尚未安全配置并授权；当前可使用模拟供应商',403,{providerId,status:property(c,'status'),configuration:property(c,'configuration')});
+  // Environment adapters still enforce their independently configured credentials.
+  if(!p.capabilities.enabled||!p.capabilities.configured)throw new AppError('PROVIDER_DISABLED','所选生成服务不可用，请先配置并启用生成服务。',403,{providerId,status:property(c,'status'),configuration:property(c,'configuration')});
   if(property(source.capabilities,'region')&&property(c,'region')!==property(source.capabilities,'region'))throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
   const subjectMode=hasSubjectGeneration(source);
   const prepare=(sourceValue: GenerationSource,capabilities: ServiceRow)=>prepareGenerationInputs({source:sourceValue,projectId,providerId,model,capabilities,readAsset:(id: string)=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),asOf:property(c,'profileEvaluationDate'),frozen});
@@ -466,12 +487,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
  const waveforms=createWaveformServices(store,{signal:ownerSignal});
- const images=createImageServices(store,{...imageOptions,deferRecovery:deferBackgroundRecovery||imageOptions?.deferRecovery,signal:ownerSignal,assertLiveAllowed:()=>configuration.assertLiveEnabled()} as Parameters<typeof createImageServices>[1]);
+ const images=createImageServices(store,{...imageOptions,mockAllowed,deferRecovery:deferBackgroundRecovery||imageOptions?.deferRecovery,signal:ownerSignal});
+ const generationAvailability=Object.freeze({mockAllowed,image:images.available,imageSelectionRequired:images.selectionRequired,video:videoAvailable});
  const frames=createFrameServices(store,{...frameOptions,deferRecovery:deferBackgroundRecovery||frameOptions?.deferRecovery,signal:ownerSignal} as Parameters<typeof createFrameServices>[1]);
  const scenes=createSceneServices(store,{...sceneOptions,deferRecovery:deferBackgroundRecovery||sceneOptions?.deferRecovery,signal:ownerSignal});
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
- const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery});
+ const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery,mockAllowed});
  const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();backgroundTasks.refresh();};
  const previs=createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
@@ -581,8 +603,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     throw new AppError('CANVAS_HISTORY_DEPENDENCY','画布历史仍引用这条连线，请通过画布删除。',409,{edgeId});
    db.prepare('DELETE FROM edges WHERE id=?').run(edgeId);return {deleted:true};
   }),
-  'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
-  'video.connection.list':()=>{return listVideoConnections(videoSettings,currentProfileDate());},
+  'provider.list':()=>{const asOf=currentProfileDate();return availableProviders().map(provider=>capabilitiesFor(provider,asOf));},
+  'video.connection.list':videoConnections,
   'generation.submit':async(input: GenerationSubmitInput,{outputLocale}: ServiceHandlerContext={})=>{
    if(!kernelProjectId)return createJob(input,null,null,null,outputLocale);
    // Exact replay needs no fresh filesystem admission and never creates a
@@ -756,13 +778,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   assertAgentTaskJobEffect(db,'job',job.id);
   const binding=readVideoBinding(job.snapshot);
   if(binding){
-   configuration.assertLiveEnabled();
    currentGenerationClaim(db,job);resolveGenerationProvider(job);
    const graph=hasSubjectGeneration(job.snapshot)?validateSubjectGenerationOwnership(db,job):null;
    return prepareConfiguredVideoInputs({source:job.snapshot,binding,projectId:job.projectId,readAsset:id=>graph?graph.asset(id):readGenerationAsset(db,id,job.projectId),frozen:true,asOf:currentProfileDate()});
   }
   const provider=providers.get(job.providerId);
-  if(provider&&!provider.capabilities.mock&&(profilePolicy||usesInputProfiles(provider)))configuration.assertLiveEnabled();
+  assertMockAllowed(job.providerId);
   const subjectMode=hasSubjectGeneration(job.snapshot);
   if(!profilePolicy&&!usesInputProfiles(provider)&&!subjectMode)return null;
   const subjectGraph=subjectMode?validateSubjectGenerationOwnership(db,job):null;
@@ -797,5 +818,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }

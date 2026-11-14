@@ -20,5 +20,5 @@ async function call(operation:Operation,input:object={},signal?:AbortSignal):Pro
   try{return await envelope(await fetch('/api/rpc',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation,input}),signal}));}
   catch(error){throw error instanceof WorkspaceSettingsError?error:new WorkspaceSettingsError('NETWORK');}
 }
-export const readWorkspaceSettings=(signal?:AbortSignal,page:'workspace-settings'|'generation-live'='workspace-settings')=>measureSettingsRead(page,async()=>workspaceSettingsSchema.parse(await call('workspace.settings.get',{},signal)));
+export const readWorkspaceSettings=(signal?:AbortSignal)=>measureSettingsRead('workspace-settings',async()=>workspaceSettingsSchema.parse(await call('workspace.settings.get',{},signal)));
 export const saveWorkspaceSettings=async(input:WorkspaceSettingsUpdate)=>workspaceSettingsSchema.parse(await call('workspace.settings.set',input));

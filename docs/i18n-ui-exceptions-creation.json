@@ -655,13 +655,6 @@
     {
       "file": "apps/web/src/generation-settings.ts",
       "category": "cjk-source",
-      "hash": "75531cee1a55cdb7892560388175513ca8057f6ebac8204fffe71c047b2edfc5",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.subjectProvider."
-    },
-    {
-      "file": "apps/web/src/generation-settings.ts",
-      "category": "cjk-source",
       "hash": "26fefadd48564faa4ddb26494812f9e13ca1a1dc6596b84c940ca3beb89c7f0e",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.subjectProfile."
@@ -749,13 +742,6 @@
       "hash": "1b13cdf5d1fea0fb7e29a4423a5d53f1dd394c8c7f03e086ba3b10065fbfaef9",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.issue.roleCount."
-    },
-    {
-      "file": "apps/web/src/generation-settings.ts",
-      "category": "cjk-source",
-      "hash": "fe680bd54071503e9b644a5b4bc137d4fea4b8e23553c4b60e832133bb88ade6",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ProviderSettings uses providerStatusDescriptor/providerAvailabilityDescriptor/inputModeDescriptor. GenerationInputSummary renders selection.displayMessage and generationIssueDescriptor; App and Inspector use generationInputIssueDescriptor. Branches are selected from issue codes, paths and provider/model IDs, not source text. Four-locale counterpart: connections.generation.issue.count."
     },
     {
       "file": "apps/web/src/generation-settings.ts",
@@ -991,13 +977,6 @@
     {
       "file": "apps/web/src/image-generation.ts",
       "category": "cjk-source",
-      "hash": "ab55856738c20abdb35d66f16bd0c848a3e7929984c25f504cb1c7939ff6da3e",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.liveDisabled."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
       "hash": "9e962f7e8611db09fca0ee69fbe8114e7f1587a0702c60f612c45f68fb4a78e4",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.groupBusy."
@@ -1124,13 +1103,6 @@
     {
       "file": "apps/web/src/image-generation.ts",
       "category": "cjk-source",
-      "hash": "252ac0df70a08b2e1c7c403e6cdcb47977377c96c12cc976792a0818246679d2",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.editProvidersOnly."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
       "hash": "63a5ee77d90833e76fe004172bf3732b995193e81a49f9ab112e98b0e5a1a6db",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.sourceRequired."
@@ -1204,13 +1176,6 @@
       "hash": "c08fcd9b632ffcdf61948f97f969da9d9c18f26f068c8c99d6fe8ef507095cae",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.originalFound."
-    },
-    {
-      "file": "apps/web/src/image-generation.ts",
-      "category": "cjk-source",
-      "hash": "6ece35265448227c802a88f6f6695a72c03abc3760bebb14a36ecf5caacce30b",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageGeneration renders state.displayMessage and imageTaskLabelDescriptor/imageTaskMessageDescriptor/imageTaskConnectionDescriptors; validation uses imageInputIssueDescriptor, imageEditSourceIssueDescriptor and imageEditDraftIssueDescriptor. Original notices do not replace immutable request, source or receipt content. Four-locale counterpart: image.state.settingsUnverifiable."
     },
     {
       "file": "apps/web/src/image-generation.ts",

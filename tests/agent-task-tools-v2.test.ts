@@ -93,7 +93,7 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
-test('Mio provider observations expose the workspace live generation gate',async t=>{
+test('Mio provider observations expose availability without the retired workspace gate',async t=>{
  const provider:Provider={
   id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
   async submit(){throw Error('A catalog read cannot submit');},
@@ -107,7 +107,10 @@ test('Mio provider observations expose the workspace live generation gate',async
   f.services.configuration.set({expectedRevision:current.revision,liveGeneration});
   const {outcome}=await f.execute('provider.list',{});
   assert.ok(Array.isArray(outcome.result)&&outcome.result.length===1);
-  assert.equal(record(outcome.result[0])&&outcome.result[0].liveGenerationEnabled,liveGeneration);
+  assert.ok(record(outcome.result[0]));
+  assert.equal(outcome.result[0].enabled,true);
+  assert.equal(outcome.result[0].configured,true);
+  assert.equal(Object.hasOwn(outcome.result[0],'liveGenerationEnabled'),false);
  }
  assert.deepEqual(f.store.list('jobs',f.projectId),[]);
 });
@@ -722,7 +725,7 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
   release();await worker.tick();await worker.tick();assert.equal(posts,0);assert.equal((f.store.list('jobs',f.projectId)[0] as Record<string,unknown>).status,'queued');assert.equal(modelCalls,3);
  }finally{release();await worker?.stop();runtime.close();await runtime.drain();await settings.close();}
 });
-for(const action of ['send','revoke_task_authority','disable_workspace_live'] as const)test(`configured video v2 ${action} preserves the frozen connection credential and final dispatch gates`,async t=>{
+for(const action of ['send','revoke_task_authority','remove_connection_credential'] as const)test(`configured video v2 ${action} preserves the frozen connection credential and final dispatch gates`,async t=>{
  const directory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-video-settings-')),settings=await createVideoSettings({directory:path.join(directory,'settings'),privateRoot:directory});
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'ark',name:'Synthetic configured v2 Ark',region:'cn-beijing',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('ark')};
  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BOUND_VIDEO_KEY'}});
@@ -730,7 +733,7 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
  const bound:VideoSettingsService={...settings,async acquire(binding,signal){const key=await settings.acquire(binding,signal);enter();await barrier;return key;}};
  let posts=0,authorization='';const f=await fixture(t,{videoSettings:bound,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(_input,init)=>{if(init?.method==='POST'){posts++;authorization=new Headers(init.headers).get('Authorization')??'';}return new Response(JSON.stringify({id:'synthetic-configured-v2-task',status:'running'}),{headers:{'content-type':'application/json'}});}});
  t.after(async()=>{await settings.close();await rm(directory,{recursive:true,force:true});});
- await f.services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
+ await f.services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:false});
  const shot=await f.services.call('shot.create',{projectId:f.projectId,title:'Configured synthetic video',prompt:'Synthetic geometry moves',duration:4,aspectRatio:'9:16'});if(!record(shot))throw Error('Invalid shot');
  const listed=await f.execute('video.connection.list',{});assert.doesNotMatch(JSON.stringify(listed.outcome.result),/SYNTHETIC_BOUND_VIDEO_KEY|credentialRef/);
  const model=configuration.models[0]!;const accepted=await f.execute('generation.submit',{shotId:shot.id,expectedRevision:shot.revision,providerId:'ark',model:model.modelId,connectionId:configuration.id,configurationRevision:1,modelEntryId:model.id,parameters:{resolution:'720p'}});
@@ -738,11 +741,15 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
  const worker=startWorker(f.store,f.services,new Map());
  try{await entered;const original=f.store.list('jobs',f.projectId)[0] as Record<string,unknown>;
   if(action==='revoke_task_authority')allowed=false;
-  if(action==='disable_workspace_live')await f.services.call('workspace.settings.set',{expectedRevision:1,liveGeneration:false});
+  if(action==='remove_connection_credential')await settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'remove'}});
   release();await worker.tick();
   const current=f.store.list('jobs',f.projectId)[0] as Record<string,unknown>;assert.equal(current.id,original.id);assert.equal(f.store.list('jobs',f.projectId).length,1);
   if(action==='send'){assert.equal(posts,1);assert.equal(authorization,'Bearer SYNTHETIC_BOUND_VIDEO_KEY');assert.equal(current.status,'running');assert.equal(f.journal.step(accepted.step.id).cost,'submitted');}
-  else{assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);if(action==='revoke_task_authority'){assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);}else{assert.equal(current.status,'failed');assert.ok(record(current.error));assert.equal(current.error.code,'LIVE_GENERATION_DISABLED');}}
+  else{
+   assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);
+   assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);
+   if(action==='remove_connection_credential'){assert.equal(current.phase,'connection_required');assert.ok(record(current.error));assert.equal(current.error.code,'VIDEO_SETTINGS_NOT_CONFIGURED');}
+  }
  }finally{release();await worker.stop();}
 });
 

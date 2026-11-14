@@ -282,10 +282,10 @@ row accepts the same object with up to 30 images and no `prompt`; see
 [Seedance 2.5 connections](#seedance-25-connections-reviewed-2026-10-30).
 
 Enter the API key, choose its storage scope and explicitly enable the connection.
-The workspace **Real generation** switch must also be enabled in Model services.
-It is checked again immediately before dispatch; disabling it prevents new paid
-submissions and explicit retries, while accepted tasks can still be observed and
-downloaded with their original binding.
+New submissions check the enabled connection and its exact model and credential.
+The UI still requires a paid confirmation. Existing tasks keep their frozen
+binding for querying, downloading and explicit retry; a retry is a new paid
+attempt and needs confirmation.
 Web keys last for the backend lifetime. Desktop can use the existing supported OS
 encrypted storage; unavailable secure storage has no plaintext fallback. Settings
 reads disclose only configuration and storage status. Video keys are isolated from
@@ -405,7 +405,7 @@ The production registry now publishes and enforces [exact model input limits](GE
 ## Separate image profiles
 
 Images remain independent of the video registry. `image.profile.list` returns
-local Mock `mock-image-v1`, the fixed OpenAI `gpt-image-2.5-flare-2026-09-08`
+local Mock `mock-image-v1` in development and tests, the fixed OpenAI `gpt-image-2.5-flare-2026-09-08`
 preset, and the custom `openai-compatible` profile when its base URL/model are
 complete. All use fixed 1024×1024, low quality, opaque PNG, one result. Mock creates
 deterministic visibly labeled local bytes and is not prompt-conditioned. At the accepted first-slice checkpoint `82c70f3` on
@@ -476,7 +476,7 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-Every real provider needs `MIOON_ENABLE_LIVE_PROVIDER=1` and the corresponding server key. Image input also requires approved reference hashes; output-host and regional checks remain enforced. Installing the app or having a ChatGPT plan does not enable live calls.
+Supply the corresponding server key for each environment-configured adapter. Connections configured in [Generation Services](GENERATION-SERVICES.md) each have their own enabled state. Paid generation still follows the applicable confirmation flow. Image input requires approved reference hashes, and output-host and regional checks remain enforced.
 
 | ID | Credential name | Approved-image checksum list | Additional settings |
 | --- | --- | --- | --- |
@@ -499,6 +499,8 @@ Only managed files resolving beneath `root` are read; checksum approval is check
 Downloads are private temporary files followed by atomic rename, with an HTTPS exact-host check, no URL credentials/non-default ports, a 128 MiB streamed size limit, and MP4 `ftyp` verification. The service subsequently probes/decodes the result before publication. Output path checks reject symlinks escaping managed storage before creating directories. CDN requests receive no provider authentication. Failed downloads clear the task cache so the next attempt can GET a fresh output URL without another create POST. Ark/MiniMax/Vidu reject redirects. Veo supports at most three explicitly allowlisted redirects, stripping credentials after the first response, including same-origin hops.
 
 ## Durable simulated provider
+
+Development and test builds can create simulated outputs. Stable builds hide Mock from generation discovery and do not allow new Mock requests; existing simulated media and versions remain usable.
 
 Mock creates independent provider-ledger tables in the supplied Node 24 SQLite database:
 
@@ -536,12 +538,11 @@ The official `@runwayml/sdk@4.22.0` builds create and task-query requests using 
 
 Live calls require all applicable gates, configured only after separate user authorization:
 
-1. `MIOON_ENABLE_LIVE_PROVIDER=1`
-2. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
-3. `RUNWAY_APPROVED_ASSET_SHA256`: comma-separated hashes of the exact approved synthetic reference files
-4. Independently verified output hosts and the separately agreed scope and cost of the live call; the application has no generation-count or currency-spending cap
+1. `RUNWAYML_API_SECRET` supplied to the server environment through a secure credential route
+2. `RUNWAY_APPROVED_ASSET_SHA256` with comma-separated hashes of the exact approved synthetic reference files
+3. Independently verified output hosts and the separately agreed scope and cost of the live call. The application has no generation-count or currency-spending cap.
 
-The provider never reads credentials from browser input, project JSON or a URL. Construction, capability listing, reconciliation of an unknown request, and local-only cancellation make no network calls. A credential alone does not enable live calls. Capability `configured` reports presence only; `enabled` reflects the explicit enable switch and key, while per-reference approval is still mandatory.
+The provider reads credentials from the server environment. Construction, capability listing, reconciliation of an unknown request, and local-only cancellation make no network calls. The key makes the adapter available, and per-reference approval remains mandatory.
 
 Only managed local reference files are read. The adapter resolves symlinks beneath `root`, checks the snapshot checksum, accepts PNG/JPEG/WebP signatures, and sends an inline data URI to Runway. Arbitrary source URLs, GIFs and additional references are rejected. Encoded data URI length is capped at 5 MiB; large files fail before transmission. There is no separate upload POST. [Official input requirements](https://docs.dev.runwayml.com/assets/inputs/)
 
