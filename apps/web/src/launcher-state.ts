@@ -17,6 +17,8 @@ export interface LauncherContractChecks {
   readonly isDefinitiveCreateRejection?: (error: unknown) => boolean;
   /** A complete application directory, never legacy project.list rows. */
   readonly readDirectory?: () => Promise<unknown>;
+  /** Workspace identity only, for the independent desktop settings window. */
+  readonly readIdentity?: (options: {readonly signal: AbortSignal}) => Promise<unknown>;
 }
 /** Only this client can classify a create at its actual dispatch boundary.
  * Transport proof is injected by the composition root; arbitrary flags and

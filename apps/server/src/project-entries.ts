@@ -6,7 +6,7 @@ import type {BigIntStats} from 'node:fs';
 import {inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
-import {projectEntriesResponseSchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
+import {projectEntriesResponseSchema, projectEntryIdentitySchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
 import type {ProjectEntriesResponse} from '../../../packages/contracts/src/project-entry.ts';
 import {
@@ -30,6 +30,7 @@ import type {ProjectCopies} from './project-host/copies.ts';
 import type {NativeAssetMediaPort,NativeAssetMediaRequestOptions} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {ProjectTrashActions} from './project-host/trash.ts';
 import {projectDeleteInputSchema} from '../../../packages/contracts/src/project-lifecycle.ts';
+import {json} from './http-json.ts';
 
 interface WindowSlot<Runtime extends ProjectHostRuntime> {
   readonly key: string;
@@ -75,6 +76,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   let establishedScope: string | undefined;
   const windows = new Map<string, WindowSlot<Runtime>>();
   const listeners = new Set<(event: ProjectEntryWindowRevoked) => void>();
+  const formatHints = new Map<string, {generation: string; newer: boolean}>();
   const active = (): void => {if (signal.aborted) throw projectHostError('PROJECT_HOST_STOPPED');};
   const scope = (): string => {
     active();
@@ -84,6 +86,39 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     }
     establishedScope = observed;
     return observed;
+  };
+  const readIdentity = () => ({appLibraryScope: scope(), instanceId});
+  const generation = (info:BigIntStats):string => [info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':');
+  // Before any descriptor is opened (including journal/header reads), refuse
+  // every held SQLite inode. Closing an alias would drop the owner's POSIX lock.
+  const sourceMetadata = (file:string):BigIntStats => {
+    const info=lstatSync(file,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
+    if(isProjectFileHeld(identity)||isAppLibraryHeld(identity))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
+    if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
+    return info;
+  };
+  const hasNewerFormat = (file: string): boolean => {
+    // The private guard and live SQLite ownership check still run for every
+    // use. Only the format hint can outlive a synchronous catalog sweep.
+    assertProjectFile?.(file);
+    const before = sourceMetadata(file), observed = generation(before);
+    const previous = before.ino === 0n ? undefined : formatHints.get(file);
+    if (previous?.generation === observed) return previous.newer;
+    formatHints.delete(file);
+    let newer = false;
+    try { inspectProjectFormatHeader(file); }
+    catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
+      newer = true;
+    }
+    // Keep cold open, read and close in the same turn: closing a raw
+    // descriptor after SQLite opens the same inode can drop its POSIX locks.
+    if (generation(sourceMetadata(file)) !== observed) return false;
+    if (before.ino !== 0n) {
+      if (formatHints.size >= PROJECT_ENTRY_LIMITS.maxEntries) formatHints.delete(formatHints.keys().next().value!);
+      formatHints.set(file, {generation: observed, newer});
+    }
+    return newer;
   };
   const list = (all: boolean): ProjectEntriesResponse => {
     const before = scope();
@@ -95,14 +130,9 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
         if (entry.availability.state !== 'available') continue;
         // Recovery leaves cold files alone. Check just the header for the
         // newer-format hint, without opening the project or local records.
-        const file = entry.project.projectFile;
         try {
-          assertProjectFile?.(file);
-          sourceMetadata(file);
-          inspectProjectFormatHeader(file);
-        } catch (error) {
-          if (error instanceof AppError && error.code === 'PROJECT_FORMAT_NEWER') entry.availability = {state: 'invalid', reason: 'format-newer'};
-        }
+          if (hasNewerFormat(entry.project.projectFile)) entry.availability = {state: 'invalid', reason: 'format-newer'};
+        } catch { /* Unavailable header hints do not change catalog metadata. */ }
       }
     };
     if (!assertProjectFile) inspectFormats();
@@ -116,15 +146,6 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     });
     if (!result.success) throw unavailable();
     return result.data;
-  };
-  const generation = (info:BigIntStats):string => [info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':');
-  // Before any descriptor is opened (including journal/header reads), refuse
-  // every held SQLite inode. Closing an alias would drop the owner's POSIX lock.
-  const sourceMetadata = (file:string):BigIntStats => {
-    const info=lstatSync(file,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
-    if(isProjectFileHeld(identity)||isAppLibraryHeld(identity))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
-    if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
-    return info;
   };
   const observeFile = (file:string) => {
     assertProjectFile?.(file);
@@ -381,12 +402,11 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     listeners.clear();
   }, {once: true});
   return {control,
-    // Trusted composition metadata only; does not enumerate the catalog or
-    // lend a native window/project capability to application RPC callers.
-    readIdentity: () => ({appLibraryScope: scope(), instanceId}),
+    readIdentity,
     handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
-    const single = url.pathname.startsWith('/api/project-entries/');
-    if (url.pathname !== '/api/project-entries' && !single) return false;
+    const identity = url.pathname === '/api/project-entries/identity';
+    const single = !identity && url.pathname.startsWith('/api/project-entries/');
+    if (url.pathname !== '/api/project-entries' && !identity && !single) return false;
     const projectId = single ? url.pathname.slice('/api/project-entries/'.length) : null;
     if (projectId !== null && (!isProjectId(projectId) || projectId !== projectId.toLowerCase())) return false;
     if (req.method !== 'GET') {
@@ -398,6 +418,10 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       req.headers['content-length'] !== undefined && req.headers['content-length'] !== '0') {
       res.setHeader('Connection', 'close');
       throw invalid();
+    }
+    if (identity) {
+      json(res, 200, {ok: true, data: projectEntryIdentitySchema.parse(readIdentity())});
+      return true;
     }
     const catalog = list(channel !== 'web');
     const entry = projectId === null ? null : catalog.registered.find(item => item.project.projectId === projectId);

@@ -365,8 +365,8 @@ export class BackendSupervisor extends EventEmitter {
     return this.nativeAudioBroker.request(command, onPending);
   }
 
-  sampleSettingsEventLoop(fromMs: number, toMs: number, signal?: AbortSignal): Promise<number | null> {
-    return this.settingsEventLoop?.sample(fromMs, toMs, signal) ?? Promise.resolve(null);
+  sampleSettingsEventLoop(fromMs: number, toMs: number, signal?: AbortSignal, onTimeout?: () => void): Promise<number | null> {
+    return this.settingsEventLoop?.sample(fromMs, toMs, signal, onTimeout) ?? Promise.resolve(null);
   }
 
   stop(): Promise<StopOutcome> {

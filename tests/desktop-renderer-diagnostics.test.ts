@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { chmod, link, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { classifyRendererEvent, createRendererDiagnostics, installRendererHealthDiagnostics, RENDERER_DIAGNOSTIC_LIMITS } from '../apps/desktop/src/renderer-diagnostics.ts';
+import { classifyRendererEvent, createRendererDiagnostics, installRendererHealthDiagnostics, RENDERER_DIAGNOSTIC_LIMITS, SLOW_SETTINGS_DIAGNOSTIC_FILE } from '../apps/desktop/src/renderer-diagnostics.ts';
 import {exportDesktopDiagnostics} from '../apps/desktop/src/diagnostics-export.ts';
 import {settingsOpenPhases} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
 import type {SettingsDiagnosticRecord} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
@@ -168,6 +168,40 @@ test('settings diagnostics retain a bounded batch without delaying renderer heal
   assert.ok(largeRows.length > 0 && largeRows.length < 64);
   assert.equal(largeRows.at(-1)?.attempt, 214);
   assert.ok((await stat(f.file)).size - bytesBefore <= 16 * 1024);
+});
+
+test('slow opening evidence survives normal settings queue and file rotation', async t => {
+  const f = await fixture(t);
+  const diagnostics = f.create();
+  const slow: SettingsDiagnosticRecord = {schemaVersion: 1, at: settingsRead.at, attempt: 1, event: 'settings-open-slow',
+    mode: 'warm', outcome: 'pending', elapsedMs: 3_100, utilityMaxDelayMs: null, phases: {mainReceived: 4, show: 310}};
+  const filled = {...slow, utilityMaxDelayMs: 3_000};
+  const slowFile = path.join(f.logDirectory, SLOW_SETTINGS_DIAGNOSTIC_FILE);
+  assert.equal(diagnostics.recordSettings(slow), true);
+  for (let attempt = 2; attempt <= 100; attempt++) {
+    assert.equal(diagnostics.recordSettings({...settingsRead, attempt}), true);
+  }
+  diagnostics.flushSettings();
+  await rm(f.file);
+  // Reuse a full ordinary slot to cross the real rotation boundary without
+  // making thousands of individual disk syncs.
+  const line = Buffer.from(JSON.stringify(settingsRead) + '\n');
+  const full = Buffer.concat(Array.from({length: Math.floor(RENDERER_DIAGNOSTIC_LIMITS.maxBytes / line.length)}, () => line));
+  for (let rotation = 0; rotation < RENDERER_DIAGNOSTIC_LIMITS.fileCount + 1; rotation++) {
+    await writeFile(f.file, full, {mode: 0o600});
+    assert.equal(diagnostics.recordSettings({...settingsRead, attempt: 101 + rotation}), true);
+    assert.equal(diagnostics.recordSettings({ ...settingsRead, attempt: 201 + rotation }), true);
+    diagnostics.flushSettings();
+  }
+  assert.equal(diagnostics.recordSettings(filled), true);
+  diagnostics.flushSettings();
+  assert.deepEqual(await records(slowFile), [slow, filled]);
+  if (process.platform !== 'win32') assert.equal((await stat(slowFile)).mode & 0o777, 0o600);
+  const destination = path.join(f.directory, 'support.jsonl');
+  assert.equal(await exportDesktopDiagnostics({dataDir: f.dataDir, destination}), 'saved');
+  const output = await records(destination);
+  assert.deepEqual(output.filter(row => row.event === 'settings-open-slow'), [slow, filled]);
+  assert.ok(output.some(row => row.event === 'settings-page-read'));
 });
 
 test('Help export includes only the sanitized diagnostics family in rotation order', async t => {

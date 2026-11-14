@@ -2,23 +2,28 @@ import {randomUUID} from 'node:crypto';
 import {lstat, open, realpath, rename, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {readPrivateFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
-import {RENDERER_DIAGNOSTIC_LIMITS, sanitizeRendererHealthRecord} from './renderer-diagnostics.ts';
+import {RENDERER_DIAGNOSTIC_FILE, RENDERER_DIAGNOSTIC_LIMITS, sanitizeRendererHealthRecord, SLOW_SETTINGS_DIAGNOSTIC_FILE} from './renderer-diagnostics.ts';
 import {sanitizeSettingsDiagnosticRecord} from './settings-diagnostics-protocol.ts';
 
 function readDiagnostics(directory: string): string[] {
   const records: string[] = [];
   const {maxBytes, fileCount} = RENDERER_DIAGNOSTIC_LIMITS;
   const decoder = new TextDecoder('utf-8', {fatal: true});
-  for (let slot = fileCount - 1; slot >= 0; slot--) {
-    const file = path.join(directory, slot === 0 ? 'renderer-health.jsonl' : `renderer-health.jsonl.${slot}`);
-    const bytes = readPrivateFile(file, {root: directory, maxBytes, allowMissing: true});
-    if (!Buffer.isBuffer(bytes)) continue;
-    for (const line of decoder.decode(bytes).split('\n')) {
-      if (!line.trim()) continue;
-      let raw: unknown;
-      try {raw = JSON.parse(line);} catch {continue;}
-      const record = sanitizeSettingsDiagnosticRecord(raw) ?? sanitizeRendererHealthRecord(raw);
-      if (record) records.push(JSON.stringify(record));
+  for (const name of [RENDERER_DIAGNOSTIC_FILE, SLOW_SETTINGS_DIAGNOSTIC_FILE]) {
+    for (let slot = fileCount - 1; slot >= 0; slot--) {
+      const file = path.join(directory, slot === 0 ? name : `${name}.${slot}`);
+      const bytes = readPrivateFile(file, {root: directory, maxBytes, allowMissing: true});
+      if (!Buffer.isBuffer(bytes)) continue;
+      for (const line of decoder.decode(bytes).split('\n')) {
+        if (!line.trim()) continue;
+        let raw: unknown;
+        try {raw = JSON.parse(line);} catch {continue;}
+        const settings = sanitizeSettingsDiagnosticRecord(raw);
+        const record = name === SLOW_SETTINGS_DIAGNOSTIC_FILE
+          ? settings?.event === 'settings-open-slow' ? settings : null
+          : settings ?? sanitizeRendererHealthRecord(raw);
+        if (record) records.push(JSON.stringify(record));
+      }
     }
   }
   return records;

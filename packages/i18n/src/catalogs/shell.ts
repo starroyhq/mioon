@@ -369,6 +369,12 @@ const shellCoreMessages = {
     "en": "Workspace identity is unconfirmed. Keep this window open and check the connection",
     "ja": "ワークスペースの識別情報を確認できていません。このウィンドウを開いたまま接続を確認してください"
   },
+  "shell.workspaceVerified": {
+    "zh-Hans": "工作区身份已核对",
+    "zh-Hant": "工作區身分已核對",
+    "en": "Workspace identity verified",
+    "ja": "ワークスペースの識別情報を確認しました"
+  },
   "shell.windowUnconfirmed": {
     "zh-Hans": "窗口身份未确认",
     "zh-Hant": "視窗身分尚未確認",

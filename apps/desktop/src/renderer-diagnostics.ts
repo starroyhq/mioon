@@ -6,11 +6,11 @@ import { appendWindowsDiagnostic } from './diagnostic-append-windows.ts';
 import { sanitizeSettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
 import type { SettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
 
-// One bounded JSONL family covers renderer health and settings timing without
-// recording renderer content. Rotation mirrors backend exit
-// diagnostics: at most maxBytes per file and fileCount files (current plus two
-// rotated), 0700 directory and 0600 files, atomic rename rotation.
+// Each family has its own size-limited rotation. Frequent settings reads can
+// roll over the general log without displacing slow-opening evidence.
 export const RENDERER_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileCount: 3 });
+export const RENDERER_DIAGNOSTIC_FILE = 'renderer-health.jsonl';
+export const SLOW_SETTINGS_DIAGNOSTIC_FILE = 'settings-open-slow.jsonl';
 const settingsBatch = {delayMs: 200, maxRows: 64, maxBytes: 16 * 1024};
 
 const events = ['unresponsive', 'responsive', 'render-process-gone'] as const;
@@ -253,17 +253,35 @@ export function installRendererHealthDiagnostics(contents: RendererHealthContent
 // Only fixed renderer-health fields reach this local JSONL. Renderer URLs,
 // document titles, console text, stack traces, project paths, tokens and the
 // original event/details objects are never serialized.
+function settingsBuffer() {
+  const rows: Buffer[] = [];
+  let bytes = 0;
+  return {
+    push(line: Buffer) {
+      while (rows.length >= settingsBatch.maxRows || bytes + line.length > settingsBatch.maxBytes) {
+        bytes -= rows.shift()!.length;
+      }
+      rows.push(line); bytes += line.length;
+    },
+    drain() {
+      if (!rows.length) return null;
+      const batch = Buffer.concat(rows, bytes);
+      rows.length = 0; bytes = 0;
+      return batch;
+    },
+  };
+}
+
 export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy }: Options): RendererDiagnostics {
   const metadata = readMetadata(modulePath);
   const directory = typeof dataDir === 'string' && dataDir.length ? path.join(dataDir, 'diagnostics') : null;
-  const file = directory && path.join(directory, 'renderer-health.jsonl');
-  let pending: Buffer[] = [], pendingBytes = 0;
+  const pending = settingsBuffer(), pendingSlow = settingsBuffer();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  function append(line: Buffer): boolean {
-    if (!file || !directory || !dataDir) return false;
+  function append(line: Buffer, name = RENDERER_DIAGNOSTIC_FILE): boolean {
+    if (!directory || !dataDir) return false;
     if (line.length > RENDERER_DIAGNOSTIC_LIMITS.maxBytes) return false;
-    appendDiagnostic(dataDir, directory, file, line, directoryPolicy);
+    appendDiagnostic(dataDir, directory, path.join(directory, name), line, directoryPolicy);
     return true;
   }
 
@@ -288,22 +306,18 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
   }
   function flushSettings(): void {
     clearTimeout(timer); timer = undefined;
-    if (pending.length === 0) return;
-    const batch = pending, bytes = pendingBytes;
-    pending = []; pendingBytes = 0;
-    try {append(Buffer.concat(batch, bytes));} catch { /* Evidence only. */ }
+    const slow = pendingSlow.drain(), ordinary = pending.drain();
+    try { if (slow) append(slow, SLOW_SETTINGS_DIAGNOSTIC_FILE); } catch { /* Evidence only. */ }
+    try { if (ordinary) append(ordinary); } catch { /* Evidence only. */ }
   }
   function recordSettings(value: SettingsDiagnosticRecord): boolean {
     try {
-      if (!file || !directory || !dataDir) return false;
+      if (!directory || !dataDir) return false;
       const safe = sanitizeSettingsDiagnosticRecord(value);
       if (!safe) return false;
       const line = Buffer.from(`${JSON.stringify(safe)}\n`);
       if (line.length > settingsBatch.maxBytes) return false;
-      while (pending.length >= settingsBatch.maxRows || pendingBytes + line.length > settingsBatch.maxBytes) {
-        pendingBytes -= pending.shift()!.length;
-      }
-      pending.push(line); pendingBytes += line.length;
+      (safe.event === 'settings-open-slow' ? pendingSlow : pending).push(line);
       timer ??= setTimeout(flushSettings, settingsBatch.delayMs);
       timer.unref?.();
       return true;

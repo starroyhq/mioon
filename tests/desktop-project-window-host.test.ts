@@ -1207,6 +1207,51 @@ test('settings timings correlate a delayed click and page reads with a bounded u
   assert.deepEqual(sanitizeSettingsDiagnosticRecord({...timing, phases: {...timing?.phases, title: 'private'}}), timing);
 });
 
+test('settings diagnostics keep slow and closed timing snapshots and add recovered utility measurements', async t => {
+  const origin = 1_790_000_000_000;
+  t.mock.timers.enable({apis: ['Date', 'setTimeout'], now: origin});
+  const window = {}, controller = new AbortController();
+  const rows: SettingsDiagnosticRecord[] = [];
+  const samples: {from: number; to: number; timeout: () => void; finish: (value: number | null) => void}[] = [];
+  const d = createSettingsOpeningDiagnostics({signal: controller.signal,
+    record: row => rows.push(row), sample: (from, to, signal, onTimeout) => {
+      assert.equal(signal, controller.signal);
+      assert.ok(onTimeout);
+      const {promise, resolve} = Promise.withResolvers<number | null>();
+      samples.push({from, to, timeout: onTimeout, finish: resolve});
+      return promise;
+    }});
+  d.begin(window, undefined, 'warm', origin, {});
+  t.mock.timers.tick(3000);
+  await tick();
+  d.phase(window, 'show');
+  t.mock.timers.tick(400);
+  d.close(window);
+  await tick();
+  assert.deepEqual(samples.map(({from, to}) => [from, to]), [[origin, origin + 3000], [origin, origin + 3400]]);
+  for (const sample of samples) sample.timeout();
+  await tick();
+  assert.deepEqual(rows.map(row => [row.event, row.utilityMaxDelayMs]), [['settings-open-slow', null], ['settings-open-timing', null]]);
+  samples[0]!.finish(2550);
+  samples[1]!.finish(2960);
+  await tick();
+  await tick();
+  const originals = rows.slice(0, 2);
+  assert.deepEqual(rows.slice(2), [{...originals[0], utilityMaxDelayMs: 2550}, {...originals[1], utilityMaxDelayMs: 2960}]);
+  assert.equal(rows.length, 4);
+
+  const next = {};
+  d.begin(next, undefined, 'cold', Date.now(), {});
+  d.close(next);
+  await tick();
+  const expired = samples.at(-1)!;
+  expired.timeout();
+  expired.finish(null);
+  await tick();
+  await tick();
+  assert.equal(rows.length, 5, 'a retry that returns no sample adds no duplicate null row');
+});
+
 test('a warm settings shell cannot be promoted for a different editor', async t => {
   const f = warmSettingsFixture(t); await f.launcher();
   const first = await f.editor(), second = await f.editor(projectB);

@@ -529,7 +529,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     const warmOnFocus = app.isPackaged && process.platform === 'darwin';
     const settingsDiagnostics = typeof createSettingsOpeningDiagnostics === 'function' ? createSettingsOpeningDiagnostics<BrowserWindow>({
       record: value => { rendererDiagnostics?.recordSettings(value); },
-      sample: (from, to, signal) => ownedBackend.sampleSettingsEventLoop(from, to, signal),
+      sample: (from, to, signal, onTimeout) => ownedBackend.sampleSettingsEventLoop(from, to, signal, onTimeout),
       signal: startup.signal,
     }) : undefined;
     const settingsAppearance = () => ({

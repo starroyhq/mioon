@@ -32,7 +32,7 @@ interface Attempt {
 
 export function createSettingsOpeningDiagnostics<W extends object>({record, sample, signal, now = Date.now}: {
   record(value: SettingsDiagnosticRecord): void;
-  sample(from: number, to: number, signal?: AbortSignal): Promise<number | null>;
+  sample(from: number, to: number, signal?: AbortSignal, onTimeout?: () => void): Promise<number | null>;
   signal: AbortSignal;
   now?: () => number;
 }): SettingsOpeningDiagnostics<W> {
@@ -41,16 +41,22 @@ export function createSettingsOpeningDiagnostics<W extends object>({record, samp
   const write = (value: SettingsDiagnosticRecord) => setImmediate(() => {
     try { record(value); } catch { /* Evidence cannot interrupt settings. */ }
   }).unref();
-  function sampleLater(from: number, to: number, report: (delay: number | null) => void): void {
+  function sampleLater(from: number, to: number, report: (delay: number | null) => void, recoverable = false): void {
     // Even issuing the utility request stays off the UI path.
-    setImmediate(() => { void Promise.resolve().then(() => sample(from, to, signal)).then(report, () => report(null)); }).unref();
+    setImmediate(() => {
+      let recordedTimeout = false;
+      const onTimeout = recoverable ? () => { recordedTimeout = true; report(null); } : undefined;
+      const complete = (delay: number | null) => { if (!recordedTimeout || delay !== null) report(delay); };
+      void Promise.resolve().then(() => sample(from, to, signal, onTimeout)).then(complete, () => complete(null));
+    }).unref();
   }
   function snapshot(attempt: Attempt, outcome: SettingsOpenOutcome, at: number, slow = false): void {
     const elapsedMs = Math.max(0, Math.min(HISTORY_MS, at - attempt.origin));
     const phases = {...attempt.phases};
     const {id, mode, origin} = attempt;
+    const recoverable = slow || outcome === 'closed' || outcome === 'pending' || elapsedMs >= SLOW_MS;
     sampleLater(origin, at, utilityMaxDelayMs => write({schemaVersion: 1, at: new Date(origin).toISOString(),
-      event: slow ? 'settings-open-slow' : 'settings-open-timing', attempt: id, mode, outcome, elapsedMs, utilityMaxDelayMs, phases}));
+      event: slow ? 'settings-open-slow' : 'settings-open-timing', attempt: id, mode, outcome, elapsedMs, utilityMaxDelayMs, phases}), recoverable);
   }
   function slow(attempt: Attempt, outcome: SettingsOpenOutcome, at: number): void {
     if (attempt.slowRecorded) return;

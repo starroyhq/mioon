@@ -11,8 +11,8 @@ import { installSettingsBootClose, retireSettingsBootClose } from '../apps/web/s
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { createSettingsWindowNavigation } from '../apps/web/src/settings-window-state.ts';
 import type { SettingsRenderProps } from '../apps/web/src/SettingsRoot.tsx';
-import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
-import type {ProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import {createSettingsWorkspaceIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import type {SettingsWorkspaceIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
 import * as settingsLocale from '../packages/i18n/src/locale.ts';
 import {settingsBootMessages} from '../packages/i18n/src/catalogs/settings-boot.ts';
 import type {SettingsDiagnosticsBridge} from '../apps/desktop/src/settings-diagnostics-protocol.ts';
@@ -353,6 +353,7 @@ class SettingsPage extends EventTarget {
 
 async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, options: {
   initialSlot?: ProjectWindowContext['settingsSlot']; confirm?: () => Promise<boolean>; page?: SettingsPage;
+  readIdentity?: (input: {readonly signal: AbortSignal}) => Promise<unknown>;
 } = {}) {
   const h = hooks(), page = options.page ?? new SettingsPage(), document = Object.assign(new Document(), { visibilityState: 'visible' });
   const observation: boolean[] = [], pauseObservation = (paused: boolean) => { observation.push(paused); };
@@ -361,15 +362,15 @@ async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, 
   let locale: import('../packages/i18n/src/index.ts').Locale = 'zh-Hans';
   let props: SettingsRenderProps | undefined;
   let owner: ReturnType<ReturnType<typeof createSettingsNavigationRegistry>['register']> | undefined;
-  let identity!: ProjectEntryIdentityOwner;
-  let directory: unknown = {version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []};
+  let identity!: SettingsWorkspaceIdentityOwner, identityReads = 0;
+  let workspaceIdentity: unknown = {appLibraryScope: 'a'.repeat(64), instanceId: id(900)};
   const Component = load('SettingsRoot.tsx', h.react, {
     './i18n/I18nProvider.tsx': {useI18n: () => i18nTestModule(locale).useI18n()}, '@mioon/ui/components/workbench-confirm': { useConfirmation: () => options.confirm ?? (async () => false) },
     './UiPreferencesProvider.tsx': { useUiPreferences: () => ({ pauseObservation }) },
     './settings-navigation-state.ts': { createSettingsNavigationRegistry }, './native-close-state.ts': { createNativeCloseRegistry, installNativeCloseAdmission },
     './settings-boot-close.ts': { retireSettingsBootClose },
     './settings-window-state.ts': { createSettingsWindowNavigation },
-    './project-entry-identity.ts': {createProjectEntryIdentityOwner: (input: Parameters<typeof createProjectEntryIdentityOwner>[0]) => identity = createProjectEntryIdentityOwner(input)},
+    './project-entry-identity.ts': {createSettingsWorkspaceIdentityOwner: (input: Parameters<typeof createSettingsWorkspaceIdentityOwner>[0]) => identity = createSettingsWorkspaceIdentityOwner(input)},
     './ProjectHomeConnections.tsx': { __esModule: true, default: 'connection-shell' }, './ProjectEntryIdentityStatus.tsx': { __esModule: true, default: 'identity-status' },
     '@mioon/ui/components/button': { Button: 'Button' }, '@mioon/ui/components/workbench-icons': { WorkbenchIcon: 'WorkbenchIcon' },
   }, { window: page, document });
@@ -378,18 +379,27 @@ async function settingsPanel(onClose: (page: SettingsPage) => Promise<boolean>, 
   let requests = 0;
   const bridge = { subscribe: (listener: (next: ProjectWindowContext) => void) => {receive = listener; return () => {receive = () => {};};}, closeSettings: () => { requests++; return onClose(page); } };
   const render = () => {
-    h.begin(); const tree = Component({ context: settings, bridge, rpc() {}, contractChecks: {readDirectory: async () => {if (directory instanceof Error) throw directory; return directory;}}, renderSettings(next: SettingsRenderProps) {
+    h.begin(); const tree = Component({ context: settings, bridge, contractChecks: {
+      readDirectory: () => assert.fail('The desktop settings window does not read the project catalog'),
+      readIdentity: async (input: {readonly signal: AbortSignal}) => {
+        identityReads++;
+        if (options.readIdentity) return options.readIdentity(input);
+        if (workspaceIdentity instanceof Error) throw workspaceIdentity;
+        return workspaceIdentity;
+      },
+    }, renderSettings(next: SettingsRenderProps) {
       props = next; owner ??= next.registry.register('retained-form'); owner.update({ dirty: true, busy: false, blocked: false, version: 1 }); return marker;
     } }); h.flush(); return tree;
   };
-  render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
-  assert.ok(props); assert.ok(nodes(tree).includes(marker));
+  const initial = render(); await new Promise(resolve => setImmediate(resolve)); const tree = render();
+  if (!options.readIdentity) {assert.ok(props); assert.ok(nodes(tree).includes(marker));}
   return { render, page, marker, input, password, observation,
-    identity, directory(value: unknown) {directory = value;},
+    identity, workspaceIdentity(value: unknown) {workspaceIdentity = value;},
     reportForm(state: Parameters<NonNullable<typeof owner>['update']>[0]) {assert.ok(owner); owner.update(state);},
     receive(next: ProjectWindowContext) {settings = next; receive(next);},
     setLocale(next: typeof locale) {locale = next;},
     get context() {return settings;}, get props() {assert.ok(props); return props;}, get stateUpdates() {return h.updates;},
+    get identityReads() {return identityReads;}, initial,
     button: find(tree, 'native-settings-panel-close').props.onClick as () => void, dispose: h.dispose, get requests() { return requests; } };
 }
 
@@ -457,20 +467,38 @@ test('SettingsRoot releases an outstanding native observation pause when its doc
 
 test('SettingsRoot identity failures retain the exact secret input and recovery owners while a changed instance stays inert', async () => {
   const f = await settingsPanel(async () => false), retained = f.props.registry.capture();
-  f.directory(Error('private disconnected endpoint')); await f.identity.refresh(); let tree = f.render();
+  f.workspaceIdentity(Error('private disconnected endpoint')); await f.identity.refresh(); let tree = f.render();
   assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, true);
   assert.deepEqual(f.props.registry.capture(), retained); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh(); tree = f.render();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(900)}); await f.identity.refresh(); tree = f.render();
   assert.equal(nodes(tree).find(node => nodes(node.props.children).includes(f.marker) && Object.hasOwn(node.props, 'inert'))?.props.inert, false);
   const admission = f.page.__mioonNativeCloseAdmission!, ticket = admission.inspect();
   f.reportForm({dirty: true, busy: false, blocked: true, version: 2}); const unresolved = f.props.registry.capture();
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(901), registered: []}); await f.identity.refresh(); tree = f.render();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(901)}); await f.identity.refresh(); tree = f.render();
   assert.equal(f.identity.getState().identityBlocked, true); assert.equal(f.identity.getVerifiedScope(), null);
   assert.equal(find(tree, 'retained-native-key'), f.input); assert.equal(f.password.value, 'SYNTHETIC_RETAINED_NATIVE_KEY');
   assert.deepEqual(f.props.registry.capture(), unresolved); assert.equal(admission.commit(ticket.token, {discardDirty: true, allowDrainFailure: false, expiresAt: Date.now() + 1000}), false);
   assert.equal(admission.inspect('reload', f.page.location.href).disposition, 'blocked');
-  f.directory({version: 1, appLibraryScope: 'a'.repeat(64), instanceId: id(900), registered: []}); await f.identity.refresh();
+  f.workspaceIdentity({appLibraryScope: 'a'.repeat(64), instanceId: id(900)}); await f.identity.refresh();
   assert.equal(f.identity.getVerifiedScope(), null); assert.equal(find(f.render(), 'retained-native-key'), f.input); f.dispose();
+});
+
+test('native Settings starts and switches pages using only workspace identity', async () => {
+  const received = Promise.withResolvers<unknown>();
+  const f = await settingsPanel(async () => false, {initialSlot: 'general', readIdentity: () => received.promise});
+  assert.equal(nodes(f.initial).includes(f.marker), false);
+  assert.equal(f.identity.getState().phase, 'loading');
+  assert.equal(f.identityReads, 1);
+  received.resolve({appLibraryScope: 'a'.repeat(64), instanceId: id(900)});
+  await f.identity.discover();
+  assert.ok(nodes(f.render()).includes(f.marker));
+  assert.equal(f.props.page, 'general');
+  f.reportForm({dirty: false, busy: false, blocked: false, version: 2});
+  f.props.onPage('workspace'); await new Promise(setImmediate);
+  assert.ok(nodes(f.render()).includes(f.marker));
+  assert.equal(f.props.page, 'workspace');
+  assert.equal(f.identityReads, 1);
+  f.dispose();
 });
 
 test('native close requests coalesce while pending and rejection keeps the same dirty settings form without fallback', async () => {

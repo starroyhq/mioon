@@ -5,6 +5,8 @@ const requestTimeoutMs = 2_000;
 const maxPendingSamples = 8;
 const requestType = 'settings-event-loop:sample';
 const replyType = 'settings-event-loop:result';
+const timedOut = Symbol('Settings event loop sample timed out');
+type SampleResult = number | null | typeof timedOut;
 
 interface SampleRequest { type: typeof requestType; sampleId: number; fromMs: number; toMs: number }
 interface SampleReply { type: typeof replyType; sampleId: number; maxDelayMs: number | null }
@@ -85,35 +87,58 @@ export function createSettingsEventLoopMonitor() {
 }
 
 export function createSettingsEventLoopClient(send: (request: SampleRequest) => void, isCurrent: () => boolean) {
-  const pending = new Map<number, {finish: (delay: number | null) => void; rangeMs: number; deadlineMs: number}>();
+  const pending = new Map<number, {finish: (result: SampleResult) => void; rangeMs: number; deadlineMs: number}>();
+  // A burst of page reads must leave room for open/close evidence. Both
+  // classes have their own limit, including requests waiting for a retry.
+  const pendingCounts = {ordinary: 0, recoverable: 0};
   let nextId = 0, closed = false;
 
+  function request(fromMs: number, toMs: number, timeoutMs: number, signal?: AbortSignal): Promise<SampleResult> {
+    if (closed || !isCurrent() || signal?.aborted || timeoutMs <= 0) return Promise.resolve(null);
+    const sampleId = ++nextId;
+    return new Promise(resolve => {
+      const deadlineMs = performance.now() + timeoutMs;
+      const abort = () => finish(null);
+      const finish = (result: SampleResult) => {
+        pending.delete(sampleId);
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish(timedOut), timeoutMs);
+      timer.unref();
+      pending.set(sampleId, {finish, rangeMs: toMs - fromMs, deadlineMs});
+      signal?.addEventListener('abort', abort, {once: true});
+      try { send({type: requestType, sampleId, fromMs, toMs}); }
+      catch { finish(null); }
+    });
+  }
+
   return {
-    sample(fromMs: number, toMs: number, signal?: AbortSignal): Promise<number | null> {
-      if (closed || !isCurrent() || signal?.aborted || !validRange(fromMs, toMs) || pending.size >= maxPendingSamples) return Promise.resolve(null);
-      const sampleId = ++nextId;
-      return new Promise(resolve => {
-        const deadlineMs = performance.now() + requestTimeoutMs;
-        const abort = () => finish(null);
-        const finish = (delay: number | null) => {
-          pending.delete(sampleId);
-          clearTimeout(timer);
-          signal?.removeEventListener('abort', abort);
-          resolve(delay);
-        };
-        const timer = setTimeout(abort, requestTimeoutMs);
-        timer.unref();
-        pending.set(sampleId, {finish, rangeMs: toMs - fromMs, deadlineMs});
-        signal?.addEventListener('abort', abort, {once: true});
-        try { send({type: requestType, sampleId, fromMs, toMs}); }
-        catch { finish(null); }
-      });
+    async sample(fromMs: number, toMs: number, signal?: AbortSignal, onTimeout?: () => void): Promise<number | null> {
+      if (!validRange(fromMs, toMs)) return null;
+      const kind = onTimeout ? 'recoverable' : 'ordinary';
+      if (pendingCounts[kind] >= maxPendingSamples) return null;
+      const wallDeadline = fromMs + retainedMs;
+      const monotonicDeadline = performance.now() + (wallDeadline - Date.now());
+      const remaining = () => Math.floor(Math.min(wallDeadline - Date.now(), monotonicDeadline - performance.now()));
+      pendingCounts[kind]++;
+      try {
+        let result = await request(fromMs, toMs, Math.min(requestTimeoutMs, remaining()), signal);
+        if (result === timedOut && onTimeout && !closed && isCurrent() && !signal?.aborted && remaining() > 0) {
+          try { onTimeout(); } catch { /* Diagnostics cannot interrupt the utility client. */ }
+          // After the normal timeout, send one new correlated request and
+          // allow its reply for the rest of this range's retention period.
+          result = await request(fromMs, toMs, remaining(), signal);
+        }
+        return result === timedOut ? null : result;
+      } finally { pendingCounts[kind]--; }
     },
     handle(message: unknown): boolean {
       if (!isSampleReply(message)) return false;
       const request = pending.get(message.sampleId);
       if (request && isCurrent() && (message.maxDelayMs === null || message.maxDelayMs <= request.rangeMs)) {
-        request.finish(performance.now() < request.deadlineMs ? message.maxDelayMs : null);
+        request.finish(performance.now() < request.deadlineMs ? message.maxDelayMs : timedOut);
       }
       return true;
     },
