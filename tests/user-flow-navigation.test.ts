@@ -4,6 +4,7 @@ import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import {supportsCanvasEditing} from '../apps/web/src/canvas-selection.ts';
 import { createClipDraftController } from '../apps/web/src/clip-draft-state.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
@@ -40,7 +41,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     showTasks: dock === 'tasks', showDelivery: dock === 'delivery', page, mobile: 'canvas', view: { activeMode: mode,
     canvas: { selectedId: selectedShotId, inspectorTab: 'settings', highlightedVersionId: null },
     editing: { selectedClipId: key.clipId, quickAssetId, playhead: 12, previewKind: 'timeline' } } };
-  const env = { msg, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
+  const env = { msg, supportsCanvasEditing, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }),
     nativeWindow: null,
     selectedId: selectedShotId, selectedClipId: key.clipId, workspaceMode: mode, quickAssetId,
     currentProject: { current: key.projectId }, navigationEpoch: { current: 5 }, panelIntent: { current: 2 },
