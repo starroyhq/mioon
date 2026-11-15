@@ -1,9 +1,10 @@
 import type {ProjectEntriesResponse, ProjectEntryIdentity} from '../../../packages/contracts/src/project-entry.ts';
 import {ProjectEntryDirectoryError} from './project-entry-directory-client.ts';
 import {createProjectEntryDirectoryController, createProjectEntryIdentityReader} from './project-entry-directory-state.ts';
-import type {ProjectEntryDirectoryReadPort, ProjectEntryDirectoryRefreshOptions, ProjectEntryDirectoryState} from './project-entry-directory-state.ts';
+import type {ProjectEntryDirectoryFailure, ProjectEntryDirectoryReadPort, ProjectEntryDirectoryRefreshOptions, ProjectEntryDirectoryState} from './project-entry-directory-state.ts';
 
-export interface ProjectEntryIdentityFailure {readonly code: string; readonly status?: number}
+type ProjectEntryIdentityFailure = ProjectEntryDirectoryFailure | {readonly code: 'PROJECT_ENTRY_STALE_INSTANCE'; readonly status: 409};
+
 export interface ProjectEntryIdentityState<T extends ProjectEntryIdentity = ProjectEntriesResponse> {
   readonly phase: 'idle' | 'loading' | 'ready' | 'error' | 'blocked';
   readonly snapshot: T | null;
@@ -93,7 +94,10 @@ export async function readProjectEntryIdentity(owner: ProjectEntryIdentityOwner,
   owner.assertIdentity();
   if (!value) {
     const failure = owner.getState().failure;
-    if (options?.background) throw new ProjectEntryDirectoryError(failure?.code ?? 'BACKEND_UNAVAILABLE', failure?.status);
+    if (options?.background) {
+      const code = failure?.code === 'PROJECT_ENTRY_STALE_INSTANCE' ? 'PROJECT_ENTRY_SCOPE_MISMATCH' : failure?.code;
+      throw new ProjectEntryDirectoryError(code ?? 'BACKEND_UNAVAILABLE', failure?.status);
+    }
     throw new ProjectEntryDirectoryError(failure?.code === 'UNAUTHORIZED' ? 'UNAUTHORIZED' : failure?.code === 'ORIGIN_REJECTED' ? 'ORIGIN_REJECTED' : 'PROJECT_ENTRY_UNAVAILABLE', failure?.status);
   }
   return value;
