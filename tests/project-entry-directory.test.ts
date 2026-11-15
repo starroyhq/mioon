@@ -4,7 +4,7 @@ import {PROJECT_ENTRY_LIMITS} from '../packages/contracts/src/project-entry.ts';
 import type {ProjectEntriesResponse, ProjectEntryAvailability} from '../packages/contracts/src/project-entry.ts';
 import {PROJECT_INVALID_REASONS} from '../packages/contracts/src/project-file.ts';
 import {createProjectEntryDirectoryClient, ProjectEntryDirectoryError, readBoundedJsonResponse} from '../apps/web/src/project-entry-directory-client.ts';
-import {createProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
+import {createProjectEntryDirectoryController, pollBusyProjectEntries} from '../apps/web/src/project-entry-directory-state.ts';
 
 const scope = 'a'.repeat(64), otherScope = 'b'.repeat(64);
 const id = (value: number): string => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -24,6 +24,90 @@ function deferred<T>() {
   const promise = new Promise<T>((accept, fail) => {resolve = accept; reject = fail;});
   return {promise, resolve, reject};
 }
+
+test('a visible busy catalog polls in sequence, keeps its cards during a transient failure, and stops once clear', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const reply = deferred<unknown>();
+  let reads = 0;
+  const busy = snapshot(), ready: ProjectEntriesResponse = {...busy, registered: busy.registered.filter(entry => entry.availability.state !== 'busy')};
+  const controller = createProjectEntryDirectoryController({read: async ({background}) => {
+    switch (++reads) {
+      case 1: assert.equal(background, undefined); return busy;
+      case 2: assert.equal(background, true); throw new ProjectEntryDirectoryError('TIMEOUT');
+      case 3: assert.equal(background, true); return reply.promise;
+      default: assert.fail('A cleared catalog should stop polling');
+    }
+  }});
+  controller.activate();
+  assert.equal(await controller.refresh(), true);
+  const original = controller.getState().snapshot;
+  const stop = pollBusyProjectEntries(
+    () => controller.getState().snapshot?.registered.some(entry => entry.availability.state === 'busy') === true,
+    async () => {await controller.refresh({background: true});},
+  );
+  t.after(() => {stop(); controller.dispose();});
+  const flush = () => new Promise<void>(setImmediate);
+  t.mock.timers.tick(1_999);
+  assert.equal(reads, 1);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(controller.getState().snapshot, original);
+  t.mock.timers.tick(2_000);
+  assert.equal(reads, 3);
+  assert.equal(controller.getState().phase, 'ready');
+  assert.equal(controller.getState().snapshot, original);
+  t.mock.timers.tick(10_000);
+  assert.equal(reads, 3, 'A pending read owns the only poll');
+  reply.resolve(ready);
+  await flush();
+  assert.deepEqual(controller.getState().snapshot, ready);
+  t.mock.timers.tick(10_000);
+  assert.equal(reads, 3);
+});
+
+test('retiring a catalog cancels its busy poll and ignores a late background result', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const requests: Array<{signal: AbortSignal; reply: ReturnType<typeof deferred<unknown>>}> = [];
+  const controller = createProjectEntryDirectoryController({read: ({signal}) => {
+    const reply = deferred<unknown>(); requests.push({signal, reply}); return reply.promise;
+  }});
+  controller.activate();
+  const first = controller.refresh();
+  requests[0]!.reply.resolve(snapshot());
+  assert.equal(await first, true);
+  const stop = pollBusyProjectEntries(() => controller.getState().phase === 'ready',
+    async () => {await controller.refresh({background: true});});
+  t.mock.timers.tick(2_000);
+  assert.equal(requests.length, 2);
+  stop();
+  controller.dispose();
+  assert.equal(requests[1]!.signal.aborted, true);
+  requests[1]!.reply.resolve(snapshot(id(2), otherScope));
+  await new Promise<void>(setImmediate);
+  t.mock.timers.tick(10_000);
+  assert.equal(requests.length, 2);
+  assert.equal(controller.getState().phase, 'idle');
+  assert.equal(controller.getState().snapshot, null);
+});
+
+test('a background read still clears directory rows after confirmed auth or scope loss', async () => {
+  for (const error of [new ProjectEntryDirectoryError('UNAUTHORIZED', 401), new ProjectEntryDirectoryError('PROJECT_ENTRY_SCOPE_MISMATCH', 409)]) {
+    let fail = false;
+    const controller = createProjectEntryDirectoryController({read: async () => {
+      if (fail) throw error;
+      return snapshot();
+    }});
+    controller.activate();
+    assert.equal(await controller.refresh(), true);
+    fail = true;
+    assert.equal(await controller.refresh({background: true}), false);
+    assert.equal(controller.getState().snapshot, null);
+    assert.equal(controller.getState().phase, error.status === 409 ? 'blocked' : 'error');
+    assert.equal(controller.getState().error?.code, error.code);
+    controller.dispose();
+  }
+});
 
 test('browser directory reads only the fixed same-origin URL and preserves every availability and nullable summary', async () => {
   const calls: Array<{url: string; options: RequestInit}> = [], value = snapshot();
