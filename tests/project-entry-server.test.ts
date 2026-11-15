@@ -432,9 +432,10 @@ test('a failed or timed out catalog scan serves registration metadata and admits
 });
 
 test('inconclusive inspection preserves a known lock or shows the project as busy', async t => {
-  let phase: 'locked' | 'changed' | 'clean' = 'locked';
+  let phase: 'locked' | 'changed' | 'unavailable' | 'clean' = 'locked';
   const f = await fixture(t, 'production', {projectCatalogClient: {
     async scan(inputs) {
+      if (phase === 'unavailable') throw new Error('Synthetic scanner is recovering');
       return inputs.map(input => {
         if (phase === 'changed') return {recovery: 'changed'};
         if (phase === 'locked' && input.file === f.a.projectFile) return {recovery: {state: 'locked'}};
@@ -447,6 +448,8 @@ test('inconclusive inspection preserves a known lock or shows the project as bus
   assert.deepEqual(states(await f.catalog()), ['locked', 'available']);
   phase = 'changed';
   assert.deepEqual(states(await f.catalog()), ['locked', 'busy']);
+  phase = 'unavailable';
+  assert.deepEqual(states(await f.catalog()), ['locked', 'busy'], 'an unsuccessful recheck does not clear checking');
   phase = 'clean';
   assert.deepEqual(states(await f.catalog()), ['available', 'available']);
 });

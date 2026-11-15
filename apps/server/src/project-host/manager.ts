@@ -689,13 +689,13 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   function recordRecovery(registration: RecentProject, observed: CatalogRecovery | undefined, inspect?: InspectCatalog): void {
     const {projectId} = registration;
     const previous = recoveries.get(projectId);
-    const wasLocked = previous?.result.state === 'locked' && sameRegistration(previous.registration, registration);
+    const priorState = previous && sameRegistration(previous.registration, registration) ? previous.result.state : undefined;
     if (!observed) {
-      if (!wasLocked) recoveries.delete(projectId);
+      if (priorState !== 'locked' && priorState !== 'busy') recoveries.delete(projectId);
       return;
     }
     if ('pending' in observed) {
-      if (!wasLocked) recoveries.set(projectId, {registration, result: {state: 'busy'}});
+      if (priorState !== 'locked') recoveries.set(projectId, {registration, result: {state: 'busy'}});
       return;
     }
     if ('error' in observed) {
