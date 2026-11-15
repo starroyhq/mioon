@@ -1,4 +1,5 @@
 import {schemas} from '@mioon/contracts';
+import {readGenerationAspectRejection} from '../../../contracts/src/generation-aspect.ts';
 import {parseVideoBinding,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import {AGENT_TASK_QUESTION_LIMITS,agentTaskQuestionSchema,AGENT_TASK_CONTINUITY_LIMITS,agentTaskContinuityReportSchema} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -17,11 +18,12 @@ export interface AgentTaskParameterFeedback {
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value));
 const placeholder='00000000-0000-4000-8000-000000000000';
-const rootFields=['shotId','expectedRevision','providerId','model','connectionId','configurationRevision','modelEntryId','parameters','videoInput','subjectVersionId'] as const;
+const rootFields=['shotId','expectedRevision','providerId','model','connectionId','configurationRevision','modelEntryId','aspectSource','parameters','videoInput','subjectVersionId'] as const;
 const parameterFields=['scenario','delayMs','seed','resolution','generateAudio','durationSeconds','aspectRatio','promptExtend','watermark'] as const;
 const wanFields=['durationSeconds','aspectRatio','promptExtend','watermark'] as const;
 const fieldPaths=new Set<string>([
   ...rootFields,...parameterFields.map(field=>`parameters.${field}`),
+  'aspectSource.kind','aspectSource.expectedTimelineRevision','aspectSource.aspectRatio',
   'videoInput.version','videoInput.mode','videoInput.images','videoInput.audios','videoInput.prompt',
 ]);
 function safeField(path:readonly (string|number)[]):string {
@@ -29,7 +31,7 @@ function safeField(path:readonly (string|number)[]):string {
   if(fieldPaths.has(joined))return joined;
   if(path[0]==='videoInput'&&(path[1]==='images'&&Number(path[2])<30||path[1]==='audios'&&Number(path[2])<10)&&Number.isInteger(path[2])&&Number(path[2])>=0&&
     (path.length===3||path.length===4&&['role','assetId'].includes(String(path[3]))))return joined;
-  return path[0]==='parameters'?'parameters':path[0]==='videoInput'?'videoInput':'input';
+  return path[0]==='parameters'||path[0]==='videoInput'||path[0]==='aspectSource'?path[0]:'input';
 }
 /** Recompute capabilities from the exact selected, validated local binding.
  * Discovery messages/inputProfiles and credential data never become feedback. */
@@ -88,12 +90,33 @@ export function agentTaskParameterFeedback({operation,input,capabilities}:{opera
   const descriptions:Record<ParameterIssueReason,string>={required:'缺少必填字段',invalid_type:'字段类型不符',invalid_value:'字段值或组合无效',unknown_field:'未声明的字段',unsupported_parameter:'所选模型不支持此参数'};
   const messages=[`本次生成参数未通过本地校验：${issues.map(issue=>`${issue.field}（${descriptions[issue.reason]}）`).join('；')}。`];
   const generationLevel=Boolean(profile?.parameters.durationSeconds);
-  if(nonWan&&issues.some(issue=>wanFields.some(field=>issue.field===`parameters.${field}`)))messages.push(ark?'promptExtend、watermark 是 Wan 专属生成参数；durationSeconds、aspectRatio 只适用于支持本次生成时长的精确模型（如 Seedance 2.5）。请从本次 parameters 中移除所选模型不支持的字段。':'durationSeconds、aspectRatio、promptExtend、watermark 是 Wan 专属生成参数，请从本次 parameters 中移除。');
-  if(nonWan&&generationLevel)messages.push('提示词取自已保存镜头；时长和画幅可用本次 parameters.durationSeconds、parameters.aspectRatio 指定，只作用于这次生成，不修改镜头。');
-  else if(nonWan)messages.push('画幅、时长和提示词取自已保存镜头；需修改时先读取镜头当前版本，再使用 shot.update 的 patch.aspectRatio、patch.duration、patch.prompt，随后以新镜头版本提交。');
-  if(supported)messages.push(`所选精确模型支持 parameters：${supported.parameters.join('、')||'无'}；镜头画幅：${supported.aspectRatios.join('、')}；镜头时长（秒）：${supported.durationsSeconds.join('、')}；时长与分辨率组合：${supported.durationResolutionMap.map(pair=>`${pair.duration.join('/')} 秒 → ${pair.resolution.join('/')}`).join('；')||'当前连接没有可用组合，请重新读取连接配置'}。`);
+  const hasAspectSource=Object.hasOwn(input,'aspectSource');
+  if(hasAspectSource){
+    messages.push('用 aspectSource 选择本次画幅。project 需要先读 timeline.format.get，再填写当前 expectedTimelineRevision 和 aspectRatio；shot 沿用已保存的镜头画幅；explicit 只指定本次画幅。');
+    if(issues.some(issue=>issue.reason==='unsupported_parameter'))messages.push('请移除 parameters 中所选模型不支持的字段。');
+  }else{
+    if(nonWan&&issues.some(issue=>wanFields.some(field=>issue.field===`parameters.${field}`)))messages.push(ark?'promptExtend、watermark 是 Wan 专属生成参数；durationSeconds、aspectRatio 只适用于支持本次生成时长的精确模型（如 Seedance 2.5）。请从本次 parameters 中移除所选模型不支持的字段。':'durationSeconds、aspectRatio、promptExtend、watermark 是 Wan 专属生成参数，请从本次 parameters 中移除。');
+    if(nonWan&&generationLevel)messages.push('提示词取自已保存镜头；时长和画幅可用本次 parameters.durationSeconds、parameters.aspectRatio 指定，只作用于这次生成，不修改镜头。');
+    else if(nonWan)messages.push('画幅、时长和提示词取自已保存镜头；需修改时先读取镜头当前版本，再使用 shot.update 的 patch.aspectRatio、patch.duration、patch.prompt，随后以新镜头版本提交。');
+  }
+  if(supported)messages.push(`所选精确模型支持 parameters：${supported.parameters.join('、')||'无'}；${hasAspectSource?'可用画幅':'镜头画幅'}：${supported.aspectRatios.join('、')}；镜头时长（秒）：${supported.durationsSeconds.join('、')}；时长与分辨率组合：${supported.durationResolutionMap.map(pair=>`${pair.duration.join('/')} 秒 → ${pair.resolution.join('/')}`).join('；')||'当前连接没有可用组合，请重新读取连接配置'}。`);
   messages.push('此反馈不授权付费，也不代表任务已提交；请修正参数并遵循正常确认流程。');
   return {message:messages.join(' '),issues,...(supported?{supported}:{})};
+}
+
+/** Only the owned request's proven admission rejection can advise Mio on a
+ * new confirmation. Never project the exception or provider details. */
+export function agentTaskGenerationAspectFeedback({operation,input,error,projectId}:{operation:string;input:unknown;error:unknown;projectId:string}){
+  if(operation!=='generation.submit')return null;
+  const rejected=readGenerationAspectRejection(error,input,projectId);
+  if(!rejected)return null;
+  const outcome={...rejected,mutationOutcome:'not_applied' as const};
+  if(rejected.code==='PROJECT_ASPECT_CHANGED')return {...outcome,message:`本次生成未提交。项目画幅现在是 ${rejected.projectAspectRatio}，时间线修订为 ${rejected.timelineRevision}。请重新读取 timeline.format.get，向用户确认后再提交。`};
+  const aspect=rejected.code==='PROJECT_ASPECT_UNSUPPORTED'?`项目画幅 ${rejected.projectAspectRatio}`:`本次画幅 ${rejected.aspectRatio}`;
+  const choices=rejected.supportedAspectRatios.length
+    ?`可用画幅：${rejected.supportedAspectRatios.join('、')}。请让用户明确选择，再用 aspectSource.kind 为 explicit 发起新的生成确认。`
+    :'这个模型没有可用画幅，请让用户确认是否选择其他模型。';
+  return {...outcome,message:`本次生成未提交。所选模型不支持${aspect}。${choices}`};
 }
 const questionFields=new Set(['question','options','multiple','allowOther',...Array.from({length:AGENT_TASK_QUESTION_LIMITS.options},(_,index)=>[`options.${index}`,`options.${index}.label`,`options.${index}.description`]).flat()]);
 /** Advisory feedback for Mio's own question (C3): which fields broke the

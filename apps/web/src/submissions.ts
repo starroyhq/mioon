@@ -2,6 +2,7 @@ import { isLocale, message as localizedMessage } from '../../../packages/i18n/sr
 import type { DisplayMessage, Locale } from '../../../packages/i18n/src/index.ts';
 import { pendingStorageKey, samePendingIntent, removeExactPending } from './pending-request.ts';
 import { migratePendingStorage } from './storage-migration.ts';
+import { isGenerationAspectResponse } from '../../../packages/contracts/src/generation-aspect.ts';
 import { LOCAL_MUTATION_OPERATIONS, TIMELINE_MUTATION_OPERATIONS, isSubjectReference, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
 // A lost HTTP response is not proof that the server rejected a paid request.
 // Preserve the exact operation and input until a verified response or matching
@@ -93,9 +94,11 @@ export const isSubjectRetryPending=(entry: PendingEntry,jobs: readonly unknown[]
 // An obsolete callback must never create a replacement receipt or change owners.
 export function prepareRequestReplay(entry: PendingEntry): PendingEntry {
   const stored = readPending(entry.projectId, entry.key);
-  if (!stored || stored.operation !== entry.operation || stored.input.projectId !== entry.projectId ||
-    entry.input.projectId !== entry.projectId || canonical(stored.input) !== canonical(entry.input))
+  const aspectGeneration = entry.operation === 'generation.submit' && Object.hasOwn(entry.input, 'aspectSource');
+  if (!stored || stored.operation !== entry.operation || canonical(stored.input) !== canonical(entry.input) ||
+    (entry.input.projectId !== entry.projectId && !(aspectGeneration && !Object.hasOwn(entry.input, 'projectId'))))
     throw pendingError('原请求记录已变化或不再可用，已阻止恢复。请重新打开原项目的任务面板核对。', localizedMessage('tasks.localError.replayUnavailable'), 'MUTATION_REPLAY_MISMATCH');
+  if (aspectGeneration) assertSubjectPending(stored);
   return stored;
 }
 export function clearPending(projectId: string,key: string,expected?: PendingEntry|null): boolean {
@@ -155,6 +158,11 @@ export function reconcilePending(projectId: string,data: PendingData): void {
       if (matches.length === 1 && isSubjectReference(entry.expectedSubjectReference) &&
         isSubjectGenerationResponse(entry.operation, entry.input, matches[0], { projectId, subjectReference: entry.expectedSubjectReference }))
         clearPending(projectId, entry.key, entry);
+      continue;
+    }
+    if (entry.operation === 'generation.submit' && Object.hasOwn(entry.input, 'aspectSource')) {
+      const matches = rows(data.jobs).filter(record => property(record,'requestId') === entry.input.requestId);
+      if (matches.length === 1 && isGenerationAspectResponse(entry.input, matches[0], projectId)) clearPending(projectId, entry.key, entry);
       continue;
     }
     // Request IDs are scoped by operation on the server. A coincident job ID

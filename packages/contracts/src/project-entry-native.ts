@@ -52,7 +52,7 @@ export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInp
 export interface ProjectEntryControlPort {
   readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
-  listRecent(): ProjectEntriesResponse;
+  listRecent(): Promise<ProjectEntriesResponse>;
   create(input: ProjectEntryCreateInput): Promise<RecentProject>;
   openPath(input: ProjectEntryOpenPathInput): Promise<ProjectEntryWindow>;
   acquire(input: ProjectEntryAcquireInput): Promise<ProjectEntryWindow>;

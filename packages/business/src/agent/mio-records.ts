@@ -34,6 +34,9 @@ function encoded(value: unknown, limit = ROW_BYTES): string {
   if (Buffer.byteLength(result, 'utf8') > limit) fail('AGENT_TASK_STORAGE_LIMIT');
   return result;
 }
+export function assertMioChangeFits(value: AgentTaskChange): void {
+  encoded(validated(agentTaskChangeSchema,value));
+}
 function decoded(value: unknown): AgentTaskJson {
   if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > ROW_BYTES) return fail('AGENT_TASK_STORAGE_CORRUPT');
   let parsed: unknown;

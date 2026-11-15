@@ -30,7 +30,7 @@ const examples = path.join(web, 'project-examples');
 verifyProjectExampleResources(examples);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-for (const name of ['main', 'backend']) {
+for (const name of ['main', 'backend', 'project-catalog']) {
   await build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
     bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
     plugins:[localRequireBundlePlugin(root)],

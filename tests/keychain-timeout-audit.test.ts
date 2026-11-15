@@ -74,10 +74,10 @@ test('historical 9e synchronous defect still reproduces its original seven synth
 
 test('historical Keychain fixture is outside production staging and package allowlists', async () => {
   for (const channel of ['development', 'production']) {
-    assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
+    assert.deepEqual(builderConfig(channel).files, ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*']);
   }
   const build = await readFile(path.join(root, 'apps/desktop/scripts/build.ts'), 'utf8');
-  assert.match(build, /for \(const name of \['main', 'backend'\]\)/);
+  assert.match(build, /for \(const name of \['main', 'backend', 'project-catalog'\]\)/);
   assert.doesNotMatch(build, /keychain-sync-9e9598d|tests\/fixtures/);
   for (const name of ['main', 'secret-store', 'image-secret-store', 'image-secret-broker', 'secret-broker']) {
     const source = await readFile(path.join(root, `apps/desktop/src/${name}.ts`), 'utf8');

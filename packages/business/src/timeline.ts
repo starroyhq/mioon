@@ -6,7 +6,7 @@ import {bindAgentTaskJobInside,taskEffectOrigin} from './agent/task-effects-v2.t
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './store-runtime.ts';
-import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace} from './store-capabilities.ts';
+import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
@@ -38,7 +38,7 @@ import {readSceneSplitCuts} from './scene-history.ts';
 import type {TimelineShotAppendPlan,TimelineSourceRefreshPlan} from './timeline-shot-sync.ts';
 import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
-import type {TimelineClipRecord,TimelineRecord,TimelineSubtitlesRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
+import type {TimelineClipRecord,TimelineRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary,TimelineRecoveryInput,TimelineRejectionState} from './timeline-recovery.ts';
 import type {ReplacementInput} from './timeline-replacement.ts';
 import {isProjectStore} from './project-file/store.ts';
@@ -127,6 +127,16 @@ function restoredTimelineJson(db: DatabaseSync, raw: string, value: TimelineReco
  return raw;
 }
 
+/** Mio's frame undo owns the subtitle basis but only touches cues that were
+ * changed by the original step. The preview and compensator share this check. */
+export function restoreTimelineFrameSubtitles(timeline: TimelineRecord,profile: unknown): void {
+ if(profile===null){delete timeline.subtitles;return;}
+ if(!profile||typeof profile!=='object'||!timeline.subtitles)invalidTimeline();
+ const {profileId,basisPresetId}=profile as {profileId:unknown;basisPresetId?:unknown};
+ if(typeof profileId!=='string'||basisPresetId!==undefined&&typeof basisPresetId!=='string')invalidTimeline();
+ timeline.subtitles={profileId,...(basisPresetId===undefined?{}:{basisPresetId}),cues:timeline.subtitles.cues};
+}
+
 /** Version restore owns the existing transaction; it shares the same source,
  * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
 export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
@@ -172,8 +182,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const {db,put,tx}=store;
  // The trusted host opens the actual project format. No RPC input can opt a
  // format-3 project into writing the new geometry.
- const format4=()=>isProjectStore(store)&&db.prepare('PRAGMA project.user_version').get()?.user_version===4;
- const frameTransactionEnabled=()=>format4()&&!taskEffectOrigin();
+ const format4=()=>usesTimelineFrameTransaction(db);
  function find(projectId: string): TimelineRecord|null{
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
   if(!row)return null;
@@ -290,6 +299,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
    // Check explicit input before legacy ensure() can write an absent timeline.
    const current=submittedRect===undefined?undefined:boundary.read({legacyMissingProject:true});
+   // In format 4 a rectangle saved for a stale revision may fit its original
+   // frame but not the current frame. Give the caller a proven CAS rejection
+   // before validating the rectangle against the newer dimensions.
+   if(current&&current.revision!==input.expectedRevision&&format4())check(current,input.expectedRevision);
    if(operation==='timeline.clip.update'&&current?.clips.find(item=>item.id===input.clipId)?.layout){
     editable(current,input);
     throw new AppError('CLIP_LAYOUT_RECT_READ_ONLY','相对布局的片段请通过片段变换调整画面',409,{clipId:input.clipId});
@@ -392,14 +405,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const handlers: Record<string, (input: TimelineMutationInput,options?: unknown)=>unknown>={
   // Handlers share one aggregate transaction and receipt boundary.
   ...(createSubtitleMutations(mutate) as unknown as Record<string, (input: TimelineMutationInput,options?: unknown)=>unknown>),
-  'timeline.format.get':(input: TimelineMutationInput)=>getTimelineFormat(db,input,{store,frameTransaction:frameTransactionEnabled()}),
+  'timeline.format.get':(input: TimelineMutationInput)=>getTimelineFormat(db,input,{store,frameTransaction:format4()}),
   'timeline.format.set':(input: TimelineMutationInput)=>transaction('timeline.format.set',input,({boundary,requestHash,write})=>{
    const context=readTimelineFormatOwner(db,input);
    check(context.project,input.expectedProjectRevision as number);
    const revision=context.timeline?.revision??0;
    if(revision!==input.expectedRevision)throw new AppError('REVISION_CONFLICT','时间线已有新版本，请重新读取后再修改',409,{expectedRevision:input.expectedRevision,currentRevision:revision});
    if(revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
-   const frameTransaction=frameTransactionEnabled();
+   const frameTransaction=format4();
    if(!frameTransaction&&!timelineFormatSchemas['timeline.format.set'].safeParse(input).success)
     throw new AppError('TIMELINE_FORMAT_LOCKED','此项目的画框修改需要格式 4',409);
    assertTimelineFormatEligible(readTimelineFormatState(db,input,{admission:true,context,store,frameTransaction}),frameTransaction);
@@ -426,6 +439,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
      throw new AppError('TIMELINE_FORMAT_SNAPSHOT_LIMIT','修改画框会超过时间线保存上限',409);
    }
    boundary.validate(timeline);
+   if(frameTransaction)taskEffectOrigin()?.beforeTimelineFrameWrite?.(timeline);
    write();put('timelines',timeline);
    if(frameTransaction)recordEdit('timeline.format.set',timeline,before);
    return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
@@ -574,8 +588,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
  const compensateAgentTargetsInside=(projectId:string,targets:readonly AgentTimelineCompensation[]):unknown=>{
   if(!db.isTransaction)throw Error('Agent compensation requires its control transaction');
   const current=find(projectId);if(!current)throw new AppError('REVISION_CONFLICT','时间线已改变',409);
+  if(current.revision===Number.MAX_SAFE_INTEGER)throw new AppError('TIMELINE_REVISION_LIMIT','时间线版本已达到安全上限',409);
   const input={projectId,requestId:`agent-compensation-${randomUUID()}`,expectedRevision:current.revision,patch:{}};
   const boundary=createTimelineRecoveryBoundary(db,input),timeline=boundary.read()!,before=snapshot(timeline);
+  const frame=targets.find(target=>target.kind==='timeline'&&target.before&&Object.hasOwn(target.before,'subtitleProfile'));
+  if(frame){
+   if(!format4()||frame.id!==projectId||frame.before?.timelineId!==timeline.id)invalidTimeline();
+   assertTimelineFormatEligible(readTimelineFormatState(db,input,{store,frameTransaction:true}),true);
+  }
   for(const target of targets){
    if(target.kind==='timeline'){
     if(target.before)for(const field of ['fps','width','height'] as const){const value=target.before[field];if(typeof value!=='number')throw new AppError('INVALID_TIMELINE_SNAPSHOT','撤销数据无效',409);timeline[field]=value;}
@@ -583,15 +603,20 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    }
    const field=target.kind==='timeline_clip'?'clips':target.kind==='timeline_track'?'tracks':target.kind==='timeline_subtitle'?'subtitles':null;
    if(!field)throw new AppError('INVALID_TIMELINE_SNAPSHOT','撤销目标无效',409);
-   const children=field==='subtitles'?(timeline.subtitles?.cues??[]):timeline[field],retained=children.filter(child=>child.id!==target.id);
-   if(target.before)retained.push(clone(target.before));
+   const children=field==='subtitles'?(timeline.subtitles?.cues??[]):timeline[field];
+   const retained=frame
+    ? children.map(child=>child.id===target.id?clone(target.before):child).filter(child=>child!==null)
+    : children.filter(child=>child.id!==target.id);
+   if(!frame&&target.before)retained.push(clone(target.before));
    if(field==='clips')timeline.clips=retained as TimelineClipRecord[];
    else if(field==='tracks')timeline.tracks=retained as TimelineTrackRecord[];
    else timeline.subtitles={...(timeline.subtitles??{profileId:TIMELINE_SUBTITLE_PROFILE_ID}),cues:retained as TimelineSubtitleCueRecord[]};
   }
+  if(frame)restoreTimelineFrameSubtitles(timeline,frame.before!.subtitleProfile);
   boundary.validate(timeline);timeline.revision++;timeline.updatedAt=now();admitTimelineImageResponse(timeline);
   admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
-  put('timelines',timeline);recordEdit('agent.task.undo',timeline,before);return timeline;
+  put('timelines',timeline);
+  recordEdit('agent.task.undo',timeline,before);return timeline;
  };
  return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat,compensateAgentTargetsInside};
 }

@@ -4,6 +4,7 @@ import {isPublishedProjectOutput} from './project-output-publication.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
 import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
+import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
@@ -17,7 +18,7 @@ import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownersh
 import {createSubjectOwnershipReader} from './subject-ownership.ts';
 import {createSceneKeyframeOwnershipReader} from './scene-keyframe-ownership.ts';
 import {isClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
-import {isClipLayoutRect,projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
+import {CLIP_LAYOUT_PROFILE,clipLayoutBasis,isClipLayoutRect,projectClipLayout} from '../../contracts/src/timeline-clip-layout.ts';
 import {isClipTransition,type ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {canvasActiveCondition,canvasActiveEdgeCondition} from './canvas-active.ts';
@@ -26,6 +27,7 @@ type InspectionRecord = Record<string, unknown>;
 interface ImageTaskLike {input: {purpose?: string;inputImage?: {assetId?: unknown}};snapshot: {sourceImage?: unknown}}
 interface FrameTaskLike {input: {sourceAssetId?: unknown};row: {assetId?: unknown|null}}
 interface InspectionReaderOptions {
+ timelineGeometry?: 'frame'|'basis';
  encodeCursor?: (projectId: string,operation: string,limit: number,after: string)=>string;
  decodeCursor?: (cursor: unknown,projectId: string,operation: string,limit: number)=>string;
 }
@@ -129,7 +131,7 @@ function excerpt(value: unknown): {prompt: string;promptTruncated: boolean} {
   return {prompt: bytes.subarray(0, end).toString('utf8'), promptTruncated: true};
 }
 
-function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decodeCursor}: InspectionReaderOptions={}): InspectionReader {
+function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decodeCursor,timelineGeometry='frame'}: InspectionReaderOptions={}): InspectionReader {
     const cache = new Map<string, InspectionRecord>(), validatedVersions = new Set<string>(), validatedAssets = new Set<string>(), assetVersions = new Map<string, InspectionRecord>(), imageSources = new Map<string, unknown>(), frameSources = new Map<string, unknown>(), sceneSources = new Map<string, unknown>(), frameTasks = new Set<string>(), pendingFrameTasks = new Set<string>();
     const pendingAssets=new Set<string>(),imageTasks=new Set<string>(),pendingImageTasks=new Set<string>();
     let readBytes = 0, readRecords = 0, frameDepth = 0;
@@ -424,7 +426,10 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         // Mio reads a clip's transform (position and scale keyframes, rotation, crop) but cannot change it.
         const transform = Object.hasOwn(clip, 'transform') ? clip.transform as ClipTransform | null : undefined;
         if (transform !== undefined && (transform === null || !isClipTransform(transform, durationFrames))) unavailable();
-        const placement = relative
+        // Ordinary inspection describes the rendered frame. Mio sees the saved
+        // basis so derived fractional rectangles and offsets are never edit input.
+        const basis = relative && timelineGeometry === 'basis' ? clipLayoutBasis(clip, frame) : null;
+        const placement = relative && !basis
           ? projectClipLayout({durationFrames, rect: storedRect, layout: clip.layout, transform}, frame) : null;
         const rect = placement?.rect ?? storedRect;
         const displayTransform = placement ? placement.transform : transform;
@@ -433,6 +438,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         if (transition !== undefined && (transition === null || !isClipTransition(transition))) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
           sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2),
+          ...(basis ? {layout: {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: basis.id}} : {}),
           ...(displayTransform ? {transform: {keyframes: displayTransform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: displayTransform.rotation, crop: {...displayTransform.crop}}} : {}),
           ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
@@ -483,8 +489,6 @@ export function createInspectionServices(store: {db: DatabaseSync}) {
     return decoded[4];
   }
 
-  const reader=(projectId: string)=>inspectionReader(db,projectId,{encodeCursor,decodeCursor});
-
   // Only trusted backend code receives this factory. It selects scope after
   // authenticating its caller; possessing a project ID is not authentication.
   function createContext(options: unknown): object {
@@ -510,7 +514,9 @@ export function createInspectionServices(store: {db: DatabaseSync}) {
     if (!operationSet.has(operation) || !scope.capabilities.has(operation)) denied();
     const input = plainInput(args), parsed = (inspectionArgumentSchemas as Record<string,{safeParse(value: unknown):{success: boolean;data?: unknown}}>)[operation].safeParse(input);
     if (!parsed.success) invalid();
-    const read = reader(scope.projectId);
+    const origin = taskEffectOrigin();
+    const timelineGeometry = operation === 'timeline.inspect' && origin?.operation === operation && origin.projectId === scope.projectId ? 'basis' : 'frame';
+    const read = inspectionReader(db,scope.projectId,{encodeCursor,decodeCursor,timelineGeometry});
     const value = operation === 'project.inspect' ? read.project() : operation === 'asset.inspect' ? read.assets(parsed.data) : operation === 'shot.inspect' ? read.shots(parsed.data) : read.timeline();
     const bytes = Buffer.byteLength(JSON.stringify(value));
     if (bytes > scope.maxResultBytes || scope.bytes + bytes > scope.maxTotalBytes) exhausted();

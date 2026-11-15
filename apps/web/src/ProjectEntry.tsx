@@ -48,7 +48,7 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
         return !owner.identityBlocked && owner.appLibraryScope && owner.instanceId
           ? {appLibraryScope: owner.appLibraryScope, instanceId: owner.instanceId} : null;
       } : undefined}
-      readDirectory={identity ? () => readProjectEntryIdentity(identity) : undefined}
+      readDirectory={identity ? input => readProjectEntryIdentity(identity, input) : undefined}
       onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'}
       launcher={launcher} nativeLayout homeDirectory={typeof homeDirectory === 'string' ? homeDirectory : undefined}
       active={state.shown && !context.quitting} summaryScope={identity?.getVerifiedScope() ?? undefined} projects={state.projects} phase={state.phase} openingProjectId={state.openingProjectId} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
