@@ -16,7 +16,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 import {createServerProject} from './helpers/project-database.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject,InspectApplication} from '../apps/server/src/index.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';

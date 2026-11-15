@@ -917,6 +917,7 @@ function attachDatabases(
             .run(randomBytes(16).toString('hex'));
           verifySources();
         });
+        database = 'project';
       }
     }
     const held: readonly HeldFile[] = [

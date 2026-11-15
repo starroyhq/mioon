@@ -1,3 +1,4 @@
+import {testEnv} from '../../helpers/test-env.ts';
 /** Explicit, serial-only media/browser fixture. No test runs on import.
  * Usage: node tests/fixtures/timeline-audio-preview/numeric-harness.ts /tmp/mioon-audio-numeric
  * Serves only generated synthetic fixtures at a fresh loopback port. Open printed
@@ -16,7 +17,7 @@ import { timelineCompositionSegments } from '../../../packages/contracts/src/tim
 const exec = promisify(execFile), here = path.dirname(fileURLToPath(import.meta.url));
 const hash = (value: Buffer|Uint8Array|string): string => createHash('sha256').update(value).digest('hex');
 const id = (n: number): string => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const ffmpeg = async (args: readonly string[]) => exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', ...args], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+const ffmpeg = async (args: readonly string[]) => exec(process.env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-threads', '1', ...args], { env: testEnv(), timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
 const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : value && typeof value === 'object'
   ? `{${Object.keys(value as Record<string, unknown>).sort().map((k: string) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(',')}}` : JSON.stringify(value);
 interface PlanClip {clipId: string; trackId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; fadeInFrames: number; fadeOutFrames: number; muted?: boolean; [key: string]: unknown}

@@ -105,7 +105,7 @@ test('legacy Veo submit, cached poll and download use the SDK while retaining hi
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-veo-legacy-sdk-')));t.after(()=>rm(root,{recursive:true,force:true}));
   const calls:Array<{url:string;init:RequestInit}>=[],mp4=Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
   const queue=[json({name:ID}),json(completed),new Response(mp4)];
-  const provider=createVeoProvider({root,env:{MIOON_ENABLE_LIVE_PROVIDER:'1',GEMINI_API_KEY:'PRIVATE-KEY',VEO_OUTPUT_HOSTS:'result.example'},fetchImpl:async(url,init)=>{calls.push({url:String(url),init:init??{}});const response=queue.shift();if(!response)throw Error('Real HTTP forbidden');return response;}});
+  const provider=createVeoProvider({root,env:{GEMINI_API_KEY:'PRIVATE-KEY',VEO_OUTPUT_HOSTS:'result.example'},fetchImpl:async(url,init)=>{calls.push({url:String(url),init:init??{}});const response=queue.shift();if(!response)throw Error('Real HTTP forbidden');return response;}});
   assert.deepEqual(await provider.submit({model:MODEL,prompt:'Synthetic shapes.',duration:4,aspectRatio:'9:16',referenceAssets:[],parameters:{}}),{providerJobId:ID});
   const polls=await Promise.all([provider.poll(ID),provider.poll(ID)]);assert.ok(polls.every(poll=>poll.status==='succeeded'));await provider.download(ID,path.join(root,'result.mp4'));
   assert.equal(calls.length,3);assert.deepEqual(calls.map(call=>call.init.method),['POST','GET','GET']);assert.equal(calls[1]!.url,`${API}/${ID}`);assert.equal(calls[2]!.url,'https://result.example/output.mp4');
@@ -116,7 +116,7 @@ for(const prefix of ['_','-'])test(`legacy Veo restores ${prefix}-prefixed opera
   const id=`models/${MODEL}/operations/${prefix}historical-123`,calls:Array<{url:string;init:RequestInit}>=[];
   const mp4=Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
   const queue=[json({...completed,name:id}),new Response(mp4)];
-  const provider=createVeoProvider({root,env:{MIOON_ENABLE_LIVE_PROVIDER:'1',GEMINI_API_KEY:'PRIVATE-KEY',VEO_OUTPUT_HOSTS:'result.example'},fetchImpl:async(url,init)=>{calls.push({url:String(url),init:init??{}});const response=queue.shift();if(!response)throw Error('Real HTTP forbidden');return response;}});
+  const provider=createVeoProvider({root,env:{GEMINI_API_KEY:'PRIVATE-KEY',VEO_OUTPUT_HOSTS:'result.example'},fetchImpl:async(url,init)=>{calls.push({url:String(url),init:init??{}});const response=queue.shift();if(!response)throw Error('Real HTTP forbidden');return response;}});
   assert.deepEqual(await provider.poll(id),{status:'succeeded',progress:1});
   assert.deepEqual(await provider.download(id,path.join(root,'restored.mp4')),{mimeType:'video/mp4',sizeBytes:mp4.length,isMock:false});
   assert.deepEqual(calls.map(call=>[call.url,call.init.method]),[[`${API}/${id}`,'GET'],['https://result.example/output.mp4','GET']]);
@@ -126,7 +126,7 @@ test('legacy Veo SDK path retains managed local image checks and frozen bytes',a
   const root=await mkdtemp(path.join(tmpdir(),'mioon-veo-sdk-image-'));t.after(()=>rm(root,{recursive:true,force:true}));
   const bytes=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);bytes.write('IHDR',12);bytes.writeUInt32BE(360,16);bytes.writeUInt32BE(640,20);
   const file=path.join(root,'frame.png');await writeFile(file,bytes);const sha256=createHash('sha256').update(bytes).digest('hex');let calls=0;
-  const provider=createVeoProvider({root,env:{MIOON_ENABLE_LIVE_PROVIDER:'1',GEMINI_API_KEY:'PRIVATE-KEY',VEO_APPROVED_ASSET_SHA256:sha256},fetchImpl:async(_url,init)=>{calls++;const body=object(JSON.parse(String(init?.body)));assert.deepEqual((body.instances as Array<Record<string,unknown>>)[0]!.image,{bytesBase64Encoded:bytes.toString('base64'),mimeType:'image/png'});return json({name:ID});}});
+  const provider=createVeoProvider({root,env:{GEMINI_API_KEY:'PRIVATE-KEY',VEO_APPROVED_ASSET_SHA256:sha256},fetchImpl:async(_url,init)=>{calls++;const body=object(JSON.parse(String(init?.body)));assert.deepEqual((body.instances as Array<Record<string,unknown>>)[0]!.image,{bytesBase64Encoded:bytes.toString('base64'),mimeType:'image/png'});return json({name:ID});}});
   const snapshot={model:MODEL,prompt:'Synthetic shapes.',duration:4,aspectRatio:'9:16',referenceAssets:[{path:file,sha256,mimeType:'image/png'}],parameters:{}};
   await provider.submit(snapshot);assert.equal(calls,1);await writeFile(file,Buffer.alloc(24));await assert.rejects(provider.submit(snapshot),{code:'INVALID_REFERENCE_TYPE'});assert.equal(calls,1);
 });

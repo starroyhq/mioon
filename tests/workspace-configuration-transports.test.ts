@@ -14,7 +14,7 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 
 
 
@@ -35,7 +35,7 @@ test('workspace settings agree across public transports; retired workspace entri
   let server = await startServer({dataDir: root, port: 0, token});
   let client = new Client({name: 'workspace-configuration-wire-test', version: '1'}, {capabilities: {}});
   t.after(async () => {await client.close(); await server.close(); await rm(base, {recursive: true, force: true});});
-  const environment = () => ({PATH: process.env.PATH || '', MIOON_BASE_URL: server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'});
+  const environment = () => ({PATH: process.env.PATH || '', MIOON_BASE_URL: server.url, MIOON_TOKEN: token, });
   const connect = async () => {
     const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(), stderr: 'pipe'});
     transport.stderr?.on('data',()=>{}); await client.connect(transport);

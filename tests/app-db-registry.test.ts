@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // The recent-project registry of the app library (task card B1): project file
 // identity by lstat, copies refused through the kernel's checkCopy hook (plan
 // 5.2), moved projects found by file identity (plan 8.2), and that none of it
@@ -69,7 +70,7 @@ function appError(action: () => unknown): AppError {
 }
 /** Another process reading the file read-only with a busy timeout of 0. */
 function readInChild(file: string): Record<string, unknown> {
-  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...process.env, MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, [CHILD], {cwd: REPOSITORY, env: {...testEnv(), MODE: 'raw-read', FILE: file}, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim().split('\n').at(-1)!) as Record<string, unknown>;
 }

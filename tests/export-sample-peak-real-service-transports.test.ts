@@ -22,7 +22,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {isExportSamplePeakResponse,EXPORT_SAMPLE_PEAK_ALGORITHM} from '@mioon/contracts/export-sample-peak';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {schemaObjects} from './helpers/project-database.ts';
@@ -31,7 +31,7 @@ import type { BinaryLike } from 'crypto';
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
 const operation='timeline.export.samplePeak',token='synthetic-real-export-sample-peak-token';
 const sha=(value: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(value).digest('hex');
-const environment=(url: string)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const environment=(url: string)=>({...mediaEnvironment(),...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const pause=(ms: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function bounded<T>(promise: Promise<T>,label: string,ms=20000){let timer;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function png(){

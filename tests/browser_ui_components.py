@@ -21,6 +21,7 @@ import urllib.request
 
 from playwright.sync_api import expect, sync_playwright
 from browser_workbench_actions import workbench_action
+from helpers.qa_env import test_env
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = pathlib.Path(os.environ.get('MIOON_UI_EVIDENCE', str(ROOT / 'evidence/v3-ui-components')))
@@ -62,7 +63,7 @@ def start(data):
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     handle = open(OUT / 'server.log', 'w')
-    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env={**os.environ, 'PORT': str(port), 'MIOON_TOKEN': TOKEN, 'MIOON_DATA_DIR': str(data), 'MIOON_ENABLE_LIVE_PROVIDER': '0', 'RUNWAYML_API_SECRET': ''}, stdout=handle, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env=test_env(PORT=str(port), MIOON_TOKEN=TOKEN, MIOON_DATA_DIR=str(data)), stdout=handle, stderr=subprocess.STDOUT)
     base = f'http://127.0.0.1:{port}'
     for _ in range(150):
         if proc.poll() is not None:

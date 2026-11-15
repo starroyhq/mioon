@@ -10,7 +10,7 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {mediaFingerprintToken} from '../packages/business/src/project-asset-references.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
-import {startServer, type InspectProject, type InspectApplication, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectProject, type InspectApplication, type ServerOptions} from './helpers/test-server.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {DEFAULT_REQUEST_DRAIN_MS} from '../apps/server/src/project-host/types.ts';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -37,7 +37,7 @@ interface Seed {projectId: string; root: string; projectFile: string; assetId: s
 async function seed(dataDir: string, name: string): Promise<Seed> {
   const created = createServerProject(dataDir, {name}), store = created.store;
   const library = openAppLibrary({dataDir});
-  const services = createServices(store, new Map(), {application: createProjectServiceApplication(library, undefined, {MIOON_ENABLE_LIVE_PROVIDER: '0'})});
+  const services = createServices(store, new Map(), {application: createProjectServiceApplication(library, undefined, {})});
   try {
     const assetId = randomUUID(), sha256 = createHash('sha256').update(syntheticPng).digest('hex'), relativePath = `media/${assetId}.png`;
     writeFileSync(path.join(store.projectDir, relativePath), syntheticPng, {mode: 0o600});

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,mkdir,stat, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import applicationPackage from '../package.json' with {type: 'json'};
 
 const token = 'synthetic-server-lifecycle-test-token';

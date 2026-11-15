@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication, InspectProject} from '../apps/server/src/index.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {exportProjectPackage, importProjectPackage, duplicateProject} from '../packages/client/src/project-package.ts';

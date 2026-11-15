@@ -4,6 +4,7 @@ Run after pnpm build: python3 tests/browser_providers_v4.py
 """
 import json, os, pathlib, re, shutil, socket, sqlite3, subprocess, tempfile, time, traceback, urllib.parse, urllib.request
 from playwright.sync_api import expect, sync_playwright
+from helpers.qa_env import test_env
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = pathlib.Path(os.environ.get('MIOON_PROVIDER_EVIDENCE', str(ROOT / 'evidence/v4-browser-provider')))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -20,9 +21,7 @@ def rpc(base, operation, params=None):
 def cli(base, token_file, operation, params=None):
     # A real CLI subprocess shares the browser's isolated backend. The synthetic
     # token stays in a private file, never in process arguments or evidence.
-    prefixes = ('MIOON_', 'MIOON_', 'RUNWAY_', 'RUNWAYML_', 'ARK_', 'VEO_', 'GEMINI_', 'MINIMAX_', 'HAILUO_', 'VIDU_')
-    env = {key: value for key, value in os.environ.items() if not key.startswith(prefixes)}
-    env.update(MIOON_BASE_URL=base, MIOON_TOKEN_FILE=str(token_file), MIOON_ENABLE_LIVE_PROVIDER='0')
+    env = test_env(MIOON_BASE_URL=base, MIOON_TOKEN_FILE=str(token_file))
     result = subprocess.run(['node', 'apps/cli/src/index.mjs', *operation.split('.'), '--input', '-'], input=json.dumps(params or {}), text=True, capture_output=True, timeout=60, cwd=ROOT, env=env)
     assert result.returncode == 0, (operation, result.stdout, result.stderr)
     assert len(result.stdout.strip().splitlines()) == 1
@@ -46,9 +45,7 @@ def copy_demo(target):
         with sqlite3.connect(target / 'workbench.sqlite') as dst: src.backup(dst)
 def start(data):
     with socket.socket() as sock: sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-    prefixes = ('RUNWAY_', 'RUNWAYML_', 'ARK_', 'VEO_', 'GEMINI_', 'MINIMAX_', 'HAILUO_', 'VIDU_')
-    env = {key: value for key, value in os.environ.items() if not key.startswith(prefixes)}
-    env.update(PORT=str(port), MIOON_TOKEN=TOKEN, MIOON_DATA_DIR=str(data), MIOON_ENABLE_LIVE_PROVIDER='0')
+    env = test_env(PORT=str(port), MIOON_TOKEN=TOKEN, MIOON_DATA_DIR=str(data))
     handle = open(OUT / 'server.log', 'w')
     proc = subprocess.Popen(['node', 'apps/server/src/cli.mjs'], cwd=ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT)
     base = f'http://127.0.0.1:{port}'

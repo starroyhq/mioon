@@ -60,7 +60,7 @@ async function tree(directory) {
 }
 function environment(data = userData) {
   return {...Object.fromEntries(['PATH', 'HOME', 'LANG', 'LC_ALL', 'DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'TMPDIR'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
-    MIOON_DESKTOP_USER_DATA: data, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
+    MIOON_DESKTOP_USER_DATA: data, MIOON_FFMPEG_PATH: '/usr/bin/ffmpeg', MIOON_FFPROBE_PATH: '/usr/bin/ffprobe'};
 }
 function own(child) {
   let closed = false;

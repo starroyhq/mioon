@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse} from '../packages/contracts/src/project-copies.ts';

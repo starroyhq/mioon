@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,7 +10,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import type {ProjectHistoryStatus, ProjectHistoryResolveResult} from '../packages/contracts/src/project-history-recovery.ts';
@@ -43,7 +44,7 @@ test('real HTTP recovery gates CLI/MCP and daily/old tasks, then activates only 
   const before = snapshot();
   const blocked = await request('rpc', {operation: 'project.version.save', input: {projectId, requestId: randomUUID()}});
   assert.equal(blocked.response.status, 409); assert.equal(blocked.body.error.code, 'PROJECT_HISTORY_DIVERGED');
-  const env = {...process.env, MIOON_BASE_URL: server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>;
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token, } as Record<string, string>;
   delete env.MIOON_CONNECTION_FILE; delete env.MIOON_TOKEN_FILE;
   await assert.rejects(promisify(execFile)(process.execPath, ['apps/cli/src/index.ts', 'project', 'version', 'list', '--input', JSON.stringify({projectId})], {env, encoding: 'utf8'}), (error: unknown) => {
     assert.ok(error && typeof error === 'object');

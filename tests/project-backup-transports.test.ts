@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -11,7 +12,7 @@ import {Client as McpClient} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import {createClient, operationDefinition, schemas} from '@mioon/client';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectBackupSchemas, isProjectBackupResponse} from '../packages/contracts/src/project-backups.ts';
 import type {ProjectBackupOperation, ProjectBackupSummary, ProjectBackupInspection, ProjectBackupStatus, ProjectBackupRestoreResponse} from '../packages/contracts/src/project-backups.ts';
@@ -103,7 +104,7 @@ test('closed-project backup operations agree over HTTP CLI and MCP; recovery ret
   const original = await rpc<{id: string; revision: number}>('project.create', {name: 'Backup 🎬'});
   await server.close();
   server = await startServer({dataDir: root, port: 0, token});
-  const env = {...process.env, MIOON_BASE_URL: server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>;
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token, } as Record<string, string>;
   delete env.MIOON_CONNECTION_FILE; delete env.MIOON_TOKEN_FILE;
   const cli = async (operation: string, input: unknown): Promise<unknown> => {
     const result = await run(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)], {cwd: repo, env, timeout: 20_000, encoding: 'utf8'});

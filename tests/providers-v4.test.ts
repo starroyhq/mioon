@@ -51,7 +51,7 @@ async function fixture(t: test.TestContext, kind: keyof typeof specs, responses:
 
 for (const kind of Object.keys(specs) as (keyof typeof specs)[]) {
   test(`${kind}: constructor/capabilities/reconcile/cancel are offline and secrets never appear`, async t => {
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { [specs[kind].key]: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { [specs[kind].key]: '',  } });
     assert.equal(provider.capabilities.status, 'not_configured');
     assert.equal(provider.capabilities.configured, false);
     assert.equal(provider.capabilities.enabled, false);
@@ -78,7 +78,7 @@ for (const kind of Object.keys(specs) as (keyof typeof specs)[]) {
 
   for (const withImage of [false, true]) test(`${kind}: maps ${withImage ? 'first-frame image' : 'text'} to one fixed-origin POST`, async t => {
     const { provider, spec, input, reference, calls, bytes } = await fixture(t, kind, [json(specs[kind].accepted())],
-      withImage ? {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}} : {});
+      withImage ? {env: {}} : {});
     assert.equal(provider.capabilities.status, 'available');
     assert.equal(provider.capabilities.configured, true);
     assert.equal(provider.capabilities.enabled, true);
@@ -203,7 +203,7 @@ test('Ark validates first-frame metadata AND actual dimensions before submission
   for (const patch of [{ width: 200 }, { height: 7000 }, { width: 640 }, { width: undefined }]) assert.throws(() => provider.validate({ ...input, referenceAssets: [{ ...reference, ...patch }] }));
   const square = png(400, 400); await writeFile(file, square);
   const hash = createHash('sha256').update(square).digest('hex');
-  const altered = createArkProvider({ root: path.dirname(file), env: { ARK_API_KEY: 'fixture', ARK_APPROVED_ASSET_SHA256: hash, MIOON_ENABLE_LIVE_PROVIDER: '1' }, fetchImpl: () => assert.fail('must reject actual dimensions before any POST') });
+  const altered = createArkProvider({ root: path.dirname(file), env: { ARK_API_KEY: 'fixture', ARK_APPROVED_ASSET_SHA256: hash,  }, fetchImpl: () => assert.fail('must reject actual dimensions before any POST') });
   await assert.rejects(altered.submit({ ...input, referenceAssets: [{ ...reference, sha256: hash }] }), { code: 'REFERENCE_ASPECT_RATIO_MISMATCH' });
   assert.equal(calls.length, 0);
 });

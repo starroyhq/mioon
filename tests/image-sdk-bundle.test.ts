@@ -72,6 +72,6 @@ export async function runBundleChecks(){
 Module._load=function(request,...args){if(request!==bundle&&!Module.isBuiltin(request))throw Error('External dependency requested: '+request);return load.call(this,request,...args);};
 globalThis.fetch=async()=>{throw Error('Ambient network is forbidden before loading');};
 require(bundle).runBundleChecks().then(result=>process.stdout.write(JSON.stringify(result)),error=>{console.error(error);process.exitCode=1;});`;
-  const result=await run(process.execPath,['--input-type=commonjs','-e',bootstrap,outfile],{cwd,env:{...cleanEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0'},encoding:'utf8',timeout:45000,maxBuffer:1024*1024});
+  const result=await run(process.execPath,['--input-type=commonjs','-e',bootstrap,outfile],{cwd,env:{...cleanEnvironment(),},encoding:'utf8',timeout:45000,maxBuffer:1024*1024});
   assert.deepEqual(JSON.parse(result.stdout),{operations:3,fences:3,forbiddenFetches:0});
 });

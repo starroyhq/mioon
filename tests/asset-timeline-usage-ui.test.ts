@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {TimelineAssetUse,UsageSnapshot} from '../apps/web/src/timeline-asset-usage.ts';
 import type {Loader} from 'esbuild';
 type UsageScope={projectId:string|null;scope:string;usage?:unknown;visible:boolean};
@@ -258,7 +259,7 @@ test('real React and shared Button render safe compact HTML without network or s
     for (const key of ['localStorage','sessionStorage']) Object.defineProperty(globalThis, key, {get() { throw Error('Unexpected storage'); }});
     const {outputFiles} = await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}},bundle:true,format:'esm',platform:'browser',write:false,jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64')); process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
-  const [card, filters] = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
+  const [card, filters] = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
   assert.match(card, /data-slot="button"/); assert.match(card, /aria-expanded="false"/); assert.match(card, /<ul[^>]*hidden=""/);
   assert.match(card, /开场 &lt;script&gt;/); assert.doesNotMatch(card, /<script>/); assert.match(card, /起点 90 帧/);
   assert.match(filters, /当前时间线 · 已保存 修订版 7/); assert.match(filters, /未用于本时间线/); assert.match(filters, /role="group"/);

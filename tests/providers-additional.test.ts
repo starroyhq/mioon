@@ -63,7 +63,7 @@ async function fixture(t: import('node:test').TestContext, kind: 'minimax' | 'vi
 for (const kind of Object.keys(specs) as ('minimax' | 'vidu')[]) {
   test(`${kind}: construction, capabilities, reconciliation and local stop use no network`, async t => {
     const key=`${specs[kind].prefix}_API_KEY`;
-    const { provider, calls, input } = await fixture(t, kind, [], { env: { [key]: '', MIOON_ENABLE_LIVE_PROVIDER: '1' } });
+    const { provider, calls, input } = await fixture(t, kind, [], { env: { [key]: '',  } });
     assert.equal(provider.capabilities.status, 'not_configured'); assert.equal(provider.capabilities.liveVerified, false);
     assert.equal(provider.capabilities.configured, false);
     assert.equal(provider.capabilities.enabled, false);
@@ -79,7 +79,7 @@ for (const kind of Object.keys(specs) as ('minimax' | 'vidu')[]) {
 
   for (const image of [false, true]) test(`${kind}: maps ${image ? 'first-frame' : 'text'} request with no hidden upload`, async t => {
     const { provider, input, reference, calls, spec, bytes } = await fixture(t, kind, [json({ task_id: ID })],
-      image ? {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}} : {});
+      image ? {env: {}} : {});
     assert.equal(provider.capabilities.status, 'available');
     assert.equal(provider.capabilities.configured, true);
     assert.equal(provider.capabilities.enabled, true);

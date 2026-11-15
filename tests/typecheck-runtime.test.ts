@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -10,7 +11,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {toolingEnvironment, verifySourceLanguages} from '../scripts/lib/local-tooling.ts';
 const root=fileURLToPath(new URL('../',import.meta.url));
-const env=toolingEnvironment(process.env);
+const env=toolingEnvironment(testEnv());
 function command(args: readonly string[],timeout: number|undefined=30000){
  const result=spawnSync(process.execPath,args,{cwd:root,env,encoding:'utf8',timeout,maxBuffer:2*1024*1024,windowsHide:true});
  assert.equal(result.error,undefined,result.error?.message);assert.equal(result.signal,null,result.stderr);assert.equal(result.status,0,result.stderr);return result.stdout;

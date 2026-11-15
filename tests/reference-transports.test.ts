@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,8 +15,8 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='references-offline-synthetic-test-token';
 const pause=(ms: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms));
-function environment(extra: NodeJS.ProcessEnv={}){const env={...process.env};for(const name of Object.keys(env))if(/^(MIOON_|MIOON_|ARK_|VEO_|RUNWAY|MINIMAX_|VIDU_|GEMINI_|GOOGLE_)/.test(name))delete env[name];return {...env,MIOON_ENABLE_LIVE_PROVIDER:'0',...extra};}
-async function cli(args: string[],env: NodeJS.ProcessEnv={},error?: string|undefined){
+function environment(extra: Record<string, string>={}){const env={...testEnv()};for(const name of Object.keys(env))if(/^MIOON_/.test(name))delete env[name];return {...env,...extra};}
+async function cli(args: string[],env: Record<string, string>={},error?: string|undefined){
  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(b: string)=>stdout+=b);child.stderr.setEncoding('utf8').on('data',(b: string)=>stderr+=b);const timeout=setTimeout(()=>child.kill('SIGKILL'),15000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timeout);}
  assert.equal(signal,null,stderr);assert.equal(stdout.trim().split('\n').length,1);const body=JSON.parse(stdout);assert.equal(body.ok,!error,stdout+stderr);assert.ok(!stdout.includes(token)&&!stderr.includes(token));
  if(error){assert.equal(body.error.code,error);assert.equal(code,error==='VALIDATION_ERROR'?2:3);return body.error;}assert.equal(code,0,stderr);return body.data;

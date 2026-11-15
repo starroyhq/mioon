@@ -4,7 +4,7 @@ import http from 'node:http';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {inspectAgentTaskCatalog} from '../apps/server/src/agent-diagnostics-http.ts';
 import type {AgentSettingsSnapshot} from '../packages/contracts/src/agent-connection-settings.ts';
 import type {AgentTaskToolDefinition} from '../packages/business/src/agent/task-tools-v2.ts';

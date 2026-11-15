@@ -21,7 +21,7 @@ interface ProjectView {id: string}
 function deadline<T>(promise: Promise<T>, label: string, ms = 10000): Promise<T> {let timer: ReturnType<typeof setTimeout> | undefined;return Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(`Timed out: ${label}`)),ms);})]).finally(()=>clearTimeout(timer));}
 function startWorker(root: string,{missingTools=false}: {missingTools?: boolean} = {}): WorkerHarness {
   const child=spawn(process.execPath,[workerPath,root],{cwd:repo,stdio:['ignore','pipe','pipe','ipc'],
-    env:{PATH:process.env.PATH||'',HOME:root,TMPDIR:root,LANG:'C.UTF-8',NODE_ENV:'test',MIOON_ENABLE_LIVE_PROVIDER:'0',
+    env:{PATH:process.env.PATH||'',HOME:root,TMPDIR:root,LANG:'C.UTF-8',NODE_ENV:'test',
       ...(missingTools?{MIOON_FFMPEG_PATH:path.join(root,'missing-ffmpeg'),MIOON_FFPROBE_PATH:path.join(root,'missing-ffprobe')}:{})}});
   const ready=Promise.withResolvers<WorkerReady>(),exited=Promise.withResolvers<{code: number | null; signal: string | null}>(),pending=new Map<string,{resolve: (value: unknown) => void; reject: (error: unknown) => void}>();let stopped: {code: number | null; signal: string | null} | undefined,output='',bytes=0;
   const reject=(error: unknown)=>{ready.reject(error);for(const reply of pending.values())reply.reject(error);};

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -8,7 +9,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {createProjectHostManager} from '../apps/server/src/project-host/manager.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
@@ -54,7 +55,7 @@ async function occupyHistory(file: string): Promise<() => Promise<void>> {
     db.exec('PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE');
     process.send('locked');
     process.once('message',()=>{db.exec('ROLLBACK');db.close();process.disconnect();});
-  `, file], {stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
+  `, file], {env: testEnv(), stdio: ['ignore', 'ignore', 'ignore', 'ipc']});
   try {
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject);

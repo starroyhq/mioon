@@ -68,7 +68,7 @@ test('H4a goal declaration is a host-only core tool with its independent closed 
 
 test('H4a public MCP discovery and invocation do not expose the host goal tool',{timeout:30_000},async t=>{
   const client=new Client({name:'h4a-host-discovery',version:'1.0.0'},{capabilities:{}});
-  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repository,'apps/mcp/src/index.ts')],cwd:repository,env:{PATH:process.env.PATH??'',TZ:'UTC',TMPDIR:tmpdir(),MIOON_ENABLE_LIVE_PROVIDER:'0'},stderr:'pipe'});
+  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repository,'apps/mcp/src/index.ts')],cwd:repository,env:{PATH:process.env.PATH??'',TZ:'UTC',TMPDIR:tmpdir(),},stderr:'pipe'});
   t.after(()=>client.close());await client.connect(transport);
   const listing=await client.listTools();assert.ok(listing.tools.some(tool=>tool.name==='project_inspect'));
   for(const name of [AGENT_TASK_GOAL_SET_TOOL,'goal_set']){
