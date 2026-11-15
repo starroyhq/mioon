@@ -12,7 +12,7 @@ import {parseProjectApiPath,projectApiPath} from '../packages/contracts/src/proj
 import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_LIMITS} from '../packages/contracts/src/image-reviews.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {customImageSettingsV2Error} from '../packages/business/src/images/custom-settings-v2.ts';
 import {OUTPUT_LOCALE_HEADER} from '../packages/contracts/src/output-locale.ts';
 import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -140,7 +141,7 @@ test('SIGKILL after durable prepared intent keeps the allocated token for the ne
  const backups=createProjectBackups({directories,registry,identity:statProjectFileIdentity,assertProjectFile:createApplicationFileGuard(directories),
  copy:async options=>{setInterval(()=>{},1000);process.stdout.write(JSON.stringify({contentToken:options.contentToken,projectId:options.projectId})+'\\n');await new Promise(()=>{});}});
  await backups.restore(${JSON.stringify(input)});`;
- const child=spawn(process.execPath,['--input-type=module','--eval',program],{stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['--input-type=module','--eval',program],{env: testEnv(), stdio:['ignore','pipe','pipe']});
  let stderr='';child.stderr.setEncoding('utf8').on('data',(text:string)=>{stderr=(stderr+text).slice(-4000);});
  t.after(()=>{if(child.exitCode===null && child.signalCode===null)child.kill('SIGKILL');});
  const exit=once(child,'exit'),line=await new Promise<string>((resolve,reject)=>{

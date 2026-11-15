@@ -51,7 +51,7 @@ async function writeNew(file,value){
 }
 function environment(userData){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','TMPDIR','USER','LOGNAME','SHELL']
   .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),
-  MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
+  MIOON_DESKTOP_USER_DATA:userData,MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
 async function context(){
   assert.equal(process.platform,'darwin','The native controller is macOS-only');
   assert.ok(options.root,'--root is required');const root=path.resolve(options.root);
@@ -94,7 +94,7 @@ async function prepare(){
     '-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=2','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-c:a','aac','-shortest','-n',source],{env:environment(userData),timeout:30000,maxBuffer:65536});
   await executeFile(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=0x8138a8:s=320x180','-frames:v','1','-threads','1','-n',image],{env:environment(userData),timeout:30000,maxBuffer:65536});
   process.env.MIOON_FFMPEG_PATH=ffmpeg;process.env.MIOON_FFPROBE_PATH=ffprobe;
-  const owner=await createQaProject(workspace,{name:'退出诊断 · 原生合成验收',media:false}),store=owner.store,env={MIOON_ENABLE_LIVE_PROVIDER:'0'},providers=createProviderRegistry({db:store.db,root:store.root,env}),services=createServices(store,providers,{env});let fixture;
+  const owner=await createQaProject(workspace,{name:'退出诊断 · 原生合成验收',media:false}),store=owner.store,env={},providers=createProviderRegistry({db:store.db,root:store.root,env}),services=createServices(store,providers,{env});let fixture;
   try{
     const project=owner.project;
     const asset=await services.call('asset.import',{projectId:project.id,name:'合成绿色画面与 880Hz.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});

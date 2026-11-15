@@ -56,7 +56,7 @@ function startWorker(root: string) {
     signal: ['SIGINT', 'SIGTERM', 'SIGKILL'].includes(signal as string) ? signal : null});
   observe('launch');
   const child = spawn(process.execPath, [workerPath, root], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+    env: {PATH: process.env.PATH || '', TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',}});
   let output = '', stdoutBytes = 0, stderrBytes = 0;
   for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as const) (stream)!.setEncoding('utf8').on('data', (chunk: string|ArrayBufferLike|NodeJS.ArrayBufferView<ArrayBufferLike>) => {
     output = (output + chunk).slice(-20000);

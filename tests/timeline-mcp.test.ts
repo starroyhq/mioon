@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
@@ -35,7 +36,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   let backend!: ChildProcessByStdio<null,Readable,Readable>, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>, transport!: StdioClientTransport, mcpStderr = '';
   async function start() {
     const record = { event: 'start', at: new Date().toISOString(), port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
-    backend = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    backend = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
     (record as typeof record & {pid:(number | undefined)}).pid = backend.pid; backend.stdout.setEncoding('utf8').on('data', bytes => record.stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => record.stderr += bytes); backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal }));
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) { if (backend.exitCode !== null) throw Error(record.stderr); try { if ((await fetch(base + '/health')).ok) return; } catch {} await pause(40); }
@@ -49,7 +50,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(report, null, 2)); await rm(root, { recursive: true, force: true });
   });
   await start();
-  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
+  transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...testEnv(), MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   ((transport.stderr as import('node:stream').Readable|null))!.setEncoding('utf8').on('data', (bytes: string) => mcpStderr += bytes);
   const wire:import('@modelcontextprotocol/sdk/shared/transport.js').Transport = {
     onmessage: undefined, onerror: undefined, onclose: undefined,

@@ -13,7 +13,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {stitch} from '../packages/business/src/media.ts';
 
@@ -31,7 +31,7 @@ test('three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/previe
   const root=await mkdtemp(path.join(tmpdir(),'mioon-redesign-output-'));
   const backend=await startServer({dataDir:path.join(root,'workspace'),port:0,token,chatGateway:async function*(){throw Error('No external model calls');}});
   const mcp=new Client({name:'redesign-output-acceptance',version:'1.0.0'},{capabilities:{}});
-  const env={...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:backend.url,MIOON_TOKEN:token};
+  const env={...mediaEnvironment(),MIOON_BASE_URL:backend.url,MIOON_TOKEN:token};
   t.after(async()=>{await mcp.close();await backend.close();await rm(root,{recursive:true,force:true});});
   await mcp.connect(new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'ignore'}));
   const http=async<O extends string>(operation: O,input: Record<string, unknown>,entityProjectId?:string): Promise<ServiceResponse<O>>=>{const response=await fetch(backend.url+rpcPathFor(operation,input,entityProjectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.data;};

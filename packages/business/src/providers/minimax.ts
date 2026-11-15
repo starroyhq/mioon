@@ -1,5 +1,6 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
+import { providerSettings } from './environment.ts';
 import {createMinimaxSdkClient} from '../video/minimax-sdk.ts';
 import {minimaxOutputHosts} from '../../../contracts/src/video-providers.ts';
 import type {VideoAdapterImage} from '../video/adapters.ts';
@@ -24,15 +25,16 @@ function validateFirstFrame(asset: ProviderReferenceAsset, ratio: string): void 
 
 /** H3 V2 only. Region selects two verified origins, never an arbitrary base URL. */
 export function createMinimaxProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
-  const config = liveConfiguration(env, 'MINIMAX_API_KEY', 'MINIMAX');
-  const region = env.MINIMAX_REGION ?? 'global', validRegion = Object.hasOwn(REGIONS, region);
+  const settings = providerSettings.minimax;
+  const config = liveConfiguration(env, settings.credential, settings.prefix);
+  const region = env[settings.region] ?? 'global', validRegion = Object.hasOwn(REGIONS, region);
   const configured = config.configured && validRegion;
   const enabled = config.enabled && configured;
   const configuration = { missing: [...config.configuration.missing, ...(!validRegion ? ['MINIMAX_REGION (global or cn)'] : [])], requirements: [...config.configuration.requirements, 'MINIMAX_REGION=global|cn (credential must match the selected region)'] };
   const ensureEnabled = (): void => { config.ensureEnabled(); if (!validRegion) throw providerError('PROVIDER_CONFIGURATION', 'MiniMax server region must be global or cn.'); };
   const ensureRegion = (context: ProviderContext): void => { if (context.providerRegion !== undefined && context.providerRegion !== region) throw providerError('PROVIDER_REGION_CHANGED', 'MiniMax account region changed after this job was created. Restore its original server region before continuing.'); };
-  const approvedHashes = approvedAssetHashes(env.MINIMAX_APPROVED_ASSET_SHA256);
-  const outputHosts = approvedOutputHosts(env.MINIMAX_OUTPUT_HOSTS, minimaxOutputHosts(region));
+  const approvedHashes = approvedAssetHashes(env[settings.approvedAssetSha256]);
+  const outputHosts = approvedOutputHosts(env[settings.outputHosts], minimaxOutputHosts(region));
   const request = createJsonRequest({ api: REGIONS[region] ?? REGIONS.global, headers: { Authorization: `Bearer ${config.secret}` }, fetchImpl, ensureEnabled, name: 'MiniMax' });
   const sdk = createMinimaxSdkClient({api:REGIONS[region]??REGIONS.global,model:MODEL.id,send:request});
   function validate(snapshot: unknown): true {

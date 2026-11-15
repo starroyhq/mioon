@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -178,7 +179,7 @@ for(const damage of ['extra-object','missing-index','changed-trigger','extra-ver
 });
 
 for(const point of ['after-state-table','after-delivery-table','after-shot-table','before-version','after-version','after-commit'] as const)test(`history8 SIGKILL ${point} recovers one entire old8 or committed10 profile`,{timeout:60000},t=>{
-  const f=fixture(t),before=f.inspect(),files=f.files(),result=spawnSync(process.execPath,[WORKER,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{stdio:'ignore',timeout:30000});
+  const f=fixture(t),before=f.inspect(),files=f.files(),result=spawnSync(process.execPath,[WORKER,JSON.stringify({projectFile:f.projectFile,localDir:f.localDir,cacheDir:f.cacheDir,tempDir:f.tempDir,point})],{env: testEnv(), stdio:'ignore',timeout:30000});
   assert.equal(result.error,undefined);assert.equal(result.signal,'SIGKILL');const recovered=f.inspect();
   if(point==='after-commit'){
     assert.deepEqual(recovered.manifest,SCHEMA_MANIFEST.history.entries);assert.equal(recovered.version.length,1);assert.equal(recovered.version[0]!.version,10);

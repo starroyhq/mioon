@@ -98,7 +98,7 @@ build 会依次构建网页和桌面代码；不要在前一步失败后继续�
 
 doctor 检查 Node、构建身份、依赖包版本、内存 SQLite 和媒体工具版本；它不验证编码器、Electron 可执行文件能否启动、Mac 窗口、媒体导出、Keychain 或安装包。普通 doctor 通过可返回 0，同时 nativeReadiness 仍为未验证。若另行运行 `node scripts/tooling.ts doctor --native-ready`，本地前提检查通过后 macOS 仍返回未验证状态和退出码 2；前提检查失败则返回 1。不能把此固定门槛当作实际 Mac 测试结果。
 
-应用、CLI/MCP 实现元数据、后端 `/health` 与暂存包版本均从根应用版本读取，当前为 `0.1.2`。MCP 协议日期和连接描述文件版本是不同版本域。记录终端 Node 与 Electron utilityProcess 的实际版本时必须分开。
+应用、CLI/MCP 实现元数据、后端 `/health` 与暂存包版本均从根应用版本读取，当前为 `0.1.3`。MCP 协议日期和连接描述文件版本是不同版本域。记录终端 Node 与 Electron utilityProcess 的实际版本时必须分开。
 
 本文只指导源码构建与试用，不运行安装包、签名或公证流程。完整测试入口的 `--suite=full` 当前限 Linux；不能把 Linux 检查或 Mac 上的可移植检查写成 Mac 原生通过。
 
@@ -166,7 +166,7 @@ export MIOON_DESKTOP_USER_DATA="$HOME/Library/Application Support/app.starroy.mi
 
 ### 启动成功但生成不可用
 
-本次只开放本地模拟流程，真实供应商保持关闭。填写真实密钥、选择付费服务或打开真实生成不属于这次无密钥试用。
+本次只试用开发版的本地模拟。请保持真实服务停用，使用无需密钥的模拟供应商。
 
 ### 已经导出却找不到文件
 

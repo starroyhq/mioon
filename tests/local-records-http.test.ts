@@ -5,7 +5,7 @@ import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication} from './helpers/test-server.ts';
 import {createLocalRecordRpc} from '../apps/server/src/local-record-rpc.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createLocalRecords} from '../packages/business/src/app-db/local-records.ts';

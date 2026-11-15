@@ -28,7 +28,7 @@ async function fixture(t: TestContext,{reply,approved=true}: PairOptions={}): Pr
  const root=await mkdtemp(path.join(tmpdir(),'mioon-pair-adapter-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const buffers=[png(),png(360,640,1)],assets=[];
  for(let index=0;index<2;index++){const id=randomUUID(),file=path.join(root,`${id}.png`);await writeFile(file,buffers[index]);assets.push({id,path:file,mimeType:'image/png',sha256:sha(buffers[index]),sizeBytes:buffers[index].length,width:360,height:640,role:index===0?'first_frame':'last_frame'});}
- const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'INERT-DO-NOT-LEAK',ARK_APPROVED_ASSET_SHA256:assets.slice(0,approved?2:1).map(a=>a.sha256).join(',')},calls: {url: string; options: RequestInit & {body: string}}[]=[];
+ const env={ARK_API_KEY:'INERT-DO-NOT-LEAK',ARK_APPROVED_ASSET_SHA256:assets.slice(0,approved?2:1).map(a=>a.sha256).join(',')},calls: {url: string; options: RequestInit & {body: string}}[]=[];
  const provider=createArkProvider({root,env,fetchImpl:(async(url: string,options: RequestInit)=>{calls.push({url,options:options as RequestInit & {body: string}});return reply?reply():new Response(JSON.stringify({id:'offline-frame-pair'}));}) as unknown as typeof fetch});
  const snapshot={model:'doubao-seedance-2-5-260628',prompt:'Synthetic shapes',duration:4,aspectRatio:'9:16',parameters:{},lastFrameAssetId:assets[1].id,referenceAssetIds:assets.map(a=>a.id),referenceAssets:assets,referenceBindings:assets.map(a=>({role:a.role,assetId:a.id,sha256:a.sha256}))};
  return {root,assets,buffers,env,provider,snapshot,calls};

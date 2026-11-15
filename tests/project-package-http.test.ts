@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 
 import {schemaObjects} from './helpers/project-database.ts';

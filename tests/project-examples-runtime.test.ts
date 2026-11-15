@@ -4,7 +4,7 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 
 const token = 'synthetic-project-examples-runtime-token';
 for (const condition of ['missing', 'invalid', 'symlink'] as const) test(`unavailable installation examples (${condition}) do not block normal editing or load checkout examples`, async t => {

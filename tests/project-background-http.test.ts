@@ -7,7 +7,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication} from './helpers/test-server.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {backgroundTaskQueryResponseSchema} from '../packages/contracts/src/background-task-query.ts';
 import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';

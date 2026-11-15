@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -104,7 +105,7 @@ for (const point of ['captured', 'records-prepared', 'records-published', 'regis
   test(`real SIGKILL at ${point} preserves a recoverable copy and its fixed request result`, {timeout: 60_000}, async t => {
     const f = await fixture(t); await f.app.close();
     const worker = new URL('./fixtures/project-copy-worker.ts', import.meta.url);
-    const result = spawnSync(process.execPath, [worker.pathname, JSON.stringify({root: f.root, input: f.input, point})], {encoding: 'utf8', timeout: 40_000});
+    const result = spawnSync(process.execPath, [worker.pathname, JSON.stringify({root: f.root, input: f.input, point})], {env: testEnv(), encoding: 'utf8', timeout: 40_000});
     assert.equal(result.error, undefined); assert.equal(result.signal, 'SIGKILL', result.stderr); f.unchanged();
     await f.restart(); await f.app.copies.recover();
     if (point === 'captured') await assert.rejects(f.app.copies.duplicate(f.input), {code: 'PROJECT_COPY_INTERRUPTED'});

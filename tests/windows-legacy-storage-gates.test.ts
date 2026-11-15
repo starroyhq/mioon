@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -21,6 +22,6 @@ test('Windows manual drafts without a database owner refuse before storage effec
  for(const name of ['get','list','put','discard','removeProject','assertProjectDeletable'])assert.throws(()=>store[name]({}),{code:'LOCAL_DRAFT_STORAGE_UNAVAILABLE'});
  assert.equal(calls,0);console.log('synthetic-gate-no-effects');
  `;
- const result=spawnSync(process.execPath,['--input-type=module','-e',source],{encoding:'utf8',timeout:15000});
+ const result=spawnSync(process.execPath,['--input-type=module','-e',source],{env: testEnv(), encoding:'utf8',timeout:15000});
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'synthetic-gate-no-effects');
 });

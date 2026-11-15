@@ -11,7 +11,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createServerProject} from './helpers/project-database.ts';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {createFileResponses, FILE_RESPONSE_LIMITS, type FileResponsesOptions} from '../apps/server/src/file-response.ts';
 import {authorizeHttpSnapshot} from './helpers/agent-authorizations.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -58,7 +59,7 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   const tag = (html: string, testId: string): string => html.match(new RegExp(`<(?:button|input)[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? '';
   const row = (html: string, clipId: string): string => html.match(new RegExp(`<li[^>]*data-testid="dialogue-loudness-row-${clipId}"[^>]*>.*?</li>`))?.[0] ?? '';
   assert.match(markup.idle, /对白响度匹配/);

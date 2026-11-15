@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -38,7 +39,7 @@ test('real React renders the first project frame with null subject state in all 
     const fixture = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(await fixture.renderAll())); process.exit(0);
   `;
-  const rendered: { html: Record<string, string[]>; observations: boolean[] } = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
+  const rendered: { html: Record<string, string[]>; observations: boolean[] } = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
   assert.equal(rendered.observations.length, 8);
   assert.ok(rendered.observations.every(Boolean));
   for (const locale of LOCALES) for (const html of rendered.html[locale]) {

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // recoverProjectFile: step 1 of the opening order alone, for projects that are
 // not open (at startup and when listing recent projects). It rolls back a hot
 // journal beside the project file and does nothing else. A crash in the
@@ -58,7 +59,7 @@ function newProject(t: TestContext, candidate = false): Project {
 }
 
 function childEnv(mode: string, extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {...process.env, ...extra, MODE: mode, PAYLOAD_MIB: '1'};
+  const env: NodeJS.ProcessEnv = {...testEnv(), ...extra, MODE: mode, PAYLOAD_MIB: '1'};
   delete env.ROOT;
   delete env.MOVED_PROJECT_FILE;
   return env;
@@ -76,7 +77,7 @@ const LOCKED_READ = {ok: false, message: 'database is locked', errcode: 5};
 /** sha256 and stat of a file, by another process (the file may be held here). */
 function fileState(file: string): string {
   const script = "const fs=require('node:fs');const s=fs.statSync(process.argv[1],{bigint:true});process.stdout.write(require('node:crypto').createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex')+':'+s.size+':'+s.mtimeNs)";
-  const result = spawnSync(process.execPath, ['-e', script, file], {encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, ['-e', script, file], {env: testEnv(), encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }

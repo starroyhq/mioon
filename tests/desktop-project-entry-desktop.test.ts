@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,mkdirSync,copyFileSync,readFileSync,rmSync,chmodSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker} from '../apps/desktop/src/project-entry-control.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';

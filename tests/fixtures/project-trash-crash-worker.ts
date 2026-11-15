@@ -1,7 +1,7 @@
 import {renameSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {startServer} from '../../apps/server/src/index.ts';
+import {startServer} from '../helpers/test-server.ts';
 import type {ProjectDeleteInput} from '../../packages/contracts/src/project-lifecycle.ts';
 
 const root = process.argv[2]!;

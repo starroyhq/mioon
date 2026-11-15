@@ -10,7 +10,7 @@ import {join} from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {agentTaskChecksSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createServerProject,openProjectDatabase,projectDirFor,schemaObjects} from './helpers/project-database.ts';

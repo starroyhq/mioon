@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 
 
 
@@ -51,11 +52,11 @@ const preservedTables = ['assets', 'edges', 'jobs', 'versions', 'exports', 'time
 const removedTables=['agent_chat_requests','agent_chat_runs','agent_chat_events','agent_chat_steps','agent_chat_quota'];
 
 function environment(extra: {}|undefined = {}) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY_|ARK_|VEO_|GOOGLE_|GEMINI_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_MUTATION_WIRE_GUARD: '1', ...extra};
+  return {...env, MIOON_MUTATION_WIRE_GUARD: '1', ...extra};
 }
 
 // Cleanup only ever targets the exact ChildProcess object created by this

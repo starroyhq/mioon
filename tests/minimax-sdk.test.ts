@@ -117,7 +117,7 @@ test('MiniMax SDK rejects unsupported template inputs and arbitrary endpoints be
 
 test('MiniMax legacy 768P task stays queryable while its frozen retry is rejected',async()=>{
   const f=fixture([json({task:{id:ID,status:'succeeded',resolution:'768P',content:{url:'https://video-product.cdn.minimax.io/historical.mp4'}}})]);
-  const provider=createMinimaxProvider({root:'/unused-test-root',env:{MINIMAX_API_KEY:SECRET,MIOON_ENABLE_LIVE_PROVIDER:'1'},fetchImpl:f.fetchImpl});
+  const provider=createMinimaxProvider({root:'/unused-test-root',env:{MINIMAX_API_KEY:SECRET,},fetchImpl:f.fetchImpl});
   const snapshot={model:'MiniMax-H3',prompt:input.prompt,duration:4,aspectRatio:'9:16',parameters:{},referenceAssets:[],capabilities:{modelCapabilities:[{id:'MiniMax-H3',resolutions:['768P']}]}};
   const before=structuredClone(snapshot);assert.equal((await provider.poll(ID)).status,'succeeded');
   await assert.rejects(provider.submit(snapshot),{code:'UNSUPPORTED_PARAMETERS',beforeDispatch:true});assert.deepEqual(snapshot,before);assert.equal(f.calls.length,1);assert.equal(f.calls[0]!.init.method,'GET');
@@ -129,7 +129,7 @@ for(const region of ['cn','global'])test(`MiniMax ${region} environment entry en
   const url='https://algeng-video-infer.oss-cn-shanghai.aliyuncs.com/result.mp4?signature=PRIVATE-SIGNATURE';
   const bytes=Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
   const f=fixture([json({task:{id:ID,status:'succeeded',content:{url}}}),new Response(bytes)]);
-  const provider=createMinimaxProvider({root,env:{MINIMAX_API_KEY:SECRET,MINIMAX_REGION:region,MIOON_ENABLE_LIVE_PROVIDER:'1'},fetchImpl:f.fetchImpl});
+  const provider=createMinimaxProvider({root,env:{MINIMAX_API_KEY:SECRET,MINIMAX_REGION:region,},fetchImpl:f.fetchImpl});
   const destination=path.join(root,'result.mp4');
   if(region==='cn'){
     await provider.download(ID,destination);assert.deepEqual(await readFile(destination),bytes);assert.equal(f.calls.length,2);

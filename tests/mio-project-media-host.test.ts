@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +26,7 @@ function childWrite(file: string): unknown {
     try {db = new DatabaseSync(process.argv[1], {timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');process.stdout.write(JSON.stringify({ok:true}));}
     catch(error){process.stdout.write(JSON.stringify({ok:false,errcode:error.errcode}));}
     finally{db?.close();}
-  `, file], {encoding: 'utf8', timeout: 60_000});
+  `, file], {env: testEnv(), encoding: 'utf8', timeout: 60_000});
   assert.equal(probe.status, 0, probe.stderr); return JSON.parse(probe.stdout);
 }
 
