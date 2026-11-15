@@ -114,6 +114,8 @@ function canvasStoryboardApp() {
     canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
     menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
     canvasEditingEnabled: false, canvasArea: {current: {}}, canvasOwnsShortcutFocus: () => true, storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
+    canvasCopyBlocked: 'No selection', canvasEditingScope: 'canvas-doc', renderedCanvasSelection: 0, canvasTargets: [],
+    canvasEditing: {historyScope: ''}, canvasPasteViewport: () => null,
     projectEpoch: {current: 1}, navigationEpoch: {current: 1}, panelIntent: {current: 1},
     propertiesPage: 'inspector', menuPlaybackEpoch: {current: 1}, menuRemovalEpoch: {current: 1},
     audioPreview: {state: {plan: null, continuousPlan: null, phase: 'idle', positionFrame: null}}, timelineAudioPreviewPosition,
@@ -244,6 +246,8 @@ function actualAppScope() {
     viewRef: view, dataRef: data, currentProject: {current: 'project-a'}, projectEpoch: {current: 1}, navigationEpoch: {current: 1}, panelIntent: {current: 1},
     propertiesPage: 'inspector', menuPlaybackEpoch: epoch, menuRemovalEpoch: removalEpoch, audioPreview, timelineAudioPreviewPosition,
     menuPlayback: {current: {scope: () => media}},
+    canvasEditingScope: 'no canvas', renderedCanvasSelection: 0, canvasTargets: [],
+    canvasEditing: {historyScope: ''}, canvasPasteViewport: () => null,
   }) as (command?: MenuCommandId) => string;
   return {scope, view, data, epoch, removalEpoch, audioPreview, changeMedia(value: string) {media = value;}};
 }
@@ -355,6 +359,7 @@ test('actual App availability retains live import and follows text focus and tra
     assetsCollapsed: false, inspectorCollapsed: false,
     isBusy: () => false, online: true, auth: true, canOpenExport: true, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: true},
     menuRemoval: {current: {available: () => true}}, menuPlayback: {current: {available: () => true}}, workbenchMenuView,
+    canvasCopyBlocked: 'No selection',
   };
   const read = () => appFunction('readNativeMenuView', '  function executeNativeMenuCommand(', bindings)() as ReturnType<typeof workbenchMenuView>;
   assert.equal(read().commands['import-media'], true, 'Live workspaces retain the existing import capability');
