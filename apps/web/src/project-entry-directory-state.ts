@@ -16,7 +16,12 @@ export interface ProjectEntryDirectoryState<T extends ProjectEntryIdentity = Pro
   readonly epoch: number;
   readonly error: ProjectEntryDirectoryFailure | null;
 }
-export type ProjectEntryDirectoryReadPort = (options: {readonly signal: AbortSignal}) => Promise<unknown>;
+export interface ProjectEntryDirectoryReadOptions {
+  readonly signal: AbortSignal;
+  readonly background?: true;
+}
+export type ProjectEntryDirectoryReadPort = (options: ProjectEntryDirectoryReadOptions) => Promise<unknown>;
+export type ProjectEntryDirectoryRefreshOptions = Partial<ProjectEntryDirectoryReadOptions>;
 const validScope = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
 function freezeSnapshot(value: ProjectEntriesResponse): ProjectEntriesResponse {
   for (const entry of value.registered) {
@@ -35,7 +40,8 @@ interface ControllerOptions<T extends ProjectEntryIdentity> {
 
 /** Catalog consumers get complete rows. Settings only needs the identity. */
 export function createProjectEntryDirectoryController(options: ControllerOptions<ProjectEntriesResponse> = {}) {
-  return createReadController(options, createProjectEntryDirectoryClient().list, projectEntriesResponseSchema, freezeSnapshot);
+  const client = createProjectEntryDirectoryClient();
+  return createReadController(options, ({signal}) => client.list({signal}), projectEntriesResponseSchema, freezeSnapshot);
 }
 export function createProjectEntryIdentityReader(options: ControllerOptions<ProjectEntryIdentity> = {}) {
   return createReadController(options, createProjectEntryDirectoryClient().readIdentity, projectEntryIdentitySchema, Object.freeze);
@@ -81,11 +87,13 @@ function createReadController<T extends ProjectEntryIdentity>(
       active = false; generation++; readSerial++; pending?.abort(); pending = null;
       if (state.phase !== 'blocked') publish({phase: 'idle', snapshot: null, error: null});
     },
-    async refresh(): Promise<boolean> {
-      if (!active || state.phase === 'blocked') return false;
+    async refresh({background, signal}: ProjectEntryDirectoryRefreshOptions = {}): Promise<boolean> {
+      if (!active || state.phase === 'blocked' || signal?.aborted || background && (pending !== null || state.phase !== 'ready')) return false;
       const owner = generation, serial = ++readSerial;
       pending?.abort(); const controller = new AbortController(); pending = controller;
-      publish({phase: 'loading', snapshot: null, error: null});
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, {once: true});
+      if (!background) publish({phase: 'loading', snapshot: null, error: null});
       let stop = (): void => {};
       try {
         if (!current(owner, serial) || controller.signal.aborted) return false;
@@ -93,7 +101,7 @@ function createReadController<T extends ProjectEntryIdentity>(
         if (!current(owner, serial)) return false;
         const aborted = new Promise<never>((_resolve, reject) => {stop = () => reject(new ProjectEntryDirectoryError('INTERRUPTED'));});
         controller.signal.addEventListener('abort', stop, {once: true});
-        const value = await Promise.race([port({signal: controller.signal}), aborted]);
+        const value = await Promise.race([port({signal: controller.signal, ...(background ? {background} : {})}), aborted]);
         if (!current(owner, serial) || controller.signal.aborted) return false;
         const expectedAfter = expectation();
         if (!current(owner, serial)) return false;
@@ -115,10 +123,33 @@ function createReadController<T extends ProjectEntryIdentity>(
         if (error instanceof ProjectEntryDirectoryError && error.code === 'PROJECT_ENTRY_SCOPE_MISMATCH') {block(); return false;}
         const failure: ProjectEntryDirectoryFailure = error instanceof ProjectEntryDirectoryError
           ? {code: error.code, ...(error.status === undefined ? {} : {status: error.status})} : {code: 'BACKEND_UNAVAILABLE'};
+        // A failed passive read cannot establish new facts or clear authority.
+        // Confirmed authorization, protocol and identity failures still do.
+        if (background && (failure.code === 'BACKEND_UNAVAILABLE' || failure.code === 'TIMEOUT')) return false;
         publish({phase: 'error', snapshot: null, error: Object.freeze(failure)});
         return false;
-      } finally {controller.signal.removeEventListener('abort', stop); if (pending === controller) pending = null;}
+      } finally {
+        signal?.removeEventListener('abort', abort);
+        controller.signal.removeEventListener('abort', stop);
+        if (pending === controller) pending = null;
+      }
     },
   };
 }
 export type ProjectEntryDirectoryController = ReturnType<typeof createProjectEntryDirectoryController>;
+
+const busyRefreshMs = 2_000;
+
+/** Schedule the next read after the last one finishes. The caller owns the
+ * visible window and checks the present catalog before every read. */
+export function pollBusyProjectEntries(isCurrent: () => boolean, refresh: () => Promise<void>): () => void {
+  let active = true;
+  let timer: ReturnType<typeof setTimeout>;
+  const schedule = () => {
+    if (active && isCurrent()) timer = setTimeout(() => {
+      if (active && isCurrent()) void refresh().then(schedule, schedule);
+    }, busyRefreshMs);
+  };
+  schedule();
+  return () => {active = false; clearTimeout(timer);};
+}

@@ -29,9 +29,14 @@ export const INSPECTION_PROJECT_IDS = Object.freeze(['project','other','absentTi
 // Preloaded in backend/CLI/MCP children. Only the client children may connect,
 // and only to the exact disposable backend port. Any denied action is durable
 // audit evidence even when application code catches the thrown test error.
-export interface WireGuardOptions {readonly origin?: string; readonly auditPath?: string; readonly onFetchStage?: (stage: string) => void}
+export interface WireGuardOptions {
+  readonly origin?: string;
+  readonly auditPath?: string;
+  readonly onFetchStage?: (stage: string) => void;
+  readonly allowProjectCatalog?: boolean;
+}
 export interface WireGuard {deny(kind: string): never}
-export function installWireGuard({origin = '', auditPath, onFetchStage}: WireGuardOptions = {}): WireGuard {
+export function installWireGuard({origin = '', auditPath, onFetchStage, allowProjectCatalog = false}: WireGuardOptions = {}): WireGuard {
   const allowed = origin ? new URL(origin) : null;
   const deny = (kind: string): never => {
     if (auditPath) fs.appendFileSync(auditPath, JSON.stringify({pid: process.pid, kind}) + '\n');
@@ -95,7 +100,16 @@ export function installWireGuard({origin = '', auditPath, onFetchStage}: WireGua
     dnsRecord[name] = () => deny('DNS/model/provider lookup');
     if (dnsPromises[name]) dnsPromises[name] = async () => deny('DNS/model/provider lookup');
   }
+  const fork = childProcess.fork;
   for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) childRecord[name] = () => deny('media or other subprocess');
+  if (allowProjectCatalog) {
+    const catalog = fileURLToPath(new URL('../../apps/server/src/project-catalog-node.ts', import.meta.url));
+    childRecord.fork = (file: unknown, args: unknown, options: childProcess.ForkOptions | undefined) => {
+      if (file !== catalog || !Array.isArray(args) || args.length !== 0 || options?.execPath !== process.execPath
+        || !Array.isArray(options.execArgv) || options.execArgv.length !== 0) return deny('media or other subprocess');
+      return fork(catalog, [], options);
+    };
+  }
   syncBuiltinESMExports();
   return {deny};
 }

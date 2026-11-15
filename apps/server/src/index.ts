@@ -50,6 +50,8 @@ import {composeApplicationRuntime} from './application-runtime.ts';
 import {createApplicationRpc} from './application-rpc.ts';
 import {createInitializedProject} from './project-host/create-project.ts';
 import {createProjectEntries} from './project-entries.ts';
+import {createNodeProjectCatalogClient} from './project-catalog-client.ts';
+import type {ProjectCatalogClient} from './project-catalog-client.ts';
 import {createBackgroundCoordinator} from './project-host/background-coordinator.ts';
 import {createBackgroundTaskHttp} from './project-host/background-http.ts';
 import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
@@ -98,6 +100,10 @@ interface AgentSettingsPort {
 interface ImageNetworkSeam {lookup?: ReviewedImageGatewayOptions['lookup']; httpsRequest?: ReviewedImageGatewayOptions['httpsRequest']}
 interface ComfyNetworkSeam {httpRequest: NonNullable<ComfyTransportOptions['httpRequest']>}
 export interface ServerOptions {
+  /** Desktop binds the closed-project scanner to its own utility process. */
+  projectCatalogClient?: ProjectCatalogClient;
+  /** Trusted in-process timing seam for a stalled filesystem fixture. */
+  projectCatalogTimeoutMsForTest?: number;
   dataDir?: string;
   cacheDir?: string;
   projectsDir?: string;
@@ -191,6 +197,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   let drainBackups: (() => Promise<void>) | undefined;
   let drainCopies: (() => Promise<void>) | undefined;
   let drainTrash: (() => Promise<void>) | undefined;
+  const catalogClient = options.projectCatalogClient ?? createNodeProjectCatalogClient();
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
@@ -294,7 +301,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       discard:async(input,options)=>{if (!opened.has(input.projectId) || nativeManager.status(input.projectId)?.state !== 'open') return;
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink,
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, catalogClient,
+      catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       markRecentOpened: (projectId, lastOpenedAt) => app.ui.markOpened(projectId, lastOpenedAt),
       templates:projectTemplates.flatMap(entry=>entry.manifest.templateId==='timeline-basics'&&entry.manifest.version===1?[{id:'timeline-basics' as const,version:1 as const}]:[]),
       copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},
@@ -343,7 +351,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         // The legacy selection document remains untouched in the application
         // library. No production route may read, repair or write it.
         if (url.pathname === '/api/last-project' || url.pathname.startsWith('/api/last-project/')) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '接口不存在', details: {}, retryable: false}});
-        if (projectEntries.handle(req, res, url)) return;
+        if (await projectEntries.handle(req, res, url)) return;
         if (backgroundHttp(req, res, url)) return;
         const route = parseProjectApiPath(url.pathname);
         if (route) {
@@ -477,7 +485,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       const drain = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
       const force = setTimeout(() => server?.closeAllConnections(), 3000); force.unref();
       try {
-        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain(), trash.drain()]), 'SERVER_STOP_TIMEOUT');
+        await boundedShutdown(Promise.all([projects.closeAll(), files.close(), drain, backups.drain(), copies.drain(), trash.drain(), catalogClient.drain?.()]), 'SERVER_STOP_TIMEOUT');
         await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), app.close()]), 'SERVER_STOP_TIMEOUT');
       } finally { clearTimeout(force); }
       appLibrary.close();
@@ -486,9 +494,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, projectEntries: projectEntries.control,
       close};
   } catch (error) {
-    shutdown.abort(); background?.stop(); server?.closeAllConnections();
+    shutdown.abort(); catalogClient.close(); background?.stop(); server?.closeAllConnections();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
-    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.(), drainTrash?.()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, manager?.closeAll(), files.close(), drainBackups?.(), drainCopies?.(), drainTrash?.(), catalogClient.drain?.()]), 'SERVER_STOP_TIMEOUT');
     await boundedShutdown(Promise.all([terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), application?.close()]), 'SERVER_STOP_TIMEOUT');
     library?.close(); lock.release(); throw error;
   }

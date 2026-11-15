@@ -1,9 +1,10 @@
 import type {ProjectEntriesResponse, ProjectEntryIdentity} from '../../../packages/contracts/src/project-entry.ts';
 import {ProjectEntryDirectoryError} from './project-entry-directory-client.ts';
 import {createProjectEntryDirectoryController, createProjectEntryIdentityReader} from './project-entry-directory-state.ts';
-import type {ProjectEntryDirectoryReadPort, ProjectEntryDirectoryState} from './project-entry-directory-state.ts';
+import type {ProjectEntryDirectoryFailure, ProjectEntryDirectoryReadPort, ProjectEntryDirectoryRefreshOptions, ProjectEntryDirectoryState} from './project-entry-directory-state.ts';
 
-export interface ProjectEntryIdentityFailure {readonly code: string; readonly status?: number}
+type ProjectEntryIdentityFailure = ProjectEntryDirectoryFailure | {readonly code: 'PROJECT_ENTRY_STALE_INSTANCE'; readonly status: 409};
+
 export interface ProjectEntryIdentityState<T extends ProjectEntryIdentity = ProjectEntriesResponse> {
   readonly phase: 'idle' | 'loading' | 'ready' | 'error' | 'blocked';
   readonly snapshot: T | null;
@@ -33,7 +34,7 @@ export function createSettingsWorkspaceIdentityOwner(options: OwnerOptions<Proje
 function createIdentityOwner<T extends ProjectEntryIdentity>({read, onChange = () => {}}: OwnerOptions<T>,
   createReader: (options: {read?: ProjectEntryDirectoryReadPort; onChange: (state: ProjectEntryDirectoryState<T>) => void}) =>
     Pick<ReturnType<typeof createProjectEntryDirectoryController>, 'activate' | 'dispose' | 'refresh'>) {
-  let active = false, generation = 0, flight: Promise<T | null> | null = null;
+  let active = false, generation = 0, flight: {result: Promise<T | null>; background: boolean} | null = null;
   let baseline: ProjectEntryIdentity | null = null;
   let blocked: ProjectEntryIdentityError | null = null;
   const listeners = new Set<() => void>();
@@ -62,19 +63,20 @@ function createIdentityOwner<T extends ProjectEntryIdentity>({read, onChange = (
         instanceId: baseline?.instanceId ?? null, failure: next.error});
     },
   });
-  function discover(replace = false): Promise<T | null> {
+  function discover(replace = false, options?: ProjectEntryDirectoryRefreshOptions): Promise<T | null> {
     if (!active || blocked) return Promise.resolve(null);
-    if (flight && !replace) return flight;
+    const background = options?.background === true;
+    if (flight && !replace && (background || !flight.background)) return flight.result;
     const owner = generation;
-    const work = directory.refresh().then(accepted => active && owner === generation && !blocked && accepted ? state.snapshot : null);
-    flight = work;
-    void work.finally(() => {if (flight === work) flight = null;});
+    const work = directory.refresh(options).then(accepted => active && owner === generation && !blocked && accepted ? state.snapshot : null);
+    flight = {result: work, background};
+    void work.finally(() => {if (flight?.result === work) flight = null;});
     return work;
   }
   return {
     activate(): void {if (!active) {active = true; generation++; if (!blocked) directory.activate();}},
     dispose(): void {active = false; generation++; flight = null; directory.dispose(); if (!blocked) emit({phase: 'idle', snapshot: null, failure: null});},
-    discover: () => discover(), refresh: () => discover(true),
+    discover: (options?: ProjectEntryDirectoryRefreshOptions) => discover(false, options), refresh: () => discover(true),
     getVerifiedScope: (): string | null => blocked ? null : baseline?.appLibraryScope ?? null,
     getState: (): ProjectEntryIdentityState<T> => state,
     subscribe(listener: () => void): () => void {listeners.add(listener); return () => {listeners.delete(listener);};},
@@ -86,10 +88,16 @@ export type SettingsWorkspaceIdentityOwner = ReturnType<typeof createSettingsWor
 
 /** A missing read is an error, never an invented empty directory. The public
  * directory error keeps status handling shared with existing browser clients. */
-export async function readProjectEntryIdentity(owner: ProjectEntryIdentityOwner): Promise<ProjectEntriesResponse> {
-  const value = await owner.discover(); owner.assertIdentity();
+export async function readProjectEntryIdentity(owner: ProjectEntryIdentityOwner, options?: ProjectEntryDirectoryRefreshOptions): Promise<ProjectEntriesResponse> {
+  const value = await owner.discover(options?.background ? options : undefined);
+  if (options?.background && owner.getState().identityBlocked) throw new ProjectEntryDirectoryError('PROJECT_ENTRY_SCOPE_MISMATCH', 409);
+  owner.assertIdentity();
   if (!value) {
     const failure = owner.getState().failure;
+    if (options?.background) {
+      const code = failure?.code === 'PROJECT_ENTRY_STALE_INSTANCE' ? 'PROJECT_ENTRY_SCOPE_MISMATCH' : failure?.code;
+      throw new ProjectEntryDirectoryError(code ?? 'BACKEND_UNAVAILABLE', failure?.status);
+    }
     throw new ProjectEntryDirectoryError(failure?.code === 'UNAUTHORIZED' ? 'UNAUTHORIZED' : failure?.code === 'ORIGIN_REJECTED' ? 'ORIGIN_REJECTED' : 'PROJECT_ENTRY_UNAVAILABLE', failure?.status);
   }
   return value;

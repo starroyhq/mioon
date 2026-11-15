@@ -4,7 +4,7 @@
 export {openStore} from './test-store.ts';
 export {commitProjectAssetHash, createProjectStore, isProjectStore, openProjectStore, openStagedProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
 export type {CommitProjectAssetHashOptions, ProjectStore} from './store.ts';
-export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, openStagedProjectConnection, inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectProjectFormatReadOnly, PROJECT_JOURNAL_SIZE_LIMIT, recoverProjectFile} from './connection.ts';
+export {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, openStagedProjectConnection, inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectProjectFormatReadOnly, PROJECT_JOURNAL_SIZE_LIMIT, projectFileRecoveryForHeld, recoverProjectFile} from './connection.ts';
 export {restoreFormat4Backup} from './format4-restore.ts';
 export type {Format4RestoreBoundary, RestoreFormat4BackupOptions} from './format4-restore.ts';
 export type {
