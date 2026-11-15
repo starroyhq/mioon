@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, supportsCanvasEditing, toggleCanvasSelection} from '../apps/web/src/canvas-selection.ts';
+import {canvasClipboardShortcut, canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, supportsCanvasEditing, toggleCanvasSelection} from '../apps/web/src/canvas-selection.ts';
+import {createCanvasClipboard, eventCanvasClipboard} from '../apps/web/src/canvas-clipboard.ts';
 import type {CanvasEditBase} from '../packages/contracts/src/canvas-editing.ts';
 
 const base = {contentSequence: 5, contentToken: 'a'.repeat(32), targets: [
@@ -34,7 +35,7 @@ const event = (key: string, more: Partial<Parameters<typeof canvasShortcut>[0]> 
   key, defaultPrevented: false, repeat: false, isComposing: false, keyCode: 0, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...more,
 });
 
-test('both platform modifier keys work and unrelated clipboard shortcuts are untouched', () => {
+test('both platform modifiers recognize duplicate while copy and paste use their separate clipboard handler', () => {
   for (const modifier of [{ctrlKey: true}, {metaKey: true}]) {
     assert.equal(canvasShortcut(event('a', modifier), ready), 'all');
     assert.equal(canvasShortcut(event('z', modifier), ready), 'undo');
@@ -42,7 +43,7 @@ test('both platform modifier keys work and unrelated clipboard shortcuts are unt
     assert.equal(canvasShortcut(event('L', {...modifier, shiftKey: true}), ready), 'tidy');
     assert.equal(canvasShortcut(event('c', modifier), ready), undefined);
     assert.equal(canvasShortcut(event('v', modifier), ready), undefined);
-    assert.equal(canvasShortcut(event('d', modifier), ready), undefined);
+    assert.equal(canvasShortcut(event('d', modifier), ready), 'duplicate');
   }
   assert.equal(canvasShortcut(event('Backspace'), ready), 'archive');
   assert.equal(canvasShortcut(event('Delete'), ready), 'archive');
@@ -50,7 +51,7 @@ test('both platform modifier keys work and unrelated clipboard shortcuts are unt
 });
 
 test('text, composition and modal focus keep all canvas shortcuts unhandled', () => {
-  const keys = [event('a', {ctrlKey: true}), event('Z', {metaKey: true, shiftKey: true}),
+  const keys = [event('a', {ctrlKey: true}), event('d', {ctrlKey: true}), event('Z', {metaKey: true, shiftKey: true}),
     event('L', {metaKey: true, shiftKey: true}), event('Delete'), event('Escape')];
   for (const key of keys) {
     for (const gate of [{blocked: true}, {composing: true}, {textFocus: true}]) {
@@ -58,6 +59,48 @@ test('text, composition and modal focus keep all canvas shortcuts unhandled', ()
     }
     for (const patch of [{keyCode: 229}, {isComposing: true}, {repeat: true}, {defaultPrevented: true}]) {
       assert.equal(canvasShortcut({...key, ...patch}, ready), undefined);
+    }
+  }
+});
+
+test('canvas clipboard callbacks only transport an opaque handle for the current copy and current document', async () => {
+  const handle = '10000000-0000-4000-8000-000000000001';
+  let now = 100, owner = 1, clipboardText = '';
+  const copy = createCanvasClipboard({lifetimeMs: 120, now: () => now, nonce: () => handle});
+  const transport = {kind: 'event' as const, write: (value: string) => {clipboardText = value;}, read: () => clipboardText};
+  const current = () => owner === 1;
+  const snapshot = () => Promise.resolve({snapshotId: 'synthetic server snapshot', count: 3});
+  assert.equal(await copy.copy(transport, snapshot, current), 3);
+  assert.equal(clipboardText, handle);
+  assert.equal(await copy.paste(transport.read, current), 'synthetic server snapshot');
+  clipboardText = 'external replacement';
+  assert.equal(await copy.paste(transport.read, current), null);
+  clipboardText = handle;
+  assert.equal(await copy.paste(transport.read, current), null, 'an observed overwrite retires the old copy');
+
+  await copy.copy(transport, snapshot, current);
+  clipboardText = '10000000-0000-4000-8000-000000000002';
+  assert.equal(await copy.paste(transport.read, current), null, 'a well-formed different handle is insufficient');
+  await copy.copy(transport, snapshot, current);
+  now += 120;
+  assert.equal(await copy.paste(transport.read, current), null);
+  await copy.copy(transport, snapshot, current);
+  const incoming = Promise.withResolvers<string>();
+  const reading = copy.paste(() => incoming.promise, current);
+  owner++;
+  copy.clear();
+  incoming.resolve(handle);
+  assert.equal(await reading, null);
+  assert.equal(eventCanvasClipboard({isTrusted: false, clipboardData: null}), null);
+});
+
+test('web copy and paste shortcut recognition yields to composition, repeats and already handled gestures', () => {
+  for (const modifier of [{ctrlKey: true}, {metaKey: true}]) {
+    assert.equal(canvasClipboardShortcut(event('c', modifier)), 'copy');
+    assert.equal(canvasClipboardShortcut(event('v', modifier)), 'paste');
+    for (const gate of [{repeat: true}, {isComposing: true}, {keyCode: 229}, {defaultPrevented: true}, {shiftKey: true}]) {
+      assert.equal(canvasClipboardShortcut(event('c', {...modifier, ...gate})), undefined);
+      assert.equal(canvasClipboardShortcut(event('v', {...modifier, ...gate})), undefined);
     }
   }
 });
@@ -148,7 +191,7 @@ test('the format 3 renderer keeps ordinary click, pan and edge keys without expo
   const source = readSource(fileURLToPath(new URL('../apps/web/src/App.tsx', import.meta.url)));
   const syntax = ts.createSourceFile('App.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const expectedProps = new Set([
-    'onNodeClick', 'onNodeContextMenu', 'onSelectionContextMenu', 'onSelectionStart', 'onSelectionEnd',
+    'onNodeClick', 'onNodeContextMenu', 'onPaneContextMenu', 'onSelectionContextMenu', 'onSelectionStart', 'onSelectionEnd',
     'selectionOnDrag', 'panOnDrag', 'deleteKeyCode', 'disableKeyboardA11y',
   ]);
   let propsSource = '';
@@ -165,7 +208,7 @@ test('the format 3 renderer keeps ordinary click, pan and edge keys without expo
   const reject = () => assert.fail('Format 3 entered a format 4 gesture');
   type CanvasProps = {
     onNodeClick(event: {shiftKey: boolean}, node: {id: string}): void; onNodeContextMenu?: unknown;
-    onSelectionContextMenu?: unknown; onSelectionStart?: unknown; onSelectionEnd?: unknown;
+    onPaneContextMenu?: unknown; onSelectionContextMenu?: unknown; onSelectionStart?: unknown; onSelectionEnd?: unknown;
     selectionOnDrag: boolean; panOnDrag: boolean; deleteKeyCode: readonly string[]; disableKeyboardA11y: boolean;
   };
   const props = evaluateExpression<{props: CanvasProps}>('', `<ReactFlow ${propsSource} />`,
@@ -176,6 +219,7 @@ test('the format 3 renderer keeps ordinary click, pan and edge keys without expo
   props.onNodeClick({shiftKey: true}, {id: 'second'});
   assert.deepEqual(clicks, ['first', 'second']);
   assert.equal(props.onNodeContextMenu, undefined);
+  assert.equal(props.onPaneContextMenu, undefined);
   assert.equal(props.onSelectionContextMenu, undefined);
   assert.equal(props.onSelectionStart, undefined);
   assert.equal(props.onSelectionEnd, undefined);

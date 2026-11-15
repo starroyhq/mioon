@@ -10,6 +10,7 @@ interface UseCanvasEditingOptions extends CanvasEditingContext {
   onError?: (error: unknown) => void;
   onNotice?: (notice: CanvasEditingNotice) => void;
   onArchived?: (targets: readonly CanvasTarget[]) => void;
+  onCreated?: (targets: readonly CanvasTarget[]) => void;
 }
 
 const detachedContext: CanvasEditingContext = {scope: '', projectId: null, enabled: false, writable: false, base: undefined};
@@ -27,6 +28,7 @@ export function useCanvasEditing(options: UseCanvasEditingOptions) {
       onError: error => callbacks.current.onError?.(error),
       onNotice: notice => callbacks.current.onNotice?.(notice),
       onArchived: targets => callbacks.current.onArchived?.(targets),
+      onCreated: targets => callbacks.current.onCreated?.(targets),
     });
   }
   const controller = ref.current;

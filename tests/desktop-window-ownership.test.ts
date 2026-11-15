@@ -14,6 +14,8 @@ import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
 import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
 import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {CANVAS_CLIPBOARD_CHANNEL} from '../apps/desktop/src/canvas-clipboard.ts';
+import {readNativeCanvasClipboard} from '../apps/desktop/src/canvas-clipboard-host.ts';
 import type {MenuCommandId, MenuCommandIntent, MenuCommandState} from '../apps/desktop/src/menu-command-protocol.ts';
 import type {MenuCommandGestureBridge} from '../apps/desktop/src/menu-command-protocol.ts';
 import {createMenuCommandBridge} from '../apps/desktop/src/menu-command-preload.ts';
@@ -300,8 +302,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
+    CANVAS_CLIPBOARD_CHANNEL, readNativeCanvasClipboard, clipboard: {read: () => assert.fail('Window lifecycle must not read the clipboard')},
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -324,7 +327,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   options.beforeReady?.(app);
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL].sort());
+    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();

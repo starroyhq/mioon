@@ -12,7 +12,7 @@ import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {createMediaToolsInstaller} from './media-tools.ts';
@@ -69,6 +69,8 @@ import type {MenuCommandDocument} from './menu-command-host.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from './menu-command-protocol.ts';
 import type {MenuCommandId} from './menu-command-protocol.ts';
 import {menuCommandGestureScript} from './menu-command-gesture.ts';
+import {CANVAS_CLIPBOARD_CHANNEL} from './canvas-clipboard.ts';
+import {readNativeCanvasClipboard} from './canvas-clipboard-host.ts';
 import { createDesktopWindowAppearance, desktopWindowBackground } from './window-appearance.ts';
 import { createDesktopAppearanceCache } from './desktop-appearance-cache.ts';
 import { createProjectEntryDesktopHost } from './project-entry-desktop-host.ts';
@@ -1282,6 +1284,14 @@ menuCommands = createMenuCommandHost<WebContents, NativeMenuDocument>({
 ipcMain.handle(MENU_COMMAND_CHANNEL, (event, request) => {
   if (!menuCommands) throw new Error('Native menu commands are unavailable.');
   return menuCommands.dispatch(event, request);
+});
+ipcMain.handle(CANVAS_CLIPBOARD_CHANNEL, (event, ...args: unknown[]) => {
+  if (args.length) return null;
+  const owner = windowHost?.ownerForContents(event.sender);
+  if (!owner || owner.role !== 'editor' || event.senderFrame !== owner.frame) return null;
+  const document: NativeMenuDocument = {...owner, version: 1};
+  return readNativeCanvasClipboard(process.platform, () => clipboard.read(), () =>
+    menuDocumentAllowed(document, 'canvas-duplicate') && menuCommands?.stateFor(event.sender)?.workspaceMode === 'canvas');
 });
 ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.dispatch(event, request) ?? { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' });
 ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{

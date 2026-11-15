@@ -17,7 +17,7 @@ type Preview = CanvasEditingResponse<'canvas.archive.preview'>;
 type HistoryDirection = 'undo' | 'redo';
 type WriteOperation = 'canvas.apply' | 'canvas.history.undo' | 'canvas.history.redo';
 type Stamp = Pick<CanvasEditBase, 'contentSequence' | 'contentToken'>;
-type Flight = {generation: number; projectId: string; dispatched: boolean};
+type Flight = {generation: number; projectId: string; dispatched: boolean; selectCreated?: () => void};
 type ArchiveReview = Pick<Preview, 'versions' | 'clips' | 'shotImpacts' | 'impactedShotCount'> & {count: number};
 export type CanvasEditingNotice = {kind: 'restored'; count: number} | {kind: 'undone' | 'redone'};
 type ArchiveState = {
@@ -28,7 +28,9 @@ type ArchiveState = {
   hasMore: boolean;
   canRestoreAll: boolean;
 };
-type CanvasEditToast = {kind: 'archive' | 'layout'; count: number; actionId: string};
+type CanvasEditToast = {kind: 'archive' | 'layout' | 'paste' | 'duplicate'; count: number; actionId: string}
+  | {kind: 'copy'; count: number; actionId?: never};
+type PasteViewport = {x: number; y: number; width: number; height: number};
 
 export interface CanvasEditingContext {
   scope: string;
@@ -47,6 +49,7 @@ export interface CanvasEditingState {
   canUndo: boolean;
   canRedo: boolean;
   canUndoToast: boolean;
+  clipboardWriteUnknown: boolean;
   historyScope: string;
 }
 
@@ -57,6 +60,7 @@ interface ControllerOptions {
   onError?: (error: unknown) => void;
   onNotice?: (notice: CanvasEditingNotice) => void;
   onArchived?: (targets: readonly CanvasTarget[]) => void;
+  onCreated?: (targets: readonly CanvasTarget[]) => void;
   createNonce?: () => string;
   now?: () => number;
 }
@@ -143,14 +147,14 @@ function validFirstPage(page: Page): Page {
 }
 
 export function createCanvasEditingController({rpc, refresh, isCurrent = () => true, onError = () => {}, onNotice = () => {}, onArchived = () => {},
-  createNonce = () => globalThis.crypto.randomUUID(), now = Date.now}: ControllerOptions) {
+  onCreated = () => {}, createNonce = () => globalThis.crypto.randomUUID(), now = Date.now}: ControllerOptions) {
   let context: CanvasEditingContext = {scope: '', projectId: null, enabled: false, writable: false, base: undefined};
   let generation = 0, historySerial = 0, archiveSerial = 0;
   let reviewing: Preview | null = null, page: Page | null = null, appliedStamp: Stamp | undefined;
   let inFlight: Flight | null = null;
   let state: CanvasEditingState = {
     busy: false, history: null, review: null, archive: blankArchive, toast: null,
-    canUndo: false, canRedo: false, canUndoToast: false, historyScope: '',
+    canUndo: false, canRedo: false, canUndoToast: false, clipboardWriteUnknown: false, historyScope: '',
   };
   const listeners = new Set<() => void>();
   function emit(patch: Partial<CanvasEditingState>) {
@@ -176,7 +180,7 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
       inFlight = reviewing = page = null;
       appliedStamp = undefined;
       context = next;
-      emit({busy: false, history: null, archive: blankArchive, review: null, toast: null});
+      emit({busy: false, history: null, archive: blankArchive, review: null, toast: null, clipboardWriteUnknown: false});
       return;
     }
     const changed = context.enabled !== next.enabled || context.writable !== next.writable;
@@ -288,6 +292,7 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
           try { await refresh(flight.projectId); } catch { /* The parent handles a failed reload. */ }
         }
         if (inFlight === flight) {
+          if (visible(flight)) flight.selectCreated?.();
           inFlight = null;
           emit({busy: false});
           if (visible(flight)) await Promise.all([loadHistory(), loadArchive()]);
@@ -330,6 +335,37 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
       if (visible(flight)) onNotice({kind: 'restored', count: review.targets.length});
     }
     return true;
+  }
+
+  async function freezeSelection(flight: Flight, documentId: string, targets: readonly CanvasTarget[]) {
+    const base = context.base;
+    const cards = targets.filter(target => target.kind !== 'edge');
+    if (!base || !cards.length || !visible(flight)) return null;
+    const input = {projectId: flight.projectId, documentId, targets: expectations(base, cards).map(toExpectation)};
+    const snapshot = await read(rpc, 'canvas.copy.snapshot', input);
+    if (snapshot.documentId !== documentId || snapshot.count !== cards.length) throw error('BACKEND_PROTOCOL_ERROR');
+    return visible(flight) ? snapshot : null;
+  }
+
+  async function applyPaste(flight: Flight, documentId: string, snapshotId: string, viewport: PasteViewport,
+    kind: 'paste' | 'duplicate', canApply: () => boolean): Promise<boolean> {
+    if (!canApply()) return false;
+    const history = await read(rpc, 'canvas.history.get', {projectId: flight.projectId});
+    try {
+      const result = await mutate(flight, 'canvas.apply',
+        {...commitInput(history, flight.projectId), operation: 'paste', documentId, snapshotId, viewport}, canApply);
+      if (!result) return false;
+      if (!result.actionId || !result.created?.length) throw error('CANVAS_REQUEST_OUTCOME_UNKNOWN');
+      if (visible(flight)) {
+        const created = result.created;
+        flight.selectCreated = () => { if (canApply()) onCreated(created); };
+        emit({toast: {kind, count: result.created.length, actionId: result.actionId}});
+      }
+      return true;
+    } catch (failure) {
+      if (owned(flight) && canvasEditErrorCode(failure) === 'CANVAS_REQUEST_OUTCOME_UNKNOWN') emit({clipboardWriteUnknown: true});
+      throw failure;
+    }
   }
 
   const controller = {
@@ -413,10 +449,34 @@ export function createCanvasEditingController({rpc, refresh, isCurrent = () => t
       if (reviewing || !moves.length) return Promise.resolve(false);
       return act(flight => applyPositions(flight, base, moves, 'move', canApply));
     },
+    async copySnapshot(documentId: string, targets: readonly CanvasTarget[]) {
+      const flight = capture(false);
+      if (!flight || inFlight || reviewing || state.clipboardWriteUnknown) return null;
+      try { return await freezeSelection(flight, documentId, targets); }
+      catch (failure) {
+        if (visible(flight)) onError(failure);
+        return null;
+      }
+    },
+    copied(count: number) { emit({toast: {kind: 'copy', count}}); },
+    paste(documentId: string, viewport: PasteViewport, readSnapshot: () => Promise<string | null>, canApply: () => boolean) {
+      if (reviewing || state.clipboardWriteUnknown) return Promise.resolve(false);
+      return act(async flight => {
+        const snapshotId = await readSnapshot();
+        return snapshotId ? applyPaste(flight, documentId, snapshotId, viewport, 'paste', canApply) : false;
+      });
+    },
+    duplicate(documentId: string, viewport: PasteViewport, targets: readonly CanvasTarget[], canApply: () => boolean) {
+      if (reviewing || state.clipboardWriteUnknown) return Promise.resolve(false);
+      return act(async flight => {
+        const snapshot = await freezeSelection(flight, documentId, targets);
+        return snapshot ? applyPaste(flight, documentId, snapshot.snapshotId, viewport, 'duplicate', canApply) : false;
+      });
+    },
     undo: () => travel('undo'),
     redo: () => travel('redo'),
     reportHistoryConflict,
-    undoToast: () => state.toast ? travel('undo', state.toast.actionId) : Promise.resolve(false),
+    undoToast: () => state.toast?.actionId ? travel('undo', state.toast.actionId) : Promise.resolve(false),
     dismissToast: () => emit({toast: null}),
   };
 

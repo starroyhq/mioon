@@ -5,13 +5,13 @@ export const MENU_COMMAND_EVENT = 'mioon:menu-command-intent:v1';
 export const MENU_COMMAND_IDS = Object.freeze([
   'import-media', 'export', 'workspace-canvas', 'workspace-editing',
   'toggle-assets', 'toggle-inspector', 'toggle-timeline', 'show-tasks', 'show-help',
-  'edit-undo', 'edit-redo', 'clip-split', 'clip-remove', 'clip-ripple-remove', 'playback-toggle',
+  'edit-undo', 'edit-redo', 'canvas-duplicate', 'clip-split', 'clip-remove', 'clip-ripple-remove', 'playback-toggle',
 ] as const);
 export type MenuCommandId = typeof MENU_COMMAND_IDS[number];
 /** Shared menu/shortcut-help labels. Space and deletion remain local editor
  * keys so a native accelerator cannot steal input from a text control. */
 export const MENU_COMMAND_ACCELERATORS = Object.freeze({
-  'edit-undo': 'CmdOrCtrl+Z', 'edit-redo': 'CmdOrCtrl+Shift+Z', 'clip-split': 'CmdOrCtrl+B',
+  'edit-undo': 'CmdOrCtrl+Z', 'edit-redo': 'CmdOrCtrl+Shift+Z', 'canvas-duplicate': 'CmdOrCtrl+D', 'clip-split': 'CmdOrCtrl+B',
   'import-media': 'CmdOrCtrl+I', export: 'CmdOrCtrl+Shift+E',
 } as const satisfies Partial<Record<MenuCommandId, string>>);
 export const MENU_COMMAND_LOCAL_SHORTCUTS = Object.freeze({

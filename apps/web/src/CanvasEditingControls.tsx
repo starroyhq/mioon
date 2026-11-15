@@ -6,10 +6,9 @@ import {WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/work
 import {WorkbenchContextMenu, type WorkbenchPointerAnchor} from '@mioon/ui/components/workbench-context-menu';
 import {WorkbenchTooltip} from '@mioon/ui/components/workbench-tooltip';
 import {WorkbenchPopover, WorkbenchPopoverContent, WorkbenchPopoverTitle, WorkbenchPopoverTrigger} from '@mioon/ui/components/workbench-popover';
-import {Clapperboard, Grid2X2, Image, Info, Layers, Link, MousePointer2, Plus, RotateCcw, Trash2, Type, X} from '@mioon/ui/components/workbench-icons';
+import {Clapperboard, ClipboardPaste, Copy, CopyPlus, Grid2X2, Image, Info, Layers, Link, MousePointer2, RotateCcw, Trash2, Type, X} from '@mioon/ui/components/workbench-icons';
 import type {CanvasArchiveItem, CanvasArchiveShotImpact} from '../../../packages/contracts/src/canvas-editing.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
-import Icon from './icons.tsx';
 import {useWorkspaceVisibility} from './workspace-visibility.tsx';
 import './canvas-editing.css';
 
@@ -120,21 +119,52 @@ export function canvasEditMacShortcuts(): boolean {
   return /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 }
 
-export function CanvasSelectionMenu({anchor, onClose, onArchive, onTidy, canArchive, canTidy}: {
+export function CanvasSelectionMenu({anchor, onClose, onArchive, onTidy, canArchive, canTidy,
+  copy, paste, duplicate, copyDisabledReason, pasteDisabledReason, duplicateDisabledReason}: {
   readonly anchor: WorkbenchPointerAnchor | null;
   readonly onClose: () => void;
   readonly onArchive: () => void;
   readonly onTidy: () => void;
   readonly canArchive: boolean;
   readonly canTidy: boolean;
+  readonly copy?: (event: Event) => void;
+  readonly paste?: (event: Event) => void;
+  readonly duplicate?: (event: Event) => void;
+  readonly copyDisabledReason?: string | null;
+  readonly pasteDisabledReason?: string | null;
+  readonly duplicateDisabledReason?: string | null;
 }) {
   const {t} = useI18n();
   const mac = canvasEditMacShortcuts(), command = mac ? '⌘' : 'Ctrl+';
-  const copyShortcut = `${command}C`, pasteShortcut = `${command}V`, duplicateShortcut = `${command}D`;
+  const clipboardItems = [
+    {name: 'copy', key: 'C', run: copy, reason: copyDisabledReason, icon: Copy},
+    {name: 'paste', key: 'V', run: paste, reason: pasteDisabledReason, icon: ClipboardPaste},
+    {name: 'duplicate', key: 'D', run: duplicate, reason: duplicateDisabledReason, icon: CopyPlus},
+  ] as const;
   return <WorkbenchContextMenu anchor={anchor} onClose={onClose} className="canvas-selection-menu" data-testid="canvas-selection-menu" aria-label={t('canvas.edit.menu')}>
-    <DropdownMenuItem disabled data-testid="canvas-menu-copy"><Icon name="note" size={14} />{t('canvas.edit.copy')}<kbd>{copyShortcut}</kbd></DropdownMenuItem>
-    <DropdownMenuItem disabled data-testid="canvas-menu-paste"><Layers size={14} aria-hidden="true" />{t('canvas.edit.paste')}<kbd>{pasteShortcut}</kbd></DropdownMenuItem>
-    <DropdownMenuItem disabled data-testid="canvas-menu-duplicate"><Plus size={14} aria-hidden="true" />{t('canvas.edit.duplicate')}<kbd>{duplicateShortcut}</kbd></DropdownMenuItem>
+    {clipboardItems.map(({name, key, run, reason, icon: CommandIcon}) => {
+      const unavailable = reason ?? (run ? null : t('canvas.edit.clipboard.unavailable'));
+      const activate = (event: Event) => {
+        if (!event.isTrusted || unavailable || !run) return;
+        onClose();
+        run(event);
+      };
+      const item = <DropdownMenuItem key={name} disabled={unavailable !== null} data-testid={`canvas-menu-${name}`}
+        data-canvas-clipboard-action={name === 'duplicate' ? undefined : name}
+        closeOnClick={false} className="canvas-clipboard-menu-item" aria-keyshortcuts={`${mac ? 'Meta' : 'Control'}+${key}`}
+        onClick={event => activate(event.nativeEvent)} onKeyDown={event => {
+          if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || event.keyCode === 229 ||
+              (event.key !== 'Enter' && event.key !== ' ')) return;
+          // Base UI's non-native menu item synthesizes a click for these keys.
+          // Use the real keyboard gesture so clipboard access remains synchronous.
+          activate(event.nativeEvent);
+          event.preventDefault();
+          event.stopPropagation();
+        }}>
+        <CommandIcon size={14} aria-hidden="true" />{t(`canvas.edit.${name}`)}<kbd aria-hidden="true">{command}{key}</kbd>
+      </DropdownMenuItem>;
+      return unavailable ? <WorkbenchTooltip key={name} content={unavailable}>{item}</WorkbenchTooltip> : item;
+    })}
     <DropdownMenuSeparator />
     <DropdownMenuItem disabled={!canTidy} data-testid="canvas-menu-tidy" onClick={() => {onClose(); onTidy();}}>
       <Grid2X2 size={14} aria-hidden="true" />{t('canvas.edit.tidySelected')}
@@ -260,7 +290,7 @@ export function CanvasArchivePopover({scope, visible: requestedVisible, count, i
 }
 
 export function CanvasEditToast({kind, count, placement, canUndo, undoConflict = false, onUndo, onClose}: {
-  readonly kind: 'archive'|'layout';
+  readonly kind: 'archive'|'layout'|'copy'|'paste'|'duplicate';
   readonly count: number;
   readonly placement: string;
   readonly canUndo: boolean;
@@ -272,16 +302,24 @@ export function CanvasEditToast({kind, count, placement, canUndo, undoConflict =
   const {ref, style} = useStoryboardClearance(placement);
   const mac = canvasEditMacShortcuts(), reasonId = useId();
   const reason = undoConflict ? t('canvas.edit.error.undoConflict') : '';
+  const descriptions = {
+    archive: ['canvas.edit.archivedToast', Trash2],
+    layout: ['canvas.edit.tidiedToast', Grid2X2],
+    copy: ['canvas.edit.copiedToast', Copy],
+    paste: ['canvas.edit.pastedToast', ClipboardPaste],
+    duplicate: ['canvas.edit.duplicatedToast', CopyPlus],
+  } as const;
+  const [description, StatusIcon] = descriptions[kind];
   const undo = <WorkbenchButton variant="ghost" size="compact" data-testid="canvas-edit-toast-undo" disabled={!canUndo}
     aria-keyshortcuts={mac ? 'Meta+Z' : 'Control+Z'} aria-describedby={reason ? reasonId : undefined} onClick={onUndo}>
     {t('scene.toast.undo')}
   </WorkbenchButton>;
   return <div ref={ref} style={style} className="canvas-edit-floating canvas-edit-toast" data-testid="canvas-edit-toast">
-    {kind === 'archive' ? <Trash2 size={15} aria-hidden="true" /> : <Grid2X2 size={15} aria-hidden="true" />}
-    <span role="status">{t(kind === 'archive' ? 'canvas.edit.archivedToast' : 'canvas.edit.tidiedToast', {count})}</span>
-    {reason ? <WorkbenchTooltip content={reason}><span tabIndex={0} aria-describedby={reasonId}>
+    <StatusIcon size={15} aria-hidden="true" />
+    <span role="status">{t(description, {count})}</span>
+    {kind !== 'copy' && (reason ? <WorkbenchTooltip content={reason}><span tabIndex={0} aria-describedby={reasonId}>
       {undo}<span id={reasonId} className="sr-only">{reason}</span>
-    </span></WorkbenchTooltip> : undo}
+    </span></WorkbenchTooltip> : undo)}
     <WorkbenchButton variant="icon" size="compact" aria-label={t('common.close')} data-testid="canvas-edit-toast-close" onClick={onClose}><X size={14} aria-hidden="true" /></WorkbenchButton>
   </div>;
 }

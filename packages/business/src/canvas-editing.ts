@@ -4,7 +4,7 @@ import {
   canvasEditingWrites, readCanvasRequestId,
 } from '../../contracts/src/canvas-editing.ts';
 import type {
-  CanvasArchiveItem, CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
+  CanvasArchiveItem, CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasCopyInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
   CanvasHistoryInput, CanvasHistoryView, CanvasTarget,
 } from '../../contracts/src/canvas-editing.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -14,6 +14,7 @@ import {validAssetLocator} from './asset-reference-record.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import {assertCanvasEdgeEffects, canvasEdgeEvidence, planCanvasArchive} from './canvas-archive.ts';
+import {canvasPasteBindingEvidence, createCanvasClipboard} from './canvas-clipboard.ts';
 import {inspectCanvasDependencies} from './canvas-dependencies.ts';
 import {
   activeShotOrder, applyCanvasPatch, canvasError, canvasKey, canvasLimit, compareCanvasTargets, decodeCanvasPatch, encodeCanvasPatch, expectCanvasRows,
@@ -40,7 +41,7 @@ interface HistoryState {
 interface HistoryEntry {
   readonly id: string;
   readonly position: number;
-  readonly operation: 'archive' | 'restore' | 'move' | 'layout';
+  readonly operation: CanvasEditInput['operation'];
   readonly before: CanvasPatch;
   readonly after: CanvasPatch;
 }
@@ -49,11 +50,13 @@ const assertUnblocked = (effects: ReturnType<typeof inspectCanvasDependencies>):
   if (effects.blocked.length) throw new AppError('CANVAS_EDIT_BLOCKED', '画布对象有未完成的操作。', 409, {blocked: effects.blocked});
 };
 
-export function createCanvasEditing(store: ProjectStore, {now = () => new Date().toISOString(), time = Date.now}: {
+export function createCanvasEditing(store: ProjectStore, {now = () => new Date().toISOString(), time = Date.now, clipboardOwner = store}: {
   readonly now?: () => string;
   readonly time?: () => number;
+  readonly clipboardOwner?: object;
 } = {}) {
   const {db, projectId} = store;
+  const clipboard = createCanvasClipboard(store, clipboardOwner, time);
   let keys = connectionKeys.get(db);
   if (!keys) {
     keys = {confirmation: randomBytes(32), epoch: randomBytes(16).toString('hex')};
@@ -61,9 +64,10 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   }
   const {confirmation: key, epoch: initialEpoch} = keys;
   const dependency = (targets: readonly CanvasTarget[]) => inspectCanvasDependencies(store, targets);
-  function patchEvidence(patch: Pick<CanvasPatch, 'guards' | 'rows'>) {
+  function patchEvidence(patch: Pick<CanvasPatch, 'guards' | 'rows'>, paste = false) {
     const impact = dependency(patch.guards);
-    return {...impact, digest: digest([impact.digest, canvasEdgeEvidence(store, patch)])};
+    const bindingEvidence = paste ? [canvasPasteBindingEvidence(store, patch.guards)] : [];
+    return {...impact, digest: digest([impact.digest, canvasEdgeEvidence(store, patch), ...bindingEvidence])};
   }
   const state = (): HistoryState => {
     const row = db.prepare('SELECT position,revision,evidence FROM main.canvas_history_state WHERE projectId=?').get(projectId);
@@ -77,7 +81,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   const entryAt = (position: number): HistoryEntry | null => {
     const row = db.prepare('SELECT id,operation,beforePatch,afterPatch FROM main.canvas_history_entries WHERE projectId=? AND position=?').get(projectId, position);
     if (!row) return null;
-    if (!isProjectId(row.id) || (row.operation !== 'archive' && row.operation !== 'restore' && row.operation !== 'move' && row.operation !== 'layout')) {
+    if (!isProjectId(row.id) || (row.operation !== 'archive' && row.operation !== 'restore' && row.operation !== 'move' && row.operation !== 'layout' && row.operation !== 'paste')) {
       return canvasError('invalid-history');
     }
     const before = decodeCanvasPatch(row.beforePatch), after = decodeCanvasPatch(row.afterPatch);
@@ -99,12 +103,13 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   }
   function history(current = state()) {
     const undo = entryAt(current.position), redo = entryAt(current.position + 1);
-    const action = (entry: HistoryEntry | null) => entry && ({id: entry.id, operation: entry.operation, count: entry.after.rows.length});
+    const action = (entry: HistoryEntry | null) => entry && ({id: entry.id, operation: entry.operation,
+      count: entry.operation === 'paste' ? entry.after.rows.filter(row => row.kind !== 'edge').length : entry.after.rows.length});
     function availability(entry: HistoryEntry | null, backward: boolean): 'ready' | 'blocked' | 'conflict' {
       if (!entry) return 'ready';
       if (!evidenceCurrent(current, entry)) return 'conflict';
       const patch = backward ? entry.after : entry.before;
-      const impact = patchEvidence(patch);
+      const impact = patchEvidence(patch, entry.operation === 'paste');
       if (impact.blocked.length) return 'blocked';
       if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return 'conflict';
       return impact.digest !== patch.dependencyDigest ? 'conflict' : 'ready';
@@ -301,6 +306,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     ({projectId, actionId, affected, history: history(current).view, ...readProjectContentStamp(db)});
   function edit(input: CanvasEditInput, current: HistoryState, at: string): CanvasEditResult {
     let before: CanvasPatch, after: CanvasPatch;
+    let created: CanvasEditResult['created'];
     if (input.operation === 'archive' || input.operation === 'restore') {
       const {plan, effect, facts} = archivePlan(input, at);
       assertUnblocked(effect);
@@ -310,6 +316,14 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       const proof = patchEvidence(plan.before).digest;
       before = {...plan.before, dependencyDigest: proof};
       after = {...plan.after, dependencyDigest: proof};
+    } else if (input.operation === 'paste') {
+      const plan = clipboard.paste(input, at);
+      const impact = patchEvidence(plan.before, true);
+      assertUnblocked(impact);
+      before = {...plan.before, dependencyDigest: impact.digest};
+      after = {...plan.after, dependencyDigest: impact.digest};
+      assertCanvasEdgeEffects(store, after);
+      created = plan.created;
     } else {
       if (input.operation === 'layout' && !sameContentStamp(readProjectContentStamp(db), input)) return canvasError('layout-base');
       const moves = [...input.moves].sort(compareCanvasTargets);
@@ -330,20 +344,21 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     if (Buffer.byteLength(first) + Buffer.byteLength(encodeCanvasPatch(after)) > MAX_PATCH_BYTES) return canvasLimit();
     const revisions = readGuardRevisions(current, before);
     applyCanvasPatch(store, before, after, at);
-    const second = encodeCanvasPatch({...after, dependencyDigest: patchEvidence(after).digest});
+    const second = encodeCanvasPatch({...after, dependencyDigest: patchEvidence(after, input.operation === 'paste').digest});
     db.prepare('DELETE FROM main.canvas_history_entries WHERE projectId=? AND position>=?').run(projectId, position);
     const id = randomUUID();
     db.prepare('INSERT INTO main.canvas_history_entries(id,projectId,position,operation,beforePatch,afterPatch,createdAt) VALUES(?,?,?,?,?,?,?)')
       .run(id, projectId, position, input.operation, first, second, at);
     prune();
-    return result(id, after.rows.length, saveState(current, position, after, revisions, true));
+    const saved = result(id, after.rows.length, saveState(current, position, after, revisions, true));
+    return created ? {...saved, created} : saved;
   }
   function travel(undo: boolean, current: HistoryState, at: string): CanvasEditResult {
     const target = entryAt(current.position + (undo ? 0 : 1));
     if (!target) return result(null, 0, current);
     if (!evidenceCurrent(current, target)) return canvasError('history-revision');
     const before = undo ? target.after : target.before, after = undo ? target.before : target.after;
-    const effect = patchEvidence(before);
+    const effect = patchEvidence(before, target.operation === 'paste');
     assertUnblocked(effect);
     if (effect.digest !== before.dependencyDigest) return canvasError('history-dependencies');
     if (current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
@@ -402,7 +417,9 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
         }
         try {
           const receipt = canvasEditingResponses[operation].parse(JSON.parse(String(old.response)));
-          if (receipt.projectId !== projectId) return canvasError('invalid-receipt');
+          if (receipt.projectId !== projectId || (mode === 'paste') !== ('created' in receipt && receipt.created !== undefined)) {
+            return canvasError('invalid-receipt');
+          }
           return receipt;
         } catch { return canvasError('invalid-receipt'); }
       }
@@ -434,6 +451,10 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       if (!parsed.success || parsed.data.projectId !== projectId) throw new AppError('VALIDATION_ERROR', '画布操作参数无效。', 400);
       if (operation === 'canvas.archive.preview') return canvasEditingResponses[operation].parse(preview(parsed.data as CanvasArchivePreviewInput));
       if (operation === 'canvas.archive.list') return canvasEditingResponses[operation].parse(archived(parsed.data as CanvasArchiveListInput));
+      if (operation === 'canvas.copy.snapshot') {
+        authorize();
+        return canvasEditingResponses[operation].parse(clipboard.copy(parsed.data as CanvasCopyInput));
+      }
       if (operation === 'canvas.history.get') {
         const {view, ...availability} = history(), {epoch, floor} = receiptWindow();
         return {...view, ...availability, requestEpoch: epoch, requestAfter: cutoff(floor, time())};

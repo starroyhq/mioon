@@ -59,6 +59,7 @@
 
 .canvas-selection-menu { width: min(220px, calc(100vw - var(--wb-space-6))); }
 .canvas-selection-menu [role="menuitem"] { min-height: var(--wb-control); font-size: var(--wb-text-label); }
+.canvas-selection-menu .canvas-clipboard-menu-item[data-disabled] { pointer-events: auto; }
 .canvas-selection-menu kbd { margin-inline-start: auto; }
 
 .canvas-delete-dialog .wb-dialog-heading {
