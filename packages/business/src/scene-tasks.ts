@@ -14,6 +14,8 @@ import {AppError,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,SCENE_DETECTION_PROFILE_I
  sceneDetectTaskResponseSchema,sceneShotsTaskResponseSchema,sceneResultSummarySchema,isSceneMutationResponse,normalizeSceneDetectionOptions,sceneSegmentBounds,sceneShotPlan,
  canonicalSceneInput as canonical} from '@mioon/contracts';
 import type {SceneDetectTaskResponse,SceneShotsTaskResponse,SceneResultSummary,SceneShotAspectRatio,SceneShotsReceipt} from '@mioon/contracts';
+import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputRatio} from '../../contracts/src/timeline-output-geometry.ts';
+import {usesTimelineFrameTransaction} from './store-capabilities.ts';
 import {createSceneHistoryReaders,sceneServiceMessages as messages,sceneServiceFailure as failure,safeSceneFailure,scenePublicFailure} from './scene-history.ts';
 import type {SceneTaskView,SceneDetectView,SceneShotsView,SceneDetectInput,SceneShotsInput} from './scene-history.ts';
 import {detectManagedScenes} from './scene-detection-decoder.ts';
@@ -195,10 +197,17 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
  // New shots follow the project's format; a project without a timeline yet
  // uses the default portrait format.
  function projectAspectRatio(projectId: string): SceneShotAspectRatio {
-  const row=db.prepare("SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.width') END AS width,CASE WHEN json_valid(data) THEN json_extract(data,'$.height') END AS height FROM timelines WHERE projectId=? LIMIT 1").get(projectId);
-  const width=row?.width,height=row?.height;
-  if(typeof width!=='number'||typeof height!=='number'||!(width>0)||!(height>0))return '9:16';
-  return width>height?'16:9':width<height?'9:16':'1:1';
+  const row=db.prepare(`SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.fps') END AS fps,
+   CASE WHEN json_valid(data) THEN json_extract(data,'$.width') END AS width,
+   CASE WHEN json_valid(data) THEN json_extract(data,'$.height') END AS height FROM timelines WHERE projectId=?`).get(projectId);
+  if(!usesTimelineFrameTransaction(db)){
+   const width=row?.width,height=row?.height;
+   if(typeof width!=='number'||typeof height!=='number'||!(width>0)||!(height>0))return '9:16';
+   return width>height?'16:9':width<height?'9:16':'1:1';
+  }
+  const ratio=timelineOutputRatio(row??DEFAULT_TIMELINE_OUTPUT_PRESET);
+  if(!ratio)fail('SCENE_PROJECT_ASPECT_UNSUPPORTED');
+  return ratio;
  }
  function defaultOrigin(projectId: string): {x: number; y: number} {
   const lowest=(table: string): number|null=>{
@@ -218,6 +227,7 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
    if(before.sha256!==null&&base.sourceHash!==before.sha256||base.profileId!==SCENE_DETECTION_PROFILE_ID)fail('SCENE_RESULT_STALE');
    const cuts=base.cuts.map(cut=>cut.frame);for(const segment of input.segments)if(!sceneSegmentBounds(cuts,base.frameCount,segment))fail('SCENE_SEGMENTS_INVALID');
    capacity(input.projectId,{accept:true});
+   projectAspectRatio(input.projectId);
    try{await prepareProjectAssetFullHash(root,input.sourceAssetId,{signal,maxBytes:SCENE_LIMITS.sourceBytes});}
    catch(error){const code=property(error,'code');if(typeof code==='string'&&code.startsWith('MEDIA_'))fail(code==='MEDIA_CHANGED'||code==='MEDIA_CHANGED_DURING_READ'?'SCENE_SOURCE_CHANGED':'SCENE_SOURCE_INVALID');throw error;}
   }

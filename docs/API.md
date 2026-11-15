@@ -448,8 +448,12 @@ Storyboards (2026-10-25):
   `frameCount`); a number outside the result fails with `SCENE_SEGMENTS_INVALID`.
 - Each shot is titled `<titlePrefix> NN` by segment number (default prefix
   `参考`), lasts the segment's length rounded to whole seconds within 1–20, has an
-  empty prompt and takes the project format's aspect ratio (`9:16`, `16:9` or
-  `1:1`; `9:16` before the project has a timeline). Its only reference is the
+  empty prompt. Format 3 infers portrait (`9:16`), landscape (`16:9`) or square
+  (`1:1`) from the timeline dimensions and uses `9:16` if they are unavailable
+  or invalid. Format 4 freezes the current frame ratio at acceptance and uses
+  `9:16` before a timeline exists.
+  An unsupported format 4 frame gives `SCENE_PROJECT_ASPECT_UNSUPPORTED` (409)
+  with the exact not-accepted proof when available. The shot's only reference is the
   keyframe at the segment's middle frame. Shots are laid out in rows of six from
   `position` (340 px apart, rows 300 px), or below the existing canvas content,
   and continue the shot order.
@@ -779,6 +783,25 @@ Assets are imported as base64 bytes, never arbitrary machine file paths or remot
 - job.cancel stops local waiting only and explicitly returns cancelScope=local_only
 - Result versions have a database immutability trigger, unique job ID and immutable files; first output auto-selects only if no selection exists
 - export.create freezes shot order and chosen version IDs/hashes. Later edits do not change that export
+
+New generation requests may set `aspectSource` to
+`{kind:"project",expectedTimelineRevision,aspectRatio}`, `{kind:"shot"}`, or
+`{kind:"explicit",aspectRatio}`. The project source pins the reviewed frame
+and rechecks its revision and ratio before accepting the job. A changed frame
+returns `PROJECT_ASPECT_CHANGED` and requires a new confirmation. Unsupported
+ratios return `PROJECT_ASPECT_UNSUPPORTED` or `GENERATION_ASPECT_UNSUPPORTED`
+with the selected model's supported options. These admission errors identify
+the original project, shot and request and report `mutationOutcome:"not_applied"`.
+Mock supports 9:16. Adaptive
+selection is explicit and is available on supported Wan and Seedance bindings.
+Requests that omit `aspectSource` keep their original shot and provider
+parameter semantics. Accepted jobs, exact replays and retries keep the frozen
+generation inputs.
+
+`project.get` includes the read-only `timelineFrameTransaction` capability
+from the opened project kernel. The web workbench uses the current frame for
+new shots and new generations when it is `true`. Otherwise it uses the
+previous shot settings for generation and defaults new shots to 9:16.
 
 ## Optional exact replay for local edits
 
@@ -1652,14 +1675,18 @@ retains the existing clip and subtitle geometry on its original basis. A new
 edit after undo replaces the redo branch. Earlier acknowledgements remain
 replayable, and already accepted exports keep their frozen frame.
 
-A migrated clip's stored `rect` uses basis pixels. `timeline.inspect` reports
-its projection in the current frame for observation. Direct `rect` updates
-to migrated clips return `CLIP_LAYOUT_RECT_READ_ONLY`. Use
-`timeline.clip.setTransform` with the clip's stored basis units.
+A migrated clip's stored `rect` uses basis pixels. Public `timeline.inspect`
+reports its projection in the current frame. Mio's observation returns the
+stored rectangle and transform with `layout.basisPresetId`. Direct `rect`
+updates to migrated clips return `CLIP_LAYOUT_RECT_READ_ONLY`. The public
+`timeline.clip.setTransform` operation uses the clip's stored basis units.
 
-The default format-3 host and built-in Mio tools keep the original
-pristine-timeline rules. Storyboard output remains 9:16. After an ambiguous
-response, retain the exact input and request ID for recovery. See the
+On format 4, Mio's `timeline.format.set` uses the same frame transaction and
+both revision checks on an existing timeline. The task records its reversible
+edit and checks dependent clips and cues before compensating it. The default
+format-3 host keeps the original pristine-timeline rules. Storyboard output
+remains 9:16. After an ambiguous response, retain the exact input and request
+ID for recovery. See the
 [format-3 recovery rules](TIMELINE-OUTPUT-FORMATS.md).
 
 ## Manual timeline subtitles
@@ -1840,7 +1867,7 @@ Exact retained ACK replay precedes media or current-revision admission, includin
 
 敏感操作通过已认证且通过Origin检查的 `POST /api/projects/<ID>/asset-media/trusted`，请求 `{operation,input}`。`asset.import.path` 仅由桌面真实文件选择/拖入和CLI显式目录确认调用，返回asset和confirmedDirectories；`asset.media.location.list`、outside.confirm/revoke不进入MCP或Mio的普通操作目录。用户动作header仅表达意图，不能替代认证、窗口/项目所有权或目录能力检查。
 
-公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP使用上述路径/上传导入和可选referenceRevisions；Mio的固定模型目录保留原上传输入和原generation.submit输入，不接受路径或网页确认版本字段。模型冻结schema可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
+公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP 使用上述路径或上传导入和可选 `referenceRevisions`。Mio 的模型目录接受生成画幅来源 `aspectSource`，网页确认专用字段 `referenceRevisions` 仍由受信客户端提交。模型冻结 schema 可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
 
 普通Asset DTO不含reference或relativePath；sha256仅表示完整哈希，可以为null，fingerprint中的sampledSha256不能替代它。状态和位置是本机观测，分别获取，媒体URL存在不代表素材当前在线。付费网页确认绑定有序referenceRevisions（assetId、referenceRevision、完整sha256），派发前仍须完整复核字节。
 

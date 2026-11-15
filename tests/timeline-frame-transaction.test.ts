@@ -12,7 +12,7 @@ import {createExportFileRecovery} from '../apps/server/src/export-file-recovery.
 import {exportFileStatusSchema} from '../packages/contracts/src/export-file-recovery.ts';
 import {assetMediaDtoSchema, assetMediaPrepareResponseSchema} from '../packages/contracts/src/asset-media.ts';
 import type {EditTask} from '../packages/contracts/src/edit-tasks.ts';
-import {CLIP_LAYOUT_PROFILE} from '../packages/contracts/src/timeline-clip-layout.ts';
+import {CLIP_LAYOUT_PROFILE, projectClipLayout} from '../packages/contracts/src/timeline-clip-layout.ts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
 import {TIMELINE_CLIP_TRANSFORM_OPERATION} from '../packages/contracts/src/timeline-clip-transform-operation.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
@@ -301,27 +301,99 @@ test('a failed format receipt rolls back a lazy timeline and the same key can co
   assert.deepEqual([redone.id, redone.width, redone.height, redone.clips], [applied.id, applied.width, applied.height, []]);
 });
 
-test('Mio keeps pristine-format behavior on a format-4 project', async t => {
+test('Mio inspects clip geometry in saved basis pixels while public inspection keeps the projection', async t => {
   const f = await fixture(t);
   await f.activate();
+  const wide = await f.timeline('timeline.format.set', await f.formatInput('ultrawide_1080'));
+  const inMio = <T>(operation: string, requestId: string, run: () => T, projectId = f.projectId) => withTaskEffectOrigin({
+    runId: randomUUID(), stepId: randomUUID(), projectId, requestId, operation,
+    beforeEffect() {}, recordInside() {}, recorded: false,
+  }, run);
+  const rect = {x: 0, y: 2, width: 2520, height: 1000};
+  const added = await f.addClip(wide, rect);
+  const clipId = added.clips[0]!.id;
+  const editedRect = {x: 1920, y: 2, width: 600, height: 1000};
+  const updateInput = {...f.mutation(added.revision), clipId, patch: {rect: editedRect}};
+  const updated = await inMio('timeline.clip.update', updateInput.requestId, () => f.timeline('timeline.clip.update', updateInput));
+  assert.deepEqual(updated.clips[0]!.rect, editedRect);
+  const inspect = () => f.call('timeline.inspect', {projectId: f.projectId});
+  assert.deepEqual(await inMio('timeline.inspect', randomUUID(), inspect), await inspect());
+
+  const transform = {profileId: CLIP_TRANSFORM_PROFILE, rotation: 0, crop: {left: 0, top: 0, right: 0, bottom: 0},
+    keyframes: [{frame: 0, x: -8192, y: 8192, scale: 1}]};
+  const ack = await f.call(TIMELINE_CLIP_TRANSFORM_OPERATION, {...f.mutation(updated.revision), clipId, transform});
+  assert.ok(ack && typeof ack === 'object' && 'timeline' in ack);
+  const portrait = await f.timeline('timeline.format.set', await f.formatInput('portrait_1080'));
+  const before = f.state(), marks = changeMarks(f.db);
+  const saved = portrait.clips[0]!;
+  const display = projectClipLayout({rect: saved.rect, layout: saved.layout, transform: saved.transform, durationFrames: saved.durationFrames},
+    {fps: 30, width: portrait.width, height: portrait.height});
+  assert.notEqual(display.rect.y, Math.trunc(display.rect.y));
+  assert.ok(display.transform!.keyframes[0]!.y > 8192);
+
+  const projected = await inspect(), basis = await inMio('timeline.inspect', randomUUID(), inspect);
+  assert.ok(projected && typeof projected === 'object' && 'clips' in projected && Array.isArray(projected.clips));
+  assert.ok(basis && typeof basis === 'object' && 'clips' in basis && Array.isArray(basis.clips));
+  assert.deepEqual(projected.clips[0].rect, display.rect);
+  assert.deepEqual(projected.clips[0].transform, display.transform);
+  assert.equal(Object.hasOwn(projected.clips[0], 'layout'), false);
+  assert.deepEqual(basis.clips[0].layout, {profileId: CLIP_LAYOUT_PROFILE, basisPresetId: 'ultrawide_1080'});
+  assert.deepEqual(basis.clips[0].rect, editedRect);
+  assert.deepEqual(basis.clips[0].transform.keyframes, transform.keyframes);
+  assert.deepEqual(await inMio('timeline.inspect', randomUUID(), inspect, randomUUID()), projected);
+  assert.deepEqual(await inMio('timeline.format.get', randomUUID(), inspect), projected);
+  assert.deepEqual(f.state(), before);
+  assert.deepEqual(changeMarks(f.db), marks);
+
+  const rectWrite = {...f.mutation(portrait.revision), clipId, patch: {rect: editedRect}};
+  await inMio('timeline.clip.update', rectWrite.requestId, () => f.rejected('timeline.clip.update', rectWrite, 'CLIP_LAYOUT_RECT_READ_ONLY'));
+  const addInput = {...f.mutation(portrait.revision), trackId: saved.trackId, assetId: saved.assetId, startFrame: 90, durationFrames: 30, rect};
+  await assert.rejects(inMio('timeline.clip.add', addInput.requestId, () => f.call('timeline.clip.add', addInput)), error => {
+    assert.ok(error instanceof AppError);
+    assert.equal(error.code, 'VALIDATION_ERROR');
+    assert.equal(error.status, 400);
+    assert.match(JSON.stringify(error.details), /1080×1920/);
+    return true;
+  });
+  assert.deepEqual(f.state(), before);
+  assert.deepEqual(changeMarks(f.db), marks);
+});
+
+test('project snapshots advertise frame transactions only after opening the format 4 pair', async t => {
+  const f = await fixture(t);
+  const input = {projectId: f.projectId};
+  const legacy = await f.call('project.get', input) as {timelineFrameTransaction?: boolean; timeline: unknown};
+  assert.equal(legacy.timelineFrameTransaction, false);
+  const before = timelineRecord(legacy.timeline, f.projectId);
+  assert.equal(before.width, 1080);
+  assert.equal(before.height, 1920);
+  await f.activate();
+  const current = await f.call('project.get', input) as typeof legacy;
+  assert.equal(current.timelineFrameTransaction, true);
+  assert.deepEqual(current.timeline, legacy.timeline);
+});
+
+test('format admission uses the same transaction for Mio and direct callers in each kernel format', async t => {
+  const f = await fixture(t);
   const mio = <T>(requestId: string, run: () => T) => withTaskEffectOrigin({runId: randomUUID(), stepId: randomUUID(),
     projectId: f.projectId, requestId, operation: 'timeline.format.set', beforeEffect() {}, recordInside() {}, recorded: false}, run);
   const legacyInput = await f.formatInput('landscape_720');
-  await f.rejected('timeline.format.set', legacyInput, 'TIMELINE_FORMAT_TIER_MISMATCH');
   const landscape = await mio(legacyInput.requestId, () => f.timeline('timeline.format.set', legacyInput));
   assert.deepEqual([landscape.width, landscape.height, landscape.clips], [1280, 720, []]);
   assert.deepEqual(f.history(), []);
 
   const populated = await f.addClip(landscape);
   const portraitInput = await f.formatInput('portrait_720');
-  assert.equal((await f.format()).eligible, true);
   const legacyFormat = await mio(portraitInput.requestId, f.format);
   assert.equal(legacyFormat.eligible, false);
   assert.ok(legacyFormat.blockedReasons.includes('CLIPS_PRESENT'));
   await mio(portraitInput.requestId, () => f.rejected('timeline.format.set', portraitInput, 'TIMELINE_FORMAT_LOCKED'));
-  const portrait = await f.timeline('timeline.format.set', portraitInput);
+  await f.activate();
+  assert.equal((await mio(portraitInput.requestId, f.format)).eligible, true);
+  const portrait = await mio(portraitInput.requestId, () => f.timeline('timeline.format.set', portraitInput));
   assert.deepEqual([portrait.width, portrait.height, portrait.clips[0]?.id], [720, 1280, populated.clips[0]?.id]);
   assert.equal(portrait.clips[0]?.layout?.basisPresetId, 'landscape_720');
+  assert.equal(f.history().at(-1)?.operation, 'timeline.format.set');
 });
 
 test('in-flight exports keep their old frame and published bytes after a format-4 change', {timeout: 60_000}, async t => {
