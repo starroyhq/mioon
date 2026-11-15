@@ -1,6 +1,7 @@
 import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../../../contracts/src/mio-project-media.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL} from '../../../contracts/src/mio-project-import.ts';
+import {mioCanvasOperations,mioCanvasOperationForTool,mioCanvasToolName} from '../../../contracts/src/mio-canvas.ts';
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
@@ -56,19 +57,27 @@ function toolName(operation:string):string{
   return `mioon_${operation.replaceAll('.','_')}`;
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));
-export type AgentTaskToolCatalogProfile='native'|'legacy';
+export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4';
+const format4GroupedTools=[...groupedTools,...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
+export function agentTaskToolCatalogProfile(definitions:readonly {name:string}[]):AgentTaskToolCatalogProfile{
+ if(definitions.some(tool=>mioCanvasOperationForTool(tool.name)))return 'format4';
+ return definitions.some(tool=>tool.name==='mioon_project_notes_set')?'legacy':'native';
+}
 const legacyGroupedTools=groupedTools.flatMap(tool=>tool.operation==='project.rules.set'||tool.operation===MIO_PROJECT_MEDIA_LIST_OPERATION||tool.operation===MIO_PROJECT_FILE_IMPORT_OPERATION?[]:tool.operation==='project.rename'?[tool,{group:'canvas' as const,operation:'project.notes.set',name:'mioon_project_notes_set'}]:[tool]);
-const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?legacyGroupedTools:groupedTools;
+const catalogTools=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4GroupedTools:profile==='legacy'?legacyGroupedTools:groupedTools;
 export const AGENT_TASK_LOADABLE_TOOL_NAMES=Object.freeze(groupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
 export const AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES=Object.freeze(legacyGroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
-const loadableNames=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES:AGENT_TASK_LOADABLE_TOOL_NAMES;
+const format4LoadableNames=Object.freeze(format4GroupedTools.filter(tool=>tool.group!=='core').map(tool=>tool.name));
+const loadableNames=(profile:AgentTaskToolCatalogProfile)=>profile==='format4'?format4LoadableNames:profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES:AGENT_TASK_LOADABLE_TOOL_NAMES;
+const toolNameLoadLimit=(profile:AgentTaskToolCatalogProfile)=>profile==='legacy'?AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.length:AGENT_TASK_LOADABLE_TOOL_NAMES.length;
+export const agentTaskToolSupportsGroupLoad=(name:string):boolean=>name!==MIO_PROJECT_MEDIA_LIST_TOOL&&name!==MIO_PROJECT_FILE_IMPORT_TOOL&&!mioCanvasOperationForTool(name);
 export type AgentTaskToolLoadMode='names'|'groups';
 export const agentTaskToolGroupForName=(name:string,profile:AgentTaskToolCatalogProfile='native'):AgentTaskToolGroupId|undefined=>catalogTools(profile).find(tool=>tool.name===name)?.group;
 export const agentTaskToolNamesForGroup=(group:AgentTaskToolGroupId,profile:AgentTaskToolCatalogProfile='native'):string[]=>catalogTools(profile).filter(tool=>tool.group===group).map(tool=>tool.name);
 
 /** Check the actual model catalog, including host-only tools, exactly once. */
 export function assertAgentTaskToolGroupCoverage(definitions:readonly {name:string;operation:string}[]):void{
-  const expected=catalogTools(definitions.some(tool=>tool.name==='mioon_project_rules_set')?'native':'legacy');
+  const expected=catalogTools(agentTaskToolCatalogProfile(definitions));
   const names=new Set<string>();
   for(const definition of definitions){
     const assigned=expected.filter(tool=>tool.operation===definition.operation&&tool.name===definition.name);
@@ -83,6 +92,9 @@ const loadable=(value:unknown):value is AgentTaskLoadableToolGroupId=>typeof val
 export const AGENT_TASK_TOOLS_LOAD_PARAMETERS=Object.freeze({
   type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,
 });
+export const AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS=Object.freeze({
+ ...AGENT_TASK_TOOLS_LOAD_PARAMETERS,properties:{names:{...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names,items:{type:'string',enum:format4LoadableNames}}},
+});
 export const AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS=Object.freeze({
   type:'object',properties:{names:{type:'array',items:{type:'string',enum:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES},minItems:1,maxItems:AGENT_TASK_LEGACY_LOADABLE_TOOL_NAMES.length}},required:['names'],additionalProperties:false,
 });
@@ -91,7 +103,7 @@ export const AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS=Object.freeze({
  * legacy parser: accepting both shapes here would bypass the frozen schema. */
 export function parseAgentTaskToolNameLoadInput(value:unknown,profile:AgentTaskToolCatalogProfile='native'):string[]|null{
   const available=loadableNames(profile);
-  if(!object(value)||Object.keys(value).length!==1||!Array.isArray(value.names)||value.names.length<1||value.names.length>available.length||!value.names.every(name=>typeof name==='string'&&available.includes(name)))return null;
+  if(!object(value)||Object.keys(value).length!==1||!Array.isArray(value.names)||value.names.length<1||value.names.length>toolNameLoadLimit(profile)||!value.names.every(name=>typeof name==='string'&&available.includes(name)))return null;
   const selected=new Set(value.names);
   return available.filter(name=>selected.has(name));
 }
@@ -130,7 +142,7 @@ export function loadedAgentTaskToolGroups(steps:readonly TaskToolLoadStep[]):Age
 export function loadedAgentTaskToolNames(steps:readonly TaskToolLoadStep[],profile:AgentTaskToolCatalogProfile='native'):string[]{
   const available=loadableNames(profile);
   const groups=new Set(loadedAgentTaskToolGroups(steps));
-  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL&&tool.name!==MIO_PROJECT_FILE_IMPORT_TOOL).map(tool=>tool.name));
+  const loaded=new Set(catalogTools(profile).filter(tool=>tool.group!=='core'&&groups.has(tool.group)&&agentTaskToolSupportsGroupLoad(tool.name)).map(tool=>tool.name));
   for(const step of steps){
     if(step.kind!=='tool'||step.status!=='completed'||step.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME)continue;
     const input=step.toolCall.arguments,result=step.result;

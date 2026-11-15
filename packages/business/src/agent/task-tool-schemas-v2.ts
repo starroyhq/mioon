@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="77f2eda20e63eb97b285867f98f164e1109d6904a78d4440a38d7fb9e9e582de";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="e2e9a4ef3a095aeed4616364446d401a6bcaebe5f7e6432850f173a50283e06b";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -6456,5 +6456,109 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "canvas.layout": {
+  "type": "object",
+  "properties": {
+   "targets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shot",
+        "node"
+       ]
+      },
+      "id": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      }
+     },
+     "required": [
+      "kind",
+      "id"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "additionalProperties": false
+ },
+ "canvas.archive": {
+  "type": "object",
+  "properties": {
+   "targets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shot",
+        "node",
+        "edge"
+       ]
+      },
+      "id": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      }
+     },
+     "required": [
+      "kind",
+      "id"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "targets"
+  ],
+  "additionalProperties": false
+ },
+ "canvas.restore": {
+  "type": "object",
+  "properties": {
+   "targets": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shot",
+        "node",
+        "edge"
+       ]
+      },
+      "id": {
+       "type": "string",
+       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      }
+     },
+     "required": [
+      "kind",
+      "id"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "targets"
+  ],
+  "additionalProperties": false
  }
 };

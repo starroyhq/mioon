@@ -304,6 +304,12 @@ export const mioPanelMessages = {
     "en": "Confirm this operation",
     "ja": "この操作を確認"
   },
+  "agent.panel.canvasArchiveEffect": {
+    "zh-Hans": "删除后可以在「已删除」里恢复。已生成的视频会留在素材库，时间线不会改变。",
+    "zh-Hant": "刪除後可以在「已刪除」中復原。已生成的影片會保留在素材庫，時間軸不會改變。",
+    "en": "You can restore these items from Deleted. Generated videos stay in the media library, and the timeline stays as it is.",
+    "ja": "削除後も「削除済み」から復元できます。生成した動画は素材ライブラリに残り、タイムラインは変わりません。"
+  },
   "agent.panel.confirmGenerate": {
     "zh-Hans": "确认生成",
     "zh-Hant": "確認生成",
@@ -736,6 +742,24 @@ export const mioPanelMessages = {
     "en": "Keyframes",
     "ja": "キーフレーム"
   },
+  "agent.display.field.canvasVersionCount": {
+    "zh-Hans": "已生成视频版本",
+    "zh-Hant": "已生成影片版本",
+    "en": "Generated video versions",
+    "ja": "生成済みの動画バージョン"
+  },
+  "agent.display.field.canvasTimelineClipCount": {
+    "zh-Hans": "时间线中已使用的片段",
+    "zh-Hant": "時間軸中已使用的片段",
+    "en": "Clips used on the timeline",
+    "ja": "タイムラインで使用中のクリップ"
+  },
+  "agent.display.field.canvasTimelineUsedVersionCount": {
+    "zh-Hans": "时间线中已使用的视频版本",
+    "zh-Hant": "時間軸中已使用的影片版本",
+    "en": "Video versions used on the timeline",
+    "ja": "タイムラインで使用中の動画バージョン"
+  },
   "agent.display.target.project": {
     "zh-Hans": "项目",
     "zh-Hant": "專案",
@@ -1071,6 +1095,24 @@ export const mioPanelMessages = {
     "zh-Hant": "修改畫板內容",
     "en": "Edit canvas content",
     "ja": "キャンバスの内容を編集"
+  },
+  "agent.display.operation.canvas.layout": {
+    "zh-Hans": "整理画板",
+    "zh-Hant": "整理畫板",
+    "en": "Tidy canvas",
+    "ja": "キャンバスを整理"
+  },
+  "agent.display.operation.canvas.archive": {
+    "zh-Hans": "从画板删除",
+    "zh-Hant": "從畫板刪除",
+    "en": "Delete from canvas",
+    "ja": "キャンバスから削除"
+  },
+  "agent.display.operation.canvas.restore": {
+    "zh-Hans": "恢复到画板",
+    "zh-Hant": "復原到畫板",
+    "en": "Restore to canvas",
+    "ja": "キャンバスに復元"
   },
   "agent.display.operation.previs.inspect": {
     "zh-Hans": "查看机位预演",

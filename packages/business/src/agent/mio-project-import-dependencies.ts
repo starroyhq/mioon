@@ -1,5 +1,7 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {CANVAS_EDIT_LIMITS, canvasEditingResponses} from '../../../contracts/src/canvas-editing.ts';
+import {isMioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
+import {readMioCanvasUndo} from '../canvas-mio-editing.ts';
 import {CANVAS_ARCHIVE_ORDER_FIELD, decodeCanvasPatch, isCanvasGuardEvidence, isCanvasOrderAnchor} from '../canvas-patch.ts';
 import {schemas} from '../../../contracts/src/index.ts';
 import {assetMediaRecordSchema} from '../../../contracts/src/asset-media.ts';
@@ -272,6 +274,18 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (!Array.isArray(change.undo) || change.undo.length !== 1 || !object(change.undo[0]) || change.undo[0].before !== undefined
         || !object(change.undo[0].after) || change.undo[0].after.kind !== 'asset' || change.undo[0].after.table !== 'assets'
         || !Array.isArray(change.before) || change.before.length !== 1 || change.before[0] !== null) deny('invalid');
+      return;
+    }
+    if (isMioCanvasOperation(change.operation)) {
+      if (db.prepare('PRAGMA project.user_version').get()?.user_version !== FORMAT4_PROJECT_SCHEMA_VERSION ||
+          !Array.isArray(change.undo) || change.undo.length !== 1 || change.before !== null || !Array.isArray(change.after)) deny('invalid');
+      try {
+        const {after} = readMioCanvasUndo(change.undo[0], change.targets);
+        if (change.after.length !== after.rows.length || change.after.some((row, index) => !object(row) ||
+            !fields(row, ['kind', 'id', 'value']) || row.kind !== after.rows[index]?.kind || row.id !== after.rows[index]?.id ||
+            !object(row.value) || !fields(row.value, ['title', 'name', 'label']) ||
+            Object.values(row.value).some(value => typeof value !== 'string'))) deny('invalid');
+      } catch { deny('invalid'); }
       return;
     }
     if (!Object.hasOwn(schemas, change.operation)) deny('unsupported');

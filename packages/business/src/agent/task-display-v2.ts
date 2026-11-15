@@ -2,6 +2,7 @@ import path from 'node:path';
 import {AGENT_TASK_DISPLAY_TARGET_KINDS} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskChange,AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
 import {generationAspectSourceSchema} from '../../../contracts/src/generation-aspect.ts';
+import {isMioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
 import {TIMELINE_OUTPUT_PRESETS,timelineOutputPreset,timelineOutputRatio} from '../../../contracts/src/timeline-output-geometry.ts';
 import type { Store } from '../store-contract.ts';
 
@@ -16,6 +17,15 @@ const kinds:ReadonlySet<string>=new Set(AGENT_TASK_DISPLAY_TARGET_KINDS);
 const ratios:ReadonlySet<string>=new Set(['9:16','16:9','1:1','3:4','4:3','21:9']);
 const rectMaxWidth=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({width})=>width));
 const rectMaxHeight=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({height})=>height));
+
+const displayCount=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
+function archiveImpactFields(value:Value|undefined):Projected {
+  if(!value||!displayCount(value.versions)||!displayCount(value.clips))return {};
+  const fields:Projected={canvasVersionCount:{unit:'count',value:value.versions},canvasTimelineClipCount:{unit:'count',value:value.clips}};
+  if(displayCount(value.usedVersions)&&value.usedVersions<=Math.min(value.versions,value.clips))
+    fields.canvasTimelineUsedVersionCount={unit:'count',value:value.usedVersions};
+  return fields;
+}
 
 function boundedCharacters(value:string,limit:number):string {
   let result='';for(const character of value){if(result.length+character.length>limit)break;result+=character;}return result;
@@ -120,27 +130,63 @@ export function projectAgentTaskChangeDisplay(change:AgentTaskChange):AgentTaskD
   if(display.operation==='generation.submit'&&change.targets.some(item=>item.kind==='job'&&before.has(`job:${item.id}`)&&after.has(`job:${item.id}`))&&!change.targets.some(item=>item.kind==='job'&&!before.has(`job:${item.id}`)&&after.has(`job:${item.id}`))){
     display.operation=change.targets.some(item=>['asset','version'].includes(item.kind)&&!before.has(`${item.kind}:${item.id}`)&&after.has(`${item.kind}:${item.id}`))?'generation.publish':'generation.status';
   }
+  // The saved canvas projection covers changed rows only. The revision
+  // ledger can additionally contain guards for untouched objects.
+  const canvas=isMioCanvasOperation(display.operation);
   for(const item of change.targets){
-    const key=`${item.kind}:${item.id}`,previous=before.get(key),next=after.get(key),projected=target(item,next??previous);if(!projected)continue;
+    const key=`${item.kind}:${item.id}`,previous=before.get(key),next=after.get(key);
+    if(canvas&&(before.size||after.size)&&!previous&&!next)continue;
+    const projected=target(item,next??previous);if(!projected)continue;
     display.targetCount++;if(display.targets.length>=200)continue;
     const index=display.targets.push(projected)-1;
     appendFields(display,index,fields(display.operation,item.kind,previous),fields(display.operation,item.kind,next));
   }
   return display;
 }
-/** Planned values come only from the exact retained tool arguments. They are
- * intentionally one-sided, not presented as an immutable historical baseline. */
+/** Planned values come from retained tool arguments or server-prepared
+ * approval evidence. They are one-sided previews. */
 export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:TargetReader,includeCurrent=false):AgentTaskDisplay|undefined {
   if(!step.toolCall)return;
   const display:AgentTaskDisplay={operation:operation(step.toolCall.name),targets:[],targetCount:0,fields:[]},args=object(step.toolCall.arguments)?step.toolCall.arguments:{};
-  const targets:Pick<AgentTaskTarget,'kind'|'id'>[]=[...(step.targets??[])];
+  let targets:Pick<AgentTaskTarget,'kind'|'id'>[]=[...(step.targets??[])];
   for(const [field,kind] of [['shotId','shot'],['clipId','timeline_clip'],['cueId','timeline_subtitle'],['trackId','timeline_track'],['assetId','asset'],['nodeId','node'],['jobId','job'],['exportId','export']] as const){const id=args[field];if(typeof id==='string'&&uuid.test(id)&&!targets.some(item=>item.kind===kind&&item.id===id))targets.push({kind,id});}
   // A creation has no saved target yet. Its parameter fields are operation-wide;
   // never manufacture an identity merely to provide an approval preview.
   const operationWide=['shot.create','timeline.clip.add','timeline.subtitle.add','image.generate'].includes(display.operation);
   if(operationWide||!targets.length){const kind=display.operation==='shot.create'?'shot':display.operation==='timeline.clip.add'?'timeline_clip':display.operation==='timeline.subtitle.add'?'timeline_subtitle':'unknown';appendFields(display,undefined,{},fields(display.operation,kind,args),true);}
+  const shotImpacts=new Map<string,Projected>(),shotTitles=new Map<string,string>(),shotNumbers=new Map<string,number>();
+  if(display.operation==='canvas.archive'&&(step.status==='awaiting_approval'||step.approvalRequired===true)&&object(step.data)&&object(step.data.canvasArchiveImpact)){
+    // The prepared closure also includes objects locked only as dependencies.
+    // The approval card describes the selected objects and their saved impact.
+    const impact=step.data.canvasArchiveImpact;
+    if(Array.isArray(impact.selected)){
+      const selected=new Set(impact.selected.flatMap(item=>object(item)&&typeof item.kind==='string'&&typeof item.id==='string'?[item.kind+':'+item.id]:[]));
+      targets=(step.targets??[]).filter(item=>selected.has(item.kind+':'+item.id));
+    }
+    const knownShots=new Set(targets.filter(item=>item.kind==='shot').map(item=>item.id));
+    const selectedShots=new Set(Array.isArray(impact.shotIds)?impact.shotIds.filter((id):id is string=>typeof id==='string'&&knownShots.has(id)):[]);
+    if(selectedShots.size){
+      appendFields(display,undefined,{},archiveImpactFields(impact),true);
+      if(Array.isArray(impact.shots))for(const shot of impact.shots){
+        if(object(shot)&&typeof shot.id==='string'&&selectedShots.has(shot.id)&&typeof shot.title==='string')shotTitles.set(shot.id,shot.title);
+      }
+      if(Array.isArray(impact.shotImpacts))for(const item of impact.shotImpacts){
+        if(!object(item)||typeof item.id!=='string'||!selectedShots.has(item.id))continue;
+        if(displayCount(item.number)&&item.number>0)shotNumbers.set(item.id,item.number);
+        if(displayCount(item.versions)&&displayCount(item.clips)&&(item.versions>0||item.clips>0))
+          shotImpacts.set(item.id,selectedShots.size>1?archiveImpactFields(item):{});
+      }
+      const priority=(item:Pick<AgentTaskTarget,'kind'|'id'>)=>item.kind!=='shot'?2:shotImpacts.has(item.id)?0:selectedShots.has(item.id)?1:2;
+      targets.sort((left,right)=>priority(left)-priority(right)||
+        (shotNumbers.get(left.id)??Number.MAX_SAFE_INTEGER)-(shotNumbers.get(right.id)??Number.MAX_SAFE_INTEGER));
+    }
+  }
   for(const item of targets){
-    const current=readTarget?.(item),projected=target(item,current);if(!projected)continue;
+    const current=readTarget?.(item);
+    const number=item.kind==='shot'?shotNumbers.get(item.id):undefined;
+    const shotTitle=item.kind==='shot'?shotTitles.get(item.id)??current?.title:undefined;
+    const title=number?[`#${String(number).padStart(2,'0')}`,safeText(shotTitle,80)].filter(Boolean).join(' · '):shotTitle;
+    const projected=target(item,typeof title==='string'?{title}:current);if(!projected)continue;
     display.targetCount++;if(display.targets.length>=200)continue;
     const index=display.targets.push(projected)-1,input=object(args.patch)?args.patch:args;if(operationWide)continue;
     // A whole previs scene's counts say nothing about the planned edit, and next
@@ -149,6 +195,7 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,display.operation==='timeline.format.set'?inputPreset??undefined:input);
     // A gain batch plans one gain for each clip it lists.
     if(display.operation==='timeline.clip.setGains'){const listed=Array.isArray(args.gains)?args.gains.find(entry=>object(entry)&&entry.clipId===item.id):undefined;planned=object(listed)?fields(display.operation,item.kind,{gain:listed.gain}):{};}
+    if(display.operation==='canvas.archive'&&item.kind==='shot')planned=shotImpacts.get(item.id)??{};
     if(display.operation==='generation.submit'&&item.kind==='shot'){
       planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
       if(Object.hasOwn(args,'aspectSource')){

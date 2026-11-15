@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {isDeepStrictEqual} from 'node:util';
 import {modelOperationDefinition} from '../packages/client/src/index.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
+import {mioCanvasSchemas} from '../packages/contracts/src/mio-canvas.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -18,6 +19,13 @@ const entries=Object.fromEntries(Object.entries(schemas).map(([operation,schema]
  if(!isDeepStrictEqual(projected,expected))throw Error(`Inline tool schema differs from shared constraints: ${operation}`);
  return [operation,projected];
 }));
+// Host-only canvas inputs never enter the public CLI/MCP operation registry.
+for(const [operation,schema] of Object.entries(mioCanvasSchemas)){
+ if(Object.hasOwn(entries,operation))throw Error(`Canvas tool collides with public operation: ${operation}`);
+ const {$schema: _dialect,...converted}=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}) as Record<string,unknown>;
+ if(converted.type!=='object')throw Error(`Invalid generated host tool schema: ${operation}`);
+ entries[operation]=projectAgentTaskToolSchema(converted);
+}
 const hash=createHash('sha256').update(JSON.stringify(entries)).digest('hex');
 const generated=
  '// Generated with node scripts/generate-agent-task-schemas.ts.\n'+

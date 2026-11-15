@@ -1,5 +1,5 @@
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
-import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
+import {defaultTestAgentConfiguration,presetConfigurations} from './helpers/agent-preset-configurations.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {s1PublicOperationSchemas} from '../packages/contracts/src/asset-generation.ts';
 import test,{type TestContext} from 'node:test';
@@ -12,6 +12,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {crc32,deflateSync} from 'node:zlib';
 import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {run as runMedia} from '../packages/business/src/media-runtime.ts';
@@ -20,10 +21,15 @@ import {createAgentTaskJournal} from '../packages/business/src/agent/task-journa
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
+import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectFormatReadOnlyViewSchema} from '../packages/contracts/src/project-format-upgrade.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
+import {AGENT_TASK_TOOLS_LOAD_PARAMETERS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {operationDefinition,modelOperationDefinition} from '../packages/client/src/index.ts';
 import {createMockImageAdapter} from '../packages/business/src/images/adapter.ts';
 import type {CreateServicesOptions} from '../packages/business/src/services.ts';
@@ -35,6 +41,7 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {sourceTaskModelToolLoadInputAllowed,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -44,8 +51,11 @@ import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
 import {imageTaskResponseSchema} from '../packages/contracts/src/images.ts';
 import {frameTaskResponseSchema} from '../packages/contracts/src/frame-extraction.ts';
 import type {VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {startServer,type InspectProject} from './helpers/test-server.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+const mioCanvasNames=['mioon_canvas_layout','mioon_canvas_archive','mioon_canvas_restore'];
 function schemaReference(root:unknown,reference:unknown):unknown{
  assert.equal(typeof reference,'string');const ref=reference as string;assert.ok(ref==='#'||ref.startsWith('#/'),`Schema reference must be local: ${ref}`);
  const tokens=decodeURIComponent(ref.slice(1)).split('/').slice(1);let value=root;
@@ -93,6 +103,37 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
+test('format-4 canvas rolls back the archive and revisions when the Mio receipt fails',async t=>{
+ const f=await fixture(t,{},new Map(),true),{store,projectId,run,journal,tools}=f;
+ const node=await f.services.call('node.create',{projectId,requestId:randomUUID(),type:'text',position:{x:1,y:2}});
+ assert.ok(record(node)&&typeof node.id==='string');
+ const nodeId=node.id;
+ const call={id:randomUUID(),name:'mioon_canvas_archive',arguments:{targets:[{kind:'node',id:nodeId}]}};
+ const step=beginFixtureToolStep(journal,run.id,{tier:'local_reversible',toolCall:call});
+ const requester={runId:run.id,stepId:step.id};
+ const prepared=tools.prepare({projectId,operation:call.name,input:call.arguments,canvasRequester:requester});
+ assert.ok(prepared.canvas);
+ journal.updateStep(run.id,step.id,{targets:prepared.targets,data:{canvasProof:prepared.canvas.proof}});
+ journal.markDispatch(run.id,step.id);
+ const state=()=>({
+  archive:store.db.prepare('SELECT archivedAt,archiveBatchId,archiveReason,data FROM project.nodes WHERE id=?').get(nodeId),
+  target:journal.targetRevision(projectId,'node',nodeId),
+  stamp:store.db.prepare('SELECT contentSequence,contentToken FROM project.project_file').get(),
+  userCursor:store.db.prepare('SELECT * FROM main.canvas_history_state WHERE projectId=?').get(projectId),
+ });
+ const before=state(),fault=Object.assign(Error('Synthetic journal write failure'),{code:'SQLITE_FULL'});
+ await assert.rejects(tools.execute(prepared,{...requester,requestId:step.id,beforeEffect(){},recordInside(){
+  assert.equal(typeof state().archive?.archivedAt,'string');
+  throw fault;
+ }}),error=>error===fault);
+ assert.deepEqual(state(),before);
+ assert.equal(journal.step(step.id).result,undefined);
+ assert.deepEqual(journal.snapshot(run.id).changes,[]);
+ journal.updateStep(run.id,step.id,{status:'unknown'});
+ assert.deepEqual(tools.recoverLocalUnknown({projectId,...requester,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
+ assert.equal(tools.recoverLocalUnknown({projectId,...requester,requestId:randomUUID()}),null);
+});
+
 test('Mio generation reports the accepted ratio from the frozen job only for aspect-aware submits',async t=>{
  const f=await acceptedGeneratedShot(t),legacy=f.journal.snapshot(f.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')!;
  assert.ok(record(legacy.result));
@@ -229,6 +270,183 @@ test('channel-aware Mio catalogs retain format 4 frame presets and remove mock o
   assert.equal(presets.includes('ultrawide_1080'),frameTransaction);
   assert.equal(providers.includes('mock'),mockAllowed);
   assert.ok(schemaAt(generation.parameters,['properties','aspectSource']));
+ }
+});
+test('only format-4 Mio exposes the three host canvas tools and allows loading their names',async t=>{
+ const format3=await fixture(t),format4=await fixture(t,{},new Map(),true);
+ const names=mioCanvasNames;
+ for(const [f,admitted] of [[format3,false],[format4,true]] as const){
+  const definitions=f.tools.list(),diagnostic=f.tools.diagnosticList();
+  assert.deepEqual(names.filter(name=>definitions.some(tool=>tool.name===name)),admitted?names:[]);
+  assert.ok(!diagnostic.some(tool=>names.includes(tool.name)));
+  for(const operation of ['canvas.apply','canvas.history.undo','canvas.history.redo']){
+   assert.ok(!definitions.some(tool=>tool.operation===operation));
+   assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
+  }
+  if(admitted){
+   assert.equal(f.tools.prepare({projectId:f.projectId,operation:'mioon_tools_load',input:{names}}).risk,'read_only');
+   for(const name of names)assertSchemaReferences(definitions.find(tool=>tool.name===name)!.parameters);
+   const input={groups:['canvas']};
+   const prepared=f.tools.prepare({projectId:f.projectId,operation:'mioon_tools_load',input,toolLoadMode:'groups'});
+   const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,toolCall:{id:randomUUID(),name:'mioon_tools_load',arguments:input}});
+   f.journal.markDispatch(f.run.id,step.id);
+   const {result}=await f.tools.execute(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id,beforeEffect(){},recordInside(){
+    assert.fail('Retired group loading must not make a domain write');
+   }});
+   assert.ok(record(result)&&Array.isArray(result.tools)&&result.tools.includes('mioon_shot_update'));
+   assert.ok(!result.tools.some(name=>typeof name==='string'&&names.includes(name)));
+  } else {
+   assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_tools_load',input:{names}}),{code:'AGENT_TASK_INVALID_TOOL'});
+   for(const operation of names)
+    assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{targets:[{kind:'shot',id:randomUUID()}]}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
+  }
+ }
+});
+test('default project HTTP runtime loads the three Mio canvas tools while the legacy read-only host offers no Mio runtime',async t=>{
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-canvas-http-'));
+ let settings:Awaited<ReturnType<typeof createAgentSettings>>|undefined;
+ let server:Awaited<ReturnType<typeof startServer>>|undefined;
+ t.after(async()=>{await server?.close();await settings?.close();await rm(root,{recursive:true,force:true});});
+ const legacy=createServerProject(root,{name:'Legacy read-only canvas',projectFormat:PROJECT_FILE_SCHEMA_VERSION});
+ const legacyFiles=[legacy.store.projectFile,path.join(legacy.store.localDir,'history.db'),path.join(legacy.store.cacheDir,'cache.db')];
+ legacy.store.close();
+ const readLegacyFiles=()=>Promise.all(legacyFiles.map(file=>readFile(file)));
+ const legacyBefore=await readLegacyFiles();
+
+ const protocol='chat_completions';
+ settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),
+  secret:{action:'replace',storage:'session',value:'SYNTHETIC_CANVAS_HOST_KEY'}});
+ const {configuration,revision}=testAgentExecution(await settings.get());
+ const requests:{body:string}[]=[];
+ const load={id:'load_canvas_tools',name:'mioon_tools_load',arguments:{names:mioCanvasNames}};
+ const gateway:TaskGateway=async function*(request){
+  request.beforeSubmit?.();
+  requests.push({body:request.body});
+  const first=requests.length===1,text=first?'':'Canvas tools loaded';
+  const output:TaskModelOutput={text,toolCalls:first?[load]:[],providerOutput:first?{role:'assistant',content:null,tool_calls:[
+   {id:load.id,type:'function',function:{name:load.name,arguments:JSON.stringify(load.arguments)}},
+  ]}:{role:'assistant',content:text}};
+  yield {type:'done',output};
+ };
+ let inspect!:InspectProject;
+ server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:gateway,comfyModule:'skip',
+  inspectProject:received=>{inspect=received;}});
+ const {url,token}=server;
+ async function request(route:string,input?:unknown){
+  const response=await fetch(url+route,input===undefined?{headers:{Authorization:`Bearer ${token}`}}:{
+   method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(input),
+  });
+  const body:unknown=await response.json();
+  assert.ok(record(body));
+  return {status:response.status,data:body.data,error:body.error};
+ }
+ const created=await request('/api/rpc',{operation:'project.create',input:{name:'Default canvas project'}});
+ assert.equal(created.status,200);
+ assert.ok(record(created.data)&&typeof created.data.id==='string');
+ const projectId=created.data.id,route=projectApiPath(projectId,'agent','tasks','v2');
+ await server.projectEntries.acquire({projectId,windowId:randomUUID()});
+ const snapshot=await request(route);
+ assert.equal(snapshot.status,200);
+ assert.ok(record(snapshot.data)&&record(snapshot.data.authorization));
+ assert.equal(inspect(projectId,db=>db.prepare('PRAGMA project.user_version').get()?.user_version),FORMAT4_PROJECT_SCHEMA_VERSION);
+ const granted=await request('/api/rpc',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),
+  expectedRevision:snapshot.data.authorization.revision,expectedSettingsRevision:revision,destination:deriveAgentEndpoint(configuration),
+  model:configuration.model,scope:'project_agent'}});
+ assert.equal(granted.status,200);
+
+ const legacyView=await request(projectApiPath(legacy.projectId,'format-upgrade','read-only'));
+ assert.equal(legacyView.status,200);
+ assert.equal(projectFormatReadOnlyViewSchema.parse(legacyView.data).projectVersion,PROJECT_FILE_SCHEMA_VERSION);
+ const send=(prefix:string)=>request(prefix,{requestId:randomUUID(),text:'Load canvas tools',expectedSettingsRevision:revision});
+ const blocked=await send(projectApiPath(legacy.projectId,'agent','tasks','v2'));
+ assert.equal(blocked.status,409);
+ assert.ok(record(blocked.error));
+ assert.equal(blocked.error.code,'PROJECT_FORMAT_UPGRADE_REQUIRED');
+ assert.equal(requests.length,0);
+ assert.deepEqual(await readLegacyFiles(),legacyBefore);
+
+ const accepted=await send(route);
+ assert.equal(accepted.status,200);
+ let result=agentTaskSnapshotSchema.parse(accepted.data);
+ for(let tries=0;tries<400&&['accepted','running'].includes(result.run.status);tries++){
+  await delay(20);
+  const status=await request(`${route}/${result.run.id}`);
+  assert.equal(status.status,200);
+  result=agentTaskSnapshotSchema.parse(status.data);
+ }
+ assert.equal(result.run.status,'completed',JSON.stringify(result));
+ assert.equal(requests.length,2);
+ assert.ok(sourceTaskModelToolLoadInputAllowed(protocol,requests[0],load.arguments));
+ assert.deepEqual(sourceTaskModelToolNames(protocol,requests[0]).filter(name=>mioCanvasNames.includes(name)),[]);
+ assert.deepEqual(sourceTaskModelToolNames(protocol,requests[1]).filter(name=>mioCanvasNames.includes(name)),mioCanvasNames);
+ const loaded=result.steps.find(step=>step.toolCall?.id===load.id);
+ assert.equal(loaded?.status,'completed');
+ assert.deepEqual(loaded?.result,{names:mioCanvasNames});
+});
+test('format-4 canvas tools change only three serialized definitions and the loader name enum',()=>{
+ const tools=listAgentTaskToolsForChannel(false,{frameTransaction:true});
+ const previous=tools.filter(tool=>!mioCanvasNames.includes(tool.name))
+  .map(tool=>tool.name==='mioon_tools_load'?{...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS}:tool);
+ const officialMessages=presetConfigurations().find(config=>config.presetId==='anthropic'&&config.protocol==='anthropic_messages');
+ assert.ok(officialMessages);
+ const configs=[...(['chat_completions','responses','anthropic_messages'] as const).map(defaultTestAgentConfiguration),officialMessages];
+ const history:AgentTaskJson[]=[{role:'user',content:'Inspect project canvas tooling'}];
+ for(const config of configs){
+  const build=(definitions:typeof tools)=>buildTaskModelRequest(config,history,definitions,4318,{toolLoading:true});
+  const body:unknown=JSON.parse(build(tools));
+  assert.ok(record(body)&&Array.isArray(body.tools));
+  const newNames:string[]=[];
+  body.tools=body.tools.filter((tool:unknown)=>{
+   assert.ok(record(tool));
+   const definition=config.protocol==='chat_completions'?tool.function:tool;
+   assert.ok(record(definition)&&typeof definition.name==='string');
+   const {name}=definition;
+   if(mioCanvasNames.includes(name)){newNames.push(name);return false;}
+   if(name==='mioon_tools_load'){
+    const params=config.protocol==='anthropic_messages'?definition.input_schema:definition.parameters;
+    assert.ok(record(params)&&record(params.properties)&&record(params.properties.names));
+    const {items,maxItems}=params.properties.names;
+    assert.ok(record(items)&&Array.isArray(items.enum));
+    assert.deepEqual(items.enum,[...AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.items.enum,...mioCanvasNames]);
+    assert.equal(maxItems,AGENT_TASK_TOOLS_LOAD_PARAMETERS.properties.names.maxItems);
+    items.enum=items.enum.slice(0,-mioCanvasNames.length);
+   }
+   return true;
+  });
+  assert.deepEqual(newNames,mioCanvasNames);
+  assert.equal(JSON.stringify(body),build(previous),`${config.presetId}/${config.protocol}`);
+ }
+});
+test('Mio canvas rejects edit owners and unresolved Mio steps before writing the selected object',async t=>{
+ const f=await fixture(t,{},new Map(),true);
+ const {id}=await f.shot('Held by another editor'),kind='shot',revision=f.journal.targetRevision(f.projectId,kind,id);
+ assert.ok(typeof revision==='number');
+ const target={kind,id,revision},input={targets:[{kind,id}]};
+ const original=f.store.get('shots',id);
+ const prepare=(operation:string)=>f.tools.prepare({projectId:f.projectId,operation,input});
+ const unchanged=()=>{
+  assert.deepEqual(f.store.get('shots',id),original);
+  assert.equal(f.store.db.prepare('SELECT archivedAt FROM project.shots WHERE id=?').get(id)?.archivedAt,null);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS total FROM main.canvas_history_entries').get()?.total,0);
+  assert.deepEqual(f.journal.snapshot(f.run.id).changes,[]);
+ };
+ const ownerId=randomUUID();
+ f.journal.claim({projectId:f.projectId,ownerId,targets:[target]});
+ for(const operation of ['canvas.layout','canvas.archive'])assert.throws(()=>prepare(operation),{
+  code:'CANVAS_EDIT_BLOCKED',details:{blocked:[{kind:'claim',id:f.journal.claims(f.projectId,ownerId)[0]!.id,reason:'EDIT_CLAIM_ACTIVE'}]},
+ });
+ unchanged();
+ f.journal.releaseClaims(f.projectId,ownerId);
+ const step=beginFixtureToolStep(f.journal,f.run.id,{tier:'local_reversible',targets:[target],toolCall:{
+  id:randomUUID(),name:'mioon_shot_update',arguments:{shotId:id,expectedRevision:revision,patch:{title:'Pending update'}},
+ }});
+ f.journal.markDispatch(f.run.id,step.id);
+ for(const [status,reason] of [['dispatch_started','MIO_STEP_RUNNING'],['unknown','MIO_STEP_OUTCOME_UNKNOWN']] as const){
+  if(status==='unknown')f.journal.updateStep(f.run.id,step.id,{status});
+  for(const operation of ['canvas.layout','canvas.archive'])
+   assert.throws(()=>prepare(operation),{code:'CANVAS_EDIT_BLOCKED',details:{blocked:[{kind:'mio-step',id:step.id,reason}]}});
+  unchanged();
  }
 });
 test('every actual model tool catalog has self-contained schema references in both protocols',async t=>{

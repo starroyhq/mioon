@@ -1,3 +1,4 @@
+import {mioCanvasOperationForTool} from '../../../contracts/src/mio-canvas.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_TASK_TOOL_GROUP_IDS,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 
@@ -28,7 +29,10 @@ export function applyTaskAnthropicCaching(configuration:AgentConfiguration,body:
     const coreEnd=lastIndex(tools,tool=>tool.group==='core');
     // An extra core boundary preserves the candidate core prefix when loaded
     // groups are appended. Backend cache eligibility still needs measurement.
-    for(const index of new Set([coreEnd,tools.length-1]))if(index>=0&&object(tools[index]!.value))tools[index]!.value={...tools[index]!.value,cache_control:ephemeral};
+    // Format 4 appends its private canvas tools after existing groups. Keep
+    // the earlier cache marker on the same definition and within the same budget.
+    const existingEnd=lastIndex(tools,tool=>!object(tool.value)||typeof tool.value.name!=='string'||!mioCanvasOperationForTool(tool.value.name));
+    for(const index of new Set([coreEnd,existingEnd<0?tools.length-1:existingEnd]))if(index>=0&&object(tools[index]!.value))tools[index]!.value={...tools[index]!.value,cache_control:ephemeral};
     result.tools=tools.map(tool=>tool.value);
   }
   if(typeof body.system==='string'){
