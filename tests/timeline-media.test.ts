@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {openServerProject} from './helpers/project-database.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
@@ -35,7 +36,7 @@ const records: {startedAt:string;runtime:string;fixturePolicy:string;commands:Re
 async function command<B extends boolean=false>(file:string,args:readonly string[],binary:B=false as B):Promise<B extends true ? Buffer : string> {
   const startedAt = new Date().toISOString();
   try {
-    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
+    const result = await exec(file, ((args) as unknown as Parameters<typeof exec>[1]), { env: testEnv(), encoding: binary ? 'buffer' : 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 180_000 });
     records.commands.push((({ file, args, startedAt, exitCode: 0, stdout: binary ? { bytes: result.stdout.length, sha256: sha(result.stdout) } : result.stdout, stderr: String(result.stderr) }) as unknown as Parameters<typeof records.commands.push>[0]));
     return result.stdout as B extends true ? Buffer : string;
   } catch (error) {
@@ -55,7 +56,7 @@ async function fixture(t: test.TestContext) {
   let read!: ReturnType<typeof createProjectStorageReader>;
   async function start() {
     const processRecord = { action: 'start', at: new Date().toISOString(), port, root, stdout: '', stderr: '' };
-    child = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }) as typeof child;
+    child = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], { cwd: repo, env: { ...testEnv(), PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }) as typeof child;
     read = createProjectStorageReader(child);
     (processRecord as typeof processRecord & {pid:(number | undefined)}).pid = child.pid; records.processes.push(((processRecord) as unknown as Parameters<typeof records.processes.push>[0]));
     child.stdout.setEncoding('utf8').on('data', bytes => processRecord.stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => processRecord.stderr += bytes);

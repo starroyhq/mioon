@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 
 
 
@@ -164,7 +165,7 @@ test('SIGKILL between raw-body release and output archival restores durable inte
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-archive-usage-kill-')), marker = path.join(root, 'ready');
   t.after(() => rmSync(root, {force: true, recursive: true}));
   const worker = fileURLToPath(new URL('./helpers/mio-usage-archive-worker.ts', import.meta.url));
-  const child = spawn(process.execPath, [worker], {stdio: ['ignore', 'ignore', 'inherit'], env: {...process.env, MIO_USAGE_ROOT: root, MIO_USAGE_MARKER: marker}}), closed = once(child, 'close');
+  const child = spawn(process.execPath, [worker], {stdio: ['ignore', 'ignore', 'inherit'], env: {...testEnv(), MIO_USAGE_ROOT: root, MIO_USAGE_MARKER: marker}}), closed = once(child, 'close');
   t.after(() => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');});
   const deadline = Date.now() + 30_000;
   while (!existsSync(marker)) {

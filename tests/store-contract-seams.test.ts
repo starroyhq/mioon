@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -20,7 +21,7 @@ test('the shared store contract loads without a runtime dependency or legacy ini
     }});
     const contract = await import(entry);
     console.log(JSON.stringify({exports: Object.keys(contract), dependencies}));
-  `], {cwd: ROOT, encoding: 'utf8', timeout: 60_000});
+  `], {env: testEnv(), cwd: ROOT, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.error, undefined);
   assert.equal(result.signal, null);
   assert.equal(result.status, 0, result.stderr);
@@ -58,7 +59,7 @@ test('a real kernel store opens and commits without resolving the legacy workspa
     } finally {store.close();}
     assert.equal(isProjectStore(store), false);
     console.log(JSON.stringify({forbidden, closed: !store.db.isOpen}));
-  `], {cwd: ROOT, encoding: 'utf8', timeout: 60_000});
+  `], {env: testEnv(), cwd: ROOT, encoding: 'utf8', timeout: 60_000});
   assert.equal(result.error, undefined);
   assert.equal(result.signal, null);
   assert.equal(result.status, 0, result.stderr);

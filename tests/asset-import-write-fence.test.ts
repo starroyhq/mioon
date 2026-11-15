@@ -85,7 +85,7 @@ function stringField(value: Record<string, unknown>, key: string): string {const
 function revision(value: Record<string, unknown>): number {assert.ok(typeof value.revision === 'number'); return value.revision;}
 for (const operation of ['generation.submit', 'timeline.render'] as const) for (const revoke of ['abort', 'reopen'] as const) {
   test(`${operation} rechecks application admission after reference preparation (${revoke}) with no later writes`, async t => {
-    const f = fixture(t), providers = createProviderRegistry({db: f.store.db, root: f.store.projectDir, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+    const f = fixture(t), providers = createProviderRegistry({db: f.store.db, root: f.store.projectDir, env: {}});
     const services = createServices(f.store, providers, {application: f.ports, signal: f.owner.signal, env: {},
       imageOptions: {autoRun: false}, frameOptions: {autoRun: false}, sceneOptions: {autoRun: false}});
     t.after(async () => {await services.drain();});

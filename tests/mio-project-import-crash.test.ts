@@ -25,7 +25,7 @@ const object=(value:unknown):Record<string,unknown>=>{assert.ok(value!==null&&ty
 for(const point of [...registration,...compensation,'stable'] as const)test(`project import ${point==='stable'?'with production version capture':`SIGKILL ${point}`} preserves one complete state`,{timeout:90_000},async t=>{
   const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-import-crash-'));let close=async()=>{};
   t.after(async()=>{try{await close();}finally{rmSync(root,{recursive:true,force:true});}});
-  const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/mio-project-import-crash-worker.ts',import.meta.url)),JSON.stringify({root,point})],{stdio:'ignore',timeout:60_000,env:{PATH:process.env.PATH??'',TMPDIR:tmpdir(),LANG:'C.UTF-8',MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+  const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/mio-project-import-crash-worker.ts',import.meta.url)),JSON.stringify({root,point})],{stdio:'ignore',timeout:60_000,env:{PATH:process.env.PATH??'',TMPDIR:tmpdir(),LANG:'C.UTF-8',}});
   const failure=path.join(root,'worker-failure.json');assert.equal(child.error,undefined);
   assert.equal(child.status,point==='stable'?0:null,existsSync(failure)?readFileSync(failure,'utf8'):'Unexpected worker exit');
   assert.equal(child.signal,point==='stable'?null:'SIGKILL');

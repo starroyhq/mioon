@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -36,7 +37,7 @@ test('the dialogue ducking tool renders its settings, the missing-track state an
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   const tag = (html: string, testId: string): string => html.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? '';
   const selected = (html: string, testId: string): string => html.match(new RegExp(`data-testid="${testId}"[^>]*><span data-slot="select-value"[^>]*>([^<]*)<`))?.[1] ?? '';
   assert.match(markup.ready, /按对白自动压低/);

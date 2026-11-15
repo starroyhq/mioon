@@ -49,6 +49,12 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。读取会刷新已打开宿主的登记摘要，不取得新租约；封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
 
+完整目录读取和单项目登记描述共用进行中的检查。服务异步刷新应用私有文件身份，再由独立进程检查关闭项目的文件头和热日志；慢文件检查期间，设置和已打开项目的请求仍可处理。文件头提示只在路径及文件代次复验通过时使用。轻量的 `/api/project-entries/identity` 直接返回应用库和实例身份。
+
+辅助检查失败或超过 10 秒时，仍返回登记和已有宿主状态，省略未确认的文件头提示。文件在检查期间发生变化时，保留已确认的锁定状态，否则用 `busy` 表示这次检查尚未确定状态。实际打开仍须通过完整准入；应用库身份变化仍按原有规则拒绝。
+
+尚未返回的文件状态读取按路径复用。服务限制同时发出的读取数量，避免目录请求反复耗尽文件系统线程。桌面扫描进程快速重拉耗尽后每隔 5 分钟再试，期间仍可读取目录登记。
+
 仅 GET，不接受查询参数、GET 请求体或原生路径控制；其它方法 405，未知子路径 404。路由沿用 Host/Origin 与令牌/会话认证，Cache-Control: no-store。网页不显示未登记文件，手工放入文件须先经明确打开流程登记；本轮未增加网页任意路径打开、目录扫描或 window-session。
 
 目录最多 8192 条，沿用 B1；本资源完整 JSON 上限 384 MiB，超过报 PROJECT_ENTRY_LIMIT（413），不截断。这是传输边界，不是应用库配额或全部理论数据都能列出的承诺。身份改变报 PROJECT_ENTRY_SCOPE_MISMATCH（409），应用库持有权/生命周期不可用报 PROJECT_ENTRY_UNAVAILABLE（503），标准认证错误不变。
@@ -170,10 +176,10 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are a
 
 画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。只有以格式 4 候选入口打开的项目支持以下操作。默认桌面和 Web 宿主仍按格式 3 打开项目。
 
-- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
-- `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象，返回批次和当前目标修订。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
+- `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除预检按故事顺序返回前三个有关联的镜头及其编号、生成版本数、关联片段数和时间线使用的不同版本数（`usedVersions`），以及符合条件的镜头总数。同一个版本供多个片段使用时只计一个版本。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
+- `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象。同一读取事务返回归档总数 `total`、项目内容戳和本页条目。条目包含删除时间、批次、当前目标修订、名称、节点类型、删除时的镜头编号和版本数。无标签的文字节点以最多 512 字符的正文作为名称。可预览的媒体只返回项目内素材 ID 和 MIME 类型，文件读取沿用项目媒体入口的权限检查。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
 - `canvas.apply` 原子提交删除、恢复、移动或整理。格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
-- `canvas.history.get` 返回画布游标、两边动作以及各自的 `undoConflict` 和 `redoConflict`。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。
+- `canvas.history.get` 返回画布游标、两边动作以及各自的冲突（`undoConflict` / `redoConflict`）和暂时阻塞（`undoBlocked` / `redoBlocked`）状态。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。
 - 写入携带 `historyRevision`，并用 `createCanvasRequestId(requestEpoch, uuid, issuedAt)` 生成 `requestId`。从 `canvas.history.get` 取 `requestEpoch` 和 `requestAfter`。时间戳是大于 `requestAfter` 的 Unix 毫秒，最多比服务时钟快两分钟。候选项目以可写方式打开时保存代际，首次编辑前重开同一份本机记录仍可使用原键。
 - 响应丢失时，七天窗口内用同一请求 ID 原样重试可取回原回执。写入时清理已过期的回执并推进持久截止时间。活跃窗口暂满时返回 `CANVAS_RECEIPT_WINDOW_FULL` 和最早可重试时间。回执过期或本机记录已更换且查不到原回执时，返回 `CANVAS_REQUEST_OUTCOME_UNKNOWN`，客户端须先重新读取画布核对结果。
 

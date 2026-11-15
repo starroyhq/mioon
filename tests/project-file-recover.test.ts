@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // recoverProjectFile: step 1 of the opening order alone, for projects that are
 // not open (at startup and when listing recent projects). It rolls back a hot
 // journal beside the project file and does nothing else. A crash in the
@@ -9,17 +10,19 @@ import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import type {ChildProcess} from 'node:child_process';
 import fs from 'node:fs';
-import {chmodSync, linkSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync} from 'node:fs';
+import {chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
-import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
+import {createProjectStore, openProjectStore, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, projectFileRecoveryForHeld, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation} from '../packages/business/src/project-file/index.ts';
 import {isHotJournal} from '../packages/business/src/project-file/journals.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {addCrashProject, crashPad, readCrashRows, writeCrashRows} from './helpers/project-file-crash-data.ts';
+import {createNodeProjectCatalogClient, createProjectCatalogClient} from '../apps/server/src/project-catalog-client.ts';
+import {catalogFileGeneration} from '../apps/server/src/project-catalog-scan.ts';
 
 const CHILD = fileURLToPath(new URL('./helpers/project-file-child.ts', import.meta.url));
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
@@ -58,7 +61,7 @@ function newProject(t: TestContext, candidate = false): Project {
 }
 
 function childEnv(mode: string, extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {...process.env, ...extra, MODE: mode, PAYLOAD_MIB: '1'};
+  const env: NodeJS.ProcessEnv = {...testEnv(), ...extra, MODE: mode, PAYLOAD_MIB: '1'};
   delete env.ROOT;
   delete env.MOVED_PROJECT_FILE;
   return env;
@@ -76,7 +79,7 @@ const LOCKED_READ = {ok: false, message: 'database is locked', errcode: 5};
 /** sha256 and stat of a file, by another process (the file may be held here). */
 function fileState(file: string): string {
   const script = "const fs=require('node:fs');const s=fs.statSync(process.argv[1],{bigint:true});process.stdout.write(require('node:crypto').createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex')+':'+s.size+':'+s.mtimeNs)";
-  const result = spawnSync(process.execPath, ['-e', script, file], {encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, ['-e', script, file], {env: testEnv(), encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }
@@ -256,4 +259,121 @@ test('default recovery rejects a newer header before isolated replay and leaves 
   try {db.exec(`PRAGMA user_version=${future}`);} finally {db.close();}
   writeFileSync(journal, Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]));
   assert.throws(() => recoverProjectFile(project.projectFile), newer(future));
+});
+
+function catalogInput(file: string) {
+  const info = lstatSync(file, {bigint: true});
+  const journal = lstatSync(file + '-journal', {bigint: true, throwIfNoEntry: false});
+  return {
+    file, generation: catalogFileGeneration(info), birthtime: String(info.birthtimeNs),
+    journalGeneration: journal ? catalogFileGeneration(journal) : null, checkHeader: true,
+  };
+}
+
+test('a separately owned catalog reader cannot release this process SQLite lock', async t => {
+  const project = newProject(t), client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  // Exercise a helper read after an owner has acquired the observed inode, as
+  // can happen between the parent's owner check and a delayed asynchronous read.
+  const store = openProjectStore({projectFile: project.projectFile, locate: () => project});
+  try {
+    const info = lstatSync(project.projectFile, {bigint: true});
+    assert.deepEqual(projectFileRecoveryForHeld({dev: String(info.dev), ino: String(info.ino)}), {state: 'open-here'});
+    assert.deepEqual(rawRead(project.projectFile), LOCKED_READ);
+    const input = catalogInput(project.projectFile);
+    assert.deepEqual(await client.scan([input]), [{
+      recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
+      format: {generation: input.generation, newer: false},
+    }]);
+    assert.deepEqual(rawRead(project.projectFile), LOCKED_READ);
+  } finally {store.close();}
+});
+
+test('catalog recovery validates the observed file and journal before replay', async t => {
+  const project = newProject(t), journal = project.projectFile + '-journal';
+  const client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  const writer = await holdInChild(t, project, 'mid-transaction');
+  await killed(writer);
+  assert.equal(isHotJournal(journal), true);
+  const input = catalogInput(project.projectFile);
+  const before = [fileState(project.projectFile), fileState(journal)];
+  assert.deepEqual(await client.scan([{...input, journalGeneration: null}]), [{recovery: 'changed'}]);
+  assert.deepEqual([fileState(project.projectFile), fileState(journal)], before);
+  const [result] = await client.scan([input]);
+  assert.deepEqual(result?.recovery, {state: 'recovered'});
+  assert.equal(result?.birthtime, input.birthtime);
+  assert.deepEqual(result?.format, {generation: catalogInput(project.projectFile).generation, newer: false});
+  assert.equal(isHotJournal(journal), false);
+  assert.equal(isHotJournal(project.historyFile + '-journal'), true);
+  const store = openProjectStore({projectFile: project.projectFile, locate: () => project});
+  try {assert.deepEqual(readCrashRows(store.db, store.projectId), {content: 1, records: 1, receipt: 1, samePad: true});}
+  finally {store.close();}
+});
+
+test('closing a catalog endpoint rejects all outstanding scans without waiting for a worker reply', async t => {
+  const project = newProject(t);
+  let closed = 0, posts = 0, closePeer: () => void = () => assert.fail('Peer listener was not installed');
+  const client = createProjectCatalogClient({
+    postMessage() {posts++;}, onMessage() {},
+    onClose(listener) {closePeer = listener;}, close() {closed++;},
+  });
+  const input = catalogInput(project.projectFile);
+  const checks = Promise.all([client.scan([input]), client.scan([input])]
+    .map(result => assert.rejects(result, {code: 'PROJECT_ENTRY_UNAVAILABLE'})));
+  assert.equal(posts, 2);
+  closePeer();
+  await checks;
+  await assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  client.close();
+  assert.equal(closed, 1);
+});
+
+test('cancelling an active scan retires its endpoint and drops late replies', async t => {
+  const project = newProject(t), input = catalogInput(project.projectFile);
+  let closed = 0, receive: (message: unknown) => void = () => assert.fail('Missing scanner reply listener');
+  const client = createProjectCatalogClient({
+    postMessage() {},
+    onMessage(listener) {receive = listener;},
+    onClose() {},
+    close() {closed++;},
+  });
+  const finished = new AbortController();
+  const first = client.scan([input], finished.signal);
+  receive({type: 'project-catalog:result', id: 1, results: [{recovery: {state: 'clean'}}]});
+  assert.deepEqual(await first, [{recovery: {state: 'clean'}}]);
+  finished.abort();
+  assert.equal(closed, 0, 'completed scans detach their cancellation handler');
+  const active = new AbortController();
+  const checks = Promise.all([client.scan([input], active.signal), client.scan([input], active.signal)]
+    .map(result => assert.rejects(result, {code: 'PROJECT_ENTRY_UNAVAILABLE'})));
+  active.abort();
+  receive({type: 'project-catalog:result', id: 2, results: [{recovery: {state: 'clean'}}]});
+  await checks;
+  await assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  assert.equal(closed, 1);
+});
+
+test('the headless catalog owns and drains a child closed while its first scan is pending', async t => {
+  const project = newProject(t), client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  const input = catalogInput(project.projectFile);
+  const pending = assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  client.close();
+  await Promise.all([pending, client.drain?.()]);
+  await assert.rejects(client.scan([input]), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+});
+
+test('the headless catalog replaces an aborted worker for the next scan', {timeout: 10_000}, async t => {
+  const project = newProject(t), client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  const input = catalogInput(project.projectFile);
+  const active = new AbortController();
+  const pending = assert.rejects(client.scan([input], active.signal), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+  active.abort();
+  await pending;
+  assert.deepEqual(await client.scan([input]), [{
+    recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
+    format: {generation: input.generation, newer: false},
+  }]);
 });

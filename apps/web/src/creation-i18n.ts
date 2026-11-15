@@ -5,7 +5,7 @@ export function creationParameter(value: unknown): string | number {
 
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
-import { videoCredentialDiagnosticSchema } from '@mioon/contracts/video-credential-diagnostic';
+import { videoCredentialDiagnosticSchema, videoResultCredentialRecoverySchema } from '@mioon/contracts/video-credential-diagnostic';
 /** Known backend statuses are display-mapped, never rewritten in saved jobs. */
 export function statusDescriptor(status: unknown): DisplayMessage {
   switch (status) {
@@ -23,7 +23,12 @@ export function statusDescriptor(status: unknown): DisplayMessage {
     default: return message('tasks.status.unknown');
   }
 }
-type JobDisplay = { phase?: unknown; status?: unknown; error?: unknown; providerJobId?: unknown };
+type JobDisplay = { phase?: unknown; status?: unknown; error?: unknown; providerJobId?: unknown; submissionCount?: unknown };
+
+export function videoResultCredentialRecovery(value: unknown) {
+  const audit = videoResultCredentialRecoverySchema.safeParse(value);
+  return audit.success ? audit.data : null;
+}
 
 const videoConnectionDetails = {
   VIDEO_SETTINGS_CONFLICT: 'tasks.error.videoSettingsBusy',
@@ -37,25 +42,52 @@ const videoConnectionDetails = {
   VIDEO_BINDING_INVALID: 'tasks.error.videoBindingInvalid',
   VIDEO_CREDENTIAL_UNAVAILABLE: 'tasks.error.videoCredentialUnavailable',
   VIDEO_CREDENTIAL_INVALID: 'tasks.error.videoCredentialInvalid',
+  VIDEO_TASK_NOT_FOUND: 'tasks.error.videoProviderCannotFindTask',
+  VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT: 'tasks.error.videoReplacementCannotFindTask',
+  VIDEO_REPLACEMENT_NOT_AUTHORIZED: 'tasks.error.videoReplacementNotAuthorized',
 } as const;
+
+export function unsubmittedVideoConnection(job: JobDisplay | null | undefined): boolean {
+  return job?.status === 'queued' && job.phase === 'connection_required' && job.providerJobId == null && job.submissionCount === 0;
+}
+
+export function cancelledBeforeSubmit(job: JobDisplay): boolean {
+  return job.status === 'cancelled' && job.phase === 'cancelled_before_dispatch' && job.providerJobId == null && job.submissionCount === 0;
+}
 
 export function videoJobConnection(job: JobDisplay | null | undefined) {
   if (!job?.error || (job.phase !== 'connection_required' && job.phase !== 'connection_retrying') ||
     (job.status !== 'queued' && job.status !== 'running' && job.status !== 'downloading')) return null;
   const diagnostic = videoCredentialDiagnosticSchema.safeParse(typeof job.error === 'object' && 'diagnostic' in job.error ? job.error.diagnostic : undefined);
   const cause = diagnostic.success ? diagnostic.data.cause : null;
-  const requiresAction = diagnostic.success && diagnostic.data.recovery === 'user_action';
+  const unsubmitted = unsubmittedVideoConnection(job);
+  const requiresAction = unsubmitted || diagnostic.success && diagnostic.data.recovery === 'user_action';
   const hasProviderTask = typeof job.providerJobId === 'string' && job.providerJobId.length > 0;
   const legacyCode = safeTaskErrorCode(job.error);
+  let result: DisplayMessage | null = null;
+  if (unsubmitted) result = message('tasks.error.videoUnsubmittedNoCharge');
+  else if (hasProviderTask) {
+    switch (cause) {
+      case 'VIDEO_SETTINGS_CORRUPT': case 'VIDEO_SETTINGS_NOT_CONFIGURED': case 'VIDEO_CREDENTIAL_INVALID': case 'VIDEO_CREDENTIAL_UNAVAILABLE':
+        result = message('tasks.error.videoRecoverWithOriginalAccount');
+        break;
+      case 'VIDEO_SETTINGS_DELETED':
+        result = message('tasks.error.videoResultAtProvider');
+        break;
+      case 'VIDEO_TASK_NOT_FOUND': case 'VIDEO_TASK_NOT_FOUND_WITH_REPLACEMENT': case 'VIDEO_REPLACEMENT_NOT_AUTHORIZED':
+        break;
+      default:
+        result = message('tasks.error.videoOriginalTaskRetained');
+    }
+  }
   return {
     diagnosticCode: cause ?? (legacyCode && Object.hasOwn(videoConnectionDetails, legacyCode) ? legacyCode : null),
     requiresAction,
     status: message(requiresAction ? 'tasks.status.videoConnectionRequired' : 'tasks.status.videoConnectionWaiting'),
-    detail: message(cause ? videoConnectionDetails[cause] : 'tasks.error.videoConnectionUnclassified'),
+    detail: message(cause ? videoConnectionDetails[cause] : unsubmitted ? 'tasks.error.videoCredentialUnavailable' : 'tasks.error.videoConnectionUnclassified'),
     continuation: cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' ? message('tasks.error.videoKeychainContinues') : null,
     canCheckAgain: hasProviderTask && (job.status === 'running' || job.status === 'downloading'),
-    result: hasProviderTask ? message(cause === 'VIDEO_SETTINGS_CORRUPT' || cause === 'VIDEO_SETTINGS_NOT_CONFIGURED' || cause === 'VIDEO_SETTINGS_DELETED'
-      ? 'tasks.error.videoResultAtProvider' : 'tasks.error.videoOriginalTaskRetained') : null,
+    result,
   };
 }
 

@@ -218,7 +218,7 @@ export function planCanvasArchive(store: ProjectStore, operation: 'archive' | 'r
       }
       let previous: string | null = null;
       anchors = beforeOrder.flatMap((id, index) => {
-        if (affectedShots.has(id)) return [{id, previous, next: nextSurvivor[index] ?? null}];
+        if (affectedShots.has(id)) return [{id, previous, next: nextSurvivor[index] ?? null, number: index + 1}];
         previous = id;
         return [];
       });

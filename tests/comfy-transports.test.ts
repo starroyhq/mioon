@@ -13,7 +13,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
@@ -27,7 +27,7 @@ const pause=(ms: number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 const sha=(bytes: Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 function childEnvironment(extra: NodeJS.ProcessEnv = {}): Record<string, string> {
   const clean=Object.fromEntries(['PATH','HOME','TMPDIR','TEMP','LANG','SYSTEMROOT','COMSPEC'].filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]]));
-  return {...clean,TZ:'UTC',MIOON_ENABLE_LIVE_PROVIDER:'0',...extra} as Record<string, string>;
+  return {...clean,TZ:'UTC',...extra} as Record<string, string>;
 }
 function publicOnly(value: unknown,root: string){
   const text=JSON.stringify(value);assert.ok(!text.includes(token)&&!text.includes(root));

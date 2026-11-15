@@ -19,7 +19,7 @@ import {TIMELINE_SUBTITLE_OPERATIONS,isTimelineMutationResponse} from '@mioon/co
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {taskFixture,database,snapshot,taskPath,REPO,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 
-const env=(url: string)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
+const env=(url: string)=>({...mediaEnvironment(),MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN});
 async function cli(url: string,args: string[]){
  const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...args],{cwd:REPO,env:env(url),stdio:['ignore','pipe','pipe']});
  let out='',err='';

@@ -87,7 +87,7 @@ if (direct) {
   }
   if (mode === 'server') {
     if (!fs.existsSync(path.join(dataRoot, 'app-library.db'))) await seedMutationStore(dataRoot);
-    const {startServer} = await import('../../apps/server/src/index.ts');
+    const {startServer} = await import('./test-server.ts');
     const {readProjectState, changeMarks} = await import('./project-state.ts');
     const {registerProjectTransactionObserver}=await import('../../packages/business/src/project-file/index.ts');
     let removeRaceObserver:(()=>void)|undefined;
@@ -195,7 +195,7 @@ if (direct) {
       }
       return result;
     };
-    const services = createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{MIOON_ENABLE_LIVE_PROVIDER:'0'})});
+    const services = createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{})});
     const run = async () => {
       try { report({event: 'result', ok: true, data: await services.call(request.operation, request.input)}); }
       catch (error) { const failure=error as {code?: string; message?: string}; report({event: 'result', ok: false, error: {code: failure.code || 'FIXTURE_FAILURE', message: failure.message ?? String(error)}}); }

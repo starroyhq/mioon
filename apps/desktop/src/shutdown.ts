@@ -16,13 +16,14 @@ function stopError(code: string, message: string): Error {
 // native quit pending in that case; never retry signals, restart the utility or
 // close settings while the original owned utility could still be draining.
 function confirmOwnedExit(backend: BackendSupervisor, child: BackendUtilityProcess): Promise<void> {
+  if (backend.child !== child) return Promise.resolve();
   return new Promise<void>(resolve => {
     const confirmed = () => {
       if (backend.child === child) return;
-      child.removeListener('exit', confirmed);
+      backend.removeListener('exit', confirmed);
       resolve();
     };
-    child.on('exit', confirmed);
+    backend.on('exit', confirmed);
     // The exit could have arrived between the rejected stop and this listener.
     confirmed();
   });

@@ -110,6 +110,7 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
   const draft = state.drafts.find(item => item.id === id), busy = ['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
   const editable = visibility.active && !busy && !state.recovery, snapshot = state.snapshot, secret = owner.savedSecret(id);
   const storage = snapshot && 'storage' in snapshot ? snapshot.storage : null;
+  const storagePending = storage?.reasonCode === 'OS_SECRET_STORE_PENDING';
   const probe = state.probe?.id === id ? state.probe : null;
   const listing = probe?.operation === 'models' ? probe.result : null;
   const pickerStatus = !listing ? 'loading' : listing.result === 'ok'
@@ -146,6 +147,12 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
     if (usable() && owner.remove(id, version)) onSelect('general');
   };
   if (!draft) return <div className="image-settings-form" data-testid={`${prefix}-detail`}><p role="status">{t((state.notice ?? 'image.settings.loading') as MessageKey)}</p>{state.phase === 'load_error' && <Button type="button" disabled={!visibility.active} onClick={() => {if (usable()) void owner.load();}}>{t('connections.reload')}</Button>}</div>;
+  const currentModel = draft.configuration.model;
+  const pickerItems = [
+    ...(currentModel ? [{id: currentModel, added: true, unavailable: false}] : []),
+    ...(listing?.models ?? []).filter(item => item.id !== currentModel).map(item => ({id: item.id, added: false,
+      unavailable: kind === 'official' || !customImageModelSchema.safeParse(item.id).success})),
+  ];
   return <div className="image-settings-form" data-testid={`${prefix}-detail`} data-phase={state.phase}>
     {kind === 'custom' && <><Label htmlFor={`${prefix}-name`}>{t('image.settings.services.name')}</Label><Input id={`${prefix}-name`} data-testid={`${prefix}-name`} value={draft.name} maxLength={120} disabled={!editable} onChange={event => edit({name: event.target.value})} />
       <Button type="button" disabled={!editable} data-testid={`${prefix}-delete`} onClick={() => {void remove();}}>{t('image.settings.services.delete')}</Button></>}
@@ -176,13 +183,12 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
         serviceName={kind === 'official' ? t('image.settings.official') : draft.name} usesDraftKey={picker.usesDraftKey}
         status={pickerStatus} statusMessage={listing?.result === 'unsupported' || pickerStatus === 'error' ? probeMessage
           : pickerStatus === 'ready' && kind === 'official' ? t('settings.modelPicker.officialModel') : undefined}
-        items={(listing?.models ?? []).map(item => ({id: item.id, added: item.id === draft.configuration.model,
-          unavailable: kind === 'official' ? item.id !== draft.configuration.model : !customImageModelSchema.safeParse(item.id).success}))}
+        items={pickerItems} returnedModelCount={listing?.models?.length}
         triggerRef={pickerTrigger} onClose={closePicker} onAdd={chooseModel} />}
       {owner.isDirty(id) && <p className="image-settings-help">{t('settings.draftKey.resultHint')}</p>}
       <p className="image-settings-help">{t('image.settings.keyHelp')}</p><Label htmlFor={`${prefix}-storage`}>{t('image.settings.keyStorage')}</Label><WorkbenchSelect id={`${prefix}-storage`} data-testid={`${prefix}-storage`} value={draft.storage} disabled={!editable || draft.secretAction === 'remove'} onChange={event => {if (event.target.value === 'session' || event.target.value === 'persistent') edit({storage: event.target.value});}}><option value="" disabled>{t('image.settings.storageChoose')}</option><option value="session">{t('image.settings.storageSession')}</option><option value="persistent" disabled={!storage?.persistentAvailable}>{t('connections.storage.persistent')}</option></WorkbenchSelect>
       {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}
-      <p className="image-settings-help">{t('connections.sessionLoss')}</p><p className="image-settings-help" role={storage?.reasonCode === 'OS_SECRET_STORE_PENDING' ? 'status' : undefined}>{imageStorageReason(storage, t)}</p>
+      <p className="image-settings-help">{t('connections.sessionLoss')}</p>{(!storagePending || state.keychainWaitConfirmed) && <p className="image-settings-help" role={storagePending ? 'status' : undefined}>{imageStorageReason(storage, t)}</p>}
       {secret?.configured && <Button type="button" disabled={!editable} aria-pressed={draft.secretAction === 'remove'} onClick={() => edit({secretAction: draft.secretAction === 'remove' ? 'keep' : 'remove'})}>{t(draft.secretAction === 'remove' ? 'image.settings.undoRemove' : 'image.settings.removeKey')}</Button>}
     </>}
     <Label className="generation-image-enable" htmlFor={`${prefix}-enabled`}><Switch id={`${prefix}-enabled`} data-testid={`${prefix}-enabled`} checked={draft.configuration.enabled} disabled={!editable} aria-describedby={`${prefix}-enable-help`} onCheckedChange={enabled => edit({}, {enabled})} /><span>{t(kind === 'official' ? 'image.settings.enableOpenai' : kind === 'custom' ? 'image.settings.enableCustom' : 'connections.comfy.enable')}<small id={`${prefix}-enable-help`}>{t(kind === 'comfy' ? 'connections.comfy.enableScope' : 'image.settings.enableScope')}</small></span></Label>

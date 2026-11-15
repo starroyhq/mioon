@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from '../../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './test-server.ts';
 import {serverAppDirectories, projectLocation} from '../../apps/server/src/project-host/directories.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createProjectVersions} from '../../packages/business/src/project-versions/service.ts';
@@ -157,7 +157,7 @@ export async function trashFixture(t: TestContext, options: {mode?: 'completed' 
   const serverOptions: ServerOptions = {dataDir, port: 0, token,
     ...(options.headless ? {} : {projectTrash: port}), inspectProject: read => {inspect = read;}, inspectApplication: read => {application = read;}};
   const server = await startServer(serverOptions); active = server;
-  const registration = server.projectEntries.listRecent().registered.find(entry => entry.project.projectId === source.projectId)!.project;
+  const registration = (await server.projectEntries.listRecent()).registered.find(entry => entry.project.projectId === source.projectId)!.project;
   assert.equal(isProjectFileHeld(registration.fileIdentity), false);
   const input = (): ProjectDeleteInput => ({requestId: randomUUID(), projectId: source.projectId, projectFile: sourceFile,
     fileIdentity: {...registration.fileIdentity}, expectedRevision: revision, confirmTrash: true});

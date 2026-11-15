@@ -8,6 +8,7 @@ import {
  SUBJECT_GENERATION_KINDS,subjectReferenceSchema,isSubjectReference,getSubjectGenerationSnapshotIssue,isSubjectGenerationResponse,isSubjectGenerationRetryResponse,
  FRAME_PROFILE_ID,FRAME_SELECTION_RULE,
 } from '../packages/contracts/src/index.ts';
+import {defaultVideoModels,resolveVideoEndpoint} from '../packages/contracts/src/video-providers.ts';
 
 const id=()=>randomUUID(),hash='a'.repeat(64),date='2026-10-11T00:00:00Z';
 const projectId=id(),shotId=id(),subjectId=id(),subjectVersionId=id(),assetId=id();
@@ -145,6 +146,19 @@ test('subject generation ACK verifies the exact selected aspect and managed refe
   [{...input.referenceRevisions[0],assetId:id()}],[{...input.referenceRevisions[0],sha256:'f'.repeat(64)}]])
   assert.equal(isSubjectGenerationResponse('generation.submit',{...input,referenceRevisions},job),false);
  assert.deepEqual(input,before);
+});
+
+test('progressed configured subject receipts accept only exact replacement recovery metadata',()=>{
+ const job=jobFor('ark'),model=defaultVideoModels('ark')[0]!,connectionId=id(),region=job.snapshot.providerRegion;
+ const executionBinding={version:1,connectionId,configurationRevision:2,providerId:'ark',region,workspaceId:'',endpoint:resolveVideoEndpoint('ark',region),credentialRef:id(),model,outputHosts:['output.example']};
+ const input={...requestFor('ark'),connectionId,configurationRevision:2,modelEntryId:model.id};
+ const progressed={...job,status:'succeeded',providerJobId:'known-result',submissionCount:1,allowedActions:[],
+  snapshot:{...job.snapshot,parameters:{resolution:'720p'},executionBinding}};
+ const recovery={connectionRevision:3,recoveredAt:date};
+ assert.equal(isSubjectGenerationResponse('generation.submit',input,{...progressed,resultCredentialRecovery:recovery}),true);
+ for(const resultCredentialRecovery of [{...recovery,credentialRef:id()},{...recovery,recoveredAt:'bad-time'},{...recovery,connectionRevision:0}])
+  assert.equal(isSubjectGenerationResponse('generation.submit',input,{...progressed,resultCredentialRecovery}),false);
+ assert.equal(isSubjectGenerationResponse('generation.submit',input,{...progressed,providerJobId:null,resultCredentialRecovery:recovery}),false);
 });
 
 test('subject ACK revalidates the exact Ark profile prompt without accepting blank or oversized text',()=>{

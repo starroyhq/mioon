@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -31,7 +32,7 @@ function assertLocked(paths: readonly string[]): void {
   const script = `import {DatabaseSync} from 'node:sqlite';
 const results=JSON.parse(process.argv[1]).map(file=>{let db;try{db=new DatabaseSync(file,{timeout:0});db.prepare('SELECT count(*) FROM sqlite_master').get();return 'readable';}catch(error){return error.errcode;}finally{db?.close();}});
 process.stdout.write(JSON.stringify(results));`;
-  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(paths)], {encoding: 'utf8', timeout: 10_000});
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(paths)], {env: testEnv(), encoding: 'utf8', timeout: 10_000});
   assert.equal(child.status, 0, child.stderr);
   assert.deepEqual(JSON.parse(child.stdout), paths.map(() => 5), 'every held native database still reports SQLITE_BUSY');
 }

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {agentTaskTargetSchema} from '../../contracts/src/agent-tasks-v2.ts';
-import type {CanvasTarget} from '../../contracts/src/canvas-editing.ts';
+import type {CanvasArchiveShotImpact, CanvasTarget} from '../../contracts/src/canvas-editing.ts';
 import {mioClaimSchema} from '../../contracts/src/mio-records.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {isTimelineRecord, TIMELINE_RESPONSE_BYTES} from '../../contracts/src/timeline-replacement.ts';
@@ -14,7 +14,7 @@ import {assertProjectStore} from './store-runtime.ts';
 export type MioCanvasRequester = {readonly runId: string; readonly stepId: string};
 
 interface CanvasBlocker {readonly kind: string; readonly id: string; readonly reason: string}
-interface ShotImpact {versions: number; clips: number; usedVersions: number}
+type ShotImpact = Omit<CanvasArchiveShotImpact, 'number'>;
 interface CanvasDependencies {
   readonly shotImpacts: ReadonlyMap<string, Readonly<ShotImpact>>;
   readonly versions: number;

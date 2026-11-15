@@ -36,7 +36,7 @@ const token = 'frame-transport-synthetic-local-token';
 const pause = (ms: number|undefined) => new Promise(resolve => setTimeout(resolve, ms));
 const hash = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
 const toolName = (operation: string) => operation.replaceAll('.', '_');
-const environment = (extra: NodeJS.ProcessEnv) => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra});
+const environment = (extra: Record<string, string>) => ({...mediaEnvironment(), ...extra});
 const recovery = 'Replay the exact original input with the same requestId; do not invent a replacement ID.';
 async function bounded<T>(promise: Promise<T>, label: string, ms = 15_000) {
   let timer;
@@ -49,7 +49,7 @@ async function stopOwned(child: ChildProcess) {
   const timer = setTimeout(() => child.kill('SIGKILL'), 3_000);
   try { await bounded(ended, 'Owned child cleanup', 6_000); } finally { clearTimeout(timer); }
 }
-function launch(args: readonly string[], env: NodeJS.ProcessEnv, {ipc = false}: {ipc?: boolean} = {}) {
+function launch(args: readonly string[], env: Record<string, string>, {ipc = false}: {ipc?: boolean} = {}) {
   const child = spawn(process.execPath, args, {cwd:repo, env:environment(env), stdio:ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe']}) as ChildProcessByStdio<null, Readable, Readable>;
   // Pipe chunks can split a multibyte schema description. Decode continuously
   // before concatenation; per-Buffer coercion inserts replacement characters.
@@ -72,7 +72,7 @@ function launch(args: readonly string[], env: NodeJS.ProcessEnv, {ipc = false}: 
       throw Error('Owned frame server did not become ready: ' + stderr);
     }};
 }
-async function cli(args: string[], env: NodeJS.ProcessEnv, error?: string|undefined) {
+async function cli(args: string[], env: Record<string, string>, error?: string|undefined) {
   const proc = launch([path.join(repo, 'apps/cli/src/index.ts'), ...args], env);
   try {
     const {code, signal} = await proc.finish(); assert.equal(signal, null, proc.stderr);
@@ -83,7 +83,7 @@ async function cli(args: string[], env: NodeJS.ProcessEnv, error?: string|undefi
     return result;
   } finally { await stopOwned(proc.child); }
 }
-async function sdk(t: test.TestContext, env: NodeJS.ProcessEnv) {
+async function sdk(t: test.TestContext, env: Record<string, string>) {
   const client = new Client({name:'frame-transport-acceptance', version:'1.0.0'}, {capabilities:{}});
   const transport = new StdioClientTransport({command:process.execPath, args:[path.join(repo, 'apps/mcp/src/index.ts')], cwd:repo, env:environment(env), stderr:'pipe'});
   let stderr = '', closed = false;
@@ -125,7 +125,7 @@ const deny = () => { log({type:'forbidden-network'}); throw Error('Synthetic fra
 globalThis.fetch = deny; http.request = deny; http.get = deny; https.request = deny; https.get = deny; net.Socket.prototype.connect = deny; tls.connect = deny;
 syncBuiltinESMExports();
 const {onMediaProcess} = await import('./packages/business/src/media-processes.ts'); onMediaProcess(log);
-const {startServer} = await import('./apps/server/src/index.ts');
+const {startServer} = await import('./tests/helpers/test-server.ts');
 const {schemaObjects} = await import('./tests/helpers/project-database.ts');
 let inspect;
 const service = await startServer({dataDir:process.env.MIOON_DATA_DIR, port:Number(process.env.PORT), token:process.env.MIOON_TOKEN, inspectProject:received => {inspect = received;}});

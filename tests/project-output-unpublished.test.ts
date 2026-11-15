@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -262,7 +263,7 @@ test('the aggregate byte limit rejects one extra byte with unchanged publication
 
 function childWrite(file: string): unknown {
   const source = `import {DatabaseSync} from 'node:sqlite';let db;try{db=new DatabaseSync(process.argv[1],{timeout:0});db.exec('BEGIN IMMEDIATE;ROLLBACK');console.log(JSON.stringify({ok:true}));}catch(error){console.log(JSON.stringify({ok:false,errcode:error.errcode}));}finally{db?.close();}`;
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', source, file], {encoding: 'utf8', timeout: 60000}); assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout.trim()) as unknown;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', source, file], {env: testEnv(), encoding: 'utf8', timeout: 60000}); assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout.trim()) as unknown;
 }
 for (const kind of ['project', 'history', 'cache', 'application'] as const) test(`held ${kind} aliases are refused before receipt open and retain their cross-process lock`, async t => {
   const f = fixture(t); ensurePrivateDirectory(f.directory, {create: true});

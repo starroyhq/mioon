@@ -21,14 +21,14 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 
 
 
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 const repo=fileURLToPath(new URL('../',import.meta.url)),run=promisify(execFile);
 
 test('HTTP, CLI and MCP share real registry rename CAS and exact receipts',{timeout:60000},async (t: test.TestContext)=>{
   const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-project-wire-'))),token='synthetic-project-lifecycle-token';
   const server=await startServer({dataDir:root,port:0,token}),client=new Client({name:'project-lifecycle-test',version:'1'},{capabilities:{}});
   t.after(async()=>{await client.close();await server.close();rmSync(root,{recursive:true,force:true});});
-  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});(transport.stderr as import("node:stream").Readable|null)?.resume();await client.connect(transport);
+  const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,},transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'pipe'});(transport.stderr as import("node:stream").Readable|null)?.resume();await client.connect(transport);
   const http=async(operation: string,input={})=>{const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({operation,input})}),body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);return body.data;};
   const cli=async(operation: string,input: { requestId: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; expectedRevision: unknown; name?: string; confirmPermanentDeletion?: boolean; })=>{const result=await run(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:20000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
   const mcp=async(operation: string,input: { requestId: `${string}-${string}-${string}-${string}-${string}`; projectId: unknown; expectedRevision: unknown; name?: string; confirmPermanentDeletion?: boolean; })=>{const result=(await client.callTool({name:operation.replaceAll('.','_'),arguments:input}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult);assert.equal(result.isError,false,JSON.stringify(result));return result.structuredContent!.data;};

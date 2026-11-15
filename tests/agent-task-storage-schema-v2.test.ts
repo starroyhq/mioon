@@ -9,7 +9,7 @@ import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {validateAgentTaskRowsV2} from '../packages/business/src/agent/task-schema-v2.ts';
-import {startServer,type InspectProject,type InspectApplication} from '../apps/server/src/index.ts';
+import {startServer,type InspectProject,type InspectApplication} from './helpers/test-server.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {snapshot} from './helpers/current-retained-fixture.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';

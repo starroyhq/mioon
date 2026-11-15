@@ -5,7 +5,7 @@ import {mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync} from 'no
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject} from './helpers/test-server.ts';
 import {createProjectRulesClient} from '../packages/client/src/project-rules.ts';
 import {openProjectDatabase, projectDirFor} from './helpers/project-database.ts';
 

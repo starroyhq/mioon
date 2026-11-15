@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {mediaFixturePath,mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import type {FrameFault} from '../packages/business/src/frames.ts';
 interface RecoveryDecodeInput{beforeSpawn(signal:AbortSignal):unknown;signal:AbortSignal;asset:{sha256:string};requestedFrame:number}
@@ -129,7 +130,7 @@ for(const phase of ['after_acceptance','after_start_fence','after_result_manifes
  const business=fileURLToPath(new URL('../packages/business/src/',import.meta.url));
  const script=`import {openStore} from ${JSON.stringify(path.join(business,'project-file/test-store.ts'))};import {createFrameServices} from ${JSON.stringify(path.join(business,'frames.ts'))};
  const store=openStore(${JSON.stringify(f.root)});const service=createFrameServices(store,{decode:async input=>{input.beforeSpawn(input.signal);return {bytes:Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'),provenance:${JSON.stringify(provenance(f.asset,0))}};},fault:label=>{if(label===${JSON.stringify(phase)})process.exit(86);}});await service.handlers['frame.extract'](${JSON.stringify(input)});`;
- const child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});let stderr='';child.stderr.setEncoding('utf8').on('data',value=>{stderr+=value;});const [exitCode]=await once(child,'close');assert.equal(exitCode,86,stderr);f.start();
+ const child=spawn(process.execPath,['--input-type=module','-e',script],{env: testEnv(), stdio:['ignore','pipe','pipe']});let stderr='';child.stderr.setEncoding('utf8').on('data',value=>{stderr+=value;});const [exitCode]=await once(child,'close');assert.equal(exitCode,86,stderr);f.start();
  const receipt=await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId}),current=await f.get(receipt!.response.id);assert.equal(current.state,'interrupted');assert.equal(current.started,phase!=='after_acceptance');assert.equal(f.calls,0);assert.equal(count(f.store.db,'assets'),1);
  assert.deepEqual(await f.call('frame.extract',input),receipt!.response);assert.equal(f.calls,0);
  if(phase==='after_acceptance'){await f.call('frame.task.cancelQueued',f.control(current));return;}

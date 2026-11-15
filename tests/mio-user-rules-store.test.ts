@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -57,7 +58,7 @@ for(const point of ['after-create','before-commit'] as const)test(`application v
 for(const point of ['after-create','before-commit','after-commit'] as const)test(`application v2→v3 SIGKILL ${point} leaves a complete old or new profile`,t=>{
  const f=v2(t),module=new URL('../packages/business/src/app-db/schema.ts',import.meta.url).href;
  const source=`import{DatabaseSync}from'node:sqlite';import{upgradeAppLibraryV2}from ${JSON.stringify(module)};const db=new DatabaseSync(process.argv[1]);db.exec('PRAGMA journal_mode=DELETE;PRAGMA synchronous=FULL;PRAGMA cache_size=1;PRAGMA cache_spill=ON');const exec=db.exec.bind(db);db.exec=sql=>{if(sql==='COMMIT'&&process.argv[2]==='before-commit')process.kill(process.pid,'SIGKILL');exec(sql);if(sql.startsWith('CREATE TABLE user_rules(')&&process.argv[2]==='after-create'||sql==='COMMIT'&&process.argv[2]==='after-commit')process.kill(process.pid,'SIGKILL');};upgradeAppLibraryV2(db);throw Error('barrier missed');`;
- const result=spawnSync(process.execPath,['--input-type=module','-e',source,f.file,point],{stdio:'ignore',timeout:30000});assert.equal(result.signal,'SIGKILL');
+ const result=spawnSync(process.execPath,['--input-type=module','-e',source,f.file,point],{env: testEnv(), stdio:'ignore',timeout:30000});assert.equal(result.signal,'SIGKILL');
  inspect(f.file,db=>{assert.equal(db.prepare('SELECT version FROM schema_version').get()?.version,point==='after-commit'?3:2);assert.deepEqual(readAppSchema(db),expectedAppSchema(point==='after-commit'?3:2));});
  inspect(f.file,db=>{if(db.prepare('SELECT version FROM schema_version').get()?.version===2)upgradeAppLibraryV2(db);assert.deepEqual(readAppSchema(db),expectedAppSchema(3));});
  const library=openAppLibrary({dataDir:f.dataDir});try{assert.deepEqual(readAppSchema(library.db),expectedAppSchema());assert.equal(library.documents.read('ui-preferences-v1.json'),'{"preserved":"原件\\r\\n🙂"}');}finally{library.close();}

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -113,7 +114,7 @@ test('an explicitly admitted format 4 history switch resumes after commit with t
   db.exec('PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA cache_size=4; BEGIN IMMEDIATE');
   db.prepare("UPDATE projects SET data=json_set(data,'$.description',?)").run('x'.repeat(524288));
   process.kill(process.pid,'SIGKILL');
- `,projectFile],{encoding:'utf8',timeout:10000});
+ `,projectFile],{env: testEnv(), encoding:'utf8',timeout:10000});
  assert.equal(killed.signal,'SIGKILL',killed.stderr);
  assert.equal(isHotJournal(`${projectFile}-journal`),true);
  const hot=snapshot(root);

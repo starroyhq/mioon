@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {randomUUID, createHash} from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';

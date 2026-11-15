@@ -17,7 +17,7 @@ import {timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-deli
 import {createServices, type ServiceStore} from '../packages/business/src/services.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {readTimelineDeliveryDownload, timelineDeliveryDownloadIdentity, timelineDeliveryResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
 import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './test-env.ts';
 /** Synthetic QA uses the real app registry and one real kernel per project.
  * Preparation runs before the backend starts; live reads require its inspect
  * capability. No legacy workspace, shadow database or production route. */
@@ -37,7 +38,7 @@ export function readQaFixture(file, dataDir) {
 }
 /** @param {import('../../packages/business/src/project-file/store.ts').ProjectStore} store */
 async function seeded(store, {media = true} = {}) {
-  const services = createServices(store, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
+  const services = createServices(store, new Map(), {env: {}});
   const saved = store.get('projects', store.projectId);
   if(!saved||typeof saved!=='object'||!('id' in saved)||typeof saved.id!=='string')throw Error('Missing QA project');
   const project={id:saved.id};
@@ -49,7 +50,7 @@ async function seeded(store, {media = true} = {}) {
       /** @param {string} name @param {string[]} args */
       const generate = (name, args) => {
         const file = path.join(store.tempDir, `qa-${randomUUID()}-${name}`); sources.push(file);
-        execFileSync(ffmpeg, ['-nostdin', '-v', 'error', '-n', ...args, file], {timeout: 30000, maxBuffer: 1024 * 1024});
+        execFileSync(ffmpeg, ['-nostdin', '-v', 'error', '-n', ...args, file], {env: testEnv(), timeout: 30000, maxBuffer: 1024 * 1024});
         return readFileSync(file);
       };
       try {

@@ -19,7 +19,7 @@ const repo=fileURLToPath(new URL('..',import.meta.url));
 interface CliBody {ok?: boolean; data?: unknown; error?: {code?: string; details?: Record<string, unknown>}}
 interface FixtureCleanup {baseline: {request: number; response: number}; remaining: {request: number; response: number}}
 interface TransportFixture {url: string; calls: Array<{operation: string; input: unknown}>; signals: Array<AbortSignal | undefined>; cleanups: FixtureCleanup[]; mode(value: string): void; entered(): Promise<unknown>; settled(): Promise<unknown>}
-const env=(url?: string): Record<string, string>=>({PATH:process.env.PATH||'',MIOON_ENABLE_LIVE_PROVIDER:'0',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
+const env=(url?: string): Record<string, string>=>({PATH:process.env.PATH||'',...(url?{MIOON_BASE_URL:url,MIOON_TOKEN:token}:{})});
 const deferred=<T = void>(): {promise: Promise<T>; resolve: (value: T) => void}=>{let resolve!: (value: T) => void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};};
 async function bounded<T>(promise: Promise<T>,label: string,ms=10000): Promise<T>{let timer: ReturnType<typeof setTimeout> | undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms);})]);}finally{clearTimeout(timer);}}
 function cli(t: TestContext,url: string | undefined,args: string[]): {child: ChildProcess; result: Promise<{code: number | null; body: CliBody}>}{

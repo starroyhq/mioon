@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import path from 'node:path';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import test from 'node:test';
@@ -23,6 +24,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
   const messages: Array<Record<string, unknown>> = [], exits: unknown[] = [], intervals: Array<() => void> = [];
   const nativeConfig = {version: 1, backendId: '11111111-1111-4111-8111-111111111111',
     publicKey: '302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'};
+  const catalogPort = {close() {}}, catalogClient = {attach() {}, close() {}};
   let now = 100000;
   port.postMessage = (message: Record<string, unknown>) => {
     if (diagnosticFailure && message.type === 'exit-diagnostic') throw new Error(privateData);
@@ -35,7 +37,8 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
       pid: 23456, on: events.on.bind(events), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {},
-    startServer: async (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); assert.equal(options.dataDir,privateData); assert.equal(options.cacheDir,privateData+'/cache'); assert.equal(options.projectsDir,privateData+'/projects'); const server = await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server && typeof server === 'object'); return {...server, projectEntries: createDesktopHarnessProjectEntries()}; },
+    startServer: async (options: Record<string, unknown>) => { assert.equal(options.projectCatalogClient, catalogClient); assert.equal(options.comfyModule, 'load'); assert.equal(options.dataDir,privateData); assert.equal(options.cacheDir,privateData+'/cache'); assert.equal(options.projectsDir,privateData+'/projects'); const server = await (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); assert.ok(server && typeof server === 'object'); return {...server, projectEntries: createDesktopHarnessProjectEntries()}; },
+    createDesktopProjectCatalogClient: (backendId: string) => {assert.equal(backendId, nativeConfig.backendId); return catalogClient;},
     initializeSubtitleResources: () => {}, onMediaProcess: () => {}, initializeDesktopPrivateStorage: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
@@ -50,7 +53,8 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
   return {
     messages, exits, events,
     diagnostics: () => messages.filter(message => message.type === 'exit-diagnostic'),
-    start: () => port.emit('message', { data: { type: 'start', token: privateData,
+    catalogPort,
+    start: (ports: unknown[] = []) => port.emit('message', { ports, data: { type: 'start', token: privateData,
       backendId: nativeConfig.backendId, nativeAudioPreview: nativeConfig,
       dataDir: privateData, cacheDir: privateData+'/cache', projectsDir: privateData+'/projects', distDir: privateData, subtitleResourcesDir: privateData } }),
     stop: () => port.emit('message', { data: { type: 'stop', reason: privateData } }),
@@ -164,6 +168,21 @@ test('backend startup failure reports only a fixed category before nonzero exit'
   assert.ok(!JSON.stringify(runtime.messages).includes(privateData));
 });
 
+test('backend can start while its catalog is unavailable and refuses ports bundled into startup', async () => {
+  const unavailable = backendHarness();
+  unavailable.start(); await tick();
+  assert.equal(unavailable.messages.some(message => message.type === 'ready'), true);
+  unavailable.stop(); await tick();
+  assert.deepEqual(unavailable.exits, [0]);
+
+  let starts = 0;
+  const runtime = backendHarness({start: async () => { starts++; return {}; }});
+  runtime.start([runtime.catalogPort]); await tick(); await tick();
+  assert.equal(starts, 0);
+  assert.deepEqual(runtime.diagnostics(), [notice('startup-failed')]);
+  assert.deepEqual(runtime.exits, [1]);
+});
+
 test('backend monitors fatal origins without registering a handler that suppresses Node exit', () => {
   const runtime = backendHarness();
   assert.equal(runtime.events.listenerCount('uncaughtExceptionMonitor'), 1);
@@ -211,7 +230,7 @@ for (const [origin, trigger] of [
       ${trigger}
     `;
     const child = spawn(process.execPath, ['--unhandled-rejections=throw', '--input-type=module', '-e', script],
-      { stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, NODE_OPTIONS: '' } });
+      { stdio: ['ignore', 'pipe', 'ignore'], env: { ...testEnv(), NODE_OPTIONS: '' } });
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); });
     const chunks: Buffer[] = [];
     child.stdout.on('data', chunk => chunks.push(chunk));

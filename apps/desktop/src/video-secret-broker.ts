@@ -182,6 +182,7 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
   // null means the broker has not confirmed the state, including after a
   // crypto timeout. A confirmed OS denial or basic-text backend stops polling.
   let closed = false, availability: VideoSecretStorage | null = null, refreshing: Promise<VideoSecretStorage> | null = null, epoch = 0;
+  let confirmedUnavailable = false;
   const pending = new Map<string, PendingClientRequest>();
   const storageListeners = new Set<() => void>();
   const notifyStorageAvailable = (notify: () => void) => {
@@ -266,10 +267,14 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
       const currentEpoch = epoch;
       refreshing = request('status').then(value => {
         if (closed || currentEpoch !== epoch) throw codecError();
-        const wasAvailable = availability?.persistentAvailable;
         availability = safeStorage(value);
-        if (!wasAvailable && availability.persistentAvailable) {
+        // A transport or crypto failure only makes the cached status stale.
+        // Advance recovery only after a confirmed storage transition.
+        if (availability.persistentAvailable && confirmedUnavailable) {
+          confirmedUnavailable = false;
           for (const notify of [...storageListeners]) notifyStorageAvailable(notify);
+        } else if (!availability.persistentAvailable) {
+          confirmedUnavailable = true;
         }
         return {...availability};
       }).finally(() => {
@@ -285,8 +290,7 @@ export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort
     // unsubscribes and immediately reuses the same listener.
     const notify = () => listener();
     storageListeners.add(notify);
-    if (availability?.persistentAvailable) notifyStorageAvailable(notify);
-    else schedulePolling();
+    schedulePolling();
     return () => {
       storageListeners.delete(notify);
       if (!storageListeners.size) stopPolling();

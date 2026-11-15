@@ -89,7 +89,7 @@ function request<T=ClipDraftEnvelope>(url: string, route: string|undefined, {met
 function startProcess(root: string, auditPath: string) {
   const child = spawn(process.execPath, [workerPath, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
-      MIOON_ENABLE_LIVE_PROVIDER: '0'},
+      },
   });
   let output = '', outputBytes = 0, stopped:ExitInfo|undefined;
   // One inventoried text-consumer registration, shared by the two owned pipes.

@@ -1,3 +1,4 @@
+import {testEnv} from './test-env.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync,realpathSync,readFileSync,copyFileSync,rmSync,existsSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
@@ -19,7 +20,7 @@ export const mediaToolsAvailable=existsSync(ffmpeg)&&existsSync(ffprobe);
 if(mediaToolsAvailable){process.env.MIOON_FFMPEG_PATH??=ffmpeg;process.env.MIOON_FFPROBE_PATH??=ffprobe;}
 
 function render(dir:string,name:string,args:string[]):Buffer{
- const file=path.join(dir,name);execFileSync(process.env.MIOON_FFMPEG_PATH!,['-v','error','-y',...args,file]);return readFileSync(file);
+ const file=path.join(dir,name);execFileSync(process.env.MIOON_FFMPEG_PATH!,['-v','error','-y',...args,file], {env: testEnv()});return readFileSync(file);
 }
 export function sampleMedia(dir:string){
  return {

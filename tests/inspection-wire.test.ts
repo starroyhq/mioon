@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import {recentProjectSchema} from '../packages/contracts/src/project-registry.ts';
 import type {SQLOutputValue} from 'node:sqlite';
@@ -38,11 +39,11 @@ const sourceSnapshot = async () => Object.fromEntries(await Promise.all(sourceFi
   [file, createHash('sha256').update(await readFile(path.join(repo, file))).digest('hex')])));
 
 function environment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY_|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0',
+  return {...env,
     MIOON_INSPECTION_WIRE_GUARD: '1', ...extra};
 }
 

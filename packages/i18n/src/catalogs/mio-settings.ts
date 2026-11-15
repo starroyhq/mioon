@@ -31,6 +31,7 @@ export const mioSettingsMessages = {
   "settings.modelPicker.selectAll": {"zh-Hans":"全选新模型","zh-Hant":"全選新模型","en":"Select all new","ja":"新規モデルをすべて選択"},
   "settings.modelPicker.clear": {"zh-Hans":"清空","zh-Hant":"清除","en":"Clear","ja":"選択を解除"},
   "settings.modelPicker.inUse": {"zh-Hans":"Mio 使用中","zh-Hant":"Mio 使用中","en":"In use by Mio","ja":"Mio で使用中"},
+  "settings.modelPicker.current": {"zh-Hans":"当前使用","zh-Hant":"目前使用","en":"Currently in use","ja":"現在使用中"},
   "settings.modelPicker.added": {"zh-Hans":"已添加","zh-Hant":"已新增","en":"Added","ja":"追加済み"},
   "settings.modelPicker.willAdd": {"zh-Hans":"将添加","zh-Hant":"將新增","en":"Will add","ja":"追加予定"},
   "settings.modelPicker.unavailable": {"zh-Hans":"此 ID 无法添加","zh-Hant":"無法新增此 ID","en":"Unsupported model ID","ja":"未対応のモデル ID"},

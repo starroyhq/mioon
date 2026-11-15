@@ -15,7 +15,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication} from '../apps/server/src/index.ts';
 
 import {schemaObjects} from './helpers/project-database.ts';
