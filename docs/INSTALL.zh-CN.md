@@ -2,7 +2,7 @@
 
 Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图片、视频和音乐完成一个短片，再按需连接 Mio 或生成服务。**导入、剪辑和导出已有素材不需要 AI 账号或密钥**
 
-本指南适用于 **v0.1.3 桌面版**。前往 [v0.1.3 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.3)下载安装包。本版更新见 [v0.1.3 发布说明](releases/v0.1.3.zh-CN.md)。
+本指南适用于 **v0.2.0 桌面版**。前往 [v0.2.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.2.0)下载安装包。本版更新见 [v0.2.0 发布说明](releases/v0.2.0.zh-CN.md)。
 
 ## 1. 选对下载文件
 
@@ -10,8 +10,8 @@ Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图
 
 | 你的电脑 | 下载文件 |
 | --- | --- |
-| Mac，Apple Silicon 芯片（M 系列） | `mioon-0.1.3-mac-arm64.dmg` |
-| Mac，Intel 处理器 | `mioon-0.1.3-mac-x64.dmg` |
+| Mac，Apple Silicon 芯片（M 系列） | `mioon-0.2.0-mac-arm64.dmg` |
+| Mac，Intel 处理器 | `mioon-0.2.0-mac-x64.dmg` |
 | Linux 或 Windows | 本版暂不提供桌面安装包 |
 
 在苹果菜单的「关于本机」查看芯片或处理器。两个 DMG 均在 macOS 15 构建环境打包，正式发布前须通过 Developer ID 签名和 Apple 公证。
@@ -89,6 +89,8 @@ echo "$(brew --prefix ffmpeg-full)/bin/ffprobe"
 打开项目后，点击顶部项目名称，选择「版本历史…」，再切换到「自动备份」。点「查看」可以只读查看备份，点「恢复为新项目…」可以选择保存位置，从备份创建独立项目。版本与备份的区别见[使用指南](USER-GUIDE.zh-CN.md#版本历史与自动备份)。
 
 **本版没有自动更新**。更新前先备份、正常退出 Mioon，再从发布页下载与电脑架构匹配的新安装包。保留原项目、素材和本机记录。
+
+第一次用 0.2.0 打开旧项目时，先看[项目格式升级说明](releases/v0.2.0.zh-CN.md#打开旧项目时先确认升级)。
 
 在 Mac 上关闭最后一个窗口后，Mioon 仍会运行。完全退出时，在应用菜单选择「退出 Mioon」或按 **⌘Q**。菜单栏图标中的「隐藏到托盘」会保留窗口内容。
 
