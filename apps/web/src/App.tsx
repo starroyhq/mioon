@@ -1714,7 +1714,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if(realConfirmRef.current!==args)return;
     closeGenerationReview();
     const issue = generationReviewIssue(args);
-    if (issue) { notify(issue, 'warning'); return; }
+    if (issue !== null) { notify(issue, 'warning'); return; }
     if (args.replacementJobId) {
       const original = dataRef.current!.jobs.find(job => job.id === args.replacementJobId && job.projectId === args.shot.projectId && job.shotId === args.shot.id);
       if (!unsubmittedVideoConnection(original)) { notify(msg('shell.generationInputsChanged'), 'warning'); return; }
@@ -1722,7 +1722,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const cancelled = await run(`cancel:${args.replacementJobId}`, 'job.cancel', { jobId: args.replacementJobId }) as AppJob | null;
       if (!cancelled || cancelled.id !== args.replacementJobId || cancelled.projectId !== args.shot.projectId || cancelled.shotId !== args.shot.id || !cancelledBeforeSubmit(cancelled)) return;
       const refreshedIssue = generationReviewIssue(args);
-      if (refreshedIssue) { notify(refreshedIssue, 'warning'); return; }
+      if (refreshedIssue !== null) { notify(refreshedIssue, 'warning'); return; }
       if (!replacementGenerationReady(args.shot, args.subjectReference)) return;
     }
     void submitGeneration(args);
