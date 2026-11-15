@@ -25,7 +25,7 @@ export function createBackgroundLifecycleHost({dataDir, remote}: {dataDir: strin
   const background = createBackgroundCoordinator({index: library.taskIndex, inbox: library.inbox,
     assertMutationAllowed: guard.assertMutationAllowed, checkIntervalMs: 20});
   const manager = createProjectHostManager<LifecycleRuntime>({directories, registry: library.registry, taskIndex: library.taskIndex,
-    assertMutationAllowed: guard.assertMutationAllowed, hooks: [background.hooks], onEvent: event => background.onHostEvent(event),
+    format4: {}, assertMutationAllowed: guard.assertMutationAllowed, hooks: [background.hooks], onEvent: event => background.onHostEvent(event),
     factory: async context => {
       const {store} = context; ensureProjectRow(store, {name: library.registry.get(context.projectId)!.name});
       const source = backgroundHistorySource(store);

@@ -1,4 +1,5 @@
 import {isProjectId} from '../../packages/contracts/src/project-file.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 // An explicitly owned test backend. Production CLI/HTTP/environment settings
 // never expose inspectProject; this entry answers only fixed storage questions.
 import {randomUUID} from 'node:crypto';
@@ -78,6 +79,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     agentSecretCodecFactory: createHeadlessAgentSecretCodec,
     comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
     dataDir, port: Number(process.env.PORT || 4318),
+    ...(process.argv[2] === '--legacy-project-format' ? {projectFormatForTest: PROJECT_FILE_SCHEMA_VERSION} : {}),
     cacheDir: process.env.MIOON_CACHE_DIR,
     projectsDir: process.env.MIOON_PROJECTS_DIR,
     distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),

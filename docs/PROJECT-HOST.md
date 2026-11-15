@@ -113,7 +113,7 @@ ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-na
 - 网页的 `GET /api/projects/{projectId}/format-upgrade/read-only` 和桌面票据的只读选项读取有界的旧项目摘要。只读连接不会创建项目宿主、迁移记录或启动 Mio。
 - 当前端口不提供忘记登记或显式强关项目：忘记仅限缺失且无活跃窗口、无待写入结果的已审流程，显式强关会撤任务，均不能用这个端口绕过后续 S3/S6 的准入。
 
-Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。未改应用库/项目/history/cache 格式、Mio 工具目录或请求指纹。
+Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。S6-A 新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。
 
 ### S6-C：首页与最近项目
 

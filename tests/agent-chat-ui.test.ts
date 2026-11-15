@@ -59,7 +59,7 @@ const guardSource = actualFunction('  async function guardNavigation(', '  async
 const projectGuardSource = actualFunction('  async function guardProjectNavigation(', '  async function prepareSettingsDeparture(');
 const settingsDepartureSource = actualFunction('  async function prepareSettingsDeparture()', '  async function changeHomePage(');
 const sessionReadySource = actualFunction('  function projectSessionReady()', '  const workbenchReady =');
-const projectSource = actualFunction('  async function selectProject(', '  async function showProjectHome(');
+const projectSource = actualFunction('  async function selectProject(', '  async function resolveWebFormatUpgrade(');
 const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNextId = '77000000-0000-4000-8000-000000000002', navigationLaterId = '77000000-0000-4000-8000-000000000003';
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true }: {draft?:boolean;imageDraft?:boolean;dirty?:boolean;confirmation?:boolean|Promise<unknown>} = {}) {
   const editorSession = {current: 'normal'}, calls: [string,...unknown[]][] = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: {  } };

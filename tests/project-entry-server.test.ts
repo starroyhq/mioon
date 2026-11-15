@@ -198,6 +198,7 @@ test('a legacy web host keeps format 3 and reports the format 4 pair as too new'
 test('the default web host opens legacy metadata without writes and upgrades only a current confirmation after backing up', async t => {
   const f = await fixture(t, 'web', {legacyA: true}), {projectId, projectFile, localDir, cacheDir} = f.a;
   const base = `/api/projects/${projectId}/format-upgrade`;
+  const mioHistory = () => f.json(`/api/projects/${projectId}/agent/tasks/v2/history`);
   const project = () => f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({operation: 'project.get', input: {projectId}})});
   const upgrade = (preview: unknown) => f.json(base, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({preview})});
@@ -218,6 +219,9 @@ test('the default web host opens legacy metadata without writes and upgrades onl
   assert.equal(readOnly.status, 200, JSON.stringify(readOnly.body));
   assert.deepEqual(projectFormatReadOnlyViewSchema.parse(readOnly.body.data), {projectId, name: 'Catalog A', description: '',
     projectVersion: PROJECT_FILE_SCHEMA_VERSION, shots: [], nodes: [], timeline: null, truncated: false});
+  const mioBlocked = await mioHistory();
+  assert.equal(mioBlocked.status, 409);
+  assert.equal(mioBlocked.body.error?.code, 'PROJECT_FORMAT_UPGRADE_REQUIRED');
   assert.equal(isProjectFileHeld(entries.find(entry => entry.projectId === projectId)!.fileIdentity), false);
   assert.deepEqual(registry(f), entries);
   assert.deepEqual(bytes(), before);
@@ -256,6 +260,7 @@ test('the default web host opens legacy metadata without writes and upgrades onl
   const active = await project();
   assert.equal(active.status, 200);
   assert.equal(object(object(active.body.data).project).name, 'Saved elsewhere');
+  assert.equal((await mioHistory()).status, 200);
   const db = f.native(projectId);
   assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
   assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);

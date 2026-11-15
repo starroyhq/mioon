@@ -10,6 +10,7 @@ import type {Check, TargetArch, TargetPlatform} from './media-environment.ts';
 import {EXIT_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
+import {TIMELINE_EXPORT_DEFAULT_SETTINGS} from '../../packages/contracts/src/timeline-export-profile.ts';
 import type {ExitDiagnosticRecord} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/renderer-diagnostics.ts';
 import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
@@ -192,11 +193,11 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   const denied = await fetch(`${origin}/api/rpc`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({operation: 'project.list'}), signal: AbortSignal.timeout(10000)});
   if (denied.status !== 401) fail('ANONYMOUS_RPC_NOT_DENIED'); check('anonymous-http-rpc-denied');
   options.onPhase?.('seed');
-  const project = await rpc<{id: string; revision: number}>('project.create', {name: 'CI synthetic local composition', timelinePresetId: 'landscape_1080'});
+  const project = await rpc<{id: string; revision: number}>('project.create', {name: 'CI synthetic local composition', timelinePresetId: 'portrait_1080'});
   projectContext = project.id;
   let timeline = await rpc<Timeline>('timeline.get', {projectId: project.id});
   const projectView = await rpc<{project: {revision: number}}>('project.get', {projectId: project.id});
-  await rpc<unknown>('timeline.format.set', {projectId: project.id, expectedProjectRevision: projectView.project.revision, expectedRevision: timeline.revision, requestId: randomUUID(), presetId: 'landscape_720'});
+  await rpc<unknown>('timeline.format.set', {projectId: project.id, expectedProjectRevision: projectView.project.revision, expectedRevision: timeline.revision, requestId: randomUUID(), presetId: 'landscape_1080'});
   timeline = await rpc<Timeline>('timeline.get', {projectId: project.id});
   for (const [file, mimeType, kind] of [[video, 'video/mp4', 'video'], [audio, 'audio/wav', 'audio']] as const) {
     const asset = await rpc<{id: string}>('asset.import', {projectId: project.id, name: path.basename(file), mimeType, dataBase64: (await readFile(file)).toString('base64')});
@@ -205,7 +206,8 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   }
   if (timeline.clips.length !== 2) fail('SYNTHETIC_CLIP_COUNT_MISMATCH'); check('project-import-and-multitrack-edit-through-public-http-rpc');
   options.onPhase?.('render'); renderDeadline = Date.now() + smokeTimeouts.render;
-  const queued = await rpc<Job>('timeline.render', {projectId: project.id, expectedRevision: timeline.revision, purpose: 'preview', requestId: randomUUID()});
+  const queued = await rpc<Job>('timeline.render', {projectId: project.id, expectedRevision: timeline.revision, purpose: 'export', requestId: randomUUID(),
+    exportSettings: {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_720'}});
   const completed = await boundedPoll(async () => {
     const current = await rpc<Job>('export.get', {exportId: queued.id});
     if (current.status === 'failed') fail('LOCAL_RENDER_FAILED'); return current.status === 'succeeded' ? current : false;
