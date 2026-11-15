@@ -1,3 +1,7 @@
+import {isMioCanvasOperation,mioCanvasOperationForTool,mioCanvasOperations,mioCanvasSchemas,mioCanvasToolName} from '../../../contracts/src/mio-canvas.ts';
+import type {MioCanvasOperation} from '../../../contracts/src/mio-canvas.ts';
+import {applyMioCanvasEdit,prepareMioCanvasEdit,undoMioCanvasEdit,validateMioCanvasUndo} from '../canvas-mio-editing.ts';
+import type {MioCanvasPreparation,MioCanvasRequester} from '../canvas-mio-editing.ts';
 import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {MIO_PROJECT_MEDIA_LIMITS,MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL,mioProjectMediaListInputSchema,mioProjectMediaListingSchema} from '../../../contracts/src/mio-project-media.ts';
 import type {MioProjectMediaPort} from '../../../contracts/src/mio-project-media.ts';
@@ -8,7 +12,7 @@ import type {ProjectAssetImportPreparation,ProjectAssetImportCreationProof,Proje
 import {readMioProjectImportDependencies,readMioProjectImportDependenciesInside} from './mio-project-import-dependencies.ts';
 import {createMioProjectRules} from './mio-rules.ts';
 import type {MioProjectRules} from './mio-rules.ts';
-import {AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS,AGENT_TASK_LEGACY_TOOLS_LOAD_PARAMETERS} from './task-tool-groups-v2.ts';
 import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import {isAsyncFunction} from 'node:util/types';
@@ -35,7 +39,7 @@ import {GENERATION_SERVICE_UNAVAILABLE,generationServiceUnavailable} from '../pr
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,agentTaskToolSupportsGroupLoad,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,loadedAgentTaskToolNames,parseAgentTaskToolLoadInput,parseAgentTaskToolNameLoadInput} from './task-tool-groups-v2.ts';
 import type {AgentTaskToolLoadMode} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
 import {AGENT_TASK_SKILL_READ_PARAMETERS,parseAgentTaskSkillRead,readAgentTaskSkill} from './task-skills-v2.ts';
@@ -72,6 +76,11 @@ const hasGenerationAspectSource=(prepared:PreparedAgentTaskTool):boolean=>
  prepared.operation==='generation.submit'&&Object.hasOwn(prepared.input,'aspectSource');
 const framePresetIds=timelineFrameSetSchema.shape.presetId.options;
 const frameSetDescription='按当前项目和时间线双版本修改画框，必须保留当前画框的短边档位。先读取 timeline.format.get；已保存的片段和字幕按原基准适应新画框。这是一次可撤销编辑。';
+const canvasToolDescriptions:Record<MioCanvasOperation,string>={
+ 'canvas.layout':'整理当前画布。省略 targets 整理全部，或按镜头、节点 ID 选择。只调整可见对象的位置，可以撤销。',
+ 'canvas.archive':'按对象类型和 ID 归档当前画布的显式选区。镜头已有生成视频或被时间线使用时，必须等待用户批准本次影响摘要。归档可撤销。',
+ 'canvas.restore':'按对象类型和 ID 恢复当前项目「已删除」中的显式选区。可以撤销本次恢复。',
+};
 const needsFrameFence=(operation:string,input:Value):boolean=>
  operation==='timeline.clip.add'&&Object.hasOwn(input,'rect')||operation==='timeline.clip.update'&&object(input.patch)&&Object.hasOwn(input.patch,'rect');
 
@@ -153,6 +162,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  return parse(operation as OperationName,source) as Value;
 }
 function taskToolOperation(operation:string):string{
+ const canvas=mioCanvasOperationForTool(operation);if(canvas)return canvas;
  if(operation===MIO_PROJECT_FILE_IMPORT_TOOL)return MIO_PROJECT_FILE_IMPORT_OPERATION;
  if(operation===MIO_PROJECT_MEDIA_LIST_TOOL)return MIO_PROJECT_MEDIA_LIST_OPERATION;
  if(operation==='mioon_project_rules_set')return 'project.rules.set';
@@ -184,6 +194,10 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(operation==='edge.create')for(const field of ['source','target'] as const){add('node',input[field]);add('shot',input[field]);}
  for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(input[field]))for(const value of input[field])add(field==='shotIds'?'shot':'asset',value);
  if(operation==='task.wait')add(input.kind==='image'?'image_task':input.kind==='frame'?'frame_task':input.kind==='scene'?'scene_task':String(input.kind),input.id);
+ if(isMioCanvasOperation(operation)){
+  const parsed=mioCanvasSchemas[operation].safeParse(input);
+  if(parsed.success)for(const target of parsed.data.targets??[])add(target.kind,target.id);
+ }
  if(operation==='task.disposition.list'&&Array.isArray(input.targets))for(const target of input.targets)if(object(target))add(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
  const shot=operation==='shot.create'?input:operation==='shot.update'&&object(input.patch)?input.patch:undefined;
  if(shot){if(Array.isArray(shot.referenceAssetIds))for(const id of shot.referenceAssetIds)add('asset',id);add('asset',shot.lastFrameAssetId);}
@@ -201,7 +215,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  return [...references.values()];
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot;frameTransaction?:true;forceApproval?:boolean;proposal?:AgentTaskJson;projectFileImport?:ProjectAssetImportPreparation;canvas?:MioCanvasPreparation}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -397,12 +411,32 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
  const revision=(target:AgentTaskTarget):number=>revisions.get(key(target.kind,target.id))??readRevision(store,projectId,target.kind,target.id);
  assertProjectStore(store);
  const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
+ const canvasPreviewTargets=new Set<string>();
  for(const change of [...changes].reverse()){
-  const modifiedAfter=[...change.targets,...(change.frameDependencies??[])].some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
+  const visibleTargets=isMioCanvasOperation(change.operation)&&change.status==='applied'?agentTaskUndoTargets(change,chain):[...change.targets,...(change.frameDependencies??[])];
+  const modifiedAfter=visibleTargets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>
+   (isMioCanvasOperation(change.operation)?target.revision:target.revisionAfter));
   if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   if(change.status!=='applied'||!change.reversible){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
   const expected=agentTaskUndoTargets(change,chain);
-  let disposition=blocked?'blocked':undoDisposition(store,change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
+  if(isMioCanvasOperation(change.operation)){
+   let disposition:UndoDisposition='blocked';
+   // The shared canvas validator reads the real dependency graph. Never
+   // advertise an earlier, overlapping compensation against simulated rows.
+   if(!blocked&&isProjectStore(store)&&!expected.some(target=>revisions.has(key(target.kind,target.id))||canvasPreviewTargets.has(key(target.kind,target.id)))){
+    try{
+     validateMioCanvasUndo(store,canvasUndoEvidence(change),canvasUndoTargets(expected));
+     disposition='undo';
+    }catch(error){
+     if(!(error instanceof AppError)||!['AGENT_TASK_TARGET_CHANGED','CANVAS_EDIT_CONFLICT','CANVAS_EDIT_BLOCKED','CANVAS_EDIT_CAPACITY'].includes(error.code))throw error;
+    }
+   }
+   result.set(change.id,{modifiedAfter,undoDisposition:disposition});
+   if(disposition==='blocked')blocked=true;
+   else for(const target of change.targets)canvasPreviewTargets.add(key(target.kind,target.id));
+   continue;
+  }
+  let disposition=blocked||expected.some(target=>canvasPreviewTargets.has(key(target.kind,target.id)))?'blocked':undoDisposition(store,change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
   if(disposition==='blocked'){blocked=true;continue;}
   if(disposition!=='undo')continue;
   for(const entry of undoEntries(change)!){const identity=(entry.after??entry.before)!,id=key(identity.kind,identity.id);if(entry.before)current[id]=structuredClone(entry.before);else if(reversibleMetadata.has(identity.kind)){const value=defaultMetadataCompensation(identity.kind,identity.value);if(value)current[id]={...identity,value};else delete current[id];}else delete current[id];}
@@ -413,7 +447,18 @@ export function projectAgentTaskUndo(store:Store,projectId:string,changes:AgentT
 /** Recheck supersession within the same transaction as its journal record. */
 export function agentTaskChangeWasModified(store:Store,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
  assertProjectStore(store);
+ if(isMioCanvasOperation(change.operation))return false;
  return undoDisposition(store,change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
+}
+function canvasUndoTargets(expected:readonly AgentTaskTarget[]):Array<CanvasTarget&{revision:number}>{
+ return expected.map(({kind,id,revision})=>{
+  if(kind!=='shot'&&kind!=='node'&&kind!=='edge')fail('AGENT_TASK_TARGET_CHANGED','画布撤销目标无效');
+  return {kind,id,revision};
+ });
+}
+function canvasUndoEvidence(change:AgentTaskChange):AgentTaskJson {
+ if(!Array.isArray(change.undo)||change.undo.length!==1)fail('AGENT_TASK_TARGET_CHANGED','画布撤销记录无效');
+ return change.undo[0]!;
 }
 function differences(before:Snapshot,after:Snapshot,frameTransaction=false):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
  const result:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
@@ -492,7 +537,7 @@ export const listDiagnosticAgentTaskTools=():AgentTaskToolDefinition[]=>{const d
  * expose AGENTS.md authority only through the host approval protocol. */
 export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition[]=>{
  const definitions=listDiagnosticAgentTaskTools().filter(tool=>tool.operation!=='project.notes.set').map(tool=>{
-  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+  if(tool.name===AGENT_TASK_TOOLS_LOAD_NAME)return {...tool,parameters:frameTransaction?AGENT_TASK_FORMAT4_TOOLS_LOAD_PARAMETERS:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
   if(frameTransaction&&tool.operation===FRAME_SET){
    const parameters=tool.parameters as {properties:Value};
    return {...tool,description:frameSetDescription,parameters:{...parameters,properties:{...parameters.properties,presetId:{type:'string',enum:framePresetIds}}}};
@@ -502,6 +547,9 @@ export const listAgentTaskTools=(frameTransaction=false):AgentTaskToolDefinition
  definitions.push({name:'mioon_project_rules_set',operation:'project.rules.set',description:'提议修改当前项目 AGENTS.md 规范。expectedHash 是刚读取的原文件 SHA-256（不存在时为 null），proposedText 是完整新内容，最多8192 UTF-8字节。宿主展示原文与修改并始终等待用户审批。规范不是授权，修改只从下一轮用户请求生效。',parameters:{type:'object',properties:{expectedHash:{anyOf:[{type:'string',minLength:64,maxLength:64,pattern:'^[a-f0-9]{64}$'},{type:'null'}]},proposedText:{type:'string',maxLength:8192}},required:['expectedHash','proposedText'],additionalProperties:false},risk:'local_irreversible',receipt:'durable rules publication intent and original approval',recovery:'inspect the same request; never repeat uncertain publication',undo:'unavailable'});
  definitions.push({name:MIO_PROJECT_MEDIA_LIST_TOOL,operation:MIO_PROJECT_MEDIA_LIST_OPERATION,description:'分页列出当前项目目录内的文件夹和媒体元信息，仅返回相对名称、类型、大小和时长。directory 默认为项目根目录的空串，可用返回的文件夹名导航；只读有界文件头及当前页时长，不递归、解码、采样、全读、哈希、写缓存或导入。',parameters:{type:'object',properties:{directory:{type:'string',maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes,description:'Project-relative directory; omit or use an empty string for the project root. No absolute paths, dot entries or parent traversal.'},limit:{type:'integer',minimum:1,maximum:MIO_PROJECT_MEDIA_LIMITS.maxLimit},cursor:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.cursorBytes,pattern:'^[A-Za-z0-9_-]+$'}},additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read the retained metadata result; never rescan while rebuilding a request',undo:'unavailable'});
  definitions.push({name:MIO_PROJECT_FILE_IMPORT_TOOL,operation:MIO_PROJECT_FILE_IMPORT_OPERATION,description:'将当前项目目录内的媒体文件登记为素材。path 仅接受可见项目相对路径，不能读取项目外或未完成发布的文件；按本地可撤销档执行，撤销只移除本步骤新建、未改过且零消费者的登记，始终保留文件和审计。',parameters:{type:'object',properties:{path:{type:'string',minLength:1,maxLength:MIO_PROJECT_MEDIA_LIMITS.pathBytes},name:{type:'string',minLength:1,maxLength:200}},required:['path'],additionalProperties:false},risk:'local_reversible',receipt:'S1 original-request registration and atomic task step',recovery:'look up the original request; never repeat an unknown import',undo:'remove only this unchanged unconsumed new registration'});
+ if(frameTransaction)for(const operation of mioCanvasOperations){
+  definitions.push({name:mioCanvasToolName(operation),operation,description:canvasToolDescriptions[operation],parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk:'local_reversible',receipt:'atomic task step and canvas change',recovery:'inspect the original task step; never repeat unknown execution',undo:'reverse only this canvas edit'});
+ }
  assertAgentTaskToolGroupCoverage(definitions);return definitions;
 };
 
@@ -537,8 +585,8 @@ export function listAgentTaskToolsForChannel(mockAllowed:boolean,{diagnostic=fal
 
 export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,rules:injectedRules,projectMedia,projectImport}:{store:Store;rules?:MioProjectRules;projectMedia?:MioProjectMediaPort;projectImport?:MioProjectImportPort;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  assertProjectStore(store);
- const catalogProfile='native';
  const frameProject=usesTimelineFrameTransaction(store.db);
+ const catalogProfile=frameProject?'format4':'native';
  const {generationAvailability}=services;
  const list=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{frameTransaction:frameProject});
  const diagnosticList=()=>listAgentTaskToolsForChannel(generationAvailability.mockAllowed,{diagnostic:true});
@@ -660,9 +708,22 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   }
   return agentTaskParameterFeedback({operation,input,capabilities});
  }
- function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names'}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode}):PreparedAgentTaskTool{
+ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names',canvasRequester}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void;toolLoadMode?:AgentTaskToolLoadMode;canvasRequester?:MioCanvasRequester}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
   if(isProjectStore(store)&&operation==='project.notes.set')fail('AGENT_TASK_TOOL_FORBIDDEN','旧说明工具已停用，请改用必须审批的规范提议');
+  if(isMioCanvasOperation(operation)){
+   if(!frameProject||!isProjectStore(store)||projectId!==store.projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','画布工具只用于当前格式 4 项目');
+   const parsed=mioCanvasSchemas[operation].safeParse(input);
+   if(!parsed.success)fail('VALIDATION_ERROR','请按对象类型和 ID 指定不重复的画布目标');
+   const targets=parsed.data.targets;
+   for(const target of targets??[])beforeTargetRead?.(target);
+   const edit=operation==='canvas.layout'?{operation:'layout' as const,...(targets?{targets}:{})}:
+    {operation:operation==='canvas.archive'?'archive' as const:'restore' as const,targets:targets??fail('VALIDATION_ERROR','请选择画布目标')};
+   const canvas=prepareMioCanvasEdit(store,edit,canvasRequester);
+   for(const target of canvas.targets)beforeTargetRead?.(target);
+   const forceApproval=operation==='canvas.archive'&&(canvas.impact.versions>0||canvas.impact.clips>0);
+   return {projectId,operation,input:parsed.data,risk:'local_reversible',targets:[...canvas.targets],before:{},canvas,...(forceApproval?{forceApproval:true}:{})};
+  }
   let risk=operation===MIO_PROJECT_FILE_IMPORT_OPERATION?'local_reversible':operation==='project.rules.set'?'local_irreversible':['task.wait','node.inspect','edge.inspect',MIO_PROJECT_MEDIA_LIST_OPERATION,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===MIO_PROJECT_MEDIA_LIST_OPERATION){
@@ -824,6 +885,35 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   return projectImport.lookup(proof,context);
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
+  if(isMioCanvasOperation(prepared.operation)){
+   const {canvas,projectId,operation}=prepared;
+   if(!frameProject||!canvas||!isProjectStore(store)||store.projectId!==projectId)fail('AGENT_TASK_TOOL_FORBIDDEN','画布操作不属于当前格式 4 项目');
+   try{return store.tx(()=>{
+    context.beforeEffect();context.signal?.throwIfAborted();
+    const step=journal.step(context.stepId);
+    if(step.runId!==context.runId||context.requestId!==step.id||step.status!=='dispatch_started'||taskToolOperation(step.toolCall?.name??'')!==operation||
+       !object(step.data)||step.data.canvasProof!==canvas.proof||journal.run(context.runId).projectId!==projectId)fail('AGENT_TASK_STATE_CONFLICT','画布操作缺少本次执行的已验证证明');
+    const applied=applyMioCanvasEdit(store,canvas,{runId:context.runId,stepId:context.stepId});
+    const revisionsBefore=new Map(canvas.targets.map(target=>[key(target.kind,target.id),target.revision]));
+    const targets=applied.targets.map(target=>({...target,revisionBefore:revisionsBefore.get(key(target.kind,target.id))!,revisionAfter:target.revision}));
+    const displayRows=applied.changedRows.map(({kind,id})=>{
+     const row=store.get(kind==='shot'?'shots':kind==='node'?'nodes':'edges',id);
+     const value=object(row)?Object.fromEntries(['title','name','label'].flatMap(field=>typeof row[field]==='string'?
+      [[field,[...row[field].replace(/[\p{Cc}\p{Cf}]/gu,'').trim()].slice(0,80).join('')]]:[])):{};
+     return {kind,id,value};
+    });
+    const changes:TaskChangeInput[]=applied.undo?[{projectId,operation,targets,before:null,after:json(displayRows),reversible:true,undo:json([applied.undo])}]:[];
+    const result=json({operation,affected:applied.affected,...(canvas.input.targets?{targets:canvas.input.targets}:{})});
+    context.recordInside(result,changes);
+    return {result,changes:[],recorded:true};
+   });}catch(error){
+    // Domain failures roll back the change and the completion together.
+    if(error instanceof AppError&&error.code==='CANVAS_EDIT_CONFLICT')fail('AGENT_TASK_TARGET_CHANGED',error.message);
+    if(error instanceof AppError&&error.code==='CANVAS_EDIT_BLOCKED')fail('AGENT_TASK_TARGET_CLAIMED',error.message);
+    if(error instanceof AppError&&error.code==='CANVAS_EDIT_CAPACITY')throw new AppError(error.code,error.message,error.status,{mutationOutcome:'not_applied'});
+    throw error;
+   }
+  }
   if(prepared.operation==='project.rules.set'){
    context.beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
    const step=journal.step(context.stepId),data=step.data;
@@ -932,7 +1022,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
      const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
      // Old group intents retain their original scope; directory reads are
      // disclosed and loaded only by a new exact-name request.
-     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group)&&tool.name!==MIO_PROJECT_MEDIA_LIST_TOOL&&tool.name!==MIO_PROJECT_FILE_IMPORT_TOOL;}).map(tool=>tool.name);
+     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name,catalogProfile);return group!==undefined&&group!=='core'&&selected.has(group)&&agentTaskToolSupportsGroupLoad(tool.name);}).map(tool=>tool.name);
      const result:AgentTaskJson={groups,tools:names};
      return {result,changes:[],recorded:false};
     }
@@ -1053,6 +1143,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
    if(receipts.some(sql=>db.prepare(sql).get(input.requestId))||db.prepare(`SELECT 1 FROM ${mioTable(db,'origins')} WHERE runId=? AND stepId=?`).get(input.runId,input.stepId))return null;
    return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   }
+  if(tier==='local_reversible'&&isMioCanvasOperation(operation))return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   if(tier!=='local_reversible'||!reversibleOperations.includes(operation as typeof reversibleOperations[number]))return null;
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
@@ -1102,6 +1193,15 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
   if(!change.reversible||change.status!=='applied'||!Array.isArray(change.undo))fail('AGENT_TASK_NOT_REVERSIBLE','此项变化不能撤销');
   const undoEntries=change.undo;
   return store.tx(()=>{
+   if(isMioCanvasOperation(change.operation)){
+    if(!frameProject||!isProjectStore(store)||store.projectId!==change.projectId)fail('AGENT_TASK_NOT_REVERSIBLE','画布撤销不属于当前格式 4 项目');
+    context.beforeEffect();context.beforeCompensation?.();
+    const expected=context.expectedTargets??agentTaskUndoTargets(change,new Map());
+    const targets=undoMioCanvasEdit(store,canvasUndoEvidence(change),canvasUndoTargets(expected));
+    context.recordInside(change);
+    const saved=new Map(change.targets.map(target=>[key(target.kind,target.id),target]));
+    return {targets:targets.map(target=>({...saved.get(key(target.kind,target.id)),...target}))};
+   }
    if(change.operation===MIO_PROJECT_FILE_IMPORT_OPERATION){
     context.beforeEffect();const owned=projectFileImportUndo(store,change);
     if(!owned||!isProjectStore(store))fail('AGENT_TASK_TARGET_CHANGED','原登记已变化或不属于本步骤');

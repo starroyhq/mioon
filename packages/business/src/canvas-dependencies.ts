@@ -11,6 +11,8 @@ import type {ProjectStore} from './project-file/store.ts';
 import {pendingPrevisPublications} from './previs-publication.ts';
 import {assertProjectStore} from './store-runtime.ts';
 
+export type MioCanvasRequester = {readonly runId: string; readonly stepId: string};
+
 interface CanvasBlocker {readonly kind: string; readonly id: string; readonly reason: string}
 type ShotImpact = Omit<CanvasArchiveShotImpact, 'number'>;
 interface CanvasDependencies {
@@ -86,7 +88,10 @@ function generationStatus(job: Record<string, unknown>): string | null {
 /** Snapshot only what can affect the admitted selection. The caller supplies
  * the full write closure and repeats this check in the write transaction. */
 export function inspectCanvasDependencies(store: ProjectStore, targets: readonly CanvasTarget[],
-  impactTargets: readonly CanvasTarget[] = targets, {reportShotImpacts = false} = {}): CanvasDependencies {
+  impactTargets: readonly CanvasTarget[] = targets, {reportShotImpacts = false, requester}: {
+    readonly reportShotImpacts?: boolean;
+    readonly requester?: MioCanvasRequester;
+  } = {}): CanvasDependencies {
   assertProjectStore(store);
   const {db, projectId} = store;
   const keys = new Set(targets.map(identityKey));
@@ -285,7 +290,9 @@ export function inspectCanvasDependencies(store: ProjectStore, targets: readonly
     FROM main.mio_steps s LEFT JOIN main.mio_entries e ON e.id=s.sourceEntryId AND e.projectId=s.projectId AND e.runId=s.runId
     LEFT JOIN main.mio_blobs b ON b.sha256=e.payloadBlobHash
     WHERE s.projectId=? AND s.kind='tool' AND s.status IN ('dispatch_started','unknown')
-    AND s.tier IS NOT 'read_only' ORDER BY s.id LIMIT ${MAX_PROOFS + 1}`).iterate(projectId);
+    AND s.tier IS NOT 'read_only'
+    AND (s.status IS NOT 'dispatch_started' OR s.runId IS NOT ? OR s.id IS NOT ?)
+    ORDER BY s.id LIMIT ${MAX_PROOFS + 1}`).iterate(projectId, requester?.runId ?? null, requester?.stepId ?? null);
   let stepCount = 0;
   for (const step of steps) {
     if (++stepCount > MAX_PROOFS || (bytes += typeof step.data === 'string' ? Buffer.byteLength(step.data) : 0) > MAX_PROCESS_PROOF_BYTES) {

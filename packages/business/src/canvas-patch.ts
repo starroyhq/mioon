@@ -207,17 +207,21 @@ function rowFields(row: CanvasRow, shape: CanvasFields): CanvasFields {
 export function previousFields(row: CanvasRow, shape: CanvasFields): CanvasFields { return rowFields(row, shape); }
 const fieldIdentity = (value: CanvasFields): string => JSON.stringify([value.archive, value.position, value.orderIndex]);
 
-export function applyCanvasPatch(store: ProjectStore, before: CanvasPatch, after: CanvasPatch, at: string): void {
-  if (!store.db.isTransaction) throw new TypeError('Canvas patch requires the project transaction');
+export function expectCanvasPatchBase(store: ProjectStore, before: CanvasPatch, after: CanvasPatch): CanvasRow[] {
   if (before.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(before.order)) return canvasError('story-order');
   if (before.rows.length !== after.rows.length) return canvasError('invalid-history');
-  const current = before.rows.map((expected, index) => {
+  return before.rows.map((expected, index) => {
     const row = readCanvasRow(store, expected);
     const next = after.rows[index]!;
     if (canvasKey(next) !== canvasKey(expected) || Object.keys(next.fields).sort().join() !== Object.keys(expected.fields).sort().join() ||
       fieldIdentity(rowFields(row, expected.fields)) !== fieldIdentity(expected.fields)) return canvasError('patch-base', {id: row.id});
     return row;
   });
+}
+
+export function applyCanvasPatch(store: ProjectStore, before: CanvasPatch, after: CanvasPatch, at: string): void {
+  if (!store.db.isTransaction) throw new TypeError('Canvas patch requires the project transaction');
+  const current = expectCanvasPatchBase(store, before, after);
   const anchors = new Map(after.anchors.map(anchor => [anchor.id, anchor]));
   for (const [index, row] of current.entries()) {
     const update = after.rows[index]!.fields;

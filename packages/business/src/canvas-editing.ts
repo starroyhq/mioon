@@ -5,8 +5,9 @@ import {
 } from '../../contracts/src/canvas-editing.ts';
 import type {
   CanvasArchiveItem, CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasCopyInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
-  CanvasHistoryInput, CanvasHistoryView, CanvasTarget,
+  CanvasHistoryInput, CanvasHistoryView, CanvasTarget, CanvasTargetExpectation,
 } from '../../contracts/src/canvas-editing.ts';
+import type {CanvasPosition} from '../../contracts/src/canvas-position.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {hasCanvasArchives} from './canvas-active.ts';
@@ -46,9 +47,24 @@ interface HistoryEntry {
   readonly after: CanvasPatch;
 }
 
-const assertUnblocked = (effects: ReturnType<typeof inspectCanvasDependencies>): void => {
+export const assertCanvasUnblocked = (effects: ReturnType<typeof inspectCanvasDependencies>): void => {
   if (effects.blocked.length) throw new AppError('CANVAS_EDIT_BLOCKED', '画布对象有未完成的操作。', 409, {blocked: effects.blocked});
 };
+
+export function planCanvasMoves(store: ProjectStore, selection: readonly (CanvasTargetExpectation & {
+  readonly position: CanvasPosition;
+})[]) {
+  const moves = [...selection].sort(compareCanvasTargets);
+  const rows = expectCanvasRows(store, moves, false);
+  const updates = rows.map((row, index) => ({kind: row.kind, id: row.id, fields: {position: moves[index]!.position}}));
+  const changed = updates.map((row, index) => ({row, old: previousFields(rows[index]!, row.fields)}))
+    .filter(({row, old}) => old.position?.x !== row.fields.position.x || old.position?.y !== row.fields.position.y);
+  const fields = {version: 1 as const, guards: updates.map(({kind,id}) => ({kind,id})), anchors: [], order: null};
+  return {
+    before: {...fields, rows: changed.map(({row, old}) => ({kind: row.kind, id: row.id, fields: old}))},
+    after: {...fields, rows: changed.map(({row}) => row)},
+  };
+}
 
 export function createCanvasEditing(store: ProjectStore, {now = () => new Date().toISOString(), time = Date.now, clipboardOwner = store}: {
   readonly now?: () => string;
@@ -309,7 +325,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     let created: CanvasEditResult['created'];
     if (input.operation === 'archive' || input.operation === 'restore') {
       const {plan, effect, facts} = archivePlan(input, at);
-      assertUnblocked(effect);
+      assertCanvasUnblocked(effect);
       if (input.confirmation !== undefined || input.operation === 'archive' && (effect.versions || effect.clips)) {
         verifyConfirmation(input.confirmation, facts, current.revision);
       }
@@ -319,24 +335,20 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     } else if (input.operation === 'paste') {
       const plan = clipboard.paste(input, at);
       const impact = patchEvidence(plan.before, true);
-      assertUnblocked(impact);
+      assertCanvasUnblocked(impact);
       before = {...plan.before, dependencyDigest: impact.digest};
       after = {...plan.after, dependencyDigest: impact.digest};
       assertCanvasEdgeEffects(store, after);
       created = plan.created;
     } else {
       if (input.operation === 'layout' && !sameContentStamp(readProjectContentStamp(db), input)) return canvasError('layout-base');
-      const moves = [...input.moves].sort(compareCanvasTargets);
-      const rows = expectCanvasRows(store, moves, false);
-      const updates = rows.map((row, index) => ({kind: row.kind, id: row.id, fields: {position: moves[index]!.position}}));
-      const changed = updates.map((row, index) => ({row, old: previousFields(rows[index]!, row.fields)}))
-        .filter(({row, old}) => old.position?.x !== row.fields.position.x || old.position?.y !== row.fields.position.y);
-      if (!changed.length) return result(null, 0, current);
-      const guards = updates.map(({kind,id}) => ({kind,id})), effect = dependency(guards);
-      assertUnblocked(effect);
-      const fields = {version: 1 as const, guards, anchors: [], order: null, dependencyDigest: digest([effect.digest, []])};
-      before = {...fields, rows: changed.map(({row, old}) => ({kind: row.kind, id: row.id, fields: old}))};
-      after = {...fields, rows: changed.map(({row}) => row)};
+      const plan = planCanvasMoves(store, input.moves);
+      if (!plan.after.rows.length) return result(null, 0, current);
+      const effect = dependency(plan.before.guards);
+      assertCanvasUnblocked(effect);
+      const proof = digest([effect.digest, []]);
+      before = {...plan.before, dependencyDigest: proof};
+      after = {...plan.after, dependencyDigest: proof};
     }
     const position = current.position + 1;
     if (!isRevision(position) || current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
@@ -359,7 +371,7 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     if (!evidenceCurrent(current, target)) return canvasError('history-revision');
     const before = undo ? target.after : target.before, after = undo ? target.before : target.after;
     const effect = patchEvidence(before, target.operation === 'paste');
-    assertUnblocked(effect);
+    assertCanvasUnblocked(effect);
     if (effect.digest !== before.dependencyDigest) return canvasError('history-dependencies');
     if (current.revision >= Number.MAX_SAFE_INTEGER) return canvasLimit();
     assertCanvasEdgeEffects(store, after);
