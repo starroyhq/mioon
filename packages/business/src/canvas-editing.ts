@@ -1,21 +1,24 @@
 import {createHash, createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {
-  CANVAS_EDIT_LIMITS, canvasEditingResponses, canvasEditingSchemas, canvasEditingWrites, readCanvasRequestId,
+  CANVAS_EDIT_LIMITS, canvasArchiveMediaSchema, canvasArchiveNodeTypeSchema, canvasEditingResponses, canvasEditingSchemas,
+  canvasEditingWrites, readCanvasRequestId,
 } from '../../contracts/src/canvas-editing.ts';
 import type {
-  CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
+  CanvasArchiveItem, CanvasArchiveListInput, CanvasArchivePreviewInput, CanvasEditInput, CanvasEditResult, CanvasEditingOperation,
   CanvasHistoryInput, CanvasHistoryView, CanvasTarget,
 } from '../../contracts/src/canvas-editing.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {isProjectId} from '../../contracts/src/project-file.ts';
 import {hasCanvasArchives} from './canvas-active.ts';
+import {validAssetLocator} from './asset-reference-record.ts';
+import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import {assertCanvasEdgeEffects, canvasEdgeEvidence, planCanvasArchive} from './canvas-archive.ts';
 import {inspectCanvasDependencies} from './canvas-dependencies.ts';
 import {
   activeShotOrder, applyCanvasPatch, canvasError, canvasKey, canvasLimit, compareCanvasTargets, decodeCanvasPatch, encodeCanvasPatch, expectCanvasRows,
   isCanvasGuardEvidence, isCanvasOrderOnlyRow,
-  previousFields, readCanvasRow,
+  previousFields, readCanvasOrderAnchor, readCanvasRow,
 } from './canvas-patch.ts';
 import type {CanvasGuardEvidence, CanvasPatch} from './canvas-patch.ts';
 import {readProjectContentStamp, sameContentStamp} from './project-file/content-stamp.ts';
@@ -97,22 +100,23 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
   function history(current = state()) {
     const undo = entryAt(current.position), redo = entryAt(current.position + 1);
     const action = (entry: HistoryEntry | null) => entry && ({id: entry.id, operation: entry.operation, count: entry.after.rows.length});
-    function conflicted(entry: HistoryEntry | null, backward: boolean): boolean {
-      if (!entry) return false;
-      if (!evidenceCurrent(current, entry)) return true;
+    function availability(entry: HistoryEntry | null, backward: boolean): 'ready' | 'blocked' | 'conflict' {
+      if (!entry) return 'ready';
+      if (!evidenceCurrent(current, entry)) return 'conflict';
       const patch = backward ? entry.after : entry.before;
-      if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return true;
       const impact = patchEvidence(patch);
-      return Boolean(impact.blocked.length || impact.digest !== patch.dependencyDigest);
+      if (impact.blocked.length) return 'blocked';
+      if (patch.order && JSON.stringify(activeShotOrder(store)) !== JSON.stringify(patch.order)) return 'conflict';
+      return impact.digest !== patch.dependencyDigest ? 'conflict' : 'ready';
     }
-    const undoConflict = conflicted(undo, true), redoConflict = conflicted(redo, false);
-    return {view: {revision: current.revision, undo: action(undo), redo: action(redo), conflict: undoConflict || redoConflict},
-      undoConflict, redoConflict};
+    const undoState = availability(undo, true), redoState = availability(redo, false);
+    return {view: {revision: current.revision, undo: action(undo), redo: action(redo), conflict: undoState !== 'ready' || redoState !== 'ready'},
+      undoConflict: undoState === 'conflict', redoConflict: redoState === 'conflict', undoBlocked: undoState === 'blocked', redoBlocked: redoState === 'blocked'};
   }
-  function archivePlan(input: CanvasArchivePreviewInput, at: string) {
+  function archivePlan(input: CanvasArchivePreviewInput, at: string, reportShotImpacts = false) {
     const {operation, targets} = input;
     const plan = planCanvasArchive(store, operation, targets, at, operation === 'restore' ? input.batchId : undefined);
-    const effect = inspectCanvasDependencies(store, plan.before.guards, plan.selected);
+    const effect = inspectCanvasDependencies(store, plan.before.guards, plan.selected, {reportShotImpacts});
     const closure = plan.before.guards.map(target => {
       return [target.kind, target.id, readMioTargetRevision(db, projectId, target.kind, target.id) ?? canvasError('invalid-revision', target)];
     });
@@ -130,29 +134,102 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
     }
   }
   function preview(input: CanvasArchivePreviewInput) {
-    const {plan, effect, facts} = archivePlan(input, now());
-    const historyRevision = state().revision, expires = time() + CONFIRMATION_MS;
-    const confirmation = input.operation === 'archive' && (effect.versions || effect.clips) && !effect.blocked.length
-      ? `${expires}.${sign(expires, facts, historyRevision)}` : null;
-    return {projectId, targets: plan.selected.map(({kind,id,revision}) => ({kind,id,revision})), affected: plan.after.rows.length,
-      versions: effect.versions, clips: effect.clips, blocked: effect.blocked, confirmation, historyRevision};
+    const outer = db.isTransaction;
+    if (!outer) db.exec('BEGIN DEFERRED');
+    try {
+      const {plan, effect, facts} = archivePlan(input, now(), input.operation === 'archive');
+      const historyRevision = state().revision, expires = time() + CONFIRMATION_MS;
+      const confirmation = input.operation === 'archive' && (effect.versions || effect.clips) && !effect.blocked.length
+        ? `${expires}.${sign(expires, facts, historyRevision)}` : null;
+      const shotImpacts = (plan.before.order ?? []).flatMap((id, index) => {
+        const impact = effect.shotImpacts.get(id);
+        return impact ? [{number: index + 1, ...impact}] : [];
+      });
+      return {projectId, targets: plan.selected.map(({kind,id,revision}) => ({kind,id,revision})), affected: plan.after.rows.length,
+        versions: effect.versions, clips: effect.clips, shotImpacts: shotImpacts.slice(0, CANVAS_EDIT_LIMITS.previewShots),
+        impactedShotCount: shotImpacts.length, blocked: effect.blocked, confirmation, historyRevision};
+    } finally {
+      if (!outer && db.isTransaction) db.exec('COMMIT');
+    }
   }
   function archived(input: CanvasArchiveListInput) {
-    const limit = input.limit ?? CANVAS_EDIT_LIMITS.archivedPage;
-    const rows = db.prepare(`SELECT kind,id FROM (
-      SELECT 'shot' AS kind,id FROM project.shots WHERE projectId=? AND archiveReason='user-delete'
-      UNION ALL SELECT 'node',id FROM project.nodes WHERE projectId=? AND archiveReason='user-delete'
-      UNION ALL SELECT 'edge',id FROM project.edges WHERE projectId=? AND archiveReason='user-delete'
-    ) WHERE (id,kind)>(?,?) ORDER BY id,kind LIMIT ?`).all(projectId, projectId, projectId, input.after?.id ?? '', input.after?.kind ?? '', limit + 1);
-    const items = rows.slice(0, limit).map(value => {
-      const item = value as unknown as CanvasTarget;
-      const {kind, id, archive, revision, data} = readCanvasRow(store, item);
-      if (!archive) return canvasError('invalid-record');
-      const label = data.title ?? data.label;
-      return {kind, id, archive, revision, label: typeof label === 'string' ? label.slice(0, 512) : ''};
-    });
-    const last = items.at(-1);
-    return {projectId, items, next: rows.length > limit && last ? {id:last.id, kind:last.kind} : null};
+    const outer = db.isTransaction;
+    if (!outer) db.exec('BEGIN DEFERRED');
+    try {
+      const limit = input.limit ?? CANVAS_EDIT_LIMITS.archivedPage;
+      const scope = "projectId=? AND archivedAt IS NOT NULL AND archiveReason='user-delete'";
+      const total = db.prepare(`SELECT
+        (SELECT count(*) FROM project.shots WHERE ${scope}) +
+        (SELECT count(*) FROM project.nodes WHERE ${scope}) +
+        (SELECT count(*) FROM project.edges WHERE ${scope}) AS total`).get(projectId, projectId, projectId)?.total;
+      const rows = db.prepare(`SELECT kind,id FROM (
+        SELECT 'shot' AS kind,id FROM project.shots WHERE ${scope}
+        UNION ALL SELECT 'node',id FROM project.nodes WHERE ${scope}
+        UNION ALL SELECT 'edge',id FROM project.edges WHERE ${scope}
+      ) WHERE (id,kind)>(?,?) ORDER BY id,kind LIMIT ?`).all(projectId, projectId, projectId, input.after?.id ?? '', input.after?.kind ?? '', limit + 1);
+      const page = rows.slice(0, limit).map(row => {
+        const {kind,id} = row;
+        if ((kind !== 'shot' && kind !== 'node' && kind !== 'edge') || !isProjectId(id)) return canvasError('invalid-record');
+        return readCanvasRow(store, {kind,id});
+      });
+      const shots = page.filter(row => row.kind === 'shot').map(({id, data}) => [id, isProjectId(data.selectedVersionId) ? data.selectedVersionId : null] as const);
+      const versions = archivedVersions(shots);
+      const items = page.map(({kind, id, archive, revision, data}): CanvasArchiveItem => {
+        if (!archive) return canvasError('invalid-record');
+        const type = canvasArchiveNodeTypeSchema.safeParse(data.type);
+        const nodeType = kind === 'node' && type.success ? type.data : null;
+        const shot = versions.get(id);
+        const media = kind === 'shot' ? archiveMedia(shot?.assetId, 'video') :
+          nodeType === 'image' || nodeType === 'video' ? archiveMedia(data.assetId, nodeType) : null;
+        const label = nodeType === 'text' ? data.label || data.text : data.title ?? (data.label || media?.name);
+        // Early format-4 archives retain only their stored order index.
+        const savedNumber = isRevision(data.orderIndex) && data.orderIndex < Number.MAX_SAFE_INTEGER ? data.orderIndex + 1 : null;
+        const shotNumber = kind === 'shot' ? readCanvasOrderAnchor({kind, id, archive, revision, data}).number ?? savedNumber : null;
+        return {kind, id, archive, revision, label: typeof label === 'string' ? label.slice(0, 512) : '',
+          nodeType, shotNumber, versions: kind === 'shot' ? shot?.versions ?? 0 : 0, preview: media?.preview ?? null};
+      });
+      const last = items.at(-1);
+      return {projectId, total, items, ...readProjectContentStamp(db),
+        next: rows.length > limit && last ? {id:last.id, kind:last.kind} : null};
+    } finally {
+      if (!outer && db.isTransaction) db.exec('COMMIT');
+    }
+  }
+  function archivedVersions(shots: readonly (readonly [string, string | null])[]) {
+    const stats = new Map<string, {versions: number; assetId: unknown}>();
+    if (!shots.length) return stats;
+    // Decode bounded metadata in SQLite and return stats for this page's shots.
+    const rows = db.prepare(`WITH owned AS (
+      SELECT id,jobId,CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${INSPECTION_ROW_LIMITS.versions}
+        AND json_valid(data) THEN data END AS data FROM project.versions WHERE projectId=?
+    ), projected AS (
+      SELECT id,jobId,json_extract(data,'$.shotId') AS shotId,
+        json_extract(data,'$.assetId') AS assetId
+      FROM owned WHERE id=json_extract(data,'$.id') AND jobId=json_extract(data,'$.jobId')
+        AND json_extract(data,'$.projectId')=?
+    )
+    SELECT shotId, count(*) AS versions,
+      max(CASE WHEN id=json_extract(?, '$."' || shotId || '"') THEN assetId END) AS assetId
+    FROM projected WHERE shotId IN (SELECT value FROM json_each(?)) GROUP BY shotId`)
+      .all(projectId, projectId, JSON.stringify(Object.fromEntries(shots)), JSON.stringify(shots.map(([id]) => id)));
+    for (const row of rows) {
+      if (!isProjectId(row.shotId) || !isRevision(row.versions)) return canvasError('invalid-record');
+      stats.set(row.shotId, {versions: row.versions, assetId: row.assetId});
+    }
+    return stats;
+  }
+  function archiveMedia(assetId: unknown, kind: 'image' | 'video') {
+    if (!isProjectId(assetId)) return null;
+    const row = db.prepare(`SELECT CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${INSPECTION_ROW_LIMITS.assets}
+      AND json_valid(data) THEN data END AS data FROM project.assets WHERE projectId=? AND id=?`).get(projectId, assetId);
+    if (typeof row?.data !== 'string') return null;
+    const asset = JSON.parse(row.data);
+    if (!asset || asset.id !== assetId || asset.projectId !== projectId || !validAssetLocator(db, asset)) return null;
+    const preview = canvasArchiveMediaSchema.safeParse({assetId, mimeType: asset.mimeType});
+    // Only disclose the identity. The existing project media gate decides
+    // if its current locator is readable, including outside access.
+    return preview.success && preview.data.mimeType.startsWith(`${kind}/`)
+      ? {preview: preview.data, name: typeof asset.name === 'string' ? asset.name : ''} : null;
   }
   function saveState(current: HistoryState, position: number, patch: CanvasPatch, before: ReadonlyMap<string, number>,
     newEntry: boolean): HistoryState {
@@ -358,8 +435,8 @@ export function createCanvasEditing(store: ProjectStore, {now = () => new Date()
       if (operation === 'canvas.archive.preview') return canvasEditingResponses[operation].parse(preview(parsed.data as CanvasArchivePreviewInput));
       if (operation === 'canvas.archive.list') return canvasEditingResponses[operation].parse(archived(parsed.data as CanvasArchiveListInput));
       if (operation === 'canvas.history.get') {
-        const {view, undoConflict, redoConflict} = history(), {epoch, floor} = receiptWindow();
-        return {...view, undoConflict, redoConflict, requestEpoch: epoch, requestAfter: cutoff(floor, time())};
+        const {view, ...availability} = history(), {epoch, floor} = receiptWindow();
+        return {...view, ...availability, requestEpoch: epoch, requestAfter: cutoff(floor, time())};
       }
       return mutation(operation, parsed.data as CanvasEditInput | CanvasHistoryInput, authorize);
     },

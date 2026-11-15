@@ -319,7 +319,7 @@ test('format 4 regeneration submits the reviewed frame only if it survives cance
     const review = app.state.review;
     assert.ok(review);
     assert.deepEqual(review.aspectSource, aspectSource);
-    assert.deepEqual(app.state.calls, []);
+    assert.equal(app.state.calls.length, 0);
     await app.confirmGeneration(review);
     assert.deepEqual(app.state.calls.map(call => call[1]), frameChanged ? ['job.cancel'] : ['job.cancel', 'generation.submit']);
     assert.deepEqual(app.state.calls[0]![2], {jobId: old.id});

@@ -43,6 +43,7 @@ export interface CanvasOrderAnchor {
   readonly id: string;
   readonly previous: string | null;
   readonly next: string | null;
+  readonly number?: number;
 }
 export const CANVAS_ARCHIVE_ORDER_FIELD = 'canvasArchiveOrder';
 export type CanvasGuardEvidence = number | {readonly revision: number; readonly since: number};
@@ -70,9 +71,12 @@ const target = (value: unknown): value is CanvasTarget => jsonObject(value) && i
 const archive = (value: unknown): value is CanvasArchive => jsonObject(value) && Object.keys(value).length === 3 &&
   typeof value.at === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value.at) && isProjectId(value.batchId) && archiveReason(value.reason);
 const isAnchorPair = (value: Record<string, unknown>): value is Record<string, unknown> & Omit<CanvasOrderAnchor, 'id'> =>
-  (value.previous === null || isProjectId(value.previous)) && (value.next === null || isProjectId(value.next));
+  (value.previous === null || isProjectId(value.previous)) && (value.next === null || isProjectId(value.next)) &&
+  (!Object.hasOwn(value, 'number') || validOrder(value.number) && value.number > 0);
+const anchorSize = (value: Record<string, unknown>, idFields: number): boolean =>
+  Object.keys(value).length === idFields + 2 + Number(Object.hasOwn(value, 'number'));
 export const isCanvasOrderAnchor = (value: unknown, id: string): value is Omit<CanvasOrderAnchor, 'id'> =>
-  jsonObject(value) && Object.keys(value).length === 2 && isAnchorPair(value) &&
+  jsonObject(value) && anchorSize(value, 0) && isAnchorPair(value) &&
   value.previous !== id && value.next !== id && (value.previous === null || value.previous !== value.next);
 
 export function readCanvasOrderAnchor(shot: CanvasRow): CanvasOrderAnchor {
@@ -81,7 +85,7 @@ export function readCanvasOrderAnchor(shot: CanvasRow): CanvasOrderAnchor {
   if (!isCanvasOrderAnchor(value, shot.id)) {
     return canvasError('story-order', {id: shot.id});
   }
-  return {id: shot.id, previous: value.previous, next: value.next};
+  return {id: shot.id, ...value};
 }
 function fields(value: unknown): value is CanvasFields {
   return jsonObject(value) && Object.keys(value).length > 0 && Object.keys(value).every(key => {
@@ -100,7 +104,7 @@ function parseObject(raw: unknown): Record<string, unknown> {
 export function decodeCanvasPatch(raw: unknown): CanvasPatch {
   const rawPatch = parseObject(raw);
   const value = rawPatch.version === 2 ? expandPositionPatch(rawPatch) : rawPatch;
-  const isAnchor = (anchor: unknown): anchor is CanvasOrderAnchor => jsonObject(anchor) && Object.keys(anchor).length === 3 &&
+  const isAnchor = (anchor: unknown): anchor is CanvasOrderAnchor => jsonObject(anchor) && anchorSize(anchor, 1) &&
     isProjectId(anchor.id) && isAnchorPair(anchor);
   const isPatchRow = (row: unknown): row is CanvasPatchRow => {
     if (!jsonObject(row) || Object.keys(row).length !== 3) return false;
@@ -231,7 +235,7 @@ export function applyCanvasPatch(store: ProjectStore, before: CanvasPatch, after
     if (row.kind === 'shot' && update.archive !== undefined) {
       if (update.archive?.reason === 'user-delete') {
         const anchor = anchors.get(row.id) ?? readCanvasOrderAnchor(row);
-        data[CANVAS_ARCHIVE_ORDER_FIELD] = {previous: anchor.previous, next: anchor.next};
+        data[CANVAS_ARCHIVE_ORDER_FIELD] = {previous: anchor.previous, next: anchor.next, ...(anchor.number === undefined ? {} : {number: anchor.number})};
       } else delete data[CANVAS_ARCHIVE_ORDER_FIELD];
     }
     const mark = update.archive === undefined ? row.archive : update.archive;
