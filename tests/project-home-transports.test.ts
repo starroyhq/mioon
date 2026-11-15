@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import applicationPackage from '../package.json' with {type: 'json'};
 const run=promisify(execFile),repo=fileURLToPath(new URL('../',import.meta.url));
 test('home summaries agree over three transports; preferences and opened times survive restart',{timeout:60000},async (t: test.TestContext)=>{
@@ -17,7 +17,7 @@ test('home summaries agree over three transports; preferences and opened times s
  t.after(async()=>{await client.close();await server.close();await rm(root,{recursive:true,force:true});});
  const request=async(url: string,input?: unknown,method=input?'POST':'GET')=>{const response=await fetch(server.url+url,{method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(input?{body:JSON.stringify(input)}:{})});const value=await response.json();assert.equal(response.status,200,JSON.stringify(value));return value.data;};
  const rpc=(operation: string,input={})=>request('/api/rpc',{operation,input}),project=await rpc('project.create',{name:'Wide',timelinePresetId:'landscape_1080'});
- const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'};
+ const env={PATH:process.env.PATH||'',MIOON_BASE_URL:server.url,MIOON_TOKEN:token,};
  await client.connect(new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'ignore'}));
  const summary=await rpc('project.summary.list'),cli=await run(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),'project','summary','list','--input','{}'],{cwd:repo,env,timeout:15000});assert.deepEqual(JSON.parse(cli.stdout).data,summary);assert.deepEqual(((await client.callTool({name:'project_summary_list',arguments:{}}) as import("@modelcontextprotocol/sdk/types.js").CallToolResult)).structuredContent!.data,summary);assert.deepEqual([summary[0].width,summary[0].height],[1920,1080]);
  const before=await request('/api/ui-preferences'),put={expectedRevision:before.revision,requestId:randomUUID(),preferences:{...before.preferences,theme:'light',homeView:'list',homeSort:'name',scalePercent:110}};

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 const REPOSITORY=fileURLToPath(new URL('../',import.meta.url));
 const HELPER=pathToFileURL(path.join(REPOSITORY,'tests/helpers/native-qa-audit.mjs')).href;
 function scratch(t:TestContext){const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-native-qa-'));t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
-const child=(source:string)=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',source],{cwd:REPOSITORY,encoding:'utf8',timeout:60000,maxBuffer:8*1024*1024}));
+const child=(source:string)=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',source],{env: testEnv(), cwd:REPOSITORY,encoding:'utf8',timeout:60000,maxBuffer:8*1024*1024}));
 
 test('cold manifest follows the actual registry outside projects/ and logical audit preserves all hosts, B1 preferences and schemas',async t=>{
   const root=scratch(t),dataDir=path.join(root,'data');
@@ -28,7 +29,7 @@ test('cold manifest follows the actual registry outside projects/ and logical au
   const layout=await prepareNativeQaAuditLayout(dataDir);
   assert.equal(layout.projects.find(project=>project.projectId===firstId)?.projectFile,moved);
   assert.equal(layout.databases.length,7);assert.deepEqual(layout.projects.map(project=>project.projectId).sort(),[firstId,secondId].sort());
-  const exited=execFileSync(process.execPath,['-e','process.stdout.write(String(process.pid))'],{encoding:'utf8'});
+  const exited=execFileSync(process.execPath,['-e','process.stdout.write(String(process.pid))'],{env: testEnv(), encoding:'utf8'});
   const cold=await auditColdNativeQa(layout,{ownerPids:[Number(exited)]});
   assert.deepEqual(Object.keys(cold.projects).sort(),[firstId,secondId].sort());
   for(const snapshot of Object.values(cold.projects))assert.deepEqual(Object.keys(snapshot.databases).sort(),['cache','main','project']);
@@ -52,14 +53,14 @@ test('an independent physical report runs the real warmed four CLI reads without
   const connectionFile=path.join(root,'mcp-connection.json'),tokenFile=path.join(root,'mcp-token');
   const backend=spawn(process.execPath,['--input-type=module','-e',`
     import{writeFileSync,renameSync}from'node:fs';
-    const{startServer}=await import(${JSON.stringify(pathToFileURL(path.join(REPOSITORY,'apps/server/src/index.ts')).href)});
+    const{startServer}=await import(${JSON.stringify(pathToFileURL(path.join(REPOSITORY,'tests/helpers/test-server.ts')).href)});
     const token='synthetic-native-qa-audit-token';
     const server=await startServer({dataDir:${JSON.stringify(dataDir)},port:0,token});
     writeFileSync(${JSON.stringify(tokenFile)},token,{mode:0o600});
     writeFileSync(${JSON.stringify(connectionFile+'.tmp')},JSON.stringify({version:1,pid:process.pid,url:server.url,tokenFile:${JSON.stringify(tokenFile)}}),{mode:0o600});
     renameSync(${JSON.stringify(connectionFile+'.tmp')},${JSON.stringify(connectionFile)});
     process.once('SIGTERM',()=>server.close().then(()=>process.exit(0),error=>{console.error(error);process.exit(1);}));
-  `],{cwd:REPOSITORY,env:{...process.env,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','ignore','inherit']});
+  `],{cwd:REPOSITORY,env:{...testEnv(),},stdio:['ignore','ignore','inherit']});
   const ended=once(backend,'exit'),pid=backend.pid;assert.ok(pid);
   let done=false;t.after(async()=>{if(!done){backend.kill('SIGTERM');await ended;}});
   const deadline=Date.now()+20000;while(!existsSync(connectionFile)){assert.equal(backend.exitCode,null);assert.ok(Date.now()<deadline,'real test backend startup');await new Promise(resolve=>setTimeout(resolve,20));}

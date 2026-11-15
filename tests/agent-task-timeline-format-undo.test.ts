@@ -13,7 +13,7 @@ import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-f
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {startServer,type InspectProject} from '../apps/server/src/index.ts';
+import {startServer,type InspectProject} from './helpers/test-server.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';

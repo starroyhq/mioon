@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile, unlink, access } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.ts';
+import { startServer } from './helpers/test-server.ts';
 import {createQaProject,closeQaProject,readQaFixture} from './helpers/kernel-qa-fixture.mjs';
 export const qaRoot=path.resolve('evidence/workspace-preferences');
 function assertDisposable(workspace){if(!workspace.startsWith(qaRoot+path.sep))throw Error('QA workspace must be disposable');}

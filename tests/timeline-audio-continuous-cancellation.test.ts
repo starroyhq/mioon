@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import assert from 'node:assert/strict';
@@ -156,7 +157,7 @@ test('transferred initial PCM is collectable while its session remains open', ()
     for(let i=0;i<8;i++){global.gc();await new Promise(setImmediate);}
     assert.equal(weak.deref(),undefined,'No fulfilled client promise may retain a transferred PCM buffer');
     await session.dispose();`;
-  const result = spawnSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', script], {encoding: 'utf8', timeout: 10000});
+  const result = spawnSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', script], {env: testEnv(), encoding: 'utf8', timeout: 10000});
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ElementNode,ElementTree,ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,7 +32,7 @@ before(() => {
     if (!javascript) throw Error('Delivery dock fixture did not emit JavaScript');
     const result = await import('data:text/javascript;base64,' + Buffer.from(javascript.text).toString('base64'));
     process.stdout.write(JSON.stringify(result.html)); process.exit(0);`;
-  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
+  rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
 
 test('actual right-dock workspace uses shared labelled tabs and inline headings, never a dialog', () => {

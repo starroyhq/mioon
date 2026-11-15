@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {SchemaNode} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ const inspections = ['project.inspect','asset.inspect','shot.inspect','timeline.
 const paged = new Set(['asset.inspect', 'shot.inspect']);
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const run = promisify(execFile);
-const environment = () => Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(MIOON_|RUNWAY|ARK_|VEO_|MINIMAX_|VIDU_|GOOGLE_|GEMINI_)/.test(name)));
+const environment = () => Object.fromEntries(Object.entries(testEnv()).filter(([name]) => !/^(MIOON_|RUNWAY|ARK_|VEO_|MINIMAX_|VIDU_|GOOGLE_|GEMINI_)/.test(name)));
 
 test('inspection arguments are strict and authority-free; RPC project scope is separate', () => {
   assert.deepEqual(Object.keys(inspectionArgumentSchemas).sort(), [...inspections].sort());

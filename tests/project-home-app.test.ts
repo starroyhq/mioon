@@ -68,7 +68,7 @@ function environment(options:HomeOptions = {}) {
     useEditorWindowStatus: (...args: unknown[]) => calls.push(['editorWindowStatus', ...args]),
     useEditorSettingsScope: (binding: unknown) => { calls.push(['editorSettingsScope', binding]); return undefined; },
     chooseInitialProject, retainLastProjectScope, readProjectEntryIdentity, projectDirectoryProjects, projectEntryIdentityRef: {current: identity}, URL, URLSearchParams,
-    useCallback: (callback: unknown) => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false,
+    useCallback: (callback: unknown) => callback, emptyData, loading: false, auth: true, online: true, videoDirectoryUnavailable: false, providersRef: {current: []},
     data: emptyData, projects, projectOpening: { phase: 'home', projectId: null, error: '' },
     backupFailure: null, historyView: null, nativeBackup: null, saveIsDirty: false,
     homePage: 'projects', homeConnection: 'agent', webSettingsRequest: null, webSettingsOpen: false, projectListStatus: { busy: false, error: '' }, busy: {}, toast: null,
@@ -113,7 +113,7 @@ function environment(options:HomeOptions = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm', 'MioFollow',
-    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable', 'BackupFailure', 'HistoryView']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'RegenerationJobId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable', 'BackupFailure', 'HistoryView']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = (value:unknown|((old:unknown)=>unknown)) => { env[key] = typeof value === 'function' ? (value as (old:unknown)=>unknown)(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }

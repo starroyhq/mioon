@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {ClientError, createClient, errorEnvelope} from '@mioon/client';
 import {AppError, isSubjectGenerationResponse, isSubjectGenerationRetryResponse, schemas} from '@mioon/contracts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {ApiError, rpc as webRpc} from '../apps/web/src/api.ts';
 import {generationAspectSourceSchema, isGenerationAspectNotApplied} from '../packages/contracts/src/generation-aspect.ts';
 import type {GenerationAspectSource} from '../packages/contracts/src/generation-aspect.ts';

@@ -28,9 +28,15 @@ if ($Prepare) {
   if ($LASTEXITCODE -ne 0) { throw 'The probe parent could not be protected against modification.' }
   $userData = Join-Path $parent 'user-data'
   $identity = Join-Path $userData 'desktop-identity.json'
-  $env:MIOON_DESKTOP_USER_DATA = $userData
-  $env:MIOON_ENABLE_LIVE_PROVIDER = '0'
-  $process = Start-Process -FilePath $Electron -ArgumentList ('"' + $App + '"') -PassThru
+  $start = [System.Diagnostics.ProcessStartInfo]::new($Electron, ('"' + $App + '"'))
+  $start.UseShellExecute = $false
+  $start.EnvironmentVariables.Clear()
+  foreach ($name in @('PATH','SystemRoot','SystemDrive','WINDIR','LOCALAPPDATA','APPDATA','USERPROFILE','HOMEDRIVE','HOMEPATH','TEMP','TMP','USERNAME','USERDOMAIN','COMPUTERNAME','ProgramFiles','ProgramFiles(x86)','ProgramData')) {
+    $value = [System.Environment]::GetEnvironmentVariable($name)
+    if ($null -ne $value) { $start.EnvironmentVariables[$name] = $value }
+  }
+  $start.EnvironmentVariables['MIOON_DESKTOP_USER_DATA'] = $userData
+  $process = [System.Diagnostics.Process]::Start($start)
   try {
     for ($index = 0; $index -lt 120 -and -not (Test-Path -LiteralPath $identity); $index++) { Start-Sleep -Milliseconds 500 }
     Start-Sleep -Seconds 2

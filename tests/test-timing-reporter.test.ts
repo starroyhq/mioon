@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
@@ -32,7 +33,7 @@ test('a real test run writes one entry per file, including module setup before i
   const destination = path.join(root, 'timings.json');
   await execute(process.execPath, ['--test', '--test-reporter=tap', '--test-reporter-destination=stdout', `--test-reporter=${reporter}`, `--test-reporter-destination=${destination}`,
     // A nested runner that inherits this test's context reports to it instead of to the chosen reporters.
-    '--test-concurrency=2', 'tests/slow.test.mjs', 'tests/quick.test.mjs'], {cwd: root, timeout: 60000, env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'NODE_TEST_CONTEXT'))});
+    '--test-concurrency=2', 'tests/slow.test.mjs', 'tests/quick.test.mjs'], {cwd: root, timeout: 60000, env: Object.fromEntries(Object.entries(testEnv()).filter(([key]) => key !== 'NODE_TEST_CONTEXT'))});
   const timings = parseTestTimings(await readFile(destination, 'utf8'));
   assert.deepEqual([...timings.keys()], ['tests/quick.test.mjs', 'tests/slow.test.mjs']);
   assert.ok(timings.get('tests/slow.test.mjs')! >= 0.25, 'the file time includes its module setup');

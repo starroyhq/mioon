@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -86,6 +87,7 @@ function removeLocalRecords(f: Fixture): void {
 function killUpgrade(f: Fixture, stopAt: Format4UpgradeBoundary, sourceHistory: number = stable.history): void {
   const marker = path.join(f.root, 'kill-boundary.json');
   const result = spawnSync(process.execPath, [CRASH_WORKER, f.root, stopAt, marker], {
+      env: testEnv(),
     stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8', timeout: 60_000,
   });
   assert.equal(result.signal, 'SIGKILL', result.stderr?.replaceAll(REPOSITORY, '<repo>/') || result.error?.message);
@@ -250,6 +252,7 @@ test('the frozen format 4 history upgrades in place with exact receipt bytes and
       }}), /abort upgrade transaction/u);
     } else {
       const result = spawnSync(process.execPath, [CRASH_WORKER, f.root, phase, marker], {
+      env: testEnv(),
         stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8', timeout: 60_000,
       });
       assert.equal(result.signal, 'SIGKILL', result.stderr?.replaceAll(REPOSITORY, '<repo>/') || result.error?.message);

@@ -21,7 +21,7 @@ export interface LifecycleRuntime extends ProjectHostRuntime {
  * embedded Provider uses a parent-owned loopback server as its remote service. */
 export function createBackgroundLifecycleHost({dataDir, remote}: {dataDir: string; remote: string}) {
   const directories = serverAppDirectories(dataDir), library = openAppLibrary({dataDir});
-  const guard = createProjectServiceApplication(library, undefined, {MIOON_ENABLE_LIVE_PROVIDER: '1'});
+  const guard = createProjectServiceApplication(library, undefined, {});
   const background = createBackgroundCoordinator({index: library.taskIndex, inbox: library.inbox,
     assertMutationAllowed: guard.assertMutationAllowed, checkIntervalMs: 20});
   const manager = createProjectHostManager<LifecycleRuntime>({directories, registry: library.registry, taskIndex: library.taskIndex,
@@ -50,7 +50,7 @@ export function createBackgroundLifecycleHost({dataDir, remote}: {dataDir: strin
           await writeFile(destination, Buffer.from(await response.arrayBuffer()), {mode: 0o600});
         }};
       const providers = new Map([['ark', provider]]), services = createServices(store, providers, {application: guard,
-        env: {MIOON_ENABLE_LIVE_PROVIDER: '1'}, signal: context.signal, deferBackgroundRecovery: true});
+        env: {}, signal: context.signal, deferBackgroundRecovery: true});
       const state = createProjectBackgroundState(store);
       let worker: ReturnType<typeof startWorker> | undefined;
       return {services, worker: () => worker, backgroundTasks: state, handle: async () => false,

@@ -73,7 +73,7 @@ async function fileHash(file,maxBytes=512*1024*1024){
 }
 async function packageHashes(){return {executable:await fileHash(executable),asar:await fileHash(asar)};}
 function environment(){return {...Object.fromEntries(['PATH','HOME','LANG','LC_ALL','DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR','TZ']
- .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DESKTOP_USER_DATA:userData,MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
+ .filter(key=>typeof process.env[key]==='string').map(key=>[key,process.env[key]])),MIOON_DESKTOP_USER_DATA:userData,MIOON_FFMPEG_PATH:ffmpeg,MIOON_FFPROBE_PATH:ffprobe};}
 async function command(binary,args,label){
  assert.ok([ffmpeg,ffprobe].includes(binary));assert.ok(safeLabel(label));
  const stdout=await open(path.join(runtime,label+'.stdout'),'wx',0o600);let stderr,owned,timer;

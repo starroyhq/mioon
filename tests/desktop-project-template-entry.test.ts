@@ -8,7 +8,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {startServer, type ServerOptions} from '../apps/server/src/index.ts';
+import {startServer, type ServerOptions} from './helpers/test-server.ts';
 import {stageProjectExampleResources} from '../packages/business/src/project-example-resources.ts';
 import {createProjectEntryDesktopHost} from '../apps/desktop/src/project-entry-desktop-host.ts';
 import type {ProjectEntryDesktopOwner} from '../apps/desktop/src/project-entry-desktop-host.ts';

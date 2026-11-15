@@ -31,6 +31,7 @@ import urllib.parse
 import urllib.request
 from playwright.sync_api import expect, sync_playwright
 from browser_workbench_actions import workbench_action, close_task_center
+from helpers.qa_env import test_env
 
 
 def check(value, message):
@@ -171,11 +172,8 @@ class Trial:
             port = sock.getsockname()[1]
         self.lifetime += 1
         self.base, self.token = f"http://127.0.0.1:{port}", secrets.token_urlsafe(32)
-        # Do not inherit provider credentials, proxy settings or Node injection flags.
-        names = {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "SystemRoot", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "TZ"}
-        env = {key: value for key, value in os.environ.items() if key in names}
-        env.update(PORT=str(port), MIOON_DATA_DIR=str(self.workspace), MIOON_TOKEN=self.token,
-                   MIOON_ENABLE_LIVE_PROVIDER="0", MIOON_FFMPEG_PATH=str(self.ffmpeg), MIOON_FFPROBE_PATH=str(self.ffprobe))
+        env = test_env(PORT=str(port), MIOON_DATA_DIR=str(self.workspace), MIOON_TOKEN=self.token,
+                       MIOON_FFMPEG_PATH=str(self.ffmpeg), MIOON_FFPROBE_PATH=str(self.ffprobe))
         self.log_handle = (self.out / f"backend-{self.lifetime}.log").open("w")
         self.process = subprocess.Popen([self.node, "apps/server/src/cli.mjs"], cwd=self.repo, env=env,
                                         stdout=self.log_handle, stderr=subprocess.STDOUT)

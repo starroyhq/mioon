@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {projectRenameInputSchema, projectDeleteInputSchema, projectDeleteResponseSchema} from '../packages/contracts/src/project-lifecycle.ts';
 
 test('trash contracts bind the confirmed registration and reject permanent cleanup claims',()=>{

@@ -5,16 +5,13 @@ import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
  */
 import path from 'node:path';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.ts';
+import { startServer } from './helpers/test-server.ts';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { providerEnvironmentKeys } from '../packages/business/src/provider-registry.ts';
 import { createRunwayUnknownFixture } from './helpers/runway-unknown-fixture.ts';
 const runtime = path.resolve('evidence/q1-runway-parity/runtime');
 const dataDir = path.join(runtime, 'workspace'), fixtureFile = path.join(runtime, 'fixture.json');
 await mkdir(runtime, { recursive: true });
-for (const key of providerEnvironmentKeys) delete process.env[key];
-process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';
 let fixture;
 try { fixture = JSON.parse(await readFile(fixtureFile, 'utf8')); }
 catch (error) {

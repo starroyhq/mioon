@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -134,7 +135,7 @@ for (const point of ['after-copy', 'after-version', 'before-commit', 'after-comm
   test(`application v3→4 SIGKILL ${point} preserves source records and recovers exactly`, t => {
     const f = seed(t), before = inspect(f.file, retained), module = new URL('../packages/business/src/app-db/schema.ts', import.meta.url).href;
     const script = `import{DatabaseSync}from'node:sqlite';import{upgradeAppLibraryV3}from ${JSON.stringify(module)};const db=new DatabaseSync(process.argv[1]);db.exec('PRAGMA journal_mode=DELETE;PRAGMA synchronous=FULL;PRAGMA cache_size=1;PRAGMA cache_spill=ON');const exec=db.exec.bind(db);db.exec=sql=>{if(process.argv[2]==='before-commit'&&sql==='COMMIT')process.kill(process.pid,'SIGKILL');exec(sql);if(process.argv[2]==='after-copy'&&sql.startsWith('INSERT INTO background_task_index(rowid,')||process.argv[2]==='after-version'&&sql==='UPDATE schema_version SET version=4 WHERE version=3'||process.argv[2]==='after-commit'&&sql==='COMMIT')process.kill(process.pid,'SIGKILL');};upgradeAppLibraryV3(db);throw Error('missed barrier');`;
-    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, f.file, point], {stdio: 'ignore', timeout: 30_000});
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, f.file, point], {env: testEnv(), stdio: 'ignore', timeout: 30_000});
     assert.equal(result.signal, 'SIGKILL');
     inspect(f.file, db => {
       assert.equal(db.prepare('SELECT version FROM schema_version').get()!.version, point === 'after-commit' ? APP_LIBRARY_SCHEMA_VERSION : 3);

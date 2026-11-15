@@ -1,5 +1,6 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
+import { providerSettings } from './environment.ts';
 
 const REGIONS: Readonly<Record<string, string>> = { global: 'https://api.vidu.com', cn: 'https://api.vidu.cn' };
 const MODEL: ProviderModelSpec = {
@@ -21,10 +22,11 @@ function validateFirstFrame(asset: ProviderReferenceAsset, ratio: string): void 
 
 /** Q3 Turbo only. Unverified output CDN hosts must be explicitly reviewed first. */
 export function createViduProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
-  const config = liveConfiguration(env, 'VIDU_API_KEY', 'VIDU');
-  const region = env.VIDU_REGION ?? 'global', validRegion = Object.hasOwn(REGIONS, region);
+  const settings = providerSettings.vidu;
+  const config = liveConfiguration(env, settings.credential, settings.prefix);
+  const region = env[settings.region] ?? 'global', validRegion = Object.hasOwn(REGIONS, region);
   // Official task examples do not identify a trustworthy production output CDN.
-  const outputHosts = approvedOutputHosts(env.VIDU_OUTPUT_HOSTS);
+  const outputHosts = approvedOutputHosts(env[settings.outputHosts]);
   const configured = config.configured && validRegion && outputHosts.size > 0;
   const enabled = config.enabled && configured;
   const configuration = { missing: [...config.configuration.missing, ...(!validRegion ? ['VIDU_REGION (global or cn)'] : []), ...(!outputHosts.size ? ['VIDU_OUTPUT_HOSTS'] : [])], requirements: [...config.configuration.requirements, 'VIDU_REGION=global|cn (credential must match region)', 'VIDU_OUTPUT_HOSTS (exact independently reviewed output CDN hostnames)'] };
@@ -34,7 +36,7 @@ export function createViduProvider({ root, fetchImpl = globalThis.fetch, env = p
     if (!outputHosts.size) throw providerError('PROVIDER_CONFIGURATION', 'Vidu needs an independently verified server-side output CDN allowlist before generation.');
   };
   const ensureRegion = (context: ProviderContext): void => { if (context.providerRegion !== undefined && context.providerRegion !== region) throw providerError('PROVIDER_REGION_CHANGED', 'Vidu account region changed after this job was created. Restore its original server region before continuing.'); };
-  const approvedHashes = approvedAssetHashes(env.VIDU_APPROVED_ASSET_SHA256);
+  const approvedHashes = approvedAssetHashes(env[settings.approvedAssetSha256]);
   const request = createJsonRequest({ api: REGIONS[region] ?? REGIONS.global, headers: { Authorization: `Token ${config.secret}` }, fetchImpl, ensureEnabled, name: 'Vidu' });
   function validate(snapshot: unknown): true {
     validateModelSnapshot(snapshot, MODEL);

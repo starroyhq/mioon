@@ -83,7 +83,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (!root || process.argv[2] !== 'server') throw Error('An isolated range-wire server fixture is required');
   const dataRoot: string = root;
   if (!fs.existsSync(path.join(dataRoot, 'app-library.db'))) await seed(dataRoot);
-  const {startServer} = await import('../../apps/server/src/index.ts');
+  const {startServer} = await import('./test-server.ts');
   const {readProjectState, changeMarks} = await import('./project-state.ts');
   let inspect: InspectProject|undefined;
   const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,

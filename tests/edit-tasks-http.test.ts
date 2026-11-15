@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {TaskHttpFixture, TaskHttpResponse, TaskEnvelope} from './helpers/strict-edit-task-types.ts';
 import test from 'node:test';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -232,7 +233,7 @@ test('reference attach/detach task receipts remain historical and GET does not r
 
 async function command(operation: string, input: Record<string, unknown>, url: string) {
   const child = spawn(process.execPath, [path.join(REPO, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)], {
-    cwd: REPO, env: {...process.env, MIOON_BASE_URL: url, MIOON_TOKEN: TASK_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: REPO, env: {...testEnv(), MIOON_BASE_URL: url, MIOON_TOKEN: TASK_TOKEN,}, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; if (stdout.length > 1024 * 1024) child.kill('SIGKILL'); });
@@ -249,7 +250,7 @@ test('official CLI and MCP replay the same domain receipts after task execution 
   const mcp = new Client({name: 'durable-edit-http-tests', version: '1.0.0'}, {capabilities: {}});
   t.after(() => mcp.close());
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(REPO, 'apps/mcp/src/index.ts')], cwd: REPO,
-    env: {...process.env, MIOON_BASE_URL: (f.backend)!.url, MIOON_TOKEN: TASK_TOKEN, MIOON_ENABLE_LIVE_PROVIDER: '0'}, stderr: 'pipe'});
+    env: {...testEnv(), MIOON_BASE_URL: (f.backend)!.url, MIOON_TOKEN: TASK_TOKEN,}, stderr: 'pipe'});
   (transport.stderr as import('node:stream').Readable | null)?.resume(); await mcp.connect(transport);
   const tools = await mcp.listTools();
   assert.equal(tools.tools.some(tool => /^(?:tasks|edit_tasks)_/u.test(tool.name)), false);

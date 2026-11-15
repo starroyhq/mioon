@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -129,7 +130,7 @@ test('history controls render shared Base UI buttons with disabled states, label
     assert.ok(pending.includes('上一条时间线操作待确认'));
     process.stdout.write('Timeline history controls verified'); process.exit(0);
   `;
-  assert.match(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }), /controls verified/);
+  assert.match(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }), /controls verified/);
 });
 
 test('App invalidates history around mutation dispatch and uses the common refresh/recovery path', () => {

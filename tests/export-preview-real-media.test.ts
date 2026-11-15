@@ -6,7 +6,7 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
-import { startServer } from '../apps/server/src/index.ts';
+import { startServer } from './helpers/test-server.ts';
 import { run } from '../packages/business/src/media-runtime.ts';
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, isTimelineRenderRecord } from '@mioon/contracts';
 const sha = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');

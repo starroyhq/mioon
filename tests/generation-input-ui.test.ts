@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 import type {ElementTree, ElementNode, HookSlot} from './helpers/strict-timeline-audio-harness-types.ts';
 import { generationIssueDescriptor } from '../apps/web/src/generation-settings.ts';
@@ -129,7 +130,7 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     const { markup } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(markup), () => process.exit(0));
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
   for (const provider of providers) {
     const { summary, details } = markup[provider.id], profile = provider.inputProfiles[0];
     assert.match(summary, /aria-label="Mioon 模型输入限制"/);

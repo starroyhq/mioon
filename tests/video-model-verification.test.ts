@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -51,7 +52,7 @@ test('the real generation selector labels a custom model unverified while preser
     const {outputFiles}=await build({stdin:{contents:${JSON.stringify(fixture)},loader:'tsx',resolveDir:${JSON.stringify(resolve('apps/web/src'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     const {result}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));
     process.stdout.write(JSON.stringify(result));process.exit(0);`;
-  const result=JSON.parse(execFileSync(process.execPath,['--input-type=module'],{input:script,encoding:'utf8',timeout:30000})) as {configured:string;environment:string;model:string;modelEntryId:string};
+  const result=JSON.parse(execFileSync(process.execPath,['--input-type=module'],{env: testEnv(), input:script,encoding:'utf8',timeout:30000})) as {configured:string;environment:string;model:string;modelEntryId:string};
   const entry=descriptor().models[1]!.entry;
   assert.equal(result.model,entry.modelId);assert.equal(result.modelEntryId,entry.id);
   assert.match(result.configured,/data-testid="model-select"[^>]*>[\s\S]*?Custom exact model · 尚未验证[\s\S]*?<\/button>/);

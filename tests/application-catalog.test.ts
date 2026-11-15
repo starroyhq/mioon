@@ -9,7 +9,7 @@ import {createProviderCatalog, createProviderRegistry, normalizedCapabilities, p
 import {listImageProfiles} from '../packages/business/src/images.ts';
 import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.ts';
 import {createLiveImageGateway, createCompatibleImageGateway} from '../packages/business/src/images/gateway.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
@@ -20,7 +20,7 @@ test('application provider catalog matches project discovery without creating a 
   t.after(()=>{db.close();rmSync(root,{recursive:true,force:true});});
   const before=globalThis.fetch;globalThis.fetch=async()=>assert.fail('Discovery cannot use the network');t.after(()=>{globalThis.fetch=before;});
   const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),changes=db.prepare('SELECT total_changes() AS n').get();
-  for(const env of [{},{MIOON_ENABLE_LIVE_PROVIDER:'1',RUNWAYML_API_SECRET:'synthetic-catalog-key',ARK_API_KEY:'synthetic-catalog-key',GEMINI_API_KEY:'synthetic-catalog-key',MINIMAX_API_KEY:'synthetic-catalog-key',VIDU_API_KEY:'synthetic-catalog-key'},
+  for(const env of [{},{RUNWAYML_API_SECRET:'synthetic-catalog-key',ARK_API_KEY:'synthetic-catalog-key',GEMINI_API_KEY:'synthetic-catalog-key',MINIMAX_API_KEY:'synthetic-catalog-key',VIDU_API_KEY:'synthetic-catalog-key'},
     {MINIMAX_REGION:'invalid',VIDU_REGION:'invalid'}]) {
     const catalog=createProviderCatalog({root,env}),registry=createProviderRegistry({db,root,env});
     assert.deepEqual(catalog.list(),[...registry.values()].map(provider=>normalizedCapabilities(provider,env,0,{asOf:profileDate(),requireInputProfiles:true})));

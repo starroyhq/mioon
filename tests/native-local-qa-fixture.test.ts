@@ -4,7 +4,7 @@ import {mkdtempSync,rmSync,readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {projectEntriesResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {run} from '../packages/business/src/media.ts';

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
 import { rulerFrameForKey } from '../apps/web/src/timeline-keyboard.ts';
 import test from 'node:test';
@@ -243,6 +244,7 @@ test('installed Base UI components render semantic controls with real runtime de
     process.exit(0);
   `;
   const output = execFileSync(process.execPath, ['--input-type=module'], {
+      env: testEnv(),
     cwd: root, input: script, encoding: 'utf8', timeout: 30_000,
   });
   assert.match(output, /Base UI runtime markup verified/);

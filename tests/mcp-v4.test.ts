@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, COMFY_IMAGE_OPTIONS} from '@mioon/contracts';
 import {schemas, operationDefinition} from '@mioon/client';
 import {assertOperationInputBranches} from './helpers/catalog-input-branches.ts';
@@ -23,9 +24,9 @@ interface CatalogFixture {operation: string; inputSchema: {anyOf: Array<{additio
 interface RpcService extends Awaited<ReturnType<typeof startServer>> {}
 interface RpcBody {ok?: boolean; data?: Record<string, unknown>; error?: {code?: string; details?: unknown}}
 function environment(extra: Record<string, string> = {}): Record<string, string> {
-  const env: Record<string, string> = {...(process.env as Record<string, string>)};
-  for (const key of Object.keys(env)) if (/^(MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MIOON_)/.test(key)) delete env[key];
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER:'0', ...extra};
+  const env = testEnv();
+  for (const key of Object.keys(env)) if (/^MIOON_/.test(key)) delete env[key];
+  return {...env, ...extra};
 }
 async function bridge(t: TestContext, env: Record<string, string> = {}): Promise<Bridge> {
   const client = new Client({name:'v4-protocol-regression', version:'1.0.0'}, {capabilities:{}});

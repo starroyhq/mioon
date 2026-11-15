@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import assert from 'node:assert/strict';
@@ -21,7 +22,7 @@ import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/gen
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='profile-parity-local-synthetic-token';
 const pause=(ms: number): Promise<void>=>new Promise(resolve=>setTimeout(resolve,ms));
 type EnvMap = Record<string, string|undefined>;
-function environment(extra: EnvMap = {}): EnvMap {const env: EnvMap = {...process.env};for(const key of Object.keys(env))if(/^(MIOON_|ARK_|VEO_|RUNWAY|MINIMAX_|VIDU_|GEMINI_|GOOGLE_)/.test(key))delete env[key];return {...env,MIOON_ENABLE_LIVE_PROVIDER:'0',...extra};}
+function environment(extra: EnvMap = {}): EnvMap {const env: EnvMap = {...testEnv()};for(const key of Object.keys(env))if(/^MIOON_/.test(key))delete env[key];return {...env,...extra};}
 async function cli(args: string[], env: EnvMap,failureExit=6): Promise<{ok?: boolean; [key: string]: unknown}>{
  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(data: string)=>stdout+=data);child.stderr.setEncoding('utf8').on('data',(data: string)=>stderr+=data);
  const timer=setTimeout(()=>child.kill('SIGKILL'),10000);let code,signal;try{[code,signal]=await once(child,'close') as [number|null, string|null];}finally{clearTimeout(timer);}

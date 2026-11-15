@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 // The project folder moved while the project is open (macOS and Linux; on
 // Windows the open files keep it in place). SQLite opens a database's rollback
 // journal for the first write after the database is opened and refuses that
@@ -52,7 +53,7 @@ const open = (project: Project, projectFile = project.projectFile): ProjectStore
  * holds open would drop SQLite's POSIX locks on it. */
 function digestElsewhere(file: string): string {
   const script = "process.stdout.write(require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(process.argv[1])).digest('hex'))";
-  const result = spawnSync(process.execPath, ['-e', script, file], {encoding: 'utf8', timeout: 60_000});
+  const result = spawnSync(process.execPath, ['-e', script, file], {env: testEnv(), encoding: 'utf8', timeout: 60_000});
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }

@@ -7,11 +7,10 @@
 import http from 'node:http';
 import path from 'node:path';
 import { readFile, writeFile, access, unlink } from 'node:fs/promises';
-import { startServer } from '../apps/server/src/index.ts';
+import { startServer } from './helpers/test-server.ts';
+import {testEnv} from './helpers/test-env.ts';
 const runtime = path.resolve(process.env.MIOON_QA_RUNTIME || 'evidence/dual-workspace/runtime');
 if (!runtime.endsWith('/evidence/dual-workspace/runtime')) throw Error('Disposable dual-workspace runtime required');
-process.env.MIOON_ENABLE_LIVE_PROVIDER = '0';
-for (const key of Object.keys(process.env)) if (/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_)/.test(key)) delete process.env[key];
 const backend = await startServer({ dataDir: path.join(runtime, 'workspace'), port: 0, token: 'dualmode-local-synthetic-browser-token', distDir: path.resolve('apps/web/dist') });
 const port = Number(process.env.MIOON_QA_PORT || 4875), host = `127.0.0.1:${port}`, origin = `http://${host}`;
 const faultPath = path.join(runtime, 'fault.json'), releasePath = path.join(runtime, 'fault-release');
@@ -66,7 +65,7 @@ const externalTimer=setInterval(async()=>{
  externalBusy=true;let client;
  try{
   if(!allowedExternal.has(task.operation)||!['cli','mcp'].includes(task.transport))throw Error('External QA operation is not allowed');
-  const env={...process.env,MIOON_BASE_URL:origin,MIOON_TOKEN_FILE:tokenFile,MIOON_ENABLE_LIVE_PROVIDER:'0'};
+  const env={...testEnv(),MIOON_BASE_URL:origin,MIOON_TOKEN_FILE:tokenFile};
   let result;
   if(task.transport==='cli'){
    const child=spawn(process.execPath,[path.resolve('apps/cli/src/index.ts'),...task.operation.split('.'),'--input','-'],{cwd:path.resolve('.'),env,stdio:['pipe','pipe','pipe']});

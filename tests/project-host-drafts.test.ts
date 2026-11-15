@@ -18,7 +18,7 @@ import type {ProjectHostContext} from '../apps/server/src/project-host/host.ts';
 import {CONTENT_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {createServerProject} from './helpers/project-database.ts';
 import {composeApplicationRuntime} from '../apps/server/src/application-runtime.ts';
-import {composeHostedProject} from '../apps/server/src/project-host/runtime.ts';
+import {composeHostedProject} from './helpers/test-server.ts';
 import {createProjectFiles} from '../apps/server/src/project-host/manager.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
@@ -32,7 +32,7 @@ async function fixture(t: TestContext) {
   const library = openAppLibrary({dataDir: root});
   const shutdown = new AbortController();
   const services = createServices(store, new Map(), {signal: shutdown.signal,
-    application: createProjectServiceApplication(library, shutdown.signal, {MIOON_ENABLE_LIVE_PROVIDER: '0'})});
+    application: createProjectServiceApplication(library, shutdown.signal, {})});
   let mutationChecks = 0, refuseWrites = false, dispatches = 0;
   let afterUpdate: (() => Promise<void>) | undefined;
   const releaseUpdates = new Set<() => void>();

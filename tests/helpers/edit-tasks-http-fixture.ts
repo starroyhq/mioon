@@ -17,7 +17,7 @@ import {createServerProject,openProjectDatabase} from './project-database.ts';
 import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../packages/business/src/project-service-application.ts';
 import {SCHEMA_MANIFEST} from '../../packages/business/src/project-file/schema/manifest.ts';
-import {startServer} from '../../apps/server/src/index.ts';
+import {startServer} from './test-server.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 
 export const TASK_TOKEN = 'synthetic-durable-edit-transport-token';
@@ -97,7 +97,7 @@ export function request(url: string, route: string, {method = 'GET', input, raw,
 async function childBackend(root: string): Promise<Record<string, unknown>> {
   const child: ChildProcess = spawn(process.execPath, [fileURLToPath(new URL('./edit-tasks-http-process.ts', import.meta.url))], {
     cwd: REPO, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0'},
+    env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: tmpdir(), LANG: 'C.UTF-8', NODE_ENV: 'test',},
   });
   let output = '';
   let resolveReady!: (value: Record<string, unknown>)=>void, rejectReady!: (error: Error)=>void;
@@ -152,7 +152,7 @@ export async function taskFixture(t: unknown, {subprocess = false, fault}: TaskF
   type FixtureRecord = Record<string, unknown> & {id: string};
   let project!:FixtureRecord,foreign!:FixtureRecord,timeline!:FixtureRecord,shot!:FixtureRecord,source!:FixtureRecord,node!:FixtureRecord;
   const library=openAppLibrary({dataDir:root});
-  const services=createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{MIOON_ENABLE_LIVE_PROVIDER:'0'})});
+  const services=createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{})});
   try {
     project=store.get('projects',created.projectId) as unknown as FixtureRecord;
     source=store.put('assets',{id:randomUUID(),projectId:project.id,name:'Synthetic metadata image',mimeType:'image/png',

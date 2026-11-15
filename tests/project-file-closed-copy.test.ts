@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -182,7 +183,7 @@ test('backup awaits retain held-file admission and real cross-process read locks
   assert.throws(()=>inspectCopiedProjectFile(alias),code('PROJECT_BACKUP_INVALID'));assert.equal(attempts,0);
   for(const file of [f.projectFile,f.history]){
    const program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(file)},{timeout:0});try{db.exec('BEGIN EXCLUSIVE');throw Error('lock lost');}catch(e){if(e.errcode!==5)throw e;}finally{db.close();}`;
-   execFileSync(process.execPath,['--input-type=module','-e',program],{stdio:'pipe'});
+   execFileSync(process.execPath,['--input-type=module','-e',program],{env: testEnv(), stdio:'pipe'});
   }
   t.mock.restoreAll();syncBuiltinESMExports();rmSync(alias);await Promise.resolve();throw sentinel;
  };
@@ -194,7 +195,7 @@ test('backup awaits retain held-file admission and real cross-process read locks
 
 test('a real hot project journal is refused without recovering source or companion bytes',async t=>{
  const f=fixture(t),program=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.projectFile)});db.exec('PRAGMA cache_size=1; PRAGMA cache_spill=ON;BEGIN IMMEDIATE');db.prepare("UPDATE projects SET data=json_set(data,'$.note',?)").run('x'.repeat(2097152));process.kill(process.pid,'SIGKILL');`;
- assert.throws(()=>execFileSync(process.execPath,['--input-type=module','-e',program],{stdio:'ignore'}),error=>Boolean(error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL'));
+ assert.throws(()=>execFileSync(process.execPath,['--input-type=module','-e',program],{env: testEnv(), stdio:'ignore'}),error=>Boolean(error&&typeof error==='object'&&'signal' in error&&error.signal==='SIGKILL'));
  const journal=f.projectFile+'-journal';assert.equal(readFileSync(journal).subarray(0,8).toString('hex'),'d9d505f920a163d7');
  const project=evidence(f.projectFile),hot=evidence(journal),history=evidence(f.history);
  await assert.rejects(captureClosedProjectSnapshot(f.options),code('PROJECT_INVALID'));unchanged(f.projectFile,project);unchanged(journal,hot);unchanged(f.history,history);assert.equal(existsSync(f.directory),false);
@@ -220,7 +221,7 @@ test('SIGKILL during the read transaction leaves source unchanged and releases b
  const f=fixture(t),source=evidence(f.projectFile),history=evidence(f.history),marker=path.join(f.root,'locked');
  const module=new URL('../packages/business/src/project-file/closed-copy.ts',import.meta.url).href;
  const program=`import{writeFileSync}from'node:fs';const{captureClosedProjectSnapshot}=await import(${JSON.stringify(module)});await captureClosedProjectSnapshot({projectFile:${JSON.stringify(f.projectFile)},historyFile:()=>${JSON.stringify(f.history)},directory:${JSON.stringify(f.directory)},onBoundary:phase=>{if(phase==='project-copied'){writeFileSync(${JSON.stringify(marker)},'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);}}});`;
- const child=spawn(process.execPath,['--input-type=module','-e',program],{stdio:['ignore','ignore','inherit']}),closed=once(child,'close');t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
+ const child=spawn(process.execPath,['--input-type=module','-e',program],{env: testEnv(), stdio:['ignore','ignore','inherit']}),closed=once(child,'close');t.after(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');});
  const deadline=Date.now()+15000;while(!existsSync(marker)){assert.equal(child.exitCode,null);assert.equal(child.signalCode,null);assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,5));}
  child.kill('SIGKILL');const [status,signal]=await closed;assert.equal(status,null);assert.equal(signal,'SIGKILL');unchanged(f.projectFile,source);unchanged(f.history,history);
  const reopened=f.open();assert.equal(reopened.projectId,f.projectId);reopened.close();

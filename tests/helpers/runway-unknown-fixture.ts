@@ -14,7 +14,7 @@ interface RunwayJobRecord {status: string; error?: {code?: string}; submissionCo
 export async function createRunwayUnknownFixture(root: string) {
   const store = openStore(root), calls: RunwayCall[] = [];
   let worker: {stop(): Promise<unknown>}|undefined;
-  const env = { RUNWAYML_API_SECRET: 'OFFLINE-Q1-SENTINEL', MIOON_ENABLE_LIVE_PROVIDER: '1', RUNWAY_APPROVED_ASSET_SHA256: createHash('sha256').update(syntheticPng).digest('hex') };
+  const env = { RUNWAYML_API_SECRET: 'OFFLINE-Q1-SENTINEL', RUNWAY_APPROVED_ASSET_SHA256: createHash('sha256').update(syntheticPng).digest('hex') };
   const provider = createRunwayProvider({ root, env, fetchImpl: (async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method });
     assert.equal(url, 'https://api.dev.runwayml.com/v1/image_to_video');

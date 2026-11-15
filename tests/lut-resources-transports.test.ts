@@ -82,7 +82,7 @@ async function bounded<T>(promise: Promise<T>, label: string, ms: number|undefin
 function environment(root: string, extra: { MIOON_BASE_URL?: string; MIOON_TOKEN?: string; MIOON_INSPECTION_WIRE_GUARD?: string; MIOON_INSPECTION_WIRE_ALLOWED_ORIGIN?: string; MIOON_INSPECTION_WIRE_AUDIT?: string; }|undefined = {}) {
   // Do not inherit credentials, proxy variables, loaders or provider settings.
   return {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8',
-    NODE_ENV: 'test', MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+    NODE_ENV: 'test', ...extra};
 }
 
 function ownedProcess(args:string[], env:NodeJS.ProcessEnv, {ipc = false} = {}) {
