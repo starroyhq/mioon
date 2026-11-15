@@ -35,6 +35,7 @@ import {run} from '../packages/business/src/media.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
 const at='2026-11-03T01:00:00.000Z',later='2026-11-03T02:00:00.000Z';
+const activeCanvasArchive = {archivedAt: null, archiveBatchId: null, archiveReason: null};
 type Tables=Record<ProjectSnapshotTable,SnapshotRow[]>;
 function fixture(t:TestContext,sharedProjectId?:string){
  const root=mkdtempSync(path.join(tmpdir(),'version-domain-')),{store,projectId}=createServerProject(root,{name:'Original',...(sharedProjectId?{projectId:sharedProjectId}:{})});
@@ -94,7 +95,7 @@ test('missing owners and all retained result kinds return with their real IDs an
  const base=f.capture(),assetId=randomUUID(),imageAsset=String(image.asset.id),subjectAsset=randomUUID(),shotId=randomUUID(),subjectId=randomUUID(),subjectVersion=randomUUID(),groupId=String(image.group.id),imageVersion=String(image.version.id),versionId=randomUUID(),lutId=randomUUID(),detected=scene(f.projectId,assetId);
  const saved=revise(base,tables=>{
   tables.assets=[assetId,imageAsset,subjectAsset].map(id=>id===imageAsset?image.asset:({id,projectId:f.projectId,data:canonicalJson(referenceTestAsset(f.store.projectDir,{id,projectId:f.projectId,name:'Restored.png',mimeType:'image/png',sha256:'a'.repeat(64),sizeBytes:1,relativePath:`media/${id}.png`,provenance:'user-import',width:1080,height:1920,duration:null,hasAudio:false,hasVideo:true}))}));
-  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Restored',revision:1,selectedVersionId:versionId,versionIds:[versionId]})}];
+  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Restored',revision:1,selectedVersionId:versionId,versionIds:[versionId]}),...activeCanvasArchive}];
   const jobId=randomUUID();tables.versions=[{id:versionId,projectId:f.projectId,jobId,data:canonicalJson({id:versionId,projectId:f.projectId,jobId,shotId,assetId,sha256:'a'.repeat(64)})}];
   tables.subjects=[{id:subjectId,projectId:f.projectId,kind:'character',name:'Person',revision:1,headVersionId:subjectVersion,createdAt:at,updatedAt:at}];
   tables.subject_versions=[{id:subjectVersion,projectId:f.projectId,subjectId,number:1,assetId:subjectAsset,data:canonicalJson({id:subjectVersion,projectId:f.projectId,subjectId,number:1,assetId:subjectAsset,sha256:'a'.repeat(64),mimeType:'image/png',width:1080,height:1920,provenance:{kind:'user-import',versionId:null,shotId:null,jobId:null},createdAt:at})}];
@@ -123,7 +124,7 @@ test('missing owners and all retained result kinds return with their real IDs an
 test('annotation defaults and binding tombstones keep their owner and advance rather than rewinding revisions',t=>{
  const f=fixture(t),asset=f.asset(),base=f.capture(),shotId=randomUUID(),subjectId=randomUUID(),versionId=randomUUID(),binding=randomUUID();
  const populated=revise(base,tables=>{
-  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Owner',revision:1})}];
+  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Owner',revision:1}),...activeCanvasArchive}];
   tables.subjects=[{id:subjectId,projectId:f.projectId,kind:'character',name:'Person',revision:1,headVersionId:versionId,createdAt:at,updatedAt:at}];
   tables.subject_versions=[{id:versionId,projectId:f.projectId,subjectId,number:1,assetId:asset.id,data:canonicalJson({id:versionId,projectId:f.projectId,subjectId,number:1,assetId:asset.id})}];
   tables.subject_bindings=[{id:binding,projectId:f.projectId,shotId,subjectId,role:'subject',revision:4,subjectVersionId:versionId,reviewedHeadVersionId:versionId,createdAt:at,updatedAt:at}];
@@ -334,7 +335,7 @@ test('a real subject.create remains readable after canonical capture and missing
 
 test('missing mutable rows advance beyond live deletion-ledger evidence without importing old revision counters',t=>{
  const f=fixture(t),asset=f.asset(),shotId=randomUUID(),saved=revise(f.capture(),tables=>{
-  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Returned',revision:2})}];
+  tables.shots=[{id:shotId,projectId:f.projectId,data:canonicalJson({id:shotId,projectId:f.projectId,title:'Returned',revision:2}),...activeCanvasArchive}];
   tables.asset_annotations=[{assetId:asset.id,projectId:f.projectId,revision:3,tags:'[]',note:'Returned'}];
  });
  const seed=f.store.db.prepare('INSERT INTO project.agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(?,?,?,?)');

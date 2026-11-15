@@ -37,6 +37,7 @@ export function useNativeProjectEntry({ context, bridge, rpc, contractChecks, id
     readDirectory: () => readProjectEntryIdentity(identity)}), context, bridge, identity, manageIdentityLifecycle,
     desktopClient, readAdditionalSnapshot: () => desktopRef.current?.readCloseSnapshot() ?? {dirty: false, busy: false, unknown: false, identity: []},
     onNativeOpenError: (error, id) => desktopRef.current?.observeError(error, 'open', id),
+    onNativeUpgradeRequired: result => desktopRef.current?.presentFormatUpgrade(result),
     readNativeDraftVersion: () => desktopRef.current?.getDraftVersion() ?? 0,
     explicitProjectId: context.role === 'launcher' ? new URLSearchParams(window.location.search).get('project') : null,
     confirm, onChange: () => rerender(value => value + 1) }));

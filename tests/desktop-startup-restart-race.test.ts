@@ -14,6 +14,8 @@ import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
 import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
 import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {CANVAS_CLIPBOARD_CHANNEL} from '../apps/desktop/src/canvas-clipboard.ts';
+import {readNativeCanvasClipboard} from '../apps/desktop/src/canvas-clipboard-host.ts';
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createProjectFileOpener, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
@@ -74,7 +76,7 @@ const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & {realRendererClose?: boolean} = {}) {
   const rendererControls = new Map<DesktopHarnessWindow, {admission: ReturnType<typeof createNativeCloseAdmission>; setDirty(value: boolean): void}>();
   const records: Omit<DesktopHarnessRecords<Window>, 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {starts: {report?: unknown; error?: {code?: string}}[]} = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
-  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL];
+  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
   const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
   const lutStoreCalls: unknown[] = [];
@@ -243,6 +245,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
+    CANVAS_CLIPBOARD_CHANNEL, readNativeCanvasClipboard, clipboard: {read: () => assert.fail('Startup must not read the clipboard')},
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
       assert.ok(expectedChannels.includes(channel)); assert.equal(typeof handler, 'function');
       records.ipcHandlers ??= new Map(); assert.equal(records.ipcHandlers.has(channel), false); records.ipcHandlers.set(channel, handler);

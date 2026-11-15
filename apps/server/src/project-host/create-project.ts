@@ -4,6 +4,7 @@ import {publicValue} from '../../../../packages/contracts/src/index.ts';
 import type {RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import type {ProjectEntryCreateInput} from '../../../../packages/contracts/src/project-entry-native.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/index.ts';
+import type {Format4Options} from '../../../../packages/business/src/project-file/index.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
 import type {ProjectHostManager} from './manager.ts';
@@ -13,12 +14,13 @@ import {ensureProjectRow} from './project-initialization.ts';
 
 /** One create path for the app RPC and trusted desktop control. Selecting a
  * location does not skip project-row initialization or ownership checks. */
-export function createInitializedProject({manager, registry, directories, identity, assertProjectFile}: {
+export function createInitializedProject({manager, registry, directories, identity, assertProjectFile, format4}: {
   readonly manager: ProjectHostManager;
   readonly registry: ProjectRegistryPort;
   readonly directories: AppDirectories;
   readonly identity: ProjectFileIdentityPort;
   readonly assertProjectFile: (file: string) => void;
+  readonly format4?: Format4Options;
 }) {
   return async (input: ProjectEntryCreateInput): Promise<{readonly registration: RecentProject; readonly project: unknown}> => {
     // Reject private application targets before creating any folder or file.
@@ -30,7 +32,7 @@ export function createInitializedProject({manager, registry, directories, identi
     try {
       assertProjectFile(entry.projectFile);
       const store = openProjectStore({projectFile: entry.projectFile,
-        locate: id => projectLocation(directories, id), checkCopy: registry.checkCopy});
+        locate: id => projectLocation(directories, id), checkCopy: registry.checkCopy, format4});
       try {
         ensureProjectRow(store, {name: input.name,
           ...(input.description === undefined ? {} : {description: input.description}),

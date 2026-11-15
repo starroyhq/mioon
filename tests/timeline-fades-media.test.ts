@@ -17,6 +17,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {timelineAudioFadeFilters} from '../packages/business/src/timeline-audio.ts';
 import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {startServer} from './helpers/test-server.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type { BinaryLike } from 'crypto';
 
 // Local synthetic acceptance: exact float PCM first, then the shared production
@@ -126,7 +127,7 @@ async function exactPcm(root: string, {name, rate, channels, fadeInFrames, fadeO
 }
 
 async function httpFixture(root: string) {
-  const server = await startServer({dataDir: path.join(root, 'server'), port: 0, token,
+  const server = await startServer({dataDir: path.join(root, 'server'), port: 0, token, projectFormatForTest: PROJECT_FILE_SCHEMA_VERSION,
     chatGateway: async function* () { throw Error('Audio fade acceptance must never call a model'); }});
   async function request<O extends string,I=Record<string,never>,B extends boolean=false>(operation:O, input: I = {} as I, expectFailure: B = false as B, entityProjectId?: string):Promise<B extends true ? Failure : ServiceResponse<O>> {
     const response = await fetch(server.url + rpcPathFor(operation, input, entityProjectId), {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input})});

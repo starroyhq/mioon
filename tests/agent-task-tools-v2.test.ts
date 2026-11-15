@@ -12,6 +12,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {crc32,deflateSync} from 'node:zlib';
 import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {run as runMedia} from '../packages/business/src/media-runtime.ts';
@@ -20,7 +21,11 @@ import {createAgentTaskJournal} from '../packages/business/src/agent/task-journa
 import {mioFixtureConfiguration,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
+import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {projectFormatReadOnlyViewSchema} from '../packages/contracts/src/project-format-upgrade.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
@@ -36,6 +41,7 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {sourceTaskModelToolLoadInputAllowed,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -45,6 +51,8 @@ import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
 import {imageTaskResponseSchema} from '../packages/contracts/src/images.ts';
 import {frameTaskResponseSchema} from '../packages/contracts/src/frame-extraction.ts';
 import type {VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {startServer,type InspectProject} from './helpers/test-server.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const mioCanvasNames=['mioon_canvas_layout','mioon_canvas_archive','mioon_canvas_restore'];
@@ -293,6 +301,88 @@ test('only format-4 Mio exposes the three host canvas tools and allows loading t
     assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation,input:{targets:[{kind:'shot',id:randomUUID()}]}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
   }
  }
+});
+test('default project HTTP runtime loads the three Mio canvas tools while the legacy read-only host offers no Mio runtime',async t=>{
+ const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-canvas-http-'));
+ let settings:Awaited<ReturnType<typeof createAgentSettings>>|undefined;
+ let server:Awaited<ReturnType<typeof startServer>>|undefined;
+ t.after(async()=>{await server?.close();await settings?.close();await rm(root,{recursive:true,force:true});});
+ const legacy=createServerProject(root,{name:'Legacy read-only canvas',projectFormat:PROJECT_FILE_SCHEMA_VERSION});
+ const legacyFiles=[legacy.store.projectFile,path.join(legacy.store.localDir,'history.db'),path.join(legacy.store.cacheDir,'cache.db')];
+ legacy.store.close();
+ const readLegacyFiles=()=>Promise.all(legacyFiles.map(file=>readFile(file)));
+ const legacyBefore=await readLegacyFiles();
+
+ const protocol='chat_completions';
+ settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),
+  secret:{action:'replace',storage:'session',value:'SYNTHETIC_CANVAS_HOST_KEY'}});
+ const {configuration,revision}=testAgentExecution(await settings.get());
+ const requests:{body:string}[]=[];
+ const load={id:'load_canvas_tools',name:'mioon_tools_load',arguments:{names:mioCanvasNames}};
+ const gateway:TaskGateway=async function*(request){
+  request.beforeSubmit?.();
+  requests.push({body:request.body});
+  const first=requests.length===1,text=first?'':'Canvas tools loaded';
+  const output:TaskModelOutput={text,toolCalls:first?[load]:[],providerOutput:first?{role:'assistant',content:null,tool_calls:[
+   {id:load.id,type:'function',function:{name:load.name,arguments:JSON.stringify(load.arguments)}},
+  ]}:{role:'assistant',content:text}};
+  yield {type:'done',output};
+ };
+ let inspect!:InspectProject;
+ server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:gateway,comfyModule:'skip',
+  inspectProject:received=>{inspect=received;}});
+ const {url,token}=server;
+ async function request(route:string,input?:unknown){
+  const response=await fetch(url+route,input===undefined?{headers:{Authorization:`Bearer ${token}`}}:{
+   method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(input),
+  });
+  const body:unknown=await response.json();
+  assert.ok(record(body));
+  return {status:response.status,data:body.data,error:body.error};
+ }
+ const created=await request('/api/rpc',{operation:'project.create',input:{name:'Default canvas project'}});
+ assert.equal(created.status,200);
+ assert.ok(record(created.data)&&typeof created.data.id==='string');
+ const projectId=created.data.id,route=projectApiPath(projectId,'agent','tasks','v2');
+ await server.projectEntries.acquire({projectId,windowId:randomUUID()});
+ const snapshot=await request(route);
+ assert.equal(snapshot.status,200);
+ assert.ok(record(snapshot.data)&&record(snapshot.data.authorization));
+ assert.equal(inspect(projectId,db=>db.prepare('PRAGMA project.user_version').get()?.user_version),FORMAT4_PROJECT_SCHEMA_VERSION);
+ const granted=await request('/api/rpc',{operation:'agent.authorization.grant',input:{requestId:randomUUID(),
+  expectedRevision:snapshot.data.authorization.revision,expectedSettingsRevision:revision,destination:deriveAgentEndpoint(configuration),
+  model:configuration.model,scope:'project_agent'}});
+ assert.equal(granted.status,200);
+
+ const legacyView=await request(projectApiPath(legacy.projectId,'format-upgrade','read-only'));
+ assert.equal(legacyView.status,200);
+ assert.equal(projectFormatReadOnlyViewSchema.parse(legacyView.data).projectVersion,PROJECT_FILE_SCHEMA_VERSION);
+ const send=(prefix:string)=>request(prefix,{requestId:randomUUID(),text:'Load canvas tools',expectedSettingsRevision:revision});
+ const blocked=await send(projectApiPath(legacy.projectId,'agent','tasks','v2'));
+ assert.equal(blocked.status,409);
+ assert.ok(record(blocked.error));
+ assert.equal(blocked.error.code,'PROJECT_FORMAT_UPGRADE_REQUIRED');
+ assert.equal(requests.length,0);
+ assert.deepEqual(await readLegacyFiles(),legacyBefore);
+
+ const accepted=await send(route);
+ assert.equal(accepted.status,200);
+ let result=agentTaskSnapshotSchema.parse(accepted.data);
+ for(let tries=0;tries<400&&['accepted','running'].includes(result.run.status);tries++){
+  await delay(20);
+  const status=await request(`${route}/${result.run.id}`);
+  assert.equal(status.status,200);
+  result=agentTaskSnapshotSchema.parse(status.data);
+ }
+ assert.equal(result.run.status,'completed',JSON.stringify(result));
+ assert.equal(requests.length,2);
+ assert.ok(sourceTaskModelToolLoadInputAllowed(protocol,requests[0],load.arguments));
+ assert.deepEqual(sourceTaskModelToolNames(protocol,requests[0]).filter(name=>mioCanvasNames.includes(name)),[]);
+ assert.deepEqual(sourceTaskModelToolNames(protocol,requests[1]).filter(name=>mioCanvasNames.includes(name)),mioCanvasNames);
+ const loaded=result.steps.find(step=>step.toolCall?.id===load.id);
+ assert.equal(loaded?.status,'completed');
+ assert.deepEqual(loaded?.result,{names:mioCanvasNames});
 });
 test('format-4 canvas tools change only three serialized definitions and the loader name enum',()=>{
  const tools=listAgentTaskToolsForChannel(false,{frameTransaction:true});

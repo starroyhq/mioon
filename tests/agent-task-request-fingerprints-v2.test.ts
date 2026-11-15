@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {
   collectTaskRequestFingerprints, readTaskRequestFingerprintFixture,
   FINGERPRINT_PROTOCOLS, FINGERPRINT_SCENARIOS, OFFICIAL_FINGERPRINT_SCENARIOS,
-  FINGERPRINT_PRELOAD_SCENARIOS,
+  FINGERPRINT_PRELOAD_SCENARIOS, FINGERPRINT_FORMATS,
 } from './helpers/agent-task-request-fingerprints-v2.ts';
 
-test('reviewed raw model requests retain their fingerprints across three protocols and runtime scenarios', {timeout: 120_000}, async () => {
-  const actual = await collectTaskRequestFingerprints(), expected = readTaskRequestFingerprintFixture();
+for (const format of FINGERPRINT_FORMATS) test(`${format}: reviewed raw model requests retain their fingerprints across three protocols and runtime scenarios`, {timeout: 120_000}, async () => {
+  const actual = await collectTaskRequestFingerprints({format}), expected = readTaskRequestFingerprintFixture(format);
   assert.deepEqual(actual, expected.requests,
     'Model request bytes changed. Review the request/scenario differences before running node tests/helpers/agent-task-request-fingerprints-v2.ts --update.');
   for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of [...FINGERPRINT_SCENARIOS, ...OFFICIAL_FINGERPRINT_SCENARIOS]) {

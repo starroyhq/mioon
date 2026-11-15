@@ -9,6 +9,7 @@ import {readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.t
 import type {NewProjectFormatVersion} from '../packages/contracts/src/project-entry.ts';
 import {projectEntryFixture, projectEntryOwnerFixture, PROJECT_ENTRY_TEST_INSTANCE} from './helpers/project-entry-fixture.ts';
 import type {ProjectWindowBridge, ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 const id = (n: number) => `71000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), createdId = id(2), token = id(3);
 const facts = {fileSystem: 'apfs', isLocal: true, volumeReadOnly: false, permissionBits: true, cloud: 'not-reported'} as const;
@@ -79,6 +80,36 @@ test('opened from selected file is already a host operation and never opens a se
   const f = await fixture(t, {openSelectedFile: () => ({status: 'opened', projectId, windowId: id(9)})});
   assert.equal(await f.controller.openFile(), true); assert.deepEqual(f.dispatched, ['host-opened']); assert.deepEqual(f.opened, []);
   assert.equal(f.calls.filter(call => call.action === 'openSelectedFile').length, 1); assert.equal(f.calls.some(call => call.action === 'openRecent'), false);
+});
+test('native upgrade waits for an explicit choice, carries the exact ticket, and preserves read-only ownership', async t => {
+  const offer = {status: 'upgrade-required', token, preview: {projectId, contentToken: 'a'.repeat(32), contentSequence: 4,
+    projectVersion: PROJECT_FILE_SCHEMA_VERSION, targetProjectVersion: FORMAT4_PROJECT_SCHEMA_VERSION,
+    historyVersion: HISTORY_SCHEMA_VERSION, targetHistoryVersion: FORMAT4_HISTORY_SCHEMA_VERSION}};
+  const view = {projectId, name: 'Legacy project', description: '', projectVersion: PROJECT_FILE_SCHEMA_VERSION,
+    shots: [], nodes: [], timeline: null, truncated: false};
+  const f = await fixture(t, {
+    openSelectedFile: () => offer,
+    resolveFormatUpgrade: input => input.choice === 'read-only' ? {status: 'read-only', view}
+      : {status: 'opened', projectId, windowId: id(9)},
+  });
+  assert.equal(await f.controller.openFile(), false);
+  assert.deepEqual(f.controller.getState().formatUpgrade, offer);
+  assert.equal(f.calls.some(call => call.action === 'resolveFormatUpgrade'), false);
+  assert.equal(await f.controller.chooseFormatUpgrade('read-only'), true);
+  assert.deepEqual(f.controller.getState().readOnlyProject, view);
+  assert.deepEqual(f.dispatched, []);
+  f.controller.closeFormatUpgrade();
+  assert.equal(f.controller.getState().readOnlyProject, undefined);
+  await f.controller.openFile();
+  f.controller.closeFormatUpgrade();
+  assert.deepEqual(f.calls.find(call => call.action === 'discardFormatUpgrade'), {action: 'discardFormatUpgrade', token});
+  assert.equal(await f.controller.chooseFormatUpgrade('upgrade'), false);
+  await f.controller.openFile();
+  assert.equal(await f.controller.chooseFormatUpgrade('upgrade'), true);
+  assert.deepEqual(f.calls.filter(call => call.action === 'resolveFormatUpgrade'), [
+    {action: 'resolveFormatUpgrade', choice: 'read-only', token}, {action: 'resolveFormatUpgrade', choice: 'upgrade', token},
+  ]);
+  assert.deepEqual(f.dispatched, ['host-opened']);
 });
 test('COPY publishes only verified original display facts and invokes its exact host token', async t => {
   const f = await fixture(t, {openSelectedFile: () => ({status: 'copy', token, name: 'Copy', original: {name: 'Original', displayPath: '/verified/original.mioon'}}),

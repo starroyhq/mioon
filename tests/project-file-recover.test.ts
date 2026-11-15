@@ -283,30 +283,68 @@ test('a separately owned catalog reader cannot release this process SQLite lock'
     const input = catalogInput(project.projectFile);
     assert.deepEqual(await client.scan([input]), [{
       recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
-      format: {generation: input.generation, newer: false},
+      format: {generation: input.generation, status: 'current'},
     }]);
     assert.deepEqual(rawRead(project.projectFile), LOCKED_READ);
   } finally {store.close();}
 });
 
-test('catalog recovery validates the observed file and journal before replay', async t => {
-  const project = newProject(t), journal = project.projectFile + '-journal';
+test('the catalog child reports legacy, current and newer headers for the active host format', async t => {
+  const legacy = newProject(t), current = newProject(t, true), future = newProject(t, true);
+  const obsolete1 = newProject(t), obsolete2 = newProject(t);
+  const client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  for (const [project, version] of [[future, FORMAT4_PROJECT_SCHEMA_VERSION + 1], [obsolete1, 1], [obsolete2, 2]] as const) {
+    const db = new DatabaseSync(project.projectFile);
+    try {db.exec(`PRAGMA user_version=${version}`);} finally {db.close();}
+  }
+  const projects = [legacy, current, future, obsolete1, obsolete2];
+  const files = projects.flatMap(project => [project.projectFile, project.historyFile, path.join(project.cacheDir, 'cache.db')]);
+  const before = files.map(fileState);
+  const inputs = projects.map(project => catalogInput(project.projectFile));
+  const inMode = async (format4: boolean) => (await client.scan(inputs.map(input => ({...input, ...(format4 ? {format4: true} : {})}))))
+    .map(({format}) => format?.status);
+  assert.deepEqual(await inMode(false), ['current', 'newer', 'newer', undefined, undefined]);
+  assert.deepEqual(await inMode(true), ['upgrade-required', 'current', 'newer', undefined, undefined]);
+  assert.equal((await client.scan([{...inputs[0]!, format4: true, checkHeader: false}]))[0]?.format, undefined);
+  assert.deepEqual(files.map(fileState), before);
+});
+
+test('the format 4 catalog child leaves a real hot legacy journal and its project untouched', async t => {
+  const project = newProject(t), journal = project.projectFile + '-journal', historyJournal = project.historyFile + '-journal';
   const client = createNodeProjectCatalogClient();
   t.after(async () => {client.close(); await client.drain?.();});
   const writer = await holdInChild(t, project, 'mid-transaction');
   await killed(writer);
   assert.equal(isHotJournal(journal), true);
+  const files = [project.projectFile, journal, project.historyFile, historyJournal, path.join(project.cacheDir, 'cache.db')];
+  const before = files.map(fileState);
   const input = catalogInput(project.projectFile);
+  assert.deepEqual(await client.scan([{...input, format4: true}]), [{
+    recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
+    format: {generation: input.generation, status: 'upgrade-required'},
+  }]);
+  assert.deepEqual(files.map(fileState), before);
+});
+
+for (const format4 of [false, true]) test(`catalog recovery validates the observed file and journal before replay (format ${format4 ? 4 : 3})`, async t => {
+  const project = newProject(t, format4), journal = project.projectFile + '-journal';
+  const client = createNodeProjectCatalogClient();
+  t.after(async () => {client.close(); await client.drain?.();});
+  const writer = await holdInChild(t, project, 'mid-transaction', format4);
+  await killed(writer);
+  assert.equal(isHotJournal(journal), true);
+  const input = {...catalogInput(project.projectFile), ...(format4 ? {format4: true as const} : {})};
   const before = [fileState(project.projectFile), fileState(journal)];
   assert.deepEqual(await client.scan([{...input, journalGeneration: null}]), [{recovery: 'changed'}]);
   assert.deepEqual([fileState(project.projectFile), fileState(journal)], before);
   const [result] = await client.scan([input]);
   assert.deepEqual(result?.recovery, {state: 'recovered'});
   assert.equal(result?.birthtime, input.birthtime);
-  assert.deepEqual(result?.format, {generation: catalogInput(project.projectFile).generation, newer: false});
+  assert.deepEqual(result?.format, {generation: catalogInput(project.projectFile).generation, status: 'current'});
   assert.equal(isHotJournal(journal), false);
   assert.equal(isHotJournal(project.historyFile + '-journal'), true);
-  const store = openProjectStore({projectFile: project.projectFile, locate: () => project});
+  const store = openProjectStore({projectFile: project.projectFile, locate: () => project, ...(format4 ? {format4: {}} : {})});
   try {assert.deepEqual(readCrashRows(store.db, store.projectId), {content: 1, records: 1, receipt: 1, samePad: true});}
   finally {store.close();}
 });
@@ -374,6 +412,6 @@ test('the headless catalog replaces an aborted worker for the next scan', {timeo
   await pending;
   assert.deepEqual(await client.scan([input]), [{
     recovery: {state: 'clean'}, generation: input.generation, birthtime: input.birthtime,
-    format: {generation: input.generation, newer: false},
+    format: {generation: input.generation, status: 'current'},
   }]);
 });

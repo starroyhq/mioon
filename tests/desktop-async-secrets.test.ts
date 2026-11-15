@@ -76,6 +76,8 @@ const projectEntryContractsUrl = data(`export let calls = 0;
   const forbidden = () => { calls++; throw Error('Project entry contracts are outside this secrets fixture'); };
   export const PROJECT_ENTRY_LIMITS = new Proxy({}, {get: forbidden});
   export const PROJECT_ENTRY_CONTROL_LIMITS = new Proxy({}, {get: forbidden});
+  export const PROJECT_FORMAT_READ_ONLY_LIMITS = new Proxy({}, {get: forbidden});
+  export const projectFormatUpgradeFromError = forbidden;
   export const projectEntryControlRequestSchema = {parse: forbidden, safeParse: forbidden};
   export const projectEntryControlCancelSchema = projectEntryControlRequestSchema;
   export const projectEntryControlReleaseSchema = projectEntryControlRequestSchema;
@@ -107,6 +109,7 @@ const overrides = new Map([
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
   ['../../../packages/contracts/src/project-entry.ts', projectEntryContractsUrl],
   ['../../../packages/contracts/src/project-entry-control.ts', projectEntryContractsUrl],
+  ['../../../packages/contracts/src/project-format-upgrade.ts', projectEntryContractsUrl],
   ['../../../packages/contracts/src/asset-media-native.ts', nativeAssetMediaContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {updateBytes: 16384, ciphertextCharacters: 49152};')],
   ['../../../packages/contracts/src/image-settings.ts', data('export const IMAGE_SETTINGS_NAMESPACE = ' + JSON.stringify(imageNamespaces.official) + ';')],
@@ -233,6 +236,7 @@ test('audited imports and codec construction make no native calls; Images client
   assert.ok(urls.has('apps/desktop/src/project-trash-broker.ts'));
   assert.ok(!urls.has('packages/contracts/src/project-trash-native.ts'));
   assert.ok(!urls.has('packages/contracts/src/project-entry-control.ts'));
+  assert.ok(!urls.has('packages/contracts/src/project-format-upgrade.ts'));
   const pair = imagePair(codec); t.after(() => pair.close());
   const encrypted = await pair.client.encrypt(imagePlaintexts[0]);
   assert.equal(await pair.client.decrypt(encrypted), imagePlaintexts[0]);
@@ -250,7 +254,8 @@ test('import fixture permits only explicitly reviewed erased modules and refuses
   assert.equal(overrides.has('electron'), false);
   assert.equal(overrides.has('@mioon/contracts/arbitrary'), false);
   for (const unreviewed of ['apps/desktop/src/main.ts', 'apps/desktop/src/backend.ts', 'packages/contracts/src/timeline-delivery.ts',
-    'packages/contracts/src/project-trash-native.ts', 'packages/contracts/src/project-entry.ts', 'packages/contracts/src/project-entry-control.ts', 'packages/contracts/src/asset-media-native.ts', 'apps/desktop/src/../src/not-approved.ts']) {
+    'packages/contracts/src/project-trash-native.ts', 'packages/contracts/src/project-entry.ts', 'packages/contracts/src/project-entry-control.ts',
+    'packages/contracts/src/project-format-upgrade.ts', 'packages/contracts/src/asset-media-native.ts', 'apps/desktop/src/../src/not-approved.ts']) {
     assert.throws(() => moduleUrl(unreviewed), /Unreviewed source:/);
   }
   assert.equal(deliveryParser.calls, 0);

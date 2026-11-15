@@ -17,14 +17,16 @@ import {projectEntryControlErrorSchema} from '../packages/contracts/src/project-
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import type {ProjectEntriesDesktopBridge} from '../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {AppError} from '../packages/contracts/src/app-error.ts';
 
 const facts:ProjectLocationFacts={fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'};
 const pendingChannel='mioon:project-entries:pending-open:v1';
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise<void>(resolve=>setImmediate(resolve));};
 async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,openRecent?:(
- owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>){
+ owner:ProjectEntryDesktopOwner,projectId:string,entryToken:string,remember:boolean)=>Promise<ProjectWindowOpenResult>,legacySource=false){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-desktop-')),dataDir=path.join(root,'app'),selected=path.join(root,'selected');mkdirSync(selected);
- const created=createServerProject(dataDir,{name:'Original'}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
+ const created=createServerProject(dataDir,{name:'Original',...(legacySource?{projectFormat:PROJECT_FILE_SCHEMA_VERSION}:{})}),file=created.store.projectFile,projectId=created.projectId;created.store.close();
  const server=await startServer({dataDir,port:0,token:'synthetic-desktop-entry-token'}),backendId=randomUUID();
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>queueMicrotask(()=>client.handle(message))});
@@ -79,6 +81,46 @@ test('ordinary selected native opens defer recent bookkeeping and wait for their
  assert.equal(inputs.length,1);
  assert.deepEqual(inputs[0],{projectFile:f.file,windowId:f.adopted[0],deferRecent:true});
  assert.equal((await f.client.api.listRecent()).registered[0].project.lastOpenedAt,null);
+});
+
+test('a native old-format selection stays read-only until the exact owner chooses to upgrade',async t=>{
+ const attempts:Parameters<ProjectEntryControlPort['openPath']>[0][]=[];
+ let failedBackup=false;
+ const f=await fixture(t,port=>({...port,async openPath(input){
+  attempts.push(input);
+  if(input.formatUpgrade&&!failedBackup){failedBackup=true;throw new AppError('PROJECT_FORMAT_BACKUP_FAILED','Synthetic backup failure',409);}
+  return port.openPath(input);
+ }}),undefined,true);
+ const bytes=readFileSync(f.file);
+ const first=await f.bridge.openSelectedFile();if(first.status!=='upgrade-required')assert.fail('Expected format prompt');
+ assert.equal(first.preview.projectVersion,PROJECT_FILE_SCHEMA_VERSION);
+ assert.equal(first.preview.targetProjectVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(first.preview.projectId,f.projectId);
+ assert.equal(f.adopted.length,0);
+ assert.deepEqual(readFileSync(f.file),bytes);
+ const read=await f.bridge.resolveFormatUpgrade!({token:first.token,choice:'read-only'});
+ if(read.status!=='read-only')assert.fail('Expected portable read-only view');
+ assert.equal(read.view.projectId,f.projectId);
+ assert.equal(read.view.name,'Original');
+ assert.deepEqual(readFileSync(f.file),bytes);
+ assert.equal(f.adopted.length,0);
+ await assert.rejects(f.bridge.resolveFormatUpgrade!({token:first.token,choice:'upgrade'}),{code:'PROJECT_ENTRY_TICKET_EXPIRED'});
+ const discarded=await f.bridge.openSelectedFile();if(discarded.status!=='upgrade-required')assert.fail();
+ await f.bridge.discardFormatUpgrade!({token:discarded.token});
+ await assert.rejects(f.bridge.resolveFormatUpgrade!({token:discarded.token,choice:'upgrade'}),{code:'PROJECT_ENTRY_TICKET_EXPIRED'});
+ const oldOwner=await f.bridge.openSelectedFile();if(oldOwner.status!=='upgrade-required')assert.fail();
+ f.replaceDocument();
+ await assert.rejects(f.bridge.resolveFormatUpgrade!({token:oldOwner.token,choice:'upgrade'}),{code:'PROJECT_ENTRY_UNAVAILABLE'});
+ const accepted=await f.bridge.openSelectedFile();if(accepted.status!=='upgrade-required')assert.fail();
+ await assert.rejects(f.bridge.resolveFormatUpgrade!({token:accepted.token,choice:'upgrade'}),{code:'PROJECT_FORMAT_BACKUP_FAILED'});
+ assert.deepEqual(readFileSync(f.file),bytes);
+ assert.equal(f.adopted.length,0);
+ const upgraded=await f.bridge.resolveFormatUpgrade!({token:accepted.token,choice:'upgrade'});
+ assert.equal(upgraded.status,'opened');
+ assert.deepEqual(await f.bridge.resolveFormatUpgrade!({token:accepted.token,choice:'upgrade'}),upgraded);
+ await assert.rejects(f.bridge.resolveFormatUpgrade!({token:accepted.token,choice:'read-only'}),{code:'PROJECT_ENTRY_REQUEST_CONFLICT'});
+ assert.equal(f.adopted.length,1);
+ assert.equal(attempts.filter(input=>Boolean(input.formatUpgrade)).length,2);
 });
 
 test('native picker tickets bind the exact owner; creation is once and returns created without bypassing sealed window open',async t=>{

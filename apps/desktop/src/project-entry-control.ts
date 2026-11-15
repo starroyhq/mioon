@@ -5,6 +5,7 @@ import type {ProjectEntryControlCommand,ProjectEntryControlResults} from '../../
 import type {ProjectEntryControlPort,ProjectEntryWindowRevoked} from '../../../packages/contracts/src/project-entry-native.ts';
 import {NATIVE_ASSET_MEDIA_LIMITS} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {NativeAssetMediaPort} from '../../../packages/contracts/src/asset-media-native.ts';
+import {PROJECT_FORMAT_READ_ONLY_LIMITS, projectFormatUpgradeFromError} from '../../../packages/contracts/src/project-format-upgrade.ts';
 
 interface Port{postMessage(message:unknown):void}
 interface RequestOptions{signal?:AbortSignal;timeoutMs?:number}
@@ -21,12 +22,14 @@ export function safeProjectEntryControlError(error:unknown){
  const format=record(error)&&error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_FORMAT_NEWER'&&record(error.cause)&&error.cause.code==='PROJECT_FORMAT_NEWER'&&record(error.cause.details)?error.cause.details:code==='PROJECT_FORMAT_NEWER'?{...details}:undefined;
  delete details.formatVersion;delete details.supportedFormatVersion;
  if(format&&['project','history','cache'].includes(String(format.database))&&Number.isSafeInteger(format.formatVersion)&&Number(format.formatVersion)>0&&Number.isSafeInteger(format.supportedFormatVersion)&&Number(format.supportedFormatVersion)>0){details.database=format.database;details.formatVersion=format.formatVersion;details.supportedFormatVersion=format.supportedFormatVersion;}
+ const preview=projectFormatUpgradeFromError(error);
+ if(preview)details.formatUpgrade=preview;
  const status=code==='PROJECT_ACCESS_DENIED'?403:record(error)&&Number.isInteger(error.status)&&Number(error.status)>=400&&Number(error.status)<=599?Number(error.status):503;
  const parsed=projectEntryControlErrorSchema.safeParse({code,status,details});return parsed.success?parsed.data:{code:'PROJECT_ENTRY_UNAVAILABLE',status:503,details:{}};
 }
 const windowId=(command:ProjectEntryControlCommand):string|undefined=>'windowId'in command.input?command.input.windowId:undefined;
-const mutates=(command:ProjectEntryControlCommand)=>!['capabilities','listRecent','prepareAcquire','inspectCopy','observeSource','release','acquire','openPath','mediaRelinkCandidate','mediaRelinkDiscard'].includes(command.operation);
-const responseBudget=(command:ProjectEntryControlCommand)=>command.operation==='listRecent'?PROJECT_ENTRY_LIMITS.responseBytes:command.operation.startsWith('mediaRelink')?NATIVE_ASSET_MEDIA_LIMITS.responseBytes:PROJECT_ENTRY_CONTROL_LIMITS.requestBytes;
+const mutates=(command:ProjectEntryControlCommand)=>command.operation==='openPath'||command.operation==='acquire'?Boolean(command.input.formatUpgrade):!['capabilities','listRecent','prepareAcquire','inspectCopy','observeSource','observeFormat','readOnlyFormat','release','mediaRelinkCandidate','mediaRelinkDiscard'].includes(command.operation);
+const responseBudget=(command:ProjectEntryControlCommand)=>command.operation==='listRecent'?PROJECT_ENTRY_LIMITS.responseBytes:command.operation==='readOnlyFormat'?PROJECT_FORMAT_READ_ONLY_LIMITS.bytes+1024:command.operation.startsWith('mediaRelink')?NATIVE_ASSET_MEDIA_LIMITS.responseBytes:PROJECT_ENTRY_CONTROL_LIMITS.requestBytes;
 
 /** Main's bounded client is tied to one exact utility generation. It never
  * retries a mutation. Cancellation can release only that request's window ID. */
@@ -92,6 +95,8 @@ export function createProjectEntryControlClient({backendId,send,isCurrent=()=>tr
   },
   inspectSelectedCopy:(input:{projectFile:string})=>request({operation:'inspectCopy',input}),
   observeSource:(input:{projectFile:string})=>request({operation:'observeSource',input}),
+  observeFormat:(input:Extract<ProjectEntryControlCommand,{operation:'observeFormat'}>['input'])=>request({operation:'observeFormat',input}),
+  readOnlyFormat:(input:Extract<ProjectEntryControlCommand,{operation:'readOnlyFormat'}>['input'])=>request({operation:'readOnlyFormat',input}),
   adoptCopy:(input:Parameters<NonNullable<ProjectEntryControlPort['adoptCopy']>>[0])=>request({operation:'adoptCopy',input}),
   saveAs:(input:Parameters<NonNullable<ProjectEntryControlPort['saveAs']>>[0])=>request({operation:'saveAs',input}),
   duplicate:(input:Parameters<NonNullable<ProjectEntryControlPort['duplicate']>>[0])=>request({operation:'duplicate',input}),
@@ -140,6 +145,8 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input.windowId);return true;
   case 'inspectCopy':if(!control.inspectSelectedCopy)throw failure();return control.inspectSelectedCopy(command.input);
   case 'observeSource':if(!control.observeSource)throw failure();return control.observeSource(command.input);
+  case 'observeFormat':if(!control.observeFormat)throw failure();return control.observeFormat(command.input);
+  case 'readOnlyFormat':if(!control.readOnlyFormat)throw failure();return control.readOnlyFormat(command.input);
   case 'adoptCopy':if(!control.adoptCopy)throw failure();return control.adoptCopy(command.input);
   case 'saveAs':if(!control.saveAs)throw failure();return control.saveAs(command.input);
   case 'duplicate':if(!control.duplicate)throw failure();return control.duplicate(command.input);

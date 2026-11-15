@@ -114,6 +114,23 @@ test('canvas storyboard Undo uses the fixed command without granting Redo or sta
   click(find(menu, 'command-edit-undo')); assert.deepEqual(f.calls, ['edit-undo']);
 });
 
+test('canvas Duplicate dispatches only to an available canvas and preserves native Copy and Paste', () => {
+  const f = fixture();
+  assert.equal(find(f.build(), 'command-canvas-duplicate').enabled, false);
+  f.patch({business: {...f.state.business!, editingContext: 'none', workspaceMode: 'canvas'}});
+  const menu = f.build(), duplicate = find(menu, 'command-canvas-duplicate');
+  assert.equal(duplicate.enabled, true);
+  assert.equal(duplicate.accelerator, 'CmdOrCtrl+D');
+  click(duplicate);
+  f.patch({business: {...f.state.business!, editingContext: 'text'}});
+  click(duplicate);
+  assert.equal(find(f.build(), 'command-canvas-duplicate').enabled, false);
+  const edit = find(menu, 'menu-edit').submenu as MenuItemConstructorOptions[];
+  assert.equal(edit.find(item => item.role === 'copy')?.click, undefined);
+  assert.equal(edit.find(item => item.role === 'paste')?.click, undefined);
+  assert.deepEqual(f.calls, ['canvas-duplicate']);
+});
+
 test('showing a pending native dialog cannot also focus a different project through the window list', () => {
   const f = fixture(), old = f.build(); f.patch({canShow: true, canFocusProjects: false});
   click(find(old, 'project-window-synthetic-B')); assert.deepEqual(f.calls, []);

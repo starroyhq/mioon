@@ -5,6 +5,7 @@ import {recentProjectSchema} from './project-registry.ts';
 import {projectEntriesResponseSchema} from './project-entry.ts';
 import {projectTemplateInputSchema} from './project-copies.ts';
 import {projectEntryOpenFailureSchema} from './project-entry-open-failure.ts';
+import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
 
 export const PROJECT_ENTRY_DESKTOP_CHANNEL = 'mioon:project-entries:v1';
 export const PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT = 'mioon:project-entries:pending-open:v1';
@@ -27,9 +28,14 @@ export const projectDesktopCapabilitiesSchema=z.object({ready:z.boolean(),create
 export type ProjectDesktopCapabilities=z.infer<typeof projectDesktopCapabilitiesSchema>;
 const desktopOpened=z.object({status:z.literal('opened'),projectId:projectIdSchema,windowId:uuid}).strict();
 const desktopCancelled=z.object({status:z.literal('cancelled')}).strict();
+export const projectDesktopFormatUpgradeRequiredSchema=z.object({status:z.literal('upgrade-required'),token:uuid,preview:projectFormatUpgradePreviewSchema}).strict();
+const desktopReadOnly=z.object({status:z.literal('read-only'),view:projectFormatReadOnlyViewSchema}).strict();
+export const projectDesktopFormatUpgradeResultSchema=z.discriminatedUnion('status',[desktopOpened,desktopCancelled,desktopReadOnly,projectDesktopFormatUpgradeRequiredSchema]);
+export type ProjectDesktopFormatUpgradeResult=z.infer<typeof projectDesktopFormatUpgradeResultSchema>;
 export const projectDesktopOpenResultSchema=z.discriminatedUnion('status',[
  desktopOpened,
  desktopCancelled,
+ projectDesktopFormatUpgradeRequiredSchema,
  z.object({status:z.literal('copy'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),original:z.object({name:line,displayPath:z.string().min(1).max(4096)}).strict().optional()}).strict(),
  z.object({status:z.literal('copy-source'),token:uuid,name:line,expiresAt:z.number().int().positive().optional(),displayPath:z.string().min(1).max(4096),reason:z.enum(['read-only','network']),facts:projectLocationFactsSchema}).strict(),
 ]);
@@ -37,6 +43,7 @@ export type ProjectDesktopOpenResult=z.infer<typeof projectDesktopOpenResultSche
 export const projectDesktopRecentOpenResultSchema=z.union([
  desktopOpened,
  desktopCancelled,
+ projectDesktopFormatUpgradeRequiredSchema,
  z.object({status:z.literal('failed'),reason:z.literal('busy')}).strict(),
  z.object({status:z.literal('failed'),reason:z.literal('unavailable'),failure:projectEntryOpenFailureSchema.optional()}).strict(),
 ]);
@@ -56,6 +63,8 @@ export const projectEntryDesktopRequestSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('openOriginal'),token:uuid}).strict(),
  z.object({action:z.literal('currentLocation')}).strict(),
  z.object({action:z.literal('openRecent'),projectId:projectIdSchema,entryToken:uuid,remember:z.boolean()}).strict(),
+ z.object({action:z.literal('resolveFormatUpgrade'),token:uuid,choice:z.enum(['read-only','upgrade'])}).strict(),
+ z.object({action:z.literal('discardFormatUpgrade'),token:uuid}).strict(),
  z.object({action:z.literal('adoptCopy'),token:uuid}).strict(),
  z.object({action:z.literal('saveAs'),token:uuid,projectId:projectIdSchema,requestId:uuid,name:name.optional()}).strict(),
  z.object({action:z.literal('duplicate'),token:uuid,projectId:projectIdSchema,requestId:uuid,name:name.optional()}).strict(),
@@ -76,6 +85,8 @@ export interface ProjectEntriesDesktopBridge {
  openOriginal(input:{token:string}):Promise<ProjectDesktopOpenResult>;
  currentLocation():Promise<z.infer<typeof projectDesktopLocationSchema>>;
  openRecent(input:{projectId:string;entryToken:string;remember:boolean}):Promise<ProjectDesktopRecentOpenResult>;
+ resolveFormatUpgrade?(input:{token:string;choice:'read-only'|'upgrade'}):Promise<ProjectDesktopFormatUpgradeResult>;
+ discardFormatUpgrade?(input:{token:string}):Promise<void>;
  adoptCopy(input:{token:string}):Promise<ProjectDesktopOpenResult>;
  saveAs(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'saveAs'}>,'action'>):Promise<unknown>;
  duplicate(input:Omit<Extract<ProjectEntryDesktopRequest,{action:'duplicate'}>,'action'>):Promise<unknown>;

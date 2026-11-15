@@ -69,7 +69,7 @@ test('format reads are noncreating and schemas/effects discoverable through actu
 });
 
 test('HTTP CLI and official MCP lost acknowledgements recover the exact format receipt after real backend restart, never retry implicitly',{timeout:90000},async (t: test.TestContext)=>{
- const w=await wire(t),{f}=w;const presets=['landscape_720','square_720','portrait_720'];
+ const w=await wire(t),{f}=w;const presets=['landscape_1080','square_1080','portrait_1080'];
  for(const [index,transport] of w.transports.entries()){
   const state=await w.client.rpc('timeline.format.get',{projectId:f.project.id}),input=formatInput(state,presets[index]);
   const count=w.submissions.filter(x=>x.operation==='timeline.format.set').length;w.drop();const lost=await transport.call('timeline.format.set',input);assert.equal(lost.ok,false);
@@ -83,7 +83,7 @@ test('HTTP CLI and official MCP lost acknowledgements recover the exact format r
 });
 
 test('format durable task survives lost execute response and restart with one exact intent and explicit recovery',{timeout:60000},async (t: test.TestContext)=>{
- const f=await taskFixture(t,{subprocess:true}) as unknown as TaskHttpFixture;const state=await f.rpc('timeline.format.get',{projectId:f.project.id});const input=formatInput(state,'landscape_720');const saved=await f.prepare('timeline.format.set',input);
+ const f=await taskFixture(t,{subprocess:true}) as unknown as TaskHttpFixture;const state=await f.rpc('timeline.format.get',{projectId:f.project.id});const input=formatInput(state,'landscape_1080');const saved=await f.prepare('timeline.format.set',input);
  const route=taskPath(f.project.id,saved.task.id,'execute');f.lose(route);await assert.rejects(f.viaProxy(route,{method:'POST',input:{projectId:f.project.id,digest:saved.task.digest,instanceId:saved.instanceId}}));
  const receipts=(await snapshot(f.root,['timeline_requests']))[f.project.id] as {timeline_requests:{requestId:string;response:string}[]};
  const receipt=receipts.timeline_requests.find(row=>row.requestId===input.requestId);assert.ok(receipt);

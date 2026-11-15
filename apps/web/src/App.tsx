@@ -10,6 +10,7 @@ import {NativeProjectLocationRisk} from './NativeProjectEntryDialogs.tsx';
 import type {NativeProjectEntryActions} from './native-project-entry.ts';
 import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
+import type {CanvasClipboardBridge} from '../../desktop/src/canvas-clipboard.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
 import GenerationServicesSettings from './GenerationServicesSettings.tsx';
 import {WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
@@ -40,7 +41,11 @@ import {CanvasArchivePopover, CanvasDeleteDialog, CanvasEditToast, CanvasSelecti
 import {useCanvasEditing} from './use-canvas-editing.ts';
 import type {CanvasSelectionItem} from './CanvasEditingControls.tsx';
 import {canvasEditErrorCode} from './canvas-editing-state.ts';
-import {canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import {canvasClipboardInText, canvasClipboardShortcut, canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import {createCanvasClipboard, eventCanvasClipboard, webCanvasClipboard} from './canvas-clipboard.ts';
+import type {CanvasClipboardReader, CanvasClipboardWriter} from './canvas-clipboard.ts';
+import {CANVAS_CLIPBOARD_LIMITS} from '../../../packages/contracts/src/canvas-editing.ts';
+import {CANVAS_GRID} from '../../../packages/contracts/src/canvas-position.ts';
 import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src/canvas-editing.ts';
 import type {CanvasLayoutInput, CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import CanvasEmptyState from './CanvasEmptyState.tsx';
@@ -150,6 +155,10 @@ import { createNativeCloseRegistry, installNativeCloseAdmission } from './native
 import { readNativeLegacyClose } from './native-close-legacy.ts';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from './project-open-state.ts';
+import {formatUpgradeNotice, openProjectReadOnly, readProjectFormatUpgrade, upgradeProjectFormat} from './project-format-upgrade-client.ts';
+import type {ProjectFormatChoice, ProjectFormatNotice} from './project-format-upgrade-client.ts';
+import {ProjectFormatReadOnlyDialog, ProjectFormatUpgradeDialog} from './project-file/ProjectFormatUpgradeDialog.tsx';
+import type {ProjectFormatReadOnlyView, ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import Inspector from './Inspector.tsx';
 import SubjectVideoSummary from './SubjectVideoSummary.tsx';
 import { subjectVideoIdentity, subjectVideoProfileIdentity, ARK_SUBJECT_WARNING_MESSAGE, MOCK_SUBJECT_WARNING_MESSAGE } from './subject-video.ts';
@@ -352,7 +361,14 @@ export interface LayoutModeState {assetsWidth: number; inspectorWidth: number; t
 export type ViewState = ReturnType<typeof import('./workspace-state.ts').normalizeWorkspaceState>;
 export type ProviderRecord = GenerationProvider;
 export interface ToastState {message: AppMessage; type: ToastTone; time: number}
-export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: AppMessage; failure?: ProjectWindowOpenFailure}
+interface WebFormatUpgrade {
+  readonly preview: ProjectFormatUpgradePreview;
+  readonly isCurrent: () => boolean;
+  readonly busy?: ProjectFormatChoice;
+  readonly notice?: ProjectFormatNotice;
+  readonly view?: ProjectFormatReadOnlyView;
+}
+export interface ProjectOpening {phase: 'home' | 'opening' | 'ready' | 'error'; projectId: string | null; error: AppMessage; failure?: ProjectWindowOpenFailure; upgrade?: WebFormatUpgrade}
 export interface ProjectListStatus {busy: boolean; error: AppMessage}
 export interface PreferenceStatus {phase: string; pending: boolean; error?: unknown}
 export interface WebSettingsRequest {page: SettingsPage; resolve: (value: boolean) => void}
@@ -434,6 +450,7 @@ export interface SettingsConnectionFormsProps {
 declare global {
   interface Window {
     __mioonAssetImport?:AssetImportBridge;
+    __mioonCanvasClipboard?: CanvasClipboardBridge;
     __mioonNativeAudioPreview?: unknown;
     __mioonUiPreferences?: {reload?: () => Promise<void> | void; markOpened?: (projectId: string) => Promise<void> | void; [key: string]: unknown};
     __mioonNativeCloseAdmission?: {suppressLifecycleFlush?: (event: Event) => boolean; [key: string]: unknown};
@@ -545,6 +562,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const updateGenerationOptions = useCallback((shotId: string | null, options: GenerationOptionState) => { if (shotId) { const next = { ...generationOptionsRef.current, [shotId]: options }; generationOptionsRef.current = next; setGenerationOptions(next); } }, []);
   const [loading, setLoading] = useState(false);
   const [projectOpening, setProjectOpening] = useState<ProjectOpening>({ phase: 'home', projectId: null, error: '' });
+  const formatUpgradeFlight = useRef<WebFormatUpgrade | null>(null);
   const openedProject = useRef<unknown>(null);
   const projectCreateFlight = useRef<Record<string, unknown> | null>(null);
   const [homePage, setHomePage] = useState<string>('projects');
@@ -681,6 +699,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   const canvasBox = useRef<Set<string> | null>(null);
   const canvasArea = useRef<HTMLElement | null>(null);
+  const canvasClipboard = useMemo(() => createCanvasClipboard({lifetimeMs: CANVAS_CLIPBOARD_LIMITS.lifetimeMs}), []);
+  const canvasClipboardPermission = useRef<PermissionState>('prompt');
+  const canvasClipboardDocument = useRef<{scope: string; id: string} | null>(null);
+  const canvasClipboardMenu = useRef<{current: () => boolean} | null>(null);
+  const canvasClipboardStillWritable = useRef<() => boolean>(() => false);
   const canvasDrag = useRef<{
     scope: string; base: CanvasEditBase; selectionRevision: number;
     targets: readonly Pick<CanvasLayoutMove, 'kind' | 'id'>[];
@@ -1229,6 +1252,13 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } catch (e) {
       if (!importSession.current.leaseRevoked && importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && editorSession.current === attempt.workspaceScope) {
         openedProject.current = null; viewReady.current = false;
+        if (!nativeWindow && (e as {code?: string} | null)?.code === 'PROJECT_FORMAT_UPGRADE_REQUIRED') {
+          const preview = readProjectFormatUpgrade(e, id), admission = captureProjectFeatureAdmission(id);
+          if (preview && admission) {
+            setProjectOpening({phase: 'home', projectId: id, error: '', upgrade: {preview, isCurrent: admission.isCurrent}});
+            return false;
+          }
+        }
         const canRecover = canOfferBackupRecovery(e);
         setBackupFailure(canRecover ? {projectId: id, name: projects.find(project => project.id === id)?.name ?? t('projects.project'), admission: captureProjectFeatureAdmission(id)} : null);
         setProjectOpening({ phase: 'error', projectId: id, error: canRecover ? t('projectFile.open.invalid.body') : readableError(e),
@@ -1240,6 +1270,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       return false;
     } finally {
       if (importSession.current.active && currentProject.current === id && projectEpoch.current === epoch && editorSession.current === attempt.workspaceScope) setLoading(false);
+    }
+  }
+  async function resolveWebFormatUpgrade(upgrade: WebFormatUpgrade, choice: ProjectFormatChoice) {
+    if (formatUpgradeFlight.current || !upgrade.isCurrent() || projectOpening.upgrade !== upgrade) return;
+    formatUpgradeFlight.current = upgrade;
+    const update = (patch: Partial<WebFormatUpgrade>) => setProjectOpening(previous => previous.upgrade?.preview === upgrade.preview
+      ? {...previous, upgrade: {...previous.upgrade, ...patch}} : previous);
+    update({busy: choice, notice: undefined});
+    try {
+      if (choice === 'read-only') {
+        const view = await openProjectReadOnly(upgrade.preview.projectId);
+        if (upgrade.isCurrent()) update({busy: undefined, view});
+      } else {
+        await upgradeProjectFormat(upgrade.preview);
+        if (upgrade.isCurrent()) {
+          setProjectOpening({phase: 'home', projectId: null, error: ''});
+          await selectProject(upgrade.preview.projectId, true, true, true);
+        }
+      }
+    } catch (error) {
+      if (upgrade.isCurrent()) update({busy: undefined, notice: formatUpgradeNotice(error)});
+    } finally {
+      if (formatUpgradeFlight.current === upgrade) formatUpgradeFlight.current = null;
     }
   }
   async function showProjectHome(fromHistory = false): Promise<boolean> {
@@ -3300,6 +3353,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onNotice: notice => notify(notice.kind === 'restored'
       ? msg('canvas.edit.restored', {count: notice.count})
       : msg(notice.kind === 'undone' ? 'canvas.edit.undone' : 'canvas.edit.redone')),
+    onCreated: targets => {
+      const active = new Set(dataRef.current!.canvasEditBase?.targets.filter(target => target.kind !== 'edge').map(target => target.id));
+      if (targets.every(target => active.has(target.id))) applyCanvasCardSelection(new Set(targets.map(target => target.id)), null);
+    },
     onArchived: targets => {
       const removed = new Set(targets.map(target => target.id));
       setCanvasGroup(group => group?.scope === canvasEditingScope ? {
@@ -3312,6 +3369,20 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     },
   });
   const canTidyCanvas = canvasEditingWritable && !canvasEditing.busy && !selectedEdgeId && nodes.length > 0;
+  const canvasClipboardBusy = canvasEditing.busy || Boolean(canvasEditing.review);
+  const canvasClipboardBlocked = canvasEditing.clipboardWriteUnknown ? t('canvas.edit.error.outcomeUnknown')
+    : canvasClipboardBusy ? t('canvas.edit.clipboard.busy')
+    : !canvasEditingWritable ? t('canvas.edit.clipboard.readonly') : null;
+  const canvasCardCount = canvasTargets.filter(target => target.kind !== 'edge').length;
+  const canvasCopyBlocked = canvasClipboardBlocked ?? (canvasCardCount > CANVAS_CLIPBOARD_LIMITS.cards ? t('canvas.edit.error.countLimit')
+    : canvasCardCount ? null : t(selectedEdgeId ? 'canvas.edit.clipboard.linksOnly' : 'canvas.edit.clipboard.selectCards'));
+  const canvasMenuClipboardAvailable = Boolean(window.__mioonCanvasClipboard ||
+    canvasClipboard.transport() === 'web' && webCanvasClipboard());
+  const canvasPasteBlocked = canvasClipboardBlocked ?? (!canvasClipboard.available() ? t(canvasClipboard.expired()
+    ? 'canvas.edit.clipboard.expired' : 'canvas.edit.clipboard.nothingToPaste')
+    : !canvasMenuClipboardAvailable ? t('canvas.edit.clipboard.pasteShortcut') : null);
+  canvasClipboardStillWritable.current = () => canvasEditingWritable && panelVisible('canvas') &&
+    !canvasClipboardModal() && !canvasComposing.current && document.visibilityState !== 'hidden' && !nativeMenuTextFocus(document.activeElement);
 
   function canvasErrorMessage(error: unknown): AppMessage {
     switch (canvasEditErrorCode(error)) {
@@ -3323,6 +3394,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       case 'CANVAS_UI_RESTORE_BLOCKED': return msg('canvas.edit.error.restoreBlocked');
       case 'CANVAS_UI_LAYOUT_NO_FIT': return msg('canvas.edit.error.layoutNoFit');
       case 'CANVAS_UI_LAYOUT_NOT_READY': return msg('canvas.edit.error.layoutNotReady');
+      case 'CANVAS_CLIPBOARD_UNAVAILABLE': return msg('canvas.edit.clipboard.changed');
+      case 'CANVAS_CLIPBOARD_NO_CARDS': return msg('canvas.edit.clipboard.linksOnly');
+      case 'CANVAS_PASTE_NO_SPACE': return msg('canvas.edit.error.pasteNoFit');
+      case 'CANVAS_EDIT_CAPACITY':
       case 'CANVAS_UI_COUNT_LIMIT': return msg('canvas.edit.error.countLimit');
       case 'CANVAS_REQUEST_OUTCOME_UNKNOWN': return msg('canvas.edit.error.outcomeUnknown');
       case 'CANVAS_EDIT_CONFLICT':
@@ -3466,7 +3541,131 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }, [canvasEditingScope, canvasEditingEnabled]);
 
-  async function openCanvasMenu(event: React.MouseEvent, id?: string): Promise<void> {
+  useLayoutEffect(() => {
+    canvasClipboard.clear();
+    canvasClipboardMenu.current = null;
+    canvasClipboardDocument.current = canvasOwner ? {scope: canvasEditingScope, id: crypto.randomUUID()} : null;
+    return () => {canvasClipboard.clear(); canvasClipboardMenu.current = null; canvasClipboardDocument.current = null;};
+  }, [canvasClipboard, canvasEditingScope]);
+
+  useEffect(() => {
+    if (!canvasEditingEnabled || nativeMenuBridge || !navigator.permissions || !webCanvasClipboard()) return;
+    let cleanup = () => {};
+    let active = true;
+    void navigator.permissions.query({name: 'clipboard-read' as PermissionName}).then(status => {
+      if (!active) return;
+      const read = () => {canvasClipboardPermission.current = status.state;};
+      read();
+      status.addEventListener('change', read);
+      cleanup = () => status.removeEventListener('change', read);
+    }, () => {});
+    return () => {active = false; cleanup();};
+  }, [canvasEditingEnabled, nativeMenuBridge]);
+
+  function canvasClipboardModal(): boolean {
+    return hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen);
+  }
+
+  function canvasClipboardGesture(event?: Event, fromMenu = false): boolean {
+    return canvasEditingEnabled && (!event || event.isTrusted && !canvasClipboardInText(event, document) &&
+      !(event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229 || event.repeat))) &&
+      !canvasComposing.current && !canvasClipboardModal() && viewRef.current!.activeMode === 'canvas' &&
+      Boolean(canvasOwner?.isCurrent()) && panelVisible('canvas') && canvasSelectionIsReady() && !dragging.current &&
+      (fromMenu || !canvasMenuOpen() && canvasOwnsShortcutFocus(canvasArea.current, document));
+  }
+
+  function canvasMenuOpen(): boolean {
+    return canvasContextMenu?.scope === canvasEditingScope || Array.from(document.querySelectorAll('[data-slot="dropdown-menu-content"]'))
+      .some(menu => !menu.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'));
+  }
+
+  function captureCanvasClipboardGesture() {
+    const documentOwner = canvasClipboardDocument.current, selection = canvasSelectionRevision.current, panel = panelIntent.current;
+    if (!documentOwner || documentOwner.scope !== canvasEditingScope || !canvasOwner?.isCurrent()) return null;
+    return {
+      documentId: documentOwner.id,
+      current: () => canvasClipboardDocument.current === documentOwner && canvasOwner.isCurrent() &&
+        viewRef.current!.activeMode === 'canvas' && selection === canvasSelectionRevision.current && panel === panelIntent.current &&
+        canvasSelectionPending.current === null && canvasBox.current === null && !dragging.current &&
+        canvasClipboardStillWritable.current(),
+    };
+  }
+
+  function canvasPasteViewport() {
+    const rect = canvasArea.current?.querySelector('.react-flow')?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    const a = flow.screenToFlowPosition({x: rect.left, y: rect.top}, {snapToGrid: false});
+    const b = flow.screenToFlowPosition({x: rect.right, y: rect.bottom}, {snapToGrid: false});
+    const limit = CANVAS_GRID.coordinateLimit;
+    const x = Math.max(-limit, a.x), y = Math.max(-limit, a.y);
+    const width = Math.min(limit, b.x) - x, height = Math.min(limit, b.y) - y;
+    return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? {x, y, width, height} : null;
+  }
+
+  async function copyCanvas(transport: CanvasClipboardWriter): Promise<void> {
+    const gesture = captureCanvasClipboardGesture();
+    if (canvasCopyBlocked || !gesture) return;
+    try {
+      const count = await canvasClipboard.copy(transport, () => canvasEditing.copySnapshot(gesture.documentId, canvasTargets), gesture.current);
+      if (count !== null) canvasEditing.copied(count);
+    } catch {
+      if (gesture.current()) notify(msg('canvas.edit.error.clipboard'), 'warning');
+    }
+  }
+
+  async function pasteCanvas(readHandle: CanvasClipboardReader): Promise<void> {
+    const gesture = captureCanvasClipboardGesture(), viewport = canvasPasteViewport();
+    if (canvasClipboardBlocked || !gesture) return;
+    if (!viewport) {notify(msg('canvas.edit.error.pasteNoFit'), 'warning'); return;}
+    await canvasEditing.paste(gesture.documentId, viewport, async () => {
+      try {
+        const snapshot = await canvasClipboard.paste(readHandle, gesture.current);
+        if (!snapshot && gesture.current()) notify(msg('canvas.edit.clipboard.changed'), 'warning');
+        return snapshot;
+      } catch {
+        if (gesture.current()) notify(msg('canvas.edit.error.clipboard'), 'warning');
+        return null;
+      }
+    }, () => gesture.current() && sameCanvasPasteViewport(viewport));
+  }
+
+  function sameCanvasPasteViewport(expected: NonNullable<ReturnType<typeof canvasPasteViewport>>): boolean {
+    const current = canvasPasteViewport();
+    return current !== null && current.x === expected.x && current.y === expected.y &&
+      current.width === expected.width && current.height === expected.height;
+  }
+
+  function duplicateCanvas(): Promise<boolean> {
+    const gesture = captureCanvasClipboardGesture(), viewport = canvasPasteViewport();
+    if (canvasCopyBlocked || !gesture) return Promise.resolve(false);
+    if (!viewport) {notify(msg('canvas.edit.error.pasteNoFit'), 'warning'); return Promise.resolve(false);}
+    return canvasEditing.duplicate(gesture.documentId, viewport, canvasTargets, () => gesture.current() && sameCanvasPasteViewport(viewport));
+  }
+
+  function runCanvasClipboardMenu(action: 'copy' | 'paste' | 'duplicate', event: Event): void {
+    if (!canvasClipboardGesture(event, true)) return;
+    if (action === 'duplicate') {void duplicateCanvas(); return;}
+    if (action === 'copy' ? canvasCopyBlocked : canvasPasteBlocked) return;
+    const desktop = window.__mioonCanvasClipboard;
+    if (desktop && action === 'paste') {
+      void pasteCanvas(desktop.readHandle);
+      return;
+    }
+    const transport = desktop || canvasClipboardPermission.current === 'denied' && action === 'copy' ? null : webCanvasClipboard();
+    if (transport) {if (action === 'copy') void copyCanvas(transport); else void pasteCanvas(transport.read);}
+    else if (action === 'copy') {
+      const gesture = captureCanvasClipboardGesture();
+      if (!gesture || canvasClipboardMenu.current) return;
+      const permit = {current: gesture.current};
+      canvasClipboardMenu.current = permit;
+      try {
+        if (!document.execCommand('copy') || canvasClipboardMenu.current === permit) notify(msg('canvas.edit.error.clipboard'), 'warning');
+      } catch {notify(msg('canvas.edit.error.clipboard'), 'warning');}
+      finally {if (canvasClipboardMenu.current === permit) canvasClipboardMenu.current = null;}
+    }
+  }
+
+  async function openCanvasMenu(event: Pick<MouseEvent, 'preventDefault' | 'clientX' | 'clientY'>, id?: string): Promise<void> {
     event.preventDefault();
     const {clientX: x, clientY: y} = event;
     if (id && !canvasSelectedIds.has(id) && !await selectCanvasCards(new Set([id]))) return;
@@ -3517,12 +3716,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(() => {
     if (!canvasEditingEnabled || !canvasOwner || !panelVisible('canvas')) return;
     const keyDown = (event: KeyboardEvent) => {
-      const menuOpen = canvasContextMenu?.scope === canvasEditingScope || Array.from(document.querySelectorAll('[data-slot="dropdown-menu-content"]'))
-        .some(menu => !menu.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'));
       const command = canvasShortcut(event, {blocked: !canvasOwner.isCurrent() || viewRef.current!.activeMode !== 'canvas' ||
-        !canvasOwnsShortcutFocus(canvasArea.current, document) || menuOpen || hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen),
+        !canvasOwnsShortcutFocus(canvasArea.current, document) || canvasMenuOpen() || canvasClipboardModal(),
         composing: canvasComposing.current, textFocus: canvasShortcutInText(event, document.activeElement)});
+      const clipboardCommand = !nativeMenuBridge && canvasClipboardShortcut(event);
+      if (clipboardCommand && canvasClipboardGesture(event) &&
+        (clipboardCommand === 'copy' ? canvasClipboardPermission.current === 'granted' : canvasClipboard.transport() === 'web')) {
+        const transport = webCanvasClipboard();
+        if (transport && (clipboardCommand === 'copy' ? !canvasCopyBlocked : !canvasClipboardBlocked && canvasClipboard.available())) {
+          event.preventDefault();
+          if (clipboardCommand === 'copy') void copyCanvas(transport); else void pasteCanvas(transport.read);
+          return;
+        }
+      }
       if (!command) return;
+      if (command === 'duplicate' && (nativeMenuBridge || !canvasClipboardGesture(event) || canvasCopyBlocked)) return;
       // A conflicted native command is disabled. Only its notice can fall back
       // to the renderer. Ordinary desktop undo and redo use the native menu.
       if (nativeMenuBridge && (command === 'undo' || command === 'redo')) {
@@ -3534,11 +3742,31 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       else if (command === 'clear') void selectCanvasCards(new Set());
       else if (command === 'archive') void archiveCanvasSelection();
       else if (command === 'tidy') void tidyCanvas();
+      else if (command === 'duplicate') void duplicateCanvas();
       else if (command === 'undo') void canvasEditing.undo();
       else void canvasEditing.redo();
     };
     window.addEventListener('keydown', keyDown);
     return () => window.removeEventListener('keydown', keyDown);
+  });
+  useEffect(() => {
+    if (!canvasEditingEnabled || !canvasOwner || !panelVisible('canvas')) return;
+    const onCopy = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || canvasCopyBlocked) return;
+      const permit = canvasClipboardMenu.current;
+      if (permit) canvasClipboardMenu.current = null;
+      if (permit ? !permit.current() || !canvasClipboardGesture(event, true) : !canvasClipboardGesture(event)) return;
+      const transport = eventCanvasClipboard(event);
+      if (transport) {event.preventDefault(); void copyCanvas(transport);}
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || canvasClipboardBlocked || !canvasClipboardGesture(event)) return;
+      const transport = eventCanvasClipboard(event);
+      if (transport && canvasClipboard.available()) {event.preventDefault(); void pasteCanvas(transport.read);}
+    };
+    window.addEventListener('copy', onCopy);
+    window.addEventListener('paste', onPaste);
+    return () => {window.removeEventListener('copy', onCopy); window.removeEventListener('paste', onPaste);};
   });
 
 
@@ -3596,6 +3824,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         canvasScene?.phase === 'idle' && !canvasScene.readOnly && !canvasScene.pending && canvasTask?.state === 'succeeded' && canvasTask.shots?.length &&
         canvasScene.undo[canvasToast.taskId]?.undo?.available !== false && !toastBlocked && online && auth === true),
       canRedoCanvas: mode === 'canvas' && canvasEditingEnabled && canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canRedo,
+      canDuplicateCanvas: !canvasCopyBlocked && canvasClipboardGesture() && !document.getSelection()?.toString(),
       canUndo: historyState.canUndo && locks.size === 0, canRedo: historyState.canRedo && locks.size === 0,
       canSplit: splitState.canSplit && Boolean(selected && !locks.has(selected.trackId)),
       canRemove: Boolean(menuRemoval.current?.available('remove')), canRippleRemove: Boolean(menuRemoval.current?.available('ripple')),
@@ -3605,6 +3834,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function nativeMenuScope(command: MenuCommandId = 'clip-split'): string {
     const state = viewRef.current!, timeline = dataRef.current!.timeline;
     const common = [currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, state.activeMode];
+    if (command === 'canvas-duplicate') return JSON.stringify([...common, canvasEditingScope, renderedCanvasSelection,
+      canvasTargets, canvasEditing.historyScope, canvasPasteViewport()]);
     if (state.activeMode === 'canvas' && (command === 'edit-undo' || command === 'edit-redo') && canvasEditingEnabled) {
       return JSON.stringify([...common, canvasEditing.historyScope]);
     }
@@ -3636,6 +3867,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (command === 'toggle-timeline') return toggleTimelinePanel();
     if (command === 'show-tasks') return openTasks();
     if (command === 'show-help') return setShowGuide(true);
+    if (command === 'canvas-duplicate') return duplicateCanvas();
     if ((command === 'edit-undo' || command === 'edit-redo') && viewRef.current!.activeMode === 'canvas' && canvasEditingEnabled) {
       return command === 'edit-undo' ? canvasEditing.undo() : canvasEditing.redo();
     }
@@ -3698,8 +3930,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   if ((auth === null || auth === 'error') && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !retainSettingsForIdentity) return <div className="boot-page"><LanguageControl /><div className="brand"><span className="brand-mark"><BrandMark /></span>Mioon</div>{auth === null ? <><span className="spinner" /><p>{t('shell.connecting')}</p></> : <><h2>{t('shell.connectFailed')}</h2><p>{toast?.message ? renderImportFeedback(locale, toast.message) : t('shell.checkServer')}</p><Button variant="ghost" className="button primary" onClick={() => { setAuth(null); boot(); }}><Icon name="refresh" />{t('shell.reconnect')}</Button></>}</div>;
   if (nativeWindow && !workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{historyLayer}<EditorWindowOpening recovery={backupRecovery} error={projectOpening.error} onRetry={() => { void selectProject((currentProject.current || nativeWindow.context.initialProjectId) as string, false, true); }} onProjects={() => { void nativeProjectEntry?.show('open'); }} /></>;
   const webSettingsCenter = nativeWindow ? null : <WebSettingsCenter key="global-settings-center" request={webSettingsRequest} registry={settingsNavigation.current} onOpenChange={setWebSettingsOpen} interactionBlocked={projectEntryIdentityRef.current!.getState().identityBlocked} connectionsAvailable={true} renderSettings={props => <SettingsConnectionForms {...props} projectId={workbenchReady ? currentProject.current : null} />} />;
+  const upgrade = projectOpening.upgrade;
+  const closeWebUpgrade = () => {
+    if (!formatUpgradeFlight.current) setProjectOpening({phase: 'home', projectId: null, error: ''});
+  };
+  const formatUpgradeLayer = upgrade?.isCurrent() ? (upgrade.view
+    ? <ProjectFormatReadOnlyDialog view={upgrade.view} onClose={closeWebUpgrade} />
+    : <ProjectFormatUpgradeDialog busy={upgrade.busy ?? null} notice={upgrade.notice} onClose={closeWebUpgrade}
+      onChoose={choice => {void resolveWebFormatUpgrade(upgrade, choice);}} />) : null;
   const videoDirectoryNotice = videoDirectoryUnavailable ? <p className="notice warning" role="status" data-testid="video-directory-unavailable">{t('video.providers.directoryUnavailableHint')}</p> : null;
-  if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{webSettingsCenter}{historyLayer}<ProjectHome summaryEnabled={true} active={!webSettingsOpen} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={input => readProjectEntryIdentity(projectEntryIdentityRef.current!, input)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={backupRecovery || videoDirectoryNotice ? <>{backupRecovery}{videoDirectoryNotice}</> : null} settings={null} /></>;
+  if (!workbenchReady && !retainWorkbenchForClip && !retainWorkbenchForIdentity && !nativeLeaseRevoked.current) return <>{webSettingsCenter}{historyLayer}{formatUpgradeLayer}<ProjectHome summaryEnabled={true} active={!webSettingsOpen && !formatUpgradeLayer} openingProjectId={projectOpening.projectId} onUnauthorized={() => setAuth(false)} summaryScope={(preferenceScope.current || editorSession.current) as string} projects={projects as never[]} phase={projectOpening.phase === 'error' ? 'error' : loading || projectOpening.phase === 'opening' ? 'opening' : 'home'} openingName={projects.find(item => item.id === projectOpening.projectId)?.name || t('projects.project')} error={projectOpening.error} notice={toast?.message} busy={Boolean(busy['project-create'] || busy['project-create-flow'])} listBusy={projectListStatus.busy} listError={projectListStatus.error} page={homePage as never} onPage={changeHomePage} onOpen={id => selectProject(id)} onRetry={() => projectOpening.projectId ? selectProject(projectOpening.projectId, false, true) : Promise.resolve(false)} onRefresh={refreshHomeProjects} onCreate={createProject} readDirectory={input => readProjectEntryIdentity(projectEntryIdentityRef.current!, input)} help={<ProjectEntryIdentityStatus owner={projectEntryIdentityRef.current!} />} status={backupRecovery || videoDirectoryNotice ? <>{backupRecovery}{videoDirectoryNotice}</> : null} settings={null} /></>;
   return <ProjectMediaProvider media={projectMedia}>{webSettingsCenter}{retainWorkbenchForIdentity && <div className="notice warning" role="alert" data-testid="project-entry-identity-blocked">{t('projects.locatorKeepWindow')}</div>}<main inert={retainWorkbenchForIdentity || undefined} className={`workbench workbench-v2 dock-workbench shell-redesign ${geometry.narrow ? 'dock-narrow' : ''} ${geometry.compact ? 'dock-compact' : ''} mode-${workspaceMode} mobile-${mobilePanel} ${assetsCollapsed ? 'assets-collapsed' : ''} ${inspectorCollapsed ? 'inspector-collapsed' : ''} ${timelineCollapsed ? 'timeline-collapsed' : ''}`} data-testid="workbench" onClickCapture={guardRetainedInputInteraction} onKeyDownCapture={guardRetainedInputInteraction} onSubmitCapture={guardRetainedInputInteraction} data-workspace-mode={workspaceMode} data-narrow={geometry.narrow ? 'true' : 'false'} data-compact={geometry.compact ? 'true' : 'false'} style={geometry.style as never}>
     {retainWorkbenchForClip && clipConnectionBlocked.current && <div className="notice warning" role="status" data-testid="retained-clip-connection"><p>{t('volume.envelope.connectionRetained')}</p></div>}
     {nativeLeaseRevoked.current&&<div className="notice warning" role="status" data-testid="native-project-lease-revoked"><p>{t('shell.projectLeaseRevoked')}</p></div>}
@@ -3763,6 +4003,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       selectionOnDrag={canvasEditingEnabled} selectionMode={canvasEditingEnabled ? SelectionMode.Partial : undefined}
       panOnDrag={canvasEditingEnabled ? [1, 2] : true} selectNodesOnDrag={canvasEditingEnabled ? false : undefined} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={(_, node, moved) => startCanvasDrag(node, moved)} onNodeDragStop={(event, node, moved) => { void stopCanvasDrag(event, node, moved); }}
       onConnect={connect} onEdgeClick={(_, edge) => { if (canvasEditingEnabled) void selectCanvasCards(new Set(), edge.id); else setSelectedEdgeId(edge.id); }}
+      onPaneContextMenu={canvasEditingEnabled ? event => { void openCanvasMenu(event); } : undefined}
       onPaneClick={() => { if (canvasEditingEnabled) void selectCanvasCards(new Set()); else { setSelectedEdgeId(null); setStoryboardBatch(null); } }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current!.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current!.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: flowFitPadding(canvasFitPadding(.16)), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={CANVAS_INITIAL_FIT} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen || canvasEditingEnabled ? null : ['Backspace', 'Delete']} disableKeyboardA11y={canvasEditingEnabled} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />
       {canvasEditingEnabled && !boxSelection && canvasSelectedIds.size > 1 && <CanvasSelectionFrame ids={canvasSelectedIds} />}
       {storyboardSummary && storyboardTask && <StoryboardBatchFrame shotIds={storyboardSummary.shotIds} title={data.assets.find(asset => asset.id === storyboardTask.sourceAssetId)?.name ?? t('scene.task.unavailable')} detail={`· ${t('scene.batch.frame', { count: storyboardSummary.shotIds.length })} · ${sceneTime(storyboardSummary.seconds * 30)}`} time={renderMessage(sceneAgo(storyboardTask.updatedAt, Date.now()))} />}{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? 'var(--wb-video-edge)' : 'var(--wb-muted)'} maskColor="var(--wb-overlay)" pannable zoomable />}</ReactFlow>
@@ -3777,6 +4018,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     {canvasEditingEnabled && canvasSelectedItems.length > 1 && !canvasEditing.toast && <CanvasSelectionSummary items={canvasSelectedItems} placement={workspaceMode} scope={canvasEditingScope} />}
     {canvasEditingEnabled && canvasContextMenu?.scope === canvasEditingScope && <CanvasSelectionMenu anchor={canvasContextMenu}
       canArchive={canvasEditingWritable && !canvasEditing.busy && canvasTargets.length > 0} canTidy={canTidyCanvas}
+      copy={event => runCanvasClipboardMenu('copy', event)} paste={event => runCanvasClipboardMenu('paste', event)}
+      duplicate={event => runCanvasClipboardMenu('duplicate', event)}
+      copyDisabledReason={canvasCopyBlocked} pasteDisabledReason={canvasPasteBlocked} duplicateDisabledReason={canvasCopyBlocked}
       onArchive={() => { void archiveCanvasSelection(); }} onTidy={() => { void tidyCanvas(); }} onClose={() => setCanvasContextMenu(null)} />}
     {canvasEditingEnabled && <CanvasDeleteDialog review={canvasEditing.review} busy={canvasEditing.busy}
       onCancel={canvasEditing.cancelArchive} onConfirm={() => { void canvasEditing.confirmArchive(); }} />}

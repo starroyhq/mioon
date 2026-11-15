@@ -7,11 +7,13 @@ import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
 import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
-import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION} from '../../../../packages/contracts/src/project-file.ts';
+import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_HISTORY_FILE} from '../../../../packages/contracts/src/project-file.ts';
 import {PROJECT_NAME_MAX_LENGTH, projectNameProblem} from '../../../../packages/contracts/src/project-name.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, FORMAT4_PROJECT_SCHEMA_VERSION, openProjectStore, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
-import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, inspectProjectFormatHeader, openProjectStore, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile, registerProjectTransactionFence, sameContentStamp} from '../../../../packages/business/src/project-file/index.ts';
+import type {Format4Options, Format4UpgradePreview, OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
+import {previewClosedProjectFormatUpgrade} from '../../../../packages/business/src/project-file/closed-copy.ts';
+import type {ProjectFormatUpgradePreview} from '../../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
 import {
@@ -78,6 +80,9 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly clock?: ManagerClock;
   /** The kernel's openProjectStore; tests wrap it. */
   readonly openStore?: (options: OpenProjectConnectionOptions) => ProjectStore;
+  /** Trusted host capability. Each in-place upgrade still requires a matching preview. */
+  readonly format4?: Format4Options;
+  readonly assertProjectFile?: (file: string) => void;
   /** Exceptions from it are ignored. */
   readonly onEvent?: (event: ProjectHostEvent) => void;
   /** Captures the exact application owner and lifecycle signal. */
@@ -101,6 +106,7 @@ export interface CreateProjectPorts {
   readonly directories: AppDirectories;
   readonly registry: ProjectRegistryPort;
   readonly identity: ProjectFileIdentityPort;
+  readonly format4?: Format4Options;
 }
 
 export interface RestoreResult<Runtime extends ProjectHostRuntime> {
@@ -114,7 +120,12 @@ export interface ListedProject {
   readonly availability: ProjectAvailability;
 }
 
-type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'};
+interface OpenAdmission {
+  readonly deferRecent?: true;
+  readonly formatUpgrade?: ProjectFormatUpgradePreview;
+  readonly fileIdentity?: ProjectFileIdentity;
+}
+type RecoveryResult = ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | {readonly state: 'upgrade-required'};
 export type CatalogRecovery = {readonly result: RecoveryResult} | {readonly error: unknown} | {readonly pending: true};
 type InspectCatalog = (projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean) => Promise<ReadonlyMap<string, CatalogRecovery>>;
 
@@ -132,14 +143,14 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
   /** Opens a file by path: the host of the same file (by file identity) if it
    * is open; otherwise the file is opened and registered, or its registration
    * moved to this path. Kernel errors pass through unchanged. */
-  openPath(projectFile: string, kind: ProjectLeaseKind, options?: {readonly deferRecent?: true}): Promise<ProjectLease<Runtime>>;
+  openPath(projectFile: string, kind: ProjectLeaseKind, options?: OpenAdmission): Promise<ProjectLease<Runtime>>;
   /** Resolves the registered file by identity using metadata only, before a
    * trusted desktop caller admits its current location. Opens no database. */
   prepareAcquire(projectId: string): Promise<RecentProject>;
   /** A lease on the project's host, opening a registered project that is not
    * open. PROJECT_NOT_FOUND when not registered, PROJECT_UNAVAILABLE when it
    * cannot be opened. */
-  acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile?: string; readonly deferRecent?: true}): Promise<ProjectLease<Runtime>>;
+  acquire(projectId: string, kind: ProjectLeaseKind, admission?: OpenAdmission & {readonly projectFile?: string}): Promise<ProjectLease<Runtime>>;
   markWindowOpened(lease: ProjectLease<Runtime>): string | null;
   /** Synchronously borrows only an already-open, unpaused host. Never waits
    * for an exclusive operation or opens a project for an application read. */
@@ -198,20 +209,17 @@ function nameFromFile(projectFile: string): string {
   return registryName(name === '' ? PROJECT_FOLDER_FALLBACK_NAME : name);
 }
 
-const projectCreationOptions: Pick<CreateProjectFileOptions, 'format4'> = Object.freeze({});
-export const newProjectFormatVersion = projectCreationOptions.format4 ? FORMAT4_PROJECT_SCHEMA_VERSION : PROJECT_FILE_SCHEMA_VERSION;
-
 /** Creates the folder (unless a `.mioon` is chosen) and the project file, and
  * registers it with lastOpenedAt null; does not open it. Reused by the test
  * helper createServerProject. Without projectFile the folder is claimed by
  * claimProjectFolder; a chosen `.mioon` that exists is PROJECT_FILE_EXISTS.
  * Whatever this call created is removed again when a later step fails. */
-export function createProjectFiles(input: CreateProjectInput, {directories, registry, identity}: CreateProjectPorts): RecentProject {
+export function createProjectFiles(input: CreateProjectInput, {directories, registry, identity, format4}: CreateProjectPorts): RecentProject {
   const {name, projectId} = input;
   if (typeof name !== 'string' || projectNameProblem(name) !== null) throw invalid('项目名称无效');
   if (projectId !== undefined && registry.get(projectId)) throw invalid('项目 ID 已登记');
   registry.assertCanRegister?.();
-  const create = (file: string): string => createProjectFile(file, {...projectCreationOptions, projectId});
+  const create = (file: string): string => createProjectFile(file, {format4, projectId});
   let projectFile: string;
   let folder: string | null = null;
   let id: string;
@@ -304,11 +312,11 @@ class RetryOpen extends Error {
 }
 
 export function createProjectHostManager<Runtime extends ProjectHostRuntime = ProjectHostRuntime>(options: ProjectHostManagerOptions<Runtime>): ProjectHostManager<Runtime> {
-  const {directories, registry, factory, onEvent} = options;
+  const {directories, registry, factory, format4, onEvent, assertProjectFile} = options;
   const identity = options.identity ?? statProjectFileIdentity;
   const taskIndex = options.taskIndex ?? createMemoryBackgroundTaskIndex();
   const hooks = options.hooks ?? [];
-  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile};
+  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile: file => recoverProjectFile(file, format4)};
   const idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_REQUEST_DRAIN_MS;
   const busyRecheckMs = options.busyRecheckMs ?? DEFAULT_BUSY_RECHECK_MS;
@@ -353,10 +361,39 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (!options.assertMutationAllowed) throw new TypeError('History resolution requires application write admission');
     options.assertMutationAllowed();
   };
-  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
-  const openRegistered = (registration: RecentProject): ProjectStore => {
+  const upgradeMatches = (preview: Format4UpgradePreview, expected: ProjectFormatUpgradePreview): boolean =>
+    preview.projectId === expected.projectId && preview.projectVersion === expected.projectVersion &&
+      preview.historyVersion === expected.historyVersion && sameContentStamp(preview, expected) &&
+      expected.targetProjectVersion === FORMAT4_PROJECT_SCHEMA_VERSION && expected.targetHistoryVersion === FORMAT4_HISTORY_SCHEMA_VERSION;
+  const formatAdmission = (expected?: ProjectFormatUpgradePreview): Format4Options | undefined => {
+    if (!format4 || !expected) return format4;
+    return {...format4, approveUpgrade: preview => {
+      if (!upgradeMatches(preview, expected)) return false;
+      writeAllowed();
+      return true;
+    }};
+  };
+  const preflightLegacy = (file: string, projectId: string, location: ProjectLocation, expected?: ProjectFormatUpgradePreview): void => {
+    if (!format4 || inspectProjectFormatHeader(file, format4) !== PROJECT_FILE_SCHEMA_VERSION) return;
+    const preview = previewClosedProjectFormatUpgrade(file, projectId, path.join(location.localDir, PROJECT_HISTORY_FILE));
+    if (!expected || !upgradeMatches(preview, expected)) {
+      throw new AppError('PROJECT_FORMAT_UPGRADE_REQUIRED', '请确认升级项目格式。升级前将保留旧格式备份。', 409, preview);
+    }
+    writeAllowed();
+  };
+  const switchOptions = (projectFile: string, projectId: string) => ({projectFile, location: locate(projectId), format4, assertMutationAllowed: writeAllowed, onBoundary: options.historySwitchBoundary});
+  const checkAdmittedFile = (file: string, projectId: string, admitted?: ProjectFileIdentity): void => {
+    if (admitted && !sameProjectFileIdentity(identityOrNull(file), admitted)) throw projectFileMoved(projectId);
+  };
+  const openRegistered = (registration: RecentProject, admission?: OpenAdmission): ProjectStore => {
+    assertProjectFile?.(registration.projectFile);
+    checkAdmittedFile(registration.projectFile, registration.projectId, admission?.fileIdentity);
+    preflightLegacy(registration.projectFile, registration.projectId, locate(registration.projectId), admission?.formatUpgrade);
     recoverHistorySwitch(switchOptions(registration.projectFile, registration.projectId));
-    return openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(registration.projectId)});
+    return openStore({projectFile: registration.projectFile, locate, format4: formatAdmission(admission?.formatUpgrade), checkCopy: file => {
+      checkAdmittedFile(file.projectFile, file.projectId, admission?.fileIdentity);
+      registeredCopyCheck(registration.projectId)(file);
+    }});
   };
 
   // -------------------------------------------------------------------------
@@ -839,7 +876,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
   }
 
-  async function acquire(projectId: string, kind: ProjectLeaseKind, admission?: {readonly projectFile?: string; readonly deferRecent?: true}): Promise<ProjectLease<Runtime>> {
+  async function acquire(projectId: string, kind: ProjectLeaseKind, admission?: OpenAdmission & {readonly projectFile?: string}): Promise<ProjectLease<Runtime>> {
     checkProjectId(projectId);
     checkLeaseKind(kind);
     const pinned = admission?.projectFile;
@@ -858,6 +895,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       const entry = entries.get(projectId);
       if (entry) {
         if (pinned !== undefined && entry.store.projectFile !== pinned) throw projectFileMoved(projectId);
+        checkAdmittedFile(entry.store.projectFile, projectId, admission?.fileIdentity);
         if (entry.closeFailure !== undefined) throw entry.closeFailure;
         if (entry.state === 'open') return grant(entry, kind);
         await (entry.state === 'opening' ? entry.ready : entry.closed);
@@ -866,7 +904,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       const registration = registry.get(projectId);
       if (!registration) throw projectNotFound(projectId);
       try {
-        adopt(openRegistered(registration), registration, kind === 'window' && admission?.deferRecent === true);
+        adopt(openRegistered(registration, admission), registration, kind === 'window' && admission?.deferRecent === true);
         continue;
       } catch (error) {
         // Not at its path, or moved while the kernel opened it (S0a: PROJECT_INVALID caused by 1032).
@@ -904,26 +942,34 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return null;
   }
 
-  async function openPath(projectFile: string, kind: ProjectLeaseKind, options?: {readonly deferRecent?: true}): Promise<ProjectLease<Runtime>> {
+  async function openPath(projectFile: string, kind: ProjectLeaseKind, options?: OpenAdmission): Promise<ProjectLease<Runtime>> {
     if (typeof projectFile !== 'string' || !path.isAbsolute(projectFile)) throw new TypeError('Project file must be an absolute path');
     checkLeaseKind(kind);
     const file = path.resolve(projectFile);
     for (;;) {
       assertRunning();
       const fileIdentity = identityOrNull(file);
+      if (options?.formatUpgrade) checkAdmittedFile(file, options.formatUpgrade.projectId, options.fileIdentity);
       const held = fileIdentity ? [...entries.values()].find(entry => sameProjectFileIdentity(entry.identity, fileIdentity)) : undefined;
       if (held) return acquire(held.projectId, kind, options);
       const registered = fileIdentity ? registry.list().find(entry => sameProjectFileIdentity(entry.fileIdentity, fileIdentity)) : undefined;
-      if (registered) recoverHistorySwitch(switchOptions(file, registered.projectId));
+      if (registered) {
+        assertProjectFile?.(file);
+        preflightLegacy(file, registered.projectId, locate(registered.projectId), options?.formatUpgrade);
+        recoverHistorySwitch(switchOptions(file, registered.projectId));
+      }
       let store: ProjectStore;
       try {
         store = openStore({
-          projectFile: file, locate: projectId => {
+          projectFile: file, format4: formatAdmission(options?.formatUpgrade), locate: projectId => {
             const location = locate(projectId);
+            if (!registered) preflightLegacy(file, projectId, location, options?.formatUpgrade);
             recoverHistorySwitch({...switchOptions(file, projectId), location});
             return location;
           },
           checkCopy: candidate => {
+            if (options?.formatUpgrade && candidate.projectId !== options.formatUpgrade.projectId) throw projectFileMoved(options.formatUpgrade.projectId);
+            checkAdmittedFile(candidate.projectFile, candidate.projectId, options?.fileIdentity);
             const wait = transition(candidate.projectId);
             if (wait) throw new RetryOpen(wait);
             registry.checkCopy?.(candidate);
@@ -949,7 +995,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   async function create(input: CreateProjectInput): Promise<RecentProject> {
     assertRunning();
-    return createProjectFiles(input, {directories, registry, identity});
+    return createProjectFiles(input, {directories, registry, identity, format4});
   }
 
   async function close(projectId: string): Promise<void> {
@@ -1132,7 +1178,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const receipt = completedHistoryResolution(config, input);
         if (receipt) { archiveTaskIndex(input, receipt); return receipt; }
       }
-      const store = openStore({projectFile: registration.projectFile, locate, checkCopy: registeredCopyCheck(input.projectId)});
+      const store = openStore({projectFile: registration.projectFile, locate, format4, checkCopy: registeredCopyCheck(input.projectId)});
       try {
         const controller = new AbortController();
         const session = createProjectHistorySession({projectId: input.projectId, store, directories, signal: controller.signal, relocate: () => {}}, writeAllowed);

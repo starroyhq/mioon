@@ -19,7 +19,7 @@ import {createProjectServiceApplication} from '../packages/business/src/project-
 import {openProjectStore, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createProjectVersions} from '../packages/business/src/project-versions/service.ts';
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse, ProjectCopyToInput} from '../packages/contracts/src/project-copies.ts';
@@ -122,9 +122,9 @@ for (const state of ['current', 'diverged'] as const) test(`copy-to reads all ${
   assert.equal(result.status, 200, JSON.stringify(result.body)); const copy = projectCopyResponseSchema.parse(result.body.data);
   assert.equal(copy.versions, f.versions.length); assert.deepEqual(f.sourceFiles(), before);
   assert.deepEqual((await f.registrations()).find(value => value.projectId === f.source.projectId), registrations[0]);
-  const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(f.directories, id)});
+  const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(f.directories, id), format4: {}});
   try {
-    assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
+    assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT4_HISTORY_SCHEMA_VERSION);
     assert.deepEqual(createProjectVersions(store).list({projectId: copy.project.projectId}).versions.map(value => value.id).sort(), [...f.versions].sort());
     assert.equal(createProjectVersions(store).list({projectId: copy.project.projectId}).versions.some(value => value.id === f.manualId), true);
     for (const table of HISTORY_TABLES.filter(name => !['project_versions', 'project_version_blobs', 'mio_storage_counters'].includes(name)))

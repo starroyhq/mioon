@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld('__mioonMenuCommands', createMenuCommandBridge({
   removeListener: (channel, listener) => { ipcRenderer.removeListener(channel, listener); },
 }));
 
+import {CANVAS_CLIPBOARD_CHANNEL, installCanvasClipboardBridge} from './canvas-clipboard.ts';
+if (process.isMainFrame) contextBridge.exposeInMainWorld('__mioonCanvasClipboard', installCanvasClipboardBridge(
+  window, () => ipcRenderer.invoke(CANVAS_CLIPBOARD_CHANNEL),
+));
+
 import { createNativeAudioPreviewBridge } from './native-audio-preview-preload.ts';
 contextBridge.exposeInMainWorld('__mioonNativeAudioPreview', createNativeAudioPreviewBridge({
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),

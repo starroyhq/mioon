@@ -19,10 +19,12 @@ import {mediaExecutable} from '@mioon/business/media-environment';
 import {inspectMediaTools} from '@mioon/business/media-tool-diagnostics';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import {acquireWorkspaceLock} from '@mioon/business/workspace-lock';
-import {openProjectStore, recoverProjectFile} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, openProjectStore, recoverProjectFile} from '@mioon/business/project-file/index';
+import type {Format4Options} from '@mioon/business/project-file/index';
 import {createProviderCatalog} from '@mioon/business/provider-registry';
 import {listImageProfiles} from '@mioon/business/images';
 import {AppError} from '@mioon/contracts';
+import {projectFormatUpgradeInputSchema} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import {readPrivateFile, writePrivateFileAtomic, validateManagedFile, validatePrivateDirectory} from '@mioon/contracts/private-storage';
 import {calculateWorkspaceScope} from '../../../packages/contracts/src/workspace-scope.ts';
 import type {ProjectEntryControlPort} from '../../../packages/contracts/src/project-entry-native.ts';
@@ -132,6 +134,8 @@ export interface ServerOptions {
   /** In-process shutdown fixture only; the default still performs the real
    * SQLite backup/copy. No request or environment can select this port. */
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
+  /** Keeps explicitly frozen format-3 test fixtures on their original host. */
+  projectFormatForTest?: typeof PROJECT_FILE_SCHEMA_VERSION;
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
   /** Main-owned OS trash and window admission, never supplied by HTTP/env. */
@@ -213,9 +217,12 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const backgroundTasks = background;
     const backgroundHttp = createBackgroundTaskHttp(backgroundTasks);
     const assertProjectFile = createApplicationFileGuard(directories);
-    const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest});
+    const targetFormat = options.projectFormatForTest ?? FORMAT4_PROJECT_SCHEMA_VERSION;
+    const format4: Format4Options | undefined = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+    const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest, targetFormat});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
+      format4, assertProjectFile,
       assertMutationAllowed: createProjectServiceApplication(appLibrary, shutdown.signal).assertMutationAllowed,
       hooks: [backups.hooks, backgroundTasks.hooks, {afterOpen: context => {
         try { opened.get(context.projectId)!.captureDailyVersion(); }
@@ -228,7 +235,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         }
       }}],
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
-      maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file); }},
+      maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file, format4 ? {deferLegacyRecovery: true} : undefined); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
       factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort); opened.set(context.projectId, runtime); return runtime; },
       onEvent: event => { try {backgroundTasks.onHostEvent(event);} finally {
@@ -256,7 +263,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const createProject = createInitializedProject({manager, registry: appLibrary.registry, directories,
-      identity: appLibrary.projectFileIdentity, assertProjectFile});
+      identity: appLibrary.projectFileIdentity, assertProjectFile, format4});
     const refreshSummaries = (): void => {
       for (const [id, runtime] of opened) {
         // A closing runtime can remain indexed while findMoved awaits I/O,
@@ -268,13 +275,13 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     };
     const projectTemplates = options.projectTemplates ?? loadInstalledProjectTemplates(options.projectTemplatesDir ?? path.join(dist, 'project-examples'));
     const copies = createProjectCopies({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      projectTemplates,
+      projectTemplates, targetFormat,
       ...(options.projectCopyActionBoundaryForTest === undefined ? {} : {onActionBoundary: options.projectCopyActionBoundaryForTest}),
       ...(options.projectCopyBoundaryForTest === undefined ? {} : {onBoundary: options.projectCopyBoundaryForTest})});
     drainCopies = copies.drain;
     await copies.recover();
     const trash = createProjectTrash({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      inspectProjectWork: backgroundTasks.inspectProjectWork,
+      inspectProjectWork: backgroundTasks.inspectProjectWork, format4,
       ...(options.projectTrash === undefined ? {} : {port: options.projectTrash}),
       ...(options.projectTrashBoundaryForTest === undefined ? {} : {onBoundary: options.projectTrashBoundaryForTest})});
     drainTrash = trash.drain;
@@ -301,7 +308,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       discard:async(input,options)=>{if (!opened.has(input.projectId) || nativeManager.status(input.projectId)?.state !== 'open') return;
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
-    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, catalogClient,
+    const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, targetFormat, catalogClient,
       catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       markRecentOpened: (projectId, lastOpenedAt) => app.ui.markOpened(projectId, lastOpenedAt),
       templates:projectTemplates.flatMap(entry=>entry.manifest.templateId==='timeline-basics'&&entry.manifest.version===1?[{id:'timeline-basics' as const,version:1 as const}]:[]),
@@ -316,7 +323,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, signal: shutdown.signal, providerList: () => createProviderCatalog({root, mockAllowed: channel !== 'production'}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4, signal: shutdown.signal, providerList: () => createProviderCatalog({root, mockAllowed: channel !== 'production'}).list(),
       imageProfiles: input => listImageProfiles({...app.profileDependencies, mockAllowed: channel !== 'production'}, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);
@@ -356,6 +363,21 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         const route = parseProjectApiPath(url.pathname);
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
+          if (route.kind === 'other' && route.segments[0] === 'format-upgrade') {
+            if (url.search) throw new AppError('VALIDATION_ERROR', '项目格式请求参数无效', 400);
+            const readOnly = route.segments.length === 2 && route.segments[1] === 'read-only';
+            if (!readOnly && route.segments.length !== 1) return notFound(res);
+            const method = readOnly ? 'GET' : 'POST';
+            if (req.method !== method) {
+              res.setHeader('Allow', method);
+              throw new AppError('METHOD_NOT_ALLOWED', '项目格式请求方法无效', 405);
+            }
+            if (readOnly) return json(res, 200, {ok: true, data: projectEntries.readRegisteredFormat(route.projectId)});
+            const parsed = projectFormatUpgradeInputSchema.safeParse(await body(req, 4096));
+            checkpoint(shutdown.signal);
+            if (!parsed.success) throw new AppError('VALIDATION_ERROR', '项目格式确认参数无效', 400);
+            return json(res, 200, {ok: true, data: await projectEntries.upgradeRegisteredFormat(route.projectId, parsed.data.preview)});
+          }
           if (await handleProjectHistoryHttp(projects, req, res, url, route)) return;
           let rpcBody: unknown;
           if (route.kind === 'rpc' && req.method === 'POST') {

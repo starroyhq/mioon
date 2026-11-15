@@ -23,7 +23,7 @@ import type {MediaReference} from '../packages/contracts/src/media-reference.ts'
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {captureClosedProjectSnapshot} from '../packages/business/src/project-file/closed-copy.ts';
 import {openProjectBackup} from '../packages/business/src/project-file/backup.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {CONTENT_TABLES, HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
 import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
@@ -105,7 +105,7 @@ async function fixture(t: TestContext, channel: 'desktop' | 'web' = 'desktop') {
   const withTarget = <T>(copy: ProjectCopyResponse, read: (store: ReturnType<typeof openProjectStore>) => T): T => {
     assert.equal(isProjectFileHeld(copy.project.fileIdentity), false);
     const directories = serverAppDirectories(dataDir, {projectsDir});
-    const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id)});
+    const store = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id), format4: {}});
     try {return read(store);} finally {store.close();}
   };
   return {root, installed, targets, entry, original, content, input, rpc, instantiate, withTarget, dataDir, projectsDir,
@@ -192,8 +192,8 @@ test('the default web build resources create two new identities with intact time
   const mediaIdentities: string[][] = [];
   for (const copy of [first, second]) {
     const ids = f.withTarget(copy, store => {
-      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
-      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()!.version, PROJECT_FILE_SCHEMA_VERSION);
+      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+      assert.equal(store.db.prepare('SELECT version FROM project.schema_version').get()!.version, FORMAT4_PROJECT_SCHEMA_VERSION);
       for (const table of HISTORY_TABLES.filter(name => name !== 'mio_storage_counters')) assert.equal(store.db.prepare(`SELECT count(*) n FROM main."${table}"`).get()!.n, 0, table);
       assert.deepEqual({...store.db.prepare('SELECT * FROM main.mio_storage_counters').get()}, {singleton: 1, bytes: 0, rows: 1});
       const assets = store.db.prepare('SELECT data FROM project.assets ORDER BY id').all().map(row => JSON.parse(String(row.data)) as Asset);

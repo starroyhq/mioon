@@ -27,6 +27,7 @@ import {testProjectAppLibrary} from '../packages/business/src/project-service-ap
 import {createMioProjectJournal} from '../packages/business/src/agent/mio-journal-factory.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 
 const at = '2026-11-04T00:00:00.000Z';
@@ -36,7 +37,8 @@ function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(tmpdir(), 'version-project-copy-'));
   const stores = new Set<ReturnType<typeof createServerProject>['store']>();
   const cleanup: (() => void | Promise<void>)[] = [];
-  const source = createServerProject(path.join(root, 'source'), {name: 'Source'}), target = createServerProject(path.join(root, 'target'), {name: 'Target'});
+  const source = createServerProject(path.join(root, 'source'), {name: 'Source', projectFormat: PROJECT_FILE_SCHEMA_VERSION});
+  const target = createServerProject(path.join(root, 'target'), {name: 'Target'});
   stores.add(source.store); stores.add(target.store);
   const api = createProjectVersions(target.store, {assertMutationAllowed() {}});
   t.after(async () => {for (const dispose of cleanup.reverse()) await dispose(); for (const store of stores) store.close(); rmSync(root, {recursive: true, force: true});});
@@ -113,7 +115,7 @@ test('cross-project conversion preserves every version identity, canonical typed
   assert.deepEqual(snapshot.db.prepare('SELECT * FROM main.project_versions ORDER BY id').all(), sourceRows);
   assert.deepEqual(snapshot.db.prepare('SELECT * FROM main.project_version_blobs ORDER BY hash').all(), sourceBlobs);
   const converted = readBlob(f.target.store.db, versions[0].id);
-  assert.equal(converted.projectFormatVersion, 3); assert.equal(converted.projectId, f.target.projectId);
+  assert.equal(converted.projectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION); assert.equal(converted.projectId, f.target.projectId);
   assert.equal(converted.tables.projects[0].id, f.target.projectId);
   assert.ok(converted.evidence.targetRevisions.every(row => row.projectId === f.target.projectId && !processKinds.includes(String(row.kind))));
   const expectedRevisions: readonly SnapshotRow[] = document.evidence.targetRevisions.filter(row => !processKinds.includes(String(row.kind)))
@@ -170,7 +172,7 @@ for (const version of [6, 7] as const) test(`frozen history ${version} carries a
   const before = source.prepare('SELECT * FROM project_versions').all(), blobs = source.prepare('SELECT * FROM project_version_blobs').all();
   assert.equal(f.copy(source).versions, 1);
   assert.deepEqual(f.api.list({projectId: f.target.projectId}).versions, [{...saved, projectId: f.target.projectId}]);
-  assert.equal(readBlob(f.target.store.db, saved.id).projectFormatVersion, 3);
+  assert.equal(readBlob(f.target.store.db, saved.id).projectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
   assert.equal(f.target.store.db.prepare('SELECT mioChangeRowid FROM project_versions WHERE id=?').get(saved.id)!.mioChangeRowid, 0);
   assert.deepEqual(source.prepare('SELECT * FROM project_versions').all(), before); assert.deepEqual(source.prepare('SELECT * FROM project_version_blobs').all(), blobs);
   f.restore(saved.id); assert.equal((f.target.store.get('projects', f.target.projectId) as {id: string}).id, f.target.projectId);

@@ -17,7 +17,8 @@ import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createMemoryProjectRegistry, createProjectHostManager, serverAppDirectories, statProjectFileIdentity} from '../apps/server/src/project-host/index.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
-import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
+import {FORMAT_UPGRADE_BACKUP_DIRECTORY, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
 import {projectEntriesResponseSchema,projectEntryIdentitySchema,projectEntryResponseSchema} from '../packages/contracts/src/project-entry.ts';
 import {calculateWorkspaceScope} from '../packages/contracts/src/workspace-scope.ts';
@@ -25,6 +26,7 @@ import type {ProjectEntriesResponse} from '../packages/contracts/src/project-ent
 import type {ProjectEntryWindowRevoked} from '../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema, projectFormatUpgradeResultSchema} from '../packages/contracts/src/project-format-upgrade.ts';
 import {timelineOutputPreset} from '../packages/contracts/src/timeline-output-geometry.ts';
 import {createServerProject, openServerProject,schemaObjects} from './helpers/project-database.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
@@ -39,8 +41,10 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {externalProjectsRoot = false,rejectBackup = false,candidateB = false,
-  projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined} = {}) {
+async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel'] = 'web', {
+  externalProjectsRoot = false, rejectBackup = false, legacyA = false, legacyHost = false,
+  projectCatalogClient = undefined as ServerOptions['projectCatalogClient'], projectCatalogTimeoutMsForTest = undefined as number | undefined,
+} = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-entry-server-'));
   const dataDir = path.join(root, 'app'), projectsDir = externalProjectsRoot ? path.join(root, 'selected-projects') : path.join(dataDir, 'projects');
   let server: Server | undefined;
@@ -50,7 +54,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
     await server?.close();
     rmSync(root, {recursive: true, force: true});
   });
-  const a = createServerProject(dataDir, {name: 'Catalog A'});
+  const a = createServerProject(dataDir, {name: 'Catalog A', ...(legacyA || legacyHost ? {projectFormat: PROJECT_FILE_SCHEMA_VERSION} : {})});
   let aFile = a.store.projectFile;
   const summary = createProjectHomeServices(a.store).handlers['project.summary.list']()[0]!;
   const coverAsset = randomUUID();
@@ -59,15 +63,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   a.store.close();
   const b = createServerProject(dataDir, {name: 'Catalog B'});
   let bFile = b.store.projectFile;
-  const bLocation = {localDir: b.store.localDir, cacheDir: b.store.cacheDir, tempDir: b.store.tempDir};
   b.store.close();
-  if (candidateB) {
-    const candidate = openProjectStore({projectFile: bFile, locate: () => bLocation, format4: {approveUpgrade: () => true}});
-    try {
-      assert.equal(candidate.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
-      assert.equal(candidate.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
-    } finally {candidate.close();}
-  }
   if (externalProjectsRoot) {
     mkdirSync(projectsDir);
     const move = (file: string): string => {
@@ -88,6 +84,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   let inspect!: InspectProject, inspectApplication!: InspectApplication,backupAttempts=0;
   server = await startServer({dataDir, projectsDir, port: 0, token, localDraftChannel: channel, projectCatalogClient, projectCatalogTimeoutMsForTest,
     inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;},
+    ...(legacyHost ? {projectFormatForTest: PROJECT_FILE_SCHEMA_VERSION} : {}),
     ...(rejectBackup?{projectBackupCopyForTest:async()=>{backupAttempts++;throw Error('Metadata reads must not start backups');}}:{})});
   const owned = server;
   const fetchOwned = (route: string, options: RequestInit = {}) => fetch(owned.url + route, {...options,
@@ -107,7 +104,7 @@ async function fixture(t: TestContext, channel: ServerOptions['localDraftChannel
   const hold = (projectId: string) => {
     const store = openServerProject(dataDir, projectId); stores.push(store); return store;
   };
-  return {root, dataDir, projectsDir, server: owned, a: {projectId: a.projectId, projectFile: aFile},
+  return {root, dataDir, projectsDir, server: owned, a: {projectId: a.projectId, projectFile: aFile, localDir: a.store.localDir, cacheDir: a.store.cacheDir},
     b: {projectId: b.projectId, projectFile: bFile}, fetch: fetchOwned, json, catalog, rpc, hold,
     application:<T>(read:(db:DatabaseSync)=>T)=>inspectApplication(read),backupAttempts:()=>backupAttempts,
     native: (projectId: string): DatabaseSync => inspect(projectId, db => db)};
@@ -179,8 +176,8 @@ test('application catalog retains the physical application identity and reads me
   assert.equal(a.db.isOpen,true);assert.equal(b.db.isOpen,true);
 });
 
-test('default web routes keep the released project format and report the candidate pair as too new', async t => {
-  const f = await fixture(t, 'web', {candidateB: true});
+test('a legacy web host keeps format 3 and reports the format 4 pair as too new', async t => {
+  const f = await fixture(t, 'web', {legacyHost: true});
   const call = (projectId: string) => f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({operation: 'timeline.get', input: {projectId}})});
   const stable = await call(f.a.projectId);
@@ -199,6 +196,85 @@ test('default web routes keep the released project format and report the candida
   assert.deepEqual(candidate.body.error?.details, {projectId: f.b.projectId, reason: 'PROJECT_FORMAT_NEWER'});
   assert.ok(recent);
   assert.deepEqual(recent.availability, {state: 'invalid', reason: 'format-newer'});
+});
+
+test('the default web host opens legacy metadata without writes and upgrades only a current confirmation after backing up', async t => {
+  const f = await fixture(t, 'web', {legacyA: true}), {projectId, projectFile, localDir, cacheDir} = f.a;
+  const base = `/api/projects/${projectId}/format-upgrade`;
+  const mioHistory = () => f.json(`/api/projects/${projectId}/agent/tasks/v2/history`);
+  const project = () => f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({operation: 'project.get', input: {projectId}})});
+  const upgrade = (preview: unknown) => f.json(base, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({preview})});
+  const pairedFiles = [projectFile, path.join(localDir, 'history.db'), path.join(cacheDir, 'cache.db')];
+  const bytes = () => pairedFiles.map(file => readFileSync(file));
+  const backupRoot = path.join(localDir, FORMAT_UPGRADE_BACKUP_DIRECTORY);
+  const before = bytes(), entries = await registry(f);
+  const catalog = await f.catalog();
+  assert.deepEqual(catalog.registered.find(entry => entry.project.projectId === projectId)?.availability, {state: 'upgrade-required'});
+  assert.deepEqual(catalog.registered.find(entry => entry.project.projectId === f.b.projectId)?.availability, {state: 'available'});
+  assert.deepEqual(catalog, await f.server.projectEntries.listRecent());
+  assert.deepEqual(bytes(), before, 'directory scans leave the legacy project, history and cache byte-identical');
+  const refused = await project();
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.error?.code, 'PROJECT_FORMAT_UPGRADE_REQUIRED');
+  const first = projectFormatUpgradePreviewSchema.parse(refused.body.error?.details);
+  assert.equal(first.projectId, projectId);
+  assert.equal(first.projectVersion, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(first.historyVersion, HISTORY_SCHEMA_VERSION);
+  assert.equal(first.targetProjectVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(first.targetHistoryVersion, FORMAT4_HISTORY_SCHEMA_VERSION);
+  const readOnly = await f.json(`${base}/read-only`);
+  assert.equal(readOnly.status, 200, JSON.stringify(readOnly.body));
+  assert.deepEqual(projectFormatReadOnlyViewSchema.parse(readOnly.body.data), {projectId, name: 'Catalog A', description: '',
+    projectVersion: PROJECT_FILE_SCHEMA_VERSION, shots: [], nodes: [], timeline: null, truncated: false});
+  const mioBlocked = await mioHistory();
+  assert.equal(mioBlocked.status, 409);
+  assert.equal(mioBlocked.body.error?.code, 'PROJECT_FORMAT_UPGRADE_REQUIRED');
+  assert.equal(isProjectFileHeld(entries.find(entry => entry.projectId === projectId)!.fileIdentity), false);
+  assert.deepEqual(await registry(f), entries);
+  assert.deepEqual(bytes(), before);
+  assert.equal(existsSync(backupRoot), false);
+
+  const edit = f.hold(projectId);
+  try { edit.put('projects', {...object(edit.get('projects', projectId)), id: projectId, name: 'Saved elsewhere'}); }
+  finally {edit.close();}
+  const preserved = bytes();
+  const stale = await upgrade(first);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error?.code, 'PROJECT_FORMAT_UPGRADE_REQUIRED');
+  const current = projectFormatUpgradePreviewSchema.parse(stale.body.error?.details);
+  assert.notEqual(current.contentToken, first.contentToken);
+  assert.deepEqual(bytes(), preserved);
+  assert.equal(existsSync(backupRoot), false);
+
+  writeFileSync(backupRoot, 'synthetic occupied backup path', {mode: 0o600});
+  const failed = await upgrade(current);
+  assert.equal(failed.status, 409);
+  assert.equal(failed.body.error?.code, 'PROJECT_FORMAT_BACKUP_FAILED');
+  assert.deepEqual(bytes(), preserved);
+  rmSync(backupRoot);
+
+  const opened = await upgrade(current);
+  assert.equal(opened.status, 200);
+  assert.deepEqual(projectFormatUpgradeResultSchema.parse(opened.body.data), {projectId});
+  const backups = readdirSync(backupRoot);
+  assert.equal(backups.length, 1);
+  const backup = readFormat4BackupManifest(backupRoot, backups[0]!);
+  assert.equal(backup.projectId, projectId);
+  assert.equal(backup.projectVersion, PROJECT_FILE_SCHEMA_VERSION);
+  verifyFormat4Backup(path.join(backupRoot, backups[0]!), backup);
+  assert.deepEqual(readFileSync(path.join(backupRoot, backups[0]!, 'project.mioon')), preserved[0]);
+  assert.deepEqual(readFileSync(path.join(backupRoot, backups[0]!, 'history.db')), preserved[1]);
+  const active = await project();
+  assert.equal(active.status, 200);
+  assert.equal(object(object(active.body.data).project).name, 'Saved elsewhere');
+  assert.equal(object(active.body.data).timelineFrameTransaction, true);
+  assert.deepEqual((await f.catalog()).registered.find(entry => entry.project.projectId === projectId)?.availability, {state: 'open'});
+  assert.equal((await mioHistory()).status, 200);
+  const db = f.native(projectId);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM cache.schema_version').get()?.version, CACHE_SCHEMA_VERSION);
 });
 
 test('a catalog shares one private identity scan but checks each project and refreshes on the next read', async t => {
@@ -366,12 +442,12 @@ test('a delayed format hint cannot be applied to a changed project file', {timeo
   const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
   const client = createNodeProjectCatalogClient();
   let pauseFirst = true;
-  const f = await fixture(t, 'production', {candidateB: true, projectCatalogClient: {
+  const f = await fixture(t, 'production', {legacyHost: true, projectCatalogClient: {
     async scan(inputs) {
       const results = await client.scan(inputs);
       if (pauseFirst) {
         pauseFirst = false;
-        assert.equal(results[inputs.findIndex(input => input.file === f.b.projectFile)]?.format?.newer, true);
+        assert.equal(results[inputs.findIndex(input => input.file === f.b.projectFile)]?.format?.status, 'newer');
         entered.resolve();
         await resume.promise;
       }
@@ -398,7 +474,7 @@ test('a failed or timed out catalog scan serves registration metadata and admits
   let mode: 'normal' | 'failure' | 'stall' = 'normal';
   let scans = 0;
   let cancelled: AbortSignal | undefined;
-  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+  const f = await fixture(t, 'production', {legacyHost: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
     async scan(inputs, signal) {
       scans++;
       if (mode === 'failure') throw Error('Synthetic scanner transport closed');
@@ -457,7 +533,7 @@ test('inconclusive inspection preserves a known lock or shows the project as bus
 test('ten timed-out catalogs share a stalled stat without blocking other filesystem work', {timeout: 15_000}, async t => {
   const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), resumed = Promise.withResolvers<void>();
   let scans = 0, reads = 0, stall = true;
-  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
+  const f = await fixture(t, 'production', {legacyHost: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
     async scan(inputs) {scans++; return inputs.map(scanProjectCatalogFile);},
     close() {},
   }});
@@ -496,7 +572,7 @@ test('ten timed-out catalogs share a stalled stat without blocking other filesys
 });
 
 test('a stalled private-tree read also survives caller timeouts as a single operation', {timeout: 10_000}, async t => {
-  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
+  const f = await fixture(t, 'production', {legacyHost: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
     async scan(inputs) {return inputs.map(scanProjectCatalogFile);},
     close() {},
   }});
@@ -633,7 +709,7 @@ for (const firstRead of ['http', 'trusted'] as const) {
     const updatedAt = '2026-11-03T00:00:10.000Z';
     t.mock.timers.setTime(Date.parse(updatedAt));
     await call('timeline.format.set', {projectId: f.a.projectId, expectedProjectRevision: format.projectRevision,
-      expectedRevision: format.timelineRevision, requestId: randomUUID(), presetId: 'landscape_720'});
+      expectedRevision: format.timelineRevision, requestId: randomUUID(), presetId: 'landscape_1080'});
     const asset = await call('asset.import', {projectId: f.a.projectId, name: 'Catalog synthetic source.png', mimeType: 'image/png',
       dataBase64: png({width: 16, height: 16, rgba: false, pixel: () => [255, 0, 0]}).toString('base64')});
     const timeline = await call('timeline.get', {projectId: f.a.projectId});
@@ -649,7 +725,7 @@ for (const firstRead of ['http', 'trusted'] as const) {
       const current = entries.registered.find(entry => entry.project.projectId === f.a.projectId)!;
       assert.deepEqual(current.availability, {state: 'open'});
       assert.deepEqual([current.project.summary!.width, current.project.summary!.height, current.project.summary!.fps,
-        current.project.summary!.presetId, current.project.summary!.durationFrames], [1280, 720, 30, 'landscape_720', 45]);
+        current.project.summary!.presetId, current.project.summary!.durationFrames], [1920, 1080, 30, 'landscape_1080', 45]);
       assert.equal(current.project.summary!.updatedAt, updatedAt);
       assert.deepEqual(current.project.summary!.cover, {assetId: asset.id, mimeType: 'image/png'});
       assert.equal(current.coverUrl, `/api/project-covers/${f.a.projectId}`);
@@ -794,9 +870,14 @@ test('public project.create uses the same complete initialization without exposi
   const project = object(response.body.data), projectId = String(project.id), windowId = randomUUID();
   await f.server.projectEntries.acquire({projectId, windowId});
   const db = f.native(projectId);
-  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
-  assert.equal((await f.catalog()).newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
-  assert.equal((await f.server.projectEntries.listRecent()).newProjectFormatVersion, PROJECT_FILE_SCHEMA_VERSION);
+  assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
+  assert.equal((await f.catalog()).newProjectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  assert.equal((await f.server.projectEntries.listRecent()).newProjectFormatVersion, FORMAT4_PROJECT_SCHEMA_VERSION);
+  const details = await f.json(projectRpcPath(projectId), {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({operation: 'project.get', input: {projectId}})});
+  assert.equal(details.status, 200);
+  assert.equal(object(details.body.data).timelineFrameTransaction, true);
   const row = db.prepare('SELECT data FROM project.projects WHERE id=?').get(projectId);
   assert.equal(object(JSON.parse(String(row!.data))).description, 'Public description');
   const timeline = db.prepare('SELECT data FROM project.timelines WHERE projectId=?').get(projectId);
