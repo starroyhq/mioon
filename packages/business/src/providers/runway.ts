@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { createJsonRequest, createPollCache, downloadMp4, outputUrl, providerError } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderReferenceAsset, ProviderSnapshotView } from './live-common.ts';
+import { providerSettings } from './environment.ts';
 import {createRunwaySdkClient} from '../video/runway-sdk.ts';
 import type {VideoAdapterImage} from '../video/adapters.ts';
 
@@ -24,12 +25,14 @@ function isImage(bytes: Buffer, mime: unknown): boolean {
 
 /** Real adapter. Importing or constructing it never makes a request. */
 export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env = process.env, now = Date.now }: ProviderFactoryOptions = {} as ProviderFactoryOptions) {
-  const secret = typeof env.RUNWAYML_API_SECRET === 'string' ? env.RUNWAYML_API_SECRET.trim() : '';
+  const settings = providerSettings.runway;
+  const credential = env[settings.credential];
+  const secret = typeof credential === 'string' ? credential.trim() : '';
   const configured = Boolean(secret);
-  const approvedHashes = new Set((env.RUNWAY_APPROVED_ASSET_SHA256 ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^[0-9a-f]{64}$/.test(x)));
+  const approvedHashes = new Set((env[settings.approvedAssetSha256] ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^[0-9a-f]{64}$/.test(x)));
   // The documented output CDN is allowed by default. Additional verified CDN hosts
   // can be configured server-side, never by a request, prompt, or provider response.
-  const outputHosts = new Set(['dnznrvs05pmza.cloudfront.net', ...(env.RUNWAY_OUTPUT_HOSTS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
+  const outputHosts = new Set(['dnznrvs05pmza.cloudfront.net', ...(env[settings.outputHosts] ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
   const ensureEnabled = (): void => { if (!configured) throw error('PROVIDER_DISABLED', 'The Runway server credential is missing.'); };
   const assertTaskId = (id: unknown): void => {
     if (typeof id !== 'string' || !UUID.test(id)) throw error('INVALID_PROVIDER_TASK_ID', 'Runway task ID is invalid.');

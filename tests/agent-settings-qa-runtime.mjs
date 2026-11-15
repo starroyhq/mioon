@@ -3,7 +3,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import {mkdir,readFile,writeFile,appendFile,unlink,access,readdir} from 'node:fs/promises';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {fileURLToPath} from 'node:url';
 import {createQaProject,closeQaProject,hashQaSnapshot} from './helpers/kernel-qa-fixture.mjs';
 import {mutationQaAudit} from './mutation-qa-runtime.mjs';
@@ -29,7 +29,6 @@ export async function agentSettingsQaAudit(workspace,inspectors){
 const invokedDirectly=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(invokedDirectly&&process.argv.includes('--prepare'))console.log(JSON.stringify(await prepareAgentSettingsFixture(),null,2));
 if(invokedDirectly&&process.argv.includes('--serve')){
- process.env.MIOON_ENABLE_LIVE_PROVIDER='0';for(const key of Object.keys(process.env))if(/^(RUNWAY|RUNWAYML|ARK_|VEO_|GEMINI_|MINIMAX_|HAILUO_|VIDU_|OPENAI_|DEEPSEEK_|DASHSCOPE_|MOONSHOT_)/.test(key))delete process.env[key];
  const fixture=await prepareAgentSettingsFixture();
  const token='agent-settings-synthetic-local-qa-token';
  let inspectProject,inspectApplication;

@@ -33,7 +33,7 @@ const authority=(value: WorkerEnvelope)=>({workspaceScope:value.workspaceScope,i
 const action=(value: WorkerEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const deadline=<T>(promise:Promise<T>,label: string,ms=15000)=>{let timer: string|number|NodeJS.Timeout|undefined;return Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(`Timed out: ${label}`)),ms);})]).finally(()=>clearTimeout(timer));};
 function spawnWorker(root: string){
- const child=spawn(process.execPath,[workerPath,root],{cwd:repo,stdio:['ignore','pipe','pipe','ipc'],env:{PATH:process.env.PATH||'',TMPDIR:root,LANG:'C.UTF-8',MIOON_ENABLE_LIVE_PROVIDER:'0'}});
+ const child=spawn(process.execPath,[workerPath,root],{cwd:repo,stdio:['ignore','pipe','pipe','ipc'],env:{PATH:process.env.PATH||'',TMPDIR:root,LANG:'C.UTF-8',}});
  const ready=Promise.withResolvers<WorkerReady>(),exited=Promise.withResolvers<WorkerExit>(),pending=new Map<string,PromiseWithResolvers<unknown>>(),boundaries=new Map<string,PromiseWithResolvers<WorkerBoundary>>();let stopped:WorkerExit|null=null,stdout='',stderr='';void ready.promise.catch(()=>{});
  function rejectAll(error:Error){ready.reject(error);for(const item of pending.values())item.reject(error);for(const item of boundaries.values())item.reject(error);}
  child.stdout!.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;assert.ok(stdout.length<8192);for(let end;(end=stdout.indexOf('\n'))>=0;){const line=stdout.slice(0,end);stdout=stdout.slice(end+1);const value=JSON.parse(line);assert.equal(value.type,'boundary');const gate=boundaries.get(value.phase);assert.ok(gate,'Unarmed crash boundary');gate.resolve(value);}});

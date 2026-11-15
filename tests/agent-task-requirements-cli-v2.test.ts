@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -21,7 +22,7 @@ test('H4b real checks CLI preserves optional duration requirements and only send
  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
  t.after(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
  const address=server.address();assert.ok(address&&typeof address==='object');
- const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('MIOON_'))),MIOON_BASE_URL:`http://127.0.0.1:${address.port}`,MIOON_TOKEN:session,MIOON_ENABLE_LIVE_PROVIDER:'0'};
+ const env={...Object.fromEntries(Object.entries(testEnv()).filter(([key])=>!key.startsWith('MIOON_'))),MIOON_BASE_URL:`http://127.0.0.1:${address.port}`,MIOON_TOKEN:session,};
  for(const expected of [report,legacy]){
   response=expected;
   const result=await execute(process.execPath,[entry,'agent','task','checks','--input',JSON.stringify({projectId,runId})],{cwd:repository,env,timeout:15000,encoding:'utf8'});

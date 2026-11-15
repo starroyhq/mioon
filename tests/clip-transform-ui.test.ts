@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -90,7 +91,7 @@ test('the controls render the frame, keyframes, static parts and the disabled st
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   const button = (html: string, id: string): string => html.match(new RegExp(`<button[^>]*data-testid="clip-transform-${id}"[^>]*>`))?.[0] ?? '';
   const disabled = (html: string, id: string): boolean => /\sdisabled=""/.test(button(html, id));
   assert.match(markup.none, /片段第 12 帧 · 未设置变换/);

@@ -8,7 +8,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {createServerProject,projectDirFor,openServerProject} from './helpers/project-database.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';

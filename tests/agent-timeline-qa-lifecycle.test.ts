@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -17,11 +18,11 @@ test('native QA ownership records an error but only close confirms termination',
 });
 
 test('native QA observes an actual nonexistent executable without an unhandled error',async()=>{
- const child=spawn('/mioon-synthetic-nonexistent/fixture',[],{stdio:'ignore'}),owned=ownQaChild(child);
+ const child=spawn('/mioon-synthetic-nonexistent/fixture',[],{env: testEnv(), stdio:'ignore'}),owned=ownQaChild(child);
  const result=await owned.done;assert.equal(result.error?.code,'ENOENT');assert.equal(owned.closed,true);assert.notEqual(result.code,0);
 });
 
 test('native QA observes actual fast normal exit through immediately attached listeners',async()=>{
- const child=spawn(process.execPath,['-e','process.exit(0)'],{stdio:'ignore'}),owned=ownQaChild(child);
+ const child=spawn(process.execPath,['-e','process.exit(0)'],{env: testEnv(), stdio:'ignore'}),owned=ownQaChild(child);
  assert.deepEqual(await owned.done,{code:0,signal:null});assert.equal(owned.closed,true);
 });

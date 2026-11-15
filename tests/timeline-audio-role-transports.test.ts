@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {Readable} from 'node:stream';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
@@ -31,15 +32,15 @@ const editable = (timeline: TimelineRecord) => ({tracks: timeline.tracks, clips:
 const keys = (value: object, expected: string[]) => assert.deepEqual(Object.keys(value).sort(), [...expected].sort());
 const resolveSchema = (root: SchemaNode, field: SchemaNode): SchemaNode => field.$ref ? resolveSchema(root, field.$ref.slice(2).split('/').reduce((value, key) => (value[key] as SchemaNode), root)) : field;
 
-function environment(extra: NodeJS.ProcessEnv = {}) {
-  const env = {...process.env};
+function environment(extra: Record<string, string> = {}) {
+  const env = {...testEnv()};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
-  return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...env, ...extra};
 }
 
-async function cli(args: string[], env: NodeJS.ProcessEnv = {}, expectedError?: string) {
+async function cli(args: string[], env: Record<string, string> = {}, expectedError?: string) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...args], {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   // JSON descriptions may cross pipe chunks inside a UTF-8 character.
@@ -61,7 +62,7 @@ async function cli(args: string[], env: NodeJS.ProcessEnv = {}, expectedError?: 
   assert.equal(code, 0, stdout + stderr); return body.data;
 }
 
-async function mcpFixture(t: TestContext, env: NodeJS.ProcessEnv = {}): Promise<{client: Client; call: RoleCall}> {
+async function mcpFixture(t: TestContext, env: Record<string, string> = {}): Promise<{client: Client; call: RoleCall}> {
   const client = new Client({name: 'timeline-audio-role-transport-tests', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')], cwd: repo, env: environment(env), stderr: 'pipe'});
   let stderr = ''; (transport.stderr as Readable | null)?.setEncoding('utf8').on('data', bytes => stderr += bytes);

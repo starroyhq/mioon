@@ -8,15 +8,15 @@ import type {Readable} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const token = 'q2-synthetic-private-transport-token';
 function environment(base: string, tokenFile: string) {
   return {PATH: process.env.PATH || '', HOME: tmpdir(), LANG: 'C.UTF-8',
-    MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_BASE_URL: base, MIOON_TOKEN_FILE: tokenFile};
+    MIOON_BASE_URL: base, MIOON_TOKEN_FILE: tokenFile};
 }
-async function cli(env: { PATH: string; HOME: string; LANG: string; MIOON_ENABLE_LIVE_PROVIDER: string; MIOON_BASE_URL: string; MIOON_TOKEN_FILE: string; }, args: string[] = ['project', 'list']) {
+async function cli(env: { PATH: string; HOME: string; LANG: string;  MIOON_BASE_URL: string; MIOON_TOKEN_FILE: string; }, args: string[] = ['project', 'list']) {
   const child = spawn(process.execPath, ['apps/cli/src/index.ts', ...args], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   for (const [kind, stream] of [['stdout', child.stdout], ['stderr', child.stderr]] as const) stream.setEncoding('utf8').on('data', (bytes: string) => {
@@ -29,7 +29,7 @@ async function cli(env: { PATH: string; HOME: string; LANG: string; MIOON_ENABLE
     return {code, stdout, stderr, result: JSON.parse(stdout)};
   } finally {clearTimeout(timer);}
 }
-async function mcp(t: test.TestContext, env: { PATH: string; HOME: string; LANG: string; MIOON_ENABLE_LIVE_PROVIDER: string; MIOON_BASE_URL: string; MIOON_TOKEN_FILE: string; }) {
+async function mcp(t: test.TestContext, env: { PATH: string; HOME: string; LANG: string;  MIOON_BASE_URL: string; MIOON_TOKEN_FILE: string; }) {
   const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], cwd: repo, env, stderr: 'pipe'});
   let stderr = ''; (transport.stderr as Readable | null)?.setEncoding('utf8').on('data', (bytes: string) => {stderr += bytes;});
   const client = new Client({name: 'q2-private-storage-acceptance', version: '1.0.0'}, {capabilities: {}});

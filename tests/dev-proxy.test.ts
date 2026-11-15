@@ -6,7 +6,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import http from 'node:http';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {startServer} from '@mioon/server';
+import {startServer} from './helpers/test-server.ts';
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
 interface ViteServer {listen(): Promise<unknown>; close(): Promise<unknown>}
 type ViteFactory = (options: Record<string, unknown>)=>Promise<ViteServer>;

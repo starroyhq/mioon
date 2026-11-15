@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import type {ExportSamplePeakController,ExportSamplePeakContext,ExportSamplePeakState,ExportSamplePeakReadOptions} from '../apps/web/src/export-sample-peak-state.ts';
 import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 import type {ElementTree, ElementNode} from './helpers/strict-timeline-audio-harness-types.ts';
@@ -74,7 +75,7 @@ before(async () => {
       build.onLoad({filter:/.*/,namespace:'file-action-capture'},()=>({contents:${JSON.stringify(capture)},loader:'tsx',resolveDir:${JSON.stringify(path.join(root,'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify({html:result.html,actions:result.actions,actualFileActions:result.actualFileActions}));process.exit(0);`;
-  ({html:rendered, actions:fileActions, actualFileActions} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
+  ({html:rendered, actions:fileActions, actualFileActions} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
 });
 
 test('classic TSX real shared controls show exact feature name with compact explicit action and polite status', () => {

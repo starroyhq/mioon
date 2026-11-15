@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +43,7 @@ for (const point of points) test(`SIGKILL at ${point} preserves a complete reque
   const marker = path.join(root, 'ready');
   // A synchronous file barrier stops inside the real transaction or gateway;
   // no child output stream is interpreted as a control protocol.
-  const child = spawn(process.execPath, [worker], {stdio: ['ignore', 'ignore', 'inherit'], env: {...process.env, MIO_RUNTIME_ROOT: root, MIO_RUNTIME_POINT: point, MIO_RUNTIME_MARKER: marker}});
+  const child = spawn(process.execPath, [worker], {stdio: ['ignore', 'ignore', 'inherit'], env: {...testEnv(), MIO_RUNTIME_ROOT: root, MIO_RUNTIME_POINT: point, MIO_RUNTIME_MARKER: marker}});
   const closed = once(child, 'close');
   t.after(() => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');});
   const deadline = Date.now() + 30_000;

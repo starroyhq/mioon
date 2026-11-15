@@ -10,7 +10,7 @@ import {APP_LEVEL_OPERATIONS, ENTITY_ADDRESSED_OPERATIONS, inputProjectId, isApp
 import {parseProjectApiPath, projectApiPath, projectMediaPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {jsonSchema, operationDefinition, splitProjectAddress} from '../packages/client/src/index.ts';
 import {assertProjectRpc, projectHandlerTarget} from '../apps/server/src/project-host/request.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {localRecordSchemas, localRecordEffects, localRecordsListResponseSchema, localRecordsDeleteResponseSchema, isLocalRecordResponse} from '../packages/contracts/src/local-record-operations.ts';
 import {schemas as modelSchemas} from '../packages/contracts/src/index.ts';
 

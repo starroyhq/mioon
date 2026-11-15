@@ -90,7 +90,7 @@ async function fixture(t: TestContext, scenario: Scenario) {
   const address = server.address(); if (!address || typeof address==='string') throw Error('Expected a bound TCP address');
   const url = `http://127.0.0.1:${address.port}`;
   const env: Record<string,string> = Object.fromEntries(['PATH','SystemRoot','WINDIR','TMPDIR','TEMP','TMP'].flatMap(key=>process.env[key]===undefined?[]:[[key,process.env[key] as string]]));
-  Object.assign(env, {MIOON_BASE_URL:url, MIOON_TOKEN:token, MIOON_ENABLE_LIVE_PROVIDER:'0'});
+  Object.assign(env, {MIOON_BASE_URL:url, MIOON_TOKEN:token, });
   const httpSubmit = async(input:Record<string,unknown>): Promise<JobRecord>=>{
     const response = await fetch(url+rpcPathFor('generation.submit',input,project.id as string), {method:'POST', headers:{authorization:`Bearer ${token}`, 'content-type':'application/json'},
       body:JSON.stringify({operation:'generation.submit',input}), signal:AbortSignal.timeout(10000)});

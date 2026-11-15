@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
@@ -14,7 +15,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -68,7 +69,7 @@ function cliSnapshot(url:string,token:string,projectId:string,runId:string,comma
 function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'history'):Promise<AgentTaskHistoryPage>;
 function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'conversation'):Promise<AgentTaskConversationPage>;
 async function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'status'|'history'|'conversation'='status'):Promise<AgentTaskSnapshot|AgentTaskHistoryPage|AgentTaskConversationPage>{
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(command==='status'?{projectId,runId}:command==='history'?{projectId}:{projectId,conversationId:runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(command==='status'?{projectId,runId}:command==='history'?{projectId}:{projectId,conversationId:runId})],{env:{...testEnv(),MIOON_BASE_URL:url,MIOON_TOKEN:token,},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI status timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI status failed'));});});
  assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return command==='history'?agentTaskHistoryPageSchema.parse(value.data):command==='conversation'?agentTaskConversationPageSchema.parse(value.data):agentTaskSnapshotSchema.parse(value.data);
@@ -237,7 +238,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 });
 
 async function cliTaskControl(url:string,token:string,command:string,input:Record<string,unknown>):Promise<AgentTaskSnapshot>{
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(input)],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(value:string)=>{stdout+=value;});child.stderr.setEncoding('utf8').on('data',(value:string)=>{stderr+=value;});
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(input)],{env:{...testEnv(),MIOON_BASE_URL:url,MIOON_TOKEN:token,},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(value:string)=>{stdout+=value;});child.stderr.setEncoding('utf8').on('data',(value:string)=>{stderr+=value;});
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI control timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI control failed'));});});assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const envelope:unknown=JSON.parse(stdout);assert.ok(object(envelope)&&envelope.ok===true);return agentTaskSnapshotSchema.parse(envelope.data);
 }
 test('HTTP and CLI notes use the same durable queue and control receipt without changing a submitted request',async t=>{
@@ -279,7 +280,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 });
 
 async function cliControl(url:string,token:string,command:string,input:Record<string,unknown>):Promise<AgentTaskSnapshot>{
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(input)],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(input)],{env:{...testEnv(),MIOON_BASE_URL:url,MIOON_TOKEN:token,},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI control timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI control failed'));});});assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return agentTaskSnapshotSchema.parse(value.data);
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: CLI retry and whole undo agree with HTTP receipts and safe snapshots`,async t=>{
@@ -303,14 +304,14 @@ test('the latest connection test reads the same newest text diagnostic over HTTP
  const latest=agentTaskConnectionTestResponseSchema.parse((await f.request(route)).data);
  assert.equal(latest.test?.status,'completed');assert.equal(latest.test?.protocol,'chat_completions');assert.equal(latest.test?.errorCode,null);
  assert.deepEqual(Object.keys(latest.test!).sort(),['completedAt','errorCode','model','protocol','settingsBinding','settingsRevision','status']);assert.ok(Number.isFinite(Date.parse(latest.test!.completedAt)));
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','diagnose','latest','--input','{}'],{env:{...process.env,MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','diagnose','latest','--input','{}'],{env:{...testEnv(),MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token,},stdio:['ignore','pipe','pipe']});
  let stdout='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});
  const code=await new Promise<number|null>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI read timed out'));},15000);child.once('error',reject);child.once('close',value=>{clearTimeout(timer);resolve(value);});});
  assert.equal(code,0);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);assert.deepEqual(agentTaskConnectionTestResponseSchema.parse(value.data),latest);
  for(const text of [JSON.stringify(latest),stdout])assert.doesNotMatch(text,/PRIVATE_CONNECTION_TEST_TEXT|SYNTHETIC_TASK_HTTP_KEY/u);
 });
 async function cliJson(url:string,token:string,words:string[],input:Record<string,unknown>):Promise<unknown>{
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input)],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input)],{env:{...testEnv(),MIOON_BASE_URL:url,MIOON_TOKEN:token,},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI command timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error(`Synthetic CLI command failed: ${stdout}`));});});
  assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return value.data;
 }

@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -108,7 +109,7 @@ for(const protocol of GOAL_PROTOCOLS){
  });
  for(const boundary of ['marker','intent','marker_replan'] as const)test(`${protocol}: SIGKILL after repair ${boundary} resumes once with the frozen gap and request`,{timeout:30000},async t=>{
   const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-goal-sigkill-'));
-  const child=spawn(process.execPath,[fileURLToPath(new URL('./helpers/agent-task-goal-repair-crash.ts',import.meta.url))],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...process.env,FIXTURE_ROOT:root,FIXTURE_PROTOCOL:protocol,FIXTURE_BOUNDARY:boundary==='marker_replan'?'marker':boundary},stdio:['ignore','ignore','pipe']});
+  const child=spawn(process.execPath,[fileURLToPath(new URL('./helpers/agent-task-goal-repair-crash.ts',import.meta.url))],{cwd:fileURLToPath(new URL('../',import.meta.url)),env:{...testEnv(),FIXTURE_ROOT:root,FIXTURE_PROTOCOL:protocol,FIXTURE_BOUNDARY:boundary==='marker_replan'?'marker':boundary},stdio:['ignore','ignore','pipe']});
   let stderr='';child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
   let restored:Awaited<ReturnType<typeof openGoalRepairFixture>>|undefined;
   t.after(async()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');await restored?.close();rmSync(root,{recursive:true,force:true});});

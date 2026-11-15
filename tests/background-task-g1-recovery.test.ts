@@ -39,7 +39,7 @@ interface Runtime extends ProjectHostRuntime {
 
 for (const status of ['queued', 'running', 'submission_unknown'] as const) test(`v1 video reset pauses the original ${status} task and releases its S3 lease without a replacement request`, async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 's3-g1-recovery-'))), dataDir = path.join(root, 'app');
-  const library = openAppLibrary({dataDir}), directories = serverAppDirectories(dataDir), env = {MIOON_ENABLE_LIVE_PROVIDER: '1'};
+  const library = openAppLibrary({dataDir}), directories = serverAppDirectories(dataDir), env = {};
   const application = createProjectServiceApplication(library, undefined, env), options = {directory: path.join(dataDir, 'video-settings'), privateRoot: dataDir};
   let settings: VideoGenerationSettings & {close(): Promise<void>} = await createVideoSettings(options), recovery = false, requests = 0;
   const background = createBackgroundCoordinator({index: library.taskIndex, inbox: library.inbox, assertMutationAllowed: application.assertMutationAllowed, checkIntervalMs: 20});

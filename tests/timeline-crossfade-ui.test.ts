@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -71,7 +72,7 @@ test('the controls render pairs, reasons and the disabled state', () => {
     process.stdout.write(JSON.stringify(markup));
     process.exit(0);
   `;
-  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
+  const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 })) as Record<string, string>;
   assert.match(markup.empty, /data-testid="crossfade-empty"/);
   assert.doesNotMatch(markup.empty, /crossfade-apply/);
   assert.match(markup.ready, /淡出到「Voice」/);

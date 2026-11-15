@@ -26,7 +26,7 @@ import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/g
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_IMAGE_OPTIONS, comfyCheckpointSchema,
   comfyImageOptionsSchema} from '../packages/contracts/src/comfy-images.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import type { PathLike } from 'fs';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
@@ -341,7 +341,7 @@ test('new client remains compatible by default with an old strict server and nev
 function childEnvironment(extra: NodeJS.ProcessEnv = {}) {
   const clean = Object.fromEntries(['PATH','HOME','TMPDIR','TEMP','LANG','SYSTEMROOT','COMSPEC']
     .filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));
-  return {...clean, TZ: 'UTC', MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
+  return {...clean, TZ: 'UTC', ...extra};
 }
 async function cli(input: {}, env: NodeJS.ProcessEnv) {
   const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), 'rpc', operation, '--input', JSON.stringify(input)],

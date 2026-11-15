@@ -29,7 +29,7 @@ import {selectedRangeFixture, TOKEN, RANGE, SETTINGS, bounded, authority, action
 import type { RequestOptions } from '@modelcontextprotocol/sdk/shared/protocol';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const env = (url?: string|undefined) => ({...mediaEnvironment(), MIOON_ENABLE_LIVE_PROVIDER: '0',
+const env = (url?: string|undefined) => ({...mediaEnvironment(),
   ...(url ? {MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN} : {})});
 const safe = (value: string) => {assert.equal(JSON.stringify(value).includes(TOKEN), false); assert.equal(JSON.stringify(value).includes('Bearer '), false);};
 

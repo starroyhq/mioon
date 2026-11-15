@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -26,11 +27,10 @@ test('native headless CLI publicly removes its synthetic key and refuses a lost 
  const account=createHash('sha256').update(JSON.stringify(['mioon-headless-agent-secret',1,realpathSync.native(directory),'web'])).digest('hex');
  const synthetic='SYNTHETIC_HEADLESS_PUBLIC_NATIVE_NO_PROVIDER';
  const file=path.join(root,'host.mjs'),cliEntry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url));
- const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('MIOON_')));
- env.MIOON_ENABLE_LIVE_PROVIDER='0';
+ const env=Object.fromEntries(Object.entries(testEnv()).filter(([key])=>!key.startsWith('MIOON_')));
  const source=`import {createRequire} from 'node:module';
 import {initializeNodePrivateStorage} from ${JSON.stringify(new URL('../packages/node-host/src/private-storage-bootstrap.ts',import.meta.url).href)};
-import {startServer} from ${JSON.stringify(new URL('../apps/server/src/index.ts',import.meta.url).href)};
+import {startServer} from ${JSON.stringify(new URL('./helpers/test-server.ts',import.meta.url).href)};
 import {createHeadlessAgentSecretCodec} from ${JSON.stringify(new URL('../apps/server/src/headless-agent-secret-codec.ts',import.meta.url).href)};
 import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE} from ${JSON.stringify(new URL('../packages/business/src/agent/settings.ts',import.meta.url).href)};
 import {createAgentSettingsFile} from ${JSON.stringify(new URL('../packages/business/src/agent/settings-file.ts',import.meta.url).href)};

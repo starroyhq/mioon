@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -62,6 +63,6 @@ test('application compositions render with real React/Base UI under the shipped 
     process.exit(0);
   `;
   const bundle = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: root }, absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false, logLevel: 'silent' }).outputFiles[0].text;
-  const output = execFileSync(process.execPath, ['--input-type=commonjs', '-'], { input: bundle, encoding: 'utf8', timeout: 30_000 });
+  const output = execFileSync(process.execPath, ['--input-type=commonjs', '-'], { env: testEnv(), input: bundle, encoding: 'utf8', timeout: 30_000 });
   assert.match(output, /Workbench controls verified/);
 });

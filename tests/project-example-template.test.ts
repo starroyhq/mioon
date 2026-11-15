@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectApplication, type InspectProject} from '../apps/server/src/index.ts';
+import {startServer, type InspectApplication, type InspectProject} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {createApplicationFileGuard} from '../apps/server/src/project-host/application-storage.ts';
 import {createProjectCopies} from '../apps/server/src/project-host/copies.ts';

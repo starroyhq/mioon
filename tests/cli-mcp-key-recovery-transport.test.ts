@@ -12,14 +12,14 @@ import {randomBytes, randomUUID, createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from '../apps/server/src/index.ts';
+import {startServer} from './helpers/test-server.ts';
 import {canonicalImageInput, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, DEFAULT_IMAGE_CONFIGURATION} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const hash = (value: unknown): string => createHash('sha256').update(canonicalImageInput(value)).digest('hex');
 const copy = <T>(value: T): T => structuredClone(value);
 const childEnv = (extra: Record<string, string>): Record<string, string> => ({...Object.fromEntries(['PATH', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP']
-  .filter((key): key is string => process.env[key] !== undefined).map(key => [key, process.env[key] as string])), MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra});
+  .filter((key): key is string => process.env[key] !== undefined).map(key => [key, process.env[key] as string])), ...extra});
 
 type FaultMode = {status?: number; body?: unknown; fault?: 'drop' | 'truncate' | 'bad-review'} | null;
 interface WireRecord {operation?: string; inputHash: string; status?: number; body?: unknown}

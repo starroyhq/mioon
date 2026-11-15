@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 
 
 
@@ -20,7 +21,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const secret = 'synthetic-PRIVATE-path-token-error-must-not-appear';
 function run(entry: string, args: string[], hook?: string) {
   const prefix = hook ? ['--import', `data:text/javascript,${encodeURIComponent(hook)}`] : [];
-  const result = spawnSync(process.execPath, [...prefix, entry, ...args], {cwd:root, encoding:'utf8', timeout:30000, maxBuffer:1024*1024, env:{...process.env, LANG:'ja_JP.UTF-8', MIOON_LOCALE:'ja'}});
+  const result = spawnSync(process.execPath, [...prefix, entry, ...args], {cwd:root, encoding:'utf8', timeout:30000, maxBuffer:1024*1024, env:{...testEnv(), LANG:'ja_JP.UTF-8', MIOON_LOCALE:'ja'}});
   assert.ifError(result.error);
   assert.equal(result.signal,null);
   return result;

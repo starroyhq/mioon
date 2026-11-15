@@ -1,3 +1,4 @@
+import {testEnv} from './helpers/test-env.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -66,7 +67,7 @@ test('real dropped subject execute response commits once and recovery returns hi
 });
 
 async function command(operation: string,input: unknown,url: string): Promise<unknown> {
- const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:REPO,env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.join(REPO,'apps/cli/src/index.ts'),...operation.split('.'),'--input',JSON.stringify(input)],{cwd:REPO,env:{...testEnv(),MIOON_BASE_URL:url,MIOON_TOKEN:TASK_TOKEN,},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',chunk=>{stdout+=chunk;if(stdout.length>1024*1024)child.kill('SIGKILL');});child.stderr.setEncoding('utf8').on('data',chunk=>stderr=(stderr+chunk).slice(-20000));
  const timer=setTimeout(()=>child.kill('SIGKILL'),10000);let code,signal;try{[code,signal]=await once(child,'close');}finally{clearTimeout(timer);}
  assert.equal(signal,null,stderr);assert.equal(code,0,stdout+stderr);assert.equal((stdout+stderr).includes(TASK_TOKEN),false);return JSON.parse(stdout);
@@ -74,7 +75,7 @@ async function command(operation: string,input: unknown,url: string): Promise<un
 
 test('official CLI and MCP replay all three exact subject receipts without exposing durable task execution tools', {timeout:30000},async (t: TestContext)=>{
  const f=await taskFixture(t),mcp=new Client({name:'subject-recovery-tests',version:'1.0.0'},{capabilities:{}});t.after(()=>mcp.close());
- const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:{...process.env,MIOON_BASE_URL:f.backend!.url,MIOON_TOKEN:TASK_TOKEN,MIOON_ENABLE_LIVE_PROVIDER:'0'},stderr:'pipe'});(transport.stderr as import('node:stream').Readable & {resume(): void}).resume();await mcp.connect(transport);
+ const transport=new StdioClientTransport({command:process.execPath,args:[path.join(REPO,'apps/mcp/src/index.ts')],cwd:REPO,env:{...testEnv(),MIOON_BASE_URL:f.backend!.url,MIOON_TOKEN:TASK_TOKEN,},stderr:'pipe'});(transport.stderr as import('node:stream').Readable & {resume(): void}).resume();await mcp.connect(transport);
  const tools=(await mcp.listTools()).tools;
  assert.equal(tools.some(tool=>/^(?:tasks|edit_tasks)_/.test(tool.name)),false);
  for(const name of ['subject_create','subject_version_add','subject_binding_set'])assert.equal(tools.filter(tool=>tool.name===name).length,1);
