@@ -179,6 +179,7 @@ For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are a
 - `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除预检按故事顺序返回前三个有关联的镜头及其编号、生成版本数、关联片段数和时间线使用的不同版本数（`usedVersions`），以及符合条件的镜头总数。同一个版本供多个片段使用时只计一个版本。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
 - `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象。同一读取事务返回归档总数 `total`、项目内容戳和本页条目。条目包含删除时间、批次、当前目标修订、名称、节点类型、删除时的镜头编号和版本数。无标签的文字节点以最多 512 字符的正文作为名称。可预览的媒体只返回项目内素材 ID 和 MIME 类型，文件读取沿用项目媒体入口的权限检查。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。
 - `canvas.copy.snapshot` 接收 `projectId`、当前编辑文档的 `documentId` 和带修订的 `targets`。返回同一项目、文档、短期 `snapshotId` 和复制的卡片数。快照保存在应用内存，两分钟后过期。剪贴板只接收界面为该次复制生成的独立随机句柄。
+  镜头快照保留已保存的画幅和通过生成参数校验的设置，包括参数中的画幅。格式 4 网页随后发起新生成时，仍按当前项目画框或用户为本次生成明确选择的画幅提交。
 - `canvas.apply` 原子提交删除、恢复、移动、整理或粘贴。粘贴提交含 `operation: "paste"`、`documentId`、`snapshotId` 和画布坐标下的 `viewport`，回执中的 `created` 返回新镜头和节点 ID。创建副本也走这条路径。服务端重新核对素材与落点，整组新建，一次撤销。过期或不属于当前项目和文档的快照返回 `CANVAS_CLIPBOARD_UNAVAILABLE`。视口空间不足时返回 `CANVAS_PASTE_NO_SPACE`。
 - 格式 4 的 `project.get` 在同一事务返回活体和 `canvasEditBase`，其中包含共享目标修订、`contentSequence` 和 `contentToken`。整理提交携带这些凭据和布局函数返回的坐标。项目已改变时，须重新读取并计算布局。既有剪辑、素材和版本保留。
 - `canvas.history.get` 返回画布游标、两边动作以及各自的冲突（`undoConflict` / `redoConflict`）和暂时阻塞（`undoBlocked` / `redoBlocked`）状态。撤销和重做只核对目标动作的修订、顺序和关联。补丁按最多 100 步及 8 MiB 保留，与剪辑历史和回执窗口独立。

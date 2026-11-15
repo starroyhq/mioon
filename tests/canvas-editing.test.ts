@@ -93,8 +93,10 @@ test('copy freezes only canvas fields, remaps internal links, and pastes as one 
     return id;
   }
   const assetId = image(), tailId = image(), exportId = image();
+  const parameters = {scenario: 'delay', delayMs: 0, seed: 48, resolution: '1080P', generateAudio: false,
+    durationSeconds: -1, aspectRatio: '4:3', promptExtend: true, watermark: false};
   const shot = f.shot(7, {title: 'Later shot', aspectRatio: '21:9', duration: 7, prompt: 'Frozen prompt',
-    referenceAssetIds: [assetId], lastFrameAssetId: tailId, parameters: {seed: 48, executionBinding: 'private'},
+    referenceAssetIds: [assetId], lastFrameAssetId: tailId, parameters: {...parameters, executionBinding: 'private'},
     selectedVersionId: f.id(), subjectBinding: {subjectVersionId: f.id(), reviewed: true},
     dataToLeaveBehind: 'private', position: {x: 320, y: 0}});
   const earlier = f.shot(2, {title: 'Earlier shot', position: {x: 640, y: 0}, referenceAssetIds: [f.id()]});
@@ -145,7 +147,7 @@ test('copy freezes only canvas fields, remaps internal links, and pastes as one 
   assert.deepEqual(shotCopy.referenceAssetIds, [assetId]);
   assert.deepEqual((f.store.get('shots', newEarlier!.id) as Record<string, unknown>).referenceAssetIds, []);
   assert.equal(shotCopy.lastFrameAssetId, tailId);
-  assert.deepEqual(shotCopy.parameters, {seed: 48});
+  assert.deepEqual(shotCopy.parameters, parameters);
   assert.equal(shotCopy.selectedVersionId, null);
   assert.equal(Object.hasOwn(shotCopy, 'subjectBinding'), false);
   assert.equal(Object.hasOwn(shotCopy, 'dataToLeaveBehind'), false);
@@ -185,6 +187,15 @@ test('copy freezes only canvas fields, remaps internal links, and pastes as one 
   assert.throws(f.undo, {code: 'CANVAS_EDIT_CONFLICT'});
   assert.ok(ack.created.every(card => !f.archived(card)));
   assert.deepEqual(foreignKeyCheck(f.store.db), []);
+});
+
+test('copy rejects an invalid saved generation parameter with no writes', t => {
+  const f = fixture(t);
+  const shot = f.shot(0, {parameters: {durationSeconds: 31}});
+  const stamp = readProjectContentStamp(f.store.db);
+  assert.throws(() => f.call('canvas.copy.snapshot', {documentId: f.id(), targets: [f.expectTarget(shot)]}),
+    {code: 'CANVAS_EDIT_CONFLICT', details: {reason: 'clipboard-fields', id: shot.id}});
+  assert.deepEqual(readProjectContentStamp(f.store.db), stamp);
 });
 
 test('copy rejects foreign, wrong-document, forged and expired snapshots with no writes', t => {

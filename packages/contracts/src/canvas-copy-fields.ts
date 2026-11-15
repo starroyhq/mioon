@@ -3,6 +3,7 @@ import {canvasArchiveNodeTypeSchema} from './canvas-editing.ts';
 import {CANVAS_GRID} from './canvas-position.ts';
 import {previsNodeRecordSchema} from './previs.ts';
 import {projectIdSchema} from './project-file.ts';
+import {shotGenerationParametersSchema} from './shot-generation-parameters.ts';
 
 const coordinate = z.number().finite().min(-CANVAS_GRID.coordinateLimit).max(CANVAS_GRID.coordinateLimit);
 export const canvasCopyPositionSchema = z.object({x: coordinate, y: coordinate}).strict();
@@ -13,12 +14,7 @@ export const canvasCopyShotFields = z.object({
   prompt: z.string().max(5000),
   aspectRatio: z.enum(['9:16', '16:9', '1:1', '3:4', '4:3', '21:9']),
   duration: z.number().int().min(1).max(20),
-  parameters: z.object({
-    scenario: z.enum(['success', 'failure', 'delay', 'timeout', 'unknown', 'reject', 'download_fail_once',
-      'rejected_before_accept', 'accepted_then_response_lost', 'poll_timeout_then_recover', 'terminal_failure']).optional(),
-    delayMs: z.number().int().min(0).max(120_000).optional(),
-    seed: z.number().refine(Number.isInteger).optional(),
-  }),
+  parameters: shotGenerationParametersSchema.strip(),
   referenceAssetIds: z.array(projectIdSchema).max(8),
   lastFrameAssetId: projectIdSchema.nullable().optional(),
   position: canvasCopyPositionSchema,
