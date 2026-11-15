@@ -89,6 +89,8 @@ export interface Format4Options {
    * v4 projects and new private destinations do not need this callback. */
   readonly approveUpgrade?: (preview: Format4UpgradePreview) => boolean;
   readonly onUpgradeBoundary?: (phase: Format4UpgradeBoundary, observed: Readonly<{projectVersion: number; historyVersion: number | null}>) => void;
+  /** Catalog/boot recovery cannot publish old pages before the user chooses a writable open. */
+  readonly deferLegacyRecovery?: true;
 }
 
 export function assertNoFormat4Restore(localDir: string, projectId: string): void {
@@ -1056,7 +1058,7 @@ function openConnection({projectFile: requested, locate, checkCopy, format4}: Op
 
 /** What recoverProjectFile found:
  * - `clean`: no hot journal beside the project file; the project file itself
- *   was not read, not even its header;
+ *   was not read, not even its header, or legacy hot recovery was deferred;
  * - `recovered`: SQLite rolled the hot journal back;
  * - `locked`: another process holds the project file, for example while it
  *   writes; nothing to do here;
@@ -1128,7 +1130,8 @@ export function recoverProjectFile(requested: string, format4?: Format4Options, 
     observation?.project(info);
     if (!isHotJournal(journal, observation?.journal)) return {state: 'clean'};
     const maximum = projectFormatMaximum(format4);
-    checkHeader(projectFile, maximum, observation?.project);
+    const format = checkHeader(projectFile, maximum, observation?.project);
+    if (format4?.deferLegacyRecovery && format === PROJECT_FILE_SCHEMA_VERSION) return {state: 'clean'};
     const before = lstatSync(projectFile,{bigint:true});
     observation?.project(before);
     if (observation) observation.journal(lstatSync(journal, {bigint: true, throwIfNoEntry: false}));

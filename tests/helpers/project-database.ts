@@ -11,11 +11,14 @@ import type {ForeignKeyViolation} from '../../packages/contracts/src/project-fil
 import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
 import {heldTestApplicationLibrary} from '../../packages/business/src/project-service-application.ts';
 import {findHeldAppProjectFile} from '../../packages/business/src/app-db/connection.ts';
-import {isProjectDatabase, openProjectConnection} from '../../packages/business/src/project-file/connection.ts';
+import {inspectProjectFormatHeader, isProjectDatabase, openProjectConnection} from '../../packages/business/src/project-file/connection.ts';
+import {hasCanvasArchives} from '../../packages/business/src/canvas-active.ts';
 import {projectFileError} from '../../packages/business/src/project-file/errors.ts';
 import {foreignKeyCheck as kernelForeignKeyCheck} from '../../packages/business/src/project-file/cross-file/inspect.ts';
 import {relationTriggerStatements} from '../../packages/business/src/project-file/cross-file/install.ts';
-import {CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../../packages/business/src/project-file/cross-file/relations.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
+import type {ProjectFileFormat} from '../../packages/business/src/project-file/schema/databases.ts';
 import {SCHEMA_MANIFEST} from '../../packages/business/src/project-file/schema/manifest.ts';
 import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
@@ -30,6 +33,8 @@ export {schemaObjects} from '../../packages/business/src/project-file/cross-file
 // lstat only: opening and closing a database file would drop SQLite's locks.
 const exists = (file: string): boolean => lstatSync(file, {throwIfNoEntry: false}) !== undefined;
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
+// Reopen exact test evidence without silently upgrading legacy projects.
+const preserveProjectFormat = (file: string) => inspectProjectFormatHeader(file, {}) === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
 
 /** Pure pathname lookup. Test stores use project.mioon; the server's named
  * file is the sole .mioon in its project directory. Never guesses its name or
@@ -59,7 +64,7 @@ export function openProjectDatabase(root: string): DatabaseSync {
   root = path.resolve(root);
   const file = projectDatabasePath(root);
   const known = serverLocations.get(root);
-  const connection = openProjectConnection({projectFile: file, locate: projectId => {
+  const connection = openProjectConnection({projectFile: file, format4: preserveProjectFormat(file), locate: projectId => {
     if (known) {
       if (known.projectId !== projectId) throw projectFileError('PROJECT_INVALID', {database: 'project', reason: 'project-mismatch', projectId});
       return projectLocation(known.directories, projectId);
@@ -102,8 +107,8 @@ export function projectDirFor(dataDir: string, projectId: string): string {
 /** Reopen a registered server project on its real three-file layout. Unlike
  * openStore(projectDir), this never creates a second TEST-layout project. */
 export function openServerProject(dataDir: string, projectId: string): ProjectStore {
-  const root = projectDirFor(dataDir, projectId), known = serverLocations.get(root)!;
-  return openServerTestStore({projectFile: projectDatabasePath(root), locate: id => {
+  const root = projectDirFor(dataDir, projectId), known = serverLocations.get(root)!, file = projectDatabasePath(root);
+  return openServerTestStore({projectFile: file, format4: preserveProjectFormat(file), locate: id => {
     if (id !== projectId) throw projectFileError('PROJECT_INVALID', {database: 'project', reason: 'project-mismatch', projectId: id});
     return projectLocation(known.directories, id);
   }}, path.resolve(dataDir));
@@ -116,20 +121,21 @@ export function openServerProject(dataDir: string, projectId: string): ProjectSt
  * Give the project's name as `name`, not a later store.put: after the switch
  * the server lists the name in the registry, which the store does not update.
  * Fixed IDs are only for shared test seeds, never proof of server ID generation. */
-export function createServerProject(dataDir: string, options?: {name?: string; projectId?: string}): {projectId: string; store: ProjectStore} {
+export function createServerProject(dataDir: string, options?: {name?: string; projectId?: string; projectFormat?: ProjectFileFormat}): {projectId: string; store: ProjectStore} {
   const suppliedId = options?.projectId;
   const projectId = suppliedId === undefined ? randomUUID() : suppliedId;
   if (!isProjectId(projectId)) throw new TypeError('Invalid project ID');
   const name = options?.name ?? 'Test project';
+  const format4 = (options?.projectFormat ?? FORMAT4_PROJECT_SCHEMA_VERSION) === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
   const directories = serverAppDirectories(path.resolve(dataDir));
   const shared = heldTestApplicationLibrary(directories.dataDir);
   const library = shared ?? openAppLibrary({dataDir: directories.dataDir});
   let store: ProjectStore | undefined;
   try {
     if (library.registry.get(projectId)) throw new Error('Project ID already exists');
-    const entry = createProjectFiles({name, projectId}, {directories, registry: library.registry, identity: library.projectFileIdentity});
+    const entry = createProjectFiles({name, projectId}, {directories, registry: library.registry, identity: library.projectFileIdentity, format4});
     try {
-      store = openServerTestStore({projectFile: entry.projectFile, locate: id => {
+      store = openServerTestStore({projectFile: entry.projectFile, format4, locate: id => {
         if (id !== projectId) throw new TypeError('Created project ID does not match its registration');
         return projectLocation(directories, id);
       }, checkCopy: library.registry.checkCopy}, directories.dataDir);
@@ -165,11 +171,13 @@ export function foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[] {
 }
 
 const foreignKeys = (db: DatabaseSync): number => Number(db.prepare('PRAGMA foreign_keys').get()?.foreign_keys);
-const relationTriggers = new Map(CROSS_FILE_RELATIONS.flatMap(relation => relationTriggerStatements(relation)).map(sql => {
+const relationTriggerMap = (relations: typeof CROSS_FILE_RELATIONS) => new Map(relations.flatMap(relation => relationTriggerStatements(relation)).map(sql => {
   const name = /^CREATE TEMP TRIGGER (\w+) /.exec(sql)?.[1];
   if (!name) throw new Error('Invalid kernel relation trigger');
   return [name, sql.replace('CREATE TEMP TRIGGER ', 'CREATE TRIGGER ')] as const;
 }));
+const legacyRelationTriggers = relationTriggerMap(CROSS_FILE_RELATIONS);
+const format4RelationTriggers = relationTriggerMap(FORMAT4_CROSS_FILE_RELATIONS);
 const disablingForeignKeys = new WeakSet<DatabaseSync>();
 const suspendingProcessRevisions = new WeakSet<DatabaseSync>();
 
@@ -239,6 +247,7 @@ export function withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T {
   if (db.isTransaction) throw new Error('withoutForeignKeys must start outside a transaction: SQLite ignores PRAGMA foreign_keys inside one.');
   if (disablingForeignKeys.has(db)) throw new Error('withoutForeignKeys cannot overlap on the same connection');
   const previous = foreignKeys(db);
+  const relationTriggers = hasCanvasArchives(db) ? format4RelationTriggers : legacyRelationTriggers;
   const triggers = isProjectDatabase(db) ? db.prepare("SELECT name,sql FROM temp.sqlite_master WHERE type='trigger' ORDER BY rowid").all()
     .filter(row => relationTriggers.has(String(row.name))).map(row => ({name: String(row.name), sql: String(row.sql)})) : [];
   if (isProjectDatabase(db) && (triggers.length !== relationTriggers.size || triggers.some(trigger => relationTriggers.get(trigger.name) !== trigger.sql))) {

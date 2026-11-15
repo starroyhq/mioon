@@ -9,6 +9,7 @@ import type {ProjectWorkInspection} from './background-coordinator.ts';
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {hasBlockingMioRun, inspectClosedProjectForTrash} from '../../../../packages/business/src/project-file/closed-copy.ts';
+import type {Format4Options} from '../../../../packages/business/src/project-file/index.ts';
 import {canonicalJson} from '../../../../packages/business/src/project-versions/document.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
@@ -36,7 +37,7 @@ const generation = (file: string): ProjectTrashFileGeneration => {
 
 /** The main process owns OS trash and real window admission. This service
  * owns project/history admission and the durable boundary before that effect. */
-export function createProjectTrash({manager, library, directories, signal, assertProjectFile, inspectProjectWork, port, onBoundary}: {
+export function createProjectTrash({manager, library, directories, signal, assertProjectFile, inspectProjectWork, port, onBoundary, format4}: {
   readonly manager: ProjectHostManager;
   readonly library: AppLibrary;
   readonly directories: AppDirectories;
@@ -44,6 +45,7 @@ export function createProjectTrash({manager, library, directories, signal, asser
   readonly assertProjectFile: (file: string) => void;
   readonly inspectProjectWork: (projectId: string) => ProjectWorkInspection;
   readonly port?: ProjectTrashPort;
+  readonly format4?: Format4Options;
   readonly onBoundary?: (boundary: ProjectTrashBoundary, input: ProjectDeleteInput) => void | Promise<void>;
 }): ProjectTrashActions {
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;
@@ -115,7 +117,7 @@ export function createProjectTrash({manager, library, directories, signal, asser
         if (entry.projectFile !== input.projectFile || canonicalJson(entry.fileIdentity) !== canonicalJson(input.fileIdentity)) throw sourceChanged();
         assertProjectFile(entry.projectFile);
         const inspected = inspectClosedProjectForTrash({projectFile: entry.projectFile,
-          historyFile: id => path.join(projectLocation(directories, id).localDir, 'history.db'), assertMutationAllowed: assertAllowed});
+          historyFile: id => path.join(projectLocation(directories, id).localDir, 'history.db'), assertMutationAllowed: assertAllowed, format4});
         if (inspected.identity.projectId !== input.projectId || inspected.generation.dev !== input.fileIdentity.dev
           || inspected.generation.ino !== input.fileIdentity.ino) throw sourceChanged();
         if (inspected.revision !== input.expectedRevision) throw failure('REVISION_CONFLICT', '项目版本已变化，请重新确认。');

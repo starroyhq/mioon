@@ -12,6 +12,7 @@ import {projectVersionSaveResponseSchema,projectVersionPreviewResponseSchema,pro
 import {startServer,type InspectProject} from './helpers/test-server.ts';
 import type {TimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {TIMELINE_HISTORY_OPERATIONS} from '../packages/business/src/timeline-history-operations.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
 
@@ -19,7 +20,7 @@ interface Reply {status:number;body:{ok:boolean;data?:unknown;error?:{code:strin
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 async function fixture(t:TestContext,{preset=true}:{preset?:boolean}={}){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-version-format-'));let inspect!:InspectProject;
- const server=await startServer({dataDir:root,port:0,comfyModule:'skip',inspectProject:received=>{inspect=received;}});
+ const server=await startServer({dataDir:root,port:0,comfyModule:'skip',projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION,inspectProject:received=>{inspect=received;}});
  t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
  const request=async(operation:string,input:unknown,projectId?:string):Promise<Reply>=>{
   const response=await fetch(server.url+(projectId===undefined?'/api/rpc':projectRpcPath(projectId)),{method:'POST',

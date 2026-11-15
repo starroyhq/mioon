@@ -25,7 +25,7 @@ import {newTimelineRecord} from '../packages/business/src/timeline-new-record.ts
 const at = '2026-11-04T00:00:00.000Z';
 function fixture(t: TestContext, projectId?: string) {
   const root = mkdtempSync(path.join(tmpdir(), 'version-v5-'));
-  const created = createServerProject(root, {name: 'Original', ...(projectId ? {projectId} : {})});
+  const created = createServerProject(root, {name: 'Original', projectFormat: PROJECT_FILE_SCHEMA_VERSION, ...(projectId ? {projectId} : {})});
   const {store} = created;
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const api = createProjectVersions(store, {assertMutationAllowed() {}});

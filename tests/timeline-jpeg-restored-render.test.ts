@@ -10,6 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {createServerProject,openServerProject} from './helpers/project-database.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {validateProjectRetainedRows} from '../packages/business/src/project-retained-validation.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -97,7 +98,7 @@ function assertMixedPixels(bytes: Buffer): void {
   }
 }
 
-test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with exact decoded parity and retained LUT reads',
+test('cold format-3 reopen rerenders mixed JFIF/PNG/video/subtitle with exact decoded parity and retained LUT reads',
   {timeout: 120000}, async t => {
     const base = await mkdtemp(path.join(tmpdir(), 'mioon-image-restored-render-'));
     const dataDir=path.join(base,'application'),videoFile=path.join(base,'video.mp4');
@@ -122,7 +123,7 @@ test('cold current kernel reopen rerenders mixed JFIF/PNG/video/subtitle with ex
     const imageBytes = greyJfif();
     const overlayBytes = png({width:8,height:8,pixel:()=>[0,0,255,128]});
 
-    const created=createServerProject(dataDir,{name:'Cold mixed SDR rerender'});
+    const created=createServerProject(dataDir,{name:'Cold mixed SDR rerender',projectFormat:PROJECT_FILE_SCHEMA_VERSION});
     store=created.store;source=store.root;restored=source;
     services=createServices(store,new Map());
     const project=store.get('projects',created.projectId)! as {id:string;revision:number};

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import {createProjectFile, isProjectStore, openStore} from '../packages/business/src/project-file/index.ts';
+import {isProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
 import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
@@ -9,24 +8,20 @@ import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {
-  collectTaskRequestFingerprints, readTaskRequestFingerprintFixture,
+  collectTaskRequestFingerprints, readTaskRequestFingerprintFixture, reopenFingerprintProject, FINGERPRINT_FORMATS,
 } from './helpers/agent-task-request-fingerprints-v2.ts';
 import {createMioTestAppPorts} from './helpers/mio-runtime-app-ports.ts';
 
-const projectId = '00000000-0000-4000-8000-000000000001';
 const readPolicy = {
   policy: () => structuredClone(DEFAULT_AGENT_TASK_POLICY),
   lookupPolicy: () => null,
   updatePolicy: (): never => {throw new Error('These scenarios must not modify the application policy');},
 };
 
-test('K1 Mio entries retain all 99 raw request fingerprints and rebuild sent bytes after cleanup and reopen', {timeout: 180_000}, async () => {
+for (const format of FINGERPRINT_FORMATS) test(`${format}: K1 Mio entries retain all 99 raw request fingerprints and rebuild sent bytes after cleanup and reopen`, {timeout: 180_000}, async () => {
   let rebuilt = 0, cleaned = 0, diagnostics = 0;
   const actual = await collectTaskRequestFingerprints({
-    openStore(root) {
-      createProjectFile(path.join(root, 'project.mioon'), {projectId});
-      return openStore(root);
-    },
+    format,
     createFixturePorts: createMioTestAppPorts,
     createTools(options) {
       assert.ok(isProjectStore(options.store));
@@ -44,7 +39,7 @@ test('K1 Mio entries retain all 99 raw request fingerprints and rebuild sent byt
     },
     afterClose({root, requests, intents, protocol, scenario}) {
       assert.equal(requests.length, intents.length);
-      const store = openStore(root), records = createMioRecords(store), assembly = createMioAssembly(records);
+      const store = reopenFingerprintProject(root, format), records = createMioRecords(store), assembly = createMioAssembly(records);
       try {
         const before = store.db.prepare('SELECT total_changes() AS count').get()!.count;
         for (let index = 0; index < requests.length; index++) {
@@ -75,7 +70,7 @@ test('K1 Mio entries retain all 99 raw request fingerprints and rebuild sent byt
       } finally {store.close();}
     },
   });
-  assert.deepEqual(actual, readTaskRequestFingerprintFixture().requests);
+  assert.deepEqual(actual, readTaskRequestFingerprintFixture(format).requests);
   assert.equal(actual.length, 99);
   assert.equal(rebuilt, 99);
   assert.equal(diagnostics, 12);

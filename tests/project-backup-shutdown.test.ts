@@ -94,7 +94,7 @@ test('HTTP force-close keeps application library and lock until an accepted back
   assert.equal(restored.project.projectFile, input.projectFile);
   assert.deepEqual(await rpc('project.backup.restore', input), restored, 'lost response is recovered through the same durable intent');
   await server.close();
-  const directories = serverAppDirectories(root), store = openProjectStore({projectFile: input.projectFile, locate: id => projectLocation(directories, id)});
+  const directories = serverAppDirectories(root), store = openProjectStore({projectFile: input.projectFile, locate: id => projectLocation(directories, id), format4: {}});
   try {
     assert.equal(store.projectId, restored.project.projectId);
     const asset = store.get('assets', assetId) as {projectId: string; reference:{path:string}};

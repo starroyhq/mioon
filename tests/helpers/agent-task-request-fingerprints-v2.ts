@@ -1,15 +1,17 @@
 import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {mock} from 'node:test';
+import {backup} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
-import {openStore} from '../../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore} from '../../packages/business/src/project-file/test-store.ts';
 import type {ProjectStore} from '../../packages/business/src/project-file/store.ts';
-import {createProjectFile} from '../../packages/business/src/project-file/connection.ts';
+import {createProjectFile, openClosedProjectSnapshotConnection} from '../../packages/business/src/project-file/connection.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import {assertProjectStore} from '../../packages/business/src/store-runtime.ts';
 import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createServices} from '../../packages/business/src/services.ts';
@@ -24,6 +26,7 @@ import type {TaskGateway, TaskModelItem, TaskModelOutput, TaskModelRequest} from
 import {anthropicMessages} from '../../packages/business/src/agent/anthropic-wire.ts';
 import type {AgentProtocol} from '../../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson, AgentTaskLocale, AgentTaskSnapshot, AgentTaskToolCall} from '../../packages/contracts/src/agent-tasks-v2.ts';
+import {TEST_STORE_DIRECTORY, TEST_STORE_LAYOUT} from '../../packages/contracts/src/project-file.ts';
 import {authorizeTestScope, createTestAuthorizations} from './agent-authorizations.ts';
 import {png} from './timeline-image-fixtures.ts';
 
@@ -37,6 +40,8 @@ export const FINGERPRINT_SCENARIOS = [
 export const OFFICIAL_FINGERPRINT_SCENARIOS = ['official_single_reply', 'official_read_edit_roundtrip'] as const;
 export const FINGERPRINT_PRELOAD_SCENARIOS = ['read_edit_roundtrip', 'conflict_reread', 'tool_failure_retry', 'official_read_edit_roundtrip'] as const;
 export type FingerprintScenario = typeof FINGERPRINT_SCENARIOS[number] | typeof OFFICIAL_FINGERPRINT_SCENARIOS[number];
+export const FINGERPRINT_FORMATS = ['format4', 'format3'] as const;
+export type FingerprintProjectFormat = typeof FINGERPRINT_FORMATS[number];
 export interface TaskRequestFingerprint {
   scenario: FingerprintScenario;
   protocol: AgentProtocol;
@@ -49,10 +54,10 @@ export interface TaskRequestFingerprintFile {
   note: string;
   requests: TaskRequestFingerprint[];
 }
-/** Both real kernel assemblies run the same scenarios, tools and exact gateway
- * boundary. The fixture never normalizes bytes or accepts a copied store. */
+/** Both kernel formats run the same scenarios and capture the exact gateway
+ * bytes. The legacy scenarios edit a disposable clone of the read-only source. */
 export interface TaskRequestFingerprintHarness {
-  openStore?: (root: string) => ProjectStore;
+  format?: FingerprintProjectFormat;
   createFixturePorts?: (store: ProjectStore) => {
     services: ReturnType<typeof createServices>;
     createAuthorizations: (settings: Awaited<ReturnType<typeof createAgentSettings>>) => ReturnType<typeof createTestAuthorizations>;
@@ -66,11 +71,57 @@ export interface TaskRequestFingerprintHarness {
   }) => void;
   afterClose?: (input: {root: string; requests: readonly string[]; intents: readonly {runId: string; stepId: string}[]; protocol: AgentProtocol; scenario: FingerprintScenario}) => void | Promise<void>;
 }
-export const taskRequestFingerprintFixture = new URL('../fixtures/agent-task-request-fingerprints-v2.json', import.meta.url);
+const fingerprintFixtures = {
+  format3: new URL('../fixtures/agent-task-request-fingerprints-v2.json', import.meta.url),
+  format4: new URL('../fixtures/agent-task-format4-request-fingerprints-v2.json', import.meta.url),
+};
 const projectId = '00000000-0000-4000-8000-000000000001';
 const shotId = '00000000-0000-4000-8000-000000000002';
 const uploadId = '00000000-0000-4000-8000-000000000003';
 const fixtureTime = '2026-10-27T00:00:00.000Z';
+
+export function reopenFingerprintProject(root: string, format: FingerprintProjectFormat): ProjectStore {
+  const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
+  const location = {
+    localDir: path.join(root, ...TEST_STORE_LAYOUT.localDir),
+    cacheDir: path.join(root, ...TEST_STORE_LAYOUT.cacheDir),
+    tempDir: path.join(root, ...TEST_STORE_LAYOUT.tempDir),
+  };
+  const store = openServerTestStore({projectFile, locate: () => location, ...(format === 'format4' ? {format4: {}} : {})},
+    path.join(root, TEST_STORE_DIRECTORY, 'app'));
+  try {
+    const [projectVersion, historyVersion] = format === 'format4' ?
+      [FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION] : [PROJECT_FILE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION];
+    assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, projectVersion);
+    assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, historyVersion);
+    return store;
+  } catch (error) {store.close(); throw error;}
+}
+
+async function createFingerprintProject(root: string, format: FingerprintProjectFormat): Promise<() => void> {
+  const projectFile = path.join(root, ...TEST_STORE_LAYOUT.projectFile);
+  if (format === 'format4') {
+    createProjectFile(projectFile, {projectId, format4: {}});
+    return () => {};
+  }
+  // The editing scenarios need writes and a runtime, so run them on a
+  // disposable format-3 clone. The old source is opened only by SQLite's
+  // read-only snapshot connection and stays untouched even on re-open.
+  const source = path.join(root, 'closed-source'), sourceFile = path.join(source, 'source.mioon');
+  mkdirSync(source, {mode: 0o700});
+  createProjectFile(sourceFile, {projectId});
+  const original = createHash('sha256').update(readFileSync(sourceFile)).digest('hex');
+  const connection = openClosedProjectSnapshotConnection({projectFile: sourceFile});
+  try {
+    assert.equal(connection.db.prepare('PRAGMA query_only').get()?.query_only, 1);
+    assert.equal(connection.db.prepare('PRAGMA user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
+    await backup(connection.db, projectFile);
+  } finally {connection.close();}
+  return () => {
+    assert.equal(createHash('sha256').update(readFileSync(sourceFile)).digest('hex'), original);
+    assert.deepEqual(readdirSync(source), ['source.mioon']);
+  };
+}
 
 function object(value: unknown): Record<string, unknown> {
   assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
@@ -170,9 +221,13 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
   // The fixed request seed is also the real kernel file identity, not a
   // second project inserted into a randomly identified project file.
-  try {if (!harness.openStore) createProjectFile(path.join(root, 'project.mioon'), {projectId});}
-  catch (error) {rmSync(root, {recursive: true, force: true}); throw error;}
-  const store = (harness.openStore ?? openStore)(root);
+  const format = harness.format ?? 'format4';
+  let verifySource: () => void;
+  let store: ProjectStore;
+  try {
+    verifySource = await createFingerprintProject(root, format);
+    store = reopenFingerprintProject(root, format);
+  } catch (error) {rmSync(root, {recursive: true, force: true}); throw error;}
   assertProjectStore(store);
   const ports = harness.createFixturePorts?.(store), services = ports?.services ?? createServices(store, new Map());
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
@@ -245,7 +300,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
       else store.tx(() => createMioRecords(store).addImport({...input, status: 'selected', assetId: null, resourceId: null}));
       return uploadId;
     },
-    async close(verify?: () => void | Promise<void>) {try {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); ports?.close(); store.close(); await verify?.();} finally {rmSync(root, {recursive: true, force: true});}},
+    async close(verify?: () => void | Promise<void>) {try {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); ports?.close(); store.close(); await verify?.(); verifySource();} finally {rmSync(root, {recursive: true, force: true});}},
     root, intents,
   };
 }
@@ -432,8 +487,8 @@ export async function collectTaskRequestFingerprints(harness: TaskRequestFingerp
   } finally {mock.timers.reset();}
 }
 
-export function readTaskRequestFingerprintFixture(): TaskRequestFingerprintFile {
-  const value: unknown = JSON.parse(readFileSync(taskRequestFingerprintFixture, 'utf8'));
+export function readTaskRequestFingerprintFixture(format: FingerprintProjectFormat): TaskRequestFingerprintFile {
+  const value: unknown = JSON.parse(readFileSync(fingerprintFixtures[format], 'utf8'));
   const file = object(value);
   assert.equal(file.formatVersion, 1);
   assert.equal(typeof file.note, 'string');
@@ -451,10 +506,12 @@ export function readTaskRequestFingerprintFixture(): TaskRequestFingerprintFile 
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  assert.deepEqual(process.argv.slice(2), ['--update'], 'Usage: node tests/helpers/agent-task-request-fingerprints-v2.ts --update');
-  const requests = await collectTaskRequestFingerprints();
+  const update = process.argv[2], format = process.argv[3] ?? 'format4';
+  assert.ok(update === '--update' && (format === 'format3' || format === 'format4') && process.argv.length <= 4,
+    'Usage: node tests/helpers/agent-task-request-fingerprints-v2.ts --update [format4|format3]');
+  const requests = await collectTaskRequestFingerprints({format});
   const file: TaskRequestFingerprintFile = {formatVersion: 1,
     note: 'Reviewed raw runtime request bytes. Review scenario and request changes before explicitly regenerating with node tests/helpers/agent-task-request-fingerprints-v2.ts --update. No real model or provider is contacted.', requests};
-  writeFileSync(taskRequestFingerprintFixture, JSON.stringify(file, null, 2) + '\n');
-  console.log(`Updated ${requests.length} request fingerprints across ${FINGERPRINT_PROTOCOLS.length} protocols and ${FINGERPRINT_SCENARIOS.length + OFFICIAL_FINGERPRINT_SCENARIOS.length} scenarios.`);
+  writeFileSync(fingerprintFixtures[format], JSON.stringify(file, null, 2) + '\n');
+  console.log(`Updated ${format}: ${requests.length} request fingerprints across ${FINGERPRINT_PROTOCOLS.length} protocols and ${FINGERPRINT_SCENARIOS.length + OFFICIAL_FINGERPRINT_SCENARIOS.length} scenarios.`);
 }

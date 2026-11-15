@@ -10,6 +10,9 @@ import {DEFAULT_TIMELINE_OUTPUT_PRESET} from '../../../packages/contracts/src/ti
 import type {ProjectOpenIssue} from './project-file/project-open-issue.ts';
 import type {ProjectOpenFailureAction, ProjectOpenFailureActionState} from './project-file/ProjectOpenFailureDialog.tsx';
 import type {ProjectLocationRisk, OpenedProjectLocationRisk} from './project-file/ProjectLocationRisk.tsx';
+import type {ProjectFormatReadOnlyView} from '../../../packages/contracts/src/project-format-upgrade.ts';
+import {formatUpgradeNotice} from './project-format-upgrade-client.ts';
+import type {ProjectFormatChoice, ProjectFormatNotice} from './project-format-upgrade-client.ts';
 
 export function projectLocationRisks(facts: ProjectLocationFacts): readonly ProjectLocationRisk[] {
   return [...(!facts.isLocal ? [{kind: 'network'} as const] : []),
@@ -17,12 +20,17 @@ export function projectLocationRisks(facts: ProjectLocationFacts): readonly Proj
     ...(!facts.permissionBits ? [{kind: 'permissions', fileSystem: facts.fileSystem} as const] : [])];
 }
 interface Failure {readonly issue: ProjectOpenIssue; readonly name: string | null; readonly token?: string; readonly projectId?: string; readonly reselect?: 'duplicate' | 'open-file'; readonly entryExpired?: true}
+type FormatUpgrade = Extract<ProjectDesktopOpenResult, {status: 'upgrade-required'}>;
 export interface NativeProjectDesktopState {
   readonly capabilities: ProjectDesktopCapabilities | null; readonly busy: boolean; readonly blocked: boolean;
   readonly newProjectFormatVersion?: NewProjectFormatVersion;
   readonly createOpen: boolean; readonly values: NewProjectFileValues; readonly selection: ProjectDesktopSelection | null; readonly selectionInvalid: boolean; readonly createState: NewProjectFileState;
   readonly failure: Failure | null; readonly action: ProjectOpenFailureActionState;
   readonly risks: readonly OpenedProjectLocationRisk[];
+  readonly formatUpgrade?: FormatUpgrade;
+  readonly formatChoice?: ProjectFormatChoice;
+  readonly formatNotice?: ProjectFormatNotice;
+  readonly readOnlyProject?: ProjectFormatReadOnlyView;
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** The host owns selections and filesystem observations. This owner retains
@@ -79,7 +87,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     if (!blocked) {
       generation++; initialization = null; pendingOpen = null; pendingTake = null; pendingPresentation = null; pendingEditor = null;
       releasePending?.(); releasePending = null;
-      emit({blocked: true, busy: false, capabilities: null, risks: [],
+      emit({blocked: true, busy: false, capabilities: null, risks: [], formatUpgrade: undefined, formatChoice: undefined, readOnlyProject: undefined,
         ...(!retiredWrites.size ? {action: {kind: 'idle'} as const, ...(state.createState.kind === 'creating' ? {createState: {kind: 'editing'} as const} : {})} : {})});
     }
   }
@@ -113,12 +121,59 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     if (!current(serial)) return false;
     if (value.status === 'cancelled') return false;
     if (value.status === 'opened') {emit({failure: null, action: {kind: 'idle'}}); onOpened(); return true;}
+    if (value.status === 'upgrade-required') {presentFormatUpgrade(value); return false;}
     if (value.expiresAt !== undefined && now() >= value.expiresAt) return false;
     const issue: ProjectOpenIssue = value.status === 'copy'
       ? {code: 'PROJECT_FILE_COPY', projectFile: null, projectId: null, originalProjectFile: value.original?.displayPath ?? null, originalProjectId: null}
       : value.reason === 'network' ? {code: 'NETWORK_LOCATION', projectFile: value.displayPath, projectId: null}
         : {code: 'PROJECT_INVALID', projectFile: value.displayPath, projectId: null, reason: 'read-only'};
     emit({failure: {issue, name: value.name, token: value.token}, selectionInvalid: false, action: {kind: 'idle'}}); return false;
+  }
+  function presentFormatUpgrade(upgrade: FormatUpgrade) {
+    if (!current() || !client.resolveFormatUpgrade || !client.discardFormatUpgrade) return;
+    emit({formatUpgrade: upgrade, formatNotice: undefined, readOnlyProject: undefined, failure: null, action: {kind: 'idle'}});
+  }
+  async function chooseFormatUpgrade(choice: ProjectFormatChoice) {
+    const upgrade = state.formatUpgrade, serial = generation;
+    if (!upgrade || !client.resolveFormatUpgrade || !startable() || state.busy || retry || state.formatNotice === 'changed') return false;
+    emit({formatChoice: choice, formatNotice: undefined});
+    const result = await run('retry', async dispatched => {
+      if (state.formatUpgrade !== upgrade) return false;
+      if (choice === 'upgrade') dispatched();
+      try {
+        const value = await client.resolveFormatUpgrade!({token: upgrade.token, choice});
+        if (!current(serial) || state.formatUpgrade !== upgrade) return false;
+        if (value.status === 'cancelled') {
+          emit({formatUpgrade: undefined, formatChoice: undefined});
+          return false;
+        }
+        if (value.status === 'upgrade-required' && value.preview.projectId === upgrade.preview.projectId) {
+          presentFormatUpgrade(value);
+          return false;
+        }
+        if (value.status === 'upgrade-required') throw new Error('Unexpected project format preview acknowledgement');
+        const projectId = value.status === 'read-only' ? value.view.projectId : value.projectId;
+        if (projectId !== upgrade.preview.projectId || (choice === 'read-only') !== (value.status === 'read-only')) throw new Error('Unexpected project format choice acknowledgement');
+        emit({formatUpgrade: undefined, formatChoice: undefined, ...(value.status === 'read-only' ? {readOnlyProject: value.view} : {})});
+        if (value.status === 'opened') onOpened();
+        return true;
+      } catch (error) {
+        if (!current(serial) || state.formatUpgrade !== upgrade) return false;
+        const notice = formatUpgradeNotice(error);
+        if (notice === 'failed' && choice === 'upgrade') throw error;
+        emit({formatChoice: undefined, formatNotice: notice});
+        return false;
+      }
+    }, {preserveDraft: true});
+    if (current(serial) && state.formatUpgrade === upgrade) emit({formatChoice: undefined});
+    return result;
+  }
+  function closeFormatUpgrade() {
+    if (!startable() || state.busy || retry) return;
+    const upgrade = state.formatUpgrade;
+    emit({formatUpgrade: undefined, formatChoice: undefined, formatNotice: undefined, readOnlyProject: undefined});
+    if (upgrade) void client.discardFormatUpgrade?.({token: upgrade.token}).catch(() => {});
+    void drainPendingOpen();
   }
   async function run(action: ProjectOpenFailureAction, work: (dispatched: () => void) => Promise<boolean>, {write = false, preserveDraft = false, replay = false, projectId, mutation, after}: {write?: boolean | (() => boolean); preserveDraft?: boolean; replay?: boolean; projectId?: string; mutation?: Mutation; after?: (permit?: () => boolean) => Promise<void>} = {}): Promise<boolean> {
     if (!startable() || state.busy || retry && !replay) return false;
@@ -151,7 +206,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
       } else if (recorded && !rejected(error, action, mutation)) {
         retry = resume; retryIntent = recorded;
         emit({action: {kind: 'unknown', action}, ...(action === 'chooseLocation' ? {createState: {kind: 'unknown'} as const} : {})});
-        if (!state.failure && action !== 'chooseLocation') fail(error, 'open', projectId);
+        if (!state.failure && !state.formatUpgrade && action !== 'chooseLocation') fail(error, 'open', projectId);
       } else {
         if (recorded) recorded.acknowledged = true;
         retry = null; retryIntent = null;
@@ -199,7 +254,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
   function drainPendingOpen(serial = generation): Promise<void> {
     presentPendingOpen();
     const ready = () => current(serial) && pendingEditor === false && canStart() && Boolean(state.capabilities?.ready && state.capabilities.open) &&
-      !state.busy && !retry && !state.createOpen && !pendingOpen && !pendingPresentation && pendingHint > consumedHint;
+      !state.busy && !retry && !state.createOpen && !state.formatUpgrade && !state.readOnlyProject && !pendingOpen && !pendingPresentation && pendingHint > consumedHint;
     if (!ready()) return Promise.resolve();
     if (pendingTake?.generation === serial) return pendingTake.promise;
     const flight = {generation: serial, promise: Promise.resolve()}; let taken = false;
@@ -360,6 +415,7 @@ export function createNativeProjectDesktopController({client, identity, beforeAc
     openPrivacySettings: () => state.capabilities?.ready && state.capabilities.help ? run('systemSettings', async () => {await client.openPrivacySettings(); return true;}, {preserveDraft: true}) : Promise.resolve(false),
     reveal: (id?: string) => state.capabilities?.ready && state.capabilities.reveal && (id || state.failure?.token) ? run('reveal', async () => {await client.reveal(id ? {projectId: id} : {token: state.failure!.token!}); return true;}, {preserveDraft: true, projectId: id}) : Promise.resolve(false),
     openOriginal: () => tokenAction('openOriginal'), adoptCopy: () => tokenAction('adoptCopy'),
+    chooseFormatUpgrade, closeFormatUpgrade, presentFormatUpgrade,
     observeError: fail,
     dismissRisk() {dismissedRisk = true; emit({risks: []});},
     bridge: client,

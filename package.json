@@ -26,6 +26,7 @@
     "mcp": "node apps/mcp/src/index.ts",
     "test": "node --test \"tests/*.test.ts\"",
     "test:browser": "python3 tests/browser_flow.py",
+    "test:browser:canvas-archive": "node tests/browser_canvas_archive_escape.mjs",
     "test:browser:first-trial": "python3 tests/browser_first_trial.py",
     "demo": "node scripts/demo.ts",
     "doctor": "node scripts/doctor.ts",

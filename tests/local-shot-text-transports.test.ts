@@ -1,4 +1,6 @@
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {historyManifestForVersion,projectManifestForVersion} from '../packages/business/src/project-file/schema/format-manifests.ts';
 import {CONVERTED_TEMP_TRIGGERS} from '../packages/business/src/project-file/cross-file/converted-triggers.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
@@ -46,7 +48,8 @@ async function fixture(t: test.TestContext){const parent=await realpath(await mk
  // reads, and the server's connection is never switched to query_only.
  const rows=()=>inspect(project.id,db=>{
   const state=readProjectState(db),taskObject=(name:string)=>!name.startsWith('project_file_')&&/(?:^|_)agent_(?:task|target)_/u.test(name);
-  const manifest=Object.values(SCHEMA_MANIFEST).flatMap(value=>[...value.entries]);
+  const manifest=[...projectManifestForVersion(FORMAT4_PROJECT_SCHEMA_VERSION)!.entries,
+    ...historyManifestForVersion(FORMAT4_HISTORY_SCHEMA_VERSION)!.entries,...SCHEMA_MANIFEST.cache.entries];
   const sort=<T extends {type:string;name:string}>(rows:T[])=>rows.sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
   const expected=sort([...manifest.filter(entry=>taskObject(entry.name)),...CONVERTED_TEMP_TRIGGERS.filter(entry=>taskObject(entry.name)).map(entry=>({
     type:'trigger',name:entry.name,tbl_name:entry.table,sha256:sha(entry.sql.replace('CREATE TEMP TRIGGER ','CREATE TRIGGER ')),

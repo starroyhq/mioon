@@ -7,7 +7,7 @@ import type {RecentProject} from '../../../../packages/contracts/src/project-reg
 import type {ApplicationFileGuard} from './application-storage.ts';
 import type {CatalogRecovery} from './manager.ts';
 import {catalogFileGeneration} from '../project-catalog-scan.ts';
-import type {ProjectCatalogScanInput} from '../project-catalog-scan.ts';
+import type {ProjectCatalogScanInput, ProjectCatalogScanResult} from '../project-catalog-scan.ts';
 import {createNodeProjectCatalogClient} from '../project-catalog-client.ts';
 import type {ProjectCatalogClient} from '../project-catalog-client.ts';
 
@@ -63,15 +63,16 @@ function held(info: BigIntStats): CatalogRecovery | undefined {
   if (isAppLibraryHeld(identity)) return {result: {state: 'invalid', reason: 'not-a-project-file'}};
 }
 
-export function createProjectCatalog({client = createNodeProjectCatalogClient(), guard, signal, checkpoint, timeoutMs = catalogTimeoutMs}: {
+export function createProjectCatalog({client = createNodeProjectCatalogClient(), guard, signal, checkpoint, timeoutMs = catalogTimeoutMs, format4 = false}: {
   readonly client?: ProjectCatalogClient;
   readonly guard?: ApplicationFileGuard;
   readonly signal: AbortSignal;
   readonly checkpoint: () => unknown;
   readonly timeoutMs?: number;
+  readonly format4?: boolean;
 }) {
   signal.addEventListener('abort', () => client.close(), {once: true});
-  const formats = new Map<string, {generation: string; newer: boolean}>();
+  const formats = new Map<string, NonNullable<ProjectCatalogScanResult['format']>>();
   const reads = new Map<string, SharedRead<BigIntStats | undefined>>();
   let snapshot: SharedRead<Awaited<ReturnType<ApplicationFileGuard['catalogSnapshot']>>> | undefined;
   const readMetadata = (file: string, scanSignal: AbortSignal): Promise<BigIntStats | undefined> => {
@@ -144,6 +145,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
           journalGeneration: journal ? catalogFileGeneration(journal) : null,
           checkHeader: info.nlink === 1n && mayInspectHeader(file)
             && (info.ino === 0n || !formats.has(file) || !!journal?.isFile() && journal.size > 0n),
+          ...(format4 ? {format4: true} : {}),
         }});
       } catch (error) {
         scanSignal.throwIfAborted();
@@ -193,7 +195,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
           results.set(project.projectId, owner);
           continue;
         }
-        let result = observed.recovery;
+        let result: Extract<CatalogRecovery, {result: unknown}>['result'] = observed.recovery;
         if (result.state === 'clean') {
           const journal = await readMetadata(input.file + '-journal', scanSignal);
           scanSignal.throwIfAborted();
@@ -211,7 +213,10 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
             formats.set(input.file, observed.format);
           }
           const format = input.checkHeader ? observed.format : formats.get(input.file);
-          if (format?.generation === generation && format.newer) result = {state: 'invalid', reason: 'format-newer'};
+          if (format?.generation === generation) {
+            if (format.status === 'newer') result = {state: 'invalid', reason: 'format-newer'};
+            if (format.status === 'upgrade-required') result = {state: 'upgrade-required'};
+          }
         }
         inspected.set(project.projectId, {result});
       } catch (error) {

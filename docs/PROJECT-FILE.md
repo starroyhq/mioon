@@ -11,7 +11,7 @@
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
 - 全局 `diagnostics/latest` 从应用 documents 读取连接测试摘要，HTTP 失败时可附状态码和已知服务商错误标签。摘要无项目对话、请求或密钥，也不打开项目。应用库当前为 v4，仅精确已知 v3 做 S3-A 的3→4升级，扩展后台任务索引，保留旧索引JSON及其他数据；不接受未知/改动结构，也不组合旧1/2升级到4。历史冻结件和旧升级函数仍保留供验证。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
-- 生产素材以引用定位：项目格式为 3、cache 为 2，history 为 10。格式 1、2 的旧开发项目及备份明确拒绝、零写入，需重建。路径导入不复制，网页/Mio 上传写固定 `素材/`；生成写 `生成/`，成片写 `导出/`，排他发布、不自动删除项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
+- 生产宿主新建项目使用格式 4、本机记录 12、缓存 2。Mioon 0.1 的格式 3 项目可只读查看，也可在明确同意并校验升级前备份后升至格式 4。格式 1、2 的旧开发项目及备份拒绝打开，需重建。路径导入不复制，网页和 Mio 上传写入固定的 `素材/` 目录。生成写入 `生成/`，成片写入 `导出/`，均排他发布并保留项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
 - S5-A/B 已提供应用级复制/另存为、副本作为新项目打开、复制到和受控模板及受信端口；按入口只带重绑定版本或空本机记录，不接界面或 CLI/MCP 新命令；见 [PROJECT-COPIES.md](PROJECT-COPIES.md)。S5-C 的废纸篓及 V4 的打包导入导出尚未接入；旧工作区备份/恢复已退役。精确错误和按项目后的图片、帧、LUT 可达容量见 [宿主当前状态](PROJECT-HOST.md#0-p4-当前运行状态)。不调用旧生产生命周期链；S3-A只做任务索引上限，跨项目运行调度和历史/LUT/Mio总量硬限留0.1.x或另卡。
 
@@ -235,6 +235,8 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 | `PROJECT_LOCKED` | 已在另一个 Mioon 中打开（12-03b） | 同上 |
 | `PROJECT_ACCESS_DENIED` | 系统明确返回 EACCES/EPERM（含隐私授权拒绝），HTTP 403；不从通用 SQLITE_CANTOPEN 猜权限 | 同上；按项目寻址时 `PROJECT_UNAVAILABLE.details.reason` 保留此码，目录 availability 为 `access-denied` |
 | `PROJECT_FORMAT_NEWER` | 格式比当前 Mioon 支持的新（12-03c） | 另带 `database`（`project`、`history` 或 `cache`，本机记录有自己的格式版本）、`formatVersion`、`supportedFormatVersion` |
+| `PROJECT_FORMAT_UPGRADE_REQUIRED` | 格式 3 项目等待可写打开确认 | 项目 ID、内容序号、内容令牌、当前和目标的项目与本机记录版本 |
+| `PROJECT_FORMAT_BACKUP_FAILED` | 无法创建或校验升级前备份 | 格式升级中止，保留原格式 |
 | `PROJECT_INVALID` | 文件损坏、不是项目文件、结构对不上，或在只读位置（12-03d） | 同第一行，另带 `reason`（`PROJECT_INVALID_REASONS`） |
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |
 | `PROJECT_FILE_EXISTS` | 新建时目标位置已有文件；HTTP 409 | 内核的详情照打开错误的写法，是 `{database: 'project', reason: 'exists'}`，不放绝对路径；应用级的新建再补上 `projectFile` |
@@ -333,15 +335,15 @@ node tests/helpers/project-file-schema-derivation.ts --check
 
 `tests/project-file-schema.test.ts` 另记每个数据库版本的独立摘要，重新生成不能替代升版本。`tests/fixtures/kernel-history-previous-schema/` 仅保存仍支持升级的旧内核 history SQL，逐版对原有白名单核对；它不依赖当前领域或旧工作区建库器，也不由 `--write` 更新。生成文件发生合并冲突时，同步 main 后重新生成，不手工拼接。
 
-### 格式 4 候选
+### 格式 4
 
-- 普通桌面和服务端仍创建、打开和复制项目 3、本机记录 10、缓存 2。只有内核的受信调用方显式传入 `format4` 能力，或给隔离复制目标传入 `targetFormat: 4`，才会写入候选格式。等 0.2.0 的画布和画框功能完成后，由宿主一起启用这些入口。候选能力不通过环境变量或项目输入开启。
+- 0.2.0 的桌面和服务端默认创建和打开项目 4、本机记录 12、缓存 2。复制与签名示例实例化对新目标使用格式 4，源项目与签名资源保留原格式。默认格式由宿主固定。
 - 候选本机记录 12 为画布回执增加过期窗口。精确匹配原候选 11 清单时，在同一持锁事务内升级并最后写版本。旧回执字节和项目内容身份保持原样。配对恢复可识别两种候选清单，仍从升级前备份还原旧配对。
-- `inspectProjectFormatReadOnly` 默认上限为格式 3。受信调用方传入 `format4` 后可预检格式 4，按对应头和精确清单返回格式与内容身份。普通最近列表只读项目头识别新版，热日志恢复遇到新版头会在回放前拒绝。原地升级需要 `approveUpgrade` 对项目 ID、内容序号、内容令牌及本机记录版本的确认。宿主可用 `PROJECT_FORMAT_UPGRADE_REQUIRED` 的详情接确认界面。拒绝后保留旧文件。内容身份分叉按原来的只读处置流程。
+- 格式 3 项目第一次可写打开时先提示升级。用户可选择以只读方式打开，查看镜头、画板卡片与时间线摘要，保留项目和本机记录原件。选择升级时，宿主用 `PROJECT_FORMAT_UPGRADE_REQUIRED` 的预览详情确认项目 ID、内容序号、内容令牌和本机记录版本，内核持锁重新校验后才备份及升级。项目内容变化需要重新确认。内容身份分叉沿用原有处置流程。
 - 升级前，在持锁连接上核验配对，从原文件描述符逐字节复制项目和已有 `history.db` 到本机记录的 `format-upgrade-backups`。校验旧清单、完整性和配对，记录哈希后整体发布。旧项目没有本机记录时，备份记下这一事实，迁移开始前建立有效的空历史 10。备份失败时保留旧格式。该备份与普通滚动备份分开，保留原项目 ID、内容令牌和历史行号。每项目保留最近三份受管升级备份，持锁创建备份时清理已识别的中断暂存。
 - 受信内核入口 `restoreFormat4Backup` 核对选定备份与已确认的当前项目内容身份，保留被替换文件，先发布旧本机记录、再替换项目文件。备份记载没有本机记录时，恢复后保持缺失，普通打开再新建。现行打开和关闭快照入口遇到活动恢复意图会拒绝，以同一输入重试可续跑。宿主接入时要先停止该项目后台工作并关闭宿主，恢复后刷新登记文件身份与后台索引。此入口尚未接入默认桌面或服务端。Windows 启用前需实现持锁文件的安全替换。
 - 在同一连接的事务中为 shots、nodes、edges 增加 `archivedAt`、`archiveBatchId`、`archiveReason`，本机记录增加独立的画布回执、历史和游标。能核对内容身份的旧 history 8/9 在该事务中先执行已有迁移，再接画布结构。备份保留其原版本。没有内容令牌的旧记录走原有本机记录升级和分叉处置。版本字段最后写入，旧数据与内容令牌保留。归档字段随后发生变化时会推进内容和目标修订。格式升级是单向的，0.1.x 的默认入口读到格式 4 会报 `PROJECT_FORMAT_NEWER`。
-- 格式 4 时间线兼容原像素布局和字幕 `bottom_cjk_v1`。新版片段用 `layout: {profileId: "mioon-clip-layout-v2", basisPresetId}`，新版字幕用 `profileId: "bottom_cjk_relative_v2"` 与 `basisPresetId`，基准为 0.2.0 的十二档画框之一。升级保留旧几何字节，明确修改画框时才由画框事务写入新版布局。默认备份与旧命名版本沿用原有读取规则，转换为候选格式时校验旧几何标记。
+- 格式 4 时间线兼容原像素布局和字幕 `bottom_cjk_v1`。新版片段用 `layout: {profileId: "mioon-clip-layout-v2", basisPresetId}`，新版字幕用 `profileId: "bottom_cjk_relative_v2"` 与 `basisPresetId`，基准为 0.2.0 的十二档画框之一。升级保留旧几何字节，明确修改画框时才由画框事务写入新版布局。默认备份与旧命名版本沿用原有读取规则，转换时校验旧几何标记。
 - 旧自动备份、命名版本、复制源及签名模板可验证并读取。需要格式 4 的复制、采用副本和模板实例在新暂存目标转换，签名资源保留发布字节。旧命名版本先校验原快照再适配归档列，格式 4 版本携带这些列。旧包格式不承接格式 4。
 
 ## 跨文件约束

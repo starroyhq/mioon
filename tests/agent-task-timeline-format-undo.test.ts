@@ -12,6 +12,7 @@ import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer,type InspectProject} from './helpers/test-server.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
@@ -42,7 +43,7 @@ test('real Mio subtitle undo retains valid locked format history while unknown o
   const calls:AgentTaskToolCall[]=models===1?[{id:'load_subtitles',name:'mioon_tools_load',arguments:{names:['mioon_timeline_subtitle_add']}}]:models<=3?[{id:`add_subtitle_${models-1}`,name:'mioon_timeline_subtitle_add',arguments:{expectedRevision:timelineRevision+models-2,startFrame:(models-2)*30,durationFrames:30,text:models===2?'First subtitle':'Second subtitle'}}]:[];
   yield {type:'done',output:output(calls)};
  };
- const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:gateway,comfyModule:'skip',inspectProject:received=>{inspect=received;}});
+ const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:gateway,comfyModule:'skip',projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION,inspectProject:received=>{inspect=received;}});
  t.after(async()=>{await server.close();await settings.close();await rm(root,{recursive:true,force:true});});
  async function request(route:string,method='GET',input?:unknown){
   const response=await fetch(server.url+route,{method,headers:{Authorization:`Bearer ${server.token}`,...(input===undefined?{}:{'Content-Type':'application/json'})},...(input===undefined?{}:{body:JSON.stringify(input)})});

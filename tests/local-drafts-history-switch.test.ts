@@ -50,7 +50,7 @@ async function fixture(t: TestContext) {
   const normal: {context: Parameters<typeof composeHostedProject>[0]; runtime: HostedProject}[] = [];
   const ports = new Set<object>(), dispatches: {operation: string; input: unknown}[] = [];
   const manager = createProjectHostManager<HostedProject>({directories, registry: library.registry, identity: library.projectFileIdentity,
-    assertMutationAllowed: application.assertMutationAllowed,
+    assertMutationAllowed: application.assertMutationAllowed, format4: {},
     factory: async context => {
       const runtime = await composeHostedProject(context, library, app, options, () => undefined, () => 4318);
       const port = runtime.project.draftsFactory(context);

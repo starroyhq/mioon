@@ -4,6 +4,7 @@ import {projectLocationRisks} from './native-project-desktop-state.ts';
 import {NewProjectFileDialog} from './project-file/NewProjectFileDialog.tsx';
 import {ProjectOpenFailureDialog} from './project-file/ProjectOpenFailureDialog.tsx';
 import {ProjectLocationRiskBanner} from './project-file/ProjectLocationRisk.tsx';
+import {ProjectFormatReadOnlyDialog, ProjectFormatUpgradeDialog} from './project-file/ProjectFormatUpgradeDialog.tsx';
 import {useI18n} from './i18n/I18nProvider.tsx';
 
 function useDesktop(desktop: NativeProjectDesktopController | null) {
@@ -26,6 +27,10 @@ export function NativeProjectEntryDialogs({desktop, formIntent = 0}: {readonly d
   const capabilities = state.capabilities, enabled = Boolean(capabilities?.ready) && !state.blocked;
   const failure = state.failure;
   return <>
+    {state.formatUpgrade && <ProjectFormatUpgradeDialog busy={state.busy ? state.formatChoice ?? 'upgrade' : null}
+      notice={state.formatNotice} blocked={state.blocked} recheck={state.action.kind === 'unknown' ? () => {void desktop.recheck();} : undefined}
+      onChoose={choice => {void desktop.chooseFormatUpgrade(choice);}} onClose={desktop.closeFormatUpgrade} />}
+    {state.readOnlyProject && <ProjectFormatReadOnlyDialog view={state.readOnlyProject} onClose={desktop.closeFormatUpgrade} />}
     <NewProjectFileDialog interactionBlocked={state.blocked} open={state.createOpen} values={state.values} onChange={desktop.change} state={state.createState} newProjectFormatVersion={state.newProjectFormatVersion}
       location={{display: state.selection?.displayPath ?? '', status: state.selectionInvalid ? 'unavailable' : state.selection ? 'ready' : 'unselected', ...(state.selectionInvalid ? {message: t('nativeEntry.selectionExpired')} : {}), risks: state.selection ? projectLocationRisks(state.selection.facts) : []}}
       onChooseLocation={enabled && capabilities?.create ? () => {void desktop.chooseLocation();} : undefined}

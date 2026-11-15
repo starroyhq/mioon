@@ -167,7 +167,7 @@ if (direct) {
     const library=openAppLibrary({dataDir:dataRoot}),directories=serverAppDirectories(dataRoot);
     const registration=library.registry.get(IDS.project);
     if(registration?.projectFile!==projectFile){library.close();throw Error('Writer project is not the registered fixture file');}
-    const store=openProjectStore({projectFile,locate:id=>projectLocation(directories,id),checkCopy:library.registry.checkCopy});
+    const store=openProjectStore({projectFile,format4:{},locate:id=>projectLocation(directories,id),checkCopy:library.registry.checkCopy});
     const boundary = process.env.MIOON_MUTATION_WIRE_BOUNDARY || '';
     const request = JSON.parse(process.env.MIOON_MUTATION_WIRE_REQUEST as string) as {operation: string; input: Record<string, unknown>};
     const report = (value: unknown): void => { process.stdout.write(JSON.stringify(value) + '\n'); };

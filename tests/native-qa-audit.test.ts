@@ -75,7 +75,7 @@ test('an independent physical report runs the real warmed four CLI reads without
   assert.throws(()=>openAppLibrary({dataDir}),{code:'APP_LIBRARY_LOCKED'});
   assert.throws(()=>openServerProject(dataDir,id),{code:'APP_LIBRARY_LOCKED'});
   const location=layout.projects.find(project=>project.projectId===id)!;
-  assert.throws(()=>openProjectStore({projectFile:location.projectFile,locate:()=>({localDir:path.dirname(location.historyFile),cacheDir:path.dirname(location.cacheFile),tempDir:path.join(dataDir,'tmp','projects',id)})}),{code:'PROJECT_LOCKED'});
+  assert.throws(()=>openProjectStore({projectFile:location.projectFile,format4:{},locate:()=>({localDir:path.dirname(location.historyFile),cacheDir:path.dirname(location.cacheFile),tempDir:path.join(dataDir,'tmp','projects',id)})}),{code:'PROJECT_LOCKED'});
   await assert.rejects(auditColdNativeQa(layout,{ownerPids:[pid]}),{code:'NATIVE_QA_LIVE_OWNER'});
   backend.kill('SIGTERM');const[code,signal]=await ended;done=true;assert.equal(code,0);assert.equal(signal,null);
   const cold=await auditColdNativeQa(layout,{ownerPids:[pid]});assert.equal(Object.keys(cold.projects).length,2);assert.ok(cold.application.databases.main.schema.length>0);

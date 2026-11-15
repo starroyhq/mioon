@@ -1,5 +1,7 @@
 import {projectEntryOpenFailureSchema} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 import type {ProjectEntryOpenFailure} from '../../../packages/contracts/src/project-entry-open-failure.ts';
+import {projectFormatUpgradePreviewSchema} from '../../../packages/contracts/src/project-format-upgrade.ts';
+import type {ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 export {projectEntryOpenFailure as projectWindowOpenFailure} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 export type {ProjectEntryOpenFailure as ProjectWindowOpenFailure} from '../../../packages/contracts/src/project-entry-open-failure.ts';
 
@@ -18,6 +20,7 @@ export interface ProjectWindowOpenResult {
   readonly targetWindowId: string | null;
   readonly targetPhase: Exclude<ProjectWindowPhase, 'none'> | null;
   readonly failure?: ProjectEntryOpenFailure;
+  readonly formatUpgrade?: ProjectFormatUpgradePreview;
 }
 export interface ProjectWindowEntryReceipt {
   readonly entryToken: string;
@@ -138,10 +141,12 @@ export const isProjectWindowOpenFailure = (value: unknown): value is ProjectEntr
 export function isProjectWindowOpenResult(value: unknown): value is ProjectWindowOpenResult {
   if (!record(value)) return false;
   const hasFailure = Object.hasOwn(value, 'failure');
-  if (!keysAre(value, ['ok', 'reason', 'targetWindowId', 'targetPhase', ...(hasFailure ? ['failure'] : [])]) || typeof value.ok !== 'boolean' ||
+  const hasUpgrade = Object.hasOwn(value, 'formatUpgrade');
+  if (!keysAre(value, ['ok', 'reason', 'targetWindowId', 'targetPhase', ...(hasFailure ? ['failure'] : []), ...(hasUpgrade ? ['formatUpgrade'] : [])]) || typeof value.ok !== 'boolean' ||
     (typeof value.reason !== 'string' || !['accepted', 'already-open', 'busy', 'unavailable', 'cancelled'].includes(value.reason)) ||
     value.ok !== (value.reason === 'accepted' || value.reason === 'already-open') ||
-    hasFailure && (value.reason !== 'unavailable' || !isProjectWindowOpenFailure(value.failure))) return false;
+    hasFailure && (value.reason !== 'unavailable' || !isProjectWindowOpenFailure(value.failure)) ||
+    hasUpgrade && (hasFailure || value.reason !== 'unavailable' || !projectFormatUpgradePreviewSchema.safeParse(value.formatUpgrade).success)) return false;
   return value.ok ? isProjectWindowId(value.targetWindowId) && editorPhase(value.targetPhase) :
     value.targetWindowId === null && value.targetPhase === null;
 }

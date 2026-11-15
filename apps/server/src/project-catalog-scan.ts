@@ -1,8 +1,8 @@
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
-import {inspectProjectFormatHeader, recoverProjectFile} from '@mioon/business/project-file/index';
-import type {ProjectFileRecovery} from '@mioon/business/project-file/index';
+import {inspectProjectFormatHeader, PROJECT_FILE_SCHEMA_VERSION, recoverProjectFile} from '@mioon/business/project-file/index';
+import type {Format4Options, ProjectFileRecovery} from '@mioon/business/project-file/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {PROJECT_INVALID_REASONS} from '../../../packages/contracts/src/project-file.ts';
@@ -13,13 +13,16 @@ export interface ProjectCatalogScanInput {
   readonly birthtime: string;
   readonly journalGeneration: string | null;
   readonly checkHeader: boolean;
+  readonly format4?: true;
 }
+
+const formatStatuses = ['current', 'upgrade-required', 'newer'] as const;
 
 export interface ProjectCatalogScanResult {
   readonly recovery: ProjectFileRecovery | {readonly state: 'invalid'; readonly reason: 'format-newer'} | 'changed';
   readonly generation?: string;
   readonly birthtime?: string;
-  readonly format?: {readonly generation: string; readonly newer: boolean};
+  readonly format?: {readonly generation: string; readonly status: typeof formatStatuses[number]};
 }
 
 export function catalogFileGeneration(info: BigIntStats): string {
@@ -30,6 +33,7 @@ export function catalogFileGeneration(info: BigIntStats): string {
  * a worker thread would release another thread's SQLite locks on the inode. */
 export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectCatalogScanResult {
   const {file, generation, birthtime, journalGeneration, checkHeader} = input;
+  const format4: Format4Options | undefined = input.format4 ? {deferLegacyRecovery: true} : undefined;
   const journal = file + '-journal';
   let changed = false;
   const failChanged = (): never => {
@@ -51,7 +55,7 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     assertProject(before);
     unmodified();
     try {
-      recovery = recoverProjectFile(file, undefined, {project: assertProject, journal: assertJournal});
+      recovery = recoverProjectFile(file, format4, {project: assertProject, journal: assertJournal});
     } catch (error) {
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
       recovery = {state: 'invalid', reason: 'format-newer'};
@@ -68,15 +72,17 @@ export function scanProjectCatalogFile(input: ProjectCatalogScanInput): ProjectC
     const assertHeader = (info: BigIntStats): void => {
       if (!info.isFile() || info.nlink !== 1n || catalogFileGeneration(info) !== afterGeneration || String(info.birthtimeNs) !== birthtime) failChanged();
     };
-    let newer = false;
-    try { inspectProjectFormatHeader(file, undefined, assertHeader); }
-    catch (error) {
+    let status: typeof formatStatuses[number];
+    try {
+      const version = inspectProjectFormatHeader(file, format4, assertHeader);
+      status = format4 && version === PROJECT_FILE_SCHEMA_VERSION ? 'upgrade-required' : 'current';
+    } catch (error) {
       if (changed) return {recovery: 'changed'};
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') return result;
-      newer = true;
+      status = 'newer';
     }
     assertHeader(observe());
-    return {...result, format: {generation: afterGeneration, newer}};
+    return {...result, format: {generation: afterGeneration, status}};
   } catch (error) {
     const code = (error as {code?: unknown} | null)?.code;
     return {recovery: code === 'EACCES' || code === 'EPERM' ? {state: 'access-denied'} : code === 'ENOENT' || code === 'ENOTDIR' || changed ? 'changed' : {state: 'invalid', reason: 'unusable'}};
@@ -94,10 +100,11 @@ export function catalogObject(value: unknown): Record<string, unknown> | undefin
 
 function isScanInput(value: unknown): value is ProjectCatalogScanInput {
   const input = catalogObject(value);
-  return !!input && Object.keys(input).length === 5
+  return !!input && Object.keys(input).length === (input.format4 === true ? 6 : 5)
     && typeof input.file === 'string' && input.file.length <= 4096 && !input.file.includes('\0') && path.isAbsolute(input.file) && path.resolve(input.file) === input.file
     && isGeneration(input.generation) && isBirthtime(input.birthtime)
-    && (input.journalGeneration === null || isGeneration(input.journalGeneration)) && typeof input.checkHeader === 'boolean';
+    && (input.journalGeneration === null || isGeneration(input.journalGeneration)) && typeof input.checkHeader === 'boolean'
+    && (input.format4 === undefined || input.format4 === true);
 }
 
 export function isCatalogScanBatch(value: unknown): value is readonly ProjectCatalogScanInput[] {
@@ -122,5 +129,6 @@ export function isCatalogScanResult(value: unknown): value is ProjectCatalogScan
   if (!hasIdentity && (result.generation !== undefined || result.birthtime !== undefined)) return false;
   if (result.format === undefined) return true;
   const format = catalogObject(result.format);
-  return hasIdentity && !!format && Object.keys(format).length === 2 && format.generation === result.generation && typeof format.newer === 'boolean';
+  return hasIdentity && !!format && Object.keys(format).length === 2 && format.generation === result.generation
+    && formatStatuses.some(status => status === format.status);
 }

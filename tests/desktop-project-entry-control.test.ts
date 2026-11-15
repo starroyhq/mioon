@@ -19,11 +19,13 @@ import {createProjectEntries} from '../apps/server/src/project-entries.ts';
 import type {ProjectHostManager} from '../apps/server/src/project-host/manager.ts';
 import type {ProjectRegistryPort} from '../apps/server/src/project-host/ports.ts';
 
-async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,onReply?:(message:unknown,deliver:()=>void)=>void){
+async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort)=>ProjectEntryControlPort,onReply?:(message:unknown,deliver:()=>void)=>void,{legacyHost=false}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-entry-control-')),dataDir=path.join(root,'app'),parent=path.join(root,'selected');mkdirSync(parent);
- const created=createServerProject(dataDir,{name:'Original'}),projectId=created.projectId,file=created.store.projectFile;created.store.close();
+ const projectFormat=legacyHost?PROJECT_FILE_SCHEMA_VERSION:FORMAT4_PROJECT_SCHEMA_VERSION;
+ const created=createServerProject(dataDir,{name:'Original',projectFormat}),projectId=created.projectId,file=created.store.projectFile;created.store.close();
  let inspect!:InspectProject;
- const server=await startServer({dataDir,port:0,token:'synthetic-project-entry-control-token',localDraftChannel:'production',inspectProject:read=>{inspect=read;}}),backendId=randomUUID(),sent:unknown[]=[];
+ const server=await startServer({dataDir,port:0,token:'synthetic-project-entry-control-token',localDraftChannel:'production',inspectProject:read=>{inspect=read;},
+  ...(legacyHost?{projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION}:{})}),backendId=randomUUID(),sent:unknown[]=[];
  let client!:ReturnType<typeof createProjectEntryControlClient>;
  const broker=createProjectEntryControlBroker({backendId,control:wrap?.(server.projectEntries)??server.projectEntries,send:message=>{const deliver=()=>queueMicrotask(()=>client.handle(message));if(onReply)onReply(message,deliver);else deliver();}});
  client=createProjectEntryControlClient({backendId,send:message=>{sent.push(message);queueMicrotask(()=>broker.handle(message));}});
@@ -31,8 +33,8 @@ async function fixture(t:test.TestContext,wrap?:(control:ProjectEntryControlPort
  return {server,client,broker,backendId,sent,root,dataDir,parent,projectId,file,inspect};
 }
 
-test('default desktop open keeps the released project format and rejects a real candidate pair',async t=>{
- const f=await fixture(t),windowId=randomUUID();
+test('a legacy desktop host keeps format 3 and rejects a real format 4 pair',async t=>{
+ const f=await fixture(t,undefined,undefined,{legacyHost:true}),windowId=randomUUID();
  const opened=await f.client.api.openPath({projectFile:f.file,windowId});
  assert.equal(opened.project.projectId,f.projectId);
  f.inspect(f.projectId,db=>{

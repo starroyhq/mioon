@@ -27,6 +27,7 @@ import {i18nTestModule} from './helpers/i18n.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import {createProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
 import type {ProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 
 const id=(n:number)=>`77000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const projectId=RECENT_PROJECTS[0]!.projectId;
@@ -240,9 +241,50 @@ function screenIdentity(f:ReturnType<typeof fixture>,directory:ProjectEntryDirec
  assert.ok(start>=0&&end>start&&scopeStart>=0);
  let catalog=true,active=true,parent:{appLibraryScope:string;instanceId:string}|null={appLibraryScope:f.snapshot.appLibraryScope,instanceId:f.snapshot.instanceId};
  const env={directory,active:()=>active,native:f.controller,opening:{current:null},preparingNative:{current:false},form:{current:{busy:false}},current:{current:{summaryScope:f.snapshot.appLibraryScope,catalogReady:()=>catalog,entryIdentity:()=>parent,phase:'home',busy:false}}};
- const owner=lenientFunction('env',`with(env){${source.slice(scopeStart,source.indexOf('\n',scopeStart))}\n${source.slice(start,end)};return {ready,actionOwner,baseCanAct,canAct};}`)(env) as {ready:()=>unknown;actionOwner:()=>ProjectHomeNativeActionIdentity|null;baseCanAct:()=>boolean;canAct:()=>boolean};
+ const owner=lenientFunction('env',`with(env){${source.slice(scopeStart,source.indexOf('\n',scopeStart))}\n${source.slice(start,end)};return {ready,actionOwner,baseCanAct,canAct,catalogReady,verifiedScope};}`)(env) as {
+  ready:()=>unknown;actionOwner:()=>ProjectHomeNativeActionIdentity|null;baseCanAct:()=>boolean;canAct:()=>boolean;
+  catalogReady:()=>boolean;verifiedScope:(scope:string|undefined)=>string|null;
+ };
  return {...owner,setCatalog(value:boolean){catalog=value;},setParent(value:typeof parent){parent=value;},setActive(value:boolean){active=value;}};
 }
+
+test('native catalog revalidation preserves the verified project format while blocking project actions',async t=>{
+ const f=fixture();
+ f.snapshot.newProjectFormatVersion=FORMAT4_PROJECT_SCHEMA_VERSION;
+ const directory=createProjectEntryDirectoryController({read:async()=>f.snapshot,expectedScope:()=>f.snapshot.appLibraryScope});
+ directory.activate();
+ t.after(()=>{f.controller.dispose();directory.dispose();});
+ assert.equal(await directory.refresh(),true);
+ const screen=screenIdentity(f,directory);
+ const source=readFileSync(new URL('../apps/web/src/ProjectHomeDirectoryScreen.tsx',import.meta.url),'utf8');
+ const start=source.indexOf('  const state = directory.getState(), verified = ready()');
+ assert.ok(start>=0);
+ const env={
+  ...screen,directory,native:f.controller,React:createRequire(new URL('../apps/web/package.json',import.meta.url))('react'),
+  ProjectHome:'project-home',RecentProjectsView:'recent-projects',ProjectHomeNativeActionsView:'native-actions',
+  props:{nativeLayout:true,summaryScope:f.snapshot.appLibraryScope,nativeActions:{example:{
+   bridge:{instantiateTemplate:async(input:ExampleInput)=>templateReceipt(input)},templates:[{id:'timeline-basics',version:1}],
+  }}},
+  current:{current:{}},enabled:true,openingBusy:false,query:'',createIntent:0,forwardedCreateIntent:{current:0},
+  preparingNative:{current:false},background:{getState:()=>({kind:'idle',identity:null})},
+  preferences:{preferences:{homeView:'grid',homeSort:'last-opened'}},useEffect:()=>{},reportCreate:()=>{},t:(key:string)=>key,
+ };
+ const render=lenientFunction('env',`with(env){${source.slice(start,source.lastIndexOf('}'))}}`) as (env:unknown)=>{props:{children:[{props:{
+  newProjectFormatVersion?:number;canMutateEntry:()=>boolean;onStartExample?:()=>void;createDisabledReason:string;
+  renderCatalog:()=>{props:{state:{kind:string}}};
+ }}]}};
+ const home=()=>render(env).props.children[0].props;
+ assert.equal(home().canMutateEntry(),true);
+ assert.equal(home().renderCatalog().props.state.kind,'ready');
+ assert.equal(typeof home().onStartExample,'function');
+ screen.setCatalog(false);
+ const loading=home();
+ assert.equal(loading.newProjectFormatVersion,FORMAT4_PROJECT_SCHEMA_VERSION);
+ assert.equal(loading.canMutateEntry(),false);
+ assert.equal(loading.renderCatalog().props.state.kind,'loading');
+ assert.equal(loading.onStartExample,undefined);
+ assert.equal(loading.createDisabledReason,'projects.listUnavailable');
+});
 
 test('actual Screen keeps in-flight identity through parent and own directory refresh while forbidding new actions',async()=>{
  for(const window of ['parent-catalog','screen-directory'] as const){

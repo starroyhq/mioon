@@ -165,7 +165,8 @@ export function CanvasDeleteDialog({review, busy, onCancel, onConfirm}: {
           const generated = t('canvas.edit.deleteVersions', {count: versions});
           return usedVersions
             ? t('canvas.edit.deleteShotAndUsedVersions', {shot, versions: generated, used: t('canvas.edit.deleteUsedVersions', {count: usedVersions})})
-            : t('canvas.edit.deleteShotVersionsOnly', {shot, versions: generated});
+            : [t('canvas.edit.deleteShotVersionsOnly', {shot, versions: generated}),
+              clips ? t('canvas.edit.deleteRelatedClips', {count: clips}) : null].filter(Boolean).join(' ');
         }),
         ...(review.impactedShotCount > review.shotImpacts.length ? [t('canvas.edit.deleteMoreShots', {count: review.impactedShotCount})] : []),
         t('canvas.edit.deleteEffect'),

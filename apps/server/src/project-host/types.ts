@@ -25,12 +25,13 @@ export type ProjectCloseReason = typeof PROJECT_CLOSE_REASONS[number];
 
 /** A registered project as the home page sees it, without opening it:
  * `open` here; `busy` under an app-level operation; `available` (no hot
- * journal, or rolled back here); `locked`: another process is writing it;
+ * journal, or rolled back here); `upgrade-required`: needs format consent;
+ * `locked`: another process is writing it;
  * `missing`: not at its path and not found by file identity; `invalid` with
  * the PROJECT_INVALID reason an open would report (`read-only` and so on).
  * A hint only: opening the project decides. */
 export type ProjectAvailability =
-  | {readonly state: 'open' | 'busy' | 'available' | 'locked' | 'missing' | 'access-denied'}
+  | {readonly state: 'open' | 'busy' | 'available' | 'locked' | 'missing' | 'access-denied' | 'upgrade-required'}
   | {readonly state: 'invalid'; readonly reason: string};
 
 /** Idle grace after the last request ends: CLI, MCP and agents send requests

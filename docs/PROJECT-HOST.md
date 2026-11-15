@@ -111,9 +111,12 @@ ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-na
 - 宿主在 factory、afterOpen 和摘要全部成功后才提交 lastOpenedAt；身份登记提前保留旧时间或 null。失败不刷新打开时间，也不盲目回滚并发的新登记。
 - openPath/acquire 固定取得 window 租约。windowId 是主进程生成的 UUID owner，不是页面任选的租约种类或 BrowserWindow 数字 ID。同一 owner 同一意图共享绑定；不同意图冲突。release 幂等，pending open 的晚到租约会回收，不能交给替代 owner。
 - 普通 release 只释放自己的 window 租约；强制撤销或退出通过 onWindowRevoked 通知。网页编辑页仍使用原 request 租约/空闲关闭规则，网页 window-session 留到 0.1.x；S6-A 没有新增持久化窗口表。
+- 默认宿主创建格式 4。格式 3 的可写打开返回升级预览。网页以已登记的项目 ID 和预览调用 `POST /api/projects/{projectId}/format-upgrade`，主进程使用与所选文件、窗口和预览绑定的票据。内核在持锁状态下核对预览，成功保存并校验旧格式备份后才升级。
+- 目录通过独立扫描进程读取已登记的关闭项目。可识别的格式 3 显示 `upgrade-required`，卡片仍可打开以选择只读或确认升级。格式 3 的热日志保留给旧版恢复；扫描失败降级到登记信息，已知锁或正在检查的状态继续保留。
+- 网页的 `GET /api/projects/{projectId}/format-upgrade/read-only` 和桌面票据的只读选项读取有界的旧项目摘要。只读连接不会创建项目宿主、迁移记录或启动 Mio。
 - 当前端口不提供忘记登记或显式强关项目：忘记仅限缺失且无活跃窗口、无待写入结果的已审流程，显式强关会撤任务，均不能用这个端口绕过后续 S3/S6 的准入。
 
-Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。未改应用库/项目/history/cache 格式、Mio 工具目录或请求指纹。
+Node 只读客户端为 @mioon/client/project-entry 的 createProjectEntriesClient().list()：固定地址、认证 GET、严格响应/UTF-8/字节上限、取消和超时，不自动重试。S6-A 新增错误为 PROJECT_ENTRY_SCOPE_MISMATCH（409）、PROJECT_ENTRY_UNAVAILABLE（503）、PROJECT_ENTRY_WINDOW_CONFLICT（409，受信端口）、PROJECT_ENTRY_LIMIT（413）。
 
 ### S6-C：首页与最近项目
 

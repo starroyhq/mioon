@@ -1,0 +1,38 @@
+.pf-format-upgrade .wb-dialog-heading {
+  position: relative;
+  padding-inline-start: calc(var(--wb-space-5) + 50px);
+}
+.pf-format-upgrade-icon {
+  position: absolute;
+  inset-block-start: var(--wb-space-5);
+  inset-inline-start: var(--wb-space-5);
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--wb-card);
+}
+.pf-format-upgrade .wb-dialog-content, .pf-format-read-only .wb-dialog-content {
+  display: grid;
+  gap: var(--wb-space-3);
+}
+.pf-format-upgrade .wb-dialog-content { padding-inline-start: calc(var(--wb-space-5) + 50px); }
+.pf-format-upgrade-backup {
+  display: flex;
+  align-items: start;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-3);
+  border-radius: var(--wb-radius-card);
+  background: var(--wb-panel);
+  font-size: var(--wb-text-label);
+}
+.pf-format-upgrade-backup svg { flex: none; margin-block-start: 1px; }
+.pf-format-upgrade-backup div { display: grid; gap: var(--wb-space-1); }
+.pf-format-upgrade-backup span, .pf-format-upgrade-note { color: var(--wb-muted); }
+.pf-format-upgrade .wb-dialog-footer { flex-direction: column; align-items: end; }
+.pf-format-upgrade-actions { display: flex; gap: var(--wb-space-2); flex-wrap: wrap; justify-content: end; }
+.pf-format-upgrade-note { margin: 0; font-size: var(--wb-text-caption); }
+.pf-format-read-only .wb-dialog-content { overflow: auto; }
+.pf-format-read-only h3 { margin: 0 0 var(--wb-space-2); font-size: var(--wb-text-body); }
+.pf-format-read-only .pf-row-main { overflow-wrap: anywhere; }

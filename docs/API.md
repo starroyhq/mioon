@@ -13,6 +13,8 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 | `GET /api/background-tasks` | S3-A应用级只读任务等待摘要：`limit`为1–100（默认50）、`after`为项目ID游标；返回`version:1`、`projects[{projectId,taskCount,reasonCodes}]`和`nextCursor`，最多256KiB。只列项目打不开且有未结束任务的项，不打开项目，不提供结果弃置；独立契约`@mioon/contracts/background-task-query` |
 | `GET /api/project-entries` | 只读登记目录、availability、封面缓存地址、应用库与服务实例身份，以及新建项目所用格式 `newProjectFormatVersion`（3 或 4，旧服务可省略）。网页渠道限 projectsDir 内已登记项，桌面渠道为全部最近项。不扫描目录，不 acquire 运行时 |
 | `GET /api/project-entries/identity` | 同一认证边界下只读返回 `appLibraryScope` 和 `instanceId`。桌面设置用来确认当前应用库和服务归属，无需加载登记目录、扫描项目或读取其文件头 |
+| `GET /api/projects/{projectId}/format-upgrade/read-only` | 只读返回已登记格式 3 项目的有界镜头、卡片和时间线摘要。读取不升级，也不启动 Mio |
+| `POST /api/projects/{projectId}/format-upgrade` | 请求体为 `{preview}`，使用本次 `PROJECT_FORMAT_UPGRADE_REQUIRED` 返回的预览。确认有效且旧格式备份通过校验后才升级。两个入口共用 [project-format-upgrade.ts](../packages/contracts/src/project-format-upgrade.ts) |
 | `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
 | `GET /api/workspace-info` | 应用目录信息 |
 | `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
@@ -172,9 +174,9 @@ Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISIO
 
 For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
 
-### 画布编辑（格式 4 候选）
+### 画布编辑（格式 4）
 
-画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。只有以格式 4 候选入口打开的项目支持以下操作。默认桌面和 Web 宿主仍按格式 3 打开项目。
+画布操作使用 `POST /api/projects/{projectId}/rpc` 和独立严格契约 `packages/contracts/src/canvas-editing.ts`。桌面和网页默认以格式 4 创建项目，以下操作只用于可写打开的格式 4 项目。
 
 - `canvas.archive.preview` 校验选中目标的修订和删除或恢复条件。删除预检按故事顺序返回前三个有关联的镜头及其编号、生成版本数、关联片段数和时间线使用的不同版本数（`usedVersions`），以及符合条件的镜头总数。同一个版本供多个片段使用时只计一个版本。删除影响已有生成版本或剪辑时，提交要带预检返回的确认值。确认绑定同一持锁项目连接、项目内容、目标及影响范围，最长两分钟。宿主关闭后须重新预检。活动任务或未决写入会阻止整批操作。
 - `canvas.archive.list` 以 `next` 分页列出用户删除的项目内对象。同一读取事务返回归档总数 `total`、项目内容戳和本页条目。条目包含删除时间、批次、当前目标修订、名称、节点类型、删除时的镜头编号和版本数。无标签的文字节点以最多 512 字符的正文作为名称。可预览的媒体只返回项目内素材 ID 和 MIME 类型，文件读取沿用项目媒体入口的权限检查。恢复支持选中条目。附带 `batchId` 时，必须提交该批仍归档的全部用户删除条目。镜头顺序按项目文件保留的邻居恢复，邻居都失效时追加到末尾。

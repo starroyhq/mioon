@@ -17,6 +17,7 @@ import {isProjectId} from '../packages/contracts/src/project-file.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {mutateProjectRecord} from '../packages/business/src/project-record-mutations.ts';
@@ -52,12 +53,27 @@ test('createServerProject leaves an open store of one new project in the server 
     assert.equal(store.root, store.projectDir);
     assert.equal(store.projectFile, projectDatabasePath(store.projectDir));
     assert.equal(store.historyState, 'fresh');
+    assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT4_PROJECT_SCHEMA_VERSION);
+    assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT4_HISTORY_SCHEMA_VERSION);
     assert.equal(projectName(store.db, projectId), 'Test project');
     assert.ok(lstatSync(path.join(projectDirFor(dataDir, projectId), 'media')).isDirectory());
     assert.throws(() => openProjectDatabase(store.projectDir), {code: 'PROJECT_LOCKED', status: 409, details: {database: 'project', reason: 'locked'}});
   } finally {
     store.close();
   }
+});
+
+test('a server fixture can reopen a legacy project without upgrading it', t => {
+  const dataDir = dataDirectory(t);
+  const {projectId, store} = createServerProject(dataDir, {projectFormat: PROJECT_FILE_SCHEMA_VERSION});
+  store.close();
+  const file = projectDatabasePath(projectDirFor(dataDir, projectId)), before = readFileSync(file);
+  const db = openProjectDatabase(store.projectDir);
+  try {
+    assert.equal(db.prepare('PRAGMA project.user_version').get()?.user_version, PROJECT_FILE_SCHEMA_VERSION);
+    assert.equal(db.prepare('SELECT version FROM main.schema_version').get()?.version, HISTORY_SCHEMA_VERSION);
+  } finally {db.close();}
+  assert.deepEqual(readFileSync(file), before);
 });
 
 test('createServerProject uses a fixed seed ID and still generates an ID when explicitly omitted', t => {
