@@ -35,6 +35,14 @@ import type { AgentTaskChange } from '../../../packages/contracts/src/agent-task
 import TaskPopover from './TaskPopover.tsx';
 import Login from './LoginScreen.tsx';
 import CanvasToolbar from './CanvasToolbar.tsx';
+import CanvasOverview from './CanvasOverview.tsx';
+import {CanvasArchivePopover, CanvasDeleteDialog, CanvasEditToast, CanvasSelectionFrame, CanvasSelectionInspector, CanvasSelectionMenu, CanvasSelectionSummary} from './CanvasEditingControls.tsx';
+import {useCanvasEditing} from './use-canvas-editing.ts';
+import type {CanvasSelectionItem} from './CanvasEditingControls.tsx';
+import {canvasEditErrorCode} from './canvas-editing-state.ts';
+import {canvasGroupMoves, canvasOwnsShortcutFocus, canvasSelectionTargets, canvasShortcut, canvasShortcutInText, supportsCanvasEditing, toggleCanvasSelection} from './canvas-selection.ts';
+import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src/canvas-editing.ts';
+import type {CanvasLayoutInput, CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import CanvasEmptyState from './CanvasEmptyState.tsx';
 import StoryboardStrip from './StoryboardStrip.tsx';
 import SettingsWorkspace from './SettingsWorkspace.tsx';
@@ -127,7 +135,7 @@ import type {SubjectState} from './subject-state.ts';
 import {createSubjectController} from './subject-state.ts';
 import type {TimelineLoudnessApplyController} from './timeline-loudness-apply-state.ts';
 import { schemas as productionSchemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
-import { ReactFlow, Background, BackgroundVariant, MiniMap, applyNodeChanges, getViewportForBounds, useReactFlow, type Edge as FlowEdge, type Node as FlowNode } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, MiniMap, SelectionMode, applyNodeChanges, getViewportForBounds, useReactFlow, type Edge as FlowEdge, type Node as FlowNode, type NodeChange } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
 import { chooseCanvasPosition } from './canvas-position.ts';
 import { appendableShots, refreshSkipSentence, shotSyncErrorMessage, shotTimelineStatuses, sourceRefreshSkips, staleClipSources, videoLaneLabel } from './timeline-source-freshness.ts';
@@ -271,6 +279,7 @@ export interface AppProject {id: string; name: string; description?: string; rev
 export interface AppAsset extends GenerationAsset {id: string; name: string; mimeType: string; sizeBytes: number}
 export interface AppShot extends GenerationShot {
   id: string; projectId: string; title: string; orderIndex: number; revision: number;
+  position: {x: number; y: number};
   subjectReference?: SubjectReference | null;
   [key: string]: unknown;
 }
@@ -311,6 +320,7 @@ export interface AppTimeline {
 export interface AppData {
   project: AppProject | null;
   projectFormatVersion?: 3 | 4;
+  canvasEditBase?: CanvasEditBase;
   assets: AppAsset[];
   shots: AppShot[];
   nodes: AppNode[];
@@ -654,6 +664,24 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const generationReviewScope = useRef<{key?: string} | null>(null);
   realConfirmRef.current = realConfirm;
   const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const [canvasGroup, setCanvasGroup] = useState<{scope: string; ids: ReadonlySet<string>} | null>(null);
+  const [boxSelection, setBoxSelection] = useState<ReadonlySet<string> | null>(null);
+  const [canvasContextMenu, setCanvasContextMenu] = useState<{scope: string; x: number; y: number} | null>(null);
+  const canvasSelectionIntent = useRef(0);
+  const canvasSelectionPending = useRef<number | null>(null);
+  const canvasSelectionRevision = useRef(0);
+  const [renderedCanvasSelection, setRenderedCanvasSelection] = useState(0);
+  function commitCanvasSelection(): void {
+    setRenderedCanvasSelection(++canvasSelectionRevision.current);
+  }
+  const canvasBox = useRef<Set<string> | null>(null);
+  const canvasArea = useRef<HTMLElement | null>(null);
+  const canvasDrag = useRef<{
+    scope: string; base: CanvasEditBase; selectionRevision: number;
+    targets: readonly Pick<CanvasLayoutMove, 'kind' | 'id'>[];
+    serial: number; anchorId: string; positions: ReadonlyMap<string, CanvasLayoutMove['position']>;
+  } | 'blocked' | null>(null);
+  const canvasComposing = useRef(false);
   const [shotDirty, setShotDirty] = useState(false);
   const [clipDirty, setClipDirty] = useState(false);
   const [sourceDirty, setSourceDirty] = useState(false);
@@ -1552,16 +1580,29 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function leaveReferencePage() { setShowTasks(false); setShowDelivery(false); }
   async function inspect(id: string | null, nextTab = 'settings', versionId: string | null = null, { reveal = false }: {reveal?: boolean} = {}): Promise<boolean> {
     const captured = context(), panelChoice = panelIntent.current, timelineId = dataRef.current!.timeline?.id, timelineRevision = dataRef.current!.timeline?.revision;
-    const canDiscard = (): boolean => Boolean(isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current!.timeline?.id && timelineRevision === dataRef.current!.timeline?.revision && [...dataRef.current!.shots, ...dataRef.current!.nodes].some(record => record.id === id));
-    if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, canDiscard)) return false;
-    if (!canDiscard()) return false;
-    setPropertiesPage('inspector');
-    navigationEpoch.current++;
-    leaveReferencePage();
-    updateView('canvas', { selectedId: id, inspectorTab: nextTab, highlightedVersionId: versionId });
-    updateView('activeMode', 'canvas');
-    if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
-    return true;
+    const tracked = supportsCanvasEditing(dataRef.current!.projectFormatVersion, dataRef.current!.canvasEditBase);
+    const ticket = tracked ? beginCanvasSelection() : null;
+    const canDiscard = (): boolean => Boolean((ticket === null || ticket === canvasSelectionIntent.current) &&
+      isCurrent(captured) && panelChoice === panelIntent.current && timelineId === dataRef.current!.timeline?.id &&
+      timelineRevision === dataRef.current!.timeline?.revision && [...dataRef.current!.shots, ...dataRef.current!.nodes].some(record => record.id === id));
+    try {
+      if ((id !== selectedId || workspaceMode !== 'canvas') && !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, canDiscard)) return false;
+      if (!canDiscard()) return false;
+      setPropertiesPage('inspector');
+      navigationEpoch.current++;
+      leaveReferencePage();
+      if (tracked) {
+        commitCanvasSelection();
+        setCanvasGroup(null);
+        setCanvasContextMenu(null);
+      }
+      updateView('canvas', { selectedId: id, inspectorTab: nextTab, highlightedVersionId: versionId, ...(tracked && {selectedEdgeId: null}) });
+      updateView('activeMode', 'canvas');
+      if (reveal) { setPanelOpen('inspector', true, 'canvas'); if (geometry.narrow) setMobilePanel('inspector'); }
+      return true;
+    } finally {
+      if (ticket !== null) finishCanvasSelection(ticket);
+    }
   }
   function checkGeneration(shot: AppShot, provider: ProviderRecord | undefined, model: string | undefined, inputMode: string, frozen = false, subjectReference?: AppSubjectReference | null): boolean {
     const modelName = model as string;
@@ -3078,7 +3119,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // ⌘Z / Ctrl+Z undoes the storyboard while its toast is up on the canvas.
   useEffect(() => {
     const toast = storyboardToast;
-    if (nativeMenuBridge || !toast || workspaceMode !== 'canvas' || toastBlocked) return;
+    if (nativeMenuBridge || !toast || workspaceMode !== 'canvas' || toastBlocked || canvasEditingEnabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (timelineHistoryActionForKey(event, { modalOpen: hasOpenWorkbenchModal(document) }) !== 'undo') return;
       event.preventDefault();
@@ -3194,6 +3235,273 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onThumbnail={(nodeId, framePresetId, sceneRevision, dataBase64) => previsThumbs.put(previsOpen.projectId, framePresetId, nodeId, sceneRevision, dataBase64)}
     onClose={() => closePrevis(previsOpen.projectId)} closeRegistry={nativeCloseRegistry.current!}
     shots={data.shots} edges={data.edges} onImport={importPrevisImage} onSetFrame={setPrevisFrame} onUndoFrame={undoPrevisFrame} />, document.body) : null;
+  const canvasEditingSupported = supportsCanvasEditing(data.projectFormatVersion, data.canvasEditBase);
+  const canvasEditingEnabled = canvasEditingSupported && workspaceMode === 'canvas';
+  const canvasOwner = canvasEditingSupported && data.project?.id ? captureProjectFeatureAdmission(data.project.id) : null;
+  const canvasEditingScope = JSON.stringify([canvasOwner?.key, currentProject.current, projectEpoch.current, editorSession.current]);
+  const canvasEditingWritable = Boolean(canvasEditingEnabled && canvasOwner && workbenchReady && online && !retainWorkbenchForIdentity &&
+    !retainWorkbenchForClip && !busy['canvas:mutation'] && !referenceBusy &&
+    !activePending.some(entry => isMutationOperation(entry.operation)) && !inspectorDirty && !previsOpen);
+  const canvasShotIds = useMemo(() => new Set(data.shots.map(shot => shot.id)), [data.shots]);
+  const canvasNodeRecords = useMemo(() => new Map(data.nodes.map(node => [node.id, node])), [data.nodes]);
+  const groupIds = canvasGroup?.scope === canvasEditingScope ? canvasGroup.ids : null;
+  const canvasSelectedIds = new Set(groupIds ? [...groupIds].filter(id => canvasShotIds.has(id) || canvasNodeRecords.has(id)) : selectedId ? [selectedId] : []);
+  const canvasSelectedItems = [...canvasSelectedIds].flatMap<CanvasSelectionItem>(id => {
+    if (canvasShotIds.has(id)) return [{kind: 'shot' as const}];
+    const item = canvasNodeRecords.get(id);
+    return item ? [{kind: 'node' as const, type: item.type}] : [];
+  });
+  const selectedCanvasEdge = data.edges.find(edge => edge.id === selectedEdgeId);
+  const selectedDecorEdge = selectedCanvasEdge && !isReferenceEdge(selectedCanvasEdge) ? selectedCanvasEdge.id : null;
+  const canvasTargets = canvasSelectionTargets(data.canvasEditBase, canvasSelectedIds, selectedDecorEdge);
+  const canvasEditing = useCanvasEditing({scope: canvasEditingScope, projectId: data.project?.id ?? null, enabled: canvasEditingEnabled && Boolean(canvasOwner),
+    writable: canvasEditingWritable, base: data.canvasEditBase, rpc, refresh, isCurrent: canvasOwner?.isCurrent,
+    onError: error => notify(canvasErrorMessage(error), 'error'),
+    onNotice: notice => notify(notice.kind === 'restored'
+      ? msg('canvas.edit.restored', {count: notice.count})
+      : msg(notice.kind === 'undone' ? 'canvas.edit.undone' : 'canvas.edit.redone')),
+    onArchived: targets => {
+      const removed = new Set(targets.map(target => target.id));
+      setCanvasGroup(group => group?.scope === canvasEditingScope ? {
+        ...group, ids: new Set([...group.ids].filter(id => !removed.has(id))),
+      } : group);
+      updateView('canvas', (current: CanvasViewState) => ({
+        ...(current.selectedId && removed.has(current.selectedId) ? {selectedId: null, highlightedVersionId: null} : {}),
+        ...(current.selectedEdgeId && removed.has(current.selectedEdgeId) ? {selectedEdgeId: null} : {}),
+      }));
+    },
+  });
+  const canTidyCanvas = canvasEditingWritable && !canvasEditing.busy && !selectedEdgeId && nodes.length > 0;
+
+  function canvasErrorMessage(error: unknown): AppMessage {
+    switch (canvasEditErrorCode(error)) {
+      case 'CANVAS_UI_UNDO_BLOCKED': return msg('canvas.edit.error.undoBlocked');
+      case 'CANVAS_UI_REDO_BLOCKED': return msg('canvas.edit.error.redoBlocked');
+      case 'CANVAS_UI_UNDO_CONFLICT': return msg('canvas.edit.error.undoConflict');
+      case 'CANVAS_UI_REDO_CONFLICT': return msg('canvas.edit.error.redoConflict');
+      case 'CANVAS_UI_ARCHIVE_BLOCKED': return msg('canvas.edit.error.archiveBlocked');
+      case 'CANVAS_UI_RESTORE_BLOCKED': return msg('canvas.edit.error.restoreBlocked');
+      case 'CANVAS_UI_LAYOUT_NO_FIT': return msg('canvas.edit.error.layoutNoFit');
+      case 'CANVAS_UI_LAYOUT_NOT_READY': return msg('canvas.edit.error.layoutNotReady');
+      case 'CANVAS_UI_COUNT_LIMIT': return msg('canvas.edit.error.countLimit');
+      case 'CANVAS_REQUEST_OUTCOME_UNKNOWN': return msg('canvas.edit.error.outcomeUnknown');
+      case 'CANVAS_EDIT_CONFLICT':
+      case 'CANVAS_CONFIRMATION_REQUIRED': return msg('canvas.edit.error.changed');
+      default: return readableError(error);
+    }
+  }
+
+  function beginCanvasSelection(): number {
+    const ticket = ++canvasSelectionIntent.current;
+    canvasSelectionPending.current = ticket;
+    return ticket;
+  }
+
+  function finishCanvasSelection(ticket: number): void {
+    if (canvasSelectionPending.current === ticket) canvasSelectionPending.current = null;
+  }
+
+  function canvasSelectionIsReady(): boolean {
+    return canvasSelectionPending.current === null && canvasBox.current === null &&
+      canvasSelectionRevision.current === renderedCanvasSelection;
+  }
+
+  function applyCanvasCardSelection(ids: ReadonlySet<string>, edgeId: string | null): void {
+    commitCanvasSelection();
+    setCanvasGroup(ids.size > 1 ? {scope: canvasEditingScope, ids} : null);
+    setStoryboardBatch(null);
+    setCanvasContextMenu(null);
+    setPropertiesPage('inspector');
+    setRightDockTab('properties');
+    leaveReferencePage();
+    navigationEpoch.current++;
+    updateView('canvas', {
+      selectedId: ids.size === 1 ? ids.values().next().value : null,
+      selectedEdgeId: edgeId, inspectorTab: 'settings', highlightedVersionId: null,
+    });
+  }
+
+  async function selectCanvasCards(ids: ReadonlySet<string>, edgeId: string | null = null): Promise<boolean> {
+    const ticket = beginCanvasSelection();
+    const valid = () => {
+      if (ticket !== canvasSelectionIntent.current || !canvasOwner?.isCurrent() || viewRef.current!.activeMode !== 'canvas') return false;
+      const active = new Set(dataRef.current!.canvasEditBase?.targets.filter(target => target.kind !== 'edge').map(target => target.id));
+      return [...ids].every(id => active.has(id)) && (!edgeId || dataRef.current!.edges.some(edge => edge.id === edgeId));
+    };
+    try {
+      if (!valid() || !await guardNavigation(msg('shell.confirm.viewCanvasSource'), false, valid) || !valid()) return false;
+      applyCanvasCardSelection(ids, edgeId);
+      return true;
+    } finally {
+      finishCanvasSelection(ticket);
+    }
+  }
+
+  function startCanvasDrag(node: FlowNode, moved: FlowNode[]): void {
+    dragging.current = true;
+    canvasDrag.current = null;
+    if (!canvasEditingEnabled || canvasSelectedIds.size < 2) return;
+    canvasDrag.current = 'blocked';
+    const base = data.canvasEditBase;
+    if (!base || !canvasEditingWritable || canvasEditing.busy || !canvasSelectionIsReady() ||
+        !canvasOwner?.isCurrent() || !canvasSelectedIds.has(node.id)) return;
+    const items = new Map(moved.map(({id, position}) => [id, position]));
+    const targets = canvasTargets.filter((target): target is Pick<CanvasLayoutMove, 'kind' | 'id'> => target.kind !== 'edge');
+    if (targets.length !== canvasSelectedIds.size || items.size !== targets.length || !targets.every(target => items.has(target.id))) return;
+    canvasDrag.current = {scope: canvasEditingScope, base, targets, positions: items, anchorId: node.id, serial: navigationEpoch.current,
+      selectionRevision: renderedCanvasSelection};
+  }
+
+  async function stopCanvasDrag(event: MouseEvent | TouchEvent, node: FlowNode, moved: FlowNode[]): Promise<void> {
+    const drag = canvasDrag.current;
+    if (!drag && (!canvasEditingEnabled || canvasSelectedIds.size < 2 && moved.length <= 1)) {
+      await savePosition(event as unknown as React.MouseEvent, node);
+      return;
+    }
+    canvasDrag.current = null;
+    const sameCanvas = () => canvasOwner?.isCurrent() && viewRef.current!.activeMode === 'canvas';
+    const captured = drag === 'blocked' ? null : drag;
+    const gestureCurrent = () => captured !== null && captured.scope === canvasEditingScope && Boolean(sameCanvas()) &&
+      captured.serial === navigationEpoch.current && captured.selectionRevision === canvasSelectionRevision.current &&
+      canvasSelectionPending.current === null;
+    try {
+      if (!captured || !gestureCurrent() || !canvasEditingWritable || !canvasSelectionIsReady() || event.type.endsWith('cancel')) return;
+      const moves = canvasGroupMoves(captured.targets, captured.positions, moved, captured.anchorId);
+      if (moves.length) await canvasEditing.move(moves, captured.base, gestureCurrent);
+    } finally {
+      if (sameCanvas()) restoreCanvasDragPositions();
+    }
+  }
+
+  function restoreCanvasDragPositions(): void {
+    dragging.current = false;
+    // Replace optimistic positions with the last observed server snapshot,
+    // including when a blocked or cancelled move makes no content change.
+    const latest = dataRef.current!;
+    const positions = new Map([...latest.shots, ...latest.nodes].map(({id, position}) => [id, position]));
+    setNodes(list => list.map(item => {
+      const position = positions.get(item.id);
+      return position ? {...item, position, dragging: false} : item;
+    }));
+  }
+
+  function cancelCanvasPointer(): void {
+    cancelCanvasBox();
+    if (!canvasDrag.current) return;
+    canvasDrag.current = 'blocked';
+    restoreCanvasDragPositions();
+  }
+
+  function canvasNodesChange(changes: NodeChange<FlowNode>[]): void {
+    const selected = canvasBox.current;
+    if (selected) {
+      for (const change of changes) if (change.type === 'select') {
+        if (change.selected) selected.add(change.id); else selected.delete(change.id);
+      }
+      setBoxSelection(new Set(selected));
+    }
+    const geometryChanges = changes.filter(change => change.type !== 'select' &&
+      !(change.type === 'position' && canvasDrag.current === 'blocked'));
+    if (geometryChanges.length) setNodes(value => applyNodeChanges(geometryChanges, value));
+  }
+
+  function finishCanvasBox(): void {
+    const ids = canvasBox.current;
+    canvasBox.current = null;
+    setBoxSelection(null);
+    if (ids) void selectCanvasCards(ids);
+  }
+
+  function cancelCanvasBox(): void {
+    canvasBox.current = null;
+    setBoxSelection(null);
+  }
+
+  useEffect(() => {
+    cancelCanvasBox();
+    setCanvasContextMenu(null);
+    if (canvasDrag.current) {
+      canvasDrag.current = null;
+      dragging.current = false;
+    }
+  }, [canvasEditingScope, canvasEditingEnabled]);
+
+  async function openCanvasMenu(event: React.MouseEvent, id?: string): Promise<void> {
+    event.preventDefault();
+    const {clientX: x, clientY: y} = event;
+    if (id && !canvasSelectedIds.has(id) && !await selectCanvasCards(new Set([id]))) return;
+    if (!canvasOwner?.isCurrent() || viewRef.current!.activeMode !== 'canvas') return;
+    setCanvasContextMenu({scope: canvasEditingScope, x, y});
+  }
+
+  async function archiveCanvasSelection(): Promise<void> {
+    if (!canvasEditingWritable || !canvasOwner?.isCurrent() || !canvasSelectionIsReady() || dragging.current) return;
+    if (selectedCanvasEdge && !selectedDecorEdge) { notify(msg('shell.referenceDisconnectHint'), 'warning'); return; }
+    if (!canvasTargets.length) return;
+    await canvasEditing.archiveSelection(canvasTargets);
+  }
+
+  async function tidyCanvas(): Promise<void> {
+    if (!canTidyCanvas || !canvasOwner?.isCurrent() || !canvasSelectionIsReady() || dragging.current) return;
+    const dimensions = (id: string) => {
+      const measured = flow.getInternalNode(id)?.measured;
+      return Number(measured?.width) > 0 && Number(measured?.height) > 0
+        ? {width: measured!.width!, height: measured!.height!} : null;
+    };
+    const shots: CanvasLayoutInput['shots'][number][] = [];
+    const cards: CanvasLayoutInput['nodes'][number][] = [];
+    for (const shot of data.shots) {
+      const size = dimensions(shot.id);
+      if (!size) { notify(msg('canvas.edit.error.layoutNotReady'), 'warning'); return; }
+      shots.push({id: shot.id, position: shot.position, orderIndex: shot.orderIndex, ...size});
+    }
+    for (const node of data.nodes) {
+      const size = dimensions(node.id);
+      if (!size) { notify(msg('canvas.edit.error.layoutNotReady'), 'warning'); return; }
+      cards.push({id: node.id, position: node.position, type: node.type, ...size});
+    }
+    await canvasEditing.tidy({shots, nodes: cards, edges: data.edges, selectedIds: canvasSelectedIds});
+  }
+
+  useEffect(() => {
+    if (!canvasEditingEnabled) {canvasComposing.current = false; return;}
+    const compositionStart = () => { canvasComposing.current = true; };
+    const compositionEnd = () => { canvasComposing.current = false; };
+    document.addEventListener('compositionstart', compositionStart);
+    document.addEventListener('compositionend', compositionEnd);
+    return () => {
+      document.removeEventListener('compositionstart', compositionStart);
+      document.removeEventListener('compositionend', compositionEnd);
+    };
+  }, [canvasEditingEnabled]);
+  useEffect(() => {
+    if (!canvasEditingEnabled || !canvasOwner || !panelVisible('canvas')) return;
+    const keyDown = (event: KeyboardEvent) => {
+      const menuOpen = canvasContextMenu?.scope === canvasEditingScope || Array.from(document.querySelectorAll('[data-slot="dropdown-menu-content"]'))
+        .some(menu => !menu.closest('[hidden], [inert], [data-closed], [aria-hidden="true"]'));
+      const command = canvasShortcut(event, {blocked: !canvasOwner.isCurrent() || viewRef.current!.activeMode !== 'canvas' ||
+        !canvasOwnsShortcutFocus(canvasArea.current, document) || menuOpen || hasOpenWorkbenchModal(document) || Boolean(previsOpen || comparisonId || sceneTarget || webSettingsOpen || nativeWindow?.context.settingsModalOpen),
+        composing: canvasComposing.current, textFocus: canvasShortcutInText(event, document.activeElement)});
+      if (!command) return;
+      // A conflicted native command is disabled. Only its notice can fall back
+      // to the renderer. Ordinary desktop undo and redo use the native menu.
+      if (nativeMenuBridge && (command === 'undo' || command === 'redo')) {
+        if (canvasEditing.reportHistoryConflict(command)) event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      if (command === 'all') void selectCanvasCards(new Set([...canvasShotIds, ...canvasNodeRecords.keys()]));
+      else if (command === 'clear') void selectCanvasCards(new Set());
+      else if (command === 'archive') void archiveCanvasSelection();
+      else if (command === 'tidy') void tidyCanvas();
+      else if (command === 'undo') void canvasEditing.undo();
+      else void canvasEditing.redo();
+    };
+    window.addEventListener('keydown', keyDown);
+    return () => window.removeEventListener('keydown', keyDown);
+  });
+
+
   useEffect(() => {
     if (dragging.current) return;
     const next = [...data.nodes.map(record => ({ id: record.id, type: record.type, position: record.position, selected: record.id === selectedId, data: { record, asset: data.assets.find(a => a.id === record.assetId), canReference: isImageReferenceNode(record, data.assets as never[], data.project?.id), referenceBusy, onInspect: (id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true }), ...(record.type === 'previs' ? { thumbnail: previsThumbs.thumbnails[record.id]?.url ?? null, outdated: previsThumbnailOutdated(previsThumbs.thumbnails[record.id], record.sceneRevision), ratio: previsFrameInfo.ratio, onOpen: openPrevis } : {}) } })), ...sortedShots.map((record, index) => ({ id: record.id, type: 'shot', position: record.position, selected: record.id === selectedId, data: { record, index, referenceConnection: referenceForShot(data.edges as never[], record.id), referenceSourceLabel: data.nodes.find(node => node.id === (referenceForShot(data.edges as never[], record.id) as {source?: string} | null | undefined)?.source)?.label || data.assets.find(asset => asset.id === (referenceForShot(data.edges as never[], record.id) as {source?: string; sourceAssetId?: string} | null | undefined)?.sourceAssetId)?.name || msg('assets.imageNode'), referenceBusy, asset: data.assets.find(a => a.id === record.referenceAssetIds?.[0]), version: data.versions.find(v => v.id === record.selectedVersionId), versionCount: data.versions.filter(v => v.shotId === record.id).length, timelineStatus: shotStatuses.get(record.id) ?? null, onViewInEditing: viewShotInEditing, batchMark: storyboardEdited.split(',').includes(record.id) ? 'edited' : null, job: jobs.find(j => j.shotId === record.id), busy: busy[`generate:${record.id}`], generationProvider: generationSelection(providers, generationOptions[record.id], record).provider, configureGeneration: configureVideoGeneration ? () => openGlobalSettings('models') : undefined, onInspect: (id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true }), onGenerate: async (shot: AppShot) => { const selection = generationSelection(providers, generationOptionsRef.current[shot.id], shot); if (providerStatus(selection.provider) !== 'available') { await inspect(shot.id, 'settings', null, {reveal: true}); return; } if (!await inspect(shot.id)) return; if (shot.id === selectedId && inspectorDirty) { notify(msg('shell.saveShotBeforeGenerate'), 'warning'); return; } generate(shot); } } }))];
@@ -3244,9 +3552,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       assetsVisible: !assetsCollapsed, inspectorVisible: !inspectorCollapsed, timelineVisible: !viewRef.current!.editing.timelineCollapsed,
       canImport: !isBusy('import') && online && auth === true,
       canExport: canOpenExport, canChangeMode: true,
-      canUndoCanvas: Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
+      canUndoCanvas: mode === 'canvas' && canvasEditingEnabled ? canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canUndo : Boolean(canvasToast && canvasToast.projectId === currentProject.current && canvasScene?.projectId === currentProject.current &&
         canvasScene?.phase === 'idle' && !canvasScene.readOnly && !canvasScene.pending && canvasTask?.state === 'succeeded' && canvasTask.shots?.length &&
         canvasScene.undo[canvasToast.taskId]?.undo?.available !== false && !toastBlocked && online && auth === true),
+      canRedoCanvas: mode === 'canvas' && canvasEditingEnabled && canvasOwnsShortcutFocus(canvasArea.current, document) && canvasEditing.canRedo,
       canUndo: historyState.canUndo && locks.size === 0, canRedo: historyState.canRedo && locks.size === 0,
       canSplit: splitState.canSplit && Boolean(selected && !locks.has(selected.trackId)),
       canRemove: Boolean(menuRemoval.current?.available('remove')), canRippleRemove: Boolean(menuRemoval.current?.available('ripple')),
@@ -3256,6 +3565,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function nativeMenuScope(command: MenuCommandId = 'clip-split'): string {
     const state = viewRef.current!, timeline = dataRef.current!.timeline;
     const common = [currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, state.activeMode];
+    if (state.activeMode === 'canvas' && (command === 'edit-undo' || command === 'edit-redo') && canvasEditingEnabled) {
+      return JSON.stringify([...common, canvasEditing.historyScope]);
+    }
     if (command === 'edit-undo' && state.activeMode === 'canvas') {
       const toast = storyboardToastLifetime.current, sceneState = scenes.controller.getState();
       const task = sceneState.tasks.find(item => item.id === toast.value?.taskId && item.projectId === toast.value?.projectId && item.kind === 'shots');
@@ -3284,6 +3596,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (command === 'toggle-timeline') return toggleTimelinePanel();
     if (command === 'show-tasks') return openTasks();
     if (command === 'show-help') return setShowGuide(true);
+    if ((command === 'edit-undo' || command === 'edit-redo') && viewRef.current!.activeMode === 'canvas' && canvasEditingEnabled) {
+      return command === 'edit-undo' ? canvasEditing.undo() : canvasEditing.redo();
+    }
     if (command === 'edit-undo' && viewRef.current!.activeMode === 'canvas') {
       const toast = storyboardToastLifetime.current.value;
       return toast?.projectId === currentProject.current ? undoStoryboard(toast.taskId) : false;
@@ -3379,15 +3694,53 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     {panelOverlay === 'assets' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-assets" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('assets', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('assets', 'assetsWidth')}</PanelBoundary>
     <PanelBoundary name="canvas" visible={panelVisible('canvas')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus="[data-testid=mobile-panel-canvas]">
-    <section className="canvas-area" aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <CanvasToolbar scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
-      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop}>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,draggable:agentEditingTargetActive(data.project?.id || '',data.shots.some(shot => shot.id === node.id) ? 'shot' : 'node',node.id)}))} edges={edges as never} nodeTypes={nodeTypes} onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, node) => inspect(node.id)} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={() => { dragging.current = true; }} onNodeDragStop={(event, node) => { void savePosition(event as unknown as React.MouseEvent, node); }} onConnect={connect} onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} onPaneClick={() => { setSelectedEdgeId(null); setStoryboardBatch(null); }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current!.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current!.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: flowFitPadding(canvasFitPadding(.16)), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={CANVAS_INITIAL_FIT} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen ? null : ['Backspace', 'Delete']} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />{storyboardSummary && storyboardTask && <StoryboardBatchFrame shotIds={storyboardSummary.shotIds} title={data.assets.find(asset => asset.id === storyboardTask.sourceAssetId)?.name ?? t('scene.task.unavailable')} detail={`· ${t('scene.batch.frame', { count: storyboardSummary.shotIds.length })} · ${sceneTime(storyboardSummary.seconds * 30)}`} time={renderMessage(sceneAgo(storyboardTask.updatedAt, Date.now()))} />}{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? 'var(--wb-video-edge)' : 'var(--wb-muted)'} maskColor="var(--wb-overlay)" pannable zoomable />}</ReactFlow>
+    <section ref={canvasArea} className="canvas-area" data-canvas-editing={canvasEditingEnabled || undefined} aria-label={workspaceMode === 'canvas' ? t('shell.canvasWorkspace') : t('shell.editingWorkspace')} data-testid="active-workspace">{workspaceMode === 'canvas' && <CanvasToolbar editing={canvasEditingEnabled ? {tidy: () => { void tidyCanvas(); }, tidyDisabled: !canTidyCanvas, hasSelection: canvasSelectedIds.size > 0,
+      archive: <CanvasArchivePopover scope={canvasEditingScope} visible={panelVisible('canvas')} count={canvasEditing.archive.count}
+        items={canvasEditing.archive.items} loading={canvasEditing.archive.loading} busy={canvasEditing.busy} readOnly={!canvasEditingWritable}
+        error={canvasEditing.archive.error ? t('canvas.edit.error.loadArchive') : null} canRestoreAll={canvasEditing.archive.canRestoreAll}
+        onOpen={open => { if (open) void canvasEditing.loadArchive(); }} onRetry={() => { void canvasEditing.loadArchive(); }}
+        onLoadMore={canvasEditing.archive.hasMore ? () => { void canvasEditing.loadMoreArchive(); } : undefined}
+        onRestore={item => { void canvasEditing.restore(item); }} onRestoreAll={() => { void canvasEditing.restoreAll(); }}
+        renderPreview={item => {
+          const preview = item.preview;
+          const asset = preview && data.assets.find(value => value.id === preview.assetId && value.projectId === data.project?.id && value.mimeType === preview.mimeType);
+          return asset ? <Media asset={asset} className="canvas-archive-thumbnail" /> : null;
+        }} />} : undefined} scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} visible={panelVisible('canvas')} addingShot={Boolean(busy['shot-create'])} onAddShot={addShot} onAddPrevis={() => { void addPrevis(); }} previsDisabled={false} addingPrevis={Boolean(busy['previs-create'])} onAddText={() => addNode('text')} onAddImage={() => addNode('image')} onAddVideo={() => addNode('video')} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
+      <div className="main-stage">{loading ? <div className="canvas-loading" data-testid="workspace-loading"><span className="spinner" />{t('projects.opening')}</div> : workspaceMode === 'canvas' ? <div className="flow-wrap" data-testid="canvas-drop-zone" onDragOver={e => { if (e.dataTransfer.types.includes(ASSET_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }} onDrop={canvasDrop} onPointerCancel={canvasEditingEnabled ? cancelCanvasPointer : undefined}>{/* The editing control floats over the canvas as its sibling. The boundary is keyed by the selected shot or node, so a canvas inside it would remount on every selection, dropping a fit started for that selection and the inverse UI-scale zoom of `.flow-wrap > .react-flow`. */}<AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} controlsOnly disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:0}] : []} canRelease={() => !shotDirty && !dragging.current && !shotTextRef.current?.hasUnsaved() && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain}>{null}</AgentEditingBoundary><ReactFlow key={data.project?.id || 'empty'} nodes={nodes.map(node => ({...node,
+        ...(canvasEditingEnabled ? {selected: (boxSelection ?? canvasSelectedIds).has(node.id)} : {}),
+        draggable: canvasEditingEnabled && canvasSelectedIds.size > 1
+          ? canvasEditingWritable && !canvasEditing.busy && canvasSelectedIds.has(node.id)
+          : (!canvasEditingEnabled || canvasEditingWritable && !canvasEditing.busy) &&
+            agentEditingTargetActive(data.project?.id || '', canvasShotIds.has(node.id) ? 'shot' : 'node', node.id),
+      }))} edges={edges as never} nodeTypes={nodeTypes} onNodesChange={canvasEditingEnabled ? canvasNodesChange : changes => setNodes(ns => applyNodeChanges(changes, ns))}
+      onNodeClick={(event, node) => canvasEditingEnabled && event.shiftKey
+        ? void selectCanvasCards(toggleCanvasSelection(canvasSelectedIds, node.id))
+        : void inspect(node.id)}
+      onNodeContextMenu={canvasEditingEnabled ? (event, node) => { void openCanvasMenu(event, node.id); } : undefined}
+      onSelectionContextMenu={canvasEditingEnabled ? event => { void openCanvasMenu(event); } : undefined}
+      onSelectionStart={canvasEditingEnabled ? () => { canvasBox.current = new Set(); setBoxSelection(canvasBox.current); } : undefined}
+      onSelectionEnd={canvasEditingEnabled ? finishCanvasBox : undefined}
+      selectionOnDrag={canvasEditingEnabled} selectionMode={canvasEditingEnabled ? SelectionMode.Partial : undefined}
+      panOnDrag={canvasEditingEnabled ? [1, 2] : true} selectNodesOnDrag={canvasEditingEnabled ? false : undefined} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={(_, node, moved) => startCanvasDrag(node, moved)} onNodeDragStop={(event, node, moved) => { void stopCanvasDrag(event, node, moved); }}
+      onConnect={connect} onEdgeClick={(_, edge) => { if (canvasEditingEnabled) void selectCanvasCards(new Set(), edge.id); else setSelectedEdgeId(edge.id); }}
+      onPaneClick={() => { if (canvasEditingEnabled) void selectCanvasCards(new Set()); else { setSelectedEdgeId(null); setStoryboardBatch(null); } }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current!.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current!.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: flowFitPadding(canvasFitPadding(.16)), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={CANVAS_INITIAL_FIT} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen || canvasEditingEnabled ? null : ['Backspace', 'Delete']} disableKeyboardA11y={canvasEditingEnabled} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />
+      {canvasEditingEnabled && !boxSelection && canvasSelectedIds.size > 1 && <CanvasSelectionFrame ids={canvasSelectedIds} />}
+      {storyboardSummary && storyboardTask && <StoryboardBatchFrame shotIds={storyboardSummary.shotIds} title={data.assets.find(asset => asset.id === storyboardTask.sourceAssetId)?.name ?? t('scene.task.unavailable')} detail={`· ${t('scene.batch.frame', { count: storyboardSummary.shotIds.length })} · ${sceneTime(storyboardSummary.seconds * 30)}`} time={renderMessage(sceneAgo(storyboardTask.updatedAt, Date.now()))} />}{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? 'var(--wb-video-edge)' : 'var(--wb-muted)'} maskColor="var(--wb-overlay)" pannable zoomable />}</ReactFlow>
       {selectedEdge && <div className="selected-edge-note" data-testid="selected-edge-note">{isReferenceEdge(selectedEdge) ? <><Icon name="link" size={13} /><span>{t('shell.referenceLink')}</span><Button variant="ghost" size="sm" onClick={() => inspect(selectedEdge.target)}>{t('shell.viewDisconnect')}</Button></> : <><span>{t('shell.visualLinkNoGeneration')}</span><span className="muted">{t('shell.deleteKey')}</span></>}</div>}
       {(!data.project || !nodes.length) && !loading && <CanvasEmptyState hasProject={Boolean(data.project)} onAddShot={addShot} onCreateProject={() => setShowCreate(true)} onCreateStructure={addStructure} structureBusy={Boolean(busy.structure)} onImportReference={() => fileInput.current?.click()} onGenerateImage={() => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowDelivery(false); setShowImage(true); }} />}
       {loading && <div className="canvas-loading"><span className="spinner" />{t('projects.opening')}</div>}
       <div className="canvas-controls"><WorkbenchTooltip content={t('shell.zoomOutCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomOut')} onClick={() => flow.zoomOut({ duration: 150 })}><Icon name="minus" size={16} /></Button></WorkbenchTooltip><span>{zoom}%</span><WorkbenchTooltip content={t('shell.zoomInCanvas')}><Button variant="ghost" className="icon-button" aria-label={t('shell.zoomIn')} onClick={() => flow.zoomIn({ duration: 150 })}><Icon name="plus" size={16} /></Button></WorkbenchTooltip><i /><WorkbenchTooltip content={t('shell.fitCanvasHint')}><Button variant="ghost" className="icon-button" aria-label={t('shell.fitCanvas')} data-testid="fit-canvas" onClick={() => flow.fitView({ padding: flowFitPadding(canvasFitPadding(0.18)), duration: 350, maxZoom: 1 })}><Icon name="zoom" size={16} /></Button></WorkbenchTooltip><Button variant="ghost" className={`icon-button ${miniMap ? 'active' : ''}`} aria-label={t('shell.showMinimap')} aria-pressed={miniMap} onClick={() => setMiniMap(!miniMap)}><Icon name="grid" size={16} /></Button></div><div className="canvas-hint"><Icon name="link" size={12} />{t('shell.canvasInteractionHint')}</div>
       </div> : <div className="preview-tab-panel"><Preview aspectFrame={aspectFrame} onRegisterMenuPlayback={registerMenuPlayback} onMenuStateChange={refreshMenuState} onBeforePlay={beforeMainPreviewPlay} audioPreview={audioPreview} onRegisterMediaPause={registerNativePreviewPause} key={data.project?.id || 'empty'} visible={panelVisible('canvas')} kind={previewKind} onKind={(kind: string) => { navigationEpoch.current++; setPreviewKind(kind); }} asset={sourceAsset} clip={quickAssetId ? null : chosenClip} timeline={timeline} job={previewJob as never} pendingJob={latestRender as never} playhead={playhead} onSeek={setPlayhead} sourceScope={sourceRangeScope} sourcePosition={sourceRanges.state?.position ?? 0} sourceSeek={sourceRanges.state?.seek} onSourcePosition={(frame: number, scope?: string | null) => (sourceRanges.controller as unknown as {position(frame: number, scope?: string | null): void}).position(frame, scope)} onCaptureFrame={((() => (frameExtraction.controller as unknown as {capture(): unknown}).capture()) as never)} captureBusy={frameCaptureBusy(frameExtraction.state)} onDetectScenes={!sourceAsset || !projectSessionReady() || !online || auth !== true || loading ? undefined : () => { if (sourceAsset) openSceneDetection(sourceAsset as AppAsset, true); }} sceneDetectIssue={sourceAsset ? sceneSourceIssueMessage(sourceAsset as never) : null} onRender={renderTimeline} busy={Boolean(busy['timeline:render:preview'])} onCanvas={() => changeMode('canvas')} onImport={() => data.project ? nativeWindow&&window.__mioonAssetImport ? void importFiles() : fileInput.current?.click() : setShowCreate(true)} canSeed={Boolean(sortedShots.length && selectedCount === sortedShots.length)} seedBusy={timelineBusy} onSeed={() => mutateTimeline('timeline.seed', {}, timeline?.revision)} transformBox={clipTransformBox()} /></div>}</div>
-    {workspaceMode === 'canvas' && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots as never[]} versions={data.versions} selectedId={selectedId || null} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: flowFitPadding(canvasFitPadding(.1)), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} timelineStatuses={shotStatuses} append={timeline ? { count: appendCandidates.length, disabledReason: !projectSessionReady() || !online || auth !== true || loading ? t('timeline.history.offline') : null, busy: timelineBusy, onAppend: () => { void appendShotsToTimeline(); } } : undefined} onViewInEditing={shotId => { void viewShotInEditing(shotId); }} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === (shot as {referenceAssetIds?: string[]}).referenceAssetIds?.[0])} />} />}
-    {storyboardToast && storyboardToast.projectId === data.project?.id && <StoryboardToast key={storyboardToast.taskId} count={storyboardToast.count} placement={workspaceMode} canView={!storyboardSummary || storyboardBatch?.taskId !== storyboardToast.taskId} undoDisabled={toastBlocked}
+    {workspaceMode === 'canvas' && <StoryboardStrip scope={`${currentProject.current}:${projectEpoch.current}:${navigationEpoch.current}`} open={sequenceOpen} onOpenChange={setSequenceOpen} shots={sortedShots as never[]} versions={data.versions} selectedId={selectedId || null} selectedIds={canvasEditingEnabled ? canvasSelectedIds : undefined} reordering={Boolean(busy.reorder)} assetDragType={ASSET_DRAG} onSelect={async shotId => { if (!await inspect(shotId)) return; flow.fitView({ nodes: [{ id: shotId }], padding: flowFitPadding(canvasFitPadding(.1)), duration: 250, maxZoom: 1 }); }} onReorder={reorder} onAddShot={addShot} timelineStatuses={shotStatuses} append={timeline ? { count: appendCandidates.length, disabledReason: !projectSessionReady() || !online || auth !== true || loading ? t('timeline.history.offline') : null, busy: timelineBusy, onAppend: () => { void appendShotsToTimeline(); } } : undefined} onViewInEditing={shotId => { void viewShotInEditing(shotId); }} renderThumbnail={shot => <Media version={data.versions.find(version => version.id === shot.selectedVersionId)} asset={data.assets.find(asset => asset.id === (shot as {referenceAssetIds?: string[]}).referenceAssetIds?.[0])} />} />}
+    {canvasEditingEnabled && canvasEditing.toast && <CanvasEditToast kind={canvasEditing.toast.kind} count={canvasEditing.toast.count}
+      placement={workspaceMode} undoConflict={canvasEditing.history?.undoConflict} canUndo={canvasEditing.canUndoToast} onUndo={() => { void canvasEditing.undoToast(); }} onClose={canvasEditing.dismissToast} />}
+    {canvasEditingEnabled && canvasSelectedItems.length > 1 && !canvasEditing.toast && <CanvasSelectionSummary items={canvasSelectedItems} placement={workspaceMode} scope={canvasEditingScope} />}
+    {canvasEditingEnabled && canvasContextMenu?.scope === canvasEditingScope && <CanvasSelectionMenu anchor={canvasContextMenu}
+      canArchive={canvasEditingWritable && !canvasEditing.busy && canvasTargets.length > 0} canTidy={canTidyCanvas}
+      onArchive={() => { void archiveCanvasSelection(); }} onTidy={() => { void tidyCanvas(); }} onClose={() => setCanvasContextMenu(null)} />}
+    {canvasEditingEnabled && <CanvasDeleteDialog review={canvasEditing.review} busy={canvasEditing.busy}
+      onCancel={canvasEditing.cancelArchive} onConfirm={() => { void canvasEditing.confirmArchive(); }} />}
+    {(!canvasEditingEnabled || !canvasEditing.toast) && storyboardToast && storyboardToast.projectId === data.project?.id && <StoryboardToast key={storyboardToast.taskId} count={storyboardToast.count} placement={workspaceMode} canView={!storyboardSummary || storyboardBatch?.taskId !== storyboardToast.taskId} undoDisabled={toastBlocked}
       onView={() => { void showStoryboard(storyboardToast.taskId); }} onUndo={() => { void undoStoryboard(storyboardToast.taskId); }} onClose={() => setStoryboardToast(null)} />}
     </section></PanelBoundary>
     {inspectorCollapsed && (geometry.narrow ? <PanelRecall name="inspector" label={rightDockTab === 'agent' ? t('redesign.shell.agent') : t('shell.properties')} icon="settings" expanded={panelOverlay === 'inspector'} onClick={() => togglePanelOverlay('inspector')} /> : <CompactPanelRail name="inspector" label={t('shell.inspectorTabs')} scope={`${currentProject.current}:${projectEpoch.current}:${workspaceMode}`} visible={workbenchReady} expanded={panelOverlay === 'inspector'} disabled={clipCompositionPending} onToggle={() => togglePanelOverlay('inspector')} actions={[
@@ -3397,7 +3750,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     ]} />)}
     <PanelBoundary name="inspector" className={panelOverlay === 'inspector' ? 'panel-overlay' : ''} visible={panelVisible('inspector')} scope={`${currentProject.current}:${workspaceMode}`} fallbackFocus={panelFallback('inspector')}>
     <Collapsible open={!inspectorCollapsed || panelOverlay === 'inspector'} onOpenChange={open => { if (!open && panelOverlay === 'inspector') setPanelOverlay(null); else setInspectorCollapsed(!open); }} className={`inspector-region ${inspectorCollapsed && panelOverlay !== 'inspector' ? 'panel-collapsed' : ''}`} render={<section aria-label={t('shell.inspectorTabs')} />}><header className="inspector-region-heading"><WorkbenchInspectorTabs mode={workspaceMode} value={rightDockTab === 'agent' ? 'agent' : workspaceMode === 'canvas' && tab === 'versions' ? 'versions' : 'properties'} agentDisabled={false} labels={{ workspace: t('shell.rightWorkspace'), properties: t('shell.properties'), versions: t('redesign.shell.versions'), agent: t('redesign.shell.agent') }} onValueChange={value => { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); if (value === 'agent') { setRightDockTab('agent'); setAgentPage('chat'); } else { setRightDockTab('properties'); if (workspaceMode === 'canvas') setTab(value === 'versions' ? 'versions' : 'settings'); } }} /><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('shell.collapseInspector')} title={t('shell.collapseInspector')} data-testid="toggle-inspector" />}><Icon name="minus" size={16} /></CollapsibleTrigger></header><CollapsibleContent keepMounted className="inspector-region-content"><AgentDockPane id="right-dock-properties" labelledBy={workspaceMode === "canvas" && tab === "versions" ? "right-dock-versions-tab" : "right-dock-properties-tab"} visible={rightDockTab === 'properties'} fallbackFocus="[data-testid=right-dock-tab-agent]"><AgentDockPane id="properties-inspector-pane" visible={propertiesPage === 'inspector' || propertiesPage === 'subtitle' && workspaceMode === 'canvas'} fallbackFocus="[data-testid=timeline-format-back]">{subjectPanel ? <div className="inspector-container">{subjectPanel}</div> : workspaceMode === 'canvas' ? <div className="inspector-container">
-    {storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}
+    {canvasEditingEnabled && canvasSelectedItems.length > 1 ? <aside className="inspector"><CanvasSelectionInspector items={canvasSelectedItems} />
+      <CanvasOverview shots={data.shots} versions={data.versions} jobs={jobs as React.ComponentProps<typeof CanvasOverview>['jobs']} nodes={data.nodes} />
+    </aside> : storyboardPanel ?? previsPanel ?? <Inspector protectEditing={(content,onDiscard) => <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} onDiscard={onDiscard} disabled={false} projectId={data.project?.id} targets={chosenShot ? [{kind:'shot',id:chosenShot.id,revision:chosenShot.revision ?? 0}] : chosenNode ? [{kind:'node',id:chosenNode.id,revision:chosenNode.revision ?? 0}] : []} canRelease={() => !shotDirty && !shotTextRef.current?.hasUnsaved() && !shotTextRef.current?.getState().pending && !subjects.controller.getState().bindingDrafts[chosenShot?.id ?? ''] && !subjects.controller.getState().saving && !subjects.controller.getState().uncertain && !isBusy(`save:${chosenShot?.id || chosenNode?.id}`)}>{content}</AgentEditingBoundary>} onEditImage={openImageEdit} annotations={annotations} annotationAsset={librarySource as never} assetSections={sceneSummary(librarySource as AppAsset | null)} annotationBlocked={annotationBlocked}  onShowTasks={() => openTasks()} shotTextContext={{ ...shotTextContext(), getCurrent: shotTextContext } as never} onShotTextController={registerShotText} onShotTextAccepted={((({ response }: {response: {projectId: string}}) => { if (currentProject.current === response.projectId) void refresh(response.projectId); }) as never)} actionScopeKey={`${rightDockTab}:${propertiesPage}`} subjects={subjects as never} subjectBlocked={subjectBlocked} key={`${data.project?.id}:${selectedId || 'empty'}:${inspectorEpoch}`} highlightedVersionId={highlightedVersionId} shot={chosenShot} node={chosenNode} project={data.project} assets={data.assets} versions={data.versions} jobs={jobs} providers={providers} configureGeneration={configureVideoGeneration ? () => openGlobalSettings('models') : undefined} generationOptions={generationOptions[selectedId as string]} onGenerationOptionsChange={updateGenerationOptions as never} tab={tab} setTab={setTab} busy={busy} onSave={saveShot as never} onNodeSave={saveNode as never} onGenerate={generate as never} regenerationJobId={regenerationJobId} onRegenerate={(shot, options, job, stillCurrent) => generate(shot, options, { job, stillCurrent })} onCancelJob={(job, stillCurrent) => { const live = dataRef.current!.jobs.find(item => item.id === job.id); if (!stillCurrent() || live?.projectId !== currentProject.current || live?.status !== job.status || JSON.stringify(live.snapshot) !== JSON.stringify(job.snapshot)) return; return run(`cancel:${job.id}`, 'job.cancel', { jobId: job.id }); }} onRetryJob={retryGeneration} onSelectVersion={selectVersion as never} onCompare={setComparisonId} onOpenJobs={() => openTasks()} onDirtyChange={setShotDirty} shots={sortedShots as never[]} nodes={data.nodes as never[]} edges={data.edges as never[]} referenceBusy={referenceBusy} referencePending={referencePending} onAttachReference={attachReference} onDetachReference={detachReference} onInspect={((id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true })) as never} timelineStatus={shotTimelineView(chosenShot?.id)} onViewInEditing={viewShotInEditing} onAddVersion={(assetId: string) => addTimelineAsset(assetId)} />}
     </div> : quickAssetId && sourceAsset ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={data.project?.id} targets={[{kind:'asset_range',id:sourceAsset.id,revision:0}]} canRelease={() => !sourceDirty} onDiscard={()=>{if(sourceRanges.controller.getState().scope===sourceRanges.state?.scope)sourceRanges.controller.discard();}}><SourceRangeInspector asset={sourceAsset} state={sourceRanges.state} controller={sourceRanges.controller as never} timeline={timeline} blocked={sourceRangeBlocked} onAdd={addSavedSourceRange} sections={sceneSummary(sourceAsset as AppAsset | null)}>{<FrameExtractionPanel controller={frameExtraction.controller as never} revealTask={agentRecovery?.kind === 'frame' ? agentRecovery : null} />}</SourceRangeInspector></AgentEditingBoundary> : displayedClipInspector ? <AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={displayedClipInspector.projectId} targets={[{kind:'timeline_clip',id:displayedClipInspector.clip.id,revision:displayedClipInspector.timeline.revision ?? 0}]} canRelease={() => !clipDraftRef.current?.hasUnsaved() && !clipDraftRef.current?.hasPendingComposition() && !clipDraftRef.current?.getState().candidate && !clipDraftRef.current?.getState().businessPending && !clipDirty} onDiscard={()=>{const controller=clipDraftRef.current;if(!controller)return;const token=controller.capture();if(token.clipId===displayedClipInspector.clip.id)return controller.discard(token);}}><TimelineInspector key={displayedClipInspector.key} crossfadeCandidates={clipInspectorRetained ? undefined : timelineCrossfadeCandidates(displayedClipInspector.timeline.clips, data.assets, displayedClipInspector.clip.id, new Set(trackLocksRef.current[currentProject.current || ''] || []))} onCrossfade={clipInspectorRetained ? undefined : crossfadeTimelineClips} onSetTransform={clipInspectorRetained ? undefined : setTimelineClipTransform} transformFrame={clipTransformFrame(displayedClipInspector.clip, playhead)} transitionContext={clipTransitionContext()} onSetTransition={clipInspectorRetained ? undefined : setTimelineClipTransition} loudnessContext={clipLoudnessContext as never} onLoudnessUnauthorized={() => setAuth(false)} onReturnToSource={!clipInspectorRetained && clipSource ? () => returnToSource(displayedClipInspector.clip.assetId) : undefined} sourceDescription={(clipSource?.version && displayedClipInspector.clip.versionId === clipSource.version.id ? `${clipSource.shot?.title} · V${clipSource.version.number}` : clipSource?.asset?.name) as string | undefined} replacementContext={clipReplacementContext()} staleSource={staleClips.get(displayedClipInspector.clip.id) as never} onReplaceSource={replaceTimelineClipSource as never} onOpenRequests={() => openTasks()} clip={displayedClipInspector.clip} timeline={displayedClipInspector.timeline} asset={displayedClipInspector.asset} draftContext={{ collaboration: displayedClipInspector.collaboration, scope: displayedClipInspector.scope, projectId: displayedClipInspector.projectId,   audioRoleEditable, volumeEnvelopeEditable: !clipInspectorRetained && volumeEnvelopeEditable && online && auth === true,  }} draftConnected={!clipInspectorRetained && online && auth === true && !loading && !nativeLeaseRevoked.current} onCompositionPendingChange={setClipCompositionPending} onDraftController={registerClipDraft} onReviewBlockedChange={setAgentClipDraftBlocked} onSave={((clipId: string, patch: Record<string, unknown>, revision: number, draftOptions: unknown) => mutateTimeline('timeline.clip.update', { clipId, patch }, revision, { returnAfterNavigation: true, canExecute: (draftOptions as {canExecute?: () => boolean} | undefined)?.canExecute })) as never} onRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.remove', { clipId }); if (result) setSelectedClipId(null); }} onRippleRemove={async (clipId: string) => { const result = await mutateTimeline('timeline.clip.rippleRemove', { clipId }); if (result) setSelectedClipId(null); }} onSplit={splitTimelineClip} splitDisabled={!splitState.canSplit || clipInspectorRetained} onShowAsset={() => { if (!clipInspectorRetained && displayedClipInspector.projectId && displayedClipInspector.clip.assetId) void revealImageAsset(displayedClipInspector.clip.assetId, displayedClipInspector.projectId); }} onDirtyChange={setClipDirty} busy={timelineBusy||lockedTrackIds.has(displayedClipInspector.clip.trackId)} onPreview={() => { setQuickAssetId(null); setPreviewKind('source'); }} /></AgentEditingBoundary> : <aside className="inspector" data-testid="editing-inspector-empty"><header className="inspector-heading"><Icon name="layers" /><span>{t('shell.clipProperties')}</span></header><div className="inspector-empty"><h3>{t('shell.selectTimelineClip')}</h3><p>{t('shell.clipPropertiesHint')}</p></div></aside>}</AgentDockPane><AgentDockPane id="properties-subtitle-pane" visible={propertiesPage === 'subtitle' && workspaceMode === 'editing'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={subtitles.state?.projectId} targets={subtitles.state?.cueId ? [{kind:'timeline_subtitle',id:subtitles.state.cueId,revision:subtitles.state.baseRevision ?? 0}] : subtitles.state?.projectId ? [{kind:'timeline',id:subtitles.state.projectId,revision:subtitles.state.baseRevision ?? 0}] : []} canRelease={() => !subtitlesRef.current?.controller.hasUnsaved() && !subtitlesRef.current?.controller.getState().uncertain} onDiscard={()=>subtitles.controller.discardDraft(subtitles.state?.scope)}><SubtitleInspector state={subtitles.state} controller={subtitles.controller} renderJob={previewJob as never} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane><AgentDockPane id="properties-format-pane" visible={data.projectFormatVersion !== 4 && propertiesPage === 'format'} fallbackFocus="[data-testid=right-dock-tab-properties]"><AgentEditingBoundary workspaceScope={editorSession.current||'unverified'} disabled={false} projectId={timelineFormat.state?.projectId} targets={timelineFormat.state?.projectId ? [{kind:'timeline',id:timelineFormat.state.projectId,revision:timelineFormat.state.base?.timelineRevision ?? 0}] : []} canRelease={() => !timelineFormatRef.current?.controller.hasUnsaved() && !timelineFormatRef.current?.controller.getState().uncertain} onDiscard={()=>timelineFormat.controller.discardDraft(timelineFormat.state?.scope)}><TimelineFormatPanel state={timelineFormat.state} controller={timelineFormat.controller} onBack={() => setPropertiesPage('inspector')} onOpenTasks={() => openTasks()} /></AgentEditingBoundary></AgentDockPane></AgentDockPane><AgentDockPane id="right-dock-agent" labelledBy="right-dock-agent-tab" visible={rightDockTab === 'agent'} fallbackFocus="[data-testid=right-dock-tab-properties]">{<AgentWorkspace isAdmissionAllowed={()=>!nativeLeaseRevoked.current && !projectEntryIdentityRef.current!.getState().identityBlocked} onReviewProjectRules={showProjectRules} workspaceScope={editorSession.current||'unverified'} onOpenSettings={openGlobalSettings} settingsOverlayOpen={webSettingsOpen} nativeSettingsScope={nativeSettingsScope} nativeCloseRegistry={nativeCloseRegistry.current} navigationRegistry={settingsNavigation.current} projectId={data.project?.id} projectName={data.project?.name} timelineFps={timeline?.fps} targetName={(kind,id) => { if(kind==='shot')return data.shots.find(item=>item.id===id)?.title; if(kind==='node')return data.nodes.find(item=>item.id===id)?.label; if(kind==='asset')return data.assets.find(item=>item.id===id)?.name; if(kind==='timeline_track')return timeline?.tracks.find(item=>item.id===id)?.name; if(kind==='timeline_subtitle')return timeline?.subtitles?.cues.find(item=>item.id===id)?.text; if(kind==='timeline_clip'){const clip=timeline?.clips.find(item=>item.id===id);return data.assets.find(item=>item.id===clip?.assetId)?.name;} return undefined; }} selectedShot={chosenShot ? { id: chosenShot.id, revision: chosenShot.revision, title: chosenShot.title, prompt: chosenShot.prompt || '' } : null} selectedTimelineClip={agentTimelineSelection} timelineEditBlockedReason={agentTimelineBlockedReason as never} timelineEditBlockedDescriptor={agentTimelineBlockedDescriptor as never} selectedTimelineGainClip={agentTimelineGainSelection} timelineGainBlockedReason={gainBlockedReason} timelineGainBlockedDescriptor={gainBlockedDescriptor} onApplied={(projectId: string) => { if (currentProject.current === projectId) void refresh(projectId); }} onTaskApplied={(projectId, snapshot, landed = []) => { if (currentProject.current === projectId) { const fresh = changeMarks.accept(snapshot, landed); const epoch = projectEpoch.current; void refresh(projectId).then(next => { if (next && currentProject.current === projectId && projectEpoch.current === epoch) changeMarks.show(fresh); }); } }} onTaskOpenRequests={selectedId => openAgentRequests(selectedId)} onTaskLocate={change => { void locateTaskChange(change); }} onMioFollowFocus={receiveMioFollowFocus} onMioFollowLocate={locateMioFollowTarget} mioFollowTargetExists={mioFollowTargetExists} taskReveal={taskReveal} shotNumber={id => { const index = sortedShots.findIndex(shot => shot.id === id); return index < 0 ? undefined : index + 1; }} onTaskReview={(projectId, entries) => { if (currentProject.current === projectId) reviewMarks.show(entries); }} onTaskReviewLocate={entry => { void locateReviewIssue(entry); }} reviewReveal={reviewReveal} page={agentPage} onPage={setAgentPage} onCollapse={() => setPanelOpen('inspector', false)} onDraftChange={onAgentDraftChange} />}</AgentDockPane></CollapsibleContent></Collapsible>
     {panelOverlay === 'inspector' && <div className="panel-overlay-tools"><Button variant="ghost" className="icon-button" data-testid="pin-inspector" aria-label={t('redesign.shell.pin')} title={t('redesign.shell.pin')} onClick={() => setPanelOpen('inspector', true)}><Icon name="lock" size={15} /></Button><Button variant="ghost" className="icon-button" aria-label={t('common.close')} onClick={() => setPanelOverlay(null)}><Icon name="close" size={15} /></Button></div>}
     {resizeHandle('inspector', 'inspectorWidth')}</PanelBoundary>

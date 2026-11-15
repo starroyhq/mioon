@@ -142,6 +142,7 @@ export interface WorkbenchMenuAvailability {
   canUndo: boolean; canRedo: boolean; canSplit: boolean; canRemove: boolean; canRippleRemove: boolean; canPlay: boolean;
   /** Canvas may offer one explicitly owned batch undo, independently of timeline history. */
   canUndoCanvas?: boolean;
+  canRedoCanvas?: boolean;
 }
 export function workbenchMenuView(value: WorkbenchMenuAvailability): MenuCommandView {
   const commands = emptyMenuCommands(), available = value.ready && value.visible && !value.modalOpen && !value.composing;
@@ -152,7 +153,7 @@ export function workbenchMenuView(value: WorkbenchMenuAvailability): MenuCommand
   commands['toggle-assets'] = commands['toggle-inspector'] = commands['show-tasks'] = commands['show-help'] = available;
   commands['toggle-timeline'] = available && value.mode === 'editing';
   commands['edit-undo'] = editing && value.canUndo || available && value.mode === 'canvas' && !value.textFocus && value.canUndoCanvas === true;
-  commands['edit-redo'] = editing && value.canRedo;
+  commands['edit-redo'] = editing && value.canRedo || available && value.mode === 'canvas' && !value.textFocus && value.canRedoCanvas === true;
   commands['clip-split'] = editing && value.canSplit; commands['clip-remove'] = editing && value.canRemove;
   commands['clip-ripple-remove'] = editing && value.canRippleRemove; commands['playback-toggle'] = editing && value.canPlay;
   return {version: 1, editingContext: value.textFocus ? 'text' : value.ready && value.mode === 'editing' ? 'timeline' : 'none',
