@@ -6,6 +6,7 @@ import { createProjectWindowBridge } from '../apps/desktop/src/project-window-pr
 import { isProjectWindowContext, isProjectWindowRequest, isProjectWindowOpenResult, projectWindowOpenFailure, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
 import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
+import type { CanvasClipboardBridge } from '../apps/desktop/src/canvas-clipboard.ts';
 const id = '11111111-1111-4111-8111-111111111111';
 const context = { version:2, role:'launcher', windowId:id, contextId:id, backendId:id, initialProjectId:null, autoOpen:true, editorProjectId:null, editorPhase:'none', editorCount:0, entryMode:null, entryVersion:0, entryReceipt:null, settingsSlot:null, settingsVersion:0, selectionProjectId:null, selectionVersion:0, locatorStatus:null, locatorIntent:null, quitting:false };
 test('window open receipts carry only verified failure fields', () => {
@@ -145,15 +146,31 @@ test('actual sandbox preload bundle requires only Electron and exposes no arbitr
     [true, ['--unrelated=synthetic'], undefined],
   ] as const) {
     const exposed = new Map<string, unknown>();
+    const invoked: unknown[][] = [];
+    const window = Object.assign(new EventTarget(), {
+      document: {hasFocus: () => true},
+      navigator: {userActivation: {isActive: true}},
+    });
     runInNewContext(text, {
       process: {isMainFrame, argv},
-      TextEncoder, TextDecoder, URL,
+      TextEncoder, TextDecoder, URL, window,
       require: (module: string) => {
         assert.equal(module, 'electron');
-        return {contextBridge: {exposeInMainWorld: (name: string, value: unknown) => exposed.set(name, value)}, ipcRenderer: {}, webUtils: {}};
+        return {contextBridge: {exposeInMainWorld: (name: string, value: unknown) => exposed.set(name, value)},
+          ipcRenderer: {async invoke(...args: unknown[]) { invoked.push(args); }}, webUtils: {}};
       },
     });
     assert.equal(exposed.get('__mioonHomeDirectory'), expected);
+    assert.equal(exposed.has('__mioonCanvasClipboard'), isMainFrame);
+    if (isMainFrame) {
+      const clipboard = exposed.get('__mioonCanvasClipboard') as CanvasClipboardBridge;
+      assert.deepEqual(Object.keys(clipboard), ['readHandle']);
+      assert.equal(Object.isFrozen(clipboard), true);
+      assert.equal(await clipboard.readHandle(), null);
+      window.dispatchEvent(new Event('click'));
+      assert.equal(await clipboard.readHandle(), null);
+    }
+    assert.deepEqual(invoked, []);
   }
 });
 test('restart confirmation cannot act on replaced startup/backend or a newly requested Quit', async () => {

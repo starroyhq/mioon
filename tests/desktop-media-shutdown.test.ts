@@ -50,6 +50,8 @@ import { validateTools } from '../apps/desktop/src/config.ts';
 import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
 import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
 import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {CANVAS_CLIPBOARD_CHANNEL} from '../apps/desktop/src/canvas-clipboard.ts';
+import {readNativeCanvasClipboard} from '../apps/desktop/src/canvas-clipboard-host.ts';
 import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -484,7 +486,7 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [] as number[], notices: [] as DesktopHarnessDialog[] };
-  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL];
+  const expectedChannels = [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL];
   const registeredChannels = new Set();
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
@@ -504,6 +506,7 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
     CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, projectFileArguments,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
+    CANVAS_CLIPBOARD_CHANNEL, readNativeCanvasClipboard, clipboard: {read: () => assert.fail('Shutdown must not read the clipboard')},
     ipcMain: { handle: (channel: string, handler: unknown) => {
       assert.ok(expectedChannels.includes(channel)); assert.equal(typeof handler, 'function');
       assert.equal(registeredChannels.has(channel), false, 'Every native channel has exactly one handler');

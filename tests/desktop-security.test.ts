@@ -221,7 +221,12 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.replace(fixedSettingsFactory, '').includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+  const clipboardHandler = main.match(/^ipcMain\.handle\(CANVAS_CLIPBOARD_CHANNEL,[\s\S]*?^\}\);$/m)?.[0];
+  assert.ok(clipboardHandler);
+  assert.match(clipboardHandler, /if \(args\.length\) return null/);
+  assert.match(clipboardHandler, /owner\.role !== 'editor' \|\| event\.senderFrame !== owner\.frame/);
+  assert.match(clipboardHandler, /menuDocumentAllowed\(document, 'canvas-duplicate'\) && menuCommands\?\.stateFor\(event\.sender\)\?\.workspaceMode === 'canvas'/);
   assert.match(main, /^import \{ CLIP_LUT_RECOVERY_CHANNEL \} from '\.\.\/\.\.\/\.\.\/packages\/contracts\/src\/clip-lut-recovery\.ts';$/m);
   assert.match(main, /^ipcMain\.handle\(CLIP_LUT_RECOVERY_CHANNEL, \(event, request\) => lutRecoveryHost\?\.dispatch\(event, request\) \?\? \{ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' \}\);$/m);
   // Restrict these checks to LUT wiring so another host cannot satisfy its authority guards.
