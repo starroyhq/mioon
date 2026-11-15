@@ -10,6 +10,8 @@ import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectT
 import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
 import type {z as Zod} from 'zod';
 import type {NativeAssetMediaPort} from './asset-media-native.ts';
+import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
+import type {ProjectFormatReadOnlyView} from './project-format-upgrade.ts';
 
 /** Trusted utility control payloads, not HTTP/renderer messages. The main
  * process generates opaque UUID window owners; these are not BrowserWindow's
@@ -23,9 +25,14 @@ export const projectEntryCreateInputSchema = z.object({
   parentDir: absolutePath.optional(),
   projectFile: absolutePath.refine(file => file.endsWith(PROJECT_FILE_EXTENSION), 'Choose a .mioon file.').optional(),
 }).strict().refine(value => value.parentDir === undefined || value.projectFile === undefined, 'Choose one project location.');
-export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePath, windowId, deferRecent: z.literal(true).optional()}).strict();
+export const projectFormatSourceSchema = z.object({
+  projectFile: absolutePath,
+  identity: z.object({dev:z.string().regex(/^\d+$/u),ino:z.string().regex(/^\d+$/u)}).strict(),
+  preview: projectFormatUpgradePreviewSchema,
+}).strict();
+export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePath, windowId, deferRecent: z.literal(true).optional(), formatUpgrade: projectFormatSourceSchema.optional()}).strict();
 export const projectEntryPrepareAcquireInputSchema = z.object({projectId: projectIdSchema}).strict();
-export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional(), deferRecent: z.literal(true).optional()}).strict();
+export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional(), deferRecent: z.literal(true).optional(), formatUpgrade: projectFormatSourceSchema.optional()}).strict();
 export const projectEntryMarkOpenedInputSchema = z.object({windowId, contextId: windowId}).strict();
 export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
@@ -36,6 +43,10 @@ export const projectEntrySourceObservationSchema = z.object({
   name: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH),
   original: recentProjectSchema.nullable(),
 }).strict();
+export const projectEntryReadOnlyFormatSchema = projectFormatSourceSchema;
+export const projectEntryReadOnlyFormatResultSchema = projectFormatReadOnlyViewSchema;
+export const projectEntryObserveFormatInputSchema = z.object({projectFile: absolutePath, preview: projectFormatUpgradePreviewSchema}).strict();
+export type ProjectFormatSource = z.infer<typeof projectFormatSourceSchema>;
 export type ProjectEntrySourceObservation = z.infer<typeof projectEntrySourceObservationSchema>;
 export const projectEntrySaveAsInputSchema = projectCopyInputSchema.extend({windowId});
 export const projectEntryAdoptCopyInputSchema = projectAdoptCopyInputSchema.extend({windowId});
@@ -71,4 +82,6 @@ export interface ProjectEntryControlPort {
   /** Read-only selected-copy observation; never a renderer-supplied stamp. */
   inspectSelectedCopy?(input: {projectFile:string}): Promise<Zod.infer<typeof projectCopySourceSchema>>;
   observeSource?(input: {projectFile:string}): Promise<ProjectEntrySourceObservation>;
+  observeFormat?(input: z.infer<typeof projectEntryObserveFormatInputSchema>): Promise<ProjectFormatSource>;
+  readOnlyFormat?(input: ProjectFormatSource): Promise<ProjectFormatReadOnlyView>;
 }

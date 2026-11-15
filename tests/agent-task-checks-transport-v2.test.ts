@@ -6,8 +6,7 @@ import {testEnv} from './helpers/test-env.ts';
 
 import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 
-import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
-import {serverAppDirectories,projectLocation} from '../apps/server/src/project-host/directories.ts';
+import {openServerProject} from './helpers/project-database.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -214,7 +213,7 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
 
 
 test('disconnecting a checks observer cancels its local preflight and releases it before the next read',{timeout:10000},async t=>{
- const f=await workspace(),store=openServerTestStore({projectFile:f.projectFile,locate:id=>projectLocation(serverAppDirectories(f.source),id)},f.source),journal=createAgentTaskJournal(store),timelineId=randomUUID();
+ const f=await workspace(),store=openServerProject(f.source,f.projectId),journal=createAgentTaskJournal(store),timelineId=randomUUID();
  const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Synthetic preflight cancellation',configuration:mioFixtureConfiguration}).run,saved=beginFixtureToolStep(journal,run.id,{});
  journal.markDispatch(run.id,saved.id);
  journal.completeStep(run.id,saved.id,{change:{projectId:f.projectId,operation:'timeline.format.set',targets:[{kind:'timeline',id:f.projectId,revision:1}],before:null,after:null,reversible:true}});

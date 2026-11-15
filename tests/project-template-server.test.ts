@@ -12,7 +12,7 @@ import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
-import {HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contracts/src/project-copies.ts';
@@ -61,7 +61,7 @@ async function fixture(t: TestContext) {
     setBoundary(value: typeof boundary) {boundary = value;},
     async restart() {await server.close(); boundary = undefined; server = await start();},
     targetStore(copy: ProjectCopyResponse) {assert.equal(isProjectFileHeld(copy.project.fileIdentity), false); return openProjectStore({projectFile: copy.project.projectFile,
-      locate: id => projectLocation(serverAppDirectories(dataDir, {projectsDir: path.join(root, 'projects')}), id)});},
+      locate: id => projectLocation(serverAppDirectories(dataDir, {projectsDir: path.join(root, 'projects')}), id), format4: {}});},
   };
 }
 const success = (result: {status: number; body: Wire<ProjectCopyResponse>}): ProjectCopyResponse => {
@@ -83,7 +83,7 @@ test('HTTP and trusted template entries create independent media and identities 
   for (let index = 0; index < 2; index++) {
     const copy = [first, second][index], store = f.targetStore(copy);
     try {
-      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, HISTORY_SCHEMA_VERSION);
+      assert.equal(store.historyState, 'current'); assert.equal(store.db.prepare('SELECT version FROM main.schema_version').get()!.version, FORMAT4_HISTORY_SCHEMA_VERSION);
       for (const table of HISTORY_TABLES.filter(name => name !== 'mio_storage_counters')) assert.equal(store.db.prepare(`SELECT count(*) n FROM main."${table}"`).get()!.n, 0, table);
       assert.deepEqual({...store.db.prepare('SELECT * FROM main.mio_storage_counters').get()}, {singleton: 1, bytes: 0, rows: 1});
       const asset = store.get('assets', f.assetId) as {projectId: string; reference: MediaReference};

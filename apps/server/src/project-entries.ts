@@ -3,7 +3,8 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {lstatSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
-import {inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectProjectFormatHeader, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
+import {readClosedProjectForFormatUpgrade} from '../../../packages/business/src/project-file/closed-copy.ts';
 import {isAppLibraryHeld, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, projectEntryIdentitySchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
@@ -13,14 +14,15 @@ import {
   projectEntryCreateInputSchema, projectEntryOpenPathInputSchema, projectEntryAcquireInputSchema, projectEntryPrepareAcquireInputSchema,
   projectEntryMarkOpenedInputSchema, projectEntryReleaseInputSchema, projectEntryWindowSchema,
   projectEntrySaveAsInputSchema, projectEntryAdoptCopyInputSchema, projectEntrySourceObservationSchema,
+  projectEntryObserveFormatInputSchema, projectEntryReadOnlyFormatSchema, projectFormatSourceSchema,
 } from '../../../packages/contracts/src/project-entry-native.ts';
+import type {ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectDesktopTemplate} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
-import {newProjectFormatVersion} from './project-host/manager.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
 import type {ProjectRegistryPort} from './project-host/ports.ts';
@@ -55,7 +57,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = PROJECT_FILE_SCHEMA_VERSION}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -71,7 +73,9 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
   readonly trash?: ProjectTrashActions;
+  readonly targetFormat?: typeof PROJECT_FILE_SCHEMA_VERSION | typeof FORMAT4_PROJECT_SCHEMA_VERSION;
 }) {
+  const format4 = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
   const instanceId = randomUUID();
   let establishedScope: string | undefined;
   const windows = new Map<string, WindowSlot<Runtime>>();
@@ -106,7 +110,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     if (previous?.generation === observed) return previous.newer;
     formatHints.delete(file);
     let newer = false;
-    try { inspectProjectFormatHeader(file); }
+    try { inspectProjectFormatHeader(file, format4); }
     catch (error) {
       if (!(error instanceof AppError) || error.code !== 'PROJECT_FORMAT_NEWER') throw error;
       newer = true;
@@ -142,7 +146,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     }
     if (before !== scope()) throw new AppError('PROJECT_ENTRY_SCOPE_MISMATCH', '应用库身份已变化，请重新打开', 409);
     const result = projectEntriesResponseSchema.safeParse({
-      version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion, registered,
+      version: 1, appLibraryScope: before, instanceId, newProjectFormatVersion: targetFormat, registered,
     });
     if (!result.success) throw unavailable();
     return result.data;
@@ -151,11 +155,33 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     assertProjectFile?.(file);
     const before=sourceMetadata(file);
     for(const suffix of ['-journal','-wal','-shm'])if(lstatSync(file+suffix,{throwIfNoEntry:false}))sourceMetadata(file+suffix);
-    const stamp=inspectProjectFileReadOnly(file);
+    const stamp=inspectProjectFileReadOnly(file, format4);
     const metadata=inspectCopiedProjectFile(file);
     const after=sourceMetadata(file);
     if(generation(before)!==generation(after)||stamp.projectId!==metadata.projectId||stamp.contentSequence!==metadata.contentSequence||stamp.contentToken!==metadata.contentToken)throw unavailable();
     return {metadata,identity:{dev:String(after.dev),ino:String(after.ino)}};
+  };
+  const registeredFormatSource = (projectId: string): RecentProject => {
+    scope();
+    const entry = registry.get(projectId);
+    if (!format4 || channel !== 'web' || !entry || !projectEntryWithinRoot(projectsDir, entry.projectFile)) {
+      throw new AppError('PROJECT_NOT_FOUND', '项目未登记', 404, {projectId});
+    }
+    assertProjectFile?.(entry.projectFile);
+    return entry;
+  };
+  const fileIdentity = (file: string) => {
+    const info = lstatSync(file, {bigint: true});
+    return {dev: String(info.dev), ino: String(info.ino)};
+  };
+  const readOnly = (projectId: string, file: string, identity: RecentProject['fileIdentity'], preview?: ProjectFormatUpgradePreview) => {
+    const current = scope();
+    if (!format4) throw unavailable();
+    assertProjectFile?.(file);
+    if (!sameProjectFileIdentity(fileIdentity(file), identity)) throw projectFileMoved(projectId);
+    const view = readClosedProjectForFormatUpgrade(file, projectId, preview);
+    if (current !== scope() || !sameProjectFileIdentity(fileIdentity(file), identity)) throw projectFileMoved(projectId);
+    return view;
   };
   const observedOriginal = (source:{projectId:string;projectFile:string}):RecentProject|null => {
     const original=copyOriginal?.(source);
@@ -265,6 +291,19 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       return projectEntrySourceObservationSchema.parse({source:{sourceProjectId:metadata.projectId,sourceFile:projectFile,sourceIdentity:identity,sourceStamp:{contentSequence:metadata.contentSequence,contentToken:metadata.contentToken}},name:metadata.name,original});
     }}:{}),
     listRecent: () => list(true),
+    observeFormat: async raw => {
+      scope();
+      const {projectFile, preview} = parse(projectEntryObserveFormatInputSchema, raw);
+      if (!format4) throw unavailable();
+      const {metadata, identity} = observeFile(projectFile);
+      if (metadata.projectId !== preview.projectId || metadata.formatVersion !== preview.projectVersion || !sameContentStamp(metadata, preview)) throw projectFileMoved(preview.projectId);
+      scope();
+      return projectFormatSourceSchema.parse({projectFile, preview, identity});
+    },
+    readOnlyFormat: async raw => {
+      const {projectFile, identity, preview} = parse(projectEntryReadOnlyFormatSchema, raw);
+      return readOnly(preview.projectId, projectFile, identity, preview);
+    },
     prepareAcquire: async raw => {
       scope();
       const {projectId} = parse(projectEntryPrepareAcquireInputSchema, raw);
@@ -280,14 +319,18 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     },
     openPath: input => {
       const selected = parse(projectEntryOpenPathInputSchema, input);
-      return bind(selected.windowId, 'path:' + selected.projectFile,
-        () => manager.openPath(selected.projectFile, 'window', {deferRecent: selected.deferRecent}), undefined, selected.deferRecent);
+      const upgrade = selected.formatUpgrade;
+      if (upgrade && upgrade.projectFile !== selected.projectFile) throw invalid();
+      return bind(selected.windowId, 'path:' + selected.projectFile + (upgrade ? ':upgrade:' + JSON.stringify(upgrade) : ''),
+        () => manager.openPath(selected.projectFile, 'window', {deferRecent: selected.deferRecent, formatUpgrade: upgrade?.preview, fileIdentity: upgrade?.identity}), undefined, selected.deferRecent);
     },
     acquire: input => {
       const selected = parse(projectEntryAcquireInputSchema, input);
       const pinned = selected.expectedProjectFile;
-      return bind(selected.windowId, 'id:' + selected.projectId + (pinned === undefined ? '' : ':path:' + pinned),
-        () => manager.acquire(selected.projectId, 'window', {projectFile: pinned, deferRecent: selected.deferRecent}), pinned, selected.deferRecent);
+      const upgrade = selected.formatUpgrade;
+      if (upgrade && (upgrade.projectFile !== pinned || upgrade.preview.projectId !== selected.projectId)) throw invalid();
+      return bind(selected.windowId, 'id:' + selected.projectId + (pinned === undefined ? '' : ':path:' + pinned) + (upgrade ? ':upgrade:' + JSON.stringify(upgrade) : ''),
+        () => manager.acquire(selected.projectId, 'window', {projectFile: pinned, deferRecent: selected.deferRecent, formatUpgrade: upgrade?.preview, fileIdentity: upgrade?.identity}), pinned, selected.deferRecent);
     },
     markOpened: input => {
       scope();
@@ -403,6 +446,16 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   }, {once: true});
   return {control,
     readIdentity,
+    readRegisteredFormat(projectId: string) {
+      const entry = registeredFormatSource(projectId);
+      return readOnly(projectId, entry.projectFile, entry.fileIdentity);
+    },
+    async upgradeRegisteredFormat(projectId: string, preview: ProjectFormatUpgradePreview) {
+      const entry = registeredFormatSource(projectId);
+      if (preview.projectId !== projectId) throw invalid();
+      const lease = await manager.acquire(projectId, 'request', {projectFile: entry.projectFile, fileIdentity: entry.fileIdentity, formatUpgrade: preview});
+      try {scope(); return {projectId};} finally {lease.release();}
+    },
     handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
     const identity = url.pathname === '/api/project-entries/identity';
     const single = !identity && url.pathname.startsWith('/api/project-entries/');

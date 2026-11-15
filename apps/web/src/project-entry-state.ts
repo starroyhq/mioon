@@ -35,13 +35,14 @@ export interface ProjectEntryConsumption { readonly version: 1; readonly entryTo
  * same latch; the native host can consume, but cannot mint, this permission. */
 export function createProjectEntryController({ client, bridge, context: initialContext, identity = null, manageIdentityLifecycle = true, explicitProjectId = null,
   desktopClient = null, readAdditionalSnapshot = () => ({dirty: false, busy: false, unknown: false, identity: [] as unknown[]}),
-  onNativeOpenError,
+  onNativeOpenError, onNativeUpgradeRequired,
   readNativeDraftVersion = () => 0,
   confirm = async () => false, onChange = () => {}, newToken = () => globalThis.crypto.randomUUID(),
 }: { client: LauncherClient; bridge: ProjectWindowBridge; context: ProjectWindowContext; identity?: ProjectEntryIdentityOwner | null; manageIdentityLifecycle?: boolean;
   explicitProjectId?: string | null; desktopClient?: ProjectEntriesDesktopBridge | null;
   readAdditionalSnapshot?: () => {dirty: boolean; busy: boolean; unknown: boolean; identity: readonly unknown[]};
   onNativeOpenError?: (error: unknown, projectId: string) => void;
+  onNativeUpgradeRequired?: (result: Extract<Awaited<ReturnType<ProjectEntriesDesktopBridge['openRecent']>>, {status: 'upgrade-required'}>) => void;
   readNativeDraftVersion?: () => number;
   confirm?: (message: string | DisplayMessage) => Promise<boolean>; onChange?: (state: ProjectEntryState) => void; newToken?: () => string }) {
   if (initialContext.role !== 'launcher' && initialContext.role !== 'editor') throw new Error('Project entry requires an owned entry window');
@@ -128,6 +129,11 @@ export function createProjectEntryController({ client, bridge, context: initialC
       const native = desktopClient ? await desktopClient.openRecent({projectId, remember, entryToken: token}) : null;
       let result: ProjectWindowOpenResult;
       if (!native) result = await bridge.openProject(projectId, remember, token);
+      else if (native.status === 'upgrade-required') {
+        if (permit === attempt) settle(attempt, {ok: false, reason: 'cancelled', targetWindowId: null, targetPhase: null});
+        if (alive(attempt.owner) && ownerCurrent() && native.preview.projectId === projectId) onNativeUpgradeRequired?.(native);
+        return false;
+      }
       else if (native.status === 'opened') {
         if (native.projectId !== projectId) throw new Error('Native recent acknowledgement does not match its sealed entry');
         result = {ok: true, reason: 'accepted', targetWindowId: native.windowId, targetPhase: null};

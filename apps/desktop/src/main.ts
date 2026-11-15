@@ -796,7 +796,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       }
       catch(error){
         const failure=codedFailure(error),readOnly=failure.code==='PROJECT_INVALID'&&failure.details?.reason==='read-only'||failure.code==='PROJECT_UNAVAILABLE'&&failure.details?.reason==='PROJECT_INVALID'&&failure.details?.invalidReason==='read-only';
-        if(failure.code!=='PROJECT_FILE_COPY'&&!readOnly)throw error;
+        if(failure.code!=='PROJECT_FILE_COPY'&&failure.code!=='PROJECT_FORMAT_UPGRADE_REQUIRED'&&!readOnly)throw error;
         await openWindow(context);nativeBackendCurrent();if(windowHost!==ownedWindowHost)throw new Error('Project window owner unavailable');
         const parent=ownedWindowHost.ensureLauncher();if(parent)await ownedWindowHost.loadFor(parent);nativeBackendCurrent();
         const owner=parent?nativeOwner(parent):null;

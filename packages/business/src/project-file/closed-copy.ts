@@ -12,13 +12,15 @@ import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnaps
 import type {Format4Options} from './connection.ts';
 import {isHotJournal,isSuperJournalInUse,superJournalsIn} from './journals.ts';
 import {projectFileError,isSqliteBusy,isSqliteCorrupt} from './errors.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID} from './schema/databases.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,HISTORY_APPLICATION_ID,HISTORY_SCHEMA_VERSION,PROJECT_FILE_APPLICATION_ID,PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import {HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import {compareManifest,readSchemaManifest} from './schema/manifest-check.ts';
 import {historyManifestForVersion} from './schema/format-manifests.ts';
 import {sameContentStamp} from './content-stamp.ts';
 import {PROJECT_BACKUP_APPLICATION_ID,readCopiedProjectIdentity,syncCopiedFile} from './backup.ts';
 import type {ProjectBackupIdentity} from './backup.ts';
+import {PROJECT_FORMAT_READ_ONLY_LIMITS, projectFormatReadOnlyViewSchema} from '../../../contracts/src/project-format-upgrade.ts';
+import type {ProjectFormatReadOnlyView, ProjectFormatUpgradePreview} from '../../../contracts/src/project-format-upgrade.ts';
 
 export interface CaptureClosedProjectSnapshotOptions {
  readonly projectFile:string;
@@ -202,6 +204,87 @@ export function inspectClosedProjectForTrash(options:InspectClosedProjectForTras
   if(isSqliteCorrupt(error))throw invalid(active);
   if((error as {code?:unknown})?.code==='ENOENT')throw projectFileError(active==='project'?'PROJECT_MISSING':'PROJECT_INVALID',{database:active,reason:active==='project'?'missing':'unusable'});
   throw error;
+ }finally{connection?.close();}
+}
+
+/** A cold portable-project view. Keep the descriptor and transaction entirely
+ * inside the kernel and leave the paired records, cache and media unopened. */
+export function previewClosedProjectFormatUpgrade(file: string, projectId: string, historyFile: string): ProjectFormatUpgradePreview {
+ const projectFile=path.resolve(file);
+ let connection:ReturnType<typeof openClosedProjectSnapshotConnection>|undefined,active:'project'|'history'='project';
+ try{
+  const before=metadata(projectFile,'project');journals(projectFile,'project');
+  const source=inspectProjectFileReadOnly(projectFile);
+  if(source.projectId!==projectId)throw invalid('project','project-mismatch');
+  assertNoFormat4Restore(path.dirname(historyFile),projectId);
+  active='history';journals(historyFile,'history');
+  const history=lstatSync(historyFile,{bigint:true,throwIfNoEntry:false})?metadata(historyFile,'history'):undefined;
+  if(history){validateManagedFile(historyFile,{root:path.dirname(historyFile)});historyHeader(historyFile,history);}
+  active='project';connection=openClosedProjectSnapshotConnection({projectFile,...(history?{historyFile}:{})});
+  const db=connection.db;db.exec('BEGIN');
+  const identity=readCopiedProjectIdentity(db,PROJECT_FILE_APPLICATION_ID,Number(before.size));
+  if(identity.projectId!==projectId||!sameContentStamp(source,identity))throw invalid('project','metadata');
+  active='history';const historyVersion=history?validateHistory(db,'history',projectId).formatVersion:null;
+  if(history&&stamp(lstatSync(historyFile,{bigint:true}))!==stamp(history))throw invalid('history','unusable');
+  active='project';if(stamp(lstatSync(projectFile,{bigint:true}))!==stamp(before))throw invalid('project','unusable');
+  db.exec('COMMIT');
+  return {...source,projectVersion:PROJECT_FILE_SCHEMA_VERSION,historyVersion,targetProjectVersion:FORMAT4_PROJECT_SCHEMA_VERSION,targetHistoryVersion:FORMAT4_HISTORY_SCHEMA_VERSION};
+ }catch(error){
+  if(error instanceof AppError)throw error;
+  if(isSqliteBusy(error))throw projectFileError('PROJECT_LOCKED',{database:active,reason:'locked'});
+  const code=(error as {code?:unknown})?.code;
+  if(code==='ENOENT'&&active==='project')throw projectFileError('PROJECT_MISSING',{database:'project',reason:'missing'});
+  if(code==='EACCES'||code==='EPERM')throw projectFileError('PROJECT_ACCESS_DENIED',{database:active,reason:'access-denied'});
+  throw invalid(active,'metadata');
+ }finally{connection?.close();}
+}
+
+export function readClosedProjectForFormatUpgrade(file: string, projectId: string, expected?: ProjectFormatUpgradePreview): ProjectFormatReadOnlyView {
+ const projectFile=path.resolve(file),limit=PROJECT_FORMAT_READ_ONLY_LIMITS.items;
+ let connection:ReturnType<typeof openClosedProjectSnapshotConnection>|undefined;
+ try{
+  const before=metadata(projectFile,'project');journals(projectFile,'project');
+  const inspected=inspectProjectFileReadOnly(projectFile);
+  if(inspected.projectId!==projectId||expected&&!sameContentStamp(inspected,expected))throw invalid('project','project-mismatch');
+  connection=openClosedProjectSnapshotConnection({projectFile});
+  const db=connection.db;db.exec('BEGIN');
+  const identity=readCopiedProjectIdentity(db,PROJECT_FILE_APPLICATION_ID,Number(before.size));
+  if(identity.projectId!==projectId||identity.formatVersion!==PROJECT_FILE_SCHEMA_VERSION||!sameContentStamp(inspected,identity))throw invalid('project','metadata');
+  const project=db.prepare(`SELECT json_extract(data,'$.name') AS name,json_extract(data,'$.description') AS description FROM projects WHERE id=?`).get(projectId);
+  if(!project)throw invalid('project','metadata');
+  const versionCounts=db.prepare(`SELECT json_extract(data,'$.shotId') AS id,count(*) AS count FROM versions WHERE projectId=? GROUP BY 1`).all(projectId);
+  const versions=new Map(versionCounts.map(row=>[row.id,row.count]));
+  const shots=db.prepare(`SELECT id,json_extract(data,'$.title') AS title,json_extract(data,'$.orderIndex') AS orderIndex,
+     json_extract(data,'$.duration') AS duration FROM shots WHERE projectId=? ORDER BY orderIndex,id LIMIT ?`).all(projectId,limit+1);
+  const nodes=db.prepare(`SELECT id,json_extract(data,'$.label') AS label,json_extract(data,'$.type') AS type
+     FROM nodes WHERE projectId=? ORDER BY id LIMIT ?`).all(projectId,limit+1);
+  const timelineRow=db.prepare(`SELECT CASE WHEN length(CAST(data AS BLOB))<=? THEN data END AS data FROM timelines WHERE projectId=?`)
+   .get(16*1024*1024,projectId);
+  const display=(value:unknown, max:number=PROJECT_FORMAT_READ_ONLY_LIMITS.text)=>typeof value==='string'?value.slice(0,max).replace(/[\uD800-\uDBFF]$/u,''):'';
+  const projectDescription=display(project.description,2000);
+  let truncated=shots.length>limit||nodes.length>limit;
+  let timeline:unknown=null;
+  if(timelineRow){
+   if(typeof timelineRow.data!=='string')throw invalid('project','metadata');
+   const {width,height,fps,durationFrames,tracks,clips}=JSON.parse(timelineRow.data);
+   if(!Array.isArray(tracks)||!Array.isArray(clips))throw invalid('project','metadata');
+   truncated ||= tracks.length>limit||clips.length>limit;
+   timeline={width,height,fps,durationFrames,tracks:tracks.slice(0,limit).map(({id,name,kind})=>({id,name:display(name),kind})),
+    clips:clips.slice(0,limit).map(({id,name,trackId,startFrame,durationFrames})=>({id,name:display(name),trackId,startFrame,durationFrames}))};
+  }
+  const result=projectFormatReadOnlyViewSchema.safeParse({projectId,name:display(project.name),description:projectDescription,
+   projectVersion:identity.formatVersion,shots:shots.slice(0,limit).map(row=>({...row,title:display(row.title),versionCount:versions.get(row.id)??0})),
+   nodes:nodes.slice(0,limit).map(row=>({...row,label:display(row.label)})),timeline,truncated});
+  if(!result.success||Buffer.byteLength(JSON.stringify(result.data))>PROJECT_FORMAT_READ_ONLY_LIMITS.bytes)throw invalid('project','metadata');
+  if(stamp(lstatSync(projectFile,{bigint:true}))!==stamp(before))throw invalid('project','unusable');
+  db.exec('COMMIT');return result.data;
+ }catch(error){
+  if(error instanceof AppError)throw error;
+  if(isSqliteBusy(error))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
+  const code=(error as {code?:unknown})?.code;
+  if(code==='ENOENT')throw projectFileError('PROJECT_MISSING',{database:'project',reason:'missing'});
+  if(code==='EACCES'||code==='EPERM')throw projectFileError('PROJECT_ACCESS_DENIED',{database:'project',reason:'access-denied'});
+  throw invalid('project','metadata');
  }finally{connection?.close();}
 }
 

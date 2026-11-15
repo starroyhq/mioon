@@ -1,9 +1,12 @@
 /** Real browser regression. Open an isolated format-4 project with at least one
  * live card and one archived item. Run with an existing Playwright page:
- *   playwright-cli run-code "$(node tests/browser_canvas_archive_escape.mjs)"
+ *   pnpm test:browser:canvas-archive --session <playwright-cli-session>
+ * With no arguments, print the function for use with an existing runner.
  */
+import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
+import {testEnv} from './helpers/test-env.ts';
 
 export async function runCanvasArchiveEscape(page) {
   const board = page.getByTestId('canvas-drop-zone');
@@ -38,5 +41,15 @@ export async function runCanvasArchiveEscape(page) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(runCanvasArchiveEscape.toString());
+  const [, , option, session, ...extra] = process.argv;
+  const source = runCanvasArchiveEscape.toString();
+  if (!option) console.log(source);
+  else {
+    if (option !== '--session' || !session || extra.length) throw new Error('Expected --session <playwright-cli-session>');
+    const result = spawnSync('playwright-cli', [`-s=${session}`, 'run-code', source], {encoding: 'utf8', env: testEnv()});
+    if (result.error) throw result.error;
+    const outcome = /^### Result\r?\n(.*)$/um.exec(result.stdout)?.[1];
+    if (result.status !== 0 || !outcome) throw new Error(result.stderr || result.stdout || 'Archive Escape browser regression failed');
+    console.log(outcome);
+  }
 }

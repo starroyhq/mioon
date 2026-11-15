@@ -10,6 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import {startServer} from './helpers/test-server.ts';
+import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import type { BinaryLike } from 'crypto';
@@ -42,7 +43,7 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  await mkdir(evidence,{recursive:true});
  let server!:Awaited<ReturnType<typeof startServer>>|null,inspect!: InspectProject;
  t.after(async()=>{await server?.close();await rm(root,{recursive:true,force:true});});
- const start=async()=>{server=await startServer({dataDir:workspace,port:0,token,inspectProject:received=>{inspect=received;}});};
+ const start=async()=>{server=await startServer({dataDir:workspace,port:0,token,projectFormatForTest:PROJECT_FILE_SCHEMA_VERSION,inspectProject:received=>{inspect=received;}});};
  await start();
  const rpc=async(operation: string,input: { exportId?: unknown; name?: string; projectId?: unknown; expectedProjectRevision?: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; presetId?: string; mimeType?: string; dataBase64?: string; assetId?: unknown; sourceStartFrame?: number; sourceEndFrame?: number; points?: number; purpose?: string; preflightSnapshotHash?: unknown; clipId?: unknown; },expected: number|undefined=200,entityProjectId?: string)=>{
   const response=await fetch(server!.url+rpcPathFor(operation,input,entityProjectId),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});

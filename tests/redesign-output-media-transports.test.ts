@@ -52,7 +52,11 @@ test('three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/previe
   for(const [presetId,width,height,call] of cases){
     const project=await http('project.create',{name:presetId});
     const empty=await http('timeline.format.get',{projectId:project.id});assert.equal(empty.presetId,'portrait_1080');assert.equal(empty.timelineId,null);
-    let timeline=await call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId});
+    const formatSet=(next: string,state: typeof empty,send=call)=>send('timeline.format.set',{projectId:project.id,
+      expectedProjectRevision:state.projectRevision,expectedRevision:state.timelineRevision,requestId:randomUUID(),presetId:next});
+    if(presetId===empty.presetId)await formatSet('landscape_1080',empty,http);
+    const state=presetId===empty.presetId?await http('timeline.format.get',{projectId:project.id}):empty;
+    let timeline=await formatSet(presetId,state);
     assert.deepEqual([timeline.width,timeline.height],[width,height]);
     const source=await http('asset.import',{projectId:project.id,name:'synthetic.png',mimeType:'image/png',dataBase64:png().toString('base64')});
     timeline=await http('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,assetId:source.id,startFrame:0,durationFrames:3});

@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication} from './helpers/test-server.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {backgroundTaskQueryResponseSchema} from '../packages/contracts/src/background-task-query.ts';
-import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createServerProject} from './helpers/project-database.ts';
 
 test('authenticated background metadata lists offline tasks without acquiring projects or exposing private evidence', async t => {
@@ -49,7 +49,7 @@ test('closed projects from a newer format retain their exact unavailable reason 
   const project = createServerProject(root, {name: 'Newer format'}), projectFile = project.store.projectFile;
   project.store.close();
   const future = new DatabaseSync(projectFile);
-  try {future.exec(`PRAGMA user_version=${PROJECT_FILE_SCHEMA_VERSION + 1}`);} finally {future.close();}
+  try {future.exec(`PRAGMA user_version=${FORMAT4_PROJECT_SCHEMA_VERSION + 1}`);} finally {future.close();}
   const original = readFileSync(projectFile), app = openAppLibrary({dataDir: root});
   app.taskIndex.upsert({projectId: project.projectId, projectFile, kind: 'job', taskId: randomUUID(), indexedAt: new Date().toISOString()});
   app.close();

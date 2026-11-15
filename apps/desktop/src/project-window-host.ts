@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {projectEntryWindowSchema,projectEntryWindowRevokedSchema} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {ProjectEntryControlPort,ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
+import {projectFormatUpgradeFromError} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import { PROJECT_WINDOW_EVENT, isProjectWindowId, isProjectWindowRequest, isProjectWindowSettingsSlot, isProjectWindowEntryMode, projectWindowOpenFailure } from './project-window-protocol.ts';
 import type { ProjectWindowContext, ProjectWindowEntryMode, ProjectWindowEntryReceipt, ProjectWindowOpenResult, ProjectWindowRole, ProjectWindowSettingsSlot, ProjectWindowPhase, ProjectWindowLocatorStatus, ProjectWindowLocatorIntent, ProjectWindowOpenFailure } from './project-window-protocol.ts';
 import type { SettingsDiagnosticRequest, SettingsOpenPhase } from './settings-diagnostics-protocol.ts';
@@ -904,7 +905,12 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
             }
           }
         }
-      } catch (error) { result = isCurrent() ? refused('unavailable',projectWindowOpenFailure(error,projectId.toLowerCase())) : refused('busy'); }
+      } catch (error) {
+        const preview = projectFormatUpgradeFromError(error);
+        result = !isCurrent() ? refused('busy') : preview?.projectId === projectId.toLowerCase()
+          ? Object.freeze({...refused('unavailable'), formatUpgrade: preview})
+          : refused('unavailable',projectWindowOpenFailure(error,projectId.toLowerCase()));
+      }
       attempt.result = result;
       if (owner.isCurrent() && record.entryAttempt === attempt && record.contextId === attempt.contextId) {
         record.entryReceipt = Object.freeze({ entryToken, result }); refresh();

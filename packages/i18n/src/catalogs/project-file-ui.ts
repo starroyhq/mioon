@@ -5,6 +5,23 @@ import type { MessageCatalog } from '../types.ts';
  * project names arrive as parameters; `.mioon` and AGENTS.md come from the
  * contract constants. */
 export const projectFileUiMessages = {
+  'projectFile.upgrade.title': {'zh-Hans':'升级项目格式','zh-Hant':'升級專案格式',en:'Upgrade project format',ja:'プロジェクト形式をアップグレード'},
+  'projectFile.upgrade.body': {'zh-Hans':'这个项目是用 Mioon 0.1 建的。新版需要升级项目文件，才能使用画板删除恢复和随时改画面比例。升级后，0.1 版将无法打开这个项目。','zh-Hant':'這個專案是用 Mioon 0.1 建立的。新版需要升級專案檔案，才能使用畫板刪除復原和隨時更改畫面比例。升級後，0.1 版將無法開啟這個專案。',en:'This project was created in Mioon 0.1. Upgrade it to restore deleted board items and change the frame aspect ratio. Mioon 0.1 will no longer be able to open the upgraded project.',ja:'このプロジェクトは Mioon 0.1 で作成されました。ボードの削除項目を復元したり、画面比率を変更したりするには、形式のアップグレードが必要です。アップグレード後は Mioon 0.1 で開けなくなります。'},
+  'projectFile.upgrade.backup': {'zh-Hans':'升级前会自动保存一份原格式备份','zh-Hant':'升級前會自動儲存一份原格式備份',en:'A backup of the original format is saved before upgrading',ja:'アップグレード前に元の形式のバックアップを自動保存します'},
+  'projectFile.upgrade.backupLocation': {'zh-Hans':'原格式备份保存在本机记录中','zh-Hant':'原格式備份儲存在本機記錄中',en:'The backup stays in local records',ja:'バックアップはローカル記録に保存されます'},
+  'projectFile.upgrade.readOnly': {'zh-Hans':'以只读方式打开','zh-Hant':'以唯讀方式開啟',en:'Open read-only',ja:'読み取り専用で開く'},
+  'projectFile.upgrade.open': {'zh-Hans':'升级并打开','zh-Hant':'升級並開啟',en:'Upgrade and open',ja:'アップグレードして開く'},
+  'projectFile.upgrade.readOnlyHint': {'zh-Hans':'只读打开不会改动项目文件','zh-Hant':'唯讀開啟不會改動專案檔案',en:'Read-only access leaves the project file untouched',ja:'読み取り専用で開いてもプロジェクトファイルは更新されません'},
+  'projectFile.upgrade.backupFailed': {'zh-Hans':'无法保存或校验原格式备份，项目未升级。请检查本机存储空间和文件夹权限后重试。','zh-Hant':'無法儲存或驗證原格式備份，專案未升級。請檢查本機儲存空間及資料夾權限後重試。',en:'The original-format backup could not be saved or verified. The project is unchanged. Check local disk space and folder permissions before retrying.',ja:'元の形式のバックアップを保存または検証できなかったため、プロジェクトは更新されませんでした。空き容量とフォルダーのアクセス権を確認してから再試行してください。'},
+  'projectFile.upgrade.changed': {'zh-Hans':'项目已变化，关闭后重新打开项目可检查当前格式。','zh-Hant':'專案已變更，關閉後重新開啟專案可檢查目前格式。',en:'The project changed. Close this dialog and open the project again to check its format.',ja:'プロジェクトが変更されました。このダイアログを閉じ、プロジェクトを開き直して形式を確認してください。'},
+  'projectFile.upgrade.failed': {'zh-Hans':'未能打开项目。重试或重新打开项目以检查结果。','zh-Hant':'未能開啟專案。重試或重新開啟專案以檢查結果。',en:'The project could not be opened. Retry or open it again to check the result.',ja:'プロジェクトを開けませんでした。再試行するか、開き直して結果を確認してください。'},
+  'projectFile.upgrade.readOnlyTitle': {'zh-Hans':'{name}（只读）','zh-Hant':'{name}（唯讀）',en:'{name} (read-only)',ja:'{name}（読み取り専用）'},
+  'projectFile.upgrade.shots': {'zh-Hans':'镜头','zh-Hant':'鏡頭',en:'Shots',ja:'ショット'},
+  'projectFile.upgrade.nodes': {'zh-Hans':'画板卡片','zh-Hant':'畫板卡片',en:'Board cards',ja:'ボードのカード'},
+  'projectFile.upgrade.noContent': {'zh-Hans':'暂无内容','zh-Hant':'目前沒有內容',en:'No content yet',ja:'項目がありません'},
+  'projectFile.upgrade.truncated': {'zh-Hans':'内容较多，只读预览仅显示前 {count} 条。','zh-Hant':'內容較多，唯讀預覽僅顯示前 {count} 筆。',en:'This preview shows up to {count} items per section.',ja:'このプレビューでは各セクションに最大 {count} 件を表示します。'},
+  'projectFile.upgrade.seconds': {'zh-Hans':'{duration} 秒','zh-Hant':'{duration} 秒',en:'{duration} s',ja:'{duration} 秒'},
+  'projectFile.upgrade.clipTiming': {'zh-Hans':'{start} 开始 · {duration}','zh-Hant':'{start} 開始 · {duration}',en:'Starts at {start} · {duration}',ja:'開始 {start} · {duration}'},
   // Shared
   'projectFile.storage.destinationMessage': { 'zh-Hans': '选择新项目文件的位置，已有文件不会被覆盖。', 'zh-Hant': '選擇新專案檔案的位置，既有檔案不會被覆寫。', en: 'Choose where to save the new project file. Existing files will not be overwritten.', ja: '新しいプロジェクトファイルの保存先を選択してください。既存のファイルは上書きされません。' },
   'projectFile.media.relink.retryOriginal': { 'zh-Hans': '重试原操作', 'zh-Hant': '重試原操作', en: 'Retry original operation', ja: '元の操作を再試行' },

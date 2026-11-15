@@ -89,6 +89,8 @@ export interface Format4Options {
    * v4 projects and new private destinations do not need this callback. */
   readonly approveUpgrade?: (preview: Format4UpgradePreview) => boolean;
   readonly onUpgradeBoundary?: (phase: Format4UpgradeBoundary, observed: Readonly<{projectVersion: number; historyVersion: number | null}>) => void;
+  /** Catalog/boot recovery cannot publish old pages before the user chooses a writable open. */
+  readonly deferLegacyRecovery?: true;
 }
 
 export function assertNoFormat4Restore(localDir: string, projectId: string): void {
@@ -1077,7 +1079,8 @@ export function recoverProjectFile(requested: string, format4?: Format4Options):
   try {
     if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};
     const maximum = projectFormatMaximum(format4);
-    checkHeader(projectFile, maximum);
+    const format = checkHeader(projectFile, maximum);
+    if (format4?.deferLegacyRecovery && format === PROJECT_FILE_SCHEMA_VERSION) return {state: 'clean'};
     const before = lstatSync(projectFile,{bigint:true});
     const recovered = validateRecoveryInIsolation(projectFile, maximum);
     const after = lstatSync(projectFile,{bigint:true});

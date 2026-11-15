@@ -3,6 +3,7 @@ import type {ProjectEntriesDesktopBridge,ProjectPendingOpenNotice} from '../../.
 import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
 import {projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control.ts';
+import {projectDesktopFormatUpgradeResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 interface PendingOpenTransport{
  on(channel:typeof PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,listener:(event:unknown,value:unknown)=>void):void;
  removeListener(channel:typeof PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,listener:(event:unknown,value:unknown)=>void):void;
@@ -62,6 +63,8 @@ export function createProjectEntriesDesktopBridge(invoke:(channel:typeof PROJECT
   openOriginal:async(input:Parameters<ProjectEntriesDesktopBridge['openOriginal']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'openOriginal',...input})),
   currentLocation:async()=>projectDesktopLocationSchema.parse(await request({action:'currentLocation'})),
   openRecent:async(input:Parameters<ProjectEntriesDesktopBridge['openRecent']>[0])=>projectDesktopRecentOpenResultSchema.parse(await request({action:'openRecent',...input})),
+  resolveFormatUpgrade:async(input:Parameters<NonNullable<ProjectEntriesDesktopBridge['resolveFormatUpgrade']>>[0])=>projectDesktopFormatUpgradeResultSchema.parse(await request({action:'resolveFormatUpgrade',...input})),
+  discardFormatUpgrade:async(input:Parameters<NonNullable<ProjectEntriesDesktopBridge['discardFormatUpgrade']>>[0])=>{if(await request({action:'discardFormatUpgrade',...input})!==null)throw new Error('Invalid project format response');},
   adoptCopy:async(input:Parameters<ProjectEntriesDesktopBridge['adoptCopy']>[0])=>projectDesktopOpenResultSchema.parse(await request({action:'adoptCopy',...input})),
   saveAs:async(input:Parameters<ProjectEntriesDesktopBridge['saveAs']>[0])=>projectCopyResponseSchema.parse(await request({action:'saveAs',...input})),
   duplicate:async(input:Parameters<ProjectEntriesDesktopBridge['duplicate']>[0])=>projectCopyResponseSchema.parse(await request({action:'duplicate',...input})),

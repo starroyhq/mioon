@@ -1,10 +1,12 @@
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {lstat} from 'node:fs/promises';
-import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema,projectDesktopOpenResultSchema,projectDesktopRecentOpenResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
+import {PROJECT_ENTRY_DESKTOP_LIMITS,projectEntryDesktopRequestSchema,projectLocationFactsSchema,projectDesktopOpenResultSchema,projectDesktopRecentOpenResultSchema,projectDesktopFormatUpgradeRequiredSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import type {ProjectEntryDesktopRequest,ProjectLocationFacts,ProjectStoragePurpose,ProjectDesktopOpenResult,ProjectPendingOpenNotice} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import {projectEntryWindowSchema,projectEntrySourceObservationSchema} from '../../../packages/contracts/src/project-entry-native.ts';
-import type {ProjectEntryWindow} from '../../../packages/contracts/src/project-entry-native.ts';
+import {projectEntryWindowSchema,projectEntrySourceObservationSchema,projectFormatSourceSchema} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {ProjectEntryWindow,ProjectFormatSource} from '../../../packages/contracts/src/project-entry-native.ts';
+import {projectFormatUpgradeFromError,projectFormatReadOnlyViewSchema} from '../../../packages/contracts/src/project-format-upgrade.ts';
+import type {ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectCopySourceSchema,projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import {recentProjectSchema} from '../../../packages/contracts/src/project-registry.ts';
@@ -16,7 +18,7 @@ import type {ProjectWindowOpenResult} from './project-window-protocol.ts';
 
 export interface ProjectEntryDesktopOwner<W=unknown>{window:W;windowId:string;backendId:string;contextId:string;projectId?:string;isCurrent():boolean}
 export interface ProjectEntryLocationAdmission<W=unknown>{owner:ProjectEntryDesktopOwner<W>;file:string;facts:ProjectLocationFacts}
-type OpenResult=Pick<ProjectWindowOpenResult,'ok'|'targetWindowId'|'reason'|'failure'>;
+type OpenResult=Pick<ProjectWindowOpenResult,'ok'|'targetWindowId'|'reason'|'failure'|'formatUpgrade'>;
 type PreparedOpenResult=Omit<OpenResult,'reason'>&{reason:string};
 interface Options<E,W>{
  ownerForEvent(event:E):ProjectEntryDesktopOwner<W>|null;
@@ -36,7 +38,9 @@ interface Options<E,W>{
  notifyPendingOpen?(owner:ProjectEntryDesktopOwner<W>,notice:ProjectPendingOpenNotice):void;
 }
 type CopySource=ReturnType<typeof projectCopySourceSchema.parse>;
-type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts;template?:{id:'timeline-basics';version:1;name:string;parentDir:string}}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null;admittedFacts?:ProjectLocationFacts});
+type UpgradeTicket<W>={kind:'upgrade';source:ProjectFormatSource;facts:ProjectLocationFacts;owner:ProjectEntryDesktopOwner<W>;expires:number;registered:boolean;
+ opened?:Extract<ProjectDesktopOpenResult,{status:'opened'}>};
+type Ticket<W>={owner:ProjectEntryDesktopOwner<W>;expires:number}&({kind:'storage';purpose:ProjectStoragePurpose;file:string;facts:ProjectLocationFacts;template?:{id:'timeline-basics';version:1;name:string;parentDir:string}}|{kind:'copy'|'source';source:CopySource;original:RecentProject|null;admittedFacts?:ProjectLocationFacts})|UpgradeTicket<W>;
 const unavailable=(code='PROJECT_ENTRY_UNAVAILABLE')=>Object.assign(new Error(code),{code,status:409});
 const same=<W>(a:ProjectEntryDesktopOwner<W>,b:ProjectEntryDesktopOwner<W>)=>a.window===b.window&&a.windowId===b.windowId&&a.backendId===b.backendId&&a.contextId===b.contextId;
 const sameFacts=(a:ProjectLocationFacts,b:ProjectLocationFacts)=>a.fileSystem===b.fileSystem&&a.isLocal===b.isLocal&&a.volumeReadOnly===b.volumeReadOnly&&a.permissionBits===b.permissionBits&&a.cloud===b.cloud;
@@ -47,6 +51,10 @@ const absolute=(file:string):boolean=>path.isAbsolute(file)&&path.resolve(file)=
 export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
  const tickets=new Map<string,Ticket<W>>(),operations=new Map<string,{fingerprint:string;promise:Promise<unknown>}>(),busy=new Set<string>(),pendingOpen=new Map<string,{owner:ProjectEntryDesktopOwner<W>;result:ProjectDesktopOpenResult;expires:number}>();let closed=false;
  const ownerKeyOf=(owner:ProjectEntryDesktopOwner<W>)=>owner.backendId+':'+owner.windowId+':'+owner.contextId;
+ const clearUpgrade=(owner:ProjectEntryDesktopOwner<W>)=>{
+  for(const [id,ticket]of tickets)if(ticket.kind==='upgrade'&&same(ticket.owner,owner))tickets.delete(id);
+  const pending=pendingOpen.get(ownerKeyOf(owner));if(pending?.result.status==='upgrade-required')pendingOpen.delete(ownerKeyOf(owner));
+ };
  const check=(owner:ProjectEntryDesktopOwner<W>)=>{if(closed||!options.isReady()||!owner.isCurrent())throw unavailable();};
  const mutationResult=(owner:ProjectEntryDesktopOwner<W>)=>{try{check(owner);}catch{throw unavailable('PROJECT_ENTRY_OUTCOME_UNKNOWN');}};
  const sweep=()=>{const now=Date.now();for(const [id,ticket]of tickets)if(ticket.expires<=now||!ticket.owner.isCurrent())tickets.delete(id);for(const [key,pending]of pendingOpen)if(pending.expires<=now||!pending.owner.isCurrent())pendingOpen.delete(key);};
@@ -64,7 +72,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   const facts=await probe(owner,file,purpose,isDirectory);
   if(!await options.admitLocation(owner,facts))throw unavailable('PROJECT_LOCATION_REJECTED');check(owner);return facts;
  }
- async function opened(owner:ProjectEntryDesktopOwner<W>,prepared:ProjectEntryWindow,waitForReady=false):Promise<ProjectDesktopOpenResult>{
+ async function opened(owner:ProjectEntryDesktopOwner<W>,prepared:ProjectEntryWindow,waitForReady=false):Promise<Extract<ProjectDesktopOpenResult,{status:'opened'|'cancelled'}>>{
   const parsed=projectEntryWindowSchema.parse(prepared);
   try{check(owner);}catch(error){options.backend.release({windowId:parsed.windowId});throw error;}
   // adoptPrepared owns cleanup on both success and refusal, including a
@@ -78,6 +86,12 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   }
   if(!result.ok||!result.targetWindowId)throw unavailable();
   return {status:'opened',projectId:parsed.project.projectId,windowId:result.targetWindowId};
+ }
+ async function upgradeRequired(owner:ProjectEntryDesktopOwner<W>,projectFile:string,preview:ProjectFormatUpgradePreview,facts:ProjectLocationFacts,registered:boolean){
+  const source=projectFormatSourceSchema.parse(await options.backend.observeFormat({projectFile,preview}));check(owner);
+  clearUpgrade(owner);
+  const token=put({kind:'upgrade',source,facts,owner,registered,expires:Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs});
+  return projectDesktopFormatUpgradeRequiredSchema.parse({status:'upgrade-required',token,preview});
  }
  async function selectedOpen(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>):Promise<ProjectDesktopOpenResult>{
   const facts=await probe(owner,file,'open',false);check(owner);
@@ -96,6 +110,8 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
   try{return await opened(owner,await options.backend.openPath({projectFile:file,windowId:randomUUID(),deferRecent:true}),true);}
   catch(error){
    check(owner);
+   const preview=projectFormatUpgradeFromError(error);
+   if(preview)return await upgradeRequired(owner,file,preview,facts,false);
    if(error===null||typeof error!=='object'||!('code'in error))throw error;
    const details='details'in error&&error.details!==null&&typeof error.details==='object'?error.details as Record<string,unknown>:{};
    if(error.code==='PROJECT_INVALID'&&details.reason==='read-only'||error.code==='PROJECT_UNAVAILABLE'&&details.reason==='PROJECT_INVALID'&&details.invalidReason==='read-only')return await copySource('read-only');
@@ -116,15 +132,15 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
  const api = {
   rememberPendingOpen(owner:ProjectEntryDesktopOwner<W>,raw:ProjectDesktopOpenResult){
    check(owner);sweep();const result=projectDesktopOpenResultSchema.parse(raw);let expires=Date.now()+PROJECT_ENTRY_DESKTOP_LIMITS.ticketMs;
-   if(result.status==='copy'||result.status==='copy-source'){
+   if(result.status==='copy'||result.status==='copy-source'||result.status==='upgrade-required'){
     const ticket=tickets.get(result.token);if(!ticket||!same(ticket.owner,owner)||ticket.expires<=Date.now())return;
-    expires=ticket.expires;result.expiresAt=expires;
+    expires=ticket.expires;if(result.status!=='upgrade-required')result.expiresAt=expires;
    }
    if(pendingOpen.size>=PROJECT_ENTRY_DESKTOP_LIMITS.tickets)pendingOpen.delete(pendingOpen.keys().next().value!);
    pendingOpen.set(ownerKeyOf(owner),{owner,result,expires});
    options.notifyPendingOpen?.(owner,{backendId:owner.backendId,windowId:owner.windowId,contextId:owner.contextId});
   },
-  async openPath(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>){check(owner);return selectedOpen(owner,file,admission);},
+  async openPath(owner:ProjectEntryDesktopOwner<W>,file:string,admission?:ProjectEntryLocationAdmission<W>){check(owner);clearUpgrade(owner);return selectedOpen(owner,file,admission);},
   async dispatch(event:E,raw:unknown):Promise<unknown>{
    if(Buffer.byteLength(JSON.stringify(raw))>PROJECT_ENTRY_DESKTOP_LIMITS.requestBytes)throw unavailable('PROJECT_ENTRY_LIMIT');
    const request=projectEntryDesktopRequestSchema.parse(raw),owner=options.ownerForEvent(event);
@@ -140,7 +156,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
     sweep();const key=ownerKeyOf(owner),pending=pendingOpen.get(key);pendingOpen.delete(key);
     if(!pending||!same(pending.owner,owner)||pending.expires<=Date.now())return null;
     const result=pending.result;
-    if(result.status==='copy'||result.status==='copy-source'){const ticket=tickets.get(result.token);if(!ticket||!same(ticket.owner,owner)||ticket.expires<=Date.now())return null;}
+    if(result.status==='copy'||result.status==='copy-source'||result.status==='upgrade-required'){const ticket=tickets.get(result.token);if(!ticket||!same(ticket.owner,owner)||ticket.expires<=Date.now())return null;}
     return result;
    }
    const ownerKey=owner.backendId+':'+owner.windowId;
@@ -155,7 +171,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      if(!options.revealVerifiedPath)throw unavailable();
      let file:string;
      if(request.projectId!==undefined){const project=await options.backend.prepareAcquire({projectId:request.projectId});check(owner);file=project.projectFile;}
-     else{const ticket=ticketFor(request.token!,owner);file=ticket.kind==='storage'?ticket.file:ticket.source.sourceFile;}
+     else{const ticket=ticketFor(request.token!,owner);if(ticket.kind==='upgrade')throw unavailable();file=ticket.kind==='storage'?ticket.file:ticket.source.sourceFile;}
      check(owner);if(!absolute(file))throw unavailable();await options.revealVerifiedPath(owner,file);check(owner);return null;
     }
     if(request.action==='currentLocation'){
@@ -163,11 +179,13 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      const facts=await probe(owner,project.projectFile,'open',false);check(owner);return {displayPath:project.projectFile,facts};
     }
     if(request.action==='openOriginal'){
+     clearUpgrade(owner);
      const ticket=ticketFor(request.token,owner);if(ticket.kind!=='copy'||!ticket.original)throw unavailable();
      const original=await options.backend.prepareAcquire({projectId:ticket.original.projectId});check(owner);
      if(original.fileIdentity.dev!==ticket.original.fileIdentity.dev||original.fileIdentity.ino!==ticket.original.fileIdentity.ino)throw unavailable('PROJECT_COPY_SOURCE_CHANGED');
-     await location(owner,original.projectFile,'open',false);check(owner);
-     return await opened(owner,await options.backend.acquire({projectId:original.projectId,windowId:randomUUID(),expectedProjectFile:original.projectFile}));
+     const facts=await location(owner,original.projectFile,'open',false);check(owner);
+     try{return await opened(owner,await options.backend.acquire({projectId:original.projectId,windowId:randomUUID(),expectedProjectFile:original.projectFile}));}
+     catch(error){const preview=projectFormatUpgradeFromError(error);if(!preview)throw error;return await upgradeRequired(owner,original.projectFile,preview,facts,true);}
     }
     if(request.action==='chooseLocation'){
      if(request.purpose==='template'){
@@ -213,16 +231,61 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
      return copy;
     });
     if(request.action==='openSelectedFile'){
+     clearUpgrade(owner);
      const file=await options.chooseOpenFile(owner);check(owner);return file===null?{status:'cancelled'}:await selectedOpen(owner,file);
     }
     if(request.action==='openRecent'){
+     clearUpgrade(owner);
      // The sealed window entry resolves moved registration and admits its
      // actual path once. Probing the catalog's old path here would prevent
      // findMoved and could show the same risk warning twice.
      const result=await options.openRecent(owner,request.projectId,request.entryToken,request.remember);check(owner);
+     if(result.formatUpgrade){
+      const project=await options.backend.prepareAcquire({projectId:request.projectId});check(owner);
+      const facts=await probe(owner,project.projectFile,'open',false);
+      return await upgradeRequired(owner,project.projectFile,result.formatUpgrade,facts,true);
+     }
      return projectDesktopRecentOpenResultSchema.parse(result.ok
       ? {status:'opened',projectId:request.projectId,windowId:result.targetWindowId}
       : result.reason==='cancelled' ? {status:'cancelled'} : {status:'failed',reason:result.reason,...(result.failure?{failure:result.failure}:{})});
+    }
+    if(request.action==='discardFormatUpgrade'){
+     const ticket=tickets.get(request.token);
+     if(ticket?.kind==='upgrade'&&same(ticket.owner,owner))tickets.delete(request.token);
+     return null;
+    }
+    if(request.action==='resolveFormatUpgrade'){
+     const ticket=ticketFor(request.token,owner);
+     if(ticket.kind!=='upgrade')throw unavailable();
+     if(ticket.opened){
+      if(request.choice!=='upgrade')throw unavailable('PROJECT_ENTRY_REQUEST_CONFLICT');
+      return ticket.opened;
+     }
+     const {source}=ticket,projectFile=source.projectFile;
+     const facts=await probe(owner,projectFile,'open',false);
+     if(!sameFacts(ticket.facts,facts)||tickets.get(request.token)!==ticket)throw unavailable('PROJECT_COPY_SOURCE_CHANGED');
+     if(request.choice==='read-only'){
+      const view=projectFormatReadOnlyViewSchema.parse(await options.backend.readOnlyFormat(source));check(owner);
+      if(tickets.get(request.token)!==ticket)throw unavailable();
+      tickets.delete(request.token);return {status:'read-only',view};
+     }
+     if(!facts.isLocal||facts.volumeReadOnly)throw unavailable('PROJECT_LOCATION_REJECTED');
+     const input={windowId:randomUUID(),deferRecent:true as const,formatUpgrade:source};
+     try{
+      const prepared=ticket.registered
+       ? await options.backend.acquire({...input,projectId:source.preview.projectId,expectedProjectFile:projectFile})
+       : await options.backend.openPath({...input,projectFile});
+      if(tickets.get(request.token)!==ticket){options.backend.release({windowId:prepared.windowId});throw unavailable();}
+      const result=await opened(owner,prepared,true);
+      // A renderer that missed the ACK can recover this exact opening without
+      // upgrading again or admitting a second editor for the same ticket.
+      if(result.status==='opened')ticket.opened=result;
+      return result;
+     }catch(error){
+      const preview=projectFormatUpgradeFromError(error);
+      if(!preview||tickets.get(request.token)!==ticket)throw error;
+      return await upgradeRequired(owner,projectFile,preview,facts,ticket.registered);
+     }
     }
     if(request.action==='adoptCopy')return await mutate(request.token,owner,request,async ticket=>{
      if(ticket.kind!=='copy')throw unavailable();
@@ -243,7 +306,7 @@ export function createProjectEntryDesktopHost<E,W>(options:Options<E,W>){
     });
     return await mutate(request.token,owner,request,async ticket=>{
      if(request.action!=='copyTo'||ticket.kind!=='storage'||ticket.purpose!=='copy-to')throw unavailable();
-     const source=ticketFor(request.sourceToken,owner);if(source.kind==='storage')throw unavailable();
+     const source=ticketFor(request.sourceToken,owner);if(source.kind==='storage'||source.kind==='upgrade')throw unavailable();
      await location(owner,ticket.file,'copy-to',false);check(owner);
      const copy=projectCopyResponseSchema.parse(await options.backend.copyTo({...source.source,projectFile:ticket.file,requestId:request.requestId,...(request.name?{name:request.name}:{})}));
      mutationResult(owner);return copy;
