@@ -8,7 +8,8 @@ import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.t
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
-import {taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {taskCurrentEntries,taskDisplayEntries,taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {translate} from '../packages/i18n/src/index.ts';
 
 const now='2026-10-21T00:00:00.000Z';
 test('the model-only loading step uses the actual four-language panel caption without requiring model prose',()=>{
@@ -67,6 +68,48 @@ test('clip display exposes only changed timing, transform, audio values and a ba
   assert.doesNotMatch(JSON.stringify(display),/DO_NOT_EXPOSE|PRIVATE_TABLE|MODEL_SUMMARY|UNDO_MUST|private\/project/u);assert.deepEqual(original,copy);
   const muted=projectAgentTaskChangeDisplay(change('timeline.clip.update','timeline_clip',{gain:1},{gain:0}));assert.equal(muted.fields[0]?.after,'muted');
   const tiny=projectAgentTaskChangeDisplay(change('timeline.clip.update','timeline_clip',{gain:1},{gain:1.0001}));assert.equal(tiny.fields.length,1);assert.notEqual(tiny.fields[0]?.before,tiny.fields[0]?.after);
+});
+test('clip previews and audit retain the valid ultrawide basis values and reject out-of-range axes',()=>{
+  const rect={x:0,y:0,width:2520,height:1080},id=randomUUID();
+  const pending=projectAgentTaskStepDisplay(step('mioon_timeline_clip_add',{rect}));
+  assert.equal(pending?.fields.find(field=>field.property==='width')?.after,2520);
+  const audit=projectAgentTaskChangeDisplay(change('timeline.clip.add','timeline_clip',null,{rect}));
+  assert.equal(audit.fields.find(field=>field.property==='width')?.after,2520);
+  const atEdge=projectAgentTaskStepDisplay(step('mioon_timeline_clip_update',{clipId:id,patch:{rect:{x:2518,y:1918,width:2,height:2}}}));
+  assert.deepEqual(atEdge?.fields.map(({property,after})=>[property,after]),[['positionX',2518],['positionY',1918],['width',2],['height',2]]);
+  for(const rect of [{x:2520,y:1920,width:2522,height:1922},{x:-2,y:1.5,width:NaN,height:Infinity}]){
+    const invalid=projectAgentTaskStepDisplay(step('mioon_timeline_clip_add',{rect}));
+    assert.deepEqual(invalid?.fields,[]);
+  }
+});
+test('canvas format confirmation and audit display only canonical dimensions on the retained timeline target',()=>{
+  const id=randomUUID(),target={kind:'timeline',id},portrait={fps:30,width:1080,height:1920},wide={fps:30,width:2520,height:1080};
+  const command=step('mioon_timeline_format_set',{presetId:'ultrawide_1080',expectedRevision:4,expectedProjectRevision:5,width:9999,aspectRatio:'PRIVATE_RATIO'},target);
+  const planned=projectAgentTaskStepDisplay(command,()=>portrait,true);assert.ok(planned);
+  assert.deepEqual(planned.fields,[
+    {targetIndex:0,property:'aspectRatio',unit:'ratio',after:'21:9',current:'9:16'},
+    {targetIndex:0,property:'width',unit:'pixels',after:2520,current:1080},
+    {targetIndex:0,property:'height',unit:'pixels',after:1080,current:1920},
+  ]);
+  const audit=projectAgentTaskChangeDisplay(change('timeline.format.set','timeline',{...portrait,aspectRatio:'PRIVATE_RATIO'},wide));
+  assert.deepEqual(audit.fields.map(({property,before,after})=>[property,before,after]),[['aspectRatio','9:16','21:9'],['width',1080,2520],['height',1920,1080]]);
+  for(const display of [planned,audit]){
+    assert.ok(agentTaskDisplaySchema.safeParse(display).success);
+    assert.doesNotMatch(JSON.stringify(display),/9999|PRIVATE_RATIO|expectedRevision|presetId/u);
+    for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+      const entries=taskDisplayEntries(display,locale);
+      const px=(value:number)=>translate(locale,'agent.display.unit.pixels',{value:new Intl.NumberFormat(locale).format(value)});
+      const labels=['agent.display.field.aspectRatio','agent.display.field.width','agent.display.field.height'] as const;
+      assert.deepEqual(entries.map(entry=>entry.label),labels.map(label=>translate(locale,label)));
+      assert.deepEqual(entries.map(entry=>entry.value),display===planned?['21:9',px(2520),px(1080)]:['9:16 → 21:9',`${px(1080)} → ${px(2520)}`,`${px(1920)} → ${px(1080)}`]);
+    }
+  }
+  assert.equal(taskCurrentEntries(planned,'en')[0]?.value,'9:16');
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:'PRIVATE_PRESET',...wide},target))?.fields,[]);
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:wide},target))?.fields,[]);
+  assert.deepEqual(projectAgentTaskStepDisplay(step('mioon_timeline_format_set',{presetId:'ultrawide_1080'}))?.fields,[]);
+  assert.deepEqual(projectAgentTaskChangeDisplay(change('timeline.format.set','timeline',{...wide,width:9999,presetId:'ultrawide_1080'},{...portrait,fps:60})).fields,[]);
+  assert.deepEqual(taskDisplayEntries({...planned,fields:[{targetIndex:0,property:'width',unit:'pixels',after:9999},{property:'height',unit:'pixels',after:1080}]},'en'),[]);
 });
 test('shot description and subtitle are the only prose fields, normalized and bounded; other operations have no field values',()=>{
   const targetId=randomUUID(),prose=`A scene\u202e /private/hidden.mov ${targetId} bearer SYNTHETIC_LONG_VALUE apiKey=SYNTHETIC_VALUE ${'景'.repeat(300)}`;
@@ -127,6 +170,34 @@ test('pending tools use exact retained arguments, one-sided global creation para
   const submitted=step('mioon_generation_submit',{shotId:id,expectedRevision:2,providerId:'mock',model:'mock-video',parameters:{resolution:'1080p'}},{kind:'shot',id});
   const fresh=projectAgentTaskStepDisplay(submitted,()=>({title:'Scene',revision:2,duration:4,aspectRatio:'9:16',referenceAssetIds:[randomUUID()]}));assert.equal(fresh?.fields.find(field=>field.property==='mode')?.after,'image_to_video');assert.equal(fresh?.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(fresh?.fields.find(field=>field.property==='versionNumber'),undefined);
   const stale=projectAgentTaskStepDisplay(submitted,()=>({title:'Scene',revision:3,duration:8,aspectRatio:'16:9',referenceAssetIds:[]}));assert.ok(stale);assert.equal(stale.fields.find(field=>field.property==='durationSeconds'),undefined);assert.equal(stale.fields.find(field=>field.property==='mode'),undefined);
+});
+test('generation approval displays the requested project or explicit ratio and revision-checked shot ratio',()=>{
+  const id=randomUUID(),target={kind:'shot',id};
+  const args={shotId:id,expectedRevision:2,providerId:'wan',model:'wan3.0',parameters:{resolution:'720P',aspectRatio:'9:16'}};
+  const read=(revision:number)=>()=>({title:'Scene',revision,duration:4,aspectRatio:'9:16',referenceAssetIds:[]});
+  for(const [source,ratio] of [
+    [{kind:'project',expectedTimelineRevision:7,aspectRatio:'21:9'},'21:9'],
+    [{kind:'explicit',aspectRatio:'adaptive'},'adaptive'],
+    [{kind:'explicit',aspectRatio:'1:1'},'1:1'],
+    [{kind:'shot'},'9:16'],
+    [{kind:'project',expectedTimelineRevision:-1,aspectRatio:'16:9'},undefined],
+    [{kind:'explicit',aspectRatio:'PRIVATE_RATIO'},undefined],
+  ] as const){
+    const pending=step('mioon_generation_submit',{...args,aspectSource:source},target);
+    const display=projectAgentTaskStepDisplay(pending,read(2));
+    assert.ok(agentTaskDisplaySchema.safeParse(display).success);
+    assert.equal(display?.fields.find(field=>field.property==='aspectRatio')?.after,ratio);
+    assert.doesNotMatch(JSON.stringify(display),/PRIVATE_RATIO|expectedTimelineRevision|aspectSource/u);
+  }
+  const legacy=projectAgentTaskStepDisplay(step('mioon_generation_submit',args,target),read(2));
+  assert.equal(legacy?.fields.find(field=>field.property==='aspectRatio')?.after,'9:16');
+  const stale=projectAgentTaskStepDisplay(step('mioon_generation_submit',{...args,aspectSource:{kind:'shot'}},target),read(3));
+  assert.equal(stale?.fields.find(field=>field.property==='aspectRatio'),undefined);
+  const adaptive=projectAgentTaskStepDisplay(step('mioon_generation_submit',{...args,aspectSource:{kind:'explicit',aspectRatio:'adaptive'}},target),read(2));
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+    const ratioLabel=translate(locale,'agent.display.field.aspectRatio');
+    assert.equal(taskDisplayEntries(adaptive,locale).find(entry=>entry.label===ratioLabel)?.value,translate(locale,'video.wan.adaptive'));
+  }
 });
 test('strict shared display schema rejects arbitrary properties, object values, invalid targets and oversized or nonfinite values',()=>{
   const valid=projectAgentTaskChangeDisplay(change('shot.update','shot',{duration:2},{duration:3}));assert.ok(agentTaskDisplaySchema.safeParse(valid).success);assert.ok(agentTaskDisplaySchema.safeParse({...valid,conflict:true}).success);assert.equal(agentTaskDisplaySchema.safeParse({...valid,conflict:false}).success,false);assert.equal(projectAgentTaskStepDisplay(step('mioon_shot_update',{conflict:true}))?.conflict,undefined);

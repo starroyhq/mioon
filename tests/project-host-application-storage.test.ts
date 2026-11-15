@@ -1,6 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {linkSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
+import {linkSync, lstatSync, mkdirSync, mkdtempSync, promises as fs, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
@@ -79,5 +80,101 @@ test('zero or missing birth generation remains conservative for a reused private
     }});
     unlinkSync(privateFile); createProjectFile(candidate);
     assert.throws(() => guard(candidate), denied);
+  }
+});
+
+test('an older catalog scan cannot discard a newer private-file generation', async t => {
+  const f = fixture(t), privateFile = path.join(f.directories.dataDir, 'private.json');
+  writeFileSync(privateFile, '{}', {mode: 0o600});
+  const physical = lstatSync(privateFile, {bigint: true});
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  let birthtimeNs = 10n;
+  const guard = createApplicationFileGuard(f.directories, {
+    metadata(file) {
+      return file === privateFile ? {...physical, birthtimeNs, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false}
+        : lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    },
+    async catalogMetadata(file) {
+      if (file !== privateFile) return lstatSync(file, {bigint: true, throwIfNoEntry: false});
+      entered.resolve();
+      await resume.promise;
+      return {...physical, birthtimeNs: 10n, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false};
+    },
+  });
+  const snapshot = guard.catalogSnapshot(new AbortController().signal);
+  await entered.promise;
+  birthtimeNs = 20n;
+  const moved = path.join(f.outside, 'private.mioon');
+  assert.throws(() => guard(privateFile), denied);
+  renameSync(privateFile, moved);
+  resume.resolve();
+  const check = await snapshot;
+  const relocated = {...physical, birthtimeNs, isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false};
+  assert.throws(() => check(moved, relocated), denied);
+  assert.doesNotThrow(() => check(moved, {...relocated, birthtimeNs: 30n}));
+});
+
+for (const code of ['ENOENT', 'ENOTDIR'] as const) {
+  test(`catalog scan continues after a temporary directory changes before readdir (${code})`, async t => {
+    const f = fixture(t), temporary = path.join(f.directories.dataDir, 'temporary');
+    const privateFile = path.join(f.directories.dataDir, 'settings.json'), alias = path.join(f.outside, 'alias.mioon');
+    const guard = createApplicationFileGuard(f.directories, {async catalogMetadata(file) {
+      const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+      if (file === temporary && info?.isDirectory()) {
+        rmSync(temporary, {recursive: true});
+        if (code === 'ENOTDIR') writeFileSync(temporary, '');
+      }
+      return info;
+    }});
+    mkdirSync(temporary);
+    writeFileSync(privateFile, '{}', {mode: 0o600});
+    linkSync(privateFile, alias);
+    const check = await guard.catalogSnapshot(new AbortController().signal);
+    assert.throws(() => lstatSync(path.join(temporary, 'child')), {code});
+    assert.throws(() => check(alias, lstatSync(alias, {bigint: true})), denied);
+  });
+}
+
+test('catalog scan still reports other directory read failures', async t => {
+  const f = fixture(t), unreadable = path.join(f.directories.dataDir, 'unreadable');
+  mkdirSync(unreadable);
+  const guard = createApplicationFileGuard(f.directories);
+  const failure = Object.assign(new Error('Unreadable private directory'), {code: 'EACCES'});
+  const readdir = fs.readdir;
+  const mock = t.mock.method(fs, 'readdir', (file: Parameters<typeof readdir>[0], options: Parameters<typeof readdir>[1]) => {
+    if (file === unreadable) return Promise.reject(failure);
+    return readdir(file, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(guard.catalogSnapshot(new AbortController().signal), error => error === failure);
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+  }
+});
+
+test('an aborted catalog scan stops before starting another directory read', async t => {
+  const f = fixture(t), temporary = path.join(f.directories.dataDir, 'temporary');
+  mkdirSync(temporary);
+  const abort = new AbortController(), reason = new Error('Catalog scan cancelled');
+  const guard = createApplicationFileGuard(f.directories, {async catalogMetadata(file) {
+    const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    if (file === temporary) abort.abort(reason);
+    return info;
+  }});
+  const readdir = fs.readdir;
+  let visited = false;
+  const mock = t.mock.method(fs, 'readdir', (file: Parameters<typeof readdir>[0], options: Parameters<typeof readdir>[1]) => {
+    if (file === temporary) visited = true;
+    return readdir(file, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(guard.catalogSnapshot(abort.signal), error => error === reason);
+    assert.equal(visited, false);
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
   }
 });

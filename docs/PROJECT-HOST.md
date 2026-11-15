@@ -28,6 +28,8 @@ manager 在 factory、`ensureProjectRow`、业务服务/Mio 构造、worker 和�
 
 `startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通测试通过 `project-file/test-store.ts` 的 `openStore(root)` 和七个数据库辅助函数使用真实内核；旧工作区 opener、迁移、备份和恢复实现已退役。
 
+服务开始监听后，首页、启动器的登记目录通过 `listForCatalog` 读取。应用进程异步刷新私有树的身份并复验每份登记；文件头与热日志交由独立进程按观察到的代次检查。进程隔离保护 SQLite 在 POSIX 上持有的文件锁。打开或独占中的项目使用宿主自身状态；已移动的项目仍经文件身份搜索并在新路径重新检查。
+
 `dataDir` 是应用数据目录，放应用库、设置、令牌、`records/`、`tmp/`；项目目录独立。服务端默认项目在 `<dataDir>/projects/`，缓存为 `<dataDir>/cache/projects/<ID>/`。桌面使用 `<userData>/data/`，旧 `<userData>/workspace/` 不迁移、不再读取；默认项目在 `<videos>/Mioon/`，缓存用系统缓存目录。设置 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存均留在覆盖目录的 `data/` 内，具体布局见 2.1。应用目录含旧 `workbench.sqlite` 时，生产启动精确拒绝 `VALIDATION_ERROR`（400），不迁移旧树或旧库。
 
 生产仅接受项目前缀下的项目 RPC、REST 和媒体。旧 `/api/rpc` 里的项目操作返回 `VALIDATION_ERROR`（400）；旧项目 REST 和 `/media/<ID>` 返回 `NOT_FOUND`（404）。`project-routes.ts` 仅供测试内部 handler 适配，生产入口不导入它，也不注册旧公开地址。历史记录内保存的 URL 不改写，读取和下载按项目 ID 重建实际地址。同一个 `requestId` 的精确回执按项目独立保存，不能跨项目读取或复用为另一项目的回执。
@@ -110,6 +112,7 @@ ServerInstance.projectEntries 是生产受信端口，契约在 project-entry-na
 - openPath/acquire 固定取得 window 租约。windowId 是主进程生成的 UUID owner，不是页面任选的租约种类或 BrowserWindow 数字 ID。同一 owner 同一意图共享绑定；不同意图冲突。release 幂等，pending open 的晚到租约会回收，不能交给替代 owner。
 - 普通 release 只释放自己的 window 租约；强制撤销或退出通过 onWindowRevoked 通知。网页编辑页仍使用原 request 租约/空闲关闭规则，网页 window-session 留到 0.1.x；S6-A 没有新增持久化窗口表。
 - 默认宿主创建格式 4。格式 3 的可写打开返回升级预览。网页以已登记的项目 ID 和预览调用 `POST /api/projects/{projectId}/format-upgrade`，主进程使用与所选文件、窗口和预览绑定的票据。内核在持锁状态下核对预览，成功保存并校验旧格式备份后才升级。
+- 目录通过独立扫描进程读取已登记的关闭项目。可识别的格式 3 显示 `upgrade-required`，卡片仍可打开以选择只读或确认升级。格式 3 的热日志保留给旧版恢复；扫描失败降级到登记信息，已知锁或正在检查的状态继续保留。
 - 网页的 `GET /api/projects/{projectId}/format-upgrade/read-only` 和桌面票据的只读选项读取有界的旧项目摘要。只读连接不会创建项目宿主、迁移记录或启动 Mio。
 - 当前端口不提供忘记登记或显式强关项目：忘记仅限缺失且无活跃窗口、无待写入结果的已审流程，显式强关会撤任务，均不能用这个端口绕过后续 S3/S6 的准入。
 

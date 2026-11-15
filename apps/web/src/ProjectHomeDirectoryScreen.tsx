@@ -7,7 +7,7 @@ import {RecentProjectsView} from './project-file/RecentProjects.tsx';
 import {waitingProjects} from './project-file/recent-project-view.ts';
 import type {WaitingProject} from './project-file/recent-project-view.ts';
 import type {ViewState} from './project-file/types.ts';
-import {createProjectEntryDirectoryController} from './project-entry-directory-state.ts';
+import {createProjectEntryDirectoryController, pollBusyProjectEntries} from './project-entry-directory-state.ts';
 import type {ProjectEntryDirectoryReadPort} from './project-entry-directory-state.ts';
 import {createProjectHomeBackgroundController} from './project-home-background-state.ts';
 import type {HomeBackgroundReadInput} from './project-home-background-state.ts';
@@ -141,14 +141,16 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     if (preparingNative.current) return;
     native.rejectPreparation(example, opening.current || form.current.busy || current.current.busy || current.current.phase === 'opening' ? 'busy' : 'facts');
   };
-  async function reload(notifyParent = false): Promise<void> {
+  async function reload(notifyParent = false, backgroundRead = false): Promise<void> {
     if (!active() || opening.current || form.current.busy || current.current.busy || current.current.phase === 'opening' || directory.getState().phase === 'loading') return;
+    if (backgroundRead && (preparingNative.current || native.getMetadata().busy || !actionOwner() || !catalogReady())) return;
     const owner = lifetime.current, serial = ++reads.current;
-    background.invalidate();
-    if (!await directory.refresh() || !active() || owner !== lifetime.current || serial !== reads.current) {
+    if (!backgroundRead) background.invalidate();
+    if (!await directory.refresh(backgroundRead ? {background: true} : undefined) || !active() || owner !== lifetime.current || serial !== reads.current) {
       if (active() && owner === lifetime.current && serial === reads.current && directory.getState().error?.status === 401) current.current.onUnauthorized?.();
       return;
     }
+    if (backgroundRead) return;
     if (notifyParent) {
       await current.current.onRefresh();
       if (!active() || owner !== lifetime.current || serial !== reads.current) return;
@@ -158,13 +160,24 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
   }
   const reloadRef = useRef(reload); reloadRef.current = reload;
   useEffect(() => {
-    const changed = (): void => {
-      visibility.current = document.visibilityState !== 'hidden';
-      if (!visibility.current) {lifetime.current++; reads.current++; background.invalidate(); directory.dispose();}
-      setVisible(visibility.current);
+    let suspended = false;
+    const setVisibility = (value: boolean): void => {
+      if (visibility.current === value) return;
+      visibility.current = value;
+      if (!value) {lifetime.current++; reads.current++; background.invalidate(); directory.dispose();}
+      setVisible(value);
     };
+    const changed = (): void => setVisibility(!suspended && document.visibilityState !== 'hidden');
+    const left = (): void => {suspended = true; setVisibility(false);};
+    const returned = (): void => {suspended = false; changed();};
     document.addEventListener('visibilitychange', changed);
-    return () => document.removeEventListener('visibilitychange', changed);
+    window.addEventListener('pagehide', left);
+    window.addEventListener('pageshow', returned);
+    return () => {
+      document.removeEventListener('visibilitychange', changed);
+      window.removeEventListener('pagehide', left);
+      window.removeEventListener('pageshow', returned);
+    };
   }, [directory, background]);
   const enabled = visible && props.active !== false && props.summaryEnabled !== false && props.page === 'projects';
   useEffect(() => {
@@ -243,6 +256,21 @@ export default function ProjectHomeDirectoryScreen(props: ProjectHomeDirectorySc
     }
   }
   const state = directory.getState(), verified = ready(), catalogAvailable = catalogReady(), snapshot = !catalogAvailable ? null : verified?.snapshot ?? null;
+  const hasBusyProject = snapshot?.registered.some(entry => entry.availability.state === 'busy') ?? false;
+  useEffect(() => {
+    if (!enabled || !hasBusyProject) return;
+    const owner = lifetime.current;
+    return pollBusyProjectEntries(
+      () => {
+        if (owner !== lifetime.current || !actionOwner()) return false;
+        const observed = directory.getState();
+        // A foreground refresh owns the read until it completes. The poll can
+        // wait for that result without superseding the foreground request.
+        return observed.phase === 'loading' || (observed.snapshot?.registered.some(entry => entry.availability.state === 'busy') ?? false);
+      },
+      () => reloadRef.current(false, true),
+    );
+  }, [enabled, hasBusyProject, props.summaryScope, snapshot?.instanceId]);
   const expected = verifiedScope(props.summaryScope);
   const blocked = state.phase === 'blocked' || state.phase === 'ready' && state.snapshot && expected !== null && expected !== state.snapshot.appLibraryScope;
   useEffect(() => {

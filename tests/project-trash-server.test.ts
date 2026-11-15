@@ -70,7 +70,7 @@ test('home trash survives the real departure refresh, requires confirmation and 
     assert.equal(await entry.boot(),true);assert.equal(await directory.refresh(),true);
     assert.equal(entry.getState().catalogReady,true);
     assert.ok(directory.getState().snapshot?.registered.find(value=>value.project.projectId===f.sourceId)?.project.summary);
-    const before=f.retained(),state=f.closedState(),app=f.appState(),registered=f.native.listRecent().registered;
+    const before=f.retained(),state=f.closedState(),app=f.appState(),registered=(await f.native.listRecent()).registered;
     const binBefore=fileTree(f.bin),gets=()=>requests.filter(value=>value.path==='/api/project-entries'&&value.method==='GET').length;
     const count=gets(),cancelPermit=await entry.prepareHomeNativeDeparture();assert.ok(cancelPermit);
     assert.equal(gets(),count+1,'Departure performs a fresh authenticated GET after home boot');
@@ -91,7 +91,7 @@ test('home trash survives the real departure refresh, requires confirmation and 
     assert.deepEqual(after.source,(before.source as Array<{name:string}>).filter(value=>value.name!==path.basename(f.sourceFile)));
     assert.deepEqual({...after,source:null},{...before,source:null},'Media/history/cache/versions/backups and the other project remain byte-identical');
     assert.deepEqual(f.closedState(trashed),state,'The moved file retains every content/history/Mio row');
-    assert.deepEqual(f.native.listRecent().registered,registered.filter(value=>value.project.projectId!==f.sourceId));
+    assert.deepEqual((await f.native.listRecent()).registered,registered.filter(value=>value.project.projectId!==f.sourceId));
     const application=f.appState(),registrationRows=(value:ReturnType<typeof logicalState>)=>value[0]!.tables.find(table=>table.name==='recent_projects')!.rows;
     assert.equal(registrationRows(application).length,registrationRows(app).length-1,'Only one application registration is removed');
     assert.deepEqual(retainedApp(application),retainedApp(app));
@@ -103,7 +103,7 @@ test('home trash survives the real departure refresh, requires confirmation and 
 test('native trash moves only the closed project file and replays its fixed receipt without touching a later file', async t => {
   const f = await trashFixture(t), input = f.input(); assert.ok(f.native.trash);
   const before = f.retained(), state = f.closedState(), app = f.appState(), parent = lstatSync(f.sourceDir, {bigint:true});
-  const peers = f.native.listRecent().registered.filter(entry => entry.project.projectId !== f.sourceId);
+  const peers = (await f.native.listRecent()).registered.filter(entry => entry.project.projectId !== f.sourceId);
   const history = state.find(database => database.database === 'history')!;
   assert.ok(history.tables.find(table => table.name === 'project_versions')!.rows.length > 0);
   assert.ok(history.tables.find(table => table.name === 'mio_conversation_policies')!.rows.length > 0);
@@ -118,7 +118,7 @@ test('native trash moves only the closed project file and replays its fixed rece
   assert.deepEqual({...after,source:null}, {...before,source:null}, 'media, local history/cache/versions/backups/imports, fork archive and the other project stay byte-identical');
   assert.deepEqual(f.closedState(trashed), state, 'content, versions, retained Mio and terminal policy rows are not cascaded away');
   assert.equal(lstatSync(f.sourceDir, {bigint:true}).ino, parent.ino); assert.equal(lstatSync(f.sourceDir, {bigint:true}).dev, parent.dev);
-  assert.deepEqual(f.native.listRecent().registered, peers); assert.deepEqual(retainedApp(f.appState()), retainedApp(app));
+  assert.deepEqual((await f.native.listRecent()).registered, peers); assert.deepEqual(retainedApp(f.appState()), retainedApp(app));
   const receipt = f.appState()[0]!.tables.find(table => table.name === 'app_operation_receipts')!.rows.filter(row => row.operation === 'project.delete');
   assert.equal(receipt.length, 1); assert.equal(receipt[0]!.requestId, input.requestId);
   const replacement = Buffer.from('A later file at the original pathname must never be opened or trashed'); writeFileSync(f.sourceFile, replacement);
@@ -141,12 +141,12 @@ test('an actual window lease refuses trash and stays bound without closing the w
   const f = await trashFixture(t), windowId = randomUUID(), window = await f.native.acquire({projectId:f.sourceId,windowId});
   let revocations = 0; const stop = f.native.onWindowRevoked(() => {revocations++;}); t.after(stop);
   const state = f.inspect(db => logicalState(db, [['project','project'],['history','main']])), app = f.appState();
-  const listed = f.native.listRecent(); assert.equal(listed.registered.find(entry => entry.project.projectId === f.sourceId)!.availability.state, 'open');
+  const listed = await f.native.listRecent(); assert.equal(listed.registered.find(entry => entry.project.projectId === f.sourceId)!.availability.state, 'open');
   deny(await f.rpc('project.delete', f.input()), 'PROJECT_HOST_BUSY');
   await assert.rejects(f.native.trash!(f.input()), {code:'PROJECT_HOST_BUSY',status:409});
   assert.equal(f.calls.length, 0); assert.equal(f.reservations.length, 0); assert.equal(revocations, 0);
   assert.deepEqual(f.inspect(db => logicalState(db, [['project','project'],['history','main']])), state);
-  assert.deepEqual(f.appState(), app); assert.deepEqual(f.native.listRecent(), listed);
+  assert.deepEqual(f.appState(), app); assert.deepEqual(await f.native.listRecent(), listed);
   assert.deepEqual(await f.native.acquire({projectId:f.sourceId,windowId}), window, 'the original window owner still owns its original host');
   f.native.release({windowId}); await awaitClosed(f.registration);
 });

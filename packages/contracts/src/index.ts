@@ -9,6 +9,7 @@ import {AppError} from './app-error.ts';
 export * from './video-providers.ts';
 import {getVideoGenerationIssue,parseVideoBinding,videoBindingCapabilities} from './video-providers.ts';
 import {videoGenerationParametersSchema,wanVideoInputSchema,wanVideoParametersSchema} from './wan-video.ts';
+import {generationAspectSourceSchema} from './generation-aspect.ts';
 export * from './timeline-volume-envelope-capability.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
@@ -36,6 +37,7 @@ import {projectVersionSchemas,projectVersionDescriptions} from './project-versio
 import {timelineSubtitleSchemas} from './timeline-subtitles.ts';
 export * from './timeline-subtitles.ts';
 import {timelineFormatSchemas,timelineFrameSetSchema} from './timeline-format.ts';
+import {TIMELINE_OUTPUT_PRESETS} from './timeline-output-geometry.ts';
 import {agentAuthorizationSchemas,agentAuthorizationDescriptions} from './agent-authorization.ts';
 import {projectLifecycleSchemas,projectLifecycleDescriptions} from './project-lifecycle.ts';
 export * from './project-lifecycle.ts';
@@ -133,7 +135,10 @@ const sourceFrame=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-18000);
 const even=(minimum: number, maximum: number)=>z.number().int().min(minimum).max(maximum).multipleOf(2);
 // Syntax admits the maximum supported envelope. The aggregate and ACK validate
 // against their own exact preset pair, including historical acknowledgements.
-const rect=z.object({x:even(0,1918),y:even(0,1918),width:even(2,1920),height:even(2,1920)}).strict().refine(r=>r.x+r.width<=1920&&r.y+r.height<=1920,{message:'Rectangle exceeds the supported output envelope'});
+const rectMaxWidth=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({width})=>width)),rectMaxHeight=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({height})=>height));
+const rect=z.object({x:even(0,rectMaxWidth-2),y:even(0,rectMaxHeight-2),width:even(2,rectMaxWidth),height:even(2,rectMaxHeight)}).strict()
+ .refine(r=>r.x+r.width<=rectMaxWidth&&r.y+r.height<=rectMaxHeight,{message:'Rectangle exceeds the supported output envelope'})
+ .describe('Even pixels in the current frame basis. The rectangle must fit the current frame.');
 const timelineMutation={projectId:id,expectedRevision:z.number().int().positive(),requestId:key};
 // Validation preserves the submitted profile, point order and explicit null.
 // An update without duration remains lexical; execution uses its original clip.
@@ -199,7 +204,7 @@ export const schemas={
 'reference.detach':z.object({projectId:id,edgeId:id,expectedShotRevision:z.number().int().positive(),requestId:key}).strict(),
 'provider.list':z.object({}).strict(),
 'video.connection.list':z.object({}).strict(),
-'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),model:z.string().max(100).optional(),connectionId:id.optional(),configurationRevision:z.number().int().positive().optional(),modelEntryId:id.optional(),parameters:params.merge(videoGenerationParametersSchema).optional(),videoInput:wanVideoInputSchema.optional().describe('Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes every mode, up to 10 reference images and an optional prompt; Seedance 2.5 takes only reference_images, up to 30 images and up to 10 reference audio clips (WAV or MP3, 2–30 seconds each, 30 seconds in total, audio alone allowed), and always uses the saved shot prompt.'),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict().superRefine((value,ctx)=>{
+'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),model:z.string().max(100).optional(),connectionId:id.optional(),configurationRevision:z.number().int().positive().optional(),modelEntryId:id.optional(),aspectSource:generationAspectSourceSchema.optional(),parameters:params.merge(videoGenerationParametersSchema).optional(),videoInput:wanVideoInputSchema.optional().describe('Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes every mode, up to 10 reference images and an optional prompt; Seedance 2.5 takes only reference_images, up to 30 images and up to 10 reference audio clips (WAV or MP3, 2–30 seconds each, 30 seconds in total, audio alone allowed), and always uses the saved shot prompt.'),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict().superRefine((value,ctx)=>{
  const fields=[value.connectionId,value.configurationRevision,value.modelEntryId],has=fields.some(field=>field!==undefined);
  if(has&&!fields.every(field=>field!==undefined)||!has&&['kling','wan','compatible'].includes(value.providerId))ctx.addIssue({code:'custom',path:['connectionId'],message:'Select an exact configured video connection and model revision.'});
  if(!has&&(value.parameters?.resolution!==undefined||value.parameters?.generateAudio!==undefined||Object.keys(wanVideoParametersSchema.shape).some(key=>value.parameters?.[key as keyof typeof value.parameters]!==undefined)))ctx.addIssue({code:'custom',path:['parameters'],message:'Configured video parameters require an explicit connection.'});
@@ -230,7 +235,9 @@ export const schemas={
 'timeline.track.add':z.object({...timelineMutation,kind:z.enum(['video','audio']),name:z.string().min(1).max(150).optional()}).strict(),
 'timeline.track.update':z.object({...timelineMutation,trackId:id,patch:z.object({name:z.string().min(1).max(150).optional(),hidden:z.boolean().optional(),muted:z.boolean().optional()}).strict().refine(p=>Object.keys(p).length>0)}).strict(),
 'timeline.clip.add':z.object({...timelineMutation,assetId:id,...clipFields,name:clipFields.name.optional(),sourceInFrame:sourceFrame.optional(),rect:rect.optional(),gain:clipFields.gain.optional()}).strict().refine(value=>!Object.hasOwn(value,'volumeEnvelope')||isVolumeEnvelope(value.volumeEnvelope,value.durationFrames),{message:'Envelope points exceed the clip duration.',path:['volumeEnvelope']}),
-'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()]))).strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,(p.durationFrames as number | undefined)??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
+'timeline.clip.update':z.object({...timelineMutation,clipId:id,patch:z.object(Object.fromEntries(Object.entries(clipFields).map(([k,v])=>[k,v.optional()])))
+ .extend({rect:rect.describe('Even pixels in the current frame basis. Omit for clips with a saved layout.basisPresetId; their rectangle and transform are read-only here.').optional()})
+ .strict().refine(p=>Object.keys(p).length>0).refine(p=>!Object.hasOwn(p,'volumeEnvelope')||isVolumeEnvelope(p.volumeEnvelope,(p.durationFrames as number | undefined)??18000),{message:'Envelope points exceed the resulting clip duration.',path:['volumeEnvelope']})}).strict(),
 'timeline.clip.replaceSource':z.object({...timelineMutation,clipId:id,assetId:id,versionId:id.optional().describe('Optional exact generated version to pin with its canonical shot. Must belong to the replacement asset and project. Omission keeps an asset-only fixed reference; no version is inferred.')}).strict(),
 'timeline.clip.remove':z.object({...timelineMutation,clipId:id}).strict(),
 'timeline.clip.rippleRemove':timelineRippleRemoveSchema,

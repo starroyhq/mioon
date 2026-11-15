@@ -212,7 +212,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config: BackendSupervisorOptions) {
-        super({ ...config, startupTimeout: 3000, stopTimeout: 10, terminateTimeout: 10, exitTimeout: 10, forceKill: child => { (child as unknown as DesktopHarnessChild).hardKills++; } });
+        super({ ...config, projectCatalog: undefined, startupTimeout: 3000, stopTimeout: 10, terminateTimeout: 10, exitTimeout: 10, forceKill: child => { (child as unknown as DesktopHarnessChild).hardKills++; } });
         records.backends.push(this as unknown as DesktopHarnessBackend);
       }
       // Diagnostics filesystem persistence is an OS boundary, not a restart

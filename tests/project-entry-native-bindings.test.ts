@@ -4,6 +4,7 @@ import {build} from 'esbuild';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {createProjectEntryIdentityOwner} from '../apps/web/src/project-entry-identity.ts';
+import type {ProjectEntryDirectoryReadPort} from '../apps/web/src/project-entry-directory-state.ts';
 
 interface Element {type: unknown; props: Record<string, unknown> & {children?: unknown}}
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -46,6 +47,28 @@ test('native entry retains its verified parent identity through real catalog rea
   requests[1]!.resolve({version:1,appLibraryScope:change==='library'?'b'.repeat(64):scope,instanceId:change==='instance'?other:id,registered:[]});
   assert.equal(await refreshing,null);assert.equal(identity.getState().identityBlocked,true);assert.equal(owner(),null);
   f.setCatalogReady(true);assert.equal(ready(),false,'A ready flag cannot override the actual identity block.');
+  identity.dispose();
+ }
+});
+
+test('launcher and editor home route passive reads through the pinned parent and retire late replies', async () => {
+ const verified={version:1,appLibraryScope:'a'.repeat(64),instanceId:id,registered:[]};
+ for(const role of ['launcher','editor'] as const){
+  const requests:{signal:AbortSignal;reply:ReturnType<typeof Promise.withResolvers<unknown>>}[]=[];
+  const identity=createProjectEntryIdentityOwner({read:({signal})=>{const reply=Promise.withResolvers<unknown>();requests.push({signal,reply});return reply.promise;}});identity.activate();
+  const initial=identity.refresh();requests[0]!.reply.resolve(verified);assert.ok(await initial);
+  const read=home(role,identity).props.readDirectory as ProjectEntryDirectoryReadPort;
+  const visible=new AbortController();
+  const aborted=assert.rejects(read({signal:visible.signal,background:true}),{code:'BACKEND_UNAVAILABLE'});
+  visible.abort();
+  assert.equal(requests[1]!.signal.aborted,true,role);
+  requests[1]!.reply.resolve({...verified,instanceId:other});
+  await aborted;
+  assert.deepEqual(identity.getState().snapshot,verified);
+  const replacement=assert.rejects(read({signal:new AbortController().signal,background:true}),{code:'PROJECT_ENTRY_SCOPE_MISMATCH',status:409});
+  requests[2]!.reply.resolve({...verified,instanceId:other});
+  await replacement;
+  assert.equal(identity.getState().identityBlocked,true);
   identity.dispose();
  }
 });

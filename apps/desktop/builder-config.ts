@@ -67,7 +67,7 @@ export function builderConfig(channel: string): BuilderConfig {
     electronVersion,
     directories: { app: 'build', buildResources: 'resources', output: `../../release/desktop/${channel}` },
     icon: path.join(directory, 'resources/icon.png'),
-    files: ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*'],
+    files: ['main.cjs', 'backend.cjs', 'project-catalog.cjs', 'preload.cjs', 'package.json', 'web/**/*', 'icons/**/*', 'licenses/**/*', '!node_modules/**/*'],
     asar: true,
     // SQLite templates and external FFmpeg resources must be ordinary files
     // outside ASAR. Both resource trees are verified before and after packing.

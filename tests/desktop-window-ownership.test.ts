@@ -264,7 +264,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config: BackendSupervisorOptions) {
-        super({ ...config, startupTimeout: 5000, stopTimeout: 5000, terminateTimeout: 100, exitTimeout: 100,
+        super({ ...config, projectCatalog: undefined, startupTimeout: 5000, stopTimeout: 5000, terminateTimeout: 100, exitTimeout: 100,
           forceKill: child => { (child as unknown as DesktopHarnessChild).hardKills++; } });
         r.backends.push(this as unknown as DesktopHarnessBackend<string>);
       }

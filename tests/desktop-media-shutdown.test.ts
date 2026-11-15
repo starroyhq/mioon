@@ -600,6 +600,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
     createVideoSecretClient: () => ({close: videoClose, refreshStorage: videoRefresh}),
     createProjectTrashClient: () => trashClient,
+    createDesktopProjectCatalogClient: () => ({attach() {}, close() {}}),
     createNativeAudioPreviewAuthority: (config: unknown) => {assert.equal(config,nativeConfig);return nativeAuthority;},
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });

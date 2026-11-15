@@ -6,10 +6,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {agentTaskParameterFeedback} from '../packages/business/src/agent/task-tool-errors-v2.ts';
+import {agentTaskGenerationAspectFeedback,agentTaskParameterFeedback} from '../packages/business/src/agent/task-tool-errors-v2.ts';
 import {defaultVideoModels,resolveVideoEndpoint,videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId,VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {openServerTestStore,openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
@@ -81,8 +83,39 @@ test('field feedback uses closed paths and categories without exposing validatio
     [{expectedRevision:0},'expectedRevision','invalid_value'],[{expectedRevision:'PRIVATE'},'expectedRevision','invalid_type'],[{shotId:undefined},'shotId','required'],
     [{parameters:{resolution:17}},'parameters.resolution','invalid_type'],[{parameters:{resolution:'768P'}},'parameters.resolution','invalid_value'],
     [{parameters:{resolution:'2K'},PRIVATE_KEY:'PRIVATE_VALUE'},'input','unknown_field'],
+    [{aspectSource:{kind:'PRIVATE'}},'aspectSource.kind','invalid_value'],
+    [{aspectSource:{kind:'project',aspectRatio:'9:16'}},'aspectSource.expectedTimelineRevision','required'],
+    [{aspectSource:{kind:'explicit',aspectRatio:'PRIVATE'}},'aspectSource.aspectRatio','invalid_value'],
+    [{aspectSource:{kind:'shot',PRIVATE_KEY:'PRIVATE_VALUE'}},'aspectSource','unknown_field'],
   ] as const){const feedback=agentTaskParameterFeedback({operation:'generation.submit',input:{...base,...patch},capabilities});assert.ok(feedback?.issues.some(issue=>issue.field===field&&issue.reason===reason));assert.doesNotMatch(JSON.stringify(feedback),/PRIVATE|credentialRef|https?:\/\//u);}
   assert.equal(agentTaskParameterFeedback({operation:'shot.update',input:{PRIVATE:'secret'}}),null);assert.equal(agentTaskParameterFeedback({operation:'generation.submit',input:null}),null);
+});
+
+test('generation aspect feedback gives only proven aspect choices or the current frame',()=>{
+  const projectId=randomUUID(),requestId=randomUUID(),shotId=randomUUID();
+  const proof={projectId,requestId,shotId,mutationOutcome:'not_applied',providerId:'PRIVATE_PROVIDER',model:'PRIVATE_MODEL'};
+  const input={requestId,shotId,aspectSource:{kind:'project',expectedTimelineRevision:1,aspectRatio:'1:1'}};
+  const feedback=(error:unknown,candidate:unknown=input,owner=projectId)=>agentTaskGenerationAspectFeedback({operation:'generation.submit',input:candidate,error,projectId:owner});
+  const unsupported=(supportedAspectRatios:unknown=['9:16','16:9'],extra:Record<string,unknown>={})=>new AppError('PROJECT_ASPECT_UNSUPPORTED','PRIVATE_PROVIDER_BODY',400,{...proof,projectAspectRatio:'1:1',supportedAspectRatios,...extra});
+  const rejected=feedback(unsupported());assert.ok(rejected);
+  assert.deepEqual(rejected,{code:'PROJECT_ASPECT_UNSUPPORTED',message:rejected.message,mutationOutcome:'not_applied',projectAspectRatio:'1:1',supportedAspectRatios:['9:16','16:9']});
+  assert.match(rejected.message,/项目画幅 1:1.*9:16、16:9.*明确选择.*explicit.*确认/u);
+  const changed=(projectAspectRatio='16:9',timelineRevision=2)=>new AppError('PROJECT_ASPECT_CHANGED','PRIVATE_PROVIDER_BODY',409,{...proof,projectAspectRatio,timelineRevision});
+  const current=feedback(changed());assert.ok(current);
+  assert.deepEqual(current,{code:'PROJECT_ASPECT_CHANGED',message:current.message,mutationOutcome:'not_applied',projectAspectRatio:'16:9',timelineRevision:2});
+  assert.match(current.message,/16:9.*修订为 2.*timeline\.format\.get.*确认/u);
+  const explicit=feedback(new AppError('GENERATION_ASPECT_UNSUPPORTED','PRIVATE_PROVIDER_BODY',400,{...proof,aspectRatio:'adaptive',supportedAspectRatios:['9:16']}),{...input,aspectSource:{kind:'explicit',aspectRatio:'adaptive'}});assert.ok(explicit);
+  assert.deepEqual(explicit,{code:'GENERATION_ASPECT_UNSUPPORTED',message:explicit.message,mutationOutcome:'not_applied',aspectRatio:'adaptive',supportedAspectRatios:['9:16']});
+  for(const result of [rejected,current,explicit]){
+    assert.doesNotMatch(JSON.stringify(result),/PRIVATE|providerId|shotId|requestId|projectId/u);
+    for(const id of [projectId,shotId,requestId])assert.equal(JSON.stringify(result).includes(id),false);
+  }
+  assert.match(feedback(unsupported([]))!.message,/没有可用画幅/u);
+  const unreadable=Object.defineProperty(['9:16'],0,{get(){throw Error('must not read ratio accessor');}});
+  for(const error of [unsupported(['9:16','9:16']),unsupported(['PRIVATE_RATIO']),unsupported(['1:1']),unsupported(Array(1)),unsupported(unreadable),unsupported(Array(8).fill('9:16')),unsupported(undefined,{mutationOutcome:'uncertain'}),unsupported(undefined,{projectAspectRatio:'16:9'}),changed('1:1',1),changed('16:9',-1),changed('adaptive'),new AppError('PROJECT_ASPECT_CHANGED','PRIVATE',400,{...proof,projectAspectRatio:'16:9',timelineRevision:2})])assert.equal(feedback(error),null);
+  assert.equal(feedback(unsupported(),{...input,requestId:randomUUID()}),null);
+  assert.equal(feedback(unsupported(),{...input,shotId:randomUUID()}),null);
+  assert.equal(feedback(unsupported(),input,randomUUID()),null);
 });
 
 function findFeedback(value:unknown):Record<string,unknown>|null{
@@ -90,8 +123,11 @@ function findFeedback(value:unknown):Record<string,unknown>|null{
   if(!object(value))return null;if(Array.isArray(value.issues)&&object(value.supported))return value;
   for(const child of Object.values(value)){const found=findFeedback(child);if(found)return found;}return null;
 }
-async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'responses'){
-  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-parameter-feedback-'))),store=openStore(root),videoSettings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'responses',format4=false){
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-parameter-feedback-'))),projectFile=path.join(root,'project.mioon');
+  if(format4)createProjectFile(projectFile);
+  const store=format4?openServerTestStore({projectFile,locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')}),format4:{approveUpgrade:()=>true}},path.join(root,'app')):openStore(root);
+  const videoSettings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
   const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'minimax',name:'Synthetic MiniMax',region:'cn',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('minimax')};
   await videoSettings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_VIDEO_KEY'}});
   const posts:Array<{url:string;body:Record<string,unknown>}>=[];
@@ -115,7 +151,7 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
     return {text:'',toolCalls:calls,providerOutput:protocol==='responses'?calls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:null,tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}};
   }
   return {root,store,services,settings,authorizations,tools,runtime,posts,requests,base,projectId,shot,setScript(value:TaskGateway){script=value;},failExecute(error:unknown){executeFailure=error;},output,
-    async send(){return runtime.send(projectId,{requestId:randomUUID(),text:'Correct parameters locally then request one 2K four-second video.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision});},
+    async send(policy?:{modes:{read_only:'direct';local_reversible:'direct';local_irreversible:'direct';paid:'direct'};acknowledgePaid:true}){return runtime.send(projectId,{requestId:randomUUID(),text:'Correct parameters locally then request one 2K four-second video.',expectedSettingsRevision:testAgentExecution(await settings.get()).revision,...(policy?{policy}:{})});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
     async approve(snapshot:AgentTaskSnapshot){const step=snapshot.steps.find(step=>step.status==='awaiting_approval');assert.ok(step);const control={requestId:randomUUID(),expectedRevision:snapshot.run.revision,action:'approve' as const,stepId:step.id};await runtime.action(projectId,snapshot.run.id,control);await runtime.action(projectId,snapshot.run.id,control);},
     async tick(){worker??=startWorker(store,services,new Map());await worker.tick();},
@@ -139,6 +175,77 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   await f.tick();await f.tick();assert.equal(f.posts.length,1);assert.equal(f.posts[0]!.url,'https://api.minimax.cn/v2/video_generation');assert.deepEqual(f.posts[0]!.body,{model:'MiniMax-H3',content:[{type:'text',text:'A synthetic blue cube rotates.'}],duration:4,resolution:'2K',ratio:'9:16'});
   const job=f.store.list('jobs',f.projectId)[0] as JobRecord;assert.equal(job.submissionCount,1);assert.equal(job.providerJobId,'one-original-video-task');assert.equal(f.requests.length,4);
 });
+
+for(const [protocol,scenario] of [['chat_completions','unsupported'],['responses','changed'],['chat_completions','unbound']] as const)test(`${protocol}: ${scenario} project aspect requires proof before Mio can request another confirmation`,async t=>{
+  const f=await runtimeFixture(t,protocol,true);
+  const format=async()=>timelineFormatResponseSchema.parse(await f.services.call('timeline.format.get',{projectId:f.projectId}));
+  const setFrame=async(presetId:string)=>{
+    const previous=await format();
+    await f.services.call('timeline.format.set',{projectId:f.projectId,expectedProjectRevision:previous.projectRevision,expectedRevision:previous.timelineRevision,requestId:randomUUID(),presetId});
+    return format();
+  };
+  const initial=scenario==='unsupported'?await setFrame('square_1080'):await format();
+  const args={...f.base,parameters:{resolution:'2K'},aspectSource:{kind:'project',expectedTimelineRevision:initial.timelineRevision,aspectRatio:scenario==='unsupported'?'1:1':'9:16'}};
+  f.setScript(async function*(){
+    if(f.requests.length===2){yield {type:'done',output:f.output(args)};return;}
+    if(scenario==='unsupported'){yield {type:'done',output:f.output({...args,aspectSource:{kind:'explicit',aspectRatio:'9:16'}})};return;}
+    yield {type:'done',output:f.output()};
+  });
+  const sent=await f.send(),waiting=await f.settle(sent.run.id);
+  assert.equal(waiting.run.status,'awaiting_approval');
+  const approved=waiting.steps.find(step=>step.status==='awaiting_approval');assert.ok(approved);
+  const changed=scenario==='changed'?await setFrame('landscape_1080'):null;
+  if(scenario==='unbound')f.failExecute(new AppError('PROJECT_ASPECT_CHANGED','PRIVATE_PROVIDER_BODY',409,{requestId:randomUUID(),shotId:f.shot.id,projectId:f.projectId,projectAspectRatio:'16:9',timelineRevision:1,mutationOutcome:'not_applied'}));
+  await f.approve(waiting);
+  const done=await f.settle(sent.run.id),step=done.steps.find(item=>item.id===approved.id);assert.ok(step);
+  assert.equal(f.store.list('jobs',f.projectId).length,0);
+  assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM idempotency WHERE scope='generation'").get()?.n,0);
+  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM job_events').get()?.n,0);
+  assert.equal(f.posts.length,0);
+  if(scenario==='unbound'){
+    assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'unknown_outcome');assert.equal(step.status,'unknown');
+    assert.equal(f.requests.length,2);assert.equal(step.result,undefined);
+  }else{
+    assert.equal(done.run.status,scenario==='unsupported'?'awaiting_approval':'completed');assert.equal(step.status,'rejected');assert.equal(f.requests.length,3);
+    if(scenario==='unsupported'){
+      const correction=done.steps.find(item=>item.status==='awaiting_approval');assert.ok(correction);
+      assert.notEqual(correction.id,step.id);assert.ok(object(correction.toolCall?.arguments));
+      assert.deepEqual(correction.toolCall.arguments.aspectSource,{kind:'explicit',aspectRatio:'9:16'});
+    }
+    assert.ok(object(step.result)&&object(step.result.error));const error=step.result.error;
+    assert.deepEqual(error,{message:error.message,mutationOutcome:'not_applied',...(changed?{code:'PROJECT_ASPECT_CHANGED',projectAspectRatio:'16:9',timelineRevision:changed.timelineRevision}:{code:'PROJECT_ASPECT_UNSUPPORTED',projectAspectRatio:'1:1',supportedAspectRatios:['9:16','16:9']})});
+    const body:unknown=JSON.parse(f.requests[2]!);assert.ok(object(body));const history=protocol==='responses'?body.input:body.messages;assert.ok(Array.isArray(history));
+    const continuation=history.find(item=>object(item)&&(protocol==='responses'?item.type==='function_call_output':item.role==='tool')&&String(item.output??item.content).includes(String(error.code)));
+    assert.ok(object(continuation));assert.deepEqual(JSON.parse(String(continuation.output??continuation.content)),{error});
+    assert.doesNotMatch(JSON.stringify(error),/providerId|shotId|requestId|projectId|MiniMax|SYNTHETIC/u);
+  }
+  assert.doesNotMatch(JSON.stringify(step.result??step.error),/PRIVATE_PROVIDER_BODY/u);
+});
+
+test('an incompatible project ratio requires a separate approval even in direct mode',async t=>{
+  const f=await runtimeFixture(t,'chat_completions',true);
+  const before=timelineFormatResponseSchema.parse(await f.services.call('timeline.format.get',{projectId:f.projectId}));
+  await f.services.call('timeline.format.set',{projectId:f.projectId,expectedProjectRevision:before.projectRevision,expectedRevision:before.timelineRevision,requestId:randomUUID(),presetId:'square_1080'});
+  const after=timelineFormatResponseSchema.parse(await f.services.call('timeline.format.get',{projectId:f.projectId}));
+  const initial={...f.base,parameters:{resolution:'2K'},aspectSource:{kind:'project',expectedTimelineRevision:after.timelineRevision,aspectRatio:'1:1'}};
+  const fallback={...initial,aspectSource:{kind:'explicit',aspectRatio:'9:16'}};
+  f.setScript(async function*(){
+    yield {type:'done',output:f.output(f.requests.length===2?initial:f.requests.length===3?fallback:undefined)};
+  });
+  const sent=await f.send({modes:{read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'direct'},acknowledgePaid:true});
+  const waiting=await f.settle(sent.run.id);
+  assert.equal(waiting.run.status,'awaiting_approval');
+  assert.equal(waiting.steps.find(step=>step.status==='rejected')?.error?.code,'PROJECT_ASPECT_UNSUPPORTED');
+  assert.deepEqual(waiting.steps.find(step=>step.status==='awaiting_approval')?.toolCall?.arguments,fallback);
+  assert.equal(f.store.list('jobs',f.projectId).length,0);
+  assert.equal(f.posts.length,0);
+  await f.approve(waiting);
+  const done=await f.settle(sent.run.id);
+  assert.equal(done.run.status,'completed');
+  assert.equal((f.store.list('jobs',f.projectId)[0] as JobRecord).snapshot.aspectRatio,'9:16');
+  assert.equal(f.posts.length,0);
+});
+
 for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: parameter correction never reveals feedback for a foreign shot or host authority fields`,async t=>{
     for(const obstacle of ['foreign_shot','host_field'] as const)await t.test(obstacle,async t=>{

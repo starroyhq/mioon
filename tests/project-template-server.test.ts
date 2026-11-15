@@ -94,7 +94,7 @@ test('HTTP and trusted template entries create independent media and identities 
   }
   assert.notEqual(lstatSync(media[0]).ino, lstatSync(media[1]).ino); writeFileSync(media[0], 'One instance alone changes');
   assert.deepEqual(readFileSync(media[1]), f.bytes); assert.deepEqual(f.tree(), original);
-  assert.equal(f.native.listRecent().registered.length, 2);
+  assert.equal((await f.native.listRecent()).registered.length, 2);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE operation=?').get('project.template.instantiate')!.n), 2);
 });
 
@@ -107,7 +107,7 @@ test('an existing target folder is never merged, even empty, and no registration
     assert.deepEqual(readdirSync(directory), name === 'Empty' ? [] : ['keep.png']);
     if (name === 'Occupied') assert.deepEqual(readFileSync(path.join(directory, 'keep.png')), f.bytes);
   }
-  assert.deepEqual(f.application(snapshot), before); assert.deepEqual(f.tree(), original); assert.equal(f.native.listRecent().registered.length, 0);
+  assert.deepEqual(f.application(snapshot), before); assert.deepEqual(f.tree(), original); assert.equal((await f.native.listRecent()).registered.length, 0);
 });
 
 test('template request validation and catalog lookup cannot grant arbitrary template paths or private targets', async t => {
@@ -147,9 +147,9 @@ for (const bad of ['project-hash', 'asset-hash', 'asset-missing'] as const)
     const before = f.application(snapshot), sourceAfterDamage = readFileSync(f.projectFile);
     denied(await f.rpc(input), 422, 'PROJECT_TEMPLATE_INVALID');
     assert.equal(existsSync(path.join(f.target, input.name)), false); assert.deepEqual(f.application(snapshot), before);
-    assert.deepEqual(readFileSync(f.projectFile), sourceAfterDamage); assert.equal(f.native.listRecent().registered.length, 0);
+    assert.deepEqual(readFileSync(f.projectFile), sourceAfterDamage); assert.equal((await f.native.listRecent()).registered.length, 0);
     await f.restart();
-    assert.deepEqual(readdirSync(f.target), []); assert.equal(f.native.listRecent().registered.length, 0);
+    assert.deepEqual(readdirSync(f.target), []); assert.equal((await f.native.listRecent()).registered.length, 0);
     assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
   });
 
@@ -165,7 +165,7 @@ for (const phase of ['ready', 'directory-placeholder', 'project-published', 'reg
     await f.restart();
     const copy = success(await f.rpc(input)); assert.deepEqual(copy, intent.response);
     assert.equal(copy.project.projectId, intent.projectId); assert.equal(copy.contentToken, intent.contentToken);
-    assert.equal(f.native.listRecent().registered.length, 1);
+    assert.equal((await f.native.listRecent()).registered.length, 1);
     assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 1);
     assert.deepEqual(readdirSync(f.target), [input.name]); assert.deepEqual(readFileSync(path.join(f.target, input.name, 'media', 'scene.png')), f.bytes);
     assert.deepEqual(f.tree(), original);
@@ -181,7 +181,7 @@ test('a staged project moved alone into another folder cannot masquerade as a co
     renameSync(path.join(f.target, stage, input.name + '.mioon'), path.join(folder, input.name + '.mioon'));
   });
   await assert.rejects(f.native.instantiateTemplate!(input), {code: 'PROJECT_COPY_TARGET_CHANGED'});
-  assert.equal(f.native.listRecent().registered.length, 0);
+  assert.equal((await f.native.listRecent()).registered.length, 0);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
   assert.equal(readFileSync(path.join(folder, 'keep.txt'), 'utf8'), 'another folder owner');
   assert.equal(existsSync(path.join(folder, 'media')), false); assert.deepEqual(f.tree(), original);
@@ -195,11 +195,11 @@ test('media corrupted after template preparation is rejected before exposing a p
     writeFileSync(path.join(f.target, stage, 'media', 'scene.png'), Buffer.alloc(f.bytes.length));
   });
   await assert.rejects(f.native.instantiateTemplate!(input), {code: 'PROJECT_TEMPLATE_INVALID'});
-  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal(f.native.listRecent().registered.length, 0);
+  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal((await f.native.listRecent()).registered.length, 0);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
   assert.deepEqual(f.tree(), original);
   await f.restart();
-  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal(f.native.listRecent().registered.length, 0);
+  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal((await f.native.listRecent()).registered.length, 0);
   assert.deepEqual(f.tree(), original);
 });
 
@@ -225,7 +225,7 @@ test('template capture is bound to the catalog-validated content pair even when 
   });
   await assert.rejects(f.native.instantiateTemplate!(input), {code: 'PROJECT_COPY_SOURCE_CHANGED'});
   assert.equal(reachedCaptured, false); assert.ok(edited); assert.deepEqual(readFileSync(f.projectFile), edited);
-  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal(f.native.listRecent().registered.length, 0);
+  assert.equal(existsSync(path.join(f.target, input.name)), false); assert.equal((await f.native.listRecent()).registered.length, 0);
   assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
 });
 
@@ -249,5 +249,5 @@ test('a source generation change cannot reuse the template signature with an unc
   await assert.rejects(f.native.instantiateTemplate!(input), {code: 'PROJECT_COPY_SOURCE_CHANGED'});
   assert.ok(edited); assert.deepEqual(readFileSync(f.projectFile), edited);
   assert.equal(existsSync(path.join(f.target, input.name)), false);
-  assert.equal(f.native.listRecent().registered.length, 0);
+  assert.equal((await f.native.listRecent()).registered.length, 0);
 });

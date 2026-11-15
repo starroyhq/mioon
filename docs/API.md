@@ -51,6 +51,12 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 独立严格契约见 packages/contracts/src/project-entry.ts，成功数据为 version=1、appLibraryScope（与原 last-project 的 workspaceScope 同算法）、instanceId、registered；registered 的每条是 project（RecentProject，summary 可为空）、availability、coverUrl。读取会刷新已打开宿主的登记摘要，不取得新租约；封面有值时严格等于该项目的 /api/project-covers/<ID>，不读取关闭项目补摘要。
 
+完整目录读取和单项目登记描述共用进行中的检查。服务异步刷新应用私有文件身份，再由独立进程检查关闭项目的文件头和热日志；慢文件检查期间，设置和已打开项目的请求仍可处理。文件头提示只在路径及文件代次复验通过时使用。轻量的 `/api/project-entries/identity` 直接返回应用库和实例身份。
+
+辅助检查失败或超过 10 秒时，仍返回登记和已有宿主状态，省略未确认的文件头提示。文件在检查期间发生变化时，保留已确认的锁定状态，否则用 `busy` 表示这次检查尚未确定状态。实际打开仍须通过完整准入；应用库身份变化仍按原有规则拒绝。
+
+尚未返回的文件状态读取按路径复用。服务限制同时发出的读取数量，避免目录请求反复耗尽文件系统线程。桌面扫描进程快速重拉耗尽后每隔 5 分钟再试，期间仍可读取目录登记。
+
 仅 GET，不接受查询参数、GET 请求体或原生路径控制；其它方法 405，未知子路径 404。路由沿用 Host/Origin 与令牌/会话认证，Cache-Control: no-store。网页不显示未登记文件，手工放入文件须先经明确打开流程登记；本轮未增加网页任意路径打开、目录扫描或 window-session。
 
 目录最多 8192 条，沿用 B1；本资源完整 JSON 上限 384 MiB，超过报 PROJECT_ENTRY_LIMIT（413），不截断。这是传输边界，不是应用库配额或全部理论数据都能列出的承诺。身份改变报 PROJECT_ENTRY_SCOPE_MISMATCH（409），应用库持有权/生命周期不可用报 PROJECT_ENTRY_UNAVAILABLE（503），标准认证错误不变。
@@ -450,8 +456,12 @@ Storyboards (2026-10-25):
   `frameCount`); a number outside the result fails with `SCENE_SEGMENTS_INVALID`.
 - Each shot is titled `<titlePrefix> NN` by segment number (default prefix
   `参考`), lasts the segment's length rounded to whole seconds within 1–20, has an
-  empty prompt and takes the project format's aspect ratio (`9:16`, `16:9` or
-  `1:1`; `9:16` before the project has a timeline). Its only reference is the
+  empty prompt. Format 3 infers portrait (`9:16`), landscape (`16:9`) or square
+  (`1:1`) from the timeline dimensions and uses `9:16` if they are unavailable
+  or invalid. Format 4 freezes the current frame ratio at acceptance and uses
+  `9:16` before a timeline exists.
+  An unsupported format 4 frame gives `SCENE_PROJECT_ASPECT_UNSUPPORTED` (409)
+  with the exact not-accepted proof when available. The shot's only reference is the
   keyframe at the segment's middle frame. Shots are laid out in rows of six from
   `position` (340 px apart, rows 300 px), or below the existing canvas content,
   and continue the shot order.
@@ -781,6 +791,25 @@ Assets are imported as base64 bytes, never arbitrary machine file paths or remot
 - job.cancel stops local waiting only and explicitly returns cancelScope=local_only
 - Result versions have a database immutability trigger, unique job ID and immutable files; first output auto-selects only if no selection exists
 - export.create freezes shot order and chosen version IDs/hashes. Later edits do not change that export
+
+New generation requests may set `aspectSource` to
+`{kind:"project",expectedTimelineRevision,aspectRatio}`, `{kind:"shot"}`, or
+`{kind:"explicit",aspectRatio}`. The project source pins the reviewed frame
+and rechecks its revision and ratio before accepting the job. A changed frame
+returns `PROJECT_ASPECT_CHANGED` and requires a new confirmation. Unsupported
+ratios return `PROJECT_ASPECT_UNSUPPORTED` or `GENERATION_ASPECT_UNSUPPORTED`
+with the selected model's supported options. These admission errors identify
+the original project, shot and request and report `mutationOutcome:"not_applied"`.
+Mock supports 9:16. Adaptive
+selection is explicit and is available on supported Wan and Seedance bindings.
+Requests that omit `aspectSource` keep their original shot and provider
+parameter semantics. Accepted jobs, exact replays and retries keep the frozen
+generation inputs.
+
+`project.get` includes the read-only `timelineFrameTransaction` capability
+from the opened project kernel. The web workbench uses the current frame for
+new shots and new generations when it is `true`. Otherwise it uses the
+previous shot settings for generation and defaults new shots to 9:16.
 
 ## Optional exact replay for local edits
 
@@ -1654,14 +1683,18 @@ retains the existing clip and subtitle geometry on its original basis. A new
 edit after undo replaces the redo branch. Earlier acknowledgements remain
 replayable, and already accepted exports keep their frozen frame.
 
-A migrated clip's stored `rect` uses basis pixels. `timeline.inspect` reports
-its projection in the current frame for observation. Direct `rect` updates
-to migrated clips return `CLIP_LAYOUT_RECT_READ_ONLY`. Use
-`timeline.clip.setTransform` with the clip's stored basis units.
+A migrated clip's stored `rect` uses basis pixels. Public `timeline.inspect`
+reports its projection in the current frame. Mio's observation returns the
+stored rectangle and transform with `layout.basisPresetId`. Direct `rect`
+updates to migrated clips return `CLIP_LAYOUT_RECT_READ_ONLY`. The public
+`timeline.clip.setTransform` operation uses the clip's stored basis units.
 
-The default format-3 host and built-in Mio tools keep the original
-pristine-timeline rules. Storyboard output remains 9:16. After an ambiguous
-response, retain the exact input and request ID for recovery. See the
+On format 4, Mio's `timeline.format.set` uses the same frame transaction and
+both revision checks on an existing timeline. The task records its reversible
+edit and checks dependent clips and cues before compensating it. The default
+format-3 host keeps the original pristine-timeline rules. Storyboard output
+remains 9:16. After an ambiguous response, retain the exact input and request
+ID for recovery. See the
 [format-3 recovery rules](TIMELINE-OUTPUT-FORMATS.md).
 
 ## Manual timeline subtitles
@@ -1842,7 +1875,7 @@ Exact retained ACK replay precedes media or current-revision admission, includin
 
 敏感操作通过已认证且通过Origin检查的 `POST /api/projects/<ID>/asset-media/trusted`，请求 `{operation,input}`。`asset.import.path` 仅由桌面真实文件选择/拖入和CLI显式目录确认调用，返回asset和confirmedDirectories；`asset.media.location.list`、outside.confirm/revoke不进入MCP或Mio的普通操作目录。用户动作header仅表达意图，不能替代认证、窗口/项目所有权或目录能力检查。
 
-公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP使用上述路径/上传导入和可选referenceRevisions；Mio的固定模型目录保留原上传输入和原generation.submit输入，不接受路径或网页确认版本字段。模型冻结schema可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
+公共目录由 `@mioon/contracts/public-operations` 的 publicOperationSchemas/publicOperationDescriptions 统一提供，客户端直接导出同一对象。HTTP/CLI/MCP 使用上述路径或上传导入和可选 `referenceRevisions`。Mio 的模型目录接受生成画幅来源 `aspectSource`，网页确认专用字段 `referenceRevisions` 仍由受信客户端提交。模型冻结 schema 可用 `node scripts/generate-agent-task-schemas.ts --check` 只读核对。
 
 普通Asset DTO不含reference或relativePath；sha256仅表示完整哈希，可以为null，fingerprint中的sampledSha256不能替代它。状态和位置是本机观测，分别获取，媒体URL存在不代表素材当前在线。付费网页确认绑定有序referenceRevisions（assetId、referenceRevision、完整sha256），派发前仍须完整复核字节。
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type {ProjectEntriesResponse} from '../packages/contracts/src/project-entry.ts';
 import {createProjectEntryIdentityOwner, readProjectEntryIdentity} from '../apps/web/src/project-entry-identity.ts';
 import {ProjectEntryDirectoryError} from '../apps/web/src/project-entry-directory-client.ts';
+import {createProjectEntryDirectoryController} from '../apps/web/src/project-entry-directory-state.ts';
 import {createWorkspacePreferences} from '../apps/web/src/workspace-preferences.ts';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
 
@@ -52,6 +53,51 @@ test('discover joins one flight, explicit refresh aborts older replies and retir
   requests[3].reply.resolve(snapshot()); await current;
   requests[2].reply.reject(new ProjectEntryDirectoryError('UNAUTHORIZED', 401)); assert.equal(await retired, null);
   await tick(); assert.equal(owner.getState().phase, 'ready'); assert.equal(owner.getVerifiedScope(), scope); owner.dispose();
+});
+
+test('a foreground identity read supersedes the passive poll and cannot borrow its earlier reply', async () => {
+  const requests: {signal: AbortSignal; reply: ReturnType<typeof Promise.withResolvers<unknown>>}[] = [];
+  const owner = createProjectEntryIdentityOwner({read: ({signal}) => {const reply = Promise.withResolvers<unknown>(); requests.push({signal, reply}); return reply.promise;}});
+  owner.activate();
+  const first = owner.discover();
+  requests[0]!.reply.resolve(snapshot());
+  assert.deepEqual(await first, snapshot());
+  const controller = new AbortController();
+  const polling = assert.rejects(readProjectEntryIdentity(owner, {background: true, signal: controller.signal}), {code: 'BACKEND_UNAVAILABLE'});
+  assert.equal(owner.getState().phase, 'ready');
+  const next = readProjectEntryIdentity(owner);
+  assert.equal(requests[1]!.signal.aborted, true);
+  assert.equal(requests.length, 3);
+  requests[1]!.reply.resolve(snapshot(id(2), otherScope));
+  await polling;
+  requests[2]!.reply.resolve(snapshot());
+  assert.deepEqual(await next, snapshot());
+  assert.equal(owner.getState().identityBlocked, false);
+  owner.dispose();
+});
+
+test('a home poll via the shared identity keeps prior cards through a timeout, then rejects an owner change', async () => {
+  let response: unknown = snapshot();
+  const owner = createProjectEntryIdentityOwner({read: async () => {
+    if (response instanceof Error) throw response;
+    return response;
+  }});
+  const directory = createProjectEntryDirectoryController({read: input => readProjectEntryIdentity(owner, input)});
+  owner.activate();
+  directory.activate();
+  assert.equal(await directory.refresh(), true);
+  const baseline = directory.getState().snapshot;
+  response = new ProjectEntryDirectoryError('TIMEOUT');
+  assert.equal(await directory.refresh({background: true}), false);
+  assert.equal(directory.getState().snapshot, baseline);
+  assert.equal(owner.getState().phase, 'ready');
+  response = snapshot(id(2));
+  assert.equal(await directory.refresh({background: true}), false);
+  assert.equal(owner.getState().identityBlocked, true);
+  assert.equal(directory.getState().phase, 'blocked');
+  assert.equal(directory.getState().snapshot, null);
+  directory.dispose();
+  owner.dispose();
 });
 
 test('network and auth failures remain unknown, preserve verified identity, and retry only the same service', async () => {
