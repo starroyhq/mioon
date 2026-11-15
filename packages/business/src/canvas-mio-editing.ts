@@ -36,6 +36,7 @@ export interface MioCanvasPreparation {
     readonly shotImpacts: {id: string; number: number | null; versions: number; clips: number; usedVersions: number}[];
     readonly versions: number;
     readonly clips: number;
+    readonly usedVersions: number;
   };
   readonly affected: number;
 }
@@ -175,7 +176,9 @@ function preparePlan(store: ProjectStore, input: MioCanvasEditInput, at: string,
   const affected = after.rows.length;
   if (affected) checkUndoSize({before: encodeCanvasPatch(before), after: encodeCanvasPatch(after)});
   const preparation: MioCanvasPreparation = {
-    input, targets, impact: {shots, shotImpacts, versions, clips}, affected,
+    input, targets,
+    impact: {shots, shotImpacts, versions, clips, usedVersions: shotImpacts.reduce((total, shot) => total + shot.usedVersions, 0)},
+    affected,
     proof: digest([store.projectId, operation, explicit ?? null, readProjectContentStamp(store.db), targets,
       impact?.digest ?? null, dependencyDigest, operation === 'layout' ? after.rows : after.rows.map(({kind, id}) => ({kind, id}))]),
   };

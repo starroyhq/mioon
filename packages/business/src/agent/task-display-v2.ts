@@ -21,7 +21,10 @@ const rectMaxHeight=Math.max(...TIMELINE_OUTPUT_PRESETS.map(({height})=>height))
 const displayCount=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
 function archiveImpactFields(value:Value|undefined):Projected {
   if(!value||!displayCount(value.versions)||!displayCount(value.clips))return {};
-  return {canvasVersionCount:{unit:'count',value:value.versions},canvasTimelineClipCount:{unit:'count',value:value.clips}};
+  const fields:Projected={canvasVersionCount:{unit:'count',value:value.versions},canvasTimelineClipCount:{unit:'count',value:value.clips}};
+  if(displayCount(value.usedVersions)&&value.usedVersions<=Math.min(value.versions,value.clips))
+    fields.canvasTimelineUsedVersionCount={unit:'count',value:value.usedVersions};
+  return fields;
 }
 
 function boundedCharacters(value:string,limit:number):string {

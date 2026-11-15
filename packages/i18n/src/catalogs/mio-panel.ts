@@ -754,6 +754,12 @@ export const mioPanelMessages = {
     "en": "Clips used on the timeline",
     "ja": "タイムラインで使用中のクリップ"
   },
+  "agent.display.field.canvasTimelineUsedVersionCount": {
+    "zh-Hans": "时间线中已使用的视频版本",
+    "zh-Hant": "時間軸中已使用的影片版本",
+    "en": "Video versions used on the timeline",
+    "ja": "タイムラインで使用中の動画バージョン"
+  },
   "agent.display.target.project": {
     "zh-Hans": "项目",
     "zh-Hant": "專案",

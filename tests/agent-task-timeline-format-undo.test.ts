@@ -287,27 +287,31 @@ for(const operation of ['layout','archive','restore'] as const)test(`format-4 Mi
  assert.deepEqual(f.cursor(),before);
 });
 
-for(const usedBy of ['version','timeline'] as const)test(`format-4 Mio archive requires approval in direct mode for a shot used by ${usedBy}`,async t=>{
+for(const usedBy of ['version','timeline','two clips of one version'] as const)test(`format-4 Mio archive requires approval in direct mode for a shot used by ${usedBy}`,async t=>{
  const f=await canvasMioFixture(t,'direct'),title='Shot with retained evidence',shotId=await f.shot(title);
  const {store,projectId,assetId}=f;
- const versions=usedBy==='version'?1:0,clips=usedBy==='timeline'?1:0;
- const otherShot=usedBy==='timeline'?await f.shot('Unused shot in the same selection'):undefined;
- if(usedBy==='version'){
-  store.put('versions',{id:randomUUID(),projectId,shotId,jobId:randomUUID(),assetId,sha256:'a'.repeat(64)});
- } else {
-  const timeline=await f.timeline('timeline.clip.add',{
-   expectedRevision:f.initialized.revision,requestId:randomUUID(),trackId:f.track.id,assetId,startFrame:0,durationFrames:90,
+ const usedVersions=Number(usedBy==='two clips of one version'),versions=Number(usedBy!=='timeline');
+ const clips=usedBy==='timeline'?1:usedVersions*2;
+ const otherShot=clips?await f.shot('Unused shot in the same selection'):undefined;
+ const versionId=randomUUID(),jobId=randomUUID();
+ let boundTimeline:typeof f.initialized|undefined;
+ if(clips){
+  let timeline=f.initialized;
+  for(let i=0;i<clips;i++)timeline=await f.timeline('timeline.clip.add',{
+   expectedRevision:timeline.revision,requestId:randomUUID(),trackId:f.track.id,assetId,startFrame:i*90,durationFrames:90,
   });
-  const bound={...timeline,clips:timeline.clips.map(clip=>({...clip,shotId}))};
-  assert.ok(isTimelineRecord(bound,{projectId}));
-  store.put('timelines',bound);
+  boundTimeline={...timeline,clips:timeline.clips.map(clip=>({...clip,shotId,...(usedVersions?{versionId,jobId}:{})}))};
+  assert.ok(isTimelineRecord(boundTimeline,{projectId}));
  }
+ if(versions)store.put('versions',{id:versionId,projectId,shotId,jobId,assetId,sha256:'a'.repeat(64)});
+ if(boundTimeline)store.put('timelines',boundTimeline);
  const ids=otherShot?[shotId,otherShot]:[shotId],targets=ids.map(id=>f.target('shot',id));
  const before=f.cursor(),original=ids.map(id=>f.archiveRow('shot',id));
  const preview=canvasEditingResponses['canvas.archive.preview'].parse(await f.rpc('canvas.archive.preview',{
   operation:'archive',targets:targets.map(({kind,id,expectedRevision})=>({kind,id,revision:expectedRevision})),
  }));
  assert.deepEqual([preview.versions,preview.clips,preview.blocked],[versions,clips,[]]);
+ assert.equal(preview.shotImpacts.find(item=>item.number===1)?.usedVersions,usedVersions);
  assert.ok(preview.confirmation);
  const run=await f.turn('archive',{targets:targets.map(({kind,id})=>({kind,id}))});
  const review=await run.wait('awaiting_approval'),step=run.step(review);
@@ -320,11 +324,12 @@ for(const usedBy of ['version','timeline'] as const)test(`format-4 Mio archive r
  assert.deepEqual(display.targets.map(({id})=>id),ids);
  for(const targetIndex of otherShot?[undefined,shotIndex]:[undefined]){
   const counts=display.fields.filter(field=>field.targetIndex===targetIndex
-   &&(field.property==='canvasVersionCount'||field.property==='canvasTimelineClipCount'));
+   &&['canvasVersionCount','canvasTimelineClipCount','canvasTimelineUsedVersionCount'].includes(field.property));
   const at=targetIndex===undefined?{}:{targetIndex};
   assert.deepEqual(counts,[
    {...at,property:'canvasVersionCount',unit:'count',after:versions},
    {...at,property:'canvasTimelineClipCount',unit:'count',after:clips},
+   {...at,property:'canvasTimelineUsedVersionCount',unit:'count',after:usedVersions},
   ],JSON.stringify(display));
  }
  assert.equal(review.changes.length,0);
@@ -336,8 +341,9 @@ for(const usedBy of ['version','timeline'] as const)test(`format-4 Mio archive r
  for(const id of ids)assert.equal(typeof f.archiveRow('shot',id).archivedAt,'string');
  assert.equal(completed.changes.length,1);
  assert.deepEqual(f.cursor(),before);
- if(usedBy==='version')assert.equal(store.list('versions',projectId).length,1);
- else assert.equal((await f.timeline()).clips[0]?.shotId,shotId);
+ assert.equal(store.list('versions',projectId).length,versions);
+ if(boundTimeline)assert.deepEqual(store.get('timelines',boundTimeline.id),boundTimeline);
+ if(usedBy==='timeline')assert.equal((await f.timeline()).clips[0]?.shotId,shotId);
 });
 
 test('format-4 Mio layout without a selection and ordinary archive execute under direct policy',async t=>{

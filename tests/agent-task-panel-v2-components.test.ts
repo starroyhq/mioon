@@ -400,6 +400,8 @@ test('canvas archive approval shows the selected shots and the impact before exa
       targets:[{kind:'shot',id:followShot,name:'#01 · Close-up'},{kind:'shot',id:followClip,name:'#02 · Wide shot'}],
       fields:[
         {targetIndex:0,property:'canvasVersionCount',unit:'count',after:2},
+        {targetIndex:0,property:'canvasTimelineClipCount',unit:'count',after:2},
+        {targetIndex:0,property:'canvasTimelineUsedVersionCount',unit:'count',after:1},
         {targetIndex:1,property:'canvasTimelineClipCount',unit:'count',after:3},
       ],
     }});
@@ -409,6 +411,8 @@ test('canvas archive approval shows the selected shots and the impact before exa
     assert.ok(text.includes(translate('en','agent.display.operation.canvas.archive')));
     assert.ok(text.includes(translate('en','agent.panel.canvasArchiveEffect')));
     assert.match(text,/#01 · Close-up · Generated video versions\s+2/u);
+    assert.match(text,/#01 · Close-up · Clips used on the timeline\s+2/u);
+    assert.match(text,/#01 · Close-up · Video versions used on the timeline\s+1/u);
     assert.match(text,/#02 · Wide shot · Clips used on the timeline\s+3/u);
     assert.doesNotMatch(text,/999|HIDDEN_MODEL_INPUT|Shot 03/u);
     assert.equal(nodes(card).filter(node=>node.type==='button').length,2);
