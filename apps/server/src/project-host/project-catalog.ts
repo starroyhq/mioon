@@ -14,14 +14,36 @@ import type {ProjectCatalogClient} from '../project-catalog-client.ts';
 // Stay within the 15-second native directory request budget, with time for
 // the server to send registration metadata when a volume does not respond.
 const catalogTimeoutMs = 10_000;
+// Leave libuv capacity for unrelated work even if moved registrations point
+// at different stalled volumes. The private-tree walk uses one more slot.
+const maxMetadataReads = 2;
+const metadataReadLimit = Symbol('project catalog metadata capacity');
+type SharedRead<T> = (signal: AbortSignal) => Promise<T>;
 
-function observeUntil<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const stop = () => reject(signal.reason);
-    signal.addEventListener('abort', stop, {once: true});
+function shareRead<T>(operation: Promise<T>, release?: () => void): SharedRead<T> {
+  type Outcome = {value: T} | {error: unknown};
+  const waiting = new Set<(outcome: Outcome) => void>();
+  let result: Outcome | undefined;
+  const finish = (outcome: Outcome) => {
+    result = outcome;
+    release?.();
+    for (const notify of waiting) notify(outcome);
+  };
+  void operation.then(value => finish({value}), error => finish({error}));
+  return signal => new Promise((resolve, reject) => {
+    const notify = (outcome: Outcome) => {
+      waiting.delete(notify);
+      signal.removeEventListener('abort', stop);
+      if ('value' in outcome) resolve(outcome.value);
+      else reject(outcome.error);
+    };
+    const stop = () => notify({error: signal.reason});
     if (signal.aborted) stop();
-    const detach = () => signal.removeEventListener('abort', stop);
-    void operation.then(value => {detach(); resolve(value);}, error => {detach(); reject(error);});
+    else if (result) notify(result);
+    else {
+      waiting.add(notify);
+      signal.addEventListener('abort', stop, {once: true});
+    }
   });
 }
 
@@ -50,7 +72,18 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
 }) {
   signal.addEventListener('abort', () => client.close(), {once: true});
   const formats = new Map<string, {generation: string; newer: boolean}>();
-  let snapshot: ReturnType<ApplicationFileGuard['catalogSnapshot']> | undefined;
+  const reads = new Map<string, SharedRead<BigIntStats | undefined>>();
+  let snapshot: SharedRead<Awaited<ReturnType<ApplicationFileGuard['catalogSnapshot']>>> | undefined;
+  const readMetadata = (file: string, scanSignal: AbortSignal): Promise<BigIntStats | undefined> => {
+    scanSignal.throwIfAborted();
+    let read = reads.get(file);
+    if (!read) {
+      if (reads.size >= maxMetadataReads) throw metadataReadLimit;
+      read = shareRead(metadata(file), () => {reads.delete(file);});
+      reads.set(file, read);
+    }
+    return read(scanSignal);
+  };
   return async (projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean,
     mayInspectHeader: (file: string) => boolean): Promise<ReadonlyMap<string, CatalogRecovery>> => {
     checkpoint();
@@ -74,16 +107,16 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
   async function inspect(projects: readonly RecentProject[], isCurrent: (project: RecentProject) => boolean,
     mayInspectHeader: (file: string) => boolean, scanSignal: AbortSignal, results: Map<string, CatalogRecovery>,
     inspected: Map<string, CatalogRecovery>): Promise<void> {
-    // Background moved-file searches can finish together. They use the same
-    // pending refresh without retaining a completed snapshot across reads.
-    if (guard) snapshot ??= observeUntil(guard.catalogSnapshot(scanSignal), scanSignal).finally(() => {snapshot = undefined;});
-    const assertAllowed = await snapshot;
+    // Retain the underlying walk until its filesystem operation settles.
+    // Timed-out callers detach; they cannot multiply blocked libuv jobs.
+    if (guard) snapshot ??= shareRead(guard.catalogSnapshot(scanSignal), () => {snapshot = undefined;});
+    const assertAllowed = await snapshot?.(scanSignal);
     const pending: {project: RecentProject; info: BigIntStats; journal?: BigIntStats; input: ProjectCatalogScanInput}[] = [];
     for (const project of projects) {
       scanSignal.throwIfAborted();
       const file = project.projectFile;
       try {
-        const info = await observeUntil(metadata(file), scanSignal);
+        const info = await readMetadata(file, scanSignal);
         scanSignal.throwIfAborted();
         assertAllowed?.(file, info);
         if (!info) {
@@ -101,7 +134,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
           results.set(project.projectId, owner);
           continue;
         }
-        const journal = await observeUntil(metadata(file + '-journal'), scanSignal);
+        const journal = await readMetadata(file + '-journal', scanSignal);
         scanSignal.throwIfAborted();
         assertAllowed?.(file + '-journal', journal);
         const generation = catalogFileGeneration(info);
@@ -114,6 +147,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
         }});
       } catch (error) {
         scanSignal.throwIfAborted();
+        if (error === metadataReadLimit) throw error;
         formats.delete(file);
         results.set(project.projectId, {error});
       }
@@ -136,7 +170,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
     });
     if (current.length === 0) return;
     checkpoint();
-    const scanned = await observeUntil(client.scan(current.map(item => item.input), scanSignal), scanSignal);
+    const scanned = await shareRead(client.scan(current.map(item => item.input), scanSignal))(scanSignal);
     if (scanned.length !== current.length) throw new Error('Project catalog scanner returned an incomplete batch');
     for (const [index, {project, input}] of current.entries()) {
       const observed = scanned[index]!;
@@ -146,7 +180,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
         continue;
       }
       try {
-        const info = await observeUntil(metadata(input.file), scanSignal);
+        const info = await readMetadata(input.file, scanSignal);
         scanSignal.throwIfAborted();
         assertAllowed?.(input.file, info);
         const generation = observed.generation ?? input.generation;
@@ -161,7 +195,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
         }
         let result = observed.recovery;
         if (result.state === 'clean') {
-          const journal = await observeUntil(metadata(input.file + '-journal'), scanSignal);
+          const journal = await readMetadata(input.file + '-journal', scanSignal);
           scanSignal.throwIfAborted();
           assertAllowed?.(input.file, info);
           assertAllowed?.(input.file + '-journal', journal);
@@ -182,6 +216,7 @@ export function createProjectCatalog({client = createNodeProjectCatalogClient(),
         inspected.set(project.projectId, {result});
       } catch (error) {
         scanSignal.throwIfAborted();
+        if (error === metadataReadLimit) throw error;
         formats.delete(input.file);
         results.set(project.projectId, {error});
       }

@@ -147,7 +147,7 @@ test('a failed initial catalog transfer retires the helper while the backend sta
   assert.equal(supervisor.child, null);
 });
 
-test('catalog crashes and abort retirements replace only the exact helper with bounded backoff', async t => {
+test('catalog crashes and abort retirements replace only the exact helper and retry after cooldown', async t => {
   t.mock.timers.enable({apis: ['setTimeout']});
   const backend = fakeChild(), catalogs: FakeChild[] = [];
   const supervisor = new BackendSupervisor({
@@ -207,11 +207,17 @@ test('catalog crashes and abort retirements replace only the exact helper with b
     const fourth = waitForCatalog(1000, 4);
     fourth.emit('message', 'project-catalog-ready');
     closeCatalog(fourth);
-    t.mock.timers.tick(60000);
-    assert.equal(catalogs.length, 4);
+    const fifth = waitForCatalog(5 * 60_000, 5);
+    fifth.emit('message', 'project-catalog-ready');
+    closeCatalog(fifth);
+    const sixth = waitForCatalog(5 * 60_000, 6);
+    sixth.emit('message', 'project-catalog-ready');
+    closeCatalog(sixth);
     assert.equal(supervisor.state, 'running');
-    assert.deepEqual(backend.messages.filter(message => message.type === 'project-catalog:attach').map(message => message.generation), [1, 2, 3, 4]);
+    assert.deepEqual(backend.messages.filter(message => message.type === 'project-catalog:attach').map(message => message.generation), [1, 2, 3, 4, 5, 6]);
   } finally {await supervisor.stop();}
+  t.mock.timers.tick(5 * 60_000);
+  assert.equal(catalogs.length, 6, 'stopping clears the scheduled cooldown retry');
 });
 
 test('backend catalog client fences dead and stale ports and resumes through the new port', async () => {

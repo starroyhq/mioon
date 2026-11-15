@@ -115,6 +115,7 @@ export const BACKEND_STOP_BUDGET = Object.freeze({ gracefulMs: 10000, terminateM
 const CATALOG_DISCONNECT_GRACE_MS = 100;
 const CATALOG_STARTUP_MS = 5000;
 const CATALOG_RESTART_DELAYS_MS = [250, 500, 1000];
+const CATALOG_RESTART_COOLDOWN_MS = 5 * 60_000;
 const CATALOG_STABLE_MS = 60000;
 
 interface OwnedCatalog {
@@ -345,11 +346,17 @@ export class BackendSupervisor extends EventEmitter {
       const ownsBackend = (): boolean => this.child === child && this.exitedChild !== child &&
         ['starting', 'running'].includes(this.state) && this.termination === null;
       const scheduleCatalog = (): void => {
-        if (!ownsBackend() || catalogRestartTimer || catalogRestarts >= CATALOG_RESTART_DELAYS_MS.length) return;
+        if (!ownsBackend() || catalogRestartTimer) return;
+        // Keep one slow recovery attempt available after the quick retries.
+        // A helper that fails again must wait until the next cooldown.
+        const delay = catalogRestarts < CATALOG_RESTART_DELAYS_MS.length
+          ? CATALOG_RESTART_DELAYS_MS[catalogRestarts++]!
+          : CATALOG_RESTART_COOLDOWN_MS;
         catalogRestartTimer = setTimeout(() => {
           catalogRestartTimer = undefined;
           startCatalog();
-        }, CATALOG_RESTART_DELAYS_MS[catalogRestarts++]!);
+        }, delay);
+        catalogRestartTimer.unref();
       };
       const retireCatalog = (owned: OwnedCatalog): void => {
         if (catalog !== owned || owned.retiring) return;

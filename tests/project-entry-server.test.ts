@@ -451,20 +451,22 @@ test('inconclusive inspection preserves a known lock or shows the project as bus
   assert.deepEqual(states(await f.catalog()), ['available', 'available']);
 });
 
-test('a stalled metadata read releases the directory flight and ignores its late result', {timeout: 10_000}, async t => {
+test('ten timed-out catalogs share a stalled stat without blocking other filesystem work', {timeout: 15_000}, async t => {
   const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), resumed = Promise.withResolvers<void>();
-  let scans = 0, stall = true;
-  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 500, projectCatalogClient: {
+  let scans = 0, reads = 0, stall = true;
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
     async scan(inputs) {scans++; return inputs.map(scanProjectCatalogFile);},
     close() {},
   }});
   const original = fs.promises.lstat;
   t.mock.method(fs.promises, 'lstat', async (file: Parameters<typeof original>[0], options: Parameters<typeof original>[1]) => {
     if (stall && file === f.b.projectFile) {
-      stall = false;
+      reads++;
       entered.resolve();
       await resume.promise;
+      const result = await original(file, options);
       resumed.resolve();
+      return result;
     }
     return original(file, options);
   });
@@ -474,13 +476,58 @@ test('a stalled metadata read releases the directory flight and ignores its late
   await Promise.race([entered.promise, listing.then(() => assert.fail('Catalog returned before reading metadata'))]);
   const degraded = await listing;
   assert.equal(degraded.registered.length, 2);
+  for (let count = 1; count < 10; count++) {
+    const [data, mediaStat] = await Promise.all([f.catalog(), fs.promises.stat(f.a.projectFile)]);
+    assert.deepEqual(data, degraded);
+    assert.ok(mediaStat.isFile());
+    assert.equal(reads, 1, 'timing out must not queue another stat for the stalled path');
+  }
   assert.equal(scans, 0);
-  const fresh = await f.catalog();
-  assert.deepEqual(fresh.registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'invalid', reason: 'format-newer'});
+  stall = false;
   resume.resolve();
   await resumed.promise;
+  const fresh = await f.catalog();
+  assert.deepEqual(fresh.registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'invalid', reason: 'format-newer'});
   assert.deepEqual(await f.catalog(), fresh);
   assert.equal(scans, 2);
+});
+
+test('a stalled private-tree read also survives caller timeouts as a single operation', {timeout: 10_000}, async t => {
+  const f = await fixture(t, 'production', {candidateB: true, projectCatalogTimeoutMsForTest: 250, projectCatalogClient: {
+    async scan(inputs) {return inputs.map(scanProjectCatalogFile);},
+    close() {},
+  }});
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), resumed = Promise.withResolvers<void>();
+  const cache = path.join(f.dataDir, 'cache');
+  let enumerations = 0, stalled = true;
+  const readdir = fs.promises.readdir;
+  t.mock.method(fs.promises, 'readdir', async (file: Parameters<typeof readdir>[0], options: Parameters<typeof readdir>[1]) => {
+    if (stalled && file === cache) {
+      enumerations++;
+      entered.resolve();
+      await resume.promise;
+      const result = await readdir(file, options);
+      resumed.resolve();
+      return result;
+    }
+    return readdir(file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {resume.resolve(); restoreFsMocks(t);});
+  const first = f.catalog();
+  await Promise.race([entered.promise, first.then(() => assert.fail('Catalog returned before reading the private tree'))]);
+  const degraded = await first;
+  assert.equal(degraded.registered.length, 2);
+  assert.deepEqual(await f.catalog(), degraded);
+  assert.deepEqual(await f.catalog(), degraded);
+  assert.equal(enumerations, 1);
+  stalled = false;
+  resume.resolve();
+  await resumed.promise;
+  // A caller may still join the canceled walk before its settled result
+  // clears the slot. A subsequent attempt must get a fresh private snapshot.
+  await f.catalog();
+  assert.deepEqual((await f.catalog()).registered.find(item => item.project.projectId === f.b.projectId)?.availability, {state: 'invalid', reason: 'format-newer'});
 });
 
 test('a held database at a journal alias leaves the project checking and preserves the holder', async t => {
