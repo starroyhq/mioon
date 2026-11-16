@@ -51,7 +51,7 @@ export function createAgentChangeMarks({ afterLayout = afterTwoFrames, ...option
   };
 }
 
-/** Bring a saved clip or cue into its own scroll viewport without seeking or selecting it. */
+/** Bring a saved track, clip or cue into view without seeking or selecting it. */
 export function revealMioFollowTimeline(target: MioFollowTarget, behavior: ScrollBehavior, document: Document = globalThis.document): boolean {
   const element = markTargetElements(target, document)[0];
   const viewport = element?.closest<HTMLElement>('[data-testid="timeline-scroll"]');
@@ -65,7 +65,7 @@ export function revealMioFollowTimeline(target: MioFollowTarget, behavior: Scrol
   const top = Math.max(bounds.top, ruler?.bottom ?? bounds.top), bottom = bounds.top + viewport.clientHeight * scale;
   if (left >= right || top >= bottom) return false;
   let x = viewport.scrollLeft, y = viewport.scrollTop;
-  if (clip.left < left || clip.right > right) x += (clip.left + clip.width / 2 - (left + right) / 2) / scale;
+  if (target.kind !== 'timeline_track' && (clip.left < left || clip.right > right)) x += (clip.left + clip.width / 2 - (left + right) / 2) / scale;
   if (clip.top < top || clip.bottom > bottom) y += (clip.top + clip.height / 2 - (top + bottom) / 2) / scale;
   if (x !== viewport.scrollLeft || y !== viewport.scrollTop) viewport.scrollTo({ left: x, top: y, behavior });
   return true;

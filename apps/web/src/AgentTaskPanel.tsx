@@ -92,8 +92,8 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const preferences = useUiPreferences();
   const [mioFocus, setMioFocus] = useState<MioFollowFocus | null>(null);
   const [savingFollow, setSavingFollow] = useState(false), [followError, setFollowError] = useState(false), followFlight = useRef(false);
-  const mio = useRef({ enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber });
-  mio.current = { enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber };
+  const mio = useRef({ enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber, lookup: targetName, exists: mioFollowTargetExists });
+  mio.current = { enabled: preferences.preferences.mioFollow, onFocus: onMioFollowFocus, shotNumber, lookup: targetName, exists: mioFollowTargetExists };
   const observeMio = useRef<(next: AgentTaskSessionState) => void>(() => {});
   const admission=useRef(isAdmissionAllowed);admission.current=isAdmissionAllowed;
   const canInteract=()=>{try{return admission.current?.()!==false;}catch{return false;}};
@@ -132,8 +132,9 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     setMioFocus(null);
     const observeFollow = (next: AgentTaskSessionState) => {
       if (!mio.current.onFocus) return;
-      const enabled = mio.current.enabled && visibility.current && canInteract() && !historyVisible.current && document.visibilityState !== 'hidden' && next.phase !== 'loading' && next.phase !== 'refreshing';
-      const focus = mioTracker.observe(next.snapshot, { locale: language.current, shotNumber: mio.current.shotNumber }, enabled,
+      const { enabled: shouldFollow, lookup, shotNumber, exists } = mio.current;
+      const enabled = shouldFollow && visibility.current && canInteract() && !historyVisible.current && next.phase !== 'loading' && next.phase !== 'refreshing';
+      const focus = mioTracker.observe(next.snapshot, { locale: language.current, lookup, shotNumber, exists }, enabled,
         next.pending?.action === 'send' ? next.pending.requestId : undefined);
       if (focus !== undefined) { setMioFocus(focus); mio.current.onFocus(projectId, focus); }
     };
