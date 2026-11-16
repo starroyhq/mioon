@@ -30,13 +30,30 @@ const examples = path.join(web, 'project-examples');
 verifyProjectExampleResources(examples);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
+const desktopModuleManifests = new Set<string>();
 for (const name of ['main', 'backend', 'project-catalog']) {
-  await build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
-    bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
+  const result = await build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
+    absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron', 'original-fs'], metafile: name === 'main',
     plugins:[localRequireBundlePlugin(root)],
     define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
     banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },
     sourcemap: false, legalComments: 'eof', logLevel: 'info' });
+  if (name === 'main') {
+    const emitted = Object.values(result.metafile!.outputs).flatMap(bundle => Object.entries(bundle.inputs)
+      .filter(([, input]) => input.bytesInOutput > 0).map(([file]) => file));
+    if (!emitted.some(file => /(?:^|\/)node_modules\/electron-updater\/out\/main\.js$/u.test(file))) {
+      throw new Error('The desktop main bundle does not include electron-updater.');
+    }
+    // Include installed optional peer dependencies when the bundler emitted
+    // them (for example debug's supports-color), as well as declared packages.
+    for (const file of emitted) {
+      const parts = file.split('/');
+      const index = parts.lastIndexOf('node_modules');
+      if (index < 0) continue;
+      const length = parts[index + 1]?.startsWith('@') ? 2 : 1;
+      desktopModuleManifests.add(path.resolve(root, ...parts.slice(0, index + 1 + length), 'package.json'));
+    }
+  }
 }
 // A sandboxed preload has only Electron's fixed bridge API, never Node imports.
 await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path.join(output, 'preload.cjs'),
@@ -108,6 +125,8 @@ async function collectLicenses(packageFile: string): Promise<void> {
 }
 await collectLicenses(path.join(root, 'apps/web/package.json'));
 await collectLicenses(path.join(root, 'apps/server/package.json'));
+await collectLicenses(path.join(desktop, 'package.json'));
+for (const manifest of desktopModuleManifests) await collectLicenses(manifest);
 await cp(path.join(root, 'packages/ui/src/LICENSE.shadcn.md'), path.join(output, 'licenses/shadcn-ui-LICENSE.md'));
 notices.push('- Noto Sans CJK SC 2.004, extracted face: SIL OFL 1.1 (external subtitles/OFL-1.1.txt, SOURCE-COPYRIGHT.txt and README.md).');
 notices.push('- shadcn/ui checked-in components: MIT (shadcn-ui-LICENSE.md)');

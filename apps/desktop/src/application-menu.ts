@@ -1,15 +1,17 @@
 import type {MenuItemConstructorOptions} from 'electron';
+import {desktopUpdateMessages} from '../../../packages/i18n/src/catalogs/desktop-update.ts';
 import {nativeText as nt} from './app-language-text.ts';
 import {MENU_COMMAND_ACCELERATORS} from './menu-command-protocol.ts';
 import type {MenuCommandId, MenuCommandState} from './menu-command-protocol.ts';
 
-export type ApplicationMenuAction = 'new-project' | 'open-project' | 'settings' | 'shortcuts' | 'show' | 'hide' |
+export type ApplicationMenuAction = 'new-project' | 'open-project' | 'settings' | 'shortcuts' | 'show' | 'hide' | 'check-update' |
   'close-window' | 'full-screen' | 'reload' | 'restart' | 'export-diagnostics' | 'quit';
 export interface ApplicationMenuState {
   readonly canProject: boolean; readonly canSettings: boolean; readonly canShow: boolean; readonly canHide: boolean;
   readonly canFocusProjects: boolean;
   readonly canClose: boolean; readonly canResize: boolean; readonly canReload: boolean; readonly canRestart: boolean;
   readonly canExportDiagnostics?: boolean;
+  readonly canCheckUpdates?: boolean;
   readonly canEditText: boolean; readonly canCommand: boolean;
   readonly business: MenuCommandState | null;
   readonly windows: readonly {readonly id: string; readonly label: string}[];
@@ -26,6 +28,7 @@ function allowed(action: ApplicationMenuAction, state: ApplicationMenuState): bo
   if (action === 'new-project' || action === 'open-project') return state.canProject;
   if (action === 'settings' || action === 'shortcuts') return state.canSettings;
   if (action === 'export-diagnostics') return state.canExportDiagnostics === true;
+  if (action === 'check-update') return state.canCheckUpdates === true;
   if (action === 'show') return state.canShow;
   if (action === 'hide') return state.canHide;
   if (action === 'close-window') return state.canClose;
@@ -61,7 +64,7 @@ export function applicationMenuTemplate(options: ApplicationMenuOptions): MenuIt
   const separator: MenuItemConstructorOptions = {type: 'separator'};
   const menu: MenuItemConstructorOptions[] = [];
   if (mac) menu.push({id: 'menu-app', label: options.productName, submenu: [
-    {role: 'about', label: nt('native.about')}, separator,
+    {role: 'about', label: nt('native.about')}, item('check-update', desktopUpdateMessages['desktopUpdate.checkMenu']['zh-Hans']), separator,
     item('settings', nt('native.traySettings'), 'CmdOrCtrl+,'), separator,
     {role: 'services', label: nt('native.services')}, separator,
     {role: 'hide', label: nt('native.hide')}, {role: 'hideOthers', label: nt('native.hideOthers')},

@@ -5,6 +5,7 @@ import LauncherRoot from './LauncherRoot.tsx';
 import SettingsRoot from './SettingsRoot.tsx';
 import NativeEditorRoot from './NativeEditorRoot.tsx';
 import NativeSettingsBackdrop from './NativeSettingsBackdrop.tsx';
+import {DesktopUpdateLauncherVersion, DesktopUpdateRoot} from './DesktopUpdate.tsx';
 import type { NativeProjectEntryActions } from './native-project-entry.ts';
 import type { LauncherSettingsProps } from './LauncherRoot.tsx';
 import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
@@ -50,9 +51,12 @@ export default function DesktopRoot({ rpc, contractChecks, renderWeb, renderEdit
   if (host.kind === 'failed') return <main className="boot-page" role="alert"><h1>{t('shell.windowUnconfirmed')}</h1><p>{t('shell.keepWindow')}</p></main>;
   if (host.kind === 'pending') return <main className="boot-page" role="status">{t('shell.checkingWindow')}</main>;
   if (host.context.role === 'settings') return <SettingsRoot key={host.context.contextId} context={host.context} bridge={host.bridge} contractChecks={contractChecks} renderSettings={renderSettings} />;
-  return <NativeSettingsBackdrop key={host.context.contextId} blocked={host.context.settingsModalOpen === true}>
-    {host.context.role === 'launcher'
-      ? <LauncherRoot context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} />
-      : <NativeEditorRoot context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} renderEditor={renderEditor} />}
+  const blocked = host.context.settingsModalOpen === true;
+  return <NativeSettingsBackdrop key={host.context.contextId} blocked={blocked}>
+    <DesktopUpdateRoot blocked={blocked || host.context.quitting === true || host.context.leaseRevoked === true}>
+      {host.context.role === 'launcher'
+        ? <LauncherRoot context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} VersionDisplay={DesktopUpdateLauncherVersion} />
+        : <NativeEditorRoot context={host.context} bridge={host.bridge} rpc={rpc} contractChecks={contractChecks} renderEditor={renderEditor} />}
+    </DesktopUpdateRoot>
   </NativeSettingsBackdrop>;
 }

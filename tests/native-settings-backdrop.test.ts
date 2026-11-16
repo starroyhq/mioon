@@ -407,11 +407,14 @@ test('DesktopRoot applies only its verified modal flag without replacing its edi
     './i18n/I18nProvider.tsx': i18nTestModule(), './desktop-window-client.ts': { readDesktopWindowBridge },
     './LauncherRoot.tsx': { __esModule: true, default: 'launcher' }, './SettingsRoot.tsx': { __esModule: true, default: 'settings' },
     './NativeEditorRoot.tsx': { __esModule: true, default: 'editor' }, './NativeSettingsBackdrop.tsx': { __esModule: true, default: 'backdrop' },
+    './DesktopUpdate.tsx': { DesktopUpdateRoot: 'updates', DesktopUpdateLauncherVersion: 'version' },
   }, { window: { __mioonProjectWindow: native } });
   const render = () => { h.begin(); const tree = Component({ rpc() {}, contractChecks: {}, renderWeb() {}, renderEditor() {}, renderSettings() {} }); h.flush(); return tree; };
   render(); receive(context()); const before = render(); assert.equal(before.type, 'backdrop'); assert.equal(before.props.blocked, false);
   receive(context({ settingsModalOpen: true })); const blocked = render(); assert.equal(blocked.key, before.key); assert.equal(blocked.props.blocked, true);
-  assert.equal((blocked.props.children as Node).type, 'editor'); assert.equal((blocked.props.children as Node).key, (before.props.children as Node).key);
+  const editor = (tree: Node) => (tree.props.children as Node).props.children as Node;
+  assert.equal(editor(blocked).type, 'editor'); assert.equal(editor(blocked).key, editor(before).key);
+  assert.equal((blocked.props.children as Node).props.blocked, true);
   for (const foreign of [{ contextId: id(8) }, { windowId: id(8) }, { backendId: id(8) }]) { receive(context({ ...foreign, settingsModalOpen: false })); assert.equal(render().props.blocked, true); }
   receive({ ...context(), settingsModalOpen: 'false' }); assert.equal(render().props.blocked, true);
   initial.resolve(context()); await new Promise(resolve => setImmediate(resolve)); assert.equal(render().props.blocked, true, 'late initial read cannot undo a newer modal context');

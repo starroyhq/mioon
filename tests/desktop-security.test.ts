@@ -215,13 +215,20 @@ test('package configuration disables runtime injection and cannot publish by def
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.ok(main.includes('app.enableSandbox()'));
   assert.ok(!main.includes('no-sandbox'));
-  // B2 permits one main-only fixed Settings helper, never a renderer URL.
   const fixedSettingsFactory = 'createProjectLocationHelp({openExternal:url=>shell.openExternal(url),showItemInFolder:file=>shell.showItemInFolder(file)})';
   assert.equal(main.split(fixedSettingsFactory).length - 1, 1);
-  assert.ok(!main.replace(fixedSettingsFactory, '').includes('shell.openExternal'));
+  const links = main.match(/^  installWindowPolicy\(window, context\.ready\.url, [^\n]+, url => \{[\s\S]*?^  \}\);$/m)?.[0];
+  assert.ok(links);
+  assert.match(links, /updateDocument\(window\)\?\.isCurrent\(\) && isDesktopUpdateExternalUrl\(url\)/);
+  assert.equal(links.split('shell.openExternal').length - 1, 1);
+  assert.ok(!main.replace(fixedSettingsFactory, '').replace(links, '').includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+  const updateHandler = main.match(/^if \(typeof DESKTOP_UPDATE_CHANNEL[^\n]+[\s\S]*?^\}\);$/m)?.[0];
+  assert.ok(updateHandler);
+  assert.match(updateHandler, /event\.senderFrame === window\.webContents\.mainFrame \? updateDocument\(window\) : null/);
+  assert.match(updateHandler, /args\.length === 1 && updateHost \? updateHost\.dispatch\(document, args\[0\]\)/);
   const clipboardHandler = main.match(/^ipcMain\.handle\(CANVAS_CLIPBOARD_CHANNEL,[\s\S]*?^\}\);$/m)?.[0];
   assert.ok(clipboardHandler);
   assert.match(clipboardHandler, /if \(args\.length\) return null/);
