@@ -175,6 +175,8 @@ export default function Timeline({ onRegisterMenuRemoval, onMenuStateChange, loc
   useEffect(() => { if (busy || collapsed || !visible) clearDrag(); }, [busy, collapsed, visible]);
   const viewport = useRef<HTMLDivElement | null>(null);
   const viewportFrame = useRef<HTMLDivElement | null>(null);
+  const savedScroll = useRef(currentView);
+  savedScroll.current = currentView;
   const [viewportWidth, setViewportWidth] = useState(0);
   const [availableViewportHeight, setAvailableViewportHeight] = useState(0);
   const [horizontalScrollbarHeight, setHorizontalScrollbarHeight] = useState(0);
@@ -211,11 +213,13 @@ export default function Timeline({ onRegisterMenuRemoval, onMenuStateChange, loc
   const width = Math.max(780, viewportWidth - TIMELINE_TRACK_HEADER_PX, contentFrames * pxFrame);
   useLayoutEffect(() => {
     const element = viewport.current;
-    if (!element || collapsed || !visible) return;
-    // Workspace switches remount the timeline; restore only session view state.
-    element.scrollLeft = Math.max(0, Number(currentView.scrollLeft) || 0);
-    element.scrollTop = Math.max(0, Number(currentView.scrollTop) || 0);
-  }, [currentView.scrollLeft, currentView.scrollTop, collapsed, visible, width, compactTracks]);
+    if (!element || !bodyActive) return;
+    // Restore on entry. Scroll events save the live position, and writing it
+    // back during each frame interrupts the browser's smooth animation.
+    const { scrollLeft, scrollTop } = savedScroll.current;
+    element.scrollLeft = Math.max(0, Number(scrollLeft) || 0);
+    element.scrollTop = Math.max(0, Number(scrollTop) || 0);
+  }, [bodyActive, timeline?.projectId, timeline?.id]);
   useLayoutEffect(()=>{if(compactTracks&&bodyActive&&viewport.current)viewport.current.scrollTop=0;},[compactTracks,timeline?.id,bodyActive]);
   const videoTracks = [...(timeline?.tracks || [])].filter(t => t.kind === 'video').sort((a, b) => b.orderIndex - a.orderIndex);
   const tracks = [...videoTracks, ...(timeline?.tracks || []).filter(t => t.kind === 'audio').sort((a, b) => a.orderIndex - b.orderIndex)];

@@ -78,6 +78,57 @@ test('project retirement and unmount fence old toolbar portals; expansion retain
  next.toolbar.onSeek(2);assert.deepEqual(h.calls,[['newProjectSeek',2]]);h.dispose();next.toolbar.onCollapse();next.toolbar.onSeek(3);assert.equal(h.calls.length,1);
 });
 
+test('timeline saves native smooth scroll offsets without writing them back during the animation', (t) => {
+  const h = harness();
+  t.after(() => h.dispose());
+  let viewState = { pixelsPerSecond: 90, scrollLeft: 0, scrollTop: 30, snappingEnabled: true };
+  let left = 0, top = 0;
+  let destination: number | null = null;
+  const writes: Array<[string, number]> = [];
+  const element = {
+    get scrollLeft() { return left; },
+    set scrollLeft(value: number) { writes.push(['left', value]); destination = null; left = value; },
+    get scrollTop() { return top; },
+    set scrollTop(value: number) { writes.push(['top', value]); destination = null; top = value; },
+    scrollTo({ left, behavior }: { left: number; behavior: 'smooth' }) {
+      assert.equal(behavior, 'smooth');
+      destination = left;
+    },
+  };
+  // A DOM setter aborts the pending native scroll, even if it sets the current offset.
+  function advance(next: number) {
+    if (destination === null) return;
+    left = Math.min(next, destination);
+    if (left === destination) destination = null;
+  }
+  const render = (visible = true) => h.render({ visible, viewState,
+    onViewStateChange(patch: Partial<typeof viewState>) { viewState = { ...viewState, ...patch }; },
+  }).all.find(node => node.props['data-testid'] === 'timeline-scroll')!.props as CollapsedProps & {
+    onScroll(event: { currentTarget: typeof element }): void;
+  };
+
+  render(false).ref.current = element;
+  let scroller = render();
+  assert.equal(top, 30, 'showing the timeline restores the saved vertical offset');
+  writes.length = 0;
+  element.scrollTo({ left: 810, behavior: 'smooth' });
+
+  advance(10);
+  scroller.onScroll({ currentTarget: element });
+  assert.equal(viewState.scrollLeft, 10);
+  advance(38);
+  scroller = render();
+  assert.equal(left, 38, 'React must not write an earlier intermediate offset back to the browser');
+
+  advance(810);
+  scroller.onScroll({ currentTarget: element });
+  render();
+  assert.equal(left, 810);
+  assert.equal(viewState.scrollLeft, 810, 'the final browser offset is saved for reopening');
+  assert.equal(viewState.scrollTop, 30);
+  assert.deepEqual(writes, [], 'the live viewport owns both axes of the scroll');
+});
+
 test('the current expanded body still previews and commits an actual drag to the displayed frame',async t=>{
  const prior=Object.getOwnPropertyDescriptor(globalThis,'getComputedStyle');Object.defineProperty(globalThis,'getComputedStyle',{configurable:true,value:(element: { offsetWidth: unknown; })=>({width:`${element.offsetWidth}px`,boxSizing:'border-box',getPropertyValue:()=> '0'})});t.after(()=>{if(prior)Object.defineProperty(globalThis,'getComputedStyle',prior);else delete (globalThis as {getComputedStyle?: unknown}).getComputedStyle;});
  const h=harness(),view=h.render(),payload=new Map(),transfer={types:['application/x-workbench-clip'],setData:(key?: unknown,value?: unknown)=>payload.set(key,value),getData:(key?: unknown)=>payload.get(key)||''};
