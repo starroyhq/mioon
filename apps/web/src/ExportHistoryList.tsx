@@ -79,7 +79,6 @@ export default function ExportHistoryList({ orderedExports, projectName, project
       : <tr><td colSpan={6}><div className="small-empty">
           <Icon name="download" size={29} />
           <h4>{t(orderedExports.length?'redesign.export.historyNoMatches':'export.history.empty')}</h4>
-          <p>{t('export.history.emptyHelp')}</p>
         </div></td></tr>}
     </tbody></table></div><footer className="export-history-footer"><p>{t('redesign.export.historyRetained')}</p>{onClose&&<Button variant="ghost" className="button" onClick={onClose}>{t('redesign.export.close')}</Button>}</footer>
   </div>;

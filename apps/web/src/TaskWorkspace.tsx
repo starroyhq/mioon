@@ -34,13 +34,12 @@ export interface TaskWorkspaceProps {
 /** Inline presentation only. App owns the shared dock tabs and collapse action;
  * task storage details and existing cards remain in this one scroll body. */
 export default function TaskWorkspace({ activeCount, children }: TaskWorkspaceProps) {
-  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { t } = useI18n();
   return <section className="task-workspace" data-testid="task-workspace" aria-labelledby="task-workspace-heading">
     <header className="task-workspace-heading">
       <h2 id="task-workspace-heading">{t('tasks.workspace.heading')}</h2>
-      <p role="status">{activeCount ? t('tasks.workspace.activeTasks', { count: activeCount }) : t('tasks.workspace.traceableSubmissions')}</p>
+      {activeCount > 0 && <p role="status">{t('tasks.workspace.activeTasks', { count: activeCount })}</p>}
     </header>
     <div className="task-workspace-body" data-testid="task-workspace-body" role="region" aria-label={t('tasks.workspace.recordsAria')} tabIndex={0}>{children}</div>
-    <footer className="task-workspace-note">{t('tasks.workspace.durableState')}</footer>
   </section>;
 }

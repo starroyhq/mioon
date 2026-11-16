@@ -91,10 +91,10 @@ export const localRecordsUiMessages = {
     "ja": "「{name}」のローカル記録を削除しますか？"
   },
   "localRecords.confirmHelp": {
-    "zh-Hans": "会删掉这个项目在这台电脑上的版本历史、自动备份、Mio 记录和后台任务记录，共 {size}。项目文件本身不受影响；以后再找到项目文件，它会作为没有版本历史的项目打开。这一步不能撤销。",
-    "zh-Hant": "會刪掉這個專案在這台電腦上的版本歷史、自動備份、Mio 記錄和背景工作記錄，共 {size}。專案檔案本身不受影響；以後再找到專案檔案，它會作為沒有版本歷史的專案開啟。這一步無法復原。",
-    "en": "This deletes {size} of version history, automatic backups, Mio records and background task records for this project on this computer. The project file is unaffected. If found later, it opens without version history. This cannot be undone.",
-    "ja": "このコンピューターのバージョン履歴、自動バックアップ、Mio 記録、バックグラウンドタスク記録（{size}）を削除します。プロジェクトファイル自体は変わりません。後で見つかった場合、バージョン履歴なしで開きます。この操作は取り消せません。"
+    "zh-Hans": "将永久删除 {size} 的版本历史、自动备份、Mio 记录和后台任务记录。",
+    "zh-Hant": "將永久刪除 {size} 的版本歷史、自動備份、Mio 記錄與背景任務記錄。",
+    "en": "Permanently deletes {size} of version history, automatic backups, Mio records and background task records.",
+    "ja": "バージョン履歴、自動バックアップ、Mio 記録、バックグラウンドタスク記録 {size} を完全に削除します。"
   },
   "localRecords.backupWarning": {
     "zh-Hans": {"one": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。", "other": "其中有 {count} 份自动备份（{size}）。项目文件找不到时，这些备份可能是它仅剩的副本，删掉以后就不能再从备份恢复。"},

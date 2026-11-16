@@ -252,26 +252,24 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   </>;
   const launcherEmpty = launcher ? <div className="launcher-home-empty" data-testid="launcher-empty">
     <h1>{t('launcher.empty.title')}</h1>
-    <p>{t('launcher.empty.description')}</p>
     <WorkbenchButton type="button" variant="primary" className="launcher-home-create-tile" data-testid="project-home-create-toggle"
-      aria-label={t('projects.createNew')} aria-describedby={`${prefix}-launcher-create-hint`}
+      aria-label={t('projects.createNew')}
       disabled={launcherNavigationLocked || Boolean(createDisabledReason)} onClick={createLauncherProject}>
       <span className="launcher-home-create-title"><span><WorkbenchIcon name="plus" size={23} /></span>{t('projects.createNew')}</span>
-      <span className="launcher-home-create-description" id={`${prefix}-launcher-create-hint`}>{t('launcher.empty.createHint')}</span>
     </WorkbenchButton>
     {(onStartExample || onOpenFile) && <div className="launcher-home-empty-actions">
       {onStartExample && <WorkbenchButton type="button" className="launcher-home-action-tile" data-testid="project-home-example"
-        aria-label={t('projectHomeNative.example')} aria-describedby={`${prefix}-launcher-example-hint`}
+        aria-label={t('projectHomeNative.example')}
         disabled={launcherNavigationLocked} onClick={() => startLauncherExample('projects')}>
         <span className="launcher-home-action-icon"><Clapperboard size={22} aria-hidden="true" /></span>
-        <span className="launcher-home-action-copy"><strong>{t('projectHomeNative.example')}</strong><span id={`${prefix}-launcher-example-hint`}>{t('projectHomeNative.example.description')}</span></span>
+        <strong>{t('projectHomeNative.example')}</strong>
         <ChevronRight size={15} aria-hidden="true" />
       </WorkbenchButton>}
       {onOpenFile && <WorkbenchButton type="button" className="launcher-home-action-tile" data-testid="project-home-open-file"
-        aria-label={t('launcher.openFile')} aria-describedby={`${prefix}-launcher-open-hint`}
+        aria-label={t('launcher.openFile')}
         disabled={launcherNavigationLocked} onClick={openLauncherFile}>
         <span className="launcher-home-action-icon"><FolderOpen size={22} aria-hidden="true" /></span>
-        <span className="launcher-home-action-copy"><strong>{t('launcher.openFile')}</strong><span id={`${prefix}-launcher-open-hint`}>{t('launcher.empty.openHint')}</span></span>
+        <strong>{t('launcher.openFile')}</strong>
         <ChevronRight size={15} aria-hidden="true" />
       </WorkbenchButton>}
     </div>}
@@ -342,17 +340,17 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
         {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
         {status && <div className="project-home-notice">{status}</div>}
         {phase === 'opening' && !deferOpeningFeedback && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
-          <div><strong>{openingName ? t('projects.openingNamed', { name: openingName }) : t('projects.opening')}</strong><p>{t('projects.loadingView')}</p></div>
+          <strong>{openingName ? t('projects.openingNamed', { name: openingName }) : t('projects.opening')}</strong>
         </section>}
         {pendingOpen && (!catalogVisible || !catalogContent) &&
           <PendingProjectOpenStatus pending={pendingOpen} name={projects.find(project => project.id === pendingOpen.projectId)?.name} />}
         {phase === 'error' && <section className="project-home-feedback" data-phase="error" role="alert">
-          <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong><p>{error ? renderMessage(error) : t('projects.openRetryHint')}</p></div>
+          <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong>{error && <p>{renderMessage(error)}</p>}</div>
           {page === 'projects' && <Button type="button" variant="outline" data-testid="project-home-retry" disabled={busy || submitting}
             onClick={() => { if (canAct() && current.current.phase === 'error') onRetry(); }}>{t('projects.retryOpen')}</Button>}
         </section>}
         {page === 'settings' ? <section className="project-home-settings" data-testid="project-home-settings">
-          <header className="project-home-heading"><div><div className="project-home-eyebrow">{t('projects.workspace')}</div><h1 id={`${prefix}-heading`}>{t('settings.title')}</h1><p>{t('settings.scope')}</p></div></header>
+          <header className="project-home-heading"><h1 id={`${prefix}-heading`}>{t('settings.title')}</h1></header>
           <div className="project-home-settings-body">{settings}</div>
         </section> : <>
           {!catalogContent && <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>}
@@ -369,7 +367,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
                 placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
             </div>
             <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || Boolean(createDisabledReason)} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
-            <p className="project-home-format-help">{t('redesign.projects.formatHelp')}</p></>}
+            </>}
             {formError && <p id={`${prefix}-form-error`} className="project-home-form-error" role="alert">{renderMessage(formError)}</p>}
             <div className="project-home-form-actions">
               <WorkbenchButton type="button" size="large" data-testid="project-home-create-cancel" disabled={locked} onClick={() => { if (canAct()) setCreateOpen(false); }}>{t('shell.cancel')}</WorkbenchButton>
@@ -398,7 +396,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
             {listError && <p className="project-home-list-error" role="alert">{renderMessage(listError)}</p>}
             {listBusy && !projects.length && <p className="project-home-list-loading" role="status">{t('projects.loadingList')}</p>}
             {empty && <div className="project-home-empty" data-testid="project-home-empty">
-              <span className="project-home-empty-symbol"><ProjectSymbol size={28} /></span><h2>{t('projects.emptyTitle')}</h2><p>{t('projects.emptyBody')}</p><WorkbenchButton type="button" variant="primary" size="large" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate()}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
+              <span className="project-home-empty-symbol"><ProjectSymbol size={28} /></span><h2>{t('projects.emptyTitle')}</h2><WorkbenchButton type="button" variant="primary" size="large" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate()}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
               {onImport && <WorkbenchButton type="button" variant="ghost" className="project-home-import-link" data-testid="project-home-import-empty" disabled={locked} onClick={() => { if (canAct()) onImport(); }}>{t('projectPackage.home.importLink')}</WorkbenchButton>}
             </div>}
             {projects.length > 0 && <ul className="project-home-list" data-testid="project-home-list">

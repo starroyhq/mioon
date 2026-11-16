@@ -13,5 +13,5 @@
 .mio-usage-note { margin:4px 0 0; color:var(--wb-muted); font-size:var(--wb-text-caption); line-height:1.65; }
 .mio-usage-cache-within { margin-top:-8px; }
 .mio-usage-cache-within dd { grid-column:2; font-size:var(--wb-text-label); color:var(--wb-muted); line-height:1.65; }
-.mio-usage-footer { border-top:1px solid var(--wb-line); padding-top:12px; }
+.mio-usage-title { display:inline-flex; align-items:center; gap:4px; }
 @media(max-width:480px) { .mio-usage-fields > div { grid-template-columns:72px minmax(0,1fr); gap:8px; } }

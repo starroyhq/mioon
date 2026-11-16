@@ -492,7 +492,10 @@ test('pending timeline and reference cards disclose session-only recovery withou
   const nodes = (value:TestTree):TestNode[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
   for (const operation of ([...operations, 'reference.attach', 'reference.detach', 'shot.update', 'generation.submit', 'export.create'] as const)) {
     const tree = nodes(module.exports.default({ entry: { operation, createdAt: '2026-10-10T00:00:00.000Z' }, busy: false, onReplay() {} }));
-    const warning = tree.find((node) => node.props?.['data-testid'] === 'mutation-recovery-storage');
+    const tooltip = tree.find(node => node.type === 'WorkbenchTooltip');
+    assert.ok(tooltip, operation);
+    assert.ok(!tree.some(node => node.props?.['data-testid'] === 'mutation-recovery-storage'));
+    const warning = nodes(tooltip.props?.content as TestTree).find(node => node.props?.['data-testid'] === 'mutation-recovery-storage');
     assert.equal(Boolean(warning), !['generation.submit', 'export.create'].includes(operation), operation);
     if (warning) {
       assert.match(warning.props.children.join(''), /恢复记录仅存于当前浏览器会话，未经保险库加密/);

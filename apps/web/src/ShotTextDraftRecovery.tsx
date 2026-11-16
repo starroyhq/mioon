@@ -28,7 +28,6 @@ export default function ShotTextDraftRecovery({ state, controller, disabled = fa
     {state.phase !== 'unsupported' && <Button type="button" size="sm" className="button primary" data-testid="save-shot-text" disabled={blocked || !canSave} onClick={() => { void controller.submit(); }}>{t('recovery.text.save')}</Button>}
     {state.dirty && (!state.raw.title.trim() || state.raw.title.length > 150 || state.raw.prompt.length > 5000) && <p className="input-hint" role="status">{t('recovery.text.validationHelp')}</p>}
     <RecoveryStorageDetails domain="shot-text" />
-    {state.phase === 'unsupported' && <p className="input-hint">{t('recovery.text.unsupportedHelp')}</p>}
     {state.candidate && <div data-testid="shot-text-draft-candidate">
       <p>{t('recovery.text.savedTitle')}<strong style={rawStyle}>{state.candidate.raw.title || t('recovery.common.originalTitle')}</strong></p>
       <details data-testid="shot-text-draft-provenance"><summary>{t('recovery.text.provenance', { revision: state.candidate.baseRevision })}</summary>

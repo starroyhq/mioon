@@ -14,7 +14,7 @@ import './TaskWorkspace.css';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
-import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import Icon from './icons.tsx';
 import SubjectVideoSummary from './SubjectVideoSummary.tsx';
 import { isSubjectRetryPending } from './submissions.ts';
@@ -74,12 +74,13 @@ function DurableTask({ task, uncertain, busy, onRecover, onAcknowledge, disposit
     <div className="job-snapshot" data-text-selectable><span>{task.operation === 'timeline.format.set' ? t('tasks.center.timelineFormatOperation') : subtitleLabels(t)[task.operation] ? `${subtitleLabels(t)[task.operation]} · ${task.operation}` : task.operation}</span><span>{formatDate(task.createdAt, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></div>
 
     <p className="helper muted task-request-id" data-text-selectable>{t('tasks.center.requestIdentity', { requestId: creationParameter(task.requestId) })}</p>
-    <details className="task-card-details"><summary>{t('shell.details')}</summary>
-      {task.origin === 'legacy_session' && <p className="helper muted">{t('tasks.center.legacyAdopted')}</p>}
-      <p className="helper muted">{t('tasks.center.recoveryScope')}</p></details>
+    {task.origin === 'legacy_session' && <p className="helper muted">{t('tasks.center.legacyAdopted')}</p>}
     <div className="job-actions">{['applied', 'not_applied'].includes(task.status)
       ? <Button variant="ghost" className="button small" data-testid="acknowledge-task" disabled={busy} onClick={onAcknowledge}>{t('tasks.center.acknowledgeClose')}</Button>
-      : <Button variant="ghost" className="button small" data-testid="recover-durable-task" disabled={busy} onClick={onRecover}><Icon name="refresh" size={13} />{task.status === 'dispatching' ? t('tasks.center.checkSameRequest') : t('tasks.center.recoverSameRequest')}</Button>}{dispositionAction}</div>
+      : <Button variant="ghost" className="button small" data-testid="recover-durable-task" disabled={busy} onClick={onRecover}><Icon name="refresh" size={13} />{task.status === 'dispatching' ? t('tasks.center.checkSameRequest') : t('tasks.center.recoverSameRequest')}</Button>}
+      {!['applied', 'not_applied'].includes(task.status) && <WorkbenchTooltip content={t('tasks.center.recoveryScope')}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t('tasks.center.recoverSameRequest')}><Icon name="info" /></Button>
+      </WorkbenchTooltip>}{dispositionAction}</div>
   </div>;
 }
 
@@ -173,12 +174,14 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
     </div>}
     <div className="task-center-browser" data-testid="task-center-browser">
     <div className="task-center-list-tools">
-        <Input type="search" value={search} data-testid="task-center-search" aria-label={t('redesign.tasks.search')} placeholder={t('redesign.tasks.search')} onChange={event => updateList(event.target.value, filter)} />
+        <div className="task-filter-query">
+          <Input type="search" value={search} data-testid="task-center-search" aria-label={t('redesign.tasks.search')} placeholder={t('redesign.tasks.search')} onChange={event => updateList(event.target.value, filter)} />
+          <WorkbenchTooltip content={t('redesign.tasks.localFilter')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('redesign.tasks.localFilter')}><Icon name="info" /></Button></WorkbenchTooltip>
+        </div>
         <div className="task-center-filters" role="group" aria-label={t('redesign.tasks.filter')}>{(['all', 'active', 'uncertain', 'finished'] as const).map(value => <Button type="button" variant="ghost" className="task-center-filter" key={value} data-task-filter={value} data-testid={`task-filter-${value}`} aria-pressed={filter === value} onClick={() => updateList(search, value)}>{t(`redesign.tasks.${value}`)}</Button>)}</div>
         <Button type="button" variant="ghost" data-testid="task-archive-completed" disabled={dispositions?.phase!=='ready'||dispositions.busy||dispositions.mutationUncertain||!completed.length} onClick={()=>{if(canFilter())void dispositions?.archiveCompleted(completed);}}>{t('redesign.tasks.archiveCompleted')}</Button>
       </div>
     <aside className="task-center-sidebar" aria-label={t('tasks.workspace.recordsAria')}>
-      <p className="task-filter-scope">{t('redesign.tasks.localFilter')}</p>
       <div className="task-center-list" data-testid="task-center-list">{matchingEntries.map(item => <Button type="button" variant="ghost" key={item.key} className="task-center-row" data-testid={`task-select-${item.key}`} data-warning={item.warning} aria-pressed={item.key === selectedKey} onClick={() => {
         if (!canFilter()) return;
         if (item.key !== selectedKey) liveSelection.current = null;
@@ -187,7 +190,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
       <section className="task-center-local" data-testid="task-center-local" data-empty={tasks.phase === 'ready' && !tasks.items.length}>
         {tasks.phase === 'ready' && !tasks.items.length && <p className="helper muted" data-testid="no-durable-tasks">{t('tasks.center.noLocalPending')}</p>}
         {tasks.phase !== 'ready' && <div className="notice warning" role="status" data-testid="task-list-unavailable">{tasks.phase === 'loading' ? t('tasks.center.loadingRecoveryRecords') : t('tasks.center.recoveryListUnavailable')}{tasks.phase !== 'loading' && tasks.error?.displayMessage && <p data-text-selectable data-testid="task-list-error-detail">{renderMessage(tasks.error.displayMessage)}</p>}<Button variant="ghost" className="button small" disabled={tasks.phase === 'loading'} onClick={() => { if (interaction.capture()) onReload(); }}>{t('tasks.center.reloadTasks')}</Button></div>}
-        <div className="task-center-storage"><RecoveryStorageDetails domain="task-center" durableOperationCount={DURABLE_EDIT_OPERATIONS.length} /><p className="helper muted" data-testid="durable-task-storage">{t('tasks.center.durableStorage', { length: creationParameter(DURABLE_EDIT_OPERATIONS.length) })}</p></div>
+        <div className="task-center-storage"><RecoveryStorageDetails domain="task-center" durableOperationCount={DURABLE_EDIT_OPERATIONS.length} /></div>
       </section>
     </aside>
     <section className="task-center-detail" data-testid="task-center-detail" aria-label={t('shell.details')}>
@@ -224,7 +227,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
             {connection?.result && <> {renderMessage(connection.result)}</>}
             {diagnosticCode && <small>{t('tasks.error.diagnosticCode', { code: diagnosticCode })}</small>}
           </p>}
-          {job.status === 'submission_unknown' && <div className="notice warning">{t('tasks.center.unknownSubmissionWarning')}</div>}{canReconcile && <div className="reconcile-job"><p className="task-reconciliation-explanation" data-text-selectable>{t('redesign.tasks.reconciliationHint')}</p><Label className="field-label" htmlFor={`reconcile-${job.id}`}>{t('tasks.center.providerTaskId')}<span className="optional">{t('tasks.center.optional')}</span></Label><Input disabled={false} id={`reconcile-${job.id}`} value={reconcileIds[job.id] || ''} onChange={e => { if (captureTask(job.id)) setReconcileIds(ids => ({ ...ids, [job.id]: e.target.value })); }} placeholder={job.providerJobId || t('tasks.center.knownIdRecovered')} /></div>}{outputReviewRequired(job) && <div className="notice warning" data-testid="output-review-required">{renderMessage(outputReviewDescriptor)}</div>}{cancelledUnsubmitted && <p className="helper muted">{t('tasks.error.videoUnsubmittedNoCharge')}</p>}{job.status === 'cancelled' && !cancelledUnsubmitted && !outputReviewRequired(job) && <p className="helper muted">{t('tasks.center.stopScope', { value: creationParameter(job.cancelScope === 'remote' ? t('tasks.center.remoteCancellationConfirmed') : t('tasks.center.localWaitOnly')) })}</p>}{typeof job.requestId === 'string' && <p className="helper muted task-request-id" data-text-selectable>{t('tasks.center.requestIdentity', { requestId: creationParameter(job.requestId) })}</p>}<details className="task-card-details"><summary>{t('shell.details')}</summary><div className="job-snapshot" data-text-selectable><span>{String(job.snapshot?.duration)}s · {String(job.snapshot?.aspectRatio)}</span><span>{t('tasks.center.submissions', { count: job.submissionCount ?? 1 })}</span></div>
+          {job.status === 'submission_unknown' && <div className="notice warning">{t('tasks.center.unknownSubmissionWarning')}</div>}{canReconcile && <div className="reconcile-job"><div className="task-reconcile-label"><Label className="field-label" htmlFor={`reconcile-${job.id}`}>{t('tasks.center.providerTaskId')}<span className="optional">{t('tasks.center.optional')}</span></Label><WorkbenchTooltip content={t('redesign.tasks.reconciliationHint')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('tasks.center.providerTaskId')}><Icon name="info" /></Button></WorkbenchTooltip></div><Input disabled={false} id={`reconcile-${job.id}`} value={reconcileIds[job.id] || ''} onChange={e => { if (captureTask(job.id)) setReconcileIds(ids => ({ ...ids, [job.id]: e.target.value })); }} placeholder={job.providerJobId ?? undefined} /></div>}{outputReviewRequired(job) && <div className="notice warning" data-testid="output-review-required">{renderMessage(outputReviewDescriptor)}</div>}{cancelledUnsubmitted && <p className="helper muted">{t('tasks.error.videoUnsubmittedNoCharge')}</p>}{job.status === 'cancelled' && !cancelledUnsubmitted && !outputReviewRequired(job) && <p className="helper muted">{t('tasks.center.stopScope', { value: creationParameter(job.cancelScope === 'remote' ? t('tasks.center.remoteCancellationConfirmed') : t('tasks.center.localWaitOnly')) })}</p>}{typeof job.requestId === 'string' && <p className="helper muted task-request-id" data-text-selectable>{t('tasks.center.requestIdentity', { requestId: creationParameter(job.requestId) })}</p>}<details className="task-card-details"><summary>{t('shell.details')}</summary><div className="job-snapshot" data-text-selectable><span>{String(job.snapshot?.duration)}s · {String(job.snapshot?.aspectRatio)}</span><span>{t('tasks.center.submissions', { count: job.submissionCount ?? 1 })}</span></div>
           {credentialRecovery && <p className="helper muted" data-text-selectable data-testid="video-credential-recovery-audit">{t('tasks.center.videoCredentialRecoveryAudit', {
             revision: formatNumber(credentialRecovery.connectionRevision),
             time: formatDate(credentialRecovery.recoveredAt, { dateStyle: 'medium', timeStyle: 'medium' }),
@@ -236,7 +239,7 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
             if (stillCurrent) onInspectJob(job, stillCurrent, 'regenerate');
           }}><Icon name="sparkle" size={13} />{t('tasks.center.regenerateVideoWithCurrentSettings')}</Button>}{activeJob(job) && <Button variant="ghost" className="button small" data-testid={unsubmitted ? `cancel-unsubmitted-video-${job.id}` : undefined} disabled={busy[`cancel:${job.id}`]} onClick={cancel}><Icon name="stop" size={12} />{t(unsubmitted ? 'common.cancel' : 'tasks.center.stopWaiting')}</Button>}</div></div>);
       })}
-      {!matchingEntries.length && <div className="small-empty" data-testid="task-center-filter-empty"><Icon name="clock" size={30} /><h4>{t(entries.length ? 'redesign.tasks.noMatch' : 'tasks.center.noGenerationTasks')}</h4><p>{t(entries.length ? 'redesign.tasks.localFilter' : 'tasks.center.generationEmptyHint')}</p></div>}
+      {!matchingEntries.length && <div className="small-empty" data-testid="task-center-filter-empty"><Icon name="clock" size={30} /><h4>{t(entries.length ? 'redesign.tasks.noMatch' : 'tasks.center.noGenerationTasks')}</h4></div>}
     </section>
   </div></TaskWorkspace>;
 }

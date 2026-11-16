@@ -38,21 +38,21 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
   if (connectionsAvailable && category === 'models') opened.current.generation = true;
   const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
   const categoryLabel = (id: Category) => t(id === 'general' ? 'settings.general' : `redesign.settings.${id}`);
-  const hints = { general: 'settings.generalHint', workspace: 'redesign.settings.workspaceHint', 'video-tools': 'redesign.settings.videoHint', models: 'redesign.settings.modelsHint', agent: 'redesign.settings.agentHint', shortcuts: 'redesign.settings.shortcutsHint', about: 'redesign.settings.aboutHint' } as const;
   return <section className="settings-center" data-testid="settings-center" data-page={page} aria-label={t('settings.title')}>
     <nav className="settings-center-nav" aria-label={t('settings.categories')}>
       <span className="settings-center-nav-label">{t('settings.title')}</span>
       {settingsCategories.map(id => <Button key={id} type="button" variant="ghost" data-testid={`settings-category-${id}`} disabled={connectionCategory(id) && !connectionsAvailable} aria-current={category === id ? 'page' : undefined} onClick={() => selectPage(id)}><span className="settings-category-icon" data-testid={`settings-category-icon-${id}`}><SettingsCategoryIcon category={id} /></span><span>{categoryLabel(id)}</span></Button>)}
-      <p className="settings-local-status"><Icon name="lock" size={12} />{t('redesign.settings.localPreferences')}</p>
     </nav>
     <div className="settings-center-content" aria-labelledby={heading}>
-      <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1><p>{t(hints[category])}</p></header>
+      <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1></header>
       <section hidden={page !== 'general'} inert={page !== 'general'} className="settings-general" data-testid="settings-general">
         <h2 className="settings-section-title">{t('redesign.settings.languageSection')}</h2>
-        <div className="settings-preference"><div><h3>{t('language.label')}</h3><p>{t('settings.languageHint')}</p></div><LanguageControl visible={active && page === 'general'} /></div>
-        <div className="settings-preference settings-number-format" data-testid="settings-number-format"><div><h3 id={`${heading}-number-format`}>{t('redesign.settings.numberFormat')}</h3><p>{t('redesign.settings.followLanguage')}</p></div><output aria-labelledby={`${heading}-number-format`} data-testid="settings-number-format-example">{formatNumber(12345.6)}</output></div>{general}
+        <div className="settings-preference"><h3>{t('language.label')}</h3><LanguageControl visible={active && page === 'general'} /></div>
+        <div className="settings-preference settings-number-format" data-testid="settings-number-format"><h3 id={`${heading}-number-format`}>{t('redesign.settings.numberFormat')}</h3><output aria-labelledby={`${heading}-number-format`} data-testid="settings-number-format-example">{formatNumber(12345.6)}</output></div>{general}
       </section>
-      <section hidden={page !== 'workspace'} inert={page !== 'workspace'}>{workspace}</section>
+      <section hidden={page !== 'workspace'} inert={page !== 'workspace'}>
+        <WorkspaceVisibilityProvider visible={active && page === 'workspace'}>{workspace}</WorkspaceVisibilityProvider>
+      </section>
       <section hidden={page !== 'video-tools'} inert={page !== 'video-tools'}>{videoTools}</section>
       <section hidden={page !== 'shortcuts'} inert={page !== 'shortcuts'}><SettingsShortcuts /></section>
       <section hidden={page !== 'about'} inert={page !== 'about'}><SettingsAbout active={active && page === 'about'} /></section>

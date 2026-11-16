@@ -27,7 +27,7 @@ test('recovered pending intent shows its frozen selected range while the current
   assert.match(textOf(frozen), /第 30 帧（含）至第 90 帧（不含）.*60 帧.*2.00 秒/);
   assert.doesNotMatch(textOf(frozen), /999/);
   assert.equal(nodes(form).find(node => node.props['data-testid'] === 'export-range-whole')!.props['aria-pressed'], true);
-  assert.match(textOf(recovery), /已保存原导出请求，结果待确认/); assert.match(textOf(recovery), /不会改用当前范围/);
+  assert.match(textOf(recovery), /已保存原导出请求，结果待确认/); assert.match(textOf(recovery), /恢复可能会首次提交原导出/);
 });
 
 test('legacy original range omission stays whole-original without borrowing current bounds, and terminal range never implies recovery', () => {

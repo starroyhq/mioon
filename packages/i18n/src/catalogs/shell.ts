@@ -21,36 +21,6 @@ const shellCoreMessages = {
     "en": "Extensions",
     "ja": "拡張機能"
   },
-  "settings.scope": {
-    "zh-Hans": "全局设置独立于项目。片段属性和导出选项仍在各自的工作区",
-    "zh-Hant": "全域設定獨立於專案。片段屬性和匯出選項仍在各自的工作區",
-    "en": "Global settings are separate from projects. Clip properties and export options stay in their workspaces",
-    "ja": "全体設定はプロジェクトとは別に管理されます。クリップのプロパティと書き出し設定は各作業画面にあります"
-  },
-  "settings.generalHint": {
-    "zh-Hans": "调整应用的显示偏好，不改变项目内容",
-    "zh-Hant": "調整應用程式的顯示偏好，不變更專案內容",
-    "en": "Adjust application preferences without changing project content",
-    "ja": "プロジェクトの内容を変えずに、アプリの表示設定を調整します"
-  },
-  "settings.modelsHint": {
-    "zh-Hans": "选择服务后编辑连接。浏览设置不会发送模型请求",
-    "zh-Hant": "選擇服務後編輯連線。瀏覽設定不會傳送模型請求",
-    "en": "Choose a service to edit its connection. Viewing settings does not send model requests",
-    "ja": "サービスを選択して接続を編集します。設定の表示だけでモデルへのリクエストは送信されません"
-  },
-  "settings.extensionsHint": {
-    "zh-Hans": "管理现有的本地 ComfyUI 连接。此处不会安装、卸载或动态加载扩展",
-    "zh-Hant": "管理現有的本機 ComfyUI 連線。此處不會安裝、解除安裝或動態載入擴充功能",
-    "en": "Manage the existing local ComfyUI connection. This does not install, uninstall or dynamically load extensions",
-    "ja": "既存のローカル ComfyUI 接続を管理します。拡張機能のインストール、アンインストール、動的読み込みは行いません"
-  },
-  "settings.languageHint": {
-    "zh-Hans": "切换后立即生效，项目内容不受影响",
-    "zh-Hant": "切換後立即生效，專案內容不受影響",
-    "en": "Changes apply immediately without changing project content",
-    "ja": "変更はすぐに反映され、プロジェクトの内容には影響しません"
-  },
   "settings.workspaceStatus": {
     "zh-Hans": "工作区与恢复状态",
     "zh-Hant": "工作區與還原狀態",
@@ -123,23 +93,11 @@ const shellCoreMessages = {
     "en": "Connection settings",
     "ja": "接続設定"
   },
-  "projects.loadingView": {
-    "zh-Hans": "正在读取项目和视图设置",
-    "zh-Hant": "正在讀取專案與檢視設定",
-    "en": "Loading the project and view settings",
-    "ja": "プロジェクトと表示設定を読み込んでいます"
-  },
   "projects.openFailed": {
     "zh-Hans": "项目未能打开",
     "zh-Hant": "無法開啟專案",
     "en": "Could not open project",
     "ja": "プロジェクトを開けませんでした"
-  },
-  "projects.openRetryHint": {
-    "zh-Hans": "请重试，或从项目列表选择其他项目",
-    "zh-Hant": "請重試，或從專案清單選擇其他專案",
-    "en": "Try again or choose another project from the list",
-    "ja": "再試行するか、一覧から別のプロジェクトを選択してください"
   },
   "projects.retryOpen": {
     "zh-Hans": "重试打开",
@@ -214,10 +172,10 @@ const shellCoreMessages = {
     "ja": "任意"
   },
   "projects.directionPlaceholder": {
-    "zh-Hans": "关于这个故事，你最想表达什么？",
-    "zh-Hant": "關於這個故事，你最想表達什麼？",
-    "en": "What do you most want this story to express?",
-    "ja": "このストーリーで最も伝えたいことは何ですか？"
+    "zh-Hans": "例如：雨夜街景",
+    "zh-Hant": "例如：雨夜街景",
+    "en": "e.g. A city street in the rain",
+    "ja": "例：雨の夜の街並み"
   },
   "shell.cancel": {
     "zh-Hans": "取消",
@@ -266,12 +224,6 @@ const shellCoreMessages = {
     "zh-Hant": "還沒有專案",
     "en": "No projects yet",
     "ja": "プロジェクトがありません"
-  },
-  "projects.emptyBody": {
-    "zh-Hans": "新建一个项目，在画板中构思镜头，再到剪辑中完成成片",
-    "zh-Hant": "建立一個專案，在畫板中構思鏡頭，再到剪輯中完成影片",
-    "en": "Create a project, plan your shots on the canvas, then finish your film in the editor",
-    "ja": "プロジェクトを作成し、キャンバスでショットを構想してから、編集画面で映像を仕上げます"
   },
   "projects.open": {
     "zh-Hans": "打开项目",
@@ -825,12 +777,6 @@ const shellCoreMessages = {
     "en": "Give every idea its own shot",
     "ja": "すべてのアイデアに、その一場面を"
   },
-  "shell.login.description": {
-    "zh-Hans": "从一张参考图出发，在无限画布中构思故事。生成、比较、编排，让灵感一步步成为影像",
-    "zh-Hant": "從一張參考圖出發，在無限畫布中構思故事。生成、比較、編排，讓靈感一步步成為影像",
-    "en": "Start with a reference image and shape your story on an infinite canvas. Generate, compare, and arrange to bring your ideas to life",
-    "ja": "1枚の参照画像から、無限のキャンバスでストーリーを構想。生成、比較、構成を重ねて、ひらめきを映像にしましょう"
-  },
   "shell.login.eyebrow": {
     "zh-Hans": "让灵感动起来",
     "zh-Hant": "讓靈感動起來",
@@ -908,12 +854,6 @@ const shellCoreMessages = {
     "zh-Hant": "選用版本會更新鏡頭預覽與後續分鏡匯出；既有時間軸片段與匯出檔案保持獨立",
     "en": "Selecting a version updates the shot preview and future storyboard exports. Existing timeline clips and exported files remain independent",
     "ja": "バージョンを選ぶとショットのプレビューと以降のストーリーボード書き出しが更新されます。既存のタイムラインクリップと書き出しファイルは変更されません"
-  },
-  "projects.newStoryHint": {
-    "zh-Hans": "为这次创作命名，随时可以继续回来",
-    "zh-Hant": "為這次創作命名，隨時可以回來繼續",
-    "en": "Name your creation. You can return to it anytime",
-    "ja": "作品に名前を付けましょう。いつでも戻って制作を続けられます"
   },
   "projects.create": {
     "zh-Hans": "创建项目",
@@ -1911,12 +1851,6 @@ const shellCoreMessages = {
     "en": "Your next creation starts here",
     "ja": "次の作品は、ここから"
   },
-  "shell.emptyCreateHint": {
-    "zh-Hans": "先创建或打开一个项目，即可使用画板和剪辑",
-    "zh-Hant": "先建立或開啟專案，即可使用畫板與剪輯",
-    "en": "Create or open a project to use Canvas and Editing",
-    "ja": "プロジェクトを作成または開くと、キャンバスと編集を使えます"
-  },
   "projects.shotEmptyTitle": {
     "zh-Hans": "给故事一个开场",
     "zh-Hant": "給故事一個開場",
@@ -1982,12 +1916,6 @@ const shellCoreMessages = {
     "zh-Hant": "顯示縮圖地圖",
     "en": "Show minimap",
     "ja": "ミニマップを表示"
-  },
-  "shell.canvasInteractionHint": {
-    "zh-Hans": "双击媒体放大查看 · 拖动画布平移",
-    "zh-Hant": "按兩下媒體放大檢視 · 拖曳畫布平移",
-    "en": "Double-click media to enlarge · Drag canvas to pan",
-    "ja": "メディアをダブルクリックで拡大・キャンバスをドラッグで移動"
   },
   "shell.restoredFrameUnavailable": {
     "zh-Hans": "恢复分支可预览源素材；新抽帧暂不可用",
@@ -2102,12 +2030,6 @@ const shellCoreMessages = {
     "zh-Hant": "選擇時間軸片段",
     "en": "Select a timeline clip",
     "ja": "タイムラインのクリップを選択"
-  },
-  "shell.clipPropertiesHint": {
-    "zh-Hans": "在这里调整起止帧、源入点、画面位置和音量",
-    "zh-Hant": "在這裡調整起止影格、來源入點、畫面位置與音量",
-    "en": "Adjust start and end frames, source in-point, position, and volume here",
-    "ja": "開始・終了フレーム、ソースのイン点、画面の位置、音量をここで調整できます"
   },
   "shell.restoredNoBackup": {
     "zh-Hans": "恢复分支不能再次创建备份",
@@ -2895,17 +2817,11 @@ const shellCoreMessages = {
     "en": "Creative panel",
     "ja": "制作パネル"
   },
-  "inspector.emptyTitle": {
-    "zh-Hans": "让灵感成为镜头",
-    "zh-Hant": "讓靈感成為鏡頭",
-    "en": "Turn ideas into shots",
-    "ja": "ひらめきをショットに"
-  },
   "inspector.emptyHint": {
-    "zh-Hans": "选择画布中的一个镜头，编辑画面描述、参考图和生成参数",
-    "zh-Hant": "選取畫布中的鏡頭，編輯畫面描述、參考圖與生成參數",
-    "en": "Select a shot on the canvas to edit its visual description, references, and generation settings",
-    "ja": "キャンバスのショットを選択し、映像の説明、参照画像、生成設定を編集します"
+    "zh-Hans": "未选中画板元素",
+    "zh-Hant": "未選取畫板元素",
+    "en": "No board item selected",
+    "ja": "ボードの項目が選択されていません"
   },
   "inspector.stepImport": {
     "zh-Hans": "导入参考素材",
@@ -2956,10 +2872,10 @@ const shellCoreMessages = {
     "ja": "テキスト内容"
   },
   "inspector.notePlaceholder": {
-    "zh-Hans": "写下故事、场景或创作方向…",
-    "zh-Hant": "寫下故事、場景或創作方向…",
-    "en": "Describe a story, scene, or creative direction…",
-    "ja": "ストーリー、シーン、制作方針を書き留めましょう…"
+    "zh-Hans": "雨夜街口",
+    "zh-Hant": "雨夜街口",
+    "en": "A street corner in the rain",
+    "ja": "雨の夜の交差点"
   },
   "inspector.nodeConflict": {
     "zh-Hans": "其他编辑已更新此节点",
@@ -2985,12 +2901,6 @@ const shellCoreMessages = {
     "en": "Discard changes",
     "ja": "変更を破棄"
   },
-  "inspector.visualLinkHint": {
-    "zh-Hans": "灰色端口创建视觉连线，仅用于整理思路，不参与生成。点击视觉连线后可按 Delete 删除",
-    "zh-Hant": "灰色連接埠建立視覺連線，僅用於整理思路，不參與生成。點選視覺連線後可按 Delete 刪除",
-    "en": "Gray ports create visual links for organization only, not generation. Select a visual link and press Delete to remove it",
-    "ja": "灰色のポートは整理専用の視覚的リンクを作成し、生成には使いません。リンクを選択して Delete を押すと削除できます"
-  },
   "inspector.shotSettings": {
     "zh-Hans": "镜头设置",
     "zh-Hant": "鏡頭設定",
@@ -3014,12 +2924,6 @@ const shellCoreMessages = {
     "zh-Hant": "版本歷程",
     "en": "Version history",
     "ja": "バージョン履歴"
-  },
-  "inspector.explore": {
-    "zh-Hans": "探索不同的可能",
-    "zh-Hant": "探索不同的可能",
-    "en": "Explore the possibilities",
-    "ja": "さまざまな可能性を探る"
   },
   "inspector.compare": {
     "zh-Hans": "比较",
@@ -3063,12 +2967,6 @@ const shellCoreMessages = {
     "en": "No generated versions yet",
     "ja": "生成バージョンはまだありません"
   },
-  "inspector.versionScope": {
-    "zh-Hans": "每次生成都保存为独立版本。你可以随时比较、切换，不会覆盖已有结果",
-    "zh-Hant": "每次生成皆儲存為獨立版本。可隨時比較、切換，不會覆寫既有結果",
-    "en": "Each generation is saved as a separate version. Compare and switch anytime without overwriting existing results",
-    "ja": "生成ごとに別のバージョンとして保存します。既存の結果を上書きせず、いつでも比較や切り替えができます"
-  },
   "inspector.start": {
     "zh-Hans": "开始创作",
     "zh-Hant": "開始創作",
@@ -3106,16 +3004,10 @@ const shellCoreMessages = {
     "ja": "映像の説明"
   },
   "inspector.promptPlaceholder": {
-    "zh-Hans": "描述主体、动作、环境与镜头运动。例如：镜头缓慢推近，晨光穿过薄雾…",
-    "zh-Hant": "描述主體、動作、環境與鏡頭運動。例如：鏡頭緩慢推近，晨光穿過薄霧…",
-    "en": "Describe subjects, action, setting, and camera movement. For example: the camera slowly pushes in as morning light cuts through the mist…",
-    "ja": "被写体、動き、環境、カメラワークを描写します。例：朝の光が霧を通り抜ける中、カメラがゆっくり近づく…"
-  },
-  "inspector.promptHint": {
-    "zh-Hans": "描述越具体，越接近你心中的画面",
-    "zh-Hant": "描述越具體，越接近你心中的畫面",
-    "en": "More specific descriptions bring you closer to the image you envision",
-    "ja": "具体的に描写するほど、思い描く映像に近づきます"
+    "zh-Hans": "镜头缓慢推近，晨光穿过薄雾",
+    "zh-Hant": "鏡頭緩慢推近，晨光穿過薄霧",
+    "en": "Slow push-in through morning mist",
+    "ja": "朝もやの中をゆっくり寄る"
   },
   "inspector.textSaveOrder": {
     "zh-Hans": "请先保存标题和提示词或处理文字恢复记录，再保存其余参考图和生成参数。完整“保存修改”不会跳过文字修改",
@@ -3147,17 +3039,11 @@ const shellCoreMessages = {
     "en": "Open tasks",
     "ja": "タスクを開く"
   },
-  "inspector.subjectScope": {
-    "zh-Hans": "本次发送上方明确固定的主体图片；不会读取策划关联或修改画面描述",
-    "zh-Hant": "本次會傳送上方明確固定的主體圖片；不會讀取策劃關聯或修改畫面描述",
-    "en": "This sends the explicitly fixed subject images above. It does not read planning links or change the visual description",
-    "ja": "上記の明示的に固定した被写体画像を送信します。企画リンクの読み取りや映像の説明の変更は行いません"
-  },
   "inspector.textModeHint": {
-    "zh-Hans": "只发送画面描述与生成参数，不发送参考图。选择图生视频可使用首帧图片",
-    "zh-Hant": "僅傳送畫面描述與生成參數，不傳送參考圖。選擇圖片生成影片即可使用首幀圖片",
-    "en": "Only the visual description and generation parameters are sent, not reference images. Choose image-to-video to use a first-frame image",
-    "ja": "映像の説明と生成パラメーターのみを送信し、参照画像は送信しません。画像から動画を選ぶと開始フレームの画像を使えます"
+    "zh-Hans": "发送画面描述和生成参数",
+    "zh-Hant": "傳送畫面描述和生成參數",
+    "en": "Sends the shot description and generation settings",
+    "ja": "ショットの説明と生成設定を送信します"
   },
   "inspector.firstFrame": {
     "zh-Hans": "首帧参考图",
@@ -3166,10 +3052,10 @@ const shellCoreMessages = {
     "ja": "開始フレームの参照画像"
   },
   "inspector.importReferenceHint": {
-    "zh-Hans": "先在左侧导入一张图片作为参考",
-    "zh-Hant": "請先在左側匯入一張圖片作為參考",
-    "en": "Import an image on the left to use as a reference",
-    "ja": "まず左側で参照用の画像を読み込んでください"
+    "zh-Hans": "没有参考图片",
+    "zh-Hant": "沒有參考圖片",
+    "en": "No reference images",
+    "ja": "参照画像がありません"
   },
   "inspector.clearManual": {
     "zh-Hans": "清除手动参考图选择",
@@ -3178,10 +3064,10 @@ const shellCoreMessages = {
     "ja": "手動の参照画像選択をクリア"
   },
   "inspector.boundReferenceHint": {
-    "zh-Hans": "参考图由首帧连接管理，断开后才能手动选择",
-    "zh-Hant": "參考圖由首幀連線管理，中斷後才能手動選擇",
-    "en": "The first-frame connection manages the reference. Disconnect it before selecting manually",
-    "ja": "参照画像は開始フレームの接続で管理されています。手動で選ぶには接続を解除してください"
+    "zh-Hans": "首帧由连线指定",
+    "zh-Hant": "首幀由連線指定",
+    "en": "First frame is linked",
+    "ja": "先頭フレームはリンクで指定されています"
   },
   "inspector.firstFrameImage": {
     "zh-Hans": "首帧图片",
@@ -3284,12 +3170,6 @@ const shellCoreMessages = {
     "zh-Hant": "清除不支援的參數",
     "en": "Clear unsupported parameters",
     "ja": "非対応のパラメーターをクリア"
-  },
-  "inspector.historyScope": {
-    "zh-Hans": "参数和参考图随每次生成保存快照，修改镜头不会改变历史版本",
-    "zh-Hant": "每次生成會儲存參數與參考圖的快照，修改鏡頭不會變更歷史版本",
-    "en": "Parameters and reference images are snapshotted for each generation. Editing a shot does not change historical versions",
-    "ja": "生成ごとにパラメーターと参照画像のスナップショットを保存します。ショットを編集しても過去のバージョンは変わりません"
   },
   "inspector.billingUnknown": {
     "zh-Hans": "服务商可能已接受任务并计费。先核实状态，不要重复提交",
@@ -4148,12 +4028,6 @@ const shellCoreMessages = {
     "zh-Hant": "檢視來源節點：{name}",
     "en": "View source node: {name}",
     "ja": "ソースノードを表示：{name}"
-  },
-  "shell.emptyEyebrow": {
-    "zh-Hans": "为下一段故事留出空间",
-    "zh-Hant": "為下一段故事留出空間",
-    "en": "MAKE ROOM FOR YOUR NEXT STORY",
-    "ja": "次の物語のための場所を"
   },
   "shell.blankEyebrow": {
     "zh-Hans": "一张空白画布，一个全新视角",

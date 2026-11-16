@@ -190,7 +190,7 @@ test('12-08 restoring and comparing are off while "current" is selected', () => 
     const page = html(id);
     assert.equal(disabled(tagOf(page, 'pf-version-restore')), true, id);
     assert.equal(disabled(tagOf(page, 'pf-version-compare')), true, id);
-    assert.ok(page.includes(text('projectFile.versions.currentHint')), id);
+    assert.ok(page.includes(text('projectFile.versions.currentDetail')), id);
   }
   assert.ok(html('12-08-empty').includes(text('projectFile.versions.emptyTitle')));
 });
@@ -221,7 +221,7 @@ test('12-09 restore: actual totals, attribution, retained reasons, pagination an
   assert.ok(page.includes(text('projectHistory.source.mio')));
   assert.ok(page.includes(text('projectHistory.action.keep-current')));
   assert.ok(page.includes('保留的结果仍引用此素材'));
-  assert.ok(page.includes(text('projectHistory.undo')));
+  assert.equal(tagOf(page, 'pf-restore-undo-note'), null);
   assert.equal(page.includes('你改过时长'), false);
   assert.equal(page.includes('210 帧 → 180 帧'), false);
   assert.equal(tagOf(page, 'pf-restore-superseded'), null);
@@ -258,7 +258,8 @@ test('12-10 packing: the manifest, the missing warning only when media are missi
   assert.ok(tagOf(page, 'pf-pack-rules'));
   assert.ok(page.includes(text('projectFile.pack.missing', { count: 2 })));
   assert.ok(tagOf(page, 'pf-pack-relink'));
-  assert.ok(page.includes(text('projectFile.pack.excludes')));
+  assert.ok(tagOf(page, 'pf-pack-privacy'));
+  assert.ok(!page.includes(text('projectFile.pack.excludes')));
   assert.equal(disabled(tagOf(page, 'pf-pack-submit')), false);
   const empty = html('12-10-empty');
   assert.ok(empty.includes(text('projectFile.pack.noAssets')));

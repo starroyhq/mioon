@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
 import { LANGUAGE_LABELS, LOCALES, translate, validateCatalogs, type DisplayMessage } from '../packages/i18n/src/index.ts';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
+import { settingsBootMessages } from '../packages/i18n/src/catalogs/settings-boot.ts';
 import { settingsRedesignMessages } from '../packages/i18n/src/catalogs/settings-redesign.ts';
 import { createI18nTestContext } from './helpers/i18n.ts';
 import { createSettingsNavigationRegistry, type SettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -61,8 +62,9 @@ function shellHarness() {
   }).default;
   const panes = {agent: {type: 'form:agent', props: {'data-testid': 'owner-agent', value: 'retained-agent'}}};
   const generationServices = {type: 'form:generation', props: {'data-testid': 'owner-generation', value: 'retained-generation'}};
-  const props = { selected: 'agent', page: 'agent', onSelect: (slot: unknown) => calls.push(['slot', slot]), onPage: (page: unknown) => calls.push(['page', page]), panes, generationServices };
-  return { calls, panes, generationServices, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
+  const workspace = {type: 'storage', props: {'data-testid': 'owner-workspace'}};
+  const props = { selected: 'agent', page: 'agent', onSelect: (slot: unknown) => calls.push(['slot', slot]), onPage: (page: unknown) => calls.push(['page', page]), panes, generationServices, workspace };
+  return { calls, panes, generationServices, workspace, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
 }
 
 test('settings shell has seven categories and every fixed generation intention uses one services page without a second navigation', () => {
@@ -73,6 +75,9 @@ test('settings shell has seven categories and every fixed generation intention u
     for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
     for(const id of categories) assert.ok(find(tree,`settings-category-icon-${id}`));
     assert.equal(nodes(tree).some(node => node.props?.className === 'settings-service-nav' || node.props?.className === 'settings-service-back'), false);
+    assert.equal(find(tree, 'owner-workspace'), h.workspace);
+    const workspaceVisibility = nodes(tree).find(node => node.type === 'WorkspaceVisibilityProvider' && nodes(node).some(child => Object.is(child, h.workspace)));
+    assert.equal(workspaceVisibility?.props.visible, page === 'workspace');
     if (category === 'models') {
       assert.equal(find(tree, 'owner-generation'), h.generationServices);
       const provider = nodes(tree).find(node => node.type === 'WorkspaceVisibilityProvider' && nodes(node).some(child => Object.is(child, h.generationServices)));
@@ -88,7 +93,7 @@ test('General derives its read-only number-format example from the current langu
     assert.equal(example.type, 'output');
     assert.equal(example.props.onChange, undefined);
     assert.equal(text(example), createI18nTestContext(locale).formatNumber(12345.6));
-    assert.ok(text(find(tree, 'settings-number-format')).includes(translate(locale, 'redesign.settings.followLanguage')));
+    assert.equal(nodes(find(tree, 'settings-number-format')).some(node => node.type === 'p'), false);
   }
   assert.deepEqual((h.calls as unknown), []);
 });
@@ -147,7 +152,7 @@ test('General language controls and category copy change in four locales without
     const tree = h.render({ page: 'general' }, locale), general = find(tree, 'settings-general');
     assert.equal(general.props.hidden, false); assert.equal(general.props.inert, false);
     assert.ok(text(general).includes(translate(locale, 'language.label')));
-    assert.ok(text(general).includes(translate(locale, 'settings.languageHint')));
+    assert.equal(nodes(general).some(node => node.type === 'p'), false);
     assert.equal(nodes(general).filter((node) => node.type === 'LanguageControl').length, 1);
     for (const category of ['general','workspace','video-tools','models','agent','shortcuts','about']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, ((category === 'general' ? 'settings.general' : `redesign.settings.${category}`) as unknown as Parameters<typeof translate>[1])));
     headings.add(text(find(tree, 'settings-category-models')));
@@ -192,7 +197,7 @@ test('actual shared controls render accessible four-language settings and one co
   for (const locale of LOCALES) {
     const html = renderPresentation(locale, 'general');
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'settings.categories'))}"`));
-    for (const key of ['settings.general', 'redesign.settings.models', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
+    for (const key of ['settings.general', 'redesign.settings.models', 'language.label']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
     assert.equal((html.match(/data-testid="language-select"/gu) || []).length, 1);
     assert.match(html, /role="combobox"/u);
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'language.label'))}"`));
@@ -204,8 +209,8 @@ test('actual shared controls render accessible four-language settings and one co
 });
 
 test('settings copy has complete locale coverage and native page intentions use a fixed allowlist', () => {
-  const messages = Object.fromEntries(Object.entries(shellMessages).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
-  assert.ok(Object.keys(messages).length >= 10); assert.deepEqual((validateCatalogs(messages) as unknown), []);
+  const messages = Object.fromEntries(Object.entries({...shellMessages, ...settingsBootMessages}).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
+  for (const key of ['settings.title', 'settings.categories', 'settings.general', 'settings.back']) assert.ok(Object.hasOwn(messages, key), key); assert.deepEqual((validateCatalogs(messages) as unknown), []);
   assert.deepEqual((validateCatalogs(settingsRedesignMessages) as unknown), []);
   for (const value of [...slots, 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'])
     assert.equal(isProjectWindowSettingsSlot(value), true);

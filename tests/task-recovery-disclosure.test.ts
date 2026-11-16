@@ -54,6 +54,7 @@ function harness(operations: readonly string[]|undefined = contracts.DURABLE_EDI
       if (name === './TaskWorkspace.tsx') return load('TaskWorkspace.tsx');
       if (name === './TaskRenderList.tsx') return load('TaskRenderList.tsx');
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchTooltip: 'WorkbenchTooltip' };
       if (name === './TaskWorkspace.css') return {};
       if (name === './PendingSubmission.tsx') return load('PendingSubmission.tsx');
       if (name === './api.ts') return api;
@@ -115,7 +116,11 @@ test('selected TaskCenter recover, acknowledge, replay, reconcile and retry cont
   const failed = job(10, 'failed'), uncertain = job(11, 'submission_unknown');
   const props = freeze({ tasks: { phase: 'ready', items: [unknown, applied], uncertain: [], busy: [] }, pending: [entry], jobs: [failed, uncertain], reconcileIds: { [uncertain.id]: '  provider-original  ' } });
   let tree = h.render(props); const all = nodes(tree);
-  assert.equal(all.filter((node) => node.props?.className === 'task-center-detail-pane').flatMap(nodes).filter((node)=>node.type==='Button').length, 8, 'Existing task operations stay on the original detail cards');
+  const detailNodes = all.filter(node => node.props?.className === 'task-center-detail-pane').flatMap(nodes);
+  const infoButtons = detailNodes.filter(node => node.type === 'WorkbenchTooltip').flatMap(nodes).filter(node => node.type === 'Button');
+  assert.equal(infoButtons.length, 3, 'Each explanation has an on-demand information button');
+  assert.ok(infoButtons.every(node => node.props.onClick === undefined), 'Information buttons do not perform task operations');
+  assert.equal(detailNodes.filter(node => node.type === 'Button' && !infoButtons.includes(node)).length, 8, 'Existing task operations stay on the original detail cards');
   assert.deepEqual((h.calls as unknown), []);
   const select = (key: string) => { tree = h.render({ ...props, selectedTaskId: key }); return (testId: unknown) => nodes(tree).find(node => node.props['data-testid'] === testId); };
   (select(`local:${unknown.id}`)('recover-durable-task'))!.props.onClick(); const unknownFence = (h.calls.at(-1))![3] as ()=>boolean; assert.equal(unknownFence(), true);

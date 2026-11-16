@@ -80,7 +80,7 @@ before(async () => {
 
 test('classic TSX real shared controls show exact feature name with compact explicit action and polite status', () => {
   assert.match(rendered.idle, /data-slot="button"/); assert.match(rendered.idle, /aria-label="检查已导出文件解码样本峰值"/); assert.match(rendered.idle, />检查<\/button>/);
-  assert.match(rendered.idle, /role="status" aria-live="polite" aria-atomic="true"/); assert.match(rendered.idle, /不是响度或真峰值/); assert.match(rendered.idle, /不能证明源音频或混音未削波/);
+  assert.match(rendered.idle, /role="status" aria-live="polite" aria-atomic="true"/); assert.doesNotMatch(rendered.idle, /不是响度或真峰值|不能证明源音频或混音未削波/);
   assert.doesNotMatch(rendered.idle, /role="dialog"|aria-modal|已解码检查此成片|dBFS|安全|无削波|响度合格/);
 });
 test('ready shows overall and distinct left/right decoded peaks plus verified hash and timestamp', () => {
@@ -90,7 +90,7 @@ test('ready shows overall and distinct left/right decoded peaks plus verified ha
 });
 test('silence uses explicit minus-infinity while over-one warning remains advisory and textual', () => {
   assert.equal((rendered.silent.match(/−∞ dBFS（数字静音）/g) || []).length, 3); assert.doesNotMatch(rendered.silent, /null|Infinity|NaN/);
-  assert.match(rendered.over, /总体：\+1.9382 dBFS/); assert.match(rendered.over, /样本峰值超过 0 dBFS；可能存在过载风险/); assert.match(rendered.over, /不能证明源音频或混音未削波/);
+  assert.match(rendered.over, /总体：\+1.9382 dBFS/); assert.match(rendered.over, /样本峰值超过 0 dBFS；可能存在过载风险/); assert.doesNotMatch(rendered.over, /不能证明源音频或混音未削波/);
   assert.doesNotMatch(rendered.over, /削波次数|data-testid="download-export"/);
 });
 test('all row actions reflect busy; cancel is explicit and only appears on the checked row', () => {

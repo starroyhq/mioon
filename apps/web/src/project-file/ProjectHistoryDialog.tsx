@@ -52,7 +52,7 @@ function BackupInspection({value, now}: {value: ProjectBackupInspection; now: Da
       <dt>{t('projectHistory.backup.size')}</dt><dd>{display.bytes(value.sizeBytes)}</dd></dl>
     <p data-testid="pf-backup-counts">{(Object.keys(countKeys) as (keyof typeof countKeys)[]).filter(key => Object.hasOwn(value.tableCounts, key))
       .map(key => `${t(countKeys[key])} ${formatNumber(value.tableCounts[key])}`).join(' · ')}</p>
-    <p className="pf-help">{t('projectHistory.backup.readonly')}</p></>;
+  </>;
 }
 function MutationNotice({state, runtime, pendingEdits, backupsOnly, retry}: {state: ProjectHistoryState; runtime: ProjectHistoryRuntime; pendingEdits?:boolean; backupsOnly?:boolean; retry:()=>void}) {
   const {t} = useI18n(), attempt = state.attempt;
@@ -132,7 +132,7 @@ function HistorySession(props: ProjectHistoryDialogProps) {
   </div>;
   const completed = attempt?.kind === 'backup' && attempt.phase === 'complete' ? attempt.result : null;
   return <>
-    <VersionHistoryDialog contentRef={historyContent} saveButtonRef={saveButton} title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} subtitle={props.backupsOnly?t('projectHistory.backup.subtitle',{name:props.projectName}):undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
+    <VersionHistoryDialog contentRef={historyContent} saveButtonRef={saveButton} title={props.backupsOnly ? t('projectHistory.tabs.backups') : undefined} interactionBlocked={!allowed()} open={props.open} projectName={props.projectName} now={now} versions={state.versions.kind === 'ready' ? {kind: 'ready', value: versions} : state.versions}
       selected={state.selected} onSelect={id => {if(!current.current.backupsOnly && allowed())void runtime.select(id);}} comparison={{kind: 'ready', value: []}} detail={detail}
       retention={{recent: 20, days: 7}} onSaveVersion={!props.backupsOnly && tab === 'versions' && !locked && !props.pendingEdits ? () => {if(allowed())setSaveOpen(true);} : undefined}
       onRestore={() => {if (!current.current.backupsOnly && allowed() && !current.current.pendingEdits) setConfirmVersion(true);}} onRetry={() => {void runtime.loadVersions();}} onRetryComparison={() => {void runtime.select(state.selected);}} onClose={close}

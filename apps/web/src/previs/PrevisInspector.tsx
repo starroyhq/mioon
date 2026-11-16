@@ -6,6 +6,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
+import { WorkbenchTooltip } from '../WorkspaceControls.tsx';
 import { ArrowUpRight, Box, Link, Lock } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import { useWorkspaceVisibility } from '../workspace-visibility.tsx';
@@ -55,7 +56,7 @@ export default function PrevisInspector({ node, frame, readOnly, busy, shots = [
             onFocus={() => { editing.current = true; }} onChange={event => setDraft(event.target.value)} onBlur={commit}
             onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); else if (event.key === 'Escape') { editing.current = false; setDraft(node.label); } }} /></div>
         <div className="shot-property-row"><span className="field-label">{t('previs.inspector.frame')}</span>
-          <span className="previs-inspector-frame" data-testid="previs-node-frame"><strong>{frame.ratio}</strong><span>{frame.width}×{frame.height}</span><span className="previs-follow" title={t('previs.inspector.frameHint')}><Link size={11} aria-hidden="true" />{t('previs.inspector.followProject')}</span></span></div>
+          <span className="previs-inspector-frame" data-testid="previs-node-frame"><strong>{frame.ratio}</strong><span>{frame.width}×{frame.height}</span><span className="previs-follow"><Link size={11} aria-hidden="true" />{t('previs.inspector.followProject')}</span></span></div>
         <div className="shot-property-row"><span className="field-label">{t('previs.inspector.scene')}</span><span className="previs-inspector-summary" data-testid="previs-node-summary">{previsSceneSummary(scene, translate)}</span></div>
         {readOnly && <p className="input-hint previs-inspector-readonly"><Lock size={11} aria-hidden="true" />{t('previs.inspector.readOnly')}</p>}
       </BoardInspectorGroup>)}
@@ -84,7 +85,8 @@ export default function PrevisInspector({ node, frame, readOnly, busy, shots = [
         </div>
       </BoardInspectorGroup>
     </div></ScrollArea>
-    <footer className="previs-inspector-footer"><span className="previs-saved" data-busy={busy || undefined}><span className="previs-saved-dot" aria-hidden="true" />{t(busy ? 'previs.inspector.saving' : 'previs.inspector.saved')}<span>{t('previs.inspector.localNote')}</span></span>
+    <footer className="previs-inspector-footer"><span className="previs-saved" data-busy={busy || undefined}><span className="previs-saved-dot" aria-hidden="true" />{t(busy ? 'previs.inspector.saving' : 'previs.inspector.saved')}</span>
+      <WorkbenchTooltip content={t('previs.inspector.localNote')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="previs-local-rendering-info" aria-label={t('previs.inspector.localNote')}>ⓘ</Button></WorkbenchTooltip>
       <Button size="sm" className="button primary" data-testid="previs-open" disabled={!visible} onClick={onOpen}><ArrowUpRight size={14} aria-hidden="true" />{t('previs.inspector.open')}</Button></footer>
   </aside>;
 }

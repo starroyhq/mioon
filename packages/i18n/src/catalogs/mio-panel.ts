@@ -6,19 +6,20 @@ export const mioPanelMessages = {
   "agent.follow.timeline": {"zh-Hans": "在时间线中查看", "zh-Hant": "在時間軸中查看", "en": "View on timeline", "ja": "タイムラインで表示"},
   "agent.follow.locator": {"zh-Hans": "Mio 在 {target}", "zh-Hant": "Mio 在 {target}", "en": "Mio is at {target}", "ja": "Mio は {target} にいます"},
   "agent.follow.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
-  "agent.follow.saveError": {"zh-Hans": "跟随设置未保存，请重试。", "zh-Hant": "跟隨設定未儲存，請重試。", "en": "The follow setting could not be saved. Try again.", "ja": "追跡設定を保存できませんでした。もう一度お試しください。"},
+  "agent.follow.saveError": {"zh-Hans": "未能保存跟随设置。", "zh-Hant": "未能儲存跟隨設定。", "en": "Could not save the follow setting.", "ja": "追跡設定を保存できませんでした。"},
   "agent.panel.goal.title": {"zh-Hans": "整理要求", "zh-Hant": "整理要求", "en": "Set requirements", "ja": "要件を整理"},
   "agent.panel.goal.titleCount": {"zh-Hans": "整理要求 · {count} 项", "zh-Hant": "整理要求 · {count} 項", "en": "Set requirements · {count}", "ja": "要件を整理 · {count} 件"},
   "agent.panel.goal.repairTitle": {"zh-Hans": "按未达成的要求补做", "zh-Hant": "按未達成的要求補做", "en": "Repair unmet requirements", "ja": "未達成の要件を補完"},
   "agent.panel.goal.repairBadge": {"zh-Hans": "补做", "zh-Hant": "補做", "en": "Repair", "ja": "補完"},
   "agent.panel.goal.updatedBadge": {"zh-Hans": "已更新", "zh-Hant": "已更新", "en": "Updated", "ja": "更新済み"},
   "agent.panel.retry": {"zh-Hans": "重试这一步", "zh-Hant": "重試這一步", "en": "Retry this step", "ja": "このステップを再試行"},
-  "agent.panel.failureReason": {"zh-Hans": "原因：{reason}", "zh-Hant": "原因：{reason}", "en": "Reason: {reason}", "ja": "原因：{reason}"},
+  "agent.panel.settingsChangedReason": {"zh-Hans": "本轮开始后模型连接已变更。", "zh-Hant": "本輪開始後模型連線已變更。", "en": "The model connection changed after this round started.", "ja": "このラウンドの開始後にモデル接続が変更されました。"},
+  "agent.panel.unknownFailureReason": {"zh-Hans": "未能确定本轮失败的原因。", "zh-Hant": "未能確定本輪失敗的原因。", "en": "The cause of this round’s failure is unknown.", "ja": "このラウンドが失敗した原因は不明です。"},
   "agent.panel.errorSettings.agent": {"zh-Hans": "检查 Mio 的模型连接", "zh-Hant": "檢查 Mio 的模型連線", "en": "Check Mio’s model connection", "ja": "Mio のモデル接続を確認"},
   "agent.panel.errorSettings.models": {"zh-Hans": "打开生成服务设置", "zh-Hant": "開啟生成服務設定", "en": "Open Generation services settings", "ja": "生成サービスの設定を開く"},
   "agent.panel.errorSettings.video-tools": {"zh-Hans": "打开视频工具设置", "zh-Hant": "開啟影片工具設定", "en": "Open Video tools settings", "ja": "動画ツール設定を開く"},
-  "agent.panel.modifiedAfter": {"zh-Hans": "目标之后有更新，请核对当前内容", "zh-Hant": "目標之後有更新，請核對目前內容", "en": "This target has later updates; review its current content", "ja": "対象に後続の更新があります。現在の内容を確認してください"},
-  "agent.panel.modifiedAfterKept": {"zh-Hans": "目标之后有更新，保留当前内容", "zh-Hant": "目標之後有更新，保留目前內容", "en": "This target has later updates; keep its current content", "ja": "対象に後続の更新があります。現在の内容を保持します"},
+  "agent.panel.modifiedAfter": {"zh-Hans": "目标已更新", "zh-Hant": "目標已更新", "en": "Target has changed", "ja": "対象が更新されました"},
+  "agent.panel.modifiedAfterKept": {"zh-Hans": "目标已更新", "zh-Hant": "目標已更新", "en": "Target has changed", "ja": "対象が更新されました"},
   "agent.mark.label": {"zh-Hans": "Mio 修改", "zh-Hant": "Mio 修改", "en": "Edited by Mio", "ja": "Mio が変更"},
   "agent.mark.open": {"zh-Hans": "Mio 修改，查看这处变化", "zh-Hant": "Mio 修改，查看這處變化", "en": "Edited by Mio. Show this change", "ja": "Mio が変更。この変更を表示"},
   "agent.skill.read": {"zh-Hans": "读取方法：{title}", "zh-Hant": "讀取方法：{title}", "en": "Read method: {title}", "ja": "手順を読む：{title}"},
@@ -29,13 +30,13 @@ export const mioPanelMessages = {
   "agent.skill.title.scriptSync": {"zh-Hans": "脚本改动同步", "zh-Hant": "腳本改動同步", "en": "Script change sync", "ja": "台本の変更を反映"},
   "agent.skill.title.previewToShots": {"zh-Hans": "预演视频拆镜", "zh-Hant": "預演影片拆鏡", "en": "Preview video to shots", "ja": "プレビュー動画をショットに分ける"},
   "agent.skill.title.framePatch": {"zh-Hans": "首尾帧补镜", "zh-Hant": "首尾幀補鏡", "en": "Patch with first and last frames", "ja": "前後のフレームで補う"},
-  "agent.review.summary": {"zh-Hans": "发现 {count} 处可能不连贯，没有修改任何内容：", "zh-Hant": "發現 {count} 處可能不連貫，沒有修改任何內容：", "en": "Possible continuity breaks found: {count}. Nothing was changed:", "ja": "つながらない可能性がある箇所：{count} 件。何も変更していません："},
-  "agent.review.none": {"zh-Hans": "没有发现不连贯的地方，没有修改任何内容。", "zh-Hant": "沒有發現不連貫的地方，沒有修改任何內容。", "en": "No continuity breaks found. Nothing was changed.", "ja": "つながらない箇所は見つかりませんでした。何も変更していません。"},
+  "agent.review.summary": {"zh-Hans": "发现 {count} 处可能不连贯", "zh-Hant": "發現 {count} 處可能不連貫", "en": "Possible continuity breaks: {count}", "ja": "つながらない可能性がある箇所：{count} 件"},
+  "agent.review.none": {"zh-Hans": "未发现不连贯之处", "zh-Hant": "未發現不連貫之處", "en": "No continuity breaks found", "ja": "つながらない箇所は見つかりませんでした"},
   "agent.review.locate": {"zh-Hans": "定位", "zh-Hant": "定位", "en": "Locate", "ja": "表示"},
   "agent.review.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
   "agent.review.shotMissing": {"zh-Hans": "已删除的镜头", "zh-Hant": "已刪除的鏡頭", "en": "Deleted shot", "ja": "削除済みのショット"},
   "agent.review.mark": {"zh-Hans": "待核对", "zh-Hant": "待核對", "en": "To check", "ja": "要確認"},
-  "agent.review.markTitle": {"zh-Hans": "{category} · 点击查看对应问题", "zh-Hant": "{category} · 點擊查看對應問題", "en": "{category} · Show the issue", "ja": "{category} · 該当する指摘を表示"},
+  "agent.review.markTitle": {"zh-Hans": "{category}", "zh-Hant": "{category}", "en": "{category}", "ja": "{category}"},
   "agent.review.category.wardrobe": {"zh-Hans": "衣着", "zh-Hant": "衣著", "en": "Wardrobe", "ja": "衣装"},
   "agent.review.category.props": {"zh-Hans": "持物", "zh-Hant": "持物", "en": "Props", "ja": "持ち物"},
   "agent.review.category.injury": {"zh-Hans": "伤情", "zh-Hant": "傷情", "en": "Injuries", "ja": "けが"},
@@ -46,18 +47,14 @@ export const mioPanelMessages = {
   "agent.review.category.sound": {"zh-Hans": "声音与画面", "zh-Hant": "聲音與畫面", "en": "Sound and picture", "ja": "音と映像"},
   "agent.review.category.other": {"zh-Hans": "其他", "zh-Hant": "其他", "en": "Other", "ja": "その他"},
   "agent.panel.undoTitle": {"zh-Hans": "撤销这一轮的 {count} 处变化？", "zh-Hant": "復原這一輪的 {count} 處變化？", "en": "Undo changes from this round ({count})?", "ja": "このラウンドの変更 {count} 件を取り消しますか？"},
-  "agent.panel.undoRetained": {"zh-Hans": "{count} 处之后被你修改过，将保留。", "zh-Hant": "{count} 處之後被你修改過，將保留。", "en": "Modified afterward and kept: {count}.", "ja": "その後に変更された {count} 件は保持します。"},
   "agent.panel.undoWillUndo": {"zh-Hans": "将撤销", "zh-Hant": "將復原", "en": "Will undo", "ja": "取り消す変更"},
   "agent.panel.undoWillKeep": {"zh-Hans": "将保留", "zh-Hant": "將保留", "en": "Will keep", "ja": "保持する変更"},
-  "agent.panel.undoBlocked": {"zh-Hans": "这处暂时无法安全撤销，将在这里停止；更早的变化会保留。", "zh-Hant": "這處暫時無法安全復原，將在此停止；更早的變化會保留。", "en": "Undo will stop at this change because it cannot be safely undone. Earlier changes will be kept.", "ja": "安全に取り消せないため、ここで停止します。それより前の変更は保持します。"},
+  "agent.panel.undoBlocked": {"zh-Hans": "撤销将在无法撤销的变化处停止。", "zh-Hant": "復原將在無法復原的變更處停止。", "en": "Undo stops at the first change that cannot be undone.", "ja": "取り消せない変更に達した時点で停止します。"},
   "agent.panel.undoNone": {"zh-Hans": "当前没有可以安全撤销的变化。", "zh-Hant": "目前沒有可以安全復原的變化。", "en": "There are no changes that can be safely undone now.", "ja": "現在、安全に取り消せる変更はありません。"},
   "agent.panel.undoCount": {"zh-Hans": "撤销 {count} 处", "zh-Hant": "復原 {count} 處", "en": "Undo {count}", "ja": "{count} 件を取り消す"},
   "agent.panel.undoUnavailable": {"zh-Hans": "暂时无法安全撤销", "zh-Hant": "暫時無法安全復原", "en": "Cannot safely undo now", "ja": "現在は安全に取り消せません"},
   "agent.panel.note": {"zh-Hans": "补充说明", "zh-Hant": "補充說明", "en": "Additional instruction", "ja": "補足指示"},
   "agent.panel.sendNote": {"zh-Hans": "发送补充说明", "zh-Hant": "傳送補充說明", "en": "Send instruction", "ja": "補足指示を送信"},
-  "agent.panel.noteDraft": {"zh-Hans": "补充说明，下一步生效…", "zh-Hant": "補充說明，下一步生效…", "en": "Add an instruction for the next step…", "ja": "次のステップに向けて補足する…"},
-  "agent.panel.pausedNoteDraft": {"zh-Hans": "补充说明，继续时生效…", "zh-Hant": "補充說明，繼續時生效…", "en": "Add an instruction to use when continuing…", "ja": "再開時に反映する補足を入力…"},
-  "agent.panel.attachNextRound": {"zh-Hans": "附件将在下一轮发送", "zh-Hant": "附件將在下一輪傳送", "en": "Attachments will be sent with the next round", "ja": "添付ファイルは次のラウンドで送信します"},
   "agent.panel.skipContinue": {"zh-Hans": "跳过这一处并继续", "zh-Hant": "跳過這一處並繼續", "en": "Skip this content and continue", "ja": "この箇所をスキップして続行"},
   "agent.panel.skippedOperation": {"zh-Hans": "已跳过 · {operation}", "zh-Hant": "已跳過 · {operation}", "en": "Skipped · {operation}", "ja": "スキップ済み · {operation}"},
   "agent.panel.retainedValue": {"zh-Hans": "保留你的修改：{value}", "zh-Hant": "保留你的修改：{value}", "en": "Keeping your changes: {value}", "ja": "現在の変更を保持：{value}"},
@@ -135,18 +132,18 @@ export const mioPanelMessages = {
   "agent.panel.provider.model_unavailable": {"zh-Hans": "模型服务无法使用当前型号。", "zh-Hant": "模型服務無法使用目前的型號。", "en": "The current model is unavailable on the model service.", "ja": "モデルサービスで現在のモデルを利用できません。"},
   "agent.panel.provider.invalid_parameter": {"zh-Hans": "模型服务拒绝了此请求的参数。", "zh-Hant": "模型服務拒絕了此請求的參數。", "en": "The model service rejected this request’s parameters.", "ja": "モデルサービスがこのリクエストのパラメーターを拒否しました。"},
   "agent.panel.provider.authentication": {"zh-Hans": "模型服务拒绝了连接凭据或访问权限。", "zh-Hant": "模型服務拒絕了連線憑證或存取權限。", "en": "The model service rejected the credentials or access permissions.", "ja": "モデルサービスが認証情報またはアクセス権限を拒否しました。"},
-  "agent.panel.provider.unknown": {"zh-Hans": "模型服务终止了请求，原因未能识别。", "zh-Hant": "模型服務終止了請求，原因未能辨識。", "en": "The model service ended the request for an unrecognized reason.", "ja": "モデルサービスがリクエストを終了しました。原因は特定できませんでした。"},
+  "agent.panel.provider.unknown": {"zh-Hans": "模型服务终止了请求，原因未明。", "zh-Hant": "模型服務終止了請求，原因未明。", "en": "The model service ended the request for an unknown reason.", "ja": "モデルサービスが理由不明でリクエストを終了しました。"},
   "agent.panel.providerRetryScheduled": {"zh-Hans": "已安排第 {attempt} 次自动重试。", "zh-Hant": "已安排第 {attempt} 次自動重試。", "en": "Automatic retry {attempt} was scheduled.", "ja": "{attempt} 回目の自動再試行がスケジュールされました。"},
   "agent.panel.diagnostic.providerType": {"zh-Hans": "服务商错误类型", "zh-Hant": "服務商錯誤類型", "en": "Provider error type", "ja": "プロバイダーのエラー種別"},
   "agent.panel.diagnostic.providerCode": {"zh-Hans": "服务商错误码", "zh-Hant": "服務商錯誤碼", "en": "Provider error code", "ja": "プロバイダーのエラーコード"},
   "agent.panel.diagnostic.providerParam": {"zh-Hans": "相关参数", "zh-Hant": "相關參數", "en": "Parameter", "ja": "パラメーター"},
   "agent.panel.diagnostic.providerMessage": {"zh-Hans": "服务商说明", "zh-Hant": "服務商說明", "en": "Provider explanation", "ja": "プロバイダーの説明"},
-  "agent.panel.timeout.dns": {"zh-Hans": "请求已耗时 {seconds} 秒，查找模型服务地址时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，查找模型服務位址時逾時。", "en": "The request timed out during the model service address lookup, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、モデルサービスのアドレス検索中にタイムアウトしました。"},
-  "agent.panel.timeout.connect": {"zh-Hans": "请求已耗时 {seconds} 秒，连接模型服务时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，連線至模型服務時逾時。", "en": "The request timed out while connecting to the model service, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、モデルサービスへの接続中にタイムアウトしました。"},
-  "agent.panel.timeout.headers": {"zh-Hans": "请求已耗时 {seconds} 秒，等待模型服务响应头时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待模型服務回應標頭時逾時。", "en": "The request timed out while waiting for response headers, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答ヘッダーの待機中にタイムアウトしました。"},
-  "agent.panel.timeout.first_byte": {"zh-Hans": "请求已耗时 {seconds} 秒，等待模型回复的首批数据时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待模型回覆的首批資料時逾時。", "en": "The request timed out while waiting for the first response data, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答の最初のデータを待機中にタイムアウトしました。"},
-  "agent.panel.timeout.idle": {"zh-Hans": "请求已耗时 {seconds} 秒，等待回复的后续数据时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待回覆的後續資料時逾時。", "en": "The request timed out while waiting for more response data, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答の続きのデータを待機中にタイムアウトしました。"},
-  "agent.panel.timeout.total": {"zh-Hans": "模型请求在 {seconds} 秒内未完成，已到达总时限。", "zh-Hant": "模型請求在 {seconds} 秒內未完成，已達到總時限。", "en": "The model request reached its overall time limit of {seconds} s.", "ja": "モデルリクエストが全体の制限時間（{seconds} 秒）に達しました。"},
+  "agent.panel.timeout.dns": {"zh-Hans": "查找模型服务地址时超时（已用 {seconds} 秒）。", "zh-Hant": "查找模型服務位址時逾時（已用 {seconds} 秒）。", "en": "Model service address lookup timed out after {seconds} s.", "ja": "モデルサービスのアドレス検索中にタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.connect": {"zh-Hans": "连接模型服务超时（已用 {seconds} 秒）。", "zh-Hant": "連線至模型服務逾時（已用 {seconds} 秒）。", "en": "The connection to the model service timed out after {seconds} s.", "ja": "モデルサービスへの接続中にタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.headers": {"zh-Hans": "等待模型服务响应超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型服務回應逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model service to respond ({seconds} s elapsed).", "ja": "モデルサービスの応答待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.first_byte": {"zh-Hans": "等待模型开始回复时超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型開始回覆時逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model’s reply to begin ({seconds} s elapsed).", "ja": "モデルの返信開始待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.idle": {"zh-Hans": "等待模型继续回复时超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型繼續回覆時逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model’s reply to continue ({seconds} s elapsed).", "ja": "モデルの返信再開待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.total": {"zh-Hans": "模型请求达到 {seconds} 秒总时限。", "zh-Hant": "模型請求達到 {seconds} 秒總時限。", "en": "The model request reached its {seconds} s time limit.", "ja": "モデルリクエストが全体の制限時間（{seconds} 秒）に達しました。"},
   "agent.panel.exportBeforeModelFailure.succeeded": {"zh-Hans": "导出完成", "zh-Hant": "匯出完成", "en": "Export complete", "ja": "書き出し完了"},
   "agent.panel.exportBeforeModelFailure.submitted": {"zh-Hans": "导出任务已提交", "zh-Hant": "匯出任務已提交", "en": "Export submitted", "ja": "書き出しタスクを送信済み"},
   "agent.panel.diagnostic.terminal_mismatch": {
@@ -197,12 +194,6 @@ export const mioPanelMessages = {
     "en": "The model request or response exceeded a limit the app can handle.",
     "ja": "モデルへのリクエストまたは応答がアプリの処理上限を超えました。"
   },
-  "agent.panel.try": {
-    "zh-Hans": "试试这样说",
-    "zh-Hant": "試試這樣說",
-    "en": "Try asking",
-    "ja": "たとえば、こんな依頼"
-  },
   "agent.panel.suggest.description": {
     "zh-Hans": "根据参考图给镜头 03 写画面描述",
     "zh-Hant": "根據參考圖為鏡頭 03 寫畫面描述",
@@ -227,18 +218,6 @@ export const mioPanelMessages = {
     "en": "Check for issues before exporting",
     "ja": "書き出す前に問題がないか確認する"
   },
-  "agent.panel.continuedraft": {
-    "zh-Hans": "继续对话，或让 Mio 做点别的…",
-    "zh-Hant": "繼續對話，或讓 Mio 做點別的…",
-    "en": "Continue the conversation, or ask Mio for something else…",
-    "ja": "会話を続けるか、Mio に別のことを頼む…"
-  },
-  "agent.panel.blockedDraft": {
-    "zh-Hans": "先处理上次未完成的执行",
-    "zh-Hant": "先處理上次未完成的執行",
-    "en": "Resolve the unfinished run first",
-    "ja": "先に前回の未完了の実行を確認してください"
-  },
   "agent.panel.modelMenu": {
     "zh-Hans": "当前模型与范围",
     "zh-Hant": "目前模型與範圍",
@@ -250,12 +229,6 @@ export const mioPanelMessages = {
     "zh-Hant": "在設定中更換…",
     "en": "Change in Settings…",
     "ja": "設定で変更…"
-  },
-  "agent.panel.stalledTitle": {
-    "zh-Hans": "Mio 好像卡住了",
-    "zh-Hant": "Mio 好像卡住了",
-    "en": "Mio seems to be stuck",
-    "ja": "Mio の処理が進んでいません"
   },
   "agent.panel.repeatedFailureBody": {
     "zh-Hans": "连续三次未能完成「{operation}」",
@@ -276,28 +249,16 @@ export const mioPanelMessages = {
     "ja": "一時停止"
   },
   "agent.panel.safetyPauseBody": {
-    "zh-Hans": "这次执行已达到安全上限，已完成的变化会保留",
-    "zh-Hant": "這次執行已達到安全上限，已完成的變更會保留",
-    "en": "This run reached its safety limit. Completed changes are retained",
-    "ja": "この実行は安全のため一時停止しました。完了した変更は保持されます"
-  },
-  "agent.panel.pauseSupplement": {
-    "zh-Hans": "可以直接继续，也可以在输入框先补充说明",
-    "zh-Hant": "可以直接繼續，也可以在輸入框先補充說明",
-    "en": "You can continue now or send Mio a note first",
-    "ja": "そのまま続行するか、入力欄から先に補足を送信できます"
+    "zh-Hans": "已达到执行上限",
+    "zh-Hant": "已達到執行上限",
+    "en": "Execution limit reached",
+    "ja": "実行上限に達しました"
   },
   "agent.panel.pauseTitle": {
     "zh-Hans": "已暂停 · 你暂停了这一轮",
     "zh-Hant": "已暫停 · 你暫停了這一輪",
     "en": "Paused · You paused this round",
     "ja": "一時停止 · このラウンドを一時停止しました"
-  },
-  "agent.panel.pauseBody": {
-    "zh-Hans": "所有已完成的变化都已保留，继续后从下一步开始",
-    "zh-Hant": "所有已完成的變化都已保留，繼續後從下一步開始",
-    "en": "Completed changes are retained. Continue from the next step",
-    "ja": "完了した変更は保持されています。次のステップから続行します"
   },
   "agent.panel.conflictTitle": {
     "zh-Hans": "已暂停 · 你修改了同一处",
@@ -308,23 +269,11 @@ export const mioPanelMessages = {
   "agent.panel.conflictTarget": {"zh-Hans":"目标","zh-Hant":"目標","en":"Target","ja":"対象"},
   "agent.panel.yourChanges": {"zh-Hans":"你的修改","zh-Hant":"你的修改","en":"Your changes","ja":"現在の変更"},
   "agent.panel.originalPlan": {"zh-Hans":"Mio 原计划","zh-Hant":"Mio 原計畫","en":"Mio’s original plan","ja":"Mio の元の計画"},
-  "agent.panel.conflictBody": {
-    "zh-Hans": "继续后 Mio 跳过这一处，本轮不再修改，接着做后面的步骤",
-    "zh-Hant": "繼續後 Mio 跳過這一處，本輪不再修改，接著完成後面的步驟",
-    "en": "Mio will skip this content for the rest of this round and continue with the remaining steps",
-    "ja": "Mio はこのラウンドでこの箇所を変更せず、残りのステップを続行します"
-  },
   "agent.panel.approvalTitle": {
     "zh-Hans": "确认这次操作",
     "zh-Hant": "確認這次操作",
     "en": "Confirm this operation",
     "ja": "この操作を確認"
-  },
-  "agent.panel.canvasArchiveEffect": {
-    "zh-Hans": "删除后可以在「已删除」里恢复。已生成的视频会留在素材库，时间线不会改变。",
-    "zh-Hant": "刪除後可以在「已刪除」中復原。已生成的影片會保留在素材庫，時間軸不會改變。",
-    "en": "You can restore these items from Deleted. Generated videos stay in the media library, and the timeline stays as it is.",
-    "ja": "削除後も「削除済み」から復元できます。生成した動画は素材ライブラリに残り、タイムラインは変わりません。"
   },
   "agent.panel.confirmGenerate": {
     "zh-Hans": "确认生成",
@@ -345,10 +294,10 @@ export const mioPanelMessages = {
     "ja": "プロバイダーの料金に従い、費用が発生する場合があります"
   },
   "agent.panel.paidSettings": {
-    "zh-Hans": "以后都直接调用？在设置中开启",
-    "zh-Hant": "以後都直接呼叫？在設定中開啟",
-    "en": "Allow future calls directly? Enable in Settings",
-    "ja": "次回から直接実行する場合は設定で有効にできます"
+    "zh-Hans": "付费执行设置",
+    "zh-Hant": "付費執行設定",
+    "en": "Paid operation settings",
+    "ja": "有料操作の設定"
   },
   "agent.panel.provider": {
     "zh-Hans": "服务商",
@@ -393,28 +342,16 @@ export const mioPanelMessages = {
     "ja": "前回の実行が未完了です"
   },
   "agent.panel.recoveryBody": {
-    "zh-Hans": "请先核对结果未知的步骤，再继续执行或放弃",
-    "zh-Hant": "請先核對結果未知的步驟，再繼續執行或放棄",
-    "en": "Check steps with unknown results before continuing or abandoning this run",
-    "ja": "結果が不明なステップを確認してから、続行または破棄してください"
-  },
-  "agent.panel.recoveryThen": {
-    "zh-Hans": "然后选择继续或放弃",
-    "zh-Hant": "然後選擇繼續或放棄",
-    "en": "Then continue or abandon",
-    "ja": "確認後、続行または破棄を選択"
+    "zh-Hans": "部分步骤结果待确认",
+    "zh-Hant": "部分步驟結果待確認",
+    "en": "Some step results are unconfirmed",
+    "ja": "一部のステップの結果が未確認です"
   },
   "agent.panel.abandon": {
     "zh-Hans": "放弃",
     "zh-Hant": "放棄",
     "en": "Abandon",
     "ja": "破棄"
-  },
-  "agent.panel.abandonHelp": {
-    "zh-Hans": "放弃后，已完成的变化仍保留，可在历史中撤销",
-    "zh-Hant": "放棄後，已完成的變化仍保留，可在歷史中復原",
-    "en": "Completed changes remain after abandoning this run and can be undone from history",
-    "ja": "破棄しても完了した変更は保持され、履歴から取り消せます"
   },
   "agent.panel.unknownStep": {
     "zh-Hans": "先核对：{name}",
@@ -445,18 +382,6 @@ export const mioPanelMessages = {
     "zh-Hant": "向服務商核對結果",
     "en": "Check the result with the provider",
     "ja": "プロバイダーに結果を確認"
-  },
-  "agent.panel.settingsChangedTail": {
-    "zh-Hans": "这一轮开始后模型连接设置已变更，不能在原来这一轮重试。请开新对话重新发送。",
-    "zh-Hant": "這一輪開始後模型連線設定已變更，無法在原本這一輪重試。請開新對話重新傳送。",
-    "en": "The model connection settings changed after this round started, so it can't be retried here. Start a new conversation and send it again.",
-    "ja": "このラウンドの開始後にモデル接続の設定が変更されたため、このラウンドでは再試行できません。新しい会話を始めて、もう一度送信してください。"
-  },
-  "agent.panel.failedTail": {
-    "zh-Hans": "这一步没有成功，后面的步骤还没有执行。处理好后可以让 Mio 重试这一步。",
-    "zh-Hant": "這一步沒有成功，後面的步驟還沒有執行。處理好後可以讓 Mio 重試這一步。",
-    "en": "This step failed. The following steps have not run. Once the issue is resolved, ask Mio to retry this step.",
-    "ja": "このステップは失敗し、後続のステップは実行されていません。問題を解決してから Mio にこのステップの再試行を依頼できます。"
   },
   "agent.panel.authorizationTitle": {
     "zh-Hans": "首次向 {model} 发送",
@@ -1929,16 +1854,16 @@ export const mioPanelMessages = {
     "ja": "Mio に有料の生成をそのまま実行させますか？"
   },
   "agent.panel.policy.fullBody": {
-    "zh-Hans": "本对话中 Mio 调用付费生成时不再逐次确认，每次调用仍会记录在变化里。新对话会回到全局档位。",
-    "zh-Hant": "本對話中 Mio 呼叫付費生成時不再逐次確認，每次呼叫仍會記錄在變更裡。新對話會回到全域檔位。",
-    "en": "In this conversation Mio no longer asks before each paid generation. Each call is still recorded in the changes. New conversations go back to the global setting.",
-    "ja": "この会話では、Mio が有料の生成を行うたびに確認しなくなります。呼び出しはそれぞれ変更履歴に記録されます。新しい会話は全体の設定に戻ります。"
+    "zh-Hans": "本对话的付费操作将直接执行。",
+    "zh-Hant": "本對話的付費操作將直接執行。",
+    "en": "Paid operations will run directly in this conversation.",
+    "ja": "この会話では有料操作が確認なしで実行されます。"
   },
   "agent.panel.policy.fullGlobalBody": {
-    "zh-Hans": "之后的新对话中，Mio 调用付费生成时都不再逐次确认，每次调用仍会记录在变化里。",
-    "zh-Hant": "之後的新對話中，Mio 呼叫付費生成時都不再逐次確認，每次呼叫仍會記錄在變更裡。",
-    "en": "In new conversations Mio no longer asks before each paid generation. Each call is still recorded in the changes.",
-    "ja": "今後の新しい会話では、Mio が有料の生成を行うたびに確認しなくなります。呼び出しはそれぞれ変更履歴に記録されます。"
+    "zh-Hans": "新对话中的付费操作将直接执行。",
+    "zh-Hant": "新對話中的付費操作將直接執行。",
+    "en": "Paid operations will run directly in new conversations.",
+    "ja": "新しい会話では有料操作が確認なしで実行されます。"
   },
   "agent.display.operation.ask": {
     "zh-Hans": "提问",
@@ -1988,24 +1913,6 @@ export const mioPanelMessages = {
     "en": "Answer",
     "ja": "回答"
   },
-  "agent.panel.question.pickOne": {
-    "zh-Hans": "选一项，或在下方输入框直接回答",
-    "zh-Hant": "選一項，或在下方輸入框直接回答",
-    "en": "Pick one, or reply in the box below",
-    "ja": "1 つ選ぶか、下の入力欄で直接回答"
-  },
-  "agent.panel.question.pickSome": {
-    "zh-Hans": "选一项或多项，或在下方输入框直接回答",
-    "zh-Hant": "選一項或多項，或在下方輸入框直接回答",
-    "en": "Pick one or more, or reply in the box below",
-    "ja": "1 つ以上選ぶか、下の入力欄で直接回答"
-  },
-  "agent.panel.question.continue": {
-    "zh-Hans": "回答后 Mio 继续这一轮",
-    "zh-Hant": "回答後 Mio 繼續這一輪",
-    "en": "Mio continues after you answer",
-    "ja": "回答すると Mio が続行します"
-  },
   "agent.panel.question.selected": {
     "zh-Hans": "已选 {count} 项",
     "zh-Hant": "已選 {count} 項",
@@ -2047,18 +1954,6 @@ export const mioPanelMessages = {
     "zh-Hant": "未回答 · 已停止",
     "en": "Not answered · Stopped",
     "ja": "未回答 · 停止済み"
-  },
-  "agent.panel.question.stoppedBody": {
-    "zh-Hans": "这一轮已停止，提问不再接收回答。需要时重新发送请求。",
-    "zh-Hant": "這一輪已停止，提問不再接收回答。需要時重新傳送請求。",
-    "en": "This round has stopped and no longer takes an answer. Send the request again if you still need it.",
-    "ja": "このラウンドは停止したため、回答を受け付けません。必要なら依頼を送り直してください。"
-  },
-  "agent.panel.question.answerDraft": {
-    "zh-Hans": "也可以直接输入你的回答",
-    "zh-Hant": "也可以直接輸入你的回答",
-    "en": "Or type your answer here",
-    "ja": "ここに直接回答を入力することもできます"
   },
   "agent.panel.question.sendAnswer": {
     "zh-Hans": "发送回答",

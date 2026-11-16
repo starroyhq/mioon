@@ -268,19 +268,19 @@ test('12-03 the four open failures have distinct titles and the right buttons', 
   assert.match(tagOf(html('12-03d-restoring'), 'pf-open-restore') ?? '', /aria-busy="true"/u);
 });
 
-test('open failure descriptions keep complete English sentences and task plurals', () => {
-  assert.ok(ui.render('12-03', 'en').includes('or its disk is not connected.'));
-  assert.ok(ui.render('12-03d', 'en').includes('never opened. If this project was opened on this computer before, you can restore it from a local backup.'));
+test('open failure copy keeps the English reason, path and task plurals', () => {
+  assert.ok(ui.render('12-03', 'en').includes('Last location:'));
+  assert.ok(ui.render('12-03d', 'en').includes('The file is damaged or is not a Mioon project.'));
   const singular = translate('en', 'projectFile.open.missing.bodyWithTasks', {path: OPEN_FAILURES.missing.projectFile, count: 1});
   const plural = translate('en', 'projectFile.open.missing.bodyWithTasks', {path: OPEN_FAILURES.missing.projectFile, count: 2});
-  assert.ok(singular.includes('not connected. There is 1 generation task waiting'));
-  assert.ok(plural.includes('not connected. There are 2 generation tasks waiting'));
+  assert.ok(singular.includes('1 generation task waiting'));
+  assert.ok(plural.includes('2 generation tasks waiting'));
 });
 
 test('12-03d read-only keeps the layout and never calls the file damaged', () => {
   const readOnly = html('12-03d-read-only');
   assert.equal(title('12-03d-read-only'), '「产品演示 · 竖屏」是只读的');
-  assert.ok(readOnly.includes(text('projectFile.open.readOnly.body')));
+  assert.equal(tagOf(readOnly, 'pf-open-copyTo'), null);
   assert.ok(!readOnly.includes(text('projectFile.open.invalid.body')));
   assert.ok(!readOnly.includes(text('projectFile.open.invalid.restore')));
   assert.equal(tagOf(readOnly, 'pf-open-restore'), null);
@@ -586,7 +586,7 @@ test('12-15 is controlled by the current open session and makes no claim without
 
 test('new project retained callbacks cannot change or repeat creation after its outcome becomes unknown or known', () => {
   const cell = {current: {}}, calls: string[] = [];
-  const names = ['Dialog', 'WorkbenchDialogContent', 'WorkbenchButton', 'Label', 'Input', 'Textarea', 'Icon', 'Check', 'ProjectLocationRiskNotice', 'WorkbenchAlert'];
+  const names = ['Dialog', 'WorkbenchDialogContent', 'WorkbenchButton', 'Label', 'Input', 'Textarea', 'Icon', 'Check', 'ProjectLocationRiskNotice', 'WorkbenchAlert', 'WorkbenchTooltip'];
   const create = homeFunction('NewProjectFileDialog', 'EOF', {React: {createElement: element, Fragment: 'fragment'}, useRef: () => cell, useId: () => 'create',
     useI18n: () => ({t: (key: string) => key}), projectNameProblem, projectFilePathPreview, aspectLabel: () => '9:16', TIMELINE_CURRENT_OUTPUT_PRESETS, NEW_PROJECT_DESCRIPTION_MAX_LENGTH: 500,
     ...Object.fromEntries(names.map(name => [name, name]))}, '../apps/web/src/project-file/NewProjectFileDialog.tsx');

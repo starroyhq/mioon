@@ -67,7 +67,7 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
   assert.match(tag(markup.idle, 'dialogue-loudness-target-peak'), /value="-1"/);
   assert.doesNotMatch(tag(markup.idle, 'dialogue-loudness-analyze'), /\sdisabled=""/, 'class names mention disabled: variants, so match the attribute');
   assert.doesNotMatch(markup.idle, /dialogue-loudness-apply/, 'nothing can be applied before measuring');
-  assert.match(markup.idle, /每段最长 60 秒/);
+  assert.doesNotMatch(markup.idle, /每段最长 60 秒/);
 
   assert.match(markup.ready, /已测量 3 段，建议调整 1 段/, 'a reading without a suggestion still counts as measured');
   assert.match(row(markup.ready, 'a'), /当前 -20\.0 LUFS · 真峰值 -9\.0 dBTP/);
@@ -82,7 +82,7 @@ test('the dialogue loudness card renders its target, each kind of row and the ap
   assert.match(row(markup.ready, 'f'), /超过 60 秒，无法测量/);
   assert.match(markup.ready, /data-testid="dialogue-loudness-apply"[^>]*>应用到 1 段</);
   assert.doesNotMatch(tag(markup.ready, 'dialogue-loudness-apply'), /\sdisabled=""/);
-  assert.match(markup.ready, /撤销一次即可全部复原/);
+  assert.doesNotMatch(markup.ready, /撤销一次即可全部复原/);
   assert.match(tag(markup.nothing, 'dialogue-loudness-apply'), /\sdisabled=""/, 'an empty selection cannot be applied');
 
   assert.match(markup.measuring, /正在测量第 2\/3 段…/);

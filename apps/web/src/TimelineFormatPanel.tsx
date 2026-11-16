@@ -16,7 +16,6 @@ export default function TimelineFormatPanel({ state, controller, onBack, onOpenT
   return <aside className="timeline-format-panel" data-testid="timeline-format-panel" aria-labelledby="timeline-format-title">
     <header><Button variant="ghost" type="button" size="sm" data-testid="timeline-format-back" onClick={onBack}>{t('subtitles.ui.back')}</Button><h2 id="timeline-format-title">{t('timeline.format.title')}</h2></header>
     <div className="timeline-format-body">
-      <p>{t('timeline.format.scope')}</p>
       <p>{t('timeline.format.eligibility')}</p>
       <div role="status" aria-live="polite">{state?.submitting ? t('timeline.format.saving') : state?.dirty ? t('timeline.format.dirty') : state?.phase === 'error' ? t('timeline.format.unavailable') : saved ? saved.timelineId ? t('timeline.format.saved') : t('timeline.format.default') : t('timeline.format.checking')}</div>
       {saved && <p data-testid="timeline-format-saved">{saved.width} × {saved.height} · {saved.fps} fps · {saved.timelineId ? t('timeline.format.revision', { revision: saved.timelineRevision }) : t('timeline.format.notCreated')}</p>}

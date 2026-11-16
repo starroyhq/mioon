@@ -103,7 +103,7 @@
   gap: 10px;
   width: 100%;
   height: auto;
-  min-height: 174px;
+  min-height: 136px;
   margin-top: 24px;
   padding: 16px;
   border: 1px solid var(--wb-line);
@@ -119,7 +119,6 @@
 }
 .launcher-home-create-title { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: var(--wb-text-title); font-weight: 650; }
 .launcher-home-create-title > span { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wb-media-text); color: var(--wb-media-matte); }
-.launcher-home-create-description { font-size: var(--wb-text-body); font-weight: 400; }
 
 .launcher-home-empty-actions { display: flex; gap: 16px; margin-top: 22px; }
 .launcher-home-action-tile.wb-button {
@@ -128,7 +127,7 @@
   flex: 1;
   gap: 12px;
   min-width: 0;
-  min-height: 96px;
+  min-height: 80px;
   height: auto;
   padding: 14px;
   border-radius: 12px;
@@ -137,9 +136,9 @@
   white-space: normal;
 }
 .launcher-home-action-icon { display: grid; flex: none; place-items: center; width: 50px; height: 50px; border-radius: var(--wb-radius-card); background: var(--wb-raised); color: var(--wb-text); }
-.launcher-home-action-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
-.launcher-home-action-copy > strong, .launcher-home-example h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; line-height: 1.35; }
-.launcher-home-action-copy > span, .launcher-home-example p { color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 400; line-height: 1.4; }
+.launcher-home-action-tile > strong { flex: 1; min-width: 0; }
+.launcher-home-action-tile > strong, .launcher-home-example h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; line-height: 1.35; }
+.launcher-home-example p { color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 400; line-height: 1.4; }
 .launcher-home-action-tile > svg { flex: none; color: var(--wb-muted); }
 
 .launcher-home-page { padding-block: 8px; }

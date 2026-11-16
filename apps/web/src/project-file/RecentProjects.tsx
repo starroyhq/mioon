@@ -111,11 +111,11 @@ export function RecentProjectsView(props: RecentProjectsViewProps): ReactElement
     </div>}
     {state.kind === 'error' && <WorkbenchAlert tone="danger" className="pf-home-error" data-testid="pf-home-error" icon={<WorkbenchIcon name="warning" size={16} />}
       actions={state.retryable ? <WorkbenchButton size="compact" disabled={props.busy} data-testid="pf-home-retry" onClick={() => { if (!current.current.busy) current.current.onRetry(); }}>{t('projectFile.common.retry')}</WorkbenchButton> : undefined}>
-      <strong>{t('projectFile.home.error')}</strong> {t('projectFile.home.errorBody')}
+      <strong>{t('projectFile.home.error')}</strong>
     </WorkbenchAlert>}
     {customEmpty && <div data-testid="pf-home-empty">{props.emptyContent}</div>}
     {!customEmpty && state.kind === 'ready' && registered.length === 0 && <WorkbenchEmptyState className="pf-home-empty" data-testid="pf-home-empty" icon={<Icon name="folder" size={20} />}
-      title={t('projectFile.home.emptyTitle')} description={t('projectFile.home.emptyBody')}
+      title={t('projectFile.home.emptyTitle')}
       actions={(props.onOpenFile || props.onCreate) && <>
         {props.onOpenFile && <WorkbenchButton disabled={props.busy} data-testid="pf-home-open-file" onClick={() => { if (!current.current.busy) current.current.onOpenFile?.(); }}><Icon name="folder" size={14} />{t('projectFile.home.open')}</WorkbenchButton>}
         {props.onCreate && <WorkbenchButton disabled={props.busy} variant="primary" data-testid="pf-home-create" onClick={() => { if (!current.current.busy) current.current.onCreate?.(); }}><WorkbenchIcon name="plus" size={14} />{t('projectFile.home.create')}</WorkbenchButton>}

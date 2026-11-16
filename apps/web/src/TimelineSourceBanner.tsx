@@ -33,7 +33,6 @@ export default function TimelineSourceBanner({ staleClipIds, outcome, describeSk
       <div className="timeline-source-banner-row">
         <AlertTriangle size={14} className="timeline-source-banner-icon" aria-hidden="true" />
         <strong>{refreshed ? skipped ? t('timeline.sync.result.updatedSkipped', { count: refreshed, skipped }) : t('timeline.sync.result.updated', { count: refreshed }) : t('timeline.sync.result.none', { count: skipped })}</strong>
-        <span className="timeline-source-banner-detail">{refreshed ? t('timeline.sync.result.detail', { count: refreshed }) : t('timeline.sync.result.noneDetail')}</span>
         <span className="timeline-source-banner-actions">
           {refreshed > 0 && <WorkbenchButton variant="secondary" size="compact" data-testid="timeline-source-undo" disabled={!canUndo || busy} onClick={() => onUndo()}><CornerUpLeft size={13} />{t('timeline.history.undo')}</WorkbenchButton>}
           {skipped > 0 && <WorkbenchButton variant="icon" size="compact" data-testid="timeline-source-skipped-toggle" aria-expanded={!collapsed} aria-label={t(collapsed ? 'timeline.sync.result.showSkipped' : 'timeline.sync.result.hideSkipped')} title={t(collapsed ? 'timeline.sync.result.showSkipped' : 'timeline.sync.result.hideSkipped')} onClick={() => setCollapsed(value => !value)}>{collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</WorkbenchButton>}
@@ -52,7 +51,7 @@ export default function TimelineSourceBanner({ staleClipIds, outcome, describeSk
     <div className="timeline-source-banner-row">
       <RefreshCw size={14} className="timeline-source-banner-icon" aria-hidden="true" />
       <strong>{t('timeline.sync.stale.title', { count: staleClipIds.length })}</strong>
-      <span className="timeline-source-banner-detail">{disabledReason || t('timeline.sync.stale.detail')}</span>
+      {disabledReason && <span className="timeline-source-banner-detail">{disabledReason}</span>}
       <span className="timeline-source-banner-actions">
         <WorkbenchButton variant="ghost" size="compact" data-testid="timeline-source-view" title={t('timeline.sync.stale.viewHint')} onClick={view}>{t('timeline.sync.stale.view')}</WorkbenchButton>
         <WorkbenchButton variant="primary" size="compact" data-testid="timeline-source-refresh-all" disabled={busy || Boolean(disabledReason)} title={disabledReason ?? undefined} onClick={() => onRefreshAll([...staleClipIds])}>{t('timeline.sync.stale.refreshAll')}</WorkbenchButton>

@@ -119,7 +119,7 @@ test('actual lifecycle cleanup retains a newer registered global close handler',
   assert.equal(f.listeners.size, 0);
 });
 
-test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', async () => {
+test('desktop close warning shows the risk of losing unconfirmed local drafts and view changes', async () => {
   const main = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const at = main.indexOf('    confirmClose:');
   const until = main.indexOf('confirmUnknown:', at);
@@ -153,7 +153,7 @@ test('desktop close warning describes unconfirmed local drafts and view without 
       assert.equal(warning!.defaultId, 1); assert.equal(warning!.cancelId, 1);
       if (locale === 'zh-Hans') {
         assert.match(warning!.message, /本地草稿/); assert.match(warning!.message, /视图/);
-        assert.match(warning!.message, /未确认/); assert.match(warning!.detail, /不会取消/);
+        assert.match(warning!.message, /未确认/); assert.match(warning!.detail, /可能丢失未确认的输入或位置/);
       }
       response = 0; assert.equal(await confirmClose(action), true, 'Only the explicit proceed response closes'); response = 1;
     }

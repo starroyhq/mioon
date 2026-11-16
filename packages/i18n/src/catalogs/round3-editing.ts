@@ -18,8 +18,6 @@ export const round3EditingMessages = {
   'round3.audio.integrated': {'zh-Hans':'综合响度','zh-Hant':'綜合響度',en:'Integrated loudness',ja:'統合ラウドネス'},
   'round3.audio.truePeak': {'zh-Hans':'估算真峰值','zh-Hant':'估算真峰值',en:'Estimated true peak',ja:'推定トゥルーピーク'},
   'round3.audio.samplePeak': {'zh-Hans':'采样峰值','zh-Hant':'取樣峰值',en:'Sample peak',ja:'サンプルピーク'},
-  'round3.audio.measurementScope': {'zh-Hans':'分析已保存的片段，不改变音量','zh-Hant':'分析已儲存的片段，不改變音量',en:'Analyze the saved clip without changing its volume',ja:'保存済みクリップを解析し、音量は変更しません'},
-  'round3.audio.missingMetrics': {'zh-Hans':'当前未提供响度范围和目标匹配','zh-Hant':'目前未提供響度範圍和目標匹配',en:'Loudness range and target matching are not available yet',ja:'ラウドネスレンジと目標へのマッチは現在未対応です'},
   'round3.clip.showAsset': {'zh-Hans':'在素材库中显示','zh-Hant':'在素材庫中顯示',en:'Show in asset library',ja:'素材ライブラリに表示'},
   'round3.clip.replaceSource': {'zh-Hans':'替换来源','zh-Hant':'替換來源',en:'Replace source',ja:'ソースを置換'},
 } as const satisfies MessageCatalog;

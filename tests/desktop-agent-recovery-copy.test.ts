@@ -5,30 +5,35 @@ import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-lan
 
 const source = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 
-function recoveryDetail(key: 'native.restartDetail' | 'native.serviceStoppedDetail'): string {
-  assert.ok(source.includes(`detail: nt('${key}')`), 'The native recovery dialog must use the translated safety detail.');
-  setNativeLanguageReader(() => 'zh-Hans');
-  return (nativeText as (key: string, params?: Record<string, unknown>) => string)(key, {});
-}
-
 const dialogs = [
-  ['restart confirmation', 'native.restartDetail'],
-  ['backend crash recovery', 'native.serviceStoppedDetail'],
-];
+  {
+    name: 'restart confirmation',
+    message: 'native.restartQuestion',
+    detail: 'native.restartDetail',
+    buttons: "nt('native.restart'), nt('native.cancel')",
+    warning: '重启可能丢失未保存的界面修改。',
+  },
+  {
+    name: 'backend crash recovery',
+    message: 'native.serviceStopped',
+    detail: 'native.serviceStoppedDetail',
+    buttons: "nt('native.restartService'), nt('native.quit')",
+    warning: '未保存的修改可能丢失。',
+  },
+] as const;
 
-for (const [name, pattern] of dialogs as Array<[string, 'native.restartDetail' | 'native.serviceStoppedDetail']>) {
-  test(`desktop ${name} distinguishes saved generation status recovery from unknown submission recreation`, () => {
-    const detail = recoveryDetail(pattern);
-    if (name === 'restart confirmation') assert.match(detail, /已保存的数据保留/);
-    assert.match(detail, /未保存的界面修改可能丢失/);
-    assert.match(detail, /生成任务会按已保存的状态恢复处理/);
-    assert.match(detail, /提交结果未知时只对账，不会自动重新提交/);
-    assert.doesNotMatch(detail, /正在运行的任务会在恢复后继续处理|已知任务会恢复/);
+for (const {name, message, detail, buttons, warning} of dialogs) {
+  test(`desktop ${name} shows the unsaved-work warning at the decision`, () => {
+    setNativeLanguageReader(() => 'zh-Hans');
+    assert.equal(nativeText(detail), warning);
+    if (message === 'native.serviceStopped') assert.equal(nativeText(message), '本地服务意外退出。');
   });
 
-  test(`desktop ${name} preserves saved Agent text without promising resumed inference or resending`, () => {
-    const detail = recoveryDetail(pattern);
-    assert.match(detail, /Mio 对话保留已保存的文字/);
-    assert.match(detail, /Mio 对话[^。]*重启后不会自动继续推理或重新发送请求/);
+  test(`desktop ${name} keeps the warning with its two native actions`, () => {
+    const start = source.indexOf(`message: nt('${message}')`);
+    assert.ok(start >= 0);
+    const popup = source.slice(start, start + 250);
+    assert.ok(popup.includes(`detail: nt('${detail}')`));
+    assert.ok(popup.includes(`buttons: [${buttons}]`));
   });
 }

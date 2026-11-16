@@ -48,10 +48,11 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
     if (name === './i18n/I18nProvider.tsx') return {useI18n: () => ({t: (key: string) => `${locale}:${key}`})};
     if (name === './SettingsServicesLayout.tsx') return {useSettingsServicesPanel: () => ({selected: context === selected, pageVisible, active: context === selected && pageVisible})};
     if (name === '@mioon/ui/components/workbench-confirm') return {useConfirmation: () => () => confirmValue};
+    if (name === './icons.tsx') return {__esModule: true, default: 'Icon'};
     if (name === '@mioon/ui/components/button') return {Button: 'Button'};
     if (name === '@mioon/ui/components/input') return {Input: 'input'};
     if (name === '@mioon/ui/components/textarea') return {Textarea: 'textarea'};
-    if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select'};
+    if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select', WorkbenchTooltip: 'WorkbenchTooltip'};
     if (name === './VideoProviderSettings.tsx') return {ModelEditor: 'ModelEditor'};
     if (name === './ModelPickerDialog.tsx') return {__esModule: true, default: 'ModelPickerDialog'};
     if (name.endsWith('.css')) return {};
@@ -114,7 +115,12 @@ test('only a saved persistent video key blocked by system storage displays Keych
     const keychain = (key: string) => f.all(key).find(node => node.props['data-testid'] === 'video-key-storage-unavailable');
     for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
       f.locale(locale);
-      assert.deepEqual(keychain(f.keyA)?.props.children, storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE' ? [`${locale}:tasks.error.videoSecretStore`] : undefined);
+      const notice = keychain(f.keyA);
+      if (storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE') {
+        const content = nodes(notice);
+        assert.deepEqual(content.find(node => node.type === 'span')?.props.children, [`${locale}:tasks.status.videoSecretStoreWaiting`]);
+        assert.equal(content.find(node => node.type === 'WorkbenchTooltip')?.props.content, `${locale}:tasks.error.videoSecretStore`);
+      } else assert.equal(notice, undefined);
       assert.equal(keychain(f.keyB), undefined);
       assert.equal(f.inputs.get(f.keyA)?.value, '');
     }

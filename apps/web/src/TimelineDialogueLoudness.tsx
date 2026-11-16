@@ -41,7 +41,6 @@ export default function TimelineDialogueLoudness({ loudness }: TimelineDialogueL
   return <details className="export-sample-peak timeline-dialogue-loudness" data-testid="timeline-dialogue-loudness" style={{ minWidth: 0, maxWidth: '100%' }}
     onToggle={event => { if (!event.currentTarget.open) controller.revoke(state); }}>
     <summary className="export-sample-peak-label">{t('audio.loudness.dialogue.label')}</summary>
-    <p>{t('audio.loudness.dialogue.help')}</p>
     {!measurable ? <p data-testid="dialogue-loudness-none">{t('audio.loudness.dialogue.none')}</p> : <>
       <label htmlFor={`${prefix}-lufs`} style={{ display: 'block', marginTop: 6 }}>{t('audio.loudness.target.lufs')}</label>
       <Input id={`${prefix}-lufs`} type="number" min={-60} max={-5} step="any" data-testid="dialogue-loudness-target-lufs" disabled={measuring || applying}
@@ -79,8 +78,6 @@ export default function TimelineDialogueLoudness({ loudness }: TimelineDialogueL
     {(state.phase === 'ready' || applying) && <div className="export-sample-peak-actions">
       <Button type="button" className="button small" data-testid="dialogue-loudness-apply" disabled={applying || !gains.length}
         onClick={() => { void controller.apply(state); }}>{t('audio.loudness.dialogue.apply', { count: gains.length })}</Button>
-      <p className="input-hint">{t('audio.loudness.dialogue.applyHint')}</p>
     </div>}
-    <p className="export-sample-peak-limitation">{t('audio.loudness.dialogue.limitation', { seconds: TIMELINE_CLIP_LOUDNESS_LIMITS.clipSeconds })}</p>
   </details>;
 }

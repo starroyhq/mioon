@@ -67,8 +67,8 @@ test('compact collapsed card reuses shared controls and requires blank explicit 
   assert.match(rendered.idle, /<details[^>]*data-testid="timeline-mix-loudness"/); assert.doesNotMatch(rendered.idle, /<details[^>]* open|role="dialog"|aria-modal/);
   assert.match(rendered.idle, /当前整片浮点混音与固定增益候选/); assert.match(rendered.idle, /data-slot="button"/); assert.match(rendered.idle, /data-slot="input"/);
   assert.equal((rendered.idle.match(/value=""/g) || []).length, 2); assert.match((rendered.idle.match(/<button[^>]*data-testid="timeline-mix-loudness-prepare"[^>]*>/))![0], /disabled/);
-  assert.match(rendered.idle, /不预设平台标准/); assert.match(rendered.idle, /始终测量整片，不使用本次所选导出范围/);
-  assert.match(rendered.idle, /编码前浮点混音，不是已导出文件/); assert.match(rendered.idle, /不会修改音量或创建导出任务/); assert.match(rendered.idle, /不代表已实现逐段响度统一/);
+  assert.match(rendered.idle, /完整已保存时间线/); assert.doesNotMatch(rendered.idle, /不预设平台标准|不使用本次所选导出范围/);
+  assert.doesNotMatch(rendered.idle, /不是已导出文件|不会修改音量或创建导出任务|不代表已实现逐段响度统一/);
   assert.doesNotMatch(rendered.idle, />(应用|统一响度|自动增益|导出候选)<|data-testid="timeline-mix-loudness-target-error"/);
 });
 test('original and actual rerendered candidate remain distinct with measured target/peak comparison and explicit 0.5dB reserve', () => {
@@ -78,7 +78,7 @@ test('original and actual rerendered candidate remain distinct with measured tar
   assert.match(rendered.ready, /真峰值含 0.5 dB 预留后满足上限：是/); assert.match(rendered.conflict, /真峰值含 0.5 dB 预留后满足上限：否/);
   assert.match(rendered.conflict, /未同时满足两个参考目标，未降低目标或限幅/); assert.doesNotMatch(rendered.ready, /data-testid="timeline-mix-loudness-conflict"/);
   assert.match(rendered.ready, /<details><summary>本次快照、来源与增益详情/); assert.match(rendered.ready, /快照 SHA-256：b{64}/);
-  assert.match(rendered.ready, /报告不授予应用权限/); assert.match(rendered.ready, /不保证 AAC 编码后的峰值/);
+  assert.match(rendered.ready, /报告不授予应用权限/); assert.doesNotMatch(rendered.ready, /不保证 AAC 编码后的峰值/);
 });
 test('unavailable, preparing, cancelled and failed observations never display a fabricated candidate', () => {
   assert.match(rendered.silent, /数字静音：综合响度不可用/); assert.match(rendered.silent, /原混音没有可用的综合响度/); assert.match(rendered.silent, /−∞ dBTP/);

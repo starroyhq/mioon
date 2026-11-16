@@ -43,17 +43,16 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
   const selectionState = state as ClipReplacementState;
   return <section className="clip-source-replacement" aria-labelledby="clip-replacement-title" data-testid="clip-source-replacement" data-phase={phase} aria-busy={sending}>
     <h3 id="clip-replacement-title">{t('timeline.replace.title')}</h3>
-    <p className="clip-replacement-note">{t('timeline.replace.scope')}</p>
     {blocked && <p id="clip-replacement-blocked" className="clip-replacement-warning" role="status">{renderMessage(clipReplacementBlockedMessage(current))}</p>}
     {suggested && <Button size="sm" type="button" data-testid="review-selected-version-replacement" onClick={() => { if (controller.begin() && controller.choose(suggested.key)) controller.review(); }}>{t('timeline.replace.suggested', { version: (suggested.version?.number ?? 0) as string | number })}</Button>}
     {phase === 'idle' && <Button variant="outline" size="sm" type="button" data-testid="begin-clip-replacement" disabled={Boolean(blocked)} aria-describedby={blocked ? 'clip-replacement-blocked' : undefined} onClick={() => controller.begin(selectionState)}>{t('timeline.replace.choose')}</Button>}
     {phase === 'choosing' && <>
       <Label className="field-label" htmlFor="clip-replacement-candidate">{t('timeline.replace.candidates')}</Label>
-      <WorkbenchSelect id="clip-replacement-candidate" data-testid="clip-replacement-candidate" value={state?.selectedKey} disabled={Boolean(blocked) || !candidates.length} aria-describedby="clip-replacement-candidate-help" onChange={event => controller.choose(event.target.value, selectionState)}>
+      <WorkbenchSelect id="clip-replacement-candidate" data-testid="clip-replacement-candidate" value={state?.selectedKey} disabled={Boolean(blocked) || !candidates.length} aria-describedby={!candidates.length ? "clip-replacement-candidate-help" : undefined} onChange={event => controller.choose(event.target.value, selectionState)}>
         <option value="" disabled>{t('timeline.replace.select')}</option>
         {candidates.map(candidate => <option key={candidate.key} value={candidate.key}>{candidateLabel(candidate)} · {durationLabel(candidate.source)}</option>)}
       </WorkbenchSelect>
-      <p id="clip-replacement-candidate-help" className="clip-replacement-note">{candidates.length ? t('timeline.replace.candidatesHint') : t('timeline.replace.noCandidates')}</p>
+      {!candidates.length && <p id="clip-replacement-candidate-help" className="clip-replacement-note">{t('timeline.replace.noCandidates')}</p>}
       <div className="clip-replacement-actions"><Button size="sm" type="button" data-testid="review-clip-replacement" disabled={Boolean(blocked) || !selected} onClick={() => controller.review(selectionState)}>{t('timeline.replace.review')}</Button><Button variant="ghost" size="sm" type="button" data-testid="cancel-clip-replacement" onClick={() => controller.cancel(selectionState)}>{t('timeline.replace.cancel')}</Button></div>
     </>}
     {review && <div className="clip-replacement-review" data-testid="clip-replacement-review">
@@ -67,7 +66,6 @@ export default function ClipSourceReplacement({ context, getDirty, onReplace, on
         <div><dt>{t('timeline.replace.keepPosition')}</dt><dd>{t('timeline.replace.position', { start: review.clip.startFrame, end: review.clip.startFrame + review.clip.durationFrames })}</dd></div>
       </dl>
       {Boolean(review.clip.colour) && <p className="clip-replacement-warning" data-testid="clip-replacement-colour-warning">{t('timeline.replace.colourWarning')}</p>}
-      <p className="clip-replacement-note">{t('timeline.replace.preserveHint')}</p>
     </div>}
     {issue && <p className="clip-replacement-warning" id="clip-replacement-review-issue" role="alert">{renderMessage(phase === 'stale' ? state?.errorMessage ?? null : clipReplacementReviewMessage(review, current))}</p>}
     {phase === 'review' && <div className="clip-replacement-actions"><Button size="sm" type="button" data-testid="approve-clip-replacement" disabled={Boolean(issue || blocked)} aria-describedby={issue ? 'clip-replacement-review-issue' : blocked ? 'clip-replacement-blocked' : undefined} onClick={() => controller.approve(review as ReplacementReview)}>{t('timeline.replace.approve')}</Button><Button variant="ghost" size="sm" type="button" data-testid="cancel-clip-replacement" onClick={() => controller.cancel(selectionState)}>{t('timeline.replace.cancel')}</Button></div>}

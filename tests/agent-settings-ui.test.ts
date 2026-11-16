@@ -133,6 +133,7 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
  },module,module.exports,document);
  const h={render(){cursor=0;pending=[];tree=module.exports.default!({onClose:()=>{},onNavigationStateChange:(next:navigation.SettingsNavigationState)=>reports.push(next)});for(const node of nodes(tree)){const ref=node.props.ref;if(ref&&typeof ref==='object'&&'current'in ref){const id=String(node.props.id);if(!dom.has(id))dom.set(id,{value:''});ref.current=dom.get(id);}}for(const effect of pending)effect();return tree;},
   find(id:string){const node=nodes(tree).find(item=>item.props['data-testid']===id);assert.ok(node,id);return node;},click(id:string){invoke(h.find(id),'onClick');h.render();},view(key:string){h.click(`agent-settings-nav-${key}`);},
+  tooltip(id:string){const node=nodes(tree).find(item=>item.type==='WorkbenchTooltip'&&nodes(item.props.children).some(child=>child.props['data-testid']===id));assert.ok(node,id);return node.props.content;},
   picker:()=>nodes(tree).find(item=>item.type==='ModelPickerDialog'),
   pickerItems:()=>h.picker()?.props.items as {id:string;added?:boolean;active?:boolean;verified?:boolean;retirementNotice?:string}[]|undefined,
   modelRow(key:string,id:string){return nodes(tree).find(node=>node.props['data-testid']===`agent-settings-model-row-${key}-${id}`);},
@@ -237,10 +238,10 @@ test('actual model labels use documented OpenAI families for snapshots without t
    assert.ok(JSON.stringify(h.find(`agent-settings-model-row-openai-${known}`)).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
    for(const model of [future,invalid,'gpt-4.1-mini'])assert.equal(h.modelRow('openai',model),undefined);
    assert.ok(JSON.stringify(h.find('agent-settings-current-model')).includes(i18n.translate(locale,'agent.settings.x6.adapted')));
-   const note=JSON.stringify(h.find('agent-settings-preset-note-openai'));
+   const note=JSON.stringify(h.tooltip('agent-settings-preset-note-openai'));
    assert.match(note,/Responses/);assert.match(note,{'zh-Hans':/当前一代/,'zh-Hant':/目前世代/,en:/current-generation/,ja:/現行世代/}[locale]);
    assert.doesNotMatch(note,/GPT-5\.4 mini/);
-   assert.doesNotMatch(JSON.stringify(h.find('agent-settings-preset-note-openai')),/非推理|非推論|Non-reasoning/);
+   assert.doesNotMatch(JSON.stringify(h.tooltip('agent-settings-preset-note-openai')),/非推理|非推論|Non-reasoning/);
   }
   assert.equal(f.calls.length,0);assert.equal(f.saved().mioSelection?.modelId,known);assertNoSecrets(h.reports);
  }finally{h.unmount();}
@@ -439,7 +440,7 @@ test('the Ollama setup note recommends the 4b model for an 8 GB Mac in every loc
   await ready(h);h.view('ollama');
   for (const locale of i18n.LOCALES) {
    h.setLocale(locale);
-   const note=JSON.stringify(h.find('agent-settings-preset-note-ollama'));
+   const note=JSON.stringify(h.tooltip('agent-settings-preset-note-ollama'));
    assert.match(note,/8 GB[^"]*qwen3\.5:4b/u);
   }
   assert.equal(f.calls.length,0);
@@ -624,8 +625,8 @@ test('no initial Mio selection remains null; custom count is bounded at ten and 
 
 test('actual Responses/Messages guidance preserves task authorization scope; custom v1 warning never silently rewrites the base',async()=>{
  const f=settingsUiFixture(),h=uiHarness(f.client);await ready(h);h.view(custom);h.change(`agent-settings-base-url-${custom}`,'https://custom.example/v1');h.change(`agent-settings-protocol-${custom}`,'anthropic_messages');assert.equal(h.find(`agent-settings-base-url-${custom}`).props.value,'https://custom.example/v1');assert.ok(h.find(`agent-settings-messages-v1-${custom}`));assert.match(JSON.stringify(h.find(`agent-settings-endpoint-${custom}`)),/\/v1\/v1\/messages/);
- for(const locale of i18n.LOCALES){h.setLocale(locale);assert.ok(h.find(`agent-settings-anthropic-guidance-${custom}`));assert.doesNotMatch(JSON.stringify(h.find(`agent-settings-anthropic-guidance-${custom}`)),/agent\.settings\.anthropicScope/);}
- h.change(`agent-settings-protocol-${custom}`,'responses');const guidance=JSON.stringify(h.find(`agent-settings-model-guidance-${custom}`));assert.match(guidance,/Responses|responses/);assert.equal(f.calls.length,0);h.unmount();
+ for(const locale of i18n.LOCALES){h.setLocale(locale);assert.ok(h.tooltip(`agent-settings-model-help-${custom}`));assert.doesNotMatch(JSON.stringify(h.tooltip(`agent-settings-model-help-${custom}`)),/agent\.settings\.anthropicScope/);}
+ h.change(`agent-settings-protocol-${custom}`,'responses');const guidance=JSON.stringify(h.tooltip(`agent-settings-model-help-${custom}`));assert.match(guidance,/Responses|responses/);assert.equal(f.calls.length,0);h.unmount();
 });
 
 test('Qwen and Ollama protocols derive only their platform address and never silently replace the chosen Mio model',async()=>{

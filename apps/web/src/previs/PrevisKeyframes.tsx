@@ -71,7 +71,6 @@ export default function PrevisKeyframes(props: PrevisKeyframesProps): React.Reac
       {props.onPlay && <button type="button" className="previs-play" data-previs-play="" data-testid="previs-keyframes-play" aria-pressed={Boolean(props.playing)}
         disabled={!props.playing && Boolean(props.playIssue)} title={!props.playing && props.playIssue ? props.playIssue : t('previs.keyframes.playHint')} onClick={props.onPlay}>
         {props.playing ? <Square size={11} aria-hidden="true" /> : <Play size={11} aria-hidden="true" />}{t(props.playing ? 'previs.keyframes.stop' : 'previs.keyframes.play')}</button>}
-      {scene.keyframes.length > 1 && !readOnly && <span className="previs-keyframes-hint">{t('previs.keyframes.hint')}</span>}
       <span className="previs-topbar-spacer" />
       <span className="previs-focal-title"><Focus size={13} aria-hidden="true" />{t('previs.focal.title')}</span><small className="previs-focal-note">{t('previs.focal.current')}</small>
       <div className="previs-segments" role="group" aria-label={t('previs.focal.title')} data-testid="previs-focal">

@@ -72,9 +72,8 @@ export default function ClipDialogueDuckingControls({ clip, clips, tracks, timel
     try { for (const assetId of assetIds) await requestWaveform(assetId); } catch { if (mounted.current) setResult({ key, phase: 'error' }); }
   }
   return <details className="clip-audio-help" data-testid="dialogue-ducking"><summary>{t('ducking.auto.title')}</summary>
-    <fieldset disabled={disabled} aria-describedby={`${id}-hint`}>
+    <fieldset disabled={disabled}>
       <legend>{t('ducking.auto.title')}</legend>
-      <p id={`${id}-hint`} className="input-hint">{t('ducking.auto.hint')}</p>
       {!choices.tracks.length ? <p className="input-hint" role="status" data-testid="dialogue-ducking-no-track">{t('ducking.auto.noTrack')}</p> : <>
         <label htmlFor={`${id}-track`}>{t('ducking.auto.track')}</label>
         <WorkbenchSelect id={`${id}-track`} data-testid="dialogue-ducking-track" value={trackId ?? ''} onChange={event => setChosenTrack(event.target.value)}>

@@ -47,20 +47,32 @@ test('English request and token counts use singular and plural forms',()=>{
     coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:1,missingSteps:0,complete:true,overflow:false}])) as MioRunUsage['coverage']['fields']}});
   const html=details(ready(single),'en');assert.match(html,/1 model request:/);assert.doesNotMatch(html,/1 model requests/);assert.match(html,/1 token</);assert.match(html,/Including 1 cache-read token \(100%\)/);assert.doesNotMatch(html,/1 cache-read tokens/);assert.match(details(ready(),'en'),/2 model requests:/);
 });
-test('the usage footer explicitly disclaims displayed costs in all four languages',()=>{
-  const statements={'zh-Hans':'这里不显示费用','zh-Hant':'這裡不顯示費用',en:'Costs are not shown here',ja:'ここでは料金を表示しません'} as const;
-  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)assert.ok(details(ready(),locale).includes(statements[locale]),locale);
+test('usage provenance and billing appear in a labelled tooltip in all four languages',()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const) {
+    const html=details(ready(),locale), copy=mioUsageUiMessages['mioUsage.footer'][locale];
+    assert.match(html, /data-testid="mio-usage-info"/);
+    assert.ok(!html.includes(copy),locale);
+    const tree=ui.detailsTree({open:true,runId,view:ready(),onClose(){},onRetry(){}});
+    assert.ok(record(tree)&&record(tree.props));
+    const content=tree.props.children;
+    assert.ok(record(content)&&record(content.props));
+    const title=content.props.title;
+    assert.ok(record(title)&&record(title.props)&&Array.isArray(title.props.children));
+    const tooltip=title.props.children[1];
+    assert.ok(record(tooltip)&&record(tooltip.props));
+    assert.equal(tooltip.props.content,copy);
+  }
 });
-test('inflight-only requests are described as changing without claiming provider omission',()=>{
+test('inflight-only requests keep their count without claiming provider omission',()=>{
   const value=usageFixture({dispatchedModelSteps:1,modelOutcomes:{completed:0,failed:0,unknown:0,inflight:1},knownTotals:{inputTokens:null,outputTokens:null,cacheReadTokens:null,cacheWriteTokens:null},cacheReadRate:null,
     coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:0,missingSteps:1,complete:false,overflow:false}])) as MioRunUsage['coverage']['fields']}});
-  const html=details(ready(value));assert.match(html,/进行中 1/);assert.match(html,/还有请求在进行/);assert.doesNotMatch(html,/服务商没有报告|没有报告这项用量/);
+  const html=details(ready(value));assert.match(html,/进行中 1/);assert.doesNotMatch(html,/还有请求在进行/);assert.doesNotMatch(html,/服务商没有报告|次请求未报告/);
 });
 test('partial coverage counts only finished missing requests in the provider omission explanation',()=>{
   const value=usageFixture({dispatchedModelSteps:3,modelOutcomes:{completed:2,failed:0,unknown:0,inflight:1},cacheReadRate:null,
     coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:2,missingSteps:1,complete:false,overflow:false}])) as MioRunUsage['coverage']['fields']}});
   value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:2,complete:false,overflow:false};
-  const html=details(ready(value));assert.match(html,/有 1 次请求服务商没有报告/);assert.doesNotMatch(html,/有 2 次请求服务商没有报告/);assert.match(html,/还有请求在进行/);assert.match(html,/≥1,000/);assert.equal([...html.matchAll(/请求服务商没有报告这项用量/g)].length,1);
+  const html=details(ready(value));assert.match(html,/1 次请求未报告/);assert.doesNotMatch(html,/2 次请求未报告/);assert.doesNotMatch(html,/还有请求在进行/);assert.match(html,/≥1,000/);assert.equal([...html.matchAll(/次请求未报告/g)].length,1);
 });
 
 test('usage summary and real shared controls render exact complete measurements in four languages',()=>{
@@ -76,25 +88,25 @@ test('usage summary and real shared controls render exact complete measurements 
 test('explicit zero stays zero while no dispatched requests and unreported cache writes are distinct',()=>{
   const zero=usageFixture({knownTotals:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0},cacheReadRate:null});assert.match(details(ready(zero)),/0 tokens/);assert.doesNotMatch(details(ready(zero)),/服务商没有报告/);
   const empty=usageFixture({dispatchedModelSteps:0,modelOutcomes:{completed:0,failed:0,unknown:0,inflight:0},knownTotals:{inputTokens:null,outputTokens:null,cacheReadTokens:null,cacheWriteTokens:null},coverage:{fields:Object.fromEntries(['inputTokens','outputTokens','cacheReadTokens','cacheWriteTokens'].map(field=>[field,{reportedSteps:0,missingSteps:0,complete:true,overflow:false}])) as MioRunUsage['coverage']['fields']},cacheReadRate:null});
-  const html=details(ready(empty));assert.match(html,/尚无已发出的模型请求/);assert.doesNotMatch(html,/服务商没有报告|0 tokens|0 词元|data-field="cacheWriteTokens"/);
+  const html=details(ready(empty));assert.match(html,/本轮没有模型请求/);assert.doesNotMatch(html,/服务商没有报告|0 tokens|0 词元|data-field="cacheWriteTokens"/);
   const omitted=usageFixture();omitted.knownTotals.cacheWriteTokens=null;omitted.coverage.fields.cacheWriteTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};
   assert.match(row(ready(omitted)),/60%/);assert.doesNotMatch(details(ready(omitted)),/data-field="cacheWriteTokens"/);
 });
 
 test('field-specific missing coverage uses lower bounds and never calls independent cache data part of known input',()=>{
   const value=usageFixture({cacheReadRate:null});value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:false};value.knownTotals.inputTokens=100;
-  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 tokens/);assert.match(html,/有 1 次请求/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/独立报告的缓存读取量/);assert.doesNotMatch(html,/其中缓存命中|60%/);
+  const html=details(ready(value));assert.match(row(ready(value)),/≥100/);assert.match(html,/≥100 tokens/);assert.match(html,/1 次请求未报告/);assert.match(html,/data-field="cacheReadTokens"/);assert.match(html,/缓存读取（独立报告）/);assert.doesNotMatch(html,/其中缓存命中|60%/);
   value.coverage.fields.outputTokens={reportedSteps:0,missingSteps:2,complete:false,overflow:false};value.knownTotals.outputTokens=null;assert.match(details(ready(value)),/服务商没有报告/);
 });
 
 test('overflow takes precedence, reported zero cache writes remain visible, and outcome counts never disappear',()=>{
   const value=usageFixture({cacheReadRate:null,modelOutcomes:{completed:0,failed:0,unknown:1,inflight:1}});value.knownTotals.inputTokens=null;value.coverage.fields.inputTokens={reportedSteps:1,missingSteps:1,complete:false,overflow:true};
   value.knownTotals.cacheWriteTokens=null;value.coverage.fields.cacheWriteTokens={reportedSteps:2,missingSteps:0,complete:false,overflow:true};
-  const html=details(ready(value));assert.match(html,/数值太大/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,/结果未知 1/);assert.match(html,/进行中 1/);assert.match(html,/数字会变/);assert.doesNotMatch(row(ready(value)),/60%/);
+  const html=details(ready(value));assert.match(html,/数值太大/);assert.match(html,/data-field="cacheWriteTokens"/);assert.match(html,/结果未知 1/);assert.match(html,/进行中 1/);assert.doesNotMatch(html,/数字会变/);assert.doesNotMatch(row(ready(value)),/60%/);
 });
 
 test('read failure retains stale real values and passive buttons call only their supplied read and close actions',()=>{
-  const failed={...ready(),phase:'error' as const,stale:true,code:'BACKEND_UNAVAILABLE',final:false};assert.match(row(failed),/读数尚未更新/);assert.match(details(failed),/未能确认本轮用量/);assert.match(details(failed),/1,000/);
+  const failed={...ready(),phase:'error' as const,stale:true,code:'BACKEND_UNAVAILABLE',final:false};assert.match(row(failed),/读数尚未更新/);assert.match(details(failed),/无法读取本轮用量/);assert.match(details(failed),/1,000/);
   const calls:string[]=[],props={open:true,runId,view:failed,onRetry:()=>calls.push('read'),onClose:()=>calls.push('close')},tree=ui.detailsTree(props);
   assert.ok(record(tree)&&record(tree.props));const content=tree.props.children;assert.ok(record(content)&&record(content.props));assert.equal(content.props.finalFocus,false);
   const footer=content.props.footer;assert.ok(record(footer)&&record(footer.props));const buttons=footer.props.children;assert.ok(Array.isArray(buttons));

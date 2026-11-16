@@ -170,7 +170,8 @@ test('Comfy UI exposes separate prepare/observe/full graph, shared controls and 
   const compose = read('ImageGeneration.tsx'), details = read('ComfyImageDetails.tsx'), settings = read('ComfyImageSettings.tsx');
   for (const text of ['image-provider-comfy', 'prepareComfy()', 'image-observe-remote', 'observeRemote(task)', 'image-recover-result', 'recoverResult', 'ComfyImageReviewDetails', '批准此冻结工作流并运行']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(compose) : compose).includes(text), text);
   for (const text of ['execution.seed', 'execution.graphHash', 'JSON.stringify(execution.graph', 'contentVerified', 'remote?.state', 'GPU 工作可能继续', '不保证免费、可信或完全离线']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(details) : details).includes(text), text);
-  for (const text of ['<Label', '<Input', '<WorkbenchSelect', 'useWorkspaceVisibility', 'visibilitychange', 'contextKey', '检查连接与已安装模型', '不探测服务', '不会下载模型']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(settings) : settings).includes(text), text);
+  for (const text of ['<Label', '<Input', '<WorkbenchSelect', 'useWorkspaceVisibility', 'visibilitychange', 'contextKey', '检查连接与已安装模型', '不发送图像描述或生成任务']) assert.ok((/[\u3400-\u9fff]/.test(text) ? localizedSource(settings) : settings).includes(text), text);
+  assert.match(settings, /<WorkbenchTooltip content=\{t\('connections\.comfy\.checkScope'\)\}/u);
   assert.doesNotMatch(settings, /type="password"|secret|install\(|download\(|<input\b|<label\b/); assert.doesNotMatch(details, /\blow\b|moderation|task\.remote/);
 });
 

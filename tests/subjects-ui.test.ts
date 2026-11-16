@@ -364,7 +364,7 @@ test('library composition retains both panes and never changes source/range sele
   const componentSources = ['SubjectInspector.tsx', 'ShotSubjectBindings.tsx', 'SubjectLibrary.tsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
   for (const component of componentSources.slice(0, 2)) {
     assert.match(component, /subjects.library.planningNote/);
-    assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '策划关联不会自动用于生成；生成输入需另行选择版本');
+    assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '生成时需另选主体版本');
     assert.doesNotMatch(component, /尚不作为生成输入/);
   }
   assert.match(componentSources[0], /subjects.binding.heading/);
@@ -532,7 +532,7 @@ test('the properties pane shows read-only basics, default and variant labels, an
   tree = h.render(props());
   const detail = text(byId(tree, 'subject-version-detail'));
   assert.match(detail, /V3 · 左前 · 广角/); assert.match(detail, /GPT Image/);
-  assert.match(detail, /不会成为默认版本。默认版本仍是 V2，用到Hero的镜头不需要复核。/);
+  assert.doesNotMatch(detail, /不会成为默认版本|不需要复核/);
   (byId(tree, `subject-version-${versionId(4)}`)!.props.onClick as () => unknown)();
   assert.match(text(byId(h.render(props()), 'subject-version-detail')), /模拟服务[\s\S]*方位 45° · 俯仰 30° · 4800K/);
   // Usage names the shot by its order and the exact pinned variant.
@@ -540,7 +540,8 @@ test('the properties pane shows read-only basics, default and variant labels, an
   const use = byId(tree, `subject-use-${id(6)}`)!;
   assert.equal(text(use), '02Neon close-upV3 · 左前 · 广角');
   (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);
-  assert.match(text(tree), new RegExp(subjectsMessages['subjects.library.planningNote']['zh-Hans']));
+  assert.ok(deep(tree).some(node => node.props?.['aria-label'] === subjectsMessages['subjects.library.planningNote']['zh-Hans']));
+  assert.doesNotMatch(text(tree), /生成时需另选主体版本/);
   // Hidden panes reject retained callbacks.
   h.visible = false; h.render(props()); (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);
   assert.equal(f.writes.length, 0); h.unmount();

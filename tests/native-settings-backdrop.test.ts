@@ -271,7 +271,9 @@ test('a refused boot does not import and failures stay localized and closable', 
       boot.bootstrap.reject(Error('synthetic import failure'));
       await new Promise(setImmediate);
     }
-    assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+    assert.equal(boot.elements.get('settings-boot-status')?.textContent, accepted
+      ? '設定画面に必要なファイルを読み込めませんでした。'
+      : 'システムが設定ウィンドウを確認できませんでした。');
     assert.equal(boot.elements.get('settings-boot-close')?.hidden, false);
     assert.deepEqual(marks, accepted ? ['start', 'import', 'failed'] : ['start']);
     boot.receive(active);
@@ -306,7 +308,7 @@ test('an ACK denied during quit retries once the active owner returns without du
     await new Promise(setImmediate);
     if (!resumeBeforeDenial) {
       assert.deepEqual(marks, ['start']);
-      assert.equal(boot.elements.get('settings-boot-status')?.textContent, '設定を読み込めませんでした。');
+      assert.equal(boot.elements.get('settings-boot-status')?.textContent, 'システムが設定ウィンドウを確認できませんでした。');
       boot.receive(active);
       await new Promise(setImmediate);
     }

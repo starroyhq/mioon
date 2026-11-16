@@ -29,7 +29,6 @@ export default function TimelineMixLoudness({ loudness, apply, onRevokeApply }: 
     onToggle={event => { if (!event.currentTarget.open) { controller.revoke(state); onRevokeApply?.(); } }}>
     <summary className="export-sample-peak-label">{t('audio.loudness.mix.label')}</summary>
     <p data-testid="timeline-mix-loudness-scope">{t('audio.loudness.mix.scope', { end: formatNumber(state.durationFrames), revision: state.revision ?? '' })}</p>
-    <p>{t('audio.loudness.mix.targetHelp')}</p>
     <label htmlFor={`${prefix}-lufs`} style={{ display: 'block', marginTop: 6 }}>{t('audio.loudness.target.lufs')}</label>
     <Input id={`${prefix}-lufs`} type="number" min={-60} max={-5} step="any" data-testid="timeline-mix-loudness-target-lufs"
       style={{ minWidth: 0, maxWidth: '100%', fontSize: 12 }} value={state.draft.integratedLufs}
@@ -68,7 +67,6 @@ export default function TimelineMixLoudness({ loudness, apply, onRevokeApply }: 
         </details>
       </>}
     </div>
-    <p className="export-sample-peak-limitation">{t('audio.loudness.mix.limitation')}</p>
     {apply}
   </details>;
 }

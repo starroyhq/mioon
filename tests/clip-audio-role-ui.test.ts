@@ -73,7 +73,7 @@ function view(locale: Locale,props: RoleProps){const react={createElement: (type
  },module,module.exports);return module.exports.default({kind:'video',editable:true,blocked:false,Select:'Select',onEdit(){},...props});}
 test('TSX control labels and handlers cover four locales, explicit clear, invalid events and disabled states',()=>{
  assert.deepEqual(validateCatalogs(audioRoleMessages),[]);
- for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){const events: (roleContract.ClipAudioRole | null)[]=[];const tree=view(locale,{onEdit:value=>events.push(value)});const selector=nodes(tree).find(x=>x.type==='Select');assert.equal(selector!.props.value,'');assert.equal(nodes(tree).filter(x=>x.type==='option').length,4);assert.ok(text(tree).includes(audioRoleMessages['audio.role.hint'][locale]));
+ for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){const events: (roleContract.ClipAudioRole | null)[]=[];const tree=view(locale,{onEdit:value=>events.push(value)});const selector=nodes(tree).find(x=>x.type==='Select');assert.equal(selector!.props.value,'');assert.equal(nodes(tree).filter(x=>x.type==='option').length,4);assert.ok(text(tree).includes(audioRoleMessages['audio.role.label'][locale]));
  for(const value of ['human','music','sfx','','not-a-role'] as const)selector!.props.onChange({target:{value}});assert.deepEqual(events,['human','music','sfx',null]);}
  for(const props of [{editable:false},{blocked:true}] as const){let writes=0;const selector=nodes(view('en',{...props,onEdit:()=>writes++})).find(x=>x.type==='Select');selector!.props.onChange({target:{value:'human'}});assert.equal(writes,0);assert.equal(selector!.props.disabled,true);}
  assert.equal(view('en',{kind:'image'}),null);assert.ok(view('en',{kind:'audio'}));

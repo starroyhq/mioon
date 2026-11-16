@@ -33,6 +33,7 @@ function render(state:AgentConnectionTestState,locale:(typeof LOCALES)[number]='
     if(id==='./agent-connection-test.ts')return {createAgentConnectionTestSession:()=>assert.fail('Rendering a summary cannot open or poll a project')};
     if(id==='@mioon/ui/components/dialog')return {Dialog:'Dialog'};
     if(id==='@mioon/ui/components/workbench-controls')return {WorkbenchButton:'Button',WorkbenchDialogContent:'DialogContent'};
+    if(id==='./WorkspaceControls.tsx')return {WorkbenchTooltip:'WorkbenchTooltip'};
     if(id==='./icons.tsx')return {__esModule:true,default:'Icon'};
     throw Error(`Unexpected test dependency ${id}`);
   },module,module.exports);

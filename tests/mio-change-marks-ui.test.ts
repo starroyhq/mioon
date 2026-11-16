@@ -294,7 +294,12 @@ test('Mio positions and colors its pointer, and only the newest step receives th
     assert.equal(newest.getAttribute('data-mio-follow-highlight'), 'canvas');
     assert.equal(newest.styles.get('--mio-follow-color'), mioFollowColor('stable-round'));
     assert.equal(tree?.props.style['--mio-follow-color'], mioFollowColor('stable-round'));
-    assert.ok(nodes(tree).some(node => node.props['data-testid'] === 'mio-follow-bubble' && node.props.children.includes('修正 03')));
+    const label = nodes(tree).find(node => node.props.className === 'mio-follow-cursor-label');
+    assert.ok(label);
+    const [bubble] = nodes(label).slice(1);
+    assert.equal(nodes(label).length, 2, 'the cursor label contains only the step bubble');
+    assert.equal(bubble?.props['data-testid'], 'mio-follow-bubble');
+    assert.deepEqual(bubble?.props.children, ['修正 03']);
     h.render({ ...followFocus('01'), highlight: false });
     h.frame(20);
     assert.equal(newest.getAttribute('data-mio-follow-highlight'), undefined);
