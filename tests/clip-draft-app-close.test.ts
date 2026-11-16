@@ -138,9 +138,10 @@ test('desktop close warning describes unconfirmed local drafts and view without 
       assert.equal(owner, window); assert.equal(backend, context);
       dialogs.push(options); return response;
     };
-    const confirmClose = Function('smokeOutput', 'windowHost', 'showOwnedDialog', 'window', 'context', 'nt',
+    const updateQuit = { closing: false };
+    const confirmClose = Function('smokeOutput', 'windowHost', 'showOwnedDialog', 'window', 'context', 'nt', 'updateQuit',
       `${dialogSource}\nreturn ({${source}}).confirmClose;`)(
-      false, {isCandidate: () => false}, showOwnedDialog, window, context, nt,
+      false, {isCandidate: () => false}, showOwnedDialog, window, context, nt, updateQuit,
     ) as (action: string) => Promise<boolean>;
     for (const action of ['reload', 'quit'] as const) {
       assert.equal(await confirmClose(action), false, 'Default keep-editing response cannot close');
@@ -156,6 +157,12 @@ test('desktop close warning describes unconfirmed local drafts and view without 
       }
       response = 0; assert.equal(await confirmClose(action), true, 'Only the explicit proceed response closes'); response = 1;
     }
+    updateQuit.closing = true;
+    const dialogCount = dialogs.length;
+    for (const action of ['reload', 'quit'] as const) {
+      assert.equal(await confirmClose(action), false, 'An update cannot proceed when a draft needs confirmation');
+    }
+    assert.equal(dialogs.length, dialogCount, 'An update cannot open a draft confirmation');
   }
 });
 

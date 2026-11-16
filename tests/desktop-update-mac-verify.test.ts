@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {createMacDesktopUpdateVerifier} from '../apps/desktop/src/desktop-update-mac-verify.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const identity = 'org.example.mioon.synthetic',
   version = '0.2.1', currentVersion = '0.2.0', offer = {version, currentVersion, notes: []};
@@ -29,7 +30,7 @@ function signedApp(root: string, appName: string, version: string, identifier: s
   writeFileSync(path.join(resources, 'payload.txt'), 'Signed resource');
   symlinkSync('payload.txt', path.join(resources, 'link.txt'));
   execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', '--identifier', identifier,
-    '-r', `=designated => identifier "${identifier}"`, app], {stdio: 'pipe'});
+    '-r', `=designated => identifier "${identifier}"`, app], {env: testEnv(), stdio: 'pipe'});
   return app;
 }
 
@@ -46,7 +47,7 @@ function fixture(t: test.TestContext) {
     const candidate = signedApp(candidateRoot, candidateName, candidateVersion, identifier);
     change?.(candidate);
     const zip = path.join(candidateRoot, `mioon-${version}-mac.zip`);
-    execFileSync('/usr/bin/zip', ['-q', '-7', '-r', '-y', zip, candidateName], {cwd: candidateRoot});
+    execFileSync('/usr/bin/zip', ['-q', '-7', '-r', '-y', zip, candidateName], {cwd: candidateRoot, env: testEnv()});
     chmodSync(candidateRoot, 0o755); // The updater's pending directory uses the library's normal mkdir mode.
     const digest = createHash('sha512').update(readFileSync(zip)).digest('base64');
     return {zip, digest};
