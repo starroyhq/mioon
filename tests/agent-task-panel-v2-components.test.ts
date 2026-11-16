@@ -1,6 +1,6 @@
 import type {TaskPanelChange,TaskPanelSnapshot,TaskPanelState,TaskPanelOptions,TaskPanelStep,ElementProps} from './helpers/strict-agent-ui-types.ts';
 import type {Locale} from '../packages/i18n/src/types.ts';
-import type {AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskJson, AgentTaskSnapshot, AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,7 +83,7 @@ const followChange = (id:string,stepId:string,kind:string,target:string,operatio
   id, stepId, runId, projectId, operation, status:'applied', reversible:true, targets:[{kind,id:target,revision:1,revisionBefore:0,revisionAfter:1}],
 });
 
-test('Mio follows the latest saved target, keeps history passive and moves to the panel for a wait',()=>{
+test('Mio shows live operation focus while retaining durable row locations and passive history',()=>{
   const h=harness({status:'running',followMio:true,changes:[followChange('historical',stepId,'shot',followShot,'shot.create')]});
   try{
     const initial=h.state.snapshot!;
@@ -93,11 +93,10 @@ test('Mio follows the latest saved target, keeps history passive and moves to th
     assert.equal(h.focused.length,0,'refreshing a historical snapshot does not replay its cursor');
     const saved:TaskPanelSnapshot={...initial,run:{...initial.run,revision:2},steps:[...initial.steps,
       {id:'clip-step',kind:'tool',status:'completed',position:2,tier:'local_reversible',text:'Trim the selected clip',toolCall:{name:'mioon_timeline_clip_add',arguments:{}}},
-      {id:'approval',kind:'tool',status:'awaiting_approval',position:3,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}},
     ],changes:[...initial.changes,followChange('new-shot',stepId,'shot',followShot,'shot.update'),followChange('new-clip','clip-step','timeline_clip',followClip,'timeline.clip.add')]};
     publish(saved);
     const target={kind:'timeline_clip',id:followClip,name:translate('zh-Hans','agent.display.target.timeline_clip')};
-    assert.deepEqual(h.focused,[{projectId,focus:{runId:'run',stepId:'clip-step',text:'Trim the selected clip',target,changeId:'new-clip'}}]);
+    assert.deepEqual(h.focused,[{projectId,focus:{runId:'run',stepId:'clip-step',text:'Trim the selected clip',phase:'operate',highlight:true,target,changeId:'new-clip'}}]);
     const row=h.render().find(node=>node.props['data-step-id']==='clip-step');
     assert.equal(row?.props['data-mio-follow'],'true');
     assert.equal(row?.props.style['--mio-follow-color'],mioFollow.mioFollowColor('run'));
@@ -114,30 +113,136 @@ test('Mio follows the latest saved target, keeps history passive and moves to th
     h.setFollowTargetExists(({kind})=>kind!=='timeline_clip');h.render();
     assert.equal(h.find('mio-follow-timeline-clip-step'),undefined);
 
+    const approval:TaskPanelStep={id:'approval',kind:'tool',status:'awaiting_approval',position:3,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{shotId:followShot}}};
+    publish({...updated,run:{...updated.run,revision:4,status:'awaiting_approval'},steps:[...updated.steps,approval]});
+    assert.equal(h.focused.at(-1)?.focus?.phase,'approval');
+    assert.deepEqual(h.focused.at(-1)?.focus?.target,{kind:'shot',id:followShot,name:'镜头 03'});
+    assert.equal(h.find('mio-follow-canvas-approval'),undefined,'approval focus alone has no durable row action');
+
     const goal:TaskPanelStep={id:'goal-step',kind:'tool',status:'completed',position:4,tier:'read_only',text:'Check the requested subtitles',toolCall:{name:'mioon_goal_set',arguments:{}}};
-    const read={...updated,run:{...updated.run,revision:4},steps:[...updated.steps,goal]};
+    const read={...updated,run:{...updated.run,revision:5},steps:[...updated.steps,goal]};
     publish(read);
-    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'goal-step',text:'Check the requested subtitles'}});
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'goal-step',text:'Check the requested subtitles',phase:'idle'}});
     assert.ok(renderedText(h.render().find(node=>node.props['data-step-id']==='goal-step')!).includes(translate('zh-Hans','agent.panel.goal.title')));
-    publish({...read,run:{...read.run,revision:5},steps:[...read.steps,{id:'wait-step',kind:'tool',status:'dispatch_started',position:5,text:'Wait for the submitted job',toolCall:{name:'mioon_task_wait',arguments:{id:followShot}}}]});
-    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'wait-step',text:'Wait for the submitted job'}});
+    publish({...read,run:{...read.run,revision:6},steps:[...read.steps,{id:'wait-step',kind:'tool',status:'dispatch_started',position:5,text:'Wait for the submitted job',toolCall:{name:'mioon_task_wait',arguments:{id:followShot}}}]});
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'wait-step',text:'Wait for the submitted job',phase:'idle'}});
     assert.equal(h.find('mio-follow-canvas-wait-step'),undefined);
     h.setVisible(false);h.render();
     assert.deepEqual(h.focused.at(-1),{projectId,focus:null});
   }finally{h.unmount();}
 });
 
-test('a matching fast Mio send focuses its first already-committed snapshot',()=>{
+test('a matching live send may focus its first applied snapshot and clears at round end',()=>{
   const h=harness({status:'completed',followMio:true});
   try{
     const runId='just-sent',requestId='send-receipt';
     const current=h.state.snapshot!;
-    h.state.snapshot={...current,run:{...current.run,...{id:runId,requestId}},steps:[{id:stepId,kind:'tool',status:'completed',tier:'local_reversible',toolCall:{name:'mioon_shot_create',arguments:{}}}],changes:[followChange('created',stepId,'shot',followShot,'shot.create',runId)]};
+    h.state.snapshot={...current,run:{...current.run,...{id:runId,requestId},status:'running'},steps:[{id:stepId,kind:'tool',status:'completed',tier:'local_reversible',toolCall:{name:'mioon_shot_create',arguments:{}}}],changes:[followChange('created',stepId,'shot',followShot,'shot.create',runId)]};
     h.state.pending={action:'send',requestId};h.state.rounds=[h.state.snapshot];h.options.onChange(h.state);h.render();
     assert.deepEqual(h.focused.at(-1)?.focus?.target,{kind:'shot',id:followShot,name:'镜头 03'});
     assert.equal(h.focused.at(-1)?.focus?.changeId,'created');
     assert.equal(h.focused.at(-1)?.focus?.text,translate('zh-Hans','agent.display.operation.shot.create'));
+    h.state.snapshot={...h.state.snapshot,run:{...h.state.snapshot.run,revision:2,status:'completed'}};
+    h.state.pending=null;h.state.rounds=[h.state.snapshot];h.options.onChange(h.state);h.render();
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:null});
   }finally{h.unmount();}
+});
+
+const followTrack = '66666666-6666-4666-8666-666666666666', followNode = '77777777-7777-4777-8777-777777777777';
+const liveRunId = '88888888-8888-4888-8888-888888888888', liveRequestId = 'pending-follow-send';
+const followTime = '2026-01-02T00:00:00.000Z';
+const livePresentation = {locale:'zh-Hans' as const, exists: ({id}: Parameters<MioFollowTargetExists>[0]) =>
+  [followShot, followNode, followClip, followTrack].includes(id)};
+const liveTool = (name: string, args: AgentTaskJson, overrides: Partial<AgentTaskStep> = {}): AgentTaskStep => ({
+  id:stepId,runId:liveRunId,position:1,kind:'tool',status:'intent',createdAt:followTime,updatedAt:followTime,
+  toolCall:{id:'mioon-follow-intent',name,arguments:args},...overrides,
+});
+const liveSnapshot = (steps: AgentTaskStep[], revision = 1): AgentTaskSnapshot => ({
+  run:{id:liveRunId,projectId,requestId:liveRequestId,text:'Follow a workbench operation',status:'running',revision,
+    stepsUsed:steps.length,budget:30,stepLimit:30,configuration:{},createdAt:followTime,updatedAt:followTime},
+  steps,changes:[],
+});
+const focusOn = (step: AgentTaskStep) => mioFollow.createMioFollowTracker().observe(liveSnapshot([step]), livePresentation, true, liveRequestId);
+
+test('live tool intent follows a visible-domain identity before dispatch or approval',()=>{
+  const step = liveTool('mioon_shot_update',{shotId:followShot});
+  const tracker = mioFollow.createMioFollowTracker();
+  const initial = tracker.observe(liveSnapshot([step]),livePresentation,true,liveRequestId);
+  assert.equal(initial?.target?.id,followShot);
+  assert.equal(initial?.phase,'operate');
+  assert.equal(initial?.highlight,true);
+  const dispatch = liveSnapshot([{...step,status:'dispatch_started'}],2);
+  assert.equal(tracker.observe(dispatch,livePresentation,true),undefined,'dispatch on the same object keeps the cursor');
+  const approval = tracker.observe(liveSnapshot([{...step,status:'awaiting_approval'}],3),livePresentation,true);
+  assert.equal(approval?.target?.id,followShot);
+  assert.equal(approval?.phase,'approval');
+  assert.equal(approval?.highlight,true);
+  assert.equal(focusOn(liveTool('mioon_timeline_track_update',{trackId:followTrack}))?.target?.kind,'timeline_track');
+  const recorded = liveTool('mioon_timeline_clip_remove',{}, {targets:[
+    {kind:'timeline_track',id:followTrack,revision:1},{kind:'timeline_clip',id:followClip,revision:1},
+  ]});
+  assert.equal(focusOn(recorded)?.target?.id,followClip,'a clip wins over its parent track');
+});
+
+test('concrete reads follow without a highlight and unscoped tool parameters stay idle',()=>{
+  for (const step of [
+    liveTool('mioon_previs_inspect',{nodeId:followNode}),
+    liveTool('mioon_version_list',{shotId:followShot}),
+    liveTool('mioon_timeline_clip_loudness',{clipId:followClip}),
+  ]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'operate');
+    assert.ok(focus.target);
+    assert.equal(focus.highlight,false);
+  }
+  for (const step of [
+    liveTool('mioon_shot_inspect',{shotId:followShot}),
+    liveTool('mioon_task_wait',{id:followShot},{targets:[{kind:'shot',id:followShot,revision:1}]}),
+    liveTool('mioon_shot_update',{shotId:'99999999-9999-4999-8999-999999999999'}),
+    liveTool('mioon_shot_update',{shotId:followShot},{status:'rejected'}),
+    liveTool('mioon_ask',{},{status:'awaiting_answer'}),
+  ]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'idle');
+    assert.equal(focus.target,undefined);
+  }
+});
+
+test('creation intents use real canvas, timeline or subtitle placement before a new object exists',()=>{
+  const canvasLocation = {kind:'canvas',x:-25,y:65};
+  const timelineLocation = {kind:'timeline',trackId:followTrack,startFrame:150};
+  const clip = liveTool('mioon_timeline_clip_add',{trackId:followTrack,startFrame:150}, {
+    targets:[{kind:'timeline_track',id:followTrack,revision:1}],
+  });
+  const node = liveTool('mioon_node_create',{type:'text',position:{x:-25,y:65}});
+  assert.deepEqual(focusOn(node)?.location,canvasLocation);
+  assert.deepEqual(focusOn(clip)?.location,timelineLocation);
+  assert.deepEqual(focusOn(liveTool('mioon_timeline_subtitle_add',{startFrame:25}))?.location,
+    {kind:'timeline',trackId:'subtitle',startFrame:25});
+  for (const step of [node,clip]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'operate');
+    assert.equal(focus.target,undefined);
+    assert.equal(focus.highlight,undefined);
+  }
+  for (const step of [
+    liveTool('mioon_shot_create',{title:'No planned location'}),
+    liveTool('mioon_timeline_clip_add',{trackId:followTrack}, {targets:clip.targets}),
+    liveTool('mioon_timeline_clip_add',{trackId:'subtitle',startFrame:150}),
+    liveTool('mioon_node_create',{position:{x:'25',y:65}}),
+  ]) assert.equal(focusOn(step)?.phase,'idle');
+
+  const tracker = mioFollow.createMioFollowTracker();
+  tracker.observe(liveSnapshot([clip]),livePresentation,true,liveRequestId);
+  const applied = liveSnapshot([{...clip,status:'completed'}],2);
+  applied.changes = [{...followChange('created-clip',stepId,'timeline_clip',followClip,'timeline.clip.add',liveRunId),
+    status:'applied',before:null,after:null,createdAt:followTime}];
+  const next = tracker.observe(applied,livePresentation,true);
+  assert.equal(next?.target?.id,followClip);
+  assert.deepEqual(next?.location,timelineLocation);
+  assert.equal(next?.highlight,true);
+  const model: AgentTaskStep = {...node,id:followNode,kind:'model',position:2,toolCall:undefined};
+  assert.equal(tracker.observe(liveSnapshot([...applied.steps,model],3),livePresentation,true)?.phase,'idle');
 });
 
 test('Mio follow is on by default and saves only the requested setting with an exact retry',async()=>{
@@ -212,7 +317,7 @@ test('a read-only load error keeps its reload action visible and cannot send wit
   const h=harness();try{h.state.phase='read_error';h.state.error='NETWORK';h.state.project=null;h.state.snapshot=null;h.state.draft='';h.render();assert.ok(h.find('agent-task-error'));const reload=h.find('agent-task-reload');assert.ok(reload);assert.equal(reload.props.disabled,false);assert.equal(h.find('agent-task-send')!.props.disabled,true);const loads=h.loads;reload.props.onClick();assert.equal(h.loads,loads+1);assert.deepEqual(h.calls,[]);}finally{h.unmount();}
 });
 test('a saved step failure is localized by code beside its unknown-result controls',()=>{
-  const h=harness();try{const step=h.state.snapshot!.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans','agent.panel.failureReason',{reason:translate('zh-Hans',agentTaskErrorKey(step.error.code))})]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
+  const h=harness();try{const step=h.state.snapshot!.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans',agentTaskErrorKey(step.error.code))]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
 });
 
 test('Mio failure details show a localized cause and a selectable, stable diagnostic code',()=>{
@@ -245,6 +350,133 @@ test('Mio failure details show a localized cause and a selectable, stable diagno
     h.render();
     assert.equal(h.find(`agent-task-diagnostic-${stepId}`),undefined);
   }finally{h.unmount();}
+});
+
+test('Mio localizes a provider failure and confines its validated metadata to collapsed details',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const step=h.state.snapshot!.steps[0]!;
+    const diagnostic={kind:'provider',reason:'invalid_parameter',event:'response.failed',providerType:'invalid_request_error',
+      code:'unsupported_parameter',param:'reasoning',message:'Unsupported parameter'} as const;
+    const error={code:'AGENT_CHAT_PROVIDER_ERROR',message:'SYNTHETIC_PRIVATE_ERROR_TEXT',diagnostic};
+    step.kind='model';
+    step.status='failed';
+    for (const protocolError of [error,{...error,code:'AGENT_CHAT_HTTP_ERROR',diagnostic:{kind:'http',status:400,provider:diagnostic}}]) {
+      step.error=protocolError;
+      for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const) {
+        h.setLocale(locale);
+        const panel=h.render();
+        const cause=h.find(`agent-task-step-error-${stepId}`)!;
+        assert.equal(renderedText(cause),translate(locale,'agent.panel.provider.invalid_parameter'));
+        const details=panel.find(node=>node.type==='details'&&node.props.className==='mio-safe-details')!;
+        assert.equal(details.props.open,undefined);
+        assert.equal(renderedText(nodes(details).find(node=>node.type==='summary')),translate(locale,'agent.panel.details'));
+        const fields=h.find(`agent-task-provider-details-${stepId}`)!;
+        assert.ok(nodes(details).includes(fields));
+        for(const [field,value] of [['providerType','invalid_request_error'],['providerCode','unsupported_parameter'],['providerParam','reasoning'],['providerMessage','Unsupported parameter']] as const) {
+          assert.ok(renderedText(fields).includes(translate(locale,`agent.panel.diagnostic.${field}`)));
+          assert.ok(renderedText(fields).includes(value));
+          assert.ok(!renderedText(cause).includes(value));
+        }
+        assert.doesNotMatch(renderedText(panel[0]),/SYNTHETIC_PRIVATE_ERROR_TEXT/u);
+        assert.equal(h.find('agent-task-run-failure'),undefined,'the typed failure already explains this round');
+        assert.ok(h.find(`agent-task-error-settings-${stepId}`));
+      }
+    }
+    const invalid={...error,diagnostic:{...diagnostic,requestText:'SYNTHETIC_UNTRUSTED_REQUEST'}};
+    step.error=invalid;
+    const panel=h.render();
+    assert.equal(h.find(`agent-task-provider-details-${stepId}`),undefined);
+    assert.doesNotMatch(renderedText(panel[0]),/SYNTHETIC_UNTRUSTED_REQUEST/u);
+  } finally {h.unmount();}
+});
+
+test('context limit offers a new conversation, and a scheduled provider retry is recorded as a status',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const snapshot=h.state.snapshot!,step=snapshot.steps[0]!;
+    const contextLimit={code:'AGENT_CHAT_PROVIDER_ERROR',message:'private diagnostic',diagnostic:{kind:'provider',reason:'context_length'}};
+    step.kind='model';
+    step.status='failed';
+    step.error=contextLimit;
+    h.render();
+    assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+    h.find(`agent-task-error-new-conversation-${stepId}`)!.props.onClick();
+    assert.deepEqual(h.calls.pop(),['newConversation']);
+
+    const quotaError={...contextLimit,diagnostic:{kind:'provider',reason:'quota'}};
+    step.error=quotaError;
+    h.render();
+    const quotaAction=h.find(`agent-task-error-settings-${stepId}`)!;
+    assert.equal(renderedText(quotaAction).trim(),translate('zh-Hans','agent.panel.changeModel'));
+    quotaAction.props.onClick();
+    assert.deepEqual(h.calls.pop(),['settings','agent']);
+
+    snapshot.run.status='running';
+    const retryStep:TaskPanelStep & {providerRetryAttempt:1}={...step,providerRetryAttempt:1};
+    const temporaryError={...contextLimit,diagnostic:{kind:'provider',reason:'overloaded'}};
+    retryStep.error=temporaryError;
+    snapshot.steps=[retryStep];
+    h.render();
+    assert.equal(h.find(`agent-task-step-error-${stepId}`)?.props.role,undefined);
+    assert.equal(renderedText(h.find(`agent-task-step-auto-retry-${stepId}`)),translate('zh-Hans','agent.panel.providerRetryScheduled',{attempt:1}));
+    assert.equal(h.find(`agent-task-error-settings-${stepId}`),undefined);
+    assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+  } finally {h.unmount();}
+});
+
+test('Mio shows which timeout phase ended a model request and its overall elapsed time',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const step=h.state.snapshot!.steps[0]!;
+    step.kind='model';
+    step.status='failed';
+    for(const phase of ['dns','connect','headers','first_byte','idle','total'] as const) {
+      const error={code:'AGENT_CHAT_TIMEOUT',message:'private diagnostic',diagnostic:{kind:'timeout',phase,elapsedMs:12345}};
+      step.error=error;
+      for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const) {
+        h.setLocale(locale);
+        h.render();
+        const description=translate(locale,`agent.panel.timeout.${phase}`,{seconds:'12.3'});
+        assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),description);
+        assert.equal(h.find(`agent-task-diagnostic-${stepId}`)?.props.value,`MIO/timeout/${phase}/elapsed_ms=12345`);
+        assert.ok(h.find(`agent-task-retry-${stepId}`));
+      }
+    }
+  } finally {h.unmount();}
+});
+
+test('the failed model row does not mislabel the earlier completed export',()=>{
+  const h=harness({status:'failed',openRequests:true});
+  try {
+    const snapshot=h.state.snapshot!,failedModel=snapshot.steps[0]!;
+    const exportId='33333333-3333-4333-8333-333333333333',assetId='44444444-4444-4444-8444-444444444444';
+    const exportResult={id:exportId,projectId,mode:'timeline',purpose:'export',status:'succeeded',assetId};
+    const exportStep:TaskPanelStep={id:'export-step',kind:'tool',status:'completed',toolCall:{name:'mioon_timeline_render',arguments:{}},result:{...exportResult,status:'queued',assetId:null}};
+    const waitStep:TaskPanelStep={id:'wait-step',kind:'tool',status:'completed',toolCall:{name:'mioon_task_wait',arguments:{kind:'export',id:exportId}},result:exportResult};
+    const error={code:'AGENT_CHAT_PROVIDER_ERROR',message:'private diagnostic',diagnostic:{kind:'provider',reason:'server'}};
+    failedModel.kind='model';
+    failedModel.status='failed';
+    failedModel.error=error;
+    snapshot.steps=[exportStep,waitStep,failedModel];
+    h.render();
+    const group=h.find('agent-task-export-before-model-failure')!;
+    assert.ok(renderedText(group).includes(translate('zh-Hans','agent.panel.exportBeforeModelFailure.succeeded')));
+    nodes(group).find(node=>node.type==='button')!.props.onClick();
+    assert.deepEqual(h.calls.pop(),['requests',`render:${exportId}`]);
+
+    snapshot.steps=[exportStep,failedModel];
+    h.render();
+    assert.ok(renderedText(h.find('agent-task-export-before-model-failure')).includes(translate('zh-Hans','agent.panel.exportBeforeModelFailure.submitted')));
+    for(const result of [{...exportResult,purpose:'sample'},{...exportResult,assetId:null},{...exportResult,projectId:assetId}]) {
+      snapshot.steps=[{...exportStep,result},failedModel];
+      h.render();
+      assert.equal(h.find('agent-task-export-before-model-failure'),undefined);
+    }
+    snapshot.steps=[exportStep,{...waitStep,result:{...exportResult,status:'failed',assetId:null}},failedModel];
+    h.render();
+    assert.equal(h.find('agent-task-export-before-model-failure'),undefined);
+  } finally {h.unmount();}
 });
 
 test('Mio formats validated HTTP, limit and protocol diagnostics',()=>{
@@ -367,11 +599,11 @@ test('Mio localizes step, run and transport errors without rendering diagnostic 
       h.state.snapshot!.run.pauseReason='AGENT_CHAT_TIMEOUT';
       h.state.snapshot!.steps[0].error={code:'AGENT_CHAT_HTTP_ERROR',message:'diagnostic <b>untrusted text</b>'};
       h.state.error='AGENT_TASK_CONSENT_REQUIRED';h.render();
-      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`)!.props.children,[translate(locale,'agent.panel.failureReason',{reason:translate(locale,agentTaskErrorKey('AGENT_CHAT_HTTP_ERROR'))})]);
-      assert.ok(h.find('agent-task-run-error')!.props.children.includes(translate(locale,'agent.panel.failedTail')));
+      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`)!.props.children,[translate(locale,agentTaskErrorKey('AGENT_CHAT_HTTP_ERROR'))]);
+      assert.equal(renderedText(h.find('agent-task-run-failure')),translate(locale,agentTaskErrorKey('AGENT_CHAT_TIMEOUT')));
       assert.deepEqual(h.find('agent-task-error')!.props.children,[translate(locale,agentTaskErrorKey('AGENT_TASK_CONSENT_REQUIRED'))]);
       h.state.snapshot!.steps[0].error.code='UNRECOGNIZED';h.render();
-      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`)!.props.children,[translate(locale,'agent.panel.failureReason',{reason:translate(locale,agentTaskErrorKey(undefined))})]);
+      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`)!.props.children,[translate(locale,agentTaskErrorKey(undefined))]);
     }finally{h.unmount();}
   }
 });
@@ -504,8 +736,8 @@ test('Mio names execution safeguards and offers an ordinary resume after a suppl
     step.text='UNTRUSTED_TOOL_EXPLANATION';
     step.toolCall!.arguments={prompt:'UNTRUSTED_ARGUMENT'};
     for(const [reason,expected] of [
-      ['repeated_tool_failure',/卡住了.*连续三次/u],
-      ['no_tool_progress',/卡住了.*连续多次请求模型/u],
+      ['repeated_tool_failure',/^连续三次未能完成/u],
+      ['no_tool_progress',/^连续多次请求模型后，仍未完成新的操作/u],
       ['safety_limit',/执行上限/u],
       ['budget',/已暂停/u],
     ] as const){
@@ -636,14 +868,15 @@ test('a round ended by changed settings shows its own reason and offers no doome
       const step=h.state.snapshot!.steps[0];Object.assign(step,{kind:'model',status:'failed',approvalRequired:false,error:{code:'AGENT_CHAT_TIMEOUT',message:'NEVER_ECHO_PROVIDER_DETAIL'}});
       h.state.snapshot!.run.pauseReason=code;h.render();
       assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
-      assert.equal(renderedText(h.find('agent-task-run-failure')),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.changed')}));
-      assert.equal(renderedText(h.find('agent-task-run-error')),translate(locale,'agent.panel.settingsChangedTail'));
+      assert.equal(renderedText(h.find('agent-task-run-failure')),translate(locale,'agent.panel.settingsChangedReason'));
       // The older step error stays visible as history.
-      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.timeout')}));
+      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.task.error.timeout'));
       // The same code as the step error is not repeated and keeps the retry.
       h.state.snapshot!.run.pauseReason='AGENT_CHAT_TIMEOUT';h.render();
       assert.equal(h.find('agent-task-run-failure'),undefined);assert.ok(h.find(`agent-task-retry-${stepId}`));
-      assert.equal(renderedText(h.find('agent-task-run-error')),translate(locale,'agent.panel.failedTail'));
+      delete h.state.snapshot!.run.pauseReason; delete step.error; h.render();
+      assert.equal(renderedText(h.find('agent-task-run-failure')),translate(locale,'agent.panel.unknownFailureReason'));
+      assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
     }finally{h.unmount();}
   }
 });
@@ -696,7 +929,7 @@ test('stale preflight failures explain the required recheck in every locale with
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
     const h=harness({status:'failed',locale});try{
       const step=h.state.snapshot!.steps[0];Object.assign(step,{status:'failed',approvalRequired:false,error:{code:'PREFLIGHT_STALE',message:'PRIVATE_PREFLIGHT_DETAILS'}});h.render();
-      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.preflightStale')}));assert.ok(h.find(`agent-task-retry-${stepId}`));assert.equal(h.find(`agent-task-error-settings-${stepId}`),undefined);assert.ok(!renderedText(h.render()[0]).includes('PRIVATE_PREFLIGHT_DETAILS'));
+      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.task.error.preflightStale'));assert.ok(h.find(`agent-task-retry-${stepId}`));assert.equal(h.find(`agent-task-error-settings-${stepId}`),undefined);assert.ok(!renderedText(h.render()[0]).includes('PRIVATE_PREFLIGHT_DETAILS'));
     }finally{h.unmount();}
   }
 });
@@ -808,6 +1041,25 @@ test('usage details stay on the reviewed historical run when a later reply arriv
     h.state.rounds.push({...h.state.snapshot!,run:{...h.state.snapshot!.run,id:later},steps:[],changes:[]});h.options.onChange(h.state);await new Promise(resolve=>setImmediate(resolve));h.render();
     const details=h.render().find(node=>node.type==='usage-details')!;assert.equal(details.props.runId,older);(details.props.onClose as ()=>void)();h.render();
     assert.equal(h.render().find(node=>node.type==='usage-details')!.props.open,false);assert.equal(h.state.selectionKey,'run');assert.deepEqual(h.calls,[]);
+  }finally{h.unmount();}
+});
+
+test('returning to the visible Mio panel retains its last usage before the refresh completes',async()=>{
+  const runId='22222222-2222-4222-8222-222222222222',h=harness({status:'completed',usageRunId:runId});
+  const usageView=()=>h.render().find(node=>node.type==='usage-row'&&node.props.runId===runId)?.props.view as usageState.MioUsageView;
+  try{
+    await new Promise(setImmediate);
+    const value=usageView().value;
+    assert.equal(value?.knownTotals.inputTokens,1000);
+
+    Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    assert.equal(usageView().value,value);
+    assert.equal(usageView().stale,false);
+    await new Promise(setImmediate);
+    assert.equal(h.usageReads.length,2);
   }finally{h.unmount();}
 });
 

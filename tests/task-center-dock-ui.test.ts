@@ -103,7 +103,7 @@ function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
       const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './reference-connections.ts': references };
       if (business[name as keyof typeof business]) return business[name as keyof typeof business];
       if (['./icons.tsx', './SubjectVideoSummary.tsx'].includes(name)) return { __esModule: true, default: name };
-      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'] };
+      const primitives = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/workbench-tooltip': ['WorkbenchTooltip'] };
       if (primitives[name as keyof typeof primitives]) return Object.fromEntries(primitives[name as keyof typeof primitives].map(key => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);
     };
@@ -208,7 +208,7 @@ test('task center distinguishes automatic video credential recovery, action requ
   const accepted = { ...job(12, 'running'), providerId: 'minimax', providerJobId: 'original-provider-task', progress: 0 };
   const legacyError = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', message: 'UNTRUSTED_PRIVATE_MESSAGE', retryable: true};
   const cases = [
-    {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoConnectionWaiting', detail: 'tasks.error.videoSecretStore', result: 'tasks.error.videoOriginalTaskRetained'},
+    {phase: 'connection_retrying', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic', status: 'tasks.status.videoSecretStoreWaiting', detail: null, result: null},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_NOT_CONFIGURED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoCredentialMissing', result: 'tasks.error.videoRecoverWithOriginalAccount'},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoConnectionDeleted', result: 'tasks.error.videoResultAtProvider'},
     {phase: 'connection_required', cause: 'VIDEO_SETTINGS_CORRUPT', recovery: 'user_action', status: 'tasks.status.videoConnectionRequired', detail: 'tasks.error.videoSettingsUnreadable', result: 'tasks.error.videoRecoverWithOriginalAccount'},
@@ -230,19 +230,22 @@ test('task center distinguishes automatic video credential recovery, action requ
       const card = find(tree, `job-${accepted.id}`);
       assert.ok(card);
       assert.ok(text(card).includes(t(scenario.status)));
-      assert.ok(text(card).includes(t(scenario.detail)));
+      if (scenario.detail) assert.ok(text(card).includes(t(scenario.detail)));
       if (scenario.result) assert.ok(text(card).includes(t(scenario.result)));
       if (scenario.result !== 'tasks.error.videoOriginalTaskRetained') assert.equal(text(card).includes(t('tasks.error.videoOriginalTaskRetained')), false);
-      assert.equal(text(card).includes(t('tasks.error.videoKeychainContinues')), cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
-      assert.ok(text(card).includes(t('tasks.error.diagnosticCode', {code: cause ?? legacyError.code})));
+      const keychain = cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE';
+      assert.equal(text(card).includes(t('tasks.error.videoKeychainContinues')), false);
+      assert.equal(text(card).includes(t('tasks.error.diagnosticCode', {code: cause ?? legacyError.code})), !keychain);
       assert.doesNotMatch(text(card), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
       assert.equal(find(tree, `task-select-${accepted.id}`)?.props['data-warning'], recovery === 'user_action');
       assert.equal(find(tree, `retry-job-${accepted.id}`), undefined);
       assert.equal(find(tree, `reconcile-job-${accepted.id}`), undefined);
-      assert.equal(text(find(tree, `retry-video-connection-${accepted.id}`)), t('tasks.center.retryVideoConnection'));
+      const retry = find(tree, `retry-video-connection-${accepted.id}`);
+      if (keychain) assert.equal(retry, undefined);
+      else assert.equal(text(retry), t('tasks.center.retryVideoConnection'));
     }
     assert.deepEqual(h.calls, []);
-    const error = {...legacyError, diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}};
+    const error = {...legacyError, diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_CLOSED', recovery: 'automatic'}};
     const tree = h.render({jobs: [{...accepted, phase: 'connection_retrying', error}]});
     find(tree, `retry-video-connection-${accepted.id}`)!.props.onClick();
     assert.deepEqual(h.calls, [['run', `reconcile:${accepted.id}`, 'job.reconcile', {jobId: accepted.id}, message('tasks.center.videoConnectionCheckScheduled')]]);
@@ -250,6 +253,29 @@ test('task center distinguishes automatic video credential recovery, action requ
     assert.equal(find(queued, `retry-video-connection-${accepted.id}`), undefined);
     h.unmount();
   }
+});
+
+test('multiple blocked video tasks share one Keychain notice and carry only a short status', () => {
+  const h = harness('zh-Hans'), {t} = createI18nTestContext('zh-Hans');
+  const error = {code: 'VIDEO_CREDENTIAL_UNAVAILABLE',
+    diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', recovery: 'automatic'}};
+  const waiting = [job(12, 'running'), job(13, 'running')].map(value => ({
+    ...value, phase: 'connection_retrying', providerJobId: 'original-provider-task', error,
+  }));
+  const tree = h.render({jobs: waiting});
+  const notices = nodes(tree).filter(node => node.props['data-testid'] === 'task-keychain-notice');
+  assert.equal(notices.length, 1);
+  assert.equal(text(notices[0]), '系统安全存储不可用');
+  const tooltip = nodes(notices[0]).find(node => node.type === 'WorkbenchTooltip');
+  assert.equal(tooltip?.props.content, `${t('tasks.error.videoSecretStore')} ${t('tasks.error.videoKeychainContinues')}`);
+  for (const value of waiting) {
+    const card = find(tree, `job-${value.id}`);
+    assert.ok(text(card).includes('系统安全存储不可用'));
+    assert.ok(!text(card).includes(t('tasks.error.videoSecretStore')));
+    assert.equal(find(tree, `retry-video-connection-${value.id}`), undefined);
+  }
+  assert.equal(find(h.render({jobs: []}), 'task-keychain-notice'), undefined);
+  h.unmount();
 });
 
 test('task details show only the validated replacement credential recovery audit in each language', async () => {

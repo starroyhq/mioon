@@ -1,5 +1,8 @@
 import {agentHttpFailureDiagnostic, agentProtocolFailureDiagnostic} from '../../../contracts/src/agent-failure-diagnostic.ts';
-import type {AgentFailureDiagnostic, AgentFailureLimit, AgentProtocolFailureReason} from '../../../contracts/src/agent-failure-diagnostic.ts';
+import type {AgentFailureDiagnostic, AgentFailureLimit, AgentProtocolFailureReason, AgentProviderFailureDiagnostic, AgentTimeoutPhase} from '../../../contracts/src/agent-failure-diagnostic.ts';
+import type {AgentConfiguration} from './config.ts';
+import {providerFailureDiagnostic, providerFailureIsTemporary, providerFailureRetryAfterMs} from './provider-failure.ts';
+export {hasProviderChatCompletionFailure} from './provider-failure.ts';
 
 // Never reflect provider bodies, headers, URLs, keys, socket errors or causes.
 const errors = Object.freeze({
@@ -47,6 +50,7 @@ export interface AgentStreamState {
 }
 const streamEvidence = new WeakMap<object, {reason: AgentStreamReason; state: Readonly<AgentStreamState>}>();
 const diagnostics = new WeakMap<object, AgentFailureDiagnostic>();
+const providerEvidence = new WeakMap<object, {retryable: boolean; retryAfterMs?: number}>();
 export function agentChatDiagnostic(error: unknown): AgentFailureDiagnostic | undefined {
   return error !== null && typeof error === 'object' ? diagnostics.get(error) : undefined;
 }
@@ -54,6 +58,19 @@ export function agentChatProtocolError(code: AgentChatErrorCode, reason: AgentPr
   const failure = agentChatError(code);
   diagnostics.set(failure, Object.freeze(agentProtocolFailureDiagnostic(reason, details)));
   return failure;
+}
+export function agentChatProviderError(configuration: AgentConfiguration, event: NonNullable<AgentProviderFailureDiagnostic['event']>, payload: unknown): AgentChatFailure {
+  const failure = agentChatError('AGENT_CHAT_PROVIDER_ERROR');
+  const diagnostic = Object.freeze(providerFailureDiagnostic(configuration, payload, {event}));
+  diagnostics.set(failure, diagnostic);
+  providerEvidence.set(failure, {retryable:providerFailureIsTemporary(configuration, diagnostic)});
+  return failure;
+}
+export function agentChatProviderRetryable(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && providerEvidence.get(error)?.retryable === true;
+}
+export function agentChatProviderRetryAfterMs(error: unknown): number | undefined {
+  return error !== null && typeof error === 'object' ? providerEvidence.get(error)?.retryAfterMs : undefined;
 }
 export function agentChatLimitError(limit: AgentFailureLimit, code: AgentChatErrorCode = 'AGENT_CHAT_LIMIT'): AgentChatFailure {
   const failure = agentChatError(code);
@@ -89,13 +106,11 @@ export function annotateAgentChatStreamError(error: unknown, state: AgentStreamS
 }
 /** Hints are untrusted provider suggestions, never permission or retry evidence.
  * Only closed enums and bounded indices survive this in-memory classification. */
-function httpErrorFields(bytes: Uint8Array | undefined): Record<string, unknown> | undefined {
+function httpErrorBody(bytes: Uint8Array | undefined): Record<string, unknown> | undefined {
   if (!bytes?.byteLength || bytes.byteLength > AGENT_HTTP_DIAGNOSTIC_MAX_BYTES) return undefined;
   try {
     const value: unknown = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes));
-    if (value === null || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, 'error')) return undefined;
-    const error: unknown = (value as {error:unknown}).error;
-    return error !== null && typeof error === 'object' && !Array.isArray(error) ? error as Record<string, unknown> : undefined;
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
   } catch { return undefined; }
 }
 function httpParameterHints(entries: Record<string, unknown>): HttpParameterHints | undefined {
@@ -128,14 +143,22 @@ export function agentChatError(code: string = 'AGENT_CHAT_CONNECT_FAILED'): Agen
   return Object.assign(new Error(errors[resolved][1]), {code: resolved, status: errors[resolved][0]});
 }
 /** Only transport-created errors retain a validated status, never response data. */
-export function agentChatHttpError(statusCode: unknown, diagnosticBody?: Uint8Array): AgentChatFailure {
+export function agentChatHttpError(statusCode: unknown, diagnosticBody?: Uint8Array, configuration?: AgentConfiguration, retryAfterHeader?: unknown): AgentChatFailure {
   const failure = agentChatError('AGENT_CHAT_HTTP_ERROR');
   if (typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599 && (statusCode < 200 || statusCode >= 300)) {
-    const fields = httpErrorFields(diagnosticBody);
+    const body = httpErrorBody(diagnosticBody);
+    const error = body?.error;
+    const fields = error !== null && typeof error === 'object' && !Array.isArray(error) ? error as Record<string, unknown> : undefined;
     const hints = statusCode === 400 && fields ? httpParameterHints(fields) : undefined;
     httpEvidence.set(failure, {status:statusCode,...(hints ? {hints} : {})});
     const diagnostic = agentHttpFailureDiagnostic(statusCode, fields?.type, fields?.code);
-    if (diagnostic) diagnostics.set(failure, Object.freeze(diagnostic));
+    if (diagnostic) {
+      const retryAfterMs = providerFailureRetryAfterMs(retryAfterHeader);
+      const provider = configuration ? Object.freeze(providerFailureDiagnostic(configuration, body, {status:statusCode, retryAfterMs})) : undefined;
+      if (provider && configuration) providerEvidence.set(failure, {retryable:providerFailureIsTemporary(configuration, provider), retryAfterMs});
+      const describesError = provider && (provider.providerType !== undefined || provider.code !== undefined || provider.param !== undefined || provider.message !== undefined);
+      diagnostics.set(failure, Object.freeze(describesError ? {...diagnostic,provider} : diagnostic));
+    }
   }
   return failure;
 }
@@ -166,4 +189,13 @@ export function safeAgentChatError(error: unknown): {code: AgentChatErrorCode; s
     ].join('；')}。`;
   }
   return {code: safe.code, status: safe.status, message: safe.message};
+}
+
+/** Timeout evidence is attached only at a host-owned network deadline. */
+export function agentChatTimeoutError(phase: AgentTimeoutPhase, elapsedMs: number): AgentChatFailure {
+  const failure = agentChatError('AGENT_CHAT_TIMEOUT');
+  if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+    diagnostics.set(failure, Object.freeze({kind: 'timeout', phase, elapsedMs: Math.min(24 * 60 * 60 * 1000, Math.round(elapsedMs))}));
+  }
+  return failure;
 }

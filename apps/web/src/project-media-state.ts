@@ -18,6 +18,7 @@ export type ChooseMediaPreview = (input: {readonly projectId: string; readonly a
 export interface ProjectMediaState {
   readonly owner: ProjectMediaOwner | null;
   readonly status: ViewState<Readonly<Record<string, AssetMediaState>>>;
+  readonly statusCheckDelayed: boolean;
   readonly locations: ViewState<MediaLocationPage>;
   readonly outsideOpen: boolean;
   readonly outsideAction: ActionState<'allow' | 'open'>;
@@ -35,10 +36,16 @@ export interface ProjectMediaState {
   readonly nativeConfirmedDirectories: readonly string[];
 }
 export const sameMediaOwner = (a: ProjectMediaOwner | null, b: ProjectMediaOwner | null): boolean => a === b || Boolean(a && b && a.appLibraryScope === b.appLibraryScope && a.instanceId === b.instanceId && a.projectId === b.projectId && a.epoch === b.epoch && a.session === b.session);
-const initial = (owner: ProjectMediaOwner | null, canChoose: boolean): ProjectMediaState => ({owner, status: {kind: 'loading'}, locations: {kind: 'loading'}, outsideOpen: false, outsideAction: {kind: 'idle'}, rulesUntrusted: false,
+const initial = (owner: ProjectMediaOwner | null, canChoose: boolean): ProjectMediaState => ({owner, status: {kind: 'loading'}, statusCheckDelayed: false, locations: {kind: 'loading'}, outsideOpen: false, outsideAction: {kind: 'idle'}, rulesUntrusted: false,
   relinkOpen: false, relink: {kind: 'loading'}, applyAction: {kind: 'idle'}, changedSelected: [], newAdded: 0, canChoose, canChangeSelection: true, canApply: false, lastError: null, nativeOutcomeUnknown: false, nativeConfirmedDirectories: []});
 function invalid(code = 'BACKEND_PROTOCOL_ERROR'): never {throw new ProjectMediaError(code);}
 const basisKey = (assets: readonly ProjectMediaAsset[]): string => JSON.stringify(assets.map(asset => [asset.id, asset.referenceRevision]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+const sameStatus = (previous: AssetMediaState | undefined, next: AssetMediaState): previous is AssetMediaState =>
+  Boolean(previous && previous.referenceRevision === next.referenceRevision && previous.fingerprintToken === next.fingerprintToken &&
+    previous.status === next.status && previous.reason === next.reason && previous.outside === next.outside && previous.readable === next.readable);
+const FIRST_CHECK_DELAY_MS = 1000;
+const STATUS_RETRY_INITIAL_MS = 2000;
+const STATUS_RETRY_MAX_MS = 30_000;
 type Preview = {readonly value: MediaRelinkPreview; readonly paths: ReadonlyMap<string, string>; readonly revisions: ReadonlyMap<string, number>};
 interface ApplyStep {readonly kind: 'relink' | 'changed'; readonly input: {projectId: string; requestId: string; previewToken?: string; assetId?: string; expectedReferenceRevision?: number}; readonly revisions: ReadonlyMap<string, number>; readonly existingIds: ReadonlySet<string>}
 interface ApplyIntent {readonly steps: readonly ApplyStep[]; index: number; added: number}
@@ -56,6 +63,8 @@ export function createProjectMediaController({client = createProjectMediaClient(
   const chooserAvailable = Boolean(nativeRelink || choosePreview);
   let state = initial(null, chooserAvailable), assetKey = '', dismissedOutside = false;
   const requests = new Map<AbortController, string>();
+  let statusDelay: ReturnType<typeof setTimeout> | undefined, statusRetry: ReturnType<typeof setTimeout> | undefined;
+  let statusRetryMs = STATUS_RETRY_INITIAL_MS;
   const selectedRevisions = new Map<string, number>();
   let preview: Preview | null = null, selected = new Set<string>(), intent: ApplyIntent | null = null, permissionIntent: PermissionIntent | null = null;
   let nativePreview: NativePreview | null = null, nativeIntent: NativeIntent | null = null;
@@ -82,6 +91,11 @@ export function createProjectMediaController({client = createProjectMediaClient(
     return [...revisions].every(([id, revision]) => current.get(id) === revision);
   }
   function abortChannel(channel: string): void {for (const [abort, value] of requests) if (value === channel) abort.abort();}
+  function clearStatusObservation(): void {
+    clearTimeout(statusDelay); statusDelay = undefined;
+    clearTimeout(statusRetry); statusRetry = undefined;
+    statusRetryMs = STATUS_RETRY_INITIAL_MS;
+  }
   function retireNativePreview(): void {
     const old = nativePreview; nativePreview = null;
     // Accepted previews are receipt evidence. Main owns their retirement after
@@ -131,16 +145,30 @@ export function createProjectMediaController({client = createProjectMediaClient(
     const chosen = assets(state.owner).find(asset => asset.id === preview?.value.chosen.assetId);
     return {rows: values, foundBy: chosen && found.size ? {name: chosen.name, count: found.size} : null};
   }
-  function renderRelink(): void {if (state.relinkOpen) publish({relink: state.status.kind === 'ready' && state.locations.kind === 'ready' ? {kind: 'ready', value: rows()} : state.status.kind === 'error' || state.locations.kind === 'error' ? {kind: 'error', retryable: true} : {kind: 'loading'}});}
+  function renderRelink(): void {
+    if (!state.relinkOpen || !state.owner) return;
+    const locations = state.locations, status = state.status;
+    const complete = status.kind === 'ready' && assets(state.owner).every(asset => status.value[asset.id]?.referenceRevision === asset.referenceRevision);
+    publish({relink: complete && locations.kind === 'ready' ? {kind: 'ready', value: rows()}
+      : status.kind === 'error' || locations.kind === 'error' ? {kind: 'error', retryable: true} : {kind: 'loading'}});
+  }
   async function refreshStatus(): Promise<boolean> {
     if (observationPaused) return false;
     const owner = state.owner, lifetime = generation, serial = ++statusSerial;
     if (!ownerCurrent(owner, lifetime)) return false;
     abortChannel('status');
-    publish({status: {kind: 'loading'}, lastError: null});
+    clearTimeout(statusRetry); statusRetry = undefined;
     const items: Record<string, AssetMediaState> = {}; let cursor: string | undefined;
+    const previous = state.status.kind === 'ready' ? state.status : null;
     try {
       const basis = assets(owner), key = basisKey(basis), expected = new Map(basis.map(asset => [asset.id, asset.referenceRevision]));
+      if (state.status.kind === 'error') publish({status: {kind: 'loading'}, lastError: null});
+      if (statusDelay === undefined && !state.statusCheckDelayed && basis.some(asset => previous?.value[asset.id]?.referenceRevision !== asset.referenceRevision)) {
+        statusDelay = setTimeout(() => {
+          statusDelay = undefined;
+          if (ownerCurrent(owner, lifetime) && !observationPaused) publish({statusCheckDelayed: true});
+        }, FIRST_CHECK_DELAY_MS);
+      }
       if (basis.length) for (let pages = 0; ; pages++) {
         if (!ownerCurrent(owner, lifetime) || serial !== statusSerial || key !== basisKey(assets(owner))) return false;
         if (pages >= 200) invalid('INSPECTION_BUDGET_EXCEEDED');
@@ -149,15 +177,47 @@ export function createProjectMediaController({client = createProjectMediaClient(
         const page = assetMediaStatusListResponseSchema.parse(raw); let last = cursor;
         for (const item of page.items) {
           if (last && item.assetId <= last || items[item.assetId] || expected.get(item.assetId) !== item.referenceRevision) invalid('REVISION_CONFLICT');
-          items[item.assetId] = Object.freeze(item); last = item.assetId;
+          const before = previous?.value[item.assetId];
+          items[item.assetId] = sameStatus(before, item) ? before : Object.freeze(item);
+          last = item.assetId;
         }
         if (Object.keys(items).length > 20_000 || page.nextCursor !== null && (page.items.length === 0 || page.nextCursor !== last || cursor !== undefined && page.nextCursor <= cursor)) invalid();
         if (page.nextCursor === null) break; cursor = page.nextCursor;
       }
       if (Object.keys(items).length !== expected.size) invalid('REVISION_CONFLICT');
       if (!ownerCurrent(owner, lifetime) || serial !== statusSerial) return false;
-      publish({status: {kind: 'ready', value: Object.freeze(items)}}); renderRelink(); return true;
-    } catch (error) {if (ownerCurrent(owner, lifetime) && serial === statusSerial) {publish({status: {kind: 'error', retryable: true}, lastError: errorCode(error)}); renderRelink();} return false;}
+      clearStatusObservation();
+      const unchanged = previous && Object.keys(previous.value).length === expected.size &&
+        Object.values(items).every(item => previous.value[item.assetId] === item);
+      if (!unchanged || state.statusCheckDelayed) {
+        publish({status: unchanged ? previous : {kind: 'ready', value: Object.freeze(items)}, statusCheckDelayed: false});
+        renderRelink();
+      }
+      return true;
+    } catch (error) {
+      if (!ownerCurrent(owner, lifetime) || serial !== statusSerial) return false;
+      const code = errorCode(error);
+      const rejected = error instanceof ProjectMediaError && (error.status === 401 || error.status === 403 ||
+        ['PROJECT_FILE_COPY', 'PROJECT_FILE_MOVED', 'PROJECT_NOT_FOUND', 'PROJECT_MISSING', 'NOT_FOUND'].includes(code));
+      const temporary = ['BACKEND_UNAVAILABLE', 'TIMEOUT', 'INTERNAL_ERROR', 'PROJECT_UNAVAILABLE'].includes(code) ||
+        error instanceof ProjectMediaError && (error.status === 429 || (error.status ?? 0) >= 500);
+      if (rejected || !previous && !temporary) {
+        clearStatusObservation();
+        publish({status: {kind: 'error', retryable: true}, statusCheckDelayed: false, lastError: code});
+        renderRelink();
+        return false;
+      }
+      // A read failure supplies no new file state. Every actual media request
+      // still has to pass the backend's own current file and permission checks.
+      if (!rejected && code !== 'MEDIA_REFERENCE_INVALID') {
+        statusRetry = setTimeout(() => {
+          statusRetry = undefined;
+          if (ownerCurrent(owner, lifetime) && !observationPaused) void refreshStatus();
+        }, statusRetryMs);
+        statusRetryMs = Math.min(STATUS_RETRY_MAX_MS, statusRetryMs * 2);
+      }
+      return false;
+    }
   }
   async function refreshLocations(): Promise<boolean> {
     if (observationPaused) return false;
@@ -199,7 +259,10 @@ export function createProjectMediaController({client = createProjectMediaClient(
   async function refresh(): Promise<void> {await Promise.all([refreshStatus(), refreshLocations(), refreshRules()]);}
   async function observeApplied(owner: ProjectMediaOwner, lifetime: number): Promise<void> {
     if (!ownerCurrent(owner, lifetime)) return;
-    publish({status: {kind: 'loading'}});
+    statusSerial++;
+    abortChannel('status');
+    clearStatusObservation();
+    publish({status: {kind: 'loading'}, statusCheckDelayed: false});
     try {await onApplied(owner); if (ownerCurrent(owner, lifetime)) await refresh();}
     catch (error) {if (ownerCurrent(owner, lifetime)) publish({status: {kind: 'error', retryable: true}, lastError: errorCode(error)});}
   }
@@ -378,16 +441,17 @@ export function createProjectMediaController({client = createProjectMediaClient(
   }
   function statusFor(asset: ProjectMediaAsset | string): MediaStatusUi {
     const owner = state.owner;
-    if (!ownerCurrent(owner)) return {kind: 'checking'};
+    if (!ownerCurrent(owner)) return {kind: 'pending'};
     let catalog: readonly ProjectMediaAsset[];
     try {catalog = assets(owner);} catch {return {kind: 'check-failed'};}
     const current = typeof asset === 'string' ? catalog.find(value => value.id === asset) : asset;
     const admitted = current && catalog.find(value => value.id === current.id);
-    if (!current || !admitted || admitted.referenceRevision !== current.referenceRevision || current.projectId !== owner.projectId || state.status.kind === 'loading') return {kind: 'checking'};
+    if (!current || !admitted || admitted.referenceRevision !== current.referenceRevision || current.projectId !== owner.projectId) return {kind: 'pending'};
     if (state.status.kind === 'error') return {kind: 'check-failed'};
-    const status = state.status.value[current.id];
-    if (status?.status === 'online' && !status.readable && !status.outside) return {kind: 'check-failed'};
-    return status && status.referenceRevision === current.referenceRevision ? mediaStatusDisplay(status) : {kind: 'checking'};
+    const status = state.status.kind === 'ready' ? state.status.value[current.id] : undefined;
+    if (!status || status.referenceRevision !== current.referenceRevision) return {kind: state.statusCheckDelayed ? 'checking' : 'pending'};
+    if (status.status === 'online' && !status.readable && !status.outside) return {kind: 'check-failed'};
+    return mediaStatusDisplay(status);
   }
   function cancelRelink(): void {if (state.applyAction.kind === 'working' || nativeIntent || retiredNativeUnknown()) return; selectionSerial++; abortChannel('choose'); if (!intent) {retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear();} publish({relinkOpen: false, ...(intent ? {} : {applyAction: {kind: 'idle'} as const})});}
   return {
@@ -401,16 +465,31 @@ export function createProjectMediaController({client = createProjectMediaClient(
         // Retire read-only replies before the close snapshot is captured;
         // writes, selections and owner changes still invalidate that snapshot.
         statusSerial++; locationSerial++; rulesSerial++;
+        clearStatusObservation();
         for (const channel of ['status', 'locations', 'rules']) abortChannel(channel);
       } else if (active) void refresh();
     },
-    dispose() {active = false; generation++; statusSerial++; locationSerial++; selectionSerial++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = {...initial(null, chooserAvailable), nativeOutcomeUnknown: retiredNativeUnknown(), canChoose: chooserAvailable && !retiredNativeUnknown(), canChangeSelection: !retiredNativeUnknown()};},
+    dispose() {active = false; generation++; statusSerial++; locationSerial++; selectionSerial++; clearStatusObservation(); for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = {...initial(null, chooserAvailable), nativeOutcomeUnknown: retiredNativeUnknown(), canChoose: chooserAvailable && !retiredNativeUnknown(), canChangeSelection: !retiredNativeUnknown()};},
     update(owner: ProjectMediaOwner | null) {
-      let key: string;
-      try {key = owner ? basisKey(assets(owner)) : '';}
-      catch (error) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = initial(owner, chooserAvailable); publish({status: {kind: 'error', retryable: true}, locations: {kind: 'error', retryable: true}, lastError: errorCode(error)}); return;}
-      if (!sameMediaOwner(owner, state.owner)) {generation++; for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); dismissedOutside = false; state = initial(owner ? Object.freeze({...owner}) : null, chooserAvailable); assetKey = key; publish();}
-      else if (key !== assetKey) {assetKey = key; statusSerial++; locationSerial++; selectionSerial++; abortChannel('status'); abortChannel('locations'); abortChannel('choose'); if (!intent && !nativeIntent) {retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear();} publish({status: {kind: 'loading'}, locations: {kind: 'loading'}});}
+      let catalog: readonly ProjectMediaAsset[];
+      try {catalog = owner ? assets(owner) : [];}
+      catch (error) {generation++; clearStatusObservation(); for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); state = initial(owner, chooserAvailable); publish({status: {kind: 'error', retryable: true}, locations: {kind: 'error', retryable: true}, lastError: errorCode(error)}); return;}
+      const key = owner ? basisKey(catalog) : '';
+      if (!sameMediaOwner(owner, state.owner)) {generation++; clearStatusObservation(); for (const [abort] of requests) abort.abort(); requests.clear(); retainRetiredNativeIntent(); retireNativePreview(); nativeIntent = null; preview = null; intent = null; permissionIntent = null; selected.clear(); selectedRevisions.clear(); dismissedOutside = false; state = initial(owner ? Object.freeze({...owner}) : null, chooserAvailable); assetKey = key; publish();}
+      else if (key !== assetKey) {
+        assetKey = key; statusSerial++; locationSerial++; selectionSerial++;
+        clearStatusObservation(); abortChannel('status'); abortChannel('locations'); abortChannel('choose');
+        if (!intent && !nativeIntent) {retireNativePreview(); preview = null; selected.clear(); selectedRevisions.clear();}
+        const previous = state.status.kind === 'ready' ? state.status.value : {};
+        const retained: Record<string, AssetMediaState> = {};
+        for (const asset of catalog) {
+          const status = previous[asset.id];
+          if (status?.referenceRevision === asset.referenceRevision) retained[asset.id] = status;
+        }
+        publish({status: Object.keys(retained).length ? {kind: 'ready', value: Object.freeze(retained)} : {kind: 'loading'},
+          statusCheckDelayed: false, locations: {kind: 'loading'}});
+        renderRelink();
+      }
     },
     refresh, refreshStatus, refreshLocations,
     openOutside() {if (!ownerCurrent(state.owner)) return; publish({outsideOpen: true}); void refreshLocations(); void refreshRules();},

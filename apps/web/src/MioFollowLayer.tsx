@@ -7,17 +7,20 @@ import type { Box, Side } from './canvas-fit.ts';
 import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { mioFollowColor } from './mio-follow.ts';
-import type { MioFollowFocus, MioFollowTarget } from './mio-follow.ts';
+import type { MioFollowFocus, MioFollowLocation, MioFollowTarget } from './mio-follow.ts';
+import { createMioCursorMotion } from './mio-follow-motion.ts';
+import type { MioFollowPoint } from './mio-follow-motion.ts';
 import { MARK_LAYER_ATTRIBUTE, markTargetElements, markTargetVisible } from './target-marks.ts';
 import './mio-follow-layer.css';
 
 const MIO_FOLLOW_IDLE_MS = 2000;
 const REVEAL_RETRY_MS = 160;
+const MEASURE_INTERVAL_MS = 100;
 const LOCATOR_MARGIN = 12;
 const LABEL_MAX_WIDTH = 240;
-const PANEL = '[data-testid="agent-task-panel"]';
 const CANVAS = '[data-testid="canvas-drop-zone"] .react-flow';
 const TIMELINE = '[data-testid="timeline-scroll"]';
+const EDITABLE = 'input, textarea, [contenteditable]:not([contenteditable="false"])';
 // The rounded #cursor outline is from Cua Driver's app-icon.svg (MIT).
 const CURSOR_PATH = 'M411.5 326 C373 315 340 342.5 345.5 386.5 C345.5 386.5 461 700 461 700 C477.5 744 510.5 744 532.5 705.5 C532.5 705.5 582 595.5 582 595.5 C593 573.5 609.5 557 631.5 546 C631.5 546 703 507.5 703 507.5 C741.5 485.5 736 452.5 697.5 436 C697.5 436 411.5 326 411.5 326 Z';
 
@@ -27,10 +30,38 @@ interface Props {
   enabled: boolean;
   reduceMotion: boolean;
   onReveal: (target: MioFollowTarget, behavior: ScrollBehavior) => boolean;
+  onLocate?: (target: MioFollowTarget) => void;
+  resolveLocation?: (location: MioFollowLocation, pane: Element) => MioFollowPoint | null;
 }
 
 const clamp = (n: number, min: number, max: number) => Math.round(Math.max(min, Math.min(n, max)));
-const usable = (node: Element | null | undefined) => node?.isConnected && !node.closest('[hidden], [inert]');
+const usable = (node: Element | null | undefined): node is Element => Boolean(node?.isConnected && !node.closest('[hidden], [inert]'));
+const modeOf = (target: MioFollowTarget) => target.kind === 'shot' || target.kind === 'node' ? 'canvas' : 'editing';
+const modeOfLocation = (location: MioFollowLocation) => location.kind === 'canvas' ? 'canvas' : 'editing';
+const center = ({left, right, top, bottom}: Box): MioFollowPoint => ({x: (left + right) / 2, y: (top + bottom) / 2});
+
+function cursorArea({left, top, right, bottom}: Box): Box | null {
+  const horizontal = right - left - 20, vertical = bottom - top - 21;
+  if (horizontal < 0 || vertical < 0) return null;
+  const xPadding = Math.min(4, horizontal / 2), yPadding = Math.min(4, vertical / 2);
+  return {left: left + xPadding, right: right - 20 - xPadding, top: top + yPadding, bottom: bottom - 21 - yPadding};
+}
+
+function anchorFor(rect: Box, bounds: Box, mode: Props['mode'], target?: MioFollowTarget): MioFollowPoint | null {
+  const top = Math.max(rect.top, bounds.top), bottom = Math.min(rect.bottom, bounds.bottom);
+  if (bottom <= top) return null;
+  const y = clamp((top + bottom) / 2 - (mode === 'canvas' ? 30 : 4), top, bottom - 1);
+  // Track headers are sticky, so point at their lane inside the visible editor area.
+  if (target?.kind === 'timeline_track') return {x: bounds.left + 4, y};
+  const left = Math.max(rect.left, bounds.left), right = Math.min(rect.right, bounds.right);
+  if (right <= left) return null;
+  return {
+    x: clamp((left + right) / 2 - (mode === 'canvas' ? 24 : 2), left, right - 1),
+    y,
+  };
+}
+
+type CursorState = { last?: MioFollowPoint; move: ReturnType<typeof createMioCursorMotion> };
 
 function paneBounds(pane: Element, mode: Props['mode'], view: Window): Box | null {
   const paneRect = pane.getBoundingClientRect();
@@ -39,6 +70,13 @@ function paneBounds(pane: Element, mode: Props['mode'], view: Window): Box | nul
     const inset = coveredInsets(paneRect, measuredOverlays(pane));
     left += inset.left; right -= inset.right; top += inset.top; bottom -= inset.bottom;
   } else {
+    if (pane instanceof HTMLElement && pane.offsetWidth > 0 && pane.offsetHeight > 0 && pane.clientWidth > 0 && pane.clientHeight > 0) {
+      const scaleX = paneRect.width / pane.offsetWidth, scaleY = paneRect.height / pane.offsetHeight;
+      left += pane.clientLeft * scaleX;
+      top += pane.clientTop * scaleY;
+      right = Math.min(right, left + pane.clientWidth * scaleX);
+      bottom = Math.min(bottom, top + pane.clientHeight * scaleY);
+    }
     const label = pane.querySelector('.track-label')?.getBoundingClientRect();
     const ruler = pane.querySelector('.timeline-ruler-row')?.getBoundingClientRect();
     if (label && label.width > 0) left = Math.max(left, label.right);
@@ -72,30 +110,34 @@ function placeLocator(node: HTMLButtonElement, bounds: Box, target: Box | undefi
   place(node, x, y, edge);
 }
 
-function placeCursor(node: HTMLDivElement, label: HTMLDivElement, x: number, y: number, bounds: Box, towardPanel = false) {
+function placeCursor(node: HTMLDivElement, label: HTMLDivElement, x: number, y: number, bounds: Box) {
   const rightSpace = bounds.right - x - 12, leftSpace = x - bounds.left + 8;
-  const side = towardPanel || (rightSpace < LABEL_MAX_WIDTH && leftSpace > rightSpace) ? 'left' : 'right';
+  const side = rightSpace < LABEL_MAX_WIDTH && leftSpace > rightSpace ? 'left' : 'right';
   const room = `${clamp(side === 'left' ? leftSpace : rightSpace, 0, LABEL_MAX_WIDTH)}px`;
+  const labelHeight = label.offsetHeight;
   if (label.style.maxWidth !== room) label.style.maxWidth = room;
-  const below = y + 21 + label.offsetHeight <= bounds.bottom || y - label.offsetHeight < bounds.top;
+  const below = y + 21 + labelHeight <= bounds.bottom || y - labelHeight < bounds.top;
   const vertical = below ? 'below' : 'above';
   if (node.dataset.label !== vertical) node.dataset.label = vertical;
   place(node, x, y, side);
 }
 
-/** Renders one pointer for the latest durable step and measures it in viewport pixels. */
-export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onReveal }: Props) {
+/** Renders the live step pointer in viewport pixels without rendering React frames. */
+export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onReveal, onLocate, resolveLocation }: Props) {
   const { t } = useI18n(), gradient = useId();
   const cursor = useRef<HTMLDivElement>(null), label = useRef<HTMLDivElement>(null), locator = useRef<HTMLButtonElement>(null);
   const activity = useRef({ held: new Set<number>(), dragging: false, last: -Infinity });
   const reveal = useRef(onReveal);
+  const resolve = useRef(resolveLocation);
   const attempt = useRef({ key: '', time: -Infinity, succeeded: false });
-  const target = focus?.target;
+  const motion = useRef<{ runId: string; modes: Partial<Record<Props['mode'], CursorState>> } | null>(null);
+  const target = focus?.phase === 'idle' ? undefined : focus?.target;
+  const location = focus?.phase === 'idle' ? undefined : focus?.location;
   const color = focus ? mioFollowColor(focus.runId) : undefined;
-  const targetMode = target && (target.kind === 'shot' || target.kind === 'node' ? 'canvas' : 'editing');
-  const active = Boolean(focus && (!targetMode || targetMode === mode));
+  const targetMode = target && modeOf(target);
 
   useLayoutEffect(() => { reveal.current = onReveal; }, [onReveal]);
+  useLayoutEffect(() => { resolve.current = resolveLocation; }, [resolveLocation]);
   useLayoutEffect(() => {
     const view = document.defaultView;
     if (!view) return;
@@ -109,7 +151,7 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
     const dragEnd = () => { state.dragging = false; touch(); };
     const blur = () => { state.held.clear(); state.dragging = false; touch(); };
     const inputKey = (event: KeyboardEvent) => {
-      if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) touch();
+      if (event.target instanceof Element && event.target.closest(EDITABLE)) touch();
     };
     view.addEventListener('pointerdown', down, true);
     view.addEventListener('pointerup', up, true);
@@ -139,10 +181,16 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
 
   useLayoutEffect(() => {
     const view = document.defaultView, pointer = cursor.current, card = label.current, pill = locator.current;
-    if (!active || !focus || !view || !pointer || !card || !color) return;
+    if (!focus || !view || !pointer || !card || !color) return;
     const key = JSON.stringify([focus.runId, focus.stepId, target?.kind, target?.id]);
     if (attempt.current.key !== key) attempt.current = { key, time: -Infinity, succeeded: false };
-    let frame = 0, highlight: HTMLElement | undefined;
+    if (motion.current?.runId !== focus.runId) motion.current = { runId: focus.runId, modes: {} };
+    const movement = motion.current.modes[mode] ??= { move: createMioCursorMotion() };
+    const destination = JSON.stringify([focus.stepId, focus.phase, target?.kind, target?.id, location]);
+    const systemMotion = view.matchMedia?.('(prefers-reduced-motion: reduce)');
+    let frame: number | null = null, highlight: HTMLElement | undefined;
+    let pane: Element | null = null, bounds: Box | null = null, measuredAt = -Infinity;
+    let elements: Element[] = [], visible: Element | undefined;
     const setHighlight = (next: Element | undefined) => {
       if (next === highlight) return;
       highlight?.removeAttribute('data-mio-follow-highlight');
@@ -154,62 +202,80 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
       }
     };
     const hide = (node: HTMLElement | null) => { if (node?.dataset.placed === 'true') node.dataset.placed = 'false'; };
-    const tick = () => {
-      frame = view.requestAnimationFrame(tick);
+    const invalidate = () => { measuredAt = -Infinity; };
+    const visibility = () => {
       if (document.hidden) {
+        if (frame !== null) view.cancelAnimationFrame(frame);
+        frame = null;
         hide(pointer); hide(pill); setHighlight(undefined);
-        return;
+      } else if (frame === null) {
+        invalidate();
+        frame = view.requestAnimationFrame(tick);
       }
-      if (!target) {
-        const panel = document.querySelector(PANEL);
-        if (!panel || !usable(panel)) { hide(pointer); return; }
-        const panelRect = panel.getBoundingClientRect();
-        const row = [...panel.querySelectorAll('[data-step-id]')].find(node => node.getAttribute('data-step-id') === focus.stepId);
-        const rowRect = row?.getBoundingClientRect();
-        if (panelRect.width <= 0 || panelRect.height <= 0) { hide(pointer); return; }
-        const y = clamp((rowRect && rowRect.height > 0 ? rowRect.top + 8 : panelRect.top + panelRect.height / 2),
-          panelRect.top + LOCATOR_MARGIN, panelRect.bottom - 21 - LOCATOR_MARGIN);
-        placeCursor(pointer, card, panelRect.left - 18, y,
-          { left: LOCATOR_MARGIN, right: panelRect.left, top: panelRect.top, bottom: panelRect.bottom }, true);
-        return;
+    };
+    const tick = (now: number) => {
+      frame = null;
+      if (document.hidden) { visibility(); return; }
+      frame = view.requestAnimationFrame(tick);
+      // React Flow may mount new elements while the viewport moves. Cache
+      // selector and visibility checks, but read the current target rect to
+      // follow it between measurements.
+      if (now - measuredAt >= MEASURE_INTERVAL_MS || pane && !usable(pane) || visible && !usable(visible)) {
+        measuredAt = now;
+        pane = document.querySelector(mode === 'canvas' ? CANVAS : TIMELINE);
+        bounds = usable(pane) ? paneBounds(pane, mode, view) : null;
+        elements = target && targetMode === mode ? markTargetElements(target, document) : [];
+        visible = elements.find(element => markTargetVisible(element, document));
       }
-      const pane = document.querySelector(mode === 'canvas' ? CANVAS : TIMELINE);
-      const bounds = pane && usable(pane) ? paneBounds(pane, mode, view) : null;
-      if (!bounds || !pill) { hide(pointer); hide(pill); setHighlight(undefined); return; }
-      const elements = markTargetElements(target, document);
-      const visible = elements.find(element => markTargetVisible(element, document));
-      if (visible) {
-        const rect = visible.getBoundingClientRect();
-        const left = Math.max(rect.left, bounds.left), right = Math.min(rect.right, bounds.right);
-        const top = Math.max(rect.top, bounds.top), bottom = Math.min(rect.bottom, bounds.bottom);
-        if (right > left && bottom > top) {
-          hide(pill);
-          setHighlight(visible);
-          placeCursor(pointer, card, clamp((left + right) / 2 - (mode === 'canvas' ? 24 : 2), left, right - 1),
-            clamp((top + bottom) / 2 - (mode === 'canvas' ? 30 : 4), top, bottom - 1), bounds);
-          return;
-        }
+      if (!bounds || !pane) { hide(pointer); hide(pill); setHighlight(undefined); return; }
+      const area = cursorArea(bounds);
+      const reduced = Boolean(reduceMotion || systemMotion?.matches);
+      const inMode = targetMode === mode;
+      const rect = visible?.getBoundingClientRect();
+      const prospective = !rect && location && modeOfLocation(location) === mode ? resolve.current?.(location, pane) : undefined;
+      const inside = prospective && prospective.x >= bounds.left && prospective.x < bounds.right &&
+        prospective.y >= bounds.top && prospective.y < bounds.bottom;
+      // Before creation there is no object to reveal. An offscreen projected
+      // position still gives the cursor a direction within the visible pane.
+      const projected = area && prospective && Number.isFinite(prospective.x) && Number.isFinite(prospective.y) && (!target || inside)
+        ? { x: clamp(prospective.x, area.left, area.right), y: clamp(prospective.y, area.top, area.bottom) } : null;
+      const aim = rect ? anchorFor(rect, bounds, mode, target) : projected;
+      if (aim || !inMode) {
+        setHighlight(aim && focus.highlight ? visible : undefined);
+        if (area) {
+          if (aim) movement.last = aim;
+          const point = movement.move(`${destination}:${aim ? 'target' : 'idle'}`, aim ?? movement.last ?? center(area), area,
+            now, aim ? (focus.phase === 'approval' ? 0.4 : 0) : 1, reduced);
+          placeCursor(pointer, card, point.x, point.y, bounds);
+        } else hide(pointer);
+        if (pill && target && !inMode) placeLocator(pill, bounds, undefined);
+        else hide(pill);
+        return;
       }
       hide(pointer); setHighlight(undefined);
-      const now = view.performance.now(), busy = activity.current;
+      if (!target || !pill) return;
+      const busy = activity.current;
       if (enabled && !busy.held.size && !busy.dragging && document.activeElement !== pill && now - busy.last >= MIO_FOLLOW_IDLE_MS &&
         !attempt.current.succeeded && now - attempt.current.time >= REVEAL_RETRY_MS) {
         attempt.current.time = now;
-        attempt.current.succeeded = reveal.current(target, revealBehavior(view, reduceMotion));
+        attempt.current.succeeded = reveal.current(target, reduced ? 'auto' : 'smooth');
         if (attempt.current.succeeded) { hide(pill); return; }
       }
       if (attempt.current.succeeded && now - attempt.current.time < 250) { hide(pill); return; }
       placeLocator(pill, bounds, elements[0]?.getBoundingClientRect());
     };
-    frame = view.requestAnimationFrame(tick);
+    document.addEventListener('visibilitychange', visibility);
+    view.addEventListener('resize', invalidate);
+    visibility();
     return () => {
-      view.cancelAnimationFrame(frame);
+      if (frame !== null) view.cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', visibility);
+      view.removeEventListener('resize', invalidate);
       setHighlight(undefined);
-      hide(pointer); hide(pill);
     };
-  }, [active, color, enabled, focus, mode, reduceMotion, target]);
+  }, [color, enabled, focus, location, mode, reduceMotion, target, targetMode]);
 
-  if (!focus || !active || typeof document === 'undefined') return null;
+  if (!focus || typeof document === 'undefined') return null;
   return createPortal(<div className="mio-follow-layer" data-testid="mio-follow-layer" {...{ [MARK_LAYER_ATTRIBUTE]: '' }}
     data-reduced-motion={reduceMotion ? 'true' : undefined} style={{ '--mio-follow-color': color } as CSSProperties}>
     <div ref={cursor} className="mio-follow-cursor" data-testid="mio-follow-cursor" data-placed="false" aria-hidden="true">
@@ -222,12 +288,12 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
         <path d={CURSOR_PATH} fill={`url(#${gradient})`} stroke="white" strokeWidth="1.6" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
       <div ref={label} className="mio-follow-cursor-label">
-        <span className="mio-follow-name"><Icon name="sparkle" size={11} />{t('agent.task.title')}</span>
         <span className="mio-follow-bubble" data-testid="mio-follow-bubble">{focus.text}</span>
       </div>
     </div>
     {target && <WorkbenchButton ref={locator} type="button" variant="secondary" className="mio-follow-locator" data-testid="mio-follow-locator" data-placed="false"
       onClick={() => {
+        if (targetMode !== mode && onLocate) { onLocate(target); return; }
         const view = document.defaultView;
         if (view && reveal.current(target, revealBehavior(view, reduceMotion))) {
           attempt.current.time = view.performance.now();

@@ -441,7 +441,7 @@ export default function Inspector({ timelineStatus = null, onViewInEditing, prot
     {running && tab === 'settings' && <section className="shot-generation-progress" data-testid="inspector-generation-progress" aria-label={renderMessage(connection?.status ?? jobStatusDescriptor(running))}>
       <div>{connection ? <Icon name="info" size={14} /> : <span className="spinner" />}<strong>{renderMessage(connection?.status ?? jobStatusDescriptor(running))}</strong>{!connection && <output>{Math.round(running.progress || 0)}%</output>}</div>
       {!connection && <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, running.progress || 0))}><span style={{ width: `${Math.max(3, Math.min(100, running.progress || 0))}%` }} /></div>}
-      {connection && <p>{renderMessage(connection.detail)}{connection.continuation && <> {renderMessage(connection.continuation)}</>}</p>}
+      {connection?.detail && <p>{renderMessage(connection.detail)}</p>}
       {connection?.result && <p>{renderMessage(connection.result)}</p>}
     </section>}
     <Tabs value={tab} onValueChange={setTab} style={{ flex: 1, minHeight: 0, gap: 0 }}>

@@ -358,7 +358,7 @@ test('Inspector exposes real generation progress and cancellation only continues
   }
 });
 
-test('shot node and Inspector replace stalled video progress with Keychain guidance', () => {
+test('shot node and Inspector replace stalled video progress with a short Keychain status', () => {
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const node = createHarness('Nodes.tsx', 'nodeTypes.shot'), inspector = createHarness('Inspector.tsx');
     node.locale = inspector.locale = locale;
@@ -369,22 +369,25 @@ test('shot node and Inspector replace stalled video progress with Keychain guida
     inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null}));
     const guidance = translate(locale, 'tasks.error.videoSecretStore');
     const continuation = translate(locale, 'tasks.error.videoKeychainContinues');
-    assert.equal(treeText(node.find(`shot-connection-${job.shotId}`)), `${guidance} ${continuation}`);
+    const status = translate(locale, 'tasks.status.videoSecretStoreWaiting');
+    assert.equal(node.find(`shot-connection-${job.shotId}`), undefined);
     const panel = inspector.find('inspector-generation-progress');
-    assert.ok(treeText(panel).includes(guidance));
-    assert.ok(treeText(panel).includes(continuation));
-    assert.ok(treeText(panel).includes(translate(locale, 'tasks.error.videoOriginalTaskRetained')));
+    assert.equal(treeNodes(panel).some(element => element.type === 'p'), false, 'Waiting on Keychain needs no secondary paragraph');
     for (const view of [nodeView, panel]) {
+      assert.equal(treeText(view).split(status).length - 1, 1);
+      assert.ok(!treeText(view).includes(guidance));
+      assert.ok(!treeText(view).includes(continuation));
+      assert.ok(!treeText(view).includes(translate(locale, 'tasks.error.videoOriginalTaskRetained')));
       assert.doesNotMatch(treeText(view), /0%|UNTRUSTED_PRIVATE_MESSAGE/);
       assert.equal(treeNodes(view).some(element => element.props.role === 'progressbar'), false);
     }
     assert.equal(node.nodes().find(element => element.props.className === 'node-generate nodrag')?.props.disabled, true);
     assert.equal(inspector.find('generate-shot').props.disabled, true);
     const configured: string[] = [];
-    node.render({data: {...data, configureGeneration: () => configured.push('node')}});
+    const configuredNode = node.render({data: {...data, configureGeneration: () => configured.push('node')}});
     inspector.render(inspectorProps({tab: 'settings', jobs: [waiting], highlightedVersionId: null, configureGeneration: () => configured.push('inspector')}));
-    assert.ok(treeText(node.find(`shot-connection-${job.shotId}`)).includes(guidance));
-    assert.ok(treeText(inspector.find('inspector-generation-progress')).includes(guidance));
+    assert.ok(treeText(configuredNode).includes(status));
+    assert.ok(treeText(inspector.find('inspector-generation-progress')).includes(status));
     const nodeConfigure = node.find(`shot-configure-generation-${job.shotId}`)!;
     const inspectorConfigure = inspector.find('video-generation-configure')!;
     for (const button of [nodeConfigure, inspectorConfigure]) {
@@ -397,6 +400,13 @@ test('shot node and Inspector replace stalled video progress with Keychain guida
     node.render({data: {...data, job: polling, generationUnavailableReason: null}});
     inspector.render(inspectorProps({tab: 'settings', jobs: [polling], highlightedVersionId: null}));
     for (const harness of [node, inspector]) assert.ok(harness.nodes().some(element => element.props.role === 'progressbar' && element.props['aria-valuenow'] === 45));
+    const pollingPanel = inspector.find('inspector-generation-progress');
+    assert.equal(treeNodes(pollingPanel).some(element => element.type === 'p'), false, 'Normal progress needs no explanation');
+    const deleted = {...job, phase: 'connection_required', error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action'}}};
+    inspector.render(inspectorProps({tab: 'settings', jobs: [deleted], highlightedVersionId: null}));
+    const blocked = inspector.find('inspector-generation-progress');
+    assert.ok(treeText(blocked).includes(translate(locale, 'tasks.error.videoConnectionDeleted')));
+    assert.ok(treeText(blocked).includes(translate(locale, 'tasks.error.videoResultAtProvider')));
     node.unmount(); inspector.unmount();
   }
 });
@@ -478,6 +488,39 @@ test('collapsing Inspector preserves the draft and an already requested save-and
   resolveSave!({ ...props.shot, prompt: 'Edited while visible', revision: 2 }); await work;
   assert.equal(generated.length, 1); assert.equal((generated[0][0] as {prompt:string}).prompt, 'Edited while visible');
   h.render(props); assert.equal(h.find('shot-prompt').props.value, 'Edited while visible');
+});
+
+test('asset previews show a playback error only for the current failed video and clear it on recovery', () => {
+  const h = createHarness('Nodes.tsx', 'Media');
+  const props = {asset: {...asset(), referenceRevision: 1}, showPlaybackError: true, onError: noop, onLoadedData: noop};
+  const reportError = (node: UiElement, video = node.props.ref.current) => {
+    const element = Object.assign(video, {error: {code: 4}});
+    (node.props.onError as (event: {currentTarget: typeof element}) => void)({currentTarget: element});
+  };
+  const message = () => h.nodes().find(node => node.props['data-testid'] === 'asset-preview-unavailable');
+  h.render(props);
+  const original = h.mediaNode();
+  const originalVideo = original.props.ref.current;
+  assert.equal(message(), undefined);
+  reportError(original);
+  h.render(props);
+  assert.equal(treeText(message()), '无法播放此媒体');
+  assert.equal(h.mediaNode().props.ref.current, originalVideo);
+
+  const rebound = {...props, asset: {...props.asset, referenceRevision: 2}};
+  h.render(rebound);
+  const updated = h.mediaNode();
+  assert.notEqual(updated.props.ref.current, originalVideo);
+  reportError(original, originalVideo);
+  h.render(rebound);
+  assert.equal(message(), undefined);
+  reportError(updated);
+  h.render(rebound);
+  assert.ok(message());
+  (updated.props.onLoadedData as (event: {currentTarget: unknown}) => void)({currentTarget: updated.props.ref.current});
+  h.render(rebound);
+  assert.equal(message(), undefined);
+  h.unmount();
 });
 
 test('language-only updates preserve the exact media decoder, playback position and source identity', () => {

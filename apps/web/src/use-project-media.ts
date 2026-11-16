@@ -48,5 +48,5 @@ export function useProjectMedia(options: {
     if (!asset || identity.projectId !== undefined && identity.projectId !== owner.projectId || identity.referenceRevision !== undefined && identity.referenceRevision !== asset.referenceRevision) return null;
     return asset;
   };
-  return {state, controller, canRead: value => {const asset = current(value); return Boolean(asset && controller.canRead(asset));}, statusFor: value => {const asset = current(value); return asset ? controller.statusFor(asset) : {kind: 'checking'};}};
+  return {state, controller, canRead: value => {const asset = current(value); return Boolean(asset && controller.canRead(asset));}, statusFor: value => {const asset = current(value); return asset ? controller.statusFor(asset) : {kind: 'pending'};}};
 }

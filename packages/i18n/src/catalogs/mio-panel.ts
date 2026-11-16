@@ -6,14 +6,15 @@ export const mioPanelMessages = {
   "agent.follow.timeline": {"zh-Hans": "在时间线中查看", "zh-Hant": "在時間軸中查看", "en": "View on timeline", "ja": "タイムラインで表示"},
   "agent.follow.locator": {"zh-Hans": "Mio 在 {target}", "zh-Hant": "Mio 在 {target}", "en": "Mio is at {target}", "ja": "Mio は {target} にいます"},
   "agent.follow.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
-  "agent.follow.saveError": {"zh-Hans": "跟随设置未保存，请重试。", "zh-Hant": "跟隨設定未儲存，請重試。", "en": "The follow setting could not be saved. Try again.", "ja": "追跡設定を保存できませんでした。もう一度お試しください。"},
+  "agent.follow.saveError": {"zh-Hans": "未能保存跟随设置。", "zh-Hant": "未能儲存跟隨設定。", "en": "Could not save the follow setting.", "ja": "追跡設定を保存できませんでした。"},
   "agent.panel.goal.title": {"zh-Hans": "整理要求", "zh-Hant": "整理要求", "en": "Set requirements", "ja": "要件を整理"},
   "agent.panel.goal.titleCount": {"zh-Hans": "整理要求 · {count} 项", "zh-Hant": "整理要求 · {count} 項", "en": "Set requirements · {count}", "ja": "要件を整理 · {count} 件"},
   "agent.panel.goal.repairTitle": {"zh-Hans": "按未达成的要求补做", "zh-Hant": "按未達成的要求補做", "en": "Repair unmet requirements", "ja": "未達成の要件を補完"},
   "agent.panel.goal.repairBadge": {"zh-Hans": "补做", "zh-Hant": "補做", "en": "Repair", "ja": "補完"},
   "agent.panel.goal.updatedBadge": {"zh-Hans": "已更新", "zh-Hant": "已更新", "en": "Updated", "ja": "更新済み"},
   "agent.panel.retry": {"zh-Hans": "重试这一步", "zh-Hant": "重試這一步", "en": "Retry this step", "ja": "このステップを再試行"},
-  "agent.panel.failureReason": {"zh-Hans": "原因：{reason}", "zh-Hant": "原因：{reason}", "en": "Reason: {reason}", "ja": "原因：{reason}"},
+  "agent.panel.settingsChangedReason": {"zh-Hans": "本轮开始后模型连接已变更。", "zh-Hant": "本輪開始後模型連線已變更。", "en": "The model connection changed after this round started.", "ja": "このラウンドの開始後にモデル接続が変更されました。"},
+  "agent.panel.unknownFailureReason": {"zh-Hans": "未能确定本轮失败的原因。", "zh-Hant": "未能確定本輪失敗的原因。", "en": "The cause of this round’s failure is unknown.", "ja": "このラウンドが失敗した原因は不明です。"},
   "agent.panel.errorSettings.agent": {"zh-Hans": "检查 Mio 的模型连接", "zh-Hant": "檢查 Mio 的模型連線", "en": "Check Mio’s model connection", "ja": "Mio のモデル接続を確認"},
   "agent.panel.errorSettings.models": {"zh-Hans": "打开生成服务设置", "zh-Hant": "開啟生成服務設定", "en": "Open Generation services settings", "ja": "生成サービスの設定を開く"},
   "agent.panel.errorSettings.video-tools": {"zh-Hans": "打开视频工具设置", "zh-Hant": "開啟影片工具設定", "en": "Open Video tools settings", "ja": "動画ツール設定を開く"},
@@ -123,6 +124,28 @@ export const mioPanelMessages = {
     "en": "The model service returned HTTP error {status}.",
     "ja": "モデルサービスが HTTP エラー {status} を返しました。"
   },
+  "agent.panel.provider.server": {"zh-Hans": "模型服务暂时无法处理请求。", "zh-Hant": "模型服務暫時無法處理請求。", "en": "The model service is temporarily unable to process the request.", "ja": "モデルサービスが一時的にリクエストを処理できません。"},
+  "agent.panel.provider.overloaded": {"zh-Hans": "模型服务当前负载过高。", "zh-Hant": "模型服務目前負載過高。", "en": "The model service is currently overloaded.", "ja": "モデルサービスが混み合っています。"},
+  "agent.panel.provider.rate_limit": {"zh-Hans": "请求过于频繁，已触发模型服务限流。", "zh-Hant": "請求過於頻繁，已觸發模型服務限流。", "en": "Too many requests triggered the model service’s rate limit.", "ja": "リクエストが多すぎるため、モデルサービスのレート制限に達しました。"},
+  "agent.panel.provider.quota": {"zh-Hans": "模型服务的余额或用量额度不足。", "zh-Hant": "模型服務的餘額或用量額度不足。", "en": "The model service has insufficient balance or usage quota.", "ja": "モデルサービスの残高または利用枠が不足しています。"},
+  "agent.panel.provider.context_length": {"zh-Hans": "这轮发送的内容超出了模型的上下文上限。", "zh-Hant": "這輪傳送的內容超出了模型的上下文上限。", "en": "The content sent for this round exceeds the model’s context limit.", "ja": "このラウンドで送信した内容がモデルのコンテキスト上限を超えています。"},
+  "agent.panel.provider.model_unavailable": {"zh-Hans": "模型服务无法使用当前型号。", "zh-Hant": "模型服務無法使用目前的型號。", "en": "The current model is unavailable on the model service.", "ja": "モデルサービスで現在のモデルを利用できません。"},
+  "agent.panel.provider.invalid_parameter": {"zh-Hans": "模型服务拒绝了此请求的参数。", "zh-Hant": "模型服務拒絕了此請求的參數。", "en": "The model service rejected this request’s parameters.", "ja": "モデルサービスがこのリクエストのパラメーターを拒否しました。"},
+  "agent.panel.provider.authentication": {"zh-Hans": "模型服务拒绝了连接凭据或访问权限。", "zh-Hant": "模型服務拒絕了連線憑證或存取權限。", "en": "The model service rejected the credentials or access permissions.", "ja": "モデルサービスが認証情報またはアクセス権限を拒否しました。"},
+  "agent.panel.provider.unknown": {"zh-Hans": "模型服务终止了请求，原因未明。", "zh-Hant": "模型服務終止了請求，原因未明。", "en": "The model service ended the request for an unknown reason.", "ja": "モデルサービスが理由不明でリクエストを終了しました。"},
+  "agent.panel.providerRetryScheduled": {"zh-Hans": "已安排第 {attempt} 次自动重试。", "zh-Hant": "已安排第 {attempt} 次自動重試。", "en": "Automatic retry {attempt} was scheduled.", "ja": "{attempt} 回目の自動再試行がスケジュールされました。"},
+  "agent.panel.diagnostic.providerType": {"zh-Hans": "服务商错误类型", "zh-Hant": "服務商錯誤類型", "en": "Provider error type", "ja": "プロバイダーのエラー種別"},
+  "agent.panel.diagnostic.providerCode": {"zh-Hans": "服务商错误码", "zh-Hant": "服務商錯誤碼", "en": "Provider error code", "ja": "プロバイダーのエラーコード"},
+  "agent.panel.diagnostic.providerParam": {"zh-Hans": "相关参数", "zh-Hant": "相關參數", "en": "Parameter", "ja": "パラメーター"},
+  "agent.panel.diagnostic.providerMessage": {"zh-Hans": "服务商说明", "zh-Hant": "服務商說明", "en": "Provider explanation", "ja": "プロバイダーの説明"},
+  "agent.panel.timeout.dns": {"zh-Hans": "查找模型服务地址时超时（已用 {seconds} 秒）。", "zh-Hant": "查找模型服務位址時逾時（已用 {seconds} 秒）。", "en": "Model service address lookup timed out after {seconds} s.", "ja": "モデルサービスのアドレス検索中にタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.connect": {"zh-Hans": "连接模型服务超时（已用 {seconds} 秒）。", "zh-Hant": "連線至模型服務逾時（已用 {seconds} 秒）。", "en": "The connection to the model service timed out after {seconds} s.", "ja": "モデルサービスへの接続中にタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.headers": {"zh-Hans": "等待模型服务响应超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型服務回應逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model service to respond ({seconds} s elapsed).", "ja": "モデルサービスの応答待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.first_byte": {"zh-Hans": "等待模型开始回复时超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型開始回覆時逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model’s reply to begin ({seconds} s elapsed).", "ja": "モデルの返信開始待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.idle": {"zh-Hans": "等待模型继续回复时超时（已用 {seconds} 秒）。", "zh-Hant": "等待模型繼續回覆時逾時（已用 {seconds} 秒）。", "en": "Timed out waiting for the model’s reply to continue ({seconds} s elapsed).", "ja": "モデルの返信再開待ちでタイムアウトしました（経過 {seconds} 秒）。"},
+  "agent.panel.timeout.total": {"zh-Hans": "模型请求达到 {seconds} 秒总时限。", "zh-Hant": "模型請求達到 {seconds} 秒總時限。", "en": "The model request reached its {seconds} s time limit.", "ja": "モデルリクエストが全体の制限時間（{seconds} 秒）に達しました。"},
+  "agent.panel.exportBeforeModelFailure.succeeded": {"zh-Hans": "导出完成", "zh-Hant": "匯出完成", "en": "Export complete", "ja": "書き出し完了"},
+  "agent.panel.exportBeforeModelFailure.submitted": {"zh-Hans": "导出任务已提交", "zh-Hant": "匯出任務已提交", "en": "Export submitted", "ja": "書き出しタスクを送信済み"},
   "agent.panel.diagnostic.terminal_mismatch": {
     "zh-Hans": "模型在回复结束时返回的数据与之前收到的内容不一致。",
     "zh-Hant": "模型在回覆結束時傳回的資料與先前收到的內容不一致。",
@@ -206,12 +229,6 @@ export const mioPanelMessages = {
     "zh-Hant": "在設定中更換…",
     "en": "Change in Settings…",
     "ja": "設定で変更…"
-  },
-  "agent.panel.stalledTitle": {
-    "zh-Hans": "Mio 好像卡住了",
-    "zh-Hant": "Mio 好像卡住了",
-    "en": "Mio seems to be stuck",
-    "ja": "Mio の処理が進んでいません"
   },
   "agent.panel.repeatedFailureBody": {
     "zh-Hans": "连续三次未能完成「{operation}」",
@@ -365,18 +382,6 @@ export const mioPanelMessages = {
     "zh-Hant": "向服務商核對結果",
     "en": "Check the result with the provider",
     "ja": "プロバイダーに結果を確認"
-  },
-  "agent.panel.settingsChangedTail": {
-    "zh-Hans": "这一轮开始后模型连接设置已变更，不能在原来这一轮重试。请开新对话重新发送。",
-    "zh-Hant": "這一輪開始後模型連線設定已變更，無法在原本這一輪重試。請開新對話重新傳送。",
-    "en": "The model connection settings changed after this round started, so it can't be retried here. Start a new conversation and send it again.",
-    "ja": "このラウンドの開始後にモデル接続の設定が変更されたため、このラウンドでは再試行できません。新しい会話を始めて、もう一度送信してください。"
-  },
-  "agent.panel.failedTail": {
-    "zh-Hans": "这一步没有成功，后面的步骤还没有执行。处理好后可以让 Mio 重试这一步。",
-    "zh-Hant": "這一步沒有成功，後面的步驟還沒有執行。處理好後可以讓 Mio 重試這一步。",
-    "en": "This step failed. The following steps have not run. Once the issue is resolved, ask Mio to retry this step.",
-    "ja": "このステップは失敗し、後続のステップは実行されていません。問題を解決してから Mio にこのステップの再試行を依頼できます。"
   },
   "agent.panel.authorizationTitle": {
     "zh-Hans": "首次向 {model} 发送",

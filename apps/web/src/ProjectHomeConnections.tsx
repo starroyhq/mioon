@@ -8,10 +8,10 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { isSettingsConnectionPage, normalizeSettingsPage } from './settings-window-state.ts';
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { SettingsAbout, SettingsShortcuts } from './SettingsExtraPages.tsx';
+import { settingsCategories, settingsCategoryFor } from './settings-categories.ts';
+import type { SettingsCategory as Category } from './settings-categories.ts';
 
 export type HomeConnectionSlot = SettingsConnectionPage;
-const categories = ['general', 'workspace', 'video-tools', 'models', 'agent', 'shortcuts', 'about'] as const;
-type Category = typeof categories[number];
 const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', models: 'sparkle', about: 'info' };
 const categoryIconPaths: Partial<Record<Category, ReactNode>> = {
   agent: <><rect x="5" y="7" width="14" height="13" rx="3" /><path d="M12 3v4M2 12h3m14 0h3M9 12v2m6-2v2m-6 3h6" /></>,
@@ -21,7 +21,6 @@ function SettingsCategoryIcon({ category }: { category: Category }) {
   const path = categoryIconPaths[category];
   return path ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{path}</svg> : <Icon name={categoryIconNames[category] ?? 'info'} size={16} strokeWidth={1.5} />;
 }
-const categoryFor = (page: SettingsPage): Category => page === 'official' || page === 'custom' || page === 'comfy' || page === 'extensions' ? 'models' : page;
 const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
 
 /** Retained form owners keep their original identity and admission. Fixed
@@ -34,7 +33,7 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
   const { t, formatNumber } = useI18n();
   const page = normalizeSettingsPage(requestedPage);
   const heading = useId(), opened = useRef({ agent: false, generation: false });
-  const category = categoryFor(page);
+  const category = settingsCategoryFor(page);
   if (connectionsAvailable && page === 'agent') opened.current.agent = true;
   if (connectionsAvailable && category === 'models') opened.current.generation = true;
   const selectPage = (next: SettingsPage) => { next = normalizeSettingsPage(next); if (connectionCategory(next) && !connectionsAvailable) return; if (onPage) onPage(next); else if (isSettingsConnectionPage(next)) onSelect(next); };
@@ -42,7 +41,7 @@ export default function ProjectHomeConnections({ selected, page: requestedPage =
   return <section className="settings-center" data-testid="settings-center" data-page={page} aria-label={t('settings.title')}>
     <nav className="settings-center-nav" aria-label={t('settings.categories')}>
       <span className="settings-center-nav-label">{t('settings.title')}</span>
-      {categories.map(id => <Button key={id} type="button" variant="ghost" data-testid={`settings-category-${id}`} disabled={connectionCategory(id) && !connectionsAvailable} aria-current={category === id ? 'page' : undefined} onClick={() => selectPage(id)}><span className="settings-category-icon" data-testid={`settings-category-icon-${id}`}><SettingsCategoryIcon category={id} /></span><span>{categoryLabel(id)}</span></Button>)}
+      {settingsCategories.map(id => <Button key={id} type="button" variant="ghost" data-testid={`settings-category-${id}`} disabled={connectionCategory(id) && !connectionsAvailable} aria-current={category === id ? 'page' : undefined} onClick={() => selectPage(id)}><span className="settings-category-icon" data-testid={`settings-category-icon-${id}`}><SettingsCategoryIcon category={id} /></span><span>{categoryLabel(id)}</span></Button>)}
     </nav>
     <div className="settings-center-content" aria-labelledby={heading}>
       <header className="settings-center-heading"><h1 id={heading}>{categoryLabel(category)}</h1></header>

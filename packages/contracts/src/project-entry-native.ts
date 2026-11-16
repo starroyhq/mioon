@@ -64,6 +64,8 @@ export interface ProjectEntryControlPort {
   readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
   listRecent(): Promise<ProjectEntriesResponse>;
+  /** Main-to-utility read of app-wide durable task activity. */
+  updateActivity?(): import('./desktop-update.ts').DesktopUpdateActivity;
   create(input: ProjectEntryCreateInput): Promise<RecentProject>;
   openPath(input: ProjectEntryOpenPathInput): Promise<ProjectEntryWindow>;
   acquire(input: ProjectEntryAcquireInput): Promise<ProjectEntryWindow>;

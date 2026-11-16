@@ -19,6 +19,20 @@ test('registry accepts only fixed sources and unreported owners fail closed', ()
   const owner = f.registry.register('agent-chat'); assert.equal(f.admission.inspect().disposition, 'blocked');
   owner.update(status(1)); assert.equal(f.admission.inspect().disposition, 'clean');
 });
+test('update preflight never pauses observers or replaces the live close ticket', () => {
+  const f = fixture(), observations: boolean[] = [];
+  const admission = createNativeCloseAdmission({...f.options, onObservationPause: value => observations.push(value)});
+  assert.equal(admission.isSavedForUpdate(), true);
+  f.setLegacy(true);
+  assert.equal(admission.isSavedForUpdate(), false);
+  assert.deepEqual(observations, []);
+  f.setLegacy(false);
+  const captured = admission.inspect();
+  assert.equal(admission.isSavedForUpdate(), true);
+  assert.deepEqual(observations, [true]);
+  assert.equal(admission.cancel(captured.token), true);
+  assert.deepEqual(observations, [true, false]);
+});
 test('replacement and retired callbacks cannot erase or certify another owner', () => {
   const f = fixture(), first = f.registry.register('agent-chat'); first.update(status(1, { dirty: true }));
   const before = f.admission.inspect(), next = f.registry.register('agent-chat'); next.update(status(1, { blocked: true }));

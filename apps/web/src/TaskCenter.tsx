@@ -164,7 +164,15 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
       if (await confirm(message('redesign.tasks.markFailedConfirmation')) && stillCurrent() && isCurrent(captured)) void dispositions?.markFailed(disposition);
     }}>{t('redesign.tasks.markFailed')}</Button>;
   };
-  return <TaskWorkspace activeCount={activeCount}><div className="task-center-browser" data-testid="task-center-browser">
+  const keychainBlocked = jobs.some(job => videoJobConnection(job)?.storageBlocked);
+  return <TaskWorkspace activeCount={activeCount}>
+    {keychainBlocked && <div className="notice warning" role="status" data-testid="task-keychain-notice">
+      <span>{t('tasks.status.videoSecretStoreWaiting')}</span>
+      <WorkbenchTooltip content={`${t('tasks.error.videoSecretStore')} ${t('tasks.error.videoKeychainContinues')}`}>
+        <Button type="button" variant="ghost" size="icon" aria-label={t('shell.details')}><Icon name="info" size={15} /></Button>
+      </WorkbenchTooltip>
+    </div>}
+    <div className="task-center-browser" data-testid="task-center-browser">
     <div className="task-center-list-tools">
         <div className="task-filter-query">
           <Input type="search" value={search} data-testid="task-center-search" aria-label={t('redesign.tasks.search')} placeholder={t('redesign.tasks.search')} onChange={event => updateList(event.target.value, filter)} />
@@ -214,9 +222,8 @@ export default function TaskCenter({ activeCount, pending, busy, jobs, data, rec
           }
         };
         return detail(job.id, <div className={`job-card ${job.status}`} key={job.id} data-testid={`job-${job.id}`}><div className="job-title"><span className={`job-state-icon ${job.status}`}>{inProgress ? <span className="spinner" /> : <Icon name={job.status === 'succeeded' ? 'check' : job.status === 'failed' ? 'close' : 'info'} size={16} />}</span><strong>{t('round4.tasks.statusAndDiagnostics')}</strong><Badge className="small-badge neutral">{job.providerId}</Badge></div><div className="job-status" data-text-selectable><span>{renderMessage(connection?.status ?? jobStatusDescriptor(job))}</span>{!connection && <span>{inProgress ? `${Math.round(job.progress || 0)}%` : formatDate(pass(job.createdAt), { hour: '2-digit', minute: '2-digit' })}</span>}</div>{inProgress && <div className="progress-track"><span style={{ width: `${Math.max(3, job.progress || 0)}%` }} /></div>}
-          {Boolean(job.error) && <p className="job-error" data-text-selectable>
+          {Boolean(job.error) && !connection?.storageBlocked && <p className="job-error" data-text-selectable>
             {renderMessage(connection?.detail ?? taskErrorDescriptor(job.error))}
-            {connection?.continuation && <> {renderMessage(connection.continuation)}</>}
             {connection?.result && <> {renderMessage(connection.result)}</>}
             {diagnosticCode && <small>{t('tasks.error.diagnosticCode', { code: diagnosticCode })}</small>}
           </p>}

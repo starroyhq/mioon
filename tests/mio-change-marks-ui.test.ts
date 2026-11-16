@@ -8,6 +8,9 @@ import { transformSync } from 'esbuild';
 import * as targetMarks from '../apps/web/src/target-marks.ts';
 import { mioFollowColor } from '../apps/web/src/mio-follow.ts';
 import type { MioFollowFocus } from '../apps/web/src/mio-follow.ts';
+import * as cursorMotion from '../apps/web/src/mio-follow-motion.ts';
+import { coveredInsets } from '../apps/web/src/canvas-fit.ts';
+import type { Side } from '../apps/web/src/canvas-fit.ts';
 
 const read = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
 const app = read('App.tsx'), layerSource = read('TargetMarkLayer.tsx'), css = read('target-marks.css');
@@ -95,7 +98,7 @@ test('App marks only newly saved Mio changes after refreshing, and clears marks 
   assert.doesNotMatch(handler, /locate|changeMode|scrollIntoView|fitView|setRightDockTab/, 'painting a timed mark never moves the view');
   assert.doesNotMatch(app, /highlightAgentTaskChanges|agent-ai-highlight/);
   assert.match(app, /locateAgentTaskChange\(change, changeMarks\);/);
-  assert.match(app, /useLayoutEffect\(\(\) => \{\s*changeMarks\.reset\(\); setTaskReveal\(null\);\s*mioFollowCandidate\.current = null; setMioFollow\(null\);\s*\}, \[changeMarks, data\.project\?\.id\]\);/);
+  assert.match(app, /useLayoutEffect\(\(\) => \{\s*changeMarks\.reset\(\); setTaskReveal\(null\);\s*setMioFollow\(null\);\s*\}, \[changeMarks, data\.project\?\.id\]\);/);
   assert.match(app, /useLayoutEffect\(\(\) => \{ changeMarks\.clear\(\); \}, \[changeMarks, workspaceMode\]\);/);
   assert.match(app, /useEffect\(\(\) => \(\) => changeMarks\.reset\(\), \[changeMarks\]\);/);
   assert.match(app, /<TargetMarkLayer marks=\{changeMarks\.marks\} label=\{t\('agent\.mark\.label'\)\} ariaLabel=\{t\('agent\.mark\.open'\)\} onActivate=\{revealTaskChange\} \/>/);
@@ -166,15 +169,18 @@ class FollowElement {
   };
   isConnected = true;
   visible = true;
-  rows: FollowElement[] = [];
+  clientLeft = 0;
+  clientTop = 0;
+  clientWidth = 0;
+  clientHeight = 0;
+  descendants = new Map<string, FollowElement>();
   rect: ReturnType<typeof box>;
   constructor(rect: ReturnType<typeof box>) { this.rect = rect; }
   get offsetWidth() { return this.rect.width; }
   get offsetHeight() { return this.rect.height; }
   getBoundingClientRect() { return this.rect; }
   closest() { return null; }
-  querySelector() { return null; }
-  querySelectorAll() { return this.rows; }
+  querySelector(selector: string) { return this.descendants.get(selector) ?? null; }
   getAttribute(key: string) { return this.attributes.get(key); }
   setAttribute(key: string, value: string) { this.attributes.set(key, value); }
   removeAttribute(key: string) { this.attributes.delete(key); }
@@ -184,25 +190,26 @@ function followHarness() {
   const hooks: RootHook[] = [], frames = new Map<number, (time: number) => void>();
   const listeners = new Map<string, Set<(event?: unknown) => void>>();
   const canvas = new FollowElement(box(100, 60, 800, 520)), timeline = new FollowElement(box(100, 600, 800, 260));
-  const panel = new FollowElement(box(905, 60, 320, 800)), row = new FollowElement(box(910, 320, 280, 24));
-  row.setAttribute('data-step-id', 'observe'); panel.rows = [row];
+  const overlays: {side: Side; box: ReturnType<typeof box>}[] = [];
   const pointer = new FollowElement(box(0, 0, 20, 21)), label = new FollowElement(box(0, 0, 110, 58));
   const locator = new FollowElement(box(0, 0, 110, 28)), targets = new Map<string, FollowElement>();
   const revealed: Array<[string, ScrollBehavior]> = [];
-  let index = 0, nextFrame = 0, now = 0, reduced = false, revealSucceeds = true;
+  let index = 0, nextFrame = 0, now = 0, reduced = false, revealSucceeds = true, lookups = 0;
   let pending: number[] = [];
+  const addEventListener = (name: string, listener: (event?: unknown) => void) => {
+    const group = listeners.get(name) ?? new Set(); group.add(listener); listeners.set(name, group);
+  };
+  const removeEventListener = (name: string, listener: (event?: unknown) => void) => { listeners.get(name)?.delete(listener); };
   const view = {
-    innerWidth: 1280, innerHeight: 900, performance: { now: () => now }, matchMedia: () => ({ matches: reduced }),
-    addEventListener(name: string, listener: (event?: unknown) => void) {
-      const group = listeners.get(name) ?? new Set(); group.add(listener); listeners.set(name, group);
-    },
-    removeEventListener(name: string, listener: (event?: unknown) => void) { listeners.get(name)?.delete(listener); },
+    innerWidth: 1280, innerHeight: 900, performance: { now: () => now }, matchMedia: () => ({ get matches() { return reduced; } }),
+    addEventListener, removeEventListener,
     requestAnimationFrame(callback: (time: number) => void) { frames.set(++nextFrame, callback); return nextFrame; },
     cancelAnimationFrame(id: number) { frames.delete(id); },
   };
   const doc = {
     defaultView: view, body: {}, activeElement: null, hidden: false,
-    querySelector(selector: string) { return selector.includes('agent-task-panel') ? panel : selector.includes('timeline-scroll') ? timeline : canvas; },
+    addEventListener, removeEventListener,
+    querySelector(selector: string) { return selector.includes('timeline-scroll') ? timeline : canvas; },
   };
   const react = {
     createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
@@ -220,13 +227,14 @@ function followHarness() {
       case 'react': return react;
       case 'react-dom': return { createPortal: (child: RootTree) => child };
       case '@mioon/ui/components/workbench-controls': return { WorkbenchButton: 'WorkbenchButton' };
-      case './canvas-fit.ts': return { coveredInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }), measuredOverlays: () => [] };
+      case './canvas-fit.ts': return { coveredInsets, measuredOverlays: () => overlays };
       case './icons.tsx': return 'Icon';
       case './i18n/I18nProvider.tsx': return { useI18n: () => ({ t: (key: string, input?: { target: string }) => key === 'agent.task.title' ? 'Mio' : `Mio 在 ${input?.target}` }) };
       case './mio-follow.ts': return { mioFollowColor };
+      case './mio-follow-motion.ts': return cursorMotion;
       case './target-marks.ts': return {
         MARK_LAYER_ATTRIBUTE: targetMarks.MARK_LAYER_ATTRIBUTE,
-        markTargetElements: (target: { id: string }) => targets.has(target.id) ? [targets.get(target.id)] : [],
+        markTargetElements: (target: { id: string }) => { lookups++; return targets.has(target.id) ? [targets.get(target.id)] : []; },
         markTargetVisible: (node: FollowElement) => node.visible,
       };
       default: return {};
@@ -249,18 +257,28 @@ function followHarness() {
     return tree;
   }
   return {
-    render, targets, pointer, locator, revealed,
+    render, targets, pointer, locator, revealed, overlays, timeline,
     frame(time: number) { now = time; const queued = [...frames.values()]; frames.clear(); for (const callback of queued) callback(time); },
     event(name: string, event?: unknown) { for (const listener of listeners.get(name) ?? []) listener(event); },
-    reduce() { reduced = true; },
+    setHidden(value: boolean) { doc.hidden = value; this.event('visibilitychange'); },
+    queuedFrames() { return frames.size; },
+    targetLookups() { return lookups; },
+    reduce(value = true) { reduced = value; },
     setRevealResult(value: boolean) { revealSucceeds = value; },
     unmount() { for (const hook of hooks) hook.cleanup?.(); Object.assign(globalThis, previous); },
   };
 }
 
 const followFocus = (id: string, kind: NonNullable<MioFollowFocus['target']>['kind'] = 'shot'): MioFollowFocus => ({
-  runId: 'stable-round', stepId: `step-${id}`, text: `修正 ${id}`, target: { id, kind, name: `镜头 ${id}` },
+  runId: 'stable-round', stepId: `step-${id}`, text: `修正 ${id}`, phase: 'operate', highlight: true,
+  target: { id, kind, name: `镜头 ${id}` },
 });
+const idleFocus: MioFollowFocus = { runId: 'stable-round', stepId: 'observe', text: '正在查看可用的影片模型', phase: 'idle' };
+const position = (element: FollowElement) => {
+  const match = /^translate\((-?\d+)px, (-?\d+)px\)$/u.exec(element.style.transform);
+  assert.ok(match);
+  return { x: Number(match[1]), y: Number(match[2]) };
+};
 
 test('Mio positions and colors its pointer, and only the newest step receives the highlight', () => {
   const h = followHarness();
@@ -276,24 +294,151 @@ test('Mio positions and colors its pointer, and only the newest step receives th
     assert.equal(newest.getAttribute('data-mio-follow-highlight'), 'canvas');
     assert.equal(newest.styles.get('--mio-follow-color'), mioFollowColor('stable-round'));
     assert.equal(tree?.props.style['--mio-follow-color'], mioFollowColor('stable-round'));
-    assert.ok(nodes(tree).some(node => node.props['data-testid'] === 'mio-follow-bubble' && node.props.children.includes('修正 03')));
-    assert.equal(h.render(followFocus('03'), { mode: 'editing' }), null);
+    const label = nodes(tree).find(node => node.props.className === 'mio-follow-cursor-label');
+    assert.ok(label);
+    const [bubble] = nodes(label).slice(1);
+    assert.equal(nodes(label).length, 2, 'the cursor label contains only the step bubble');
+    assert.equal(bubble?.props['data-testid'], 'mio-follow-bubble');
+    assert.deepEqual(bubble?.props.children, ['修正 03']);
+    h.render({ ...followFocus('01'), highlight: false });
+    h.frame(20);
     assert.equal(newest.getAttribute('data-mio-follow-highlight'), undefined);
+    assert.equal(first.getAttribute('data-mio-follow-highlight'), undefined);
+    assert.equal(h.pointer.style.transform, 'translate(576px, 320px)', 'a new target does not teleport the pointer');
+    h.frame(170);
+    assert.ok(position(h.pointer).x < 576 && position(h.pointer).x > 296, 'the pointer visits an intermediate position');
+    h.frame(450);
+    assert.equal(h.pointer.style.transform, 'translate(296px, 180px)');
     assert.deepEqual(h.revealed, []);
   } finally { h.unmount(); }
 });
 
-test('Mio keeps observations at the panel edge and does not move either view', () => {
+test('Mio floats inside the uncovered canvas without panning or searching canvas nodes', () => {
   const h = followHarness();
+  h.overlays.push({side: 'left', box: box(100, 60, 240, 520)}, {side: 'right', box: box(730, 60, 170, 520)});
   try {
-    const tree = h.render({ runId: 'stable-round', stepId: 'observe', text: '正在查看可用的影片模型' });
+    const tree = h.render(idleFocus);
     h.frame(0);
-    assert.equal(h.pointer.dataset.side, 'left');
-    assert.equal(h.pointer.style.transform, 'translate(887px, 328px)');
+    const anchor = position(h.pointer);
+    assert.deepEqual(anchor, {x: 525, y: 310}, 'start in the visible viewport center');
+    const samples = new Set<string>();
+    for (let time = 1000; time <= 10000; time += 1000) {
+      h.frame(time);
+      const {x, y} = position(h.pointer);
+      assert.ok(x >= 340 && x + 20 <= 730 && y >= 60 && y + 21 <= 580);
+      assert.ok(Math.hypot(x - anchor.x, y - anchor.y) <= 29);
+      samples.add(h.pointer.style.transform);
+    }
+    assert.ok(samples.size >= 8, 'the idle path moves over time');
     assert.ok(nodes(tree).some(node => node.props['data-testid'] === 'mio-follow-bubble' && node.props.children.includes('正在查看可用的影片模型')));
     assert.ok(!nodes(tree).some(node => node.props['data-testid'] === 'mio-follow-locator'));
+    assert.equal(h.targetLookups(), 0);
     assert.deepEqual(h.revealed, []);
   } finally { h.unmount(); }
+});
+
+test('Mio previews a new timeline object at its projected point and drifts at an approval target', () => {
+  const h = followHarness();
+  const clip = new FollowElement(box(560, 650, 100, 42));
+  h.targets.set('clip', clip);
+  h.timeline.clientWidth = 780;
+  h.timeline.clientHeight = 245;
+  try {
+    const location = {kind: 'timeline', trackId: 'track', startFrame: 24} as const;
+    h.render({ ...idleFocus, phase: 'operate', location }, {
+      mode: 'editing', resolveLocation: (value, pane) => {
+        assert.equal(value, location);
+        assert.equal(pane, h.timeline as unknown as Element);
+        return {x: 720, y: 700};
+      },
+    });
+    h.frame(0);
+    assert.deepEqual(position(h.pointer), {x: 720, y: 700});
+    assert.equal(h.targetLookups(), 0);
+
+    h.render({ ...idleFocus, phase: 'operate', location: { ...location, startFrame: 1200 } }, {
+      mode: 'editing', resolveLocation: () => ({x: 1080, y: 700}),
+    });
+    h.frame(1);
+    h.frame(700);
+    assert.deepEqual(position(h.pointer), {x: 856, y: 700}, 'an offscreen creation retains its direction inside the scrollbar');
+
+    h.render({ ...followFocus('clip', 'timeline_clip'), phase: 'approval', location }, {
+      mode: 'editing', resolveLocation: () => assert.fail('an existing target supplies its own geometry'),
+    });
+    h.frame(701);
+    h.frame(1200);
+    const first = position(h.pointer);
+    h.frame(2200);
+    const second = position(h.pointer);
+    assert.equal(clip.getAttribute('data-mio-follow-highlight'), 'editing');
+    assert.notDeepEqual(first, second);
+    assert.ok(Math.hypot(second.x - 608, second.y - 667) <= 12, 'approval stays close to the operation point');
+
+    h.render(idleFocus, {mode: 'editing'});
+    h.frame(2201);
+    h.frame(3200);
+    const idle = position(h.pointer);
+    assert.equal(clip.getAttribute('data-mio-follow-highlight'), undefined);
+    assert.ok(Math.hypot(idle.x - 608, idle.y - 667) <= 29, 'idle keeps the last operation as its anchor');
+    assert.deepEqual(h.revealed, []);
+  } finally { h.unmount(); }
+});
+
+test('Mio offers a locator in the current mode when its target belongs to another mode', () => {
+  const h = followHarness();
+  const located: string[] = [];
+  h.targets.set('clip', new FollowElement(box(560, 660, 140, 42)));
+  try {
+    const tree = h.render(followFocus('clip', 'timeline_clip'), {onLocate: target => located.push(target.id)});
+    h.frame(0);
+    assert.equal(h.pointer.dataset.placed, 'true');
+    assert.equal(h.locator.dataset.placed, 'true');
+    assert.equal(h.targetLookups(), 0);
+    assert.deepEqual(h.revealed, []);
+    const button = nodes(tree).find(node => node.props['data-testid'] === 'mio-follow-locator');
+    assert.equal(button?.type, 'WorkbenchButton');
+    button?.props.onClick();
+    assert.deepEqual(located, ['clip']);
+  } finally { h.unmount(); }
+});
+
+test('Mio points inside the lane of a targeted track and keeps its header highlight', () => {
+  const h = followHarness();
+  const header = new FollowElement(box(100, 660, 150, 42));
+  h.timeline.descendants.set('.track-label', header);
+  h.targets.set('track', header);
+  try {
+    h.render(followFocus('track', 'timeline_track'), {mode: 'editing'});
+    h.frame(0);
+    assert.deepEqual(position(h.pointer), {x: 254, y: 677});
+    assert.equal(header.getAttribute('data-mio-follow-highlight'), 'editing');
+    assert.deepEqual(h.revealed, []);
+  } finally { h.unmount(); }
+});
+
+test('Mio stops frames while hidden and honors both sources of reduced motion', () => {
+  for (const reducedBySystem of [false, true]) {
+    const h = followHarness();
+    h.targets.set('01', new FollowElement(box(220, 160, 200, 100)));
+    try {
+      h.reduce(reducedBySystem);
+      const props = {reduceMotion: !reducedBySystem};
+      h.render(idleFocus, props);
+      h.frame(0);
+      const stationary = position(h.pointer);
+      h.frame(1000);
+      assert.deepEqual(position(h.pointer), stationary);
+      h.setHidden(true);
+      assert.equal(h.queuedFrames(), 0);
+      assert.equal(h.pointer.dataset.placed, 'false');
+      h.setHidden(false);
+      assert.equal(h.queuedFrames(), 1);
+      h.render(followFocus('01'), props);
+      h.frame(1010);
+      assert.deepEqual(position(h.pointer), {x: 296, y: 180});
+    } finally { h.unmount(); }
+  }
 });
 
 test('Mio leaves the viewport alone during a pointer hold and two seconds after the last input', () => {
@@ -343,14 +488,13 @@ test('Mio offers an explicit reveal while follow is off and places reduced-motio
     button?.props.onClick();
     assert.deepEqual(h.revealed, [['clip', 'auto']]);
     clip.rect = box(560, 660, 140, 42); clip.visible = true;
-    h.frame(1);
+    h.frame(100);
     assert.equal(h.pointer.style.transform, 'translate(628px, 677px)');
     assert.equal(clip.getAttribute('data-mio-follow-highlight'), 'editing');
     assert.equal(h.locator.dataset.placed, 'false');
     const followCss = read('mio-follow-layer.css');
     assert.match(followCss, /\.mio-follow-layer \{[^}]*pointer-events: none;/u);
-    assert.match(followCss, /\.mio-follow-layer\[data-reduced-motion="true"\] \.mio-follow-cursor \{ transition: none; \}/u);
-    assert.match(followCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*transition: none;/u);
+    assert.doesNotMatch(followCss, /\.mio-follow-cursor \{[^}]*transition: transform/u);
   } finally { h.unmount(); }
 });
 

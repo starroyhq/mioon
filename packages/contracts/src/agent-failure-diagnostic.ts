@@ -12,12 +12,37 @@ const providerLabels = z.enum([
   'resource_not_found', 'server_error', 'server_overloaded', 'service_unavailable',
   'unsupported_parameter', 'unsupported_value', 'usage_limit_exceeded',
 ]);
+const providerReason = z.enum([
+  'server', 'overloaded', 'rate_limit', 'quota', 'context_length',
+  'model_unavailable', 'invalid_parameter', 'authentication', 'unknown',
+]);
+const providerIdentifier = z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/u);
+export const agentProviderFailureDiagnosticSchema = z.object({
+  kind: z.literal('provider'),
+  reason: providerReason,
+  event: z.enum(['error', 'response.failed', 'message']).optional(),
+  providerType: providerIdentifier.optional(),
+  code: z.union([providerIdentifier, z.number().int().min(0).max(99999)]).optional(),
+  param: z.string().regex(/^[A-Za-z0-9_.\[\]$-]{1,96}$/u).optional(),
+  message: z.string().min(1).max(240).regex(/^[^\p{Cc}\p{Cf}]+$/u).optional(),
+}).strict();
+export type AgentProviderFailureDiagnostic = z.infer<typeof agentProviderFailureDiagnosticSchema>;
+
+const timeoutPhase = z.enum(['dns', 'connect', 'headers', 'first_byte', 'idle', 'total']);
+export type AgentTimeoutPhase = z.infer<typeof timeoutPhase>;
+export const agentTimeoutFailureDiagnosticSchema = z.object({
+  kind: z.literal('timeout'),
+  phase: timeoutPhase,
+  elapsedMs: z.number().int().min(0).max(24 * 60 * 60 * 1000),
+}).strict();
+
 const upstreamStatus = z.number().int().min(100).max(599).refine(status => status < 200 || status >= 300);
 export const agentHttpFailureDiagnosticSchema = z.object({
   kind: z.literal('http'),
   status: upstreamStatus,
   providerType: providerLabels.optional(),
   providerCode: z.union([providerLabels, z.number().int().min(400).max(599)]).optional(),
+  provider: agentProviderFailureDiagnosticSchema.optional(),
 }).strict();
 export type AgentHttpFailureDiagnostic = z.infer<typeof agentHttpFailureDiagnosticSchema>;
 
@@ -101,6 +126,7 @@ export type AgentFailureLimit = z.infer<typeof failureLimit>;
 const agentLimitFailureDiagnosticSchema = z.object({ kind: z.literal('limit'), limit: failureLimit }).strict();
 export const agentFailureDiagnosticSchema = z.discriminatedUnion('kind', [
   agentHttpFailureDiagnosticSchema, agentProtocolFailureDiagnosticSchema, agentLimitFailureDiagnosticSchema,
+  agentProviderFailureDiagnosticSchema, agentTimeoutFailureDiagnosticSchema,
 ]);
 export type AgentFailureDiagnostic = z.infer<typeof agentFailureDiagnosticSchema>;
 

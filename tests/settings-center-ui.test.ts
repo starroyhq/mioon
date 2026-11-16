@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
 import { LANGUAGE_LABELS, LOCALES, translate, validateCatalogs, type DisplayMessage } from '../packages/i18n/src/index.ts';
 import { shellMessages } from '../packages/i18n/src/catalogs/shell.ts';
+import { settingsBootMessages } from '../packages/i18n/src/catalogs/settings-boot.ts';
 import { settingsRedesignMessages } from '../packages/i18n/src/catalogs/settings-redesign.ts';
 import { createI18nTestContext } from './helpers/i18n.ts';
 import { createSettingsNavigationRegistry, type SettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -21,6 +22,7 @@ import {stripSourceTypes} from './helpers/eval-source.ts';
 import type { ProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import { isProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import type { SettingsPage } from '../apps/web/src/settings-window-state.ts';
+import * as settingsCategories from '../apps/web/src/settings-categories.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = (name: string) => readFileSync(join(root, 'apps/web/src', name), 'utf8');
@@ -55,12 +57,14 @@ function shellHarness() {
     './icons.tsx': { __esModule: true, default: 'Icon' },
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './settings-window-state.ts': { isSettingsConnectionPage: (page: string) => slots.includes(page), normalizeSettingsPage: (page: string) => page === 'extensions' ? 'models' : page },
+    './settings-categories.ts': settingsCategories,
     './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts' },
   }).default;
   const panes = {agent: {type: 'form:agent', props: {'data-testid': 'owner-agent', value: 'retained-agent'}}};
   const generationServices = {type: 'form:generation', props: {'data-testid': 'owner-generation', value: 'retained-generation'}};
-  const props = { selected: 'agent', page: 'agent', onSelect: (slot: unknown) => calls.push(['slot', slot]), onPage: (page: unknown) => calls.push(['page', page]), panes, generationServices };
-  return { calls, panes, generationServices, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
+  const workspace = {type: 'storage', props: {'data-testid': 'owner-workspace'}};
+  const props = { selected: 'agent', page: 'agent', onSelect: (slot: unknown) => calls.push(['slot', slot]), onPage: (page: unknown) => calls.push(['page', page]), panes, generationServices, workspace };
+  return { calls, panes, generationServices, workspace, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
 }
 
 test('settings shell has seven categories and every fixed generation intention uses one services page without a second navigation', () => {
@@ -71,6 +75,9 @@ test('settings shell has seven categories and every fixed generation intention u
     for(const id of categories) assert.equal(find(tree,`settings-category-${id}`).props['aria-current'],category===id?'page':undefined);
     for(const id of categories) assert.ok(find(tree,`settings-category-icon-${id}`));
     assert.equal(nodes(tree).some(node => node.props?.className === 'settings-service-nav' || node.props?.className === 'settings-service-back'), false);
+    assert.equal(find(tree, 'owner-workspace'), h.workspace);
+    const workspaceVisibility = nodes(tree).find(node => node.type === 'WorkspaceVisibilityProvider' && nodes(node).some(child => Object.is(child, h.workspace)));
+    assert.equal(workspaceVisibility?.props.visible, page === 'workspace');
     if (category === 'models') {
       assert.equal(find(tree, 'owner-generation'), h.generationServices);
       const provider = nodes(tree).find(node => node.type === 'WorkspaceVisibilityProvider' && nodes(node).some(child => Object.is(child, h.generationServices)));
@@ -202,7 +209,7 @@ test('actual shared controls render accessible four-language settings and one co
 });
 
 test('settings copy has complete locale coverage and native page intentions use a fixed allowlist', () => {
-  const messages = Object.fromEntries(Object.entries(shellMessages).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
+  const messages = Object.fromEntries(Object.entries({...shellMessages, ...settingsBootMessages}).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
   for (const key of ['settings.title', 'settings.categories', 'settings.general', 'settings.back']) assert.ok(Object.hasOwn(messages, key), key); assert.deepEqual((validateCatalogs(messages) as unknown), []);
   assert.deepEqual((validateCatalogs(settingsRedesignMessages) as unknown), []);
   for (const value of [...slots, 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'])
@@ -214,8 +221,7 @@ test('settings copy has complete locale coverage and native page intentions use 
 });
 
 test('shared native center receives page routing and visibility without replacing existing close admission', () => {
-  const native = source('SettingsRoot.tsx'), app = source('App.tsx');
-  const main = app.slice(app.indexOf('export function SettingsConnectionForms('), app.indexOf('export default function App('));
+  const native = source('SettingsRoot.tsx'), main = source('SettingsConnectionForms.tsx');
   assert.match(native, /installNativeCloseAdmission/u); assert.match(native, /navigation\.selectPage/u);
   assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /await requestClose\(\); return false/u);
   assert.match(main, /<ProjectHomeConnections\b/u); assert.match(main, /selected=\{selected\} page=\{page\}/u); assert.match(main, /slot="home:video-tools"/u);
@@ -241,14 +247,14 @@ test('shared native center receives page routing and visibility without replacin
 });
 
 test('actual parent composition supplies one generation registry owner and keeps every fixed target inside that page', () => {
-  const app = source('App.tsx'), start = app.indexOf('export function SettingsConnectionForms('), end = app.indexOf('export default function App(');
-  assert.ok(start >= 0 && end > start);
+  const app = source('SettingsConnectionForms.tsx'), start = app.indexOf('export function SettingsConnectionForms(');
+  assert.ok(start >= 0);
   const React = {createElement: (type: string, props: Record<string, unknown> | null, ...children: unknown[]) => ({type, props: {...props, children}}), Fragment: 'Fragment'};
   const dependencies = {React, useI18n: () => createI18nTestContext('en'), ProjectHomeConnections: 'ProjectHomeConnections',
     SettingsWorkspace: 'SettingsWorkspace', SettingsNavigationSlot: 'SettingsNavigationSlot', SettingsVideoTools: 'SettingsVideoTools',
     GenerationServicesSettings: 'GenerationServicesSettings', SettingsAppearance: 'SettingsAppearance', AgentDockPane: 'AgentDockPane', AgentSettings: 'AgentSettings'};
   const module: {exports: {SettingsConnectionForms?: (props: Record<string, unknown>) => RootNode}} = {exports: {}};
-  Function('module', 'exports', ...Object.keys(dependencies), transformSync(app.slice(start, end), {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, ...Object.values(dependencies));
+  Function('module', 'exports', ...Object.keys(dependencies), transformSync(app.slice(start), {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, ...Object.values(dependencies));
   const registry = createSettingsNavigationRegistry(), report = () => {}, forms = module.exports.SettingsConnectionForms;
   assert.ok(forms);
   for (const page of ['general','workspace','video-tools','models','extensions','official','custom','comfy','agent'] as const) for (const visible of [true, false]) for (const connectionsAvailable of [true, false]) {

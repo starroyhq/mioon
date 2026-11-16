@@ -63,6 +63,21 @@ test('Windows keeps settings and Quit available through File without taking over
   assert.equal(find(menu, 'app-full-screen').accelerator, 'F11');
 });
 
+test('macOS checks updates directly after About and rechecks availability on a retained menu click', () => {
+  const f = fixture();
+  f.patch({canCheckUpdates: true});
+  const items = find(f.build(), 'menu-app').submenu as MenuItemConstructorOptions[];
+  assert.equal(items[0]?.role, 'about');
+  assert.equal(items[1]?.id, 'app-check-update');
+  assert.equal(items[1]?.label, '检查更新…');
+  click(items[1]!);
+  f.patch({canCheckUpdates: false});
+  click(items[1]!);
+  assert.deepEqual(f.calls, ['check-update']);
+  assert.equal(find(f.build(), 'app-check-update').enabled, false);
+  assert.equal(lookup(fixture('win32').build(), 'app-check-update'), undefined);
+});
+
 test('native accelerators and shortcut help use one definition while Space and Backspace remain local', () => {
   const menu = fixture().build();
   for (const [command, accelerator] of Object.entries(MENU_COMMAND_ACCELERATORS)) assert.equal(find(menu, `command-${command}`).accelerator, accelerator);

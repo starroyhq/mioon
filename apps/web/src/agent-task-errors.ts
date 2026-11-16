@@ -1,5 +1,6 @@
 import type { agentTaskErrorMessages } from '../../../packages/i18n/src/catalogs/agent-task-errors.ts';
 import { agentFailureDiagnosticSchema } from '../../../packages/contracts/src/agent-failure-diagnostic.ts';
+import type { AgentFailureDiagnostic } from '../../../packages/contracts/src/agent-failure-diagnostic.ts';
 
 type ErrorKey = keyof typeof agentTaskErrorMessages;
 const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
@@ -44,18 +45,51 @@ export function agentTaskErrorKey(code: unknown): ErrorKey {
   return 'agent.task.error.generic';
 }
 
+type ProviderDiagnostic = Extract<AgentFailureDiagnostic, { kind: 'provider' }>;
+
+function providerFields({ reason, providerType, code, param, message }: ProviderDiagnostic) {
+  const fields = [
+    ['agent.panel.diagnostic.providerType', providerType],
+    ['agent.panel.diagnostic.providerCode', code],
+    ['agent.panel.diagnostic.providerParam', param],
+    ['agent.panel.diagnostic.providerMessage', message],
+  ] as const;
+  return { reason, fields: fields.flatMap(([label, value]) => value === undefined ? [] : [{ label, value }]) };
+}
+
 export function agentTaskDiagnosticDetails(value: unknown) {
   const parsed = agentFailureDiagnosticSchema.safeParse(value);
   if (!parsed.success) return undefined;
   const diagnostic = parsed.data;
   if (diagnostic.kind === 'http') {
-    const { status, providerType, providerCode } = diagnostic;
-    const parts = [
+    const { status, providerCode, providerType, provider } = diagnostic;
+    const code = [
       'MIO', 'http', status,
       ...(providerType ? [`type=${providerType}`] : []),
       ...(providerCode !== undefined ? [`code=${providerCode}`] : []),
+    ].join('/');
+    return {
+      key: 'agent.panel.diagnostic.http' as const, values: { status }, code,
+      ...(provider ? { provider: providerFields(provider) } : {}),
+    };
+  }
+  if (diagnostic.kind === 'provider') {
+    const { reason, event, providerType, code, param } = diagnostic;
+    const parts = [
+      'MIO', 'provider', reason,
+      ...(event ? [`event=${event}`] : []),
+      ...(providerType ? [`type=${providerType}`] : []),
+      ...(code !== undefined ? [`code=${code}`] : []),
+      ...(param ? [`param=${param}`] : []),
     ];
-    return { key: 'agent.panel.diagnostic.http' as const, values: { status }, code: parts.join('/') };
+    return { key: `agent.panel.provider.${reason}` as const, code: parts.join('/'), provider: providerFields(diagnostic) };
+  }
+  if (diagnostic.kind === 'timeout') {
+    return {
+      key: `agent.panel.timeout.${diagnostic.phase}` as const,
+      timeout: { seconds: Math.round(diagnostic.elapsedMs / 100) / 10 },
+      code: `MIO/timeout/${diagnostic.phase}/elapsed_ms=${diagnostic.elapsedMs}`,
+    };
   }
   if (diagnostic.kind === 'limit') {
     return { key: 'agent.panel.diagnostic.limit' as const, code: `MIO/limit/${diagnostic.limit}` };

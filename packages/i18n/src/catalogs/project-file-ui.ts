@@ -257,11 +257,6 @@ export const projectFileUiMessages = {
   'projectFile.media.note.missing.not-downloaded': { 'zh-Hans': '文件在网盘里，还没有下载到这台电脑', 'zh-Hant': '檔案在雲端硬碟裡，還沒有下載到這台電腦', en: 'The file is in cloud storage and not downloaded to this computer', ja: 'ファイルはクラウドにあり、このコンピューターにはまだダウンロードされていません' },
   'projectFile.media.note.missing.other-platform': { 'zh-Hans': '路径来自另一种系统，这台电脑上找不到', 'zh-Hant': '路徑來自另一種系統，這台電腦上找不到', en: 'The path is from another kind of system and cannot be found here', ja: '別の種類のシステムのパスのため、このコンピューターでは見つかりません' },
   'projectFile.media.note.missing.not-a-file': { 'zh-Hans': '这个位置上的不是文件', 'zh-Hant': '這個位置上的不是檔案', en: 'What is at this location is not a file', ja: 'この場所にあるのはファイルではありません' },
-  'projectFile.media.note.changed': { 'zh-Hans': '文件和导入时不一致', 'zh-Hant': '檔案和匯入時不一致', en: 'The file differs from when it was imported', ja: '読み込み時とファイルの内容が異なります' },
-  'projectFile.media.note.unconfirmed-found': { 'zh-Hans': '找到了，确认后可用', 'zh-Hant': '找到了，確認後可用', en: 'Found; usable once you confirm', ja: '見つかりました。確認すると使えます' },
-  'projectFile.media.note.unconfirmed-maybe-changed': { 'zh-Hans': '可能已变化，确认后核对', 'zh-Hant': '可能已變更，確認後核對', en: 'May have changed; checked once you confirm', ja: '変更された可能性があります。確認後に照合します' },
-  'projectFile.media.note.checking': { 'zh-Hans': '正在核对文件…', 'zh-Hant': '正在核對檔案…', en: 'Checking the file…', ja: 'ファイルを確認中…' },
-  'projectFile.media.note.check-failed': { 'zh-Hans': '没能核对这个文件', 'zh-Hant': '沒能核對這個檔案', en: 'The file could not be checked', ja: 'ファイルを確認できませんでした' },
   'projectFile.media.attention': {
     'zh-Hans': { one: '{count} 个素材需要处理', other: '{count} 个素材需要处理' },
     'zh-Hant': { one: '{count} 個素材需要處理', other: '{count} 個素材需要處理' },

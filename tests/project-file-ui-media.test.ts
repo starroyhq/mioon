@@ -85,10 +85,9 @@ test('12-04 badges: missing, changed, both unconfirmed states, checking and chec
     assert.match(badge[1], new RegExp(`data-media-status="${kind}"`, 'u'), kind);
     assert.equal(badge[2], text(`projectFile.media.badge.${kind}`), kind);
   }
-  assert.ok(card('unconfirmed-found').includes(text('projectFile.media.note.unconfirmed-found')));
-  assert.ok(card('unconfirmed-maybe-changed').includes(text('projectFile.media.note.unconfirmed-maybe-changed')));
-  assert.equal(text('projectFile.media.note.unconfirmed-found'), '找到了，确认后可用');
-  assert.equal(text('projectFile.media.note.unconfirmed-maybe-changed'), '可能已变化，确认后核对');
+  for (const kind of ['changed', 'unconfirmed-found', 'unconfirmed-maybe-changed', 'checking', 'check-failed']) {
+    assert.doesNotMatch(card(kind), /pf-media-note/u, kind);
+  }
   assert.ok(card('missing').includes(text('projectFile.media.note.missing.not-found')));
 });
 

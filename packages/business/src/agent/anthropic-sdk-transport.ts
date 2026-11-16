@@ -2,7 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import {agentChatDiagnostic, agentChatError, agentChatProtocolError, agentChatStreamError} from './chat-errors.ts';
-import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
+import {createAgentTransport} from './network-policy.ts';
+import {agentSdkTimeoutMs} from './stream-timeouts.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 export type {RawMessageStreamEvent as AnthropicNativeStreamEvent} from '@anthropic-ai/sdk/resources/messages';
@@ -35,7 +36,7 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
       authToken: null, credentials: null, config: null, profile: null, webhookKey: null,
       maxRetries: 0, logLevel: 'off', openTelemetry: false,
       // The pinned host transport's earlier deadline owns timeout classification.
-      timeout: AGENT_NETWORK_LIMITS.totalTimeoutMs + 1000,
+      timeout: agentSdkTimeoutMs(options.timeoutMode),
       defaultHeaders: {'anthropic-version': sonnetPrefixBinding ? SONNET_PREFIX_BINDING_API_VERSION : ANTHROPIC_MESSAGES_API_VERSION,
         ...(sonnetPrefixBinding ? {'anthropic-beta': SONNET_PREFIX_BINDING_BETA} : {})},
       fetch: async (input, init) => {
@@ -72,7 +73,7 @@ export function createAnthropicSdkTransport(dependencies: AgentTransportDependen
           throw failure && failure.code !== 'AGENT_CHAT_TRUNCATED' ? failure : agentChatStreamError('read_failed');
         } finally { close(); }
       };
-      return {body: bodyStream(), close, error: () => incoming.error()};
+      return {body: bodyStream(), close, error: () => incoming.error(), markModelProgress: incoming.markModelProgress};
     } catch (error) {
       close();
       if (transportFailure !== undefined) throw transportFailure;

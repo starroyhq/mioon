@@ -2,7 +2,7 @@ import { jobStatusDescriptor, providerDisplayName, videoJobConnection } from './
 import { useI18n } from './i18n/I18nProvider.tsx';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { Button } from '@mioon/ui/components/button';
-import React, { memo, useLayoutEffect, useRef } from 'react';
+import React, { memo, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactEventHandler, SyntheticEvent } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import Icon from './icons.tsx';
@@ -19,7 +19,7 @@ import PrevisNode from './previs/PrevisNode.tsx';
 import {mediaReadIdentity, useProjectMediaReadGate} from './project-media-read-gate.tsx';
 import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 
-export interface NodeAssetView { id?: string; name?: string; mimeType?: string; width?: number; height?: number; url?: string; [key: string]: unknown }
+export interface NodeAssetView { id?: string; name?: string; mimeType?: string; width?: number; height?: number; url?: string; referenceRevision?: number; [key: string]: unknown }
 export interface NodeVersionView { id?: string; assetId?: string; url?: string; snapshot?: { aspectRatio?: string; duration?: number; [key: string]: unknown }; [key: string]: unknown }
 export interface NodeJobView { status?: string; phase?: unknown; progress?: unknown; error?: unknown; providerJobId?: unknown; [key: string]: unknown }
 export interface NodeShotRecord {
@@ -67,6 +67,7 @@ export interface MediaProps extends Omit<React.VideoHTMLAttributes<HTMLVideoElem
   version?: NodeVersionView | null;
   className?: string;
   controls?: boolean;
+  showPlaybackError?: boolean;
   onPlay?: ReactEventHandler<HTMLVideoElement>;
   onPlaying?: ReactEventHandler<HTMLVideoElement>;
   onTimeUpdate?: ReactEventHandler<HTMLVideoElement>;
@@ -80,9 +81,10 @@ export function disposeMedia(element: HTMLMediaElement | null): void {
   element.load();
 }
 
-export function Media({ asset, version, className = '', controls = false, ...props }: MediaProps): ReactElement {
+export function Media({ asset, version, className = '', controls = false, showPlaybackError = false, ...props }: MediaProps): ReactElement {
   const { t } = useI18n();
   const media = useRef<HTMLMediaElement | null>(null);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   const visible = useWorkspaceVisibility();
   const visibleRef = useRef(visible);
   const gate = useProjectMediaReadGate(), identity = mediaReadIdentity(asset, version);
@@ -90,14 +92,17 @@ export function Media({ asset, version, className = '', controls = false, ...pro
   const url = blocked ? '' : version ? versionUrl(version) : assetUrl(asset);
   const video = Boolean(version || asset?.mimeType?.startsWith('video/'));
   const audio = asset?.mimeType?.startsWith('audio/');
-  const sourceKey = `${version?.id || asset?.id || ''}:${url}:${audio ? 'audio' : 'video'}:${controls}`;
+  const reportVideoError = showPlaybackError && video;
+  const referenceRevision = reportVideoError ? asset?.referenceRevision ?? '' : '';
+  const sourceKey = `${version?.id || asset?.id || ''}:${url}:${audio ? 'audio' : 'video'}:${controls}:${referenceRevision}`;
   useLayoutEffect(() => {
+    if (reportVideoError) setFailedSource(null);
     const element = media.current;
     if (!element) return;
     // React Strict Mode replays effects without recreating the media element.
     if (element.getAttribute('src') !== url) element.setAttribute('src', url);
     return () => disposeMedia(element);
-  }, [sourceKey]);
+  }, [sourceKey, reportVideoError]);
   useLayoutEffect(() => {
     visibleRef.current = visible;
     // Hiding is not disposal: retain src and the exact playback position.
@@ -121,7 +126,21 @@ export function Media({ asset, version, className = '', controls = false, ...pro
   if (blocked && gate) return <div className={`media-placeholder pf-media-blocked ${className}`} data-testid="media-read-blocked"><Icon name="film" size={24} /><MediaStatusBadge status={gate.statusFor(identity)} /><MediaStatusNote status={gate.statusFor(identity)} /></div>;
   if (!url) return <div className={`media-placeholder ${className}`}><Icon name="film" size={32} /><span>{t('assets.waitFirstVisual')}</span></div>;
   if (audio) return <div className={`media-audio ${className}`}><Icon name="music" size={28} />{controls ? <audio ref={media as React.Ref<HTMLAudioElement>} key={sourceKey} className="nodrag nowheel" src={url} controls preload="metadata" {...playbackProps as React.AudioHTMLAttributes<HTMLAudioElement>} /> : <span>{t('assets.audioAsset')}</span>}</div>;
-  return video ? <video ref={media as React.Ref<HTMLVideoElement>} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} /> : <img className={`media-content ${className}`} src={url} alt={asset?.name || t('assets.shotReference')} loading="lazy" />;
+  if (!video) return <img className={`media-content ${className}`} src={url} alt={asset?.name || t('assets.shotReference')} loading="lazy" />;
+  const isCurrentVideo = (element: HTMLVideoElement) => element === media.current && element.isConnected && (!gate || gate.canRead(identity));
+  const feedback = reportVideoError ? {
+    onError(event: SyntheticEvent<HTMLVideoElement>) {
+      const element = event.currentTarget;
+      if (isCurrentVideo(element) && element.error && element.error.code !== 1) setFailedSource(sourceKey);
+      props.onError?.(event);
+    },
+    onLoadedData(event: SyntheticEvent<HTMLVideoElement>) {
+      if (isCurrentVideo(event.currentTarget)) setFailedSource(null);
+      props.onLoadedData?.(event);
+    },
+  } : {};
+  const player = <video ref={media as React.Ref<HTMLVideoElement>} key={sourceKey} className={`media-content ${className} ${controls ? 'nodrag nowheel' : ''}`} src={url} controls={controls} muted playsInline preload="metadata" {...playbackProps} {...feedback} />;
+  return reportVideoError ? <>{player}{failedSource === sourceKey && <span className="asset-preview-unavailable" data-testid="asset-preview-unavailable" role="status">{t('edit.preview.unavailable')}</span>}</> : player;
 }
 const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData; selected?: boolean }): ReactElement {
   const { t, renderMessage } = useI18n();
@@ -140,10 +159,10 @@ const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData
     <span className="reference-port-label target-label">{t('shell.node.firstFrameInput')}</span>
     <header className="node-header"><span className="node-number">{String(index + 1).padStart(2, '0')}</span><span className="node-title" title={record.title}>{record.title}</span><span className={`node-status-badge ${generating || connection ? 'running' : job?.status === 'failed' ? 'failed' : version ? 'complete' : ''}`}>{generating || connection ? jobStatus : job?.status === 'failed' ? t('redesign.board.failed') : version ? t('redesign.board.completed') : t('redesign.board.waiting')}</span></header>
     <div className="shot-media">{placed && data.onViewInEditing && <Button variant="ghost" className="node-timeline-view nodrag" data-testid={`shot-timeline-view-${record.id}`} onClick={viewInEditing}><Icon name="film" size={12} />{t('timeline.sync.viewInEditing')}<ArrowUpRight size={12} aria-hidden="true" /></Button>}{version ? <CompactNodePlayer sourceKey={version.id ?? ''} renderMedia={events => <Media asset={asset} version={version} {...events} />} /> : <Media asset={asset} version={version} />}
-      {connection ? <div className="node-generating node-connection-status" role="status" data-testid={`shot-connection-${record.id}`}><span>{renderMessage(connection.detail)}{connection.continuation && <> {renderMessage(connection.continuation)}</>}</span></div>
-        : generating && <div className="node-generating"><span className="spinner" /><span>{progress}% · {jobStatus}</span><div className="node-progress" role="progressbar" aria-label={jobStatus} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div></div>}
+      {connection?.detail ? <div className="node-generating node-connection-status" role="status" data-testid={`shot-connection-${record.id}`}><span>{renderMessage(connection.detail)}</span></div>
+        : !connection && generating && <div className="node-generating"><span className="spinner" /><span>{progress}% · {jobStatus}</span><div className="node-progress" role="progressbar" aria-label={jobStatus} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div></div>}
     </div>
-    <div className="node-body"><p>{record.prompt || t('shell.node.promptPlaceholder')}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} /><span>{generating || connection ? jobStatus : version ? t('shell.node.versionSelected') : t('shell.node.awaitingGeneration')}</span><span className="spacer" /><span>{t('shell.node.referenceCount', { count: record.referenceAssetIds?.length || 0 })}</span></div></div>
+    <div className="node-body"><p>{record.prompt || t('shell.node.promptPlaceholder')}</p><div className="node-meta"><span className={`status-dot ${version ? 'green' : generating ? 'orange' : ''}`} />{!connection?.storageBlocked && <span>{generating || connection ? jobStatus : version ? t('shell.node.versionSelected') : t('shell.node.awaitingGeneration')}</span>}<span className="spacer" /><span>{t('shell.node.referenceCount', { count: record.referenceAssetIds?.length || 0 })}</span></div></div>
     {data.referenceConnection && <Button variant="ghost" className="node-bound-reference nodrag" onClick={() => onInspect(record.id, 'settings')} title={renderMessage(data.referenceSourceLabel)}><Icon name="link" size={12} /><span>{t('shell.node.firstFrameSource', { name: renderMessage(data.referenceSourceLabel) })}</span></Button>}
     <footer className="node-footer"><span className="node-output-spec">{version?.snapshot?.aspectRatio || record.aspectRatio} · {version?.snapshot?.duration || record.duration}s</span>{data.batchMark === 'edited' && <span className="node-batch-mark" data-testid={`shot-batch-mark-${record.id}`}><Icon name="pencil" size={11} />{t('scene.batch.editedMark')}</span>}{placed && <Button variant="ghost" className={`node-timeline-chip nodrag ${placed.stale ? 'is-stale' : ''}`} data-testid={`shot-timeline-chip-${record.id}`} title={t('timeline.sync.viewInEditing')} disabled={!data.onViewInEditing} onClick={viewInEditing}>{placed.stale ? <span className="timeline-status-dot" aria-hidden="true" /> : <Icon name="film" size={11} />}<span>{t(placed.stale ? 'timeline.sync.chip.stale' : 'timeline.sync.chip.onTimeline')}</span></Button>}<Button variant="ghost" className="node-link nodrag" onClick={() => onInspect(record.id, 'versions')}><Icon name="layers" size={13} />{t('shell.node.versionCount', { count: data.versionCount || 0 })}</Button>{data.configureGeneration && !generating ? <Button variant="ghost" className="node-generate nodrag"
       data-testid={`shot-configure-generation-${record.id}`} title={t('generation.services.configureFirst')} aria-label={t('generation.services.openSettings')}

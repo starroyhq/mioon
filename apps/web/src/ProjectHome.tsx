@@ -2,7 +2,7 @@ import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { ComponentType, FormEvent, ReactNode } from 'react';
 import type {MenuHelpControl} from './desktop-menu-client.ts';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
@@ -75,7 +75,8 @@ export interface ProjectHomeProps {
   /** A verified catalog supplies its own loading and error views and admits the
    * launcher's empty content only when the directory is known to be empty. */
   renderCatalog?: (emptyContent?: ReactNode, pendingOpen?: PendingProjectOpen) => ReactNode;
-  launcher?: {readonly version?: string; readonly service: 'ready' | 'connecting' | 'unavailable'; readonly empty: boolean};
+  launcher?: {readonly version?: string; readonly service: 'ready' | 'connecting' | 'unavailable'; readonly empty: boolean;
+    readonly VersionDisplay?: ComponentType<{readonly fallback?: string}>};
   projectMenu?: (project: ProjectHomeProject) => ReactNode;
   totalProjects?: number;
   settings: ReactNode;
@@ -287,7 +288,8 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
       <div className="launcher-home-brand">
         <img src="/favicon.png" width={32} height={32} alt="" />
         <span className="launcher-home-brand-copy"><strong>Mioon</strong>
-          {launcher.version && <span className="launcher-home-version" data-testid="launcher-version">{launcher.version}</span>}
+          {launcher.VersionDisplay ? <launcher.VersionDisplay fallback={launcher.version} />
+            : launcher.version && <span className="launcher-home-version" data-testid="launcher-version">{launcher.version}</span>}
         </span>
       </div>
       <nav aria-label={t('projects.entry')} className="launcher-home-nav">

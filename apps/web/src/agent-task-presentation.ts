@@ -18,6 +18,7 @@ export type TaskDisplayLookup=(kind:string,id:string)=>string|undefined;
 export interface TaskDisplayEntry {label:string;value:string}
 export interface TaskDisplayOptions {fps?:number;lookup?:TaskDisplayLookup}
 
+const identity=(value:unknown):value is string=>typeof value==='string'&&/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu.test(value);
 const uuid=/[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}/iu;
 const sensitive=/(?:\bBearer\s+|\b(?:sk[-_]|ghp_|github_pat_)[A-Za-z\d_-]{8,}|\beyJ[A-Za-z\d_-]+\.[A-Za-z\d_-]+\.[A-Za-z\d_-]+|(?:api[_ -]?key|access[_ -]?token|authorization|password|secret|credential|密钥|密鑰|密码|密碼|令牌)\s*[:=：])/iu;
 const location=/(?:\b(?:https?|file|data):|[A-Za-z]:[\\/]|~\/|(?:^|\s)\/)/iu;
@@ -337,7 +338,6 @@ export function taskBackgroundLocation(step:AgentTaskStep):string|undefined {
   if(!step.toolCall)return;
   const operation=knownOperation(step.toolCall.name);
   const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-  const identity=(value:unknown):value is string=>typeof value==='string'&&/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu.test(value);
   if(operation==='task.wait'){
     const args=step.toolCall.arguments;
     if(!record(args)||!identity(args.id))return;
@@ -357,6 +357,31 @@ export function taskBackgroundLocation(step:AgentTaskStep):string|undefined {
   // the shot identity. An arbitrary result.id alone cannot identify a job.
   if(record(result)&&identity(result.id)&&identity(result.projectId)&&identity(result.shotId)&&result.id!==result.shotId)candidates.add(result.id);
   return candidates.size===1?candidates.values().next().value:undefined;
+}
+
+/** A render acceptance may still be pending. Only a retained succeeded
+ * export record with its output asset proves that the export completed. */
+export function taskEarlierExport(steps: readonly AgentTaskStep[], projectId: string) {
+  for (let index = steps.length - 1; index >= 0; index--) {
+    const step = steps[index]!;
+    const call = step.toolCall;
+    const result = step.result;
+    if (step.kind !== 'tool' || step.status !== 'completed' || !call || !result || typeof result !== 'object' || Array.isArray(result)) continue;
+    const operation = knownOperation(call.name);
+    const argumentsValue = call.arguments;
+    const args = argumentsValue && typeof argumentsValue === 'object' && !Array.isArray(argumentsValue) ? argumentsValue : undefined;
+    const observesExport = operation === 'task.wait' && args?.kind === 'export' && args.id === result.id ||
+      call.name === 'mioon_export_get' && args?.exportId === result.id;
+    if (operation !== 'timeline.render' && operation !== 'export.create' && !observesExport) continue;
+    if (result.projectId !== projectId || result.mode !== 'timeline' || result.purpose !== 'export' ||
+        !identity(result.id)) continue;
+    if (result.status === 'succeeded' && identity(result.assetId)) {
+      return { id: result.id, status: 'succeeded' as const };
+    }
+    if (result.status === 'queued' || result.status === 'running') return { id: result.id, status: 'submitted' as const };
+    // Keep a terminal observation from falling back to an earlier submission.
+    return undefined;
+  }
 }
 
 /** Key narrowing for callers deriving a label from a stable step status. */

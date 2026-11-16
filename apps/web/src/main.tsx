@@ -6,7 +6,8 @@ import { UiLanguageProvider } from '../../../packages/ui/src/components/ui-langu
 import './i18n/language.css';
 import { createRoot } from 'react-dom/client';
 import { ReactFlowProvider } from '@xyflow/react';
-import App, { SettingsConnectionForms } from './App.tsx';
+import App from './App.tsx';
+import { SettingsConnectionForms } from './SettingsConnectionForms.tsx';
 import DesktopRoot from './DesktopRoot.tsx';
 import { ApiError, rpc } from './api.ts';
 import { schemas } from '@mioon/contracts';

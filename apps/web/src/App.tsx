@@ -12,7 +12,6 @@ import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import type {CanvasClipboardBridge} from '../../desktop/src/canvas-clipboard.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
-import GenerationServicesSettings from './GenerationServicesSettings.tsx';
 import {WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
 import {touchesLockedTrack} from './timeline-track-locks.ts';
 import { timelineCrossfadeCandidates } from './timeline-crossfade-state.ts';
@@ -21,7 +20,8 @@ import {useTaskDispositions} from './task-disposition-client.ts';
 import AgentEditingBoundary, { acquireAgentEditingTarget, agentEditingTargetActive, holdAgentEditingTarget, watchAgentEditingClose, agentEditingProof, refreshAgentEditingTargets, subscribeAgentEditingChanges } from './AgentEditingBoundary.tsx';
 import { createAgentChangeMarks, locateAgentTaskChange, revealMioFollowTimeline } from './agent-task-location.ts';
 import MioFollowLayer from './MioFollowLayer.tsx';
-import type { MioFollowFocus, MioFollowTarget } from './mio-follow.ts';
+import type { MioFollowFocus, MioFollowLocation, MioFollowTarget } from './mio-follow.ts';
+import { timelineClientPointAtFrame } from './timeline-view-geometry.ts';
 import type { AgentTaskReveal } from './agent-task-location.ts';
 import { createAgentReviewMarks } from './agent-task-reviews.ts';
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
@@ -50,9 +50,7 @@ import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src
 import type {CanvasLayoutInput, CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import CanvasEmptyState from './CanvasEmptyState.tsx';
 import StoryboardStrip from './StoryboardStrip.tsx';
-import SettingsWorkspace from './SettingsWorkspace.tsx';
-import SettingsVideoTools from './SettingsVideoTools.tsx';
-import SettingsAppearance, { UiPreferencesNotice } from './SettingsAppearance.tsx';
+import { UiPreferencesNotice } from './SettingsAppearance.tsx';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
 import { WorkbenchTopbar, WorkbenchInspectorTabs } from './WorkbenchShell.tsx';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
@@ -64,10 +62,8 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.ts';
 import ExportPreview from './ExportPreview.tsx';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';
-import AgentSettings from './AgentSettings.tsx';
-import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import { markSettingsClick, type SettingsClick } from './settings-diagnostics.ts';
-import ProjectHomeConnections from './ProjectHomeConnections.tsx';
+import { SettingsConnectionForms } from './SettingsConnectionForms.tsx';
 import { providerDisplayName, jobStatusDescriptor, statusDescriptor, cancelledBeforeSubmit, unsubmittedVideoConnection } from './creation-i18n.ts';
 import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage, type Locale } from '../../../packages/i18n/src/index.ts';
 import LanguageControl from './LanguageControl.tsx';
@@ -124,8 +120,6 @@ import type {TaskWorkspaceContext} from './task-workspace-intent.ts';
 import type {GenerationAsset, GenerationProvider, GenerationShot, GenerationVideoInput} from './generation-settings.ts';
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import type {ProjectHomeProject} from './ProjectHome.tsx';
-import type {SettingsNavigationRegistry} from './settings-navigation-state.ts';
-import type {HomeConnectionSlot} from './ProjectHomeConnections.tsx';
 import type {SettingsPage} from './settings-window-state.ts';
 import type {NativeCloseRegistry} from './native-close-state.ts';
 import type {ProjectOpenAttempt} from './project-open-state.ts';
@@ -440,13 +434,6 @@ export interface AppProps {
 }
 export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
 export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean; newProjectFormatVersion?: 3 | 4}
-export interface SettingsConnectionFormsProps {
-  selected: HomeConnectionSlot; page: SettingsPage; entryVersion?: number; visible: boolean; registry: SettingsNavigationRegistry;
-  onSelect: (slot: HomeConnectionSlot) => void; onPage: (page: SettingsPage) => void; general: React.ReactNode;
-  connectionsAvailable?: boolean; beforeClose?: () => unknown; onClose?: () => void;
-  /** The open project, where the Mio connection test runs; absent in the home screen and the settings window. */
-  projectId?: string | null;
-}
 declare global {
   interface Window {
     __mioonAssetImport?:AssetImportBridge;
@@ -496,17 +483,6 @@ function CreateProject({ onClose, onCreate, busy, newProjectFormatVersion }: Cre
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   return <Modal title={t('projects.newStory')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), format4 ? '' : description.trim(), format4 ? 'portrait_1080' : undefined); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus />{!format4 && <><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /></>}<Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
-}
-
-export function SettingsConnectionForms({ selected, page, entryVersion, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose, projectId = null }: SettingsConnectionFormsProps) {
-  const { t } = useI18n();
-  const generationCategory = ['models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
-  return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'} />}
-    videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
-    generationServices={<SettingsNavigationSlot registry={registry} slot="home:generation-services">{report => <GenerationServicesSettings active={visible && connectionsAvailable && generationCategory} page={page} entryVersion={entryVersion} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
-    selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage}
-    general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>}
-    panes={{agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} projectId={projectId} />}</SettingsNavigationSlot></AgentDockPane>}} />;
 }
 
 export default function App({ nativeWindow = null, nativeProjectEntry = null }: AppProps = {}) {
@@ -643,19 +619,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const [agentPage, setAgentPage] = useState<string>('chat');
   // "Mio 修改" marks on the canvas and timeline, and the change row a clicked mark opens in the Mio panel.
   const [changeMarks] = useState(() => createAgentChangeMarks()), [taskReveal, setTaskReveal] = useState<AgentTaskReveal | null>(null);
-  const mioFollowCandidate = useRef<{ projectId: string; focus: MioFollowFocus } | null>(null);
-  const [mioFollow, setMioFollow] = useState<typeof mioFollowCandidate.current>(null);
+  const [mioFollow, setMioFollow] = useState<{ projectId: string; focus: MioFollowFocus } | null>(null);
   const receiveMioFollowFocus = useCallback((projectId: string, focus: MioFollowFocus | null) => {
     if (projectId !== currentProject.current) return;
-    const next = focus ? { projectId, focus } : null;
-    mioFollowCandidate.current = next;
-    setMioFollow(current => {
-      if (!next?.focus.changeId) return next;
-      // A title or locale can change after the same change has been painted.
-      if (current?.projectId === projectId && current.focus.runId === next.focus.runId
-        && current.focus.changeId === next.focus.changeId) return next;
-      return null;
-    });
+    setMioFollow(focus ? { projectId, focus } : null);
   }, []);
   // "待核对" marks of continuity issues (C6), and the issue card a clicked mark opens in the Mio panel.
   const [reviewMarks] = useState(() => createAgentReviewMarks()), [reviewReveal, setReviewReveal] = useState<AgentReviewReveal | null>(null);
@@ -1057,7 +1024,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   useEffect(() => () => changeMarks.reset(), [changeMarks]);
   useLayoutEffect(() => {
     changeMarks.reset(); setTaskReveal(null);
-    mioFollowCandidate.current = null; setMioFollow(null);
+    setMioFollow(null);
   }, [changeMarks, data.project?.id]);
   useLayoutEffect(() => { changeMarks.clear(); }, [changeMarks, workspaceMode]);
   // A "待核对" label opens its issue card in the Mio panel, as a "Mio 修改" label opens its change row.
@@ -1110,6 +1077,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     switch (kind) {
       case 'shot': return snapshot.shots.some(item => item.id === id);
       case 'node': return snapshot.nodes.some(item => item.id === id);
+      case 'timeline_track': return snapshot.timeline?.tracks.some(item => item.id === id) ?? false;
       case 'timeline_clip': return snapshot.timeline?.clips.some(item => item.id === id) ?? false;
       case 'timeline_subtitle': return snapshot.timeline?.subtitles?.cues.some(item => item.id === id) ?? false;
     }
@@ -1126,6 +1094,15 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       duration: behavior === 'smooth' ? 250 : 0, minZoom: zoom, maxZoom: zoom });
     return true;
   }, [flow, mioFollowTargetExists]);
+  const resolveMioFollowLocation = useCallback((location: MioFollowLocation, pane: Element) => {
+    if (location.kind === 'canvas') {
+      return flow.viewportInitialized ? flow.flowToScreenPosition({ x: location.x, y: location.y }) : null;
+    }
+    const laneSelector = location.trackId === 'subtitle' ? '[data-testid="timeline-subtitle-track"] .track-lane'
+      : `[data-testid="track-lane-${CSS.escape(location.trackId)}"]`;
+    const lane = pane.querySelector<HTMLElement>(laneSelector);
+    return lane ? timelineClientPointAtFrame(location.startFrame, lane, Number(pane.getAttribute('data-pixels-per-frame'))) : null;
+  }, [flow]);
   async function locateMioFollowTarget(target: MioFollowTarget): Promise<void> {
     const projectId = currentProject.current, epoch = projectEpoch.current, session = editorSession.current;
     if (!mioFollowTargetExists(target)) return;
@@ -1146,7 +1123,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const refresh = useCallback(async (projectId: string | null = currentProject.current, quiet = true, { opening = false }: {opening?: boolean} = {}) => {
     if (!projectId || currentProject.current !== projectId || !opening && !projectSessionReady()) return null;
     const call = ++requestCounter.current, epoch = projectEpoch.current, capturedSession = editorSession.current;
-    const follow = mioFollowCandidate.current;
     try {
       const [nextRaw, directory] = await Promise.all([rpc('project.get', { projectId }), readGenerationProviderDirectory(rpc)]);
       const next = nextRaw as AppData | null;
@@ -1156,11 +1132,6 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       if (importSession.current.leaseRevoked || !importSession.current.active || currentProject.current !== projectId || epoch !== projectEpoch.current || call !== requestCounter.current || capturedSession !== editorSession.current) return null;
       reconcilePending(projectId, next as unknown as PendingData);
       dataRef.current = { ...emptyData, ...(next as AppData) }; setData(dataRef.current); providersRef.current = directory.providers; setProviders(directory.providers); setVideoDirectoryUnavailable(directory.videoUnavailable); setLastSync(new Date()); setOnline(true); setPending(pendingForProject(projectId as string));
-      // The view now has the project's saved edits. A newer step may have
-      // arrived during the read, in which case its own refresh owns the cursor.
-      const latestFollow = mioFollowCandidate.current;
-      if (follow?.projectId === projectId && latestFollow?.projectId === projectId && follow.focus.changeId
-        && latestFollow.focus.changeId === follow.focus.changeId && latestFollow.focus.runId === follow.focus.runId) setMioFollow(latestFollow);
       const retainClipSelection = clipDraftRef.current?.hasPendingComposition() || clipDraftRef.current?.hasUnsaved();
       const reconciled = retainClipSelection ? viewRef.current : reconcileWorkspaceState(viewRef.current, next);
       if (viewReady.current && JSON.stringify(reconciled) !== JSON.stringify(viewRef.current)) { viewRef.current = reconciled as ViewState; setView(reconciled as ViewState); preferencesRef.current!.update(projectId!, reconciled as ViewState, { immediate: true }); }
@@ -3091,11 +3062,12 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (asset) addNode(assetKind(asset), asset, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
   }
   const sortedShots = useMemo(() => [...data.shots].sort((a, b) => a.orderIndex - b.orderIndex), [data.shots]);
-  const mioFollowFocus = useMemo(() => {
+  const mioFollowFocus = useMemo<MioFollowFocus | null>(() => {
     if (!mioFollow || mioFollow.projectId !== data.project?.id) return null;
     const { focus } = mioFollow;
     if (!focus.target) return focus;
-    if (!mioFollowTargetExists(focus.target)) return { ...focus, target: undefined };
+    // A placed result may reach Mio before the project refresh has painted it.
+    if (!mioFollowTargetExists(focus.target)) return { ...focus, target: undefined, highlight: false, phase: focus.location ? focus.phase : 'idle' };
     if (focus.target.kind !== 'shot') return focus;
     const index = sortedShots.findIndex(shot => shot.id === focus.target?.id);
     return index < 0 ? focus : { ...focus, target: { ...focus.target, name: t('agent.follow.shot', { number: String(index + 1).padStart(2, '0') }) } };
@@ -4076,7 +4048,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       timelineClips={timeline?.clips?.filter(clip => clip.assetId === sceneAsset.id).length ?? 0} onSplit={splitTimelineAtScenes} onClose={() => setSceneTarget(null)}
       splitBlocked={timelineBusy ? msg('shell.timelinePending') : touchesLockedTrack('timeline.clip.splitAtScenes', { assetId: sceneAsset.id }, timeline, new Set(trackLocksRef.current[currentProject.current || ''] || [])) ? msg('edit.track.lockedHint') : null} />}
     <MioFollowLayer focus={mioFollowFocus}
-      mode={workspaceMode} enabled={uiPreferences.mioFollow} reduceMotion={uiPreferences.reduceMotion} onReveal={revealMioFollowTarget} />
+      mode={workspaceMode} enabled={uiPreferences.mioFollow} reduceMotion={uiPreferences.reduceMotion} onReveal={revealMioFollowTarget}
+      onLocate={locateMioFollowTarget} resolveLocation={resolveMioFollowLocation} />
     <TargetMarkLayer marks={changeMarks.marks} label={t('agent.mark.label')} ariaLabel={t('agent.mark.open')} onActivate={revealTaskChange} />
     <TargetMarkLayer marks={reviewMarks.marks} label={t('agent.review.mark')} icon="search" describe={owner => { const category = reviewMarks.category(owner); return category ? t('agent.review.markTitle', { category: t(`agent.review.category.${category}`) }) : undefined; }} onActivate={revealReviewIssueCard} />
     {data.project && <ProjectRulesController admission={rulesAdmission ?? undefined} interactionBlocked={!rulesAdmission?.isCurrent()} open={rulesOpen} projectId={data.project.id} projectFile={projectRegistration?.projectId === data.project.id ? projectRegistration.projectFile : undefined} onClose={() => {if (rulesAdmission?.isCurrent()) setRulesOpen(false);}} />}

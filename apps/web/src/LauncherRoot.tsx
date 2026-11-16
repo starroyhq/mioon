@@ -14,11 +14,12 @@ import { claimLauncherDocumentTitle } from './document-title.ts';
 import { readWorkspaceInfo } from './workspace-info-client.ts';
 import type { ProjectHomeProps } from './ProjectHome.tsx';
 export type { SettingsRenderProps as LauncherSettingsProps } from './SettingsRoot.tsx';
-export interface LauncherRootProps { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge; readonly rpc: LauncherRpc; readonly contractChecks: LauncherContractChecks }
+export interface LauncherRootProps { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge; readonly rpc: LauncherRpc; readonly contractChecks: LauncherContractChecks;
+  readonly VersionDisplay?: NonNullable<ProjectHomeProps['launcher']>['VersionDisplay'] }
 type LauncherWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
 /** Always-mounted project entry and its read-only directory identity. Global
  * connection forms live only in SettingsRoot, never in the hidden launcher. */
-export default function LauncherRoot({ context, bridge, rpc, contractChecks }: LauncherRootProps) {
+export default function LauncherRoot({ context, bridge, rpc, contractChecks, VersionDisplay }: LauncherRootProps) {
   useLayoutEffect(() => claimLauncherDocumentTitle(document), []);
   const mounted = useRef(false);
   const menuSession = useRef<ReturnType<typeof createDesktopMenuController> | null>(null), menuHelp = useRef<MenuHelpControl | null>(null), composing = useRef(false);
@@ -76,5 +77,5 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
   const quietDirectory = entryState.catalogReady && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
     && identityState.phase === 'ready' && !identityState.identityBlocked;
   return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }} onRegisterMenuHelp={registerMenuHelp} onMenuHelpStateChange={refreshMenu}
-    launcher={service} status={quietDirectory ? undefined : identityStatus} help={identityStatus} />;
+    launcher={VersionDisplay ? {...service, VersionDisplay} : service} status={quietDirectory ? undefined : identityStatus} help={identityStatus} />;
 }

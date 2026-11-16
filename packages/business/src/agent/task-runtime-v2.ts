@@ -1,5 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,deriveAgentEndpoint} from '@mioon/contracts';
 import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
@@ -31,7 +32,7 @@ import type {AgentDiagnosticSummary} from '../../../contracts/src/agent-diagnost
 import {testProjectAppLibrary} from '../project-service-application.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration,agentSettingsError} from './config.ts';
-import {agentChatDiagnostic,agentChatError,agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
+import {agentChatDiagnostic,agentChatError,agentChatHttpStatus,agentChatProviderRetryAfterMs,agentChatProviderRetryable,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
@@ -124,6 +125,13 @@ function noToolProgress(steps:readonly AgentTaskStep[],afterPosition:number):boo
 // explicitly retry. Interrupted dispatches (no recorded outcome), storage
 // faults and explicit unknown results keep the unknown rule.
 const observedModelFailures=new Set(['AGENT_CHAT_CONNECT_FAILED','AGENT_CHAT_TIMEOUT','AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_PROTOCOL_ERROR','AGENT_CHAT_TRUNCATED','AGENT_CHAT_PROVIDER_ERROR','AGENT_CHAT_LIMIT','AGENT_CHAT_TOOLS_UNSUPPORTED','AGENT_CHAT_REASONING_UNSUPPORTED','AGENT_CHAT_RESPONSES_REQUIRED','AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED','AGENT_CHAT_OUTPUT_LIMIT','AGENT_CHAT_RESPONSES_INCOMPLETE']);
+const MAX_PROVIDER_RETRY_DELAY_MS=30000;
+function scheduledProviderRetry(step:AgentTaskStep|undefined):{attempt:1|2;at:number}|undefined {
+  if(step?.kind!=='model'||step.status!=='failed'||!record(step.data)||step.data.retryRequested!==true)return;
+  const {providerRetryAttempt,providerRetryAt}=step.data;
+  if((providerRetryAttempt===1||providerRetryAttempt===2)&&typeof providerRetryAt==='number'&&Number.isSafeInteger(providerRetryAt)&&providerRetryAt>=0)
+    return {attempt:providerRetryAttempt,at:providerRetryAt};
+}
 const skippedInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'这一处由用户保留，本轮不要再改。请继续处理其他未跳过的目标。',
   'zh-Hant':'這一處由使用者保留，本輪不要再修改。請繼續處理其他未略過的目標。',
@@ -257,7 +265,7 @@ function safeSnapshot(value:AgentTaskSnapshot,store:Store):AgentTaskSnapshot {
   const copy=structuredClone(value),readTarget=agentTaskDisplayTargetReader(store,value.run.projectId);delete copy.run.context;
   const conflict=copy.run.status==='paused'&&['conflict','editing'].includes(copy.run.pauseReason??''),flagged=copy.steps.filter(step=>record(step.data)&&step.data.backgroundInvalidated===true),pending=copy.steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1);
   const skippedSteps=new Set(copy.run.skippedTargets?.map(item=>item.stepId)??[]);
-  copy.steps=copy.steps.map(step=>{if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
+  copy.steps=copy.steps.map(step=>{const retry=scheduledProviderRetry(step);if(retry)step.providerRetryAttempt=retry.attempt;if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
   const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
   copy.changes=copy.changes.map(change=>{
     Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);
@@ -658,7 +666,16 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       // the frozen selected-entry witness before that path, without decoding a key.
       await checkExecutionWitness(runId,signal);
       modelRequests:for(;;){
-        run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
+        run=fence(runId);let snapshot=journal.snapshot(runId);
+        const retry=scheduledProviderRetry(snapshot.steps.at(-1));
+        if(retry){
+          const delay=Math.min(MAX_PROVIDER_RETRY_DELAY_MS,retry.at-Date.now());
+          if(delay>0){
+            await waitDelay(delay,undefined,{signal});
+            run=fence(runId);snapshot=journal.snapshot(runId);
+          }
+        }
+        const context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
         const observedToolIds=toolStepIds(snapshot.steps);
         let repairSource=snapshot.steps.find(step=>step.kind==='model'&&goalRepairMessage(step)!==undefined)?.id;
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
@@ -774,7 +791,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           },Math.max(0,250-(Date.now()-lastFlush)));
         };
         signal.addEventListener('abort',clearFlushTimer,{once:true});
-        const stream=gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),knownTools,beforeSubmit:()=>{fence(runId);}});
+        const stream=gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),knownTools,taskTimeouts:!run.diagnostic,beforeSubmit:()=>{fence(runId);}});
         let streamEnded=false;
         try{
           for(;;){
@@ -795,6 +812,26 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           // Preserve received text before recording a failed/unknown exchange.
           // Failed writes are never retried; stop and close discard the buffer.
           if(!flushFailed)flush();
+          if(!run.diagnostic&&!output&&!signal.aborted&&!wasTaskSubmissionPrevented(error)&&agentChatProviderRetryable(error)){
+            const attempt=retry?.attempt===2?undefined:retry?.attempt===1?2:1;
+            const backoff=Math.max(attempt===2?2000:1000,agentChatProviderRetryAfterMs(error)??0);
+            if(attempt!==undefined&&backoff<=MAX_PROVIDER_RETRY_DELAY_MS&&!closed&&!storageFaulted&&journal.run(runId).status==='running'){
+              const {afterPosition,remaining}=journal.safetyWindow(runId),current=journal.snapshot(runId);
+              const failedSteps=current.steps.map(step=>step.id===model.id?{...step,status:'failed' as const}:step);
+              if(remaining&&!noToolProgress(failedSteps,afterPosition)){
+                // The model did not complete, so no tools from this attempt
+                // can run. The next intent reuses earlier completed receipts.
+                const diagnostic=agentChatDiagnostic(error),safe=safeAgentChatError(error),saved=journal.step(model.id);
+                journal.updateStep(runId,model.id,{
+                  status:'failed',
+                  error:{code:safe.code,message:safe.message,...(diagnostic?{diagnostic}:{})},
+                  data:{...(record(saved.data)?saved.data:{}),retryRequested:true,providerRetryAttempt:attempt,providerRetryAt:Date.now()+backoff},
+                });
+                inflight=undefined;
+                continue modelRequests;
+              }
+            }
+          }
           throw error;
         }finally{
           clearFlushTimer();signal.removeEventListener('abort',clearFlushTimer);

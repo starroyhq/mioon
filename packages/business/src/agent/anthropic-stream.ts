@@ -23,6 +23,8 @@ export interface AnthropicStreamOptions {
    * keep required, bounded usage validation unless they explicitly opt in. */
   usageMode?: 'required' | 'optional';
   onUsage?: (raw: unknown) => void;
+  onProviderError?: (event: Record<string, unknown>) => never;
+  onProgress?: () => void;
   /** Only a request that enabled thinking admits thinking blocks. They are kept
    * in their original order for this round's continuation, never as text. */
   thinking?: boolean;
@@ -155,7 +157,10 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
     catch { fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {...eventDetails, field: 'json'}); }
     if (!object(value) || frame.eventName !== value.type || frame.event !== value.type) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {...eventDetails, field: 'event_name'});
     if (!messageEvents.has(frame.event)) fail('AGENT_CHAT_PROTOCOL_ERROR', 'unknown_event', eventDetails);
-    if (value.type === 'error') fail('AGENT_CHAT_PROVIDER_ERROR', 'provider_error', {event});
+    if (value.type === 'error') {
+      options.onProviderError?.(value);
+      fail('AGENT_CHAT_PROVIDER_ERROR', 'provider_error', {event});
+    }
     if (value.type === 'ping') { fields(value, ['type']); continue; }
     if (value.type === 'message_start') {
       fields(value, ['type', 'message']);
@@ -194,7 +199,7 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
         if (block.citations != null && (!Array.isArray(block.citations) || block.citations.length)) invalidField('citations');
         const initial = text(block.text, options.maxOutputBytes); addBytes(initial);
         blocks.push({type: 'text', text: initial, closed: false});
-        if (initial) yield {type: 'delta', text: initial};
+        if (initial) { options.onProgress?.(); yield {type: 'delta', text: initial}; }
       } else if (block.type === 'tool_use') {
         fields(block, ['type', 'id', 'name', 'input', 'caller', 'toolset_name']);
         if (block.caller !== undefined) {
@@ -212,17 +217,20 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
         if (Buffer.byteLength(argumentsJson) > options.maxArgumentBytes) throw agentChatLimitError('argument_bytes');
         addBytes(argumentsJson); toolIds.add(callId);
         blocks.push({type: 'tool_use', id: callId, name, argumentsJson, initialInput, closed: false});
+        options.onProgress?.();
       } else if (block.type === 'thinking') {
         fields(block, ['type', 'thinking', 'signature']);
         const initial = text(block.thinking, options.maxOutputBytes, 'thinking', 'reasoning_bytes'), signature = block.signature === undefined ? '' : text(block.signature, options.maxOutputBytes, 'signature', 'reasoning_bytes');
         addBytes(initial); addBytes(signature);
         blocks.push({type: 'thinking', thinking: initial, signature, closed: false});
+        if (initial || signature) options.onProgress?.();
       } else if (block.type === 'redacted_thinking') {
         fields(block, ['type', 'data']);
         const data = text(block.data, options.maxOutputBytes, 'data', 'reasoning_bytes');
         if (!data) invalidField('data');
         addBytes(data);
         blocks.push({type: 'redacted_thinking', data, closed: false});
+        options.onProgress?.();
       } else fail('AGENT_CHAT_TOOLS_UNSUPPORTED', 'unsupported_item', {event, item: block.type});
       continue;
     }
@@ -235,18 +243,21 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
         fields(delta, ['type', 'text']);
         if (delta.type !== 'text_delta') fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_field', {event, item: block.type, field: 'type'});
         const part = text(delta.text, options.maxOutputBytes); addBytes(part); block.text += part;
-        if (part) yield {type: 'delta', text: part};
+        if (part) { options.onProgress?.(); yield {type: 'delta', text: part}; }
       } else if (block.type === 'tool_use') {
         fields(delta, ['type', 'partial_json']);
         if (delta.type !== 'input_json_delta' || block.initialInput) fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_field', {event, item: block.type, field: 'type'});
         const part = text(delta.partial_json, options.maxArgumentBytes, 'partial_json', 'argument_bytes'); addBytes(part); block.argumentsJson += part;
         if (Buffer.byteLength(block.argumentsJson) > options.maxArgumentBytes) throw agentChatLimitError('argument_bytes');
+        if (part) options.onProgress?.();
       } else if (block.type === 'thinking' && delta.type === 'thinking_delta') {
         fields(delta, ['type', 'thinking']);
         const part = text(delta.thinking, options.maxOutputBytes, 'thinking', 'reasoning_bytes'); addBytes(part); block.thinking += part;
+        if (part) options.onProgress?.();
       } else if (block.type === 'thinking' && delta.type === 'signature_delta') {
         fields(delta, ['type', 'signature']);
         const part = text(delta.signature, options.maxOutputBytes, 'signature', 'reasoning_bytes'); addBytes(part); block.signature += part;
+        if (part) options.onProgress?.();
       } else fail('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_field', {event, item: block.type, field: 'type'});
       continue;
     }

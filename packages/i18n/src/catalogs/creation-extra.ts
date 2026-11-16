@@ -14,6 +14,7 @@ export const creationExtraMessages = {
   'tasks.status.unknown': { 'zh-Hans': '状态待确认', 'zh-Hant': '狀態待確認', en: 'Status unconfirmed', ja: '状態の確認待ち' },
   'tasks.status.outputReview': { 'zh-Hans': '输出待核验', 'zh-Hant': '輸出待核驗', en: 'Output awaiting verification', ja: '出力の検証待ち' },
   'tasks.status.videoConnectionWaiting': { 'zh-Hans': '等待视频连接', 'zh-Hant': '等待影片連線', en: 'Waiting for video connection', ja: '動画サービスへの接続待ち' },
+  'tasks.status.videoSecretStoreWaiting': { 'zh-Hans': '系统安全存储不可用', 'zh-Hant': '系統安全儲存空間無法使用', en: 'System secure storage unavailable', ja: 'システムのセキュアストレージを利用できません' },
   'tasks.status.videoConnectionRequired': { 'zh-Hans': '视频连接需要处理', 'zh-Hant': '影片連線需要處理', en: 'Video connection needs attention', ja: '動画サービスへの接続に対応が必要' },
   'tasks.outputReviewDisclosure': { 'zh-Hans': '服务商已完成生成，但下载视频的画幅比例与请求不符，尚未保存为版本。请核验服务商结果；这里只核对并恢复同一任务，不会自动重新生成', 'zh-Hant': '服務商已完成生成，但下載影片的畫幅比例與請求不符，尚未儲存為版本。請核驗服務商結果；此處只核對並還原同一工作，不會自動重新生成', en: 'The provider finished generation, but the downloaded video’s aspect ratio differs from the request and has not been saved as a version. Verify the provider result. This only checks and recovers the same task; it does not regenerate automatically', ja: 'プロバイダー側の生成は完了しましたが、ダウンロードした動画のアスペクト比がリクエストと異なるため、バージョンとして保存していません。プロバイダーの結果を検証してください。ここでは同じタスクを確認・復元するだけで、自動再生成はしません' },
   'tasks.heldReason': { 'zh-Hans': '此请求属于原工作区或另一个恢复分支，原编号和参数已保留；不能在当前分支恢复、确认或转存', 'zh-Hant': '此請求屬於原工作區或另一個還原分支，原編號與參數已保留；不能在目前分支還原、確認或轉存', en: 'This request belongs to the original workspace or another recovery branch. Its original ID and parameters are retained; it cannot be recovered, acknowledged, or transferred in this branch', ja: 'このリクエストは元のワークスペースまたは別の復元ブランチに属します。元のIDとパラメーターを保持していますが、現在のブランチでは復元、確認、移管できません' },
@@ -41,10 +42,10 @@ export const creationExtraMessages = {
     ja: '動画設定サービスを一時的に利用できません。サービスが復旧するとタスクは自動で続行されます。',
   },
   'tasks.error.videoSecretStore': {
-    'zh-Hans': '暂时无法读取系统安全存储。如果 macOS 弹出钥匙串授权窗口，请选择「允许」。如果已拒绝，请完全退出 Mioon，重新打开后允许访问。',
-    'zh-Hant': '暫時無法讀取系統安全儲存空間。如果 macOS 顯示鑰匙圈授權視窗，請選擇「允許」。如果已拒絕，請完全結束 Mioon，重新開啟後允許存取。',
-    en: 'System secure storage is temporarily unavailable. If macOS prompts for Keychain access, choose Allow. If you denied access, quit Mioon completely, reopen it, and allow access.',
-    ja: 'システムのセキュアストレージを一時的に読み込めません。macOSでキーチェーンへのアクセスを求められたら「許可」を選んでください。拒否した場合はMioonを完全に終了し、開き直してから許可してください。',
+    'zh-Hans': '在 macOS 钥匙串提示中选择「允许」。若已拒绝，退出并重新打开 Mioon 后再授权。',
+    'zh-Hant': '在 macOS 鑰匙圈提示中選擇「允許」。若已拒絕，結束並重新開啟 Mioon 後再授權。',
+    en: 'Choose Allow in the macOS Keychain prompt. If you denied access, quit and reopen Mioon before granting it.',
+    ja: 'macOS のキーチェーンの確認で「許可」を選択してください。拒否した場合は Mioon を終了し、開き直してから許可してください。',
   },
   'tasks.error.videoKeychainContinues': {
     'zh-Hans': '恢复访问后，任务会自动继续。',
