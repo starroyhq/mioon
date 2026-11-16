@@ -567,6 +567,12 @@ export const nativeMessages = {
     "en": "Cannot start Mioon safely",
     "ja": "Mioon を安全に起動できません"
   },
+  "native.productionChannelRejected": {
+    "zh-Hans": "正式版只能以官方签名包运行，开发和测试请用开发版",
+    "zh-Hant": "正式版只能以官方簽署的安裝套件執行，開發和測試請使用開發版",
+    "en": "The release version can only run from an officially signed package. Use the development version for development and testing",
+    "ja": "製品版を実行するには、公式に署名されたパッケージが必要です。開発やテストには開発版を使用してください"
+  },
   "native.storageMessage": {
     "zh-Hans": "数据目录未通过隐私检查",
     "zh-Hant": "資料目錄未通過隱私檢查",

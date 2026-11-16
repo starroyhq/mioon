@@ -14,9 +14,6 @@ const desktop = path.join(root, 'apps/desktop');
 const manifest = JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8'));
 const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const channels = [
-  { script: 'package:linux', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux'] },
-  { script: 'package:dir', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--linux', '--dir'] },
-  { script: 'package:mac', channel: 'production', config: '.generated/electron-builder.cjs', appId: 'app.starroy.mioon', targetArgs: ['--mac'] },
   { script: 'package:linux:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux'] },
   { script: 'package:dir:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--linux', '--dir'] },
   { script: 'package:mac:dev', channel: 'development', config: '.generated/electron-builder.dev.cjs', appId: 'app.starroy.mioon.dev', targetArgs: ['--mac'] },
@@ -36,7 +33,7 @@ function packagingPlan(script: string, expected: ChannelExpectation) {
   const options = parseArguments(build.slice(2));
   assert.equal(options.command, 'build');
   assert.equal(options.channel, expected.channel, 'Build must select the expected channel');
-  assert.equal(build[3], `--channel=${expected.channel}`, 'Both channels must be explicit, including development');
+  assert.equal(build[3], `--channel=${expected.channel}`, 'Local packaging must select development explicitly');
   assert.deepEqual(builder, ['electron-builder', '--config', expected.config, ...expected.targetArgs, '--publish', 'never'], 'Builder must retain the exact config, target and publication arguments');
   const config = require(path.resolve(desktop, 'builder-config.ts')).builderConfig(expected.channel);
   // Synthetic Vite path: buildCommands only constructs argv and never reads it.
@@ -87,10 +84,8 @@ test('entrypoint checks reject the old staging-only path and channel or publicat
     assert.throws(() => packagingPlan(script.replace('&&', ''), expected), /Build must succeed before electron-builder; no extra stages/);
     assert.throws(() => packagingPlan(script.replace('--publish never', '--publish always'), expected), /Builder must retain the exact config, target and publication arguments/);
     assert.throws(() => packagingPlan(script.replace(`--channel=${expected.channel}`, ''), expected), /Build requires only the tooling path, build command and explicit channel/);
-    const other = channels.find(item => item.channel !== expected.channel);
-    if (!other) throw new Error(`missing opposite-channel entry for ${expected.channel}`);
-    assert.throws(() => packagingPlan(script.replace(`--channel=${expected.channel}`, `--channel=${other.channel}`), expected), /Build must select the expected channel/);
-    assert.throws(() => packagingPlan(script.replace(expected.config, other.config), expected), /Builder must retain the exact config, target and publication arguments/);
+    assert.throws(() => packagingPlan(script.replace('--channel=development', '--channel=production'), expected), /Build must select the expected channel/);
+    assert.throws(() => packagingPlan(script.replace(expected.config, '.generated/electron-builder.cjs'), expected), /Builder must retain the exact config, target and publication arguments/);
   }
 });
 
@@ -117,20 +112,42 @@ test('entrypoint checks reject missing, reversed or extra stages and misrouted b
   }
 });
 
-test('other desktop entrypoints retain their existing behavior', () => {
+test('default desktop package aliases select development and leave production staging to the release workflow', () => {
   const otherScripts = Object.fromEntries(Object.entries(manifest.scripts).filter(([name]) => !channels.some(item => item.script === name)));
   assert.deepEqual(otherScripts, {
     build: 'node scripts/build.ts',
     'prepare:builder-config': 'node scripts/prepare-builder-config.ts',
     start: 'electron build',
     smoke: 'node scripts/smoke.ts',
-    'build:production': 'node scripts/build.ts --channel=production',
+    'package:linux': 'pnpm run package:linux:dev',
+    'package:dir': 'pnpm run package:dir:dev',
+    'package:mac': 'pnpm run package:mac:dev',
   });
+  assert.equal(rootManifest.scripts['desktop:build:production'], undefined);
+  const release = readFileSync(path.join(root, '.github/workflows/release-desktop.yml'), 'utf8');
+  assert.match(release, /run: node scripts\/tooling\.ts build --channel=production/);
+  assert.match(release, /pnpm exec electron-builder --config \.generated\/electron-builder\.cjs --linux/);
+  assert.match(release, /pnpm exec electron-builder --config \.generated\/electron-builder\.cjs --mac/);
 });
 
 test('root Linux package aliases forward directly to the checked workspace scripts', () => {
-  assert.equal(rootManifest.scripts['desktop:package:linux'], 'pnpm --filter @mioon/desktop package:linux');
+  assert.equal(rootManifest.scripts['desktop:package:linux'], 'pnpm --filter @mioon/desktop package:linux:dev');
   assert.equal(rootManifest.scripts['desktop:package:linux:dev'], 'pnpm --filter @mioon/desktop package:linux:dev');
+});
+
+test('source smoke validates development staging before creating a profile or starting Electron', async () => {
+  const source = readFileSync(path.join(desktop, 'scripts/smoke.ts'), 'utf8');
+  const start = source.indexOf('const staging ='), end = source.indexOf('const directory =');
+  assert.ok(start >= 0 && end > start && source.indexOf('const child = spawn(') > end);
+  const check = (metadata: unknown): Promise<string> =>
+    Function('path', 'desktop', 'readFile', 'identityForChannel',
+      `return (async () => { ${source.slice(start, end)} return staging; })();`)(
+      path, desktop, async () => JSON.stringify(metadata), desktopIdentity.identityForChannel);
+  const development = desktopIdentity.identityForChannel('development');
+  const production = desktopIdentity.identityForChannel('production');
+  assert.equal(await check({mioonDesktop: development}), path.join(desktop, 'build'));
+  await assert.rejects(check({mioonDesktop: production}), /requires build --channel=development/);
+  await assert.rejects(check({mioonDesktop: {...development, appId: production.appId}}), /requires build --channel=development/);
 });
 
 const settingsEntry = 'assets/settings-aBc12_De.js';

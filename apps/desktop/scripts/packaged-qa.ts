@@ -45,7 +45,10 @@ function errorMessage(error: unknown): string {
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const identity: DesktopIdentity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.length > 2 ? process.argv.slice(2) : ['--channel=production']));
+const identity: DesktopIdentity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
+if (process.platform !== 'linux' || identity.channel !== 'development') {
+  throw new Error('Local packaged QA requires the development package on Linux.');
+}
 const binary = path.join(root, `release/desktop/${identity.channel}/linux-unpacked`, identity.executableName);
 const directory = await mkdtemp(path.join(tmpdir(), 'mioon-packaged-qa-'));
 const userData = path.join(directory, 'user-data');

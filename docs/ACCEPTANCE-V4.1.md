@@ -9,7 +9,7 @@ Source/desktop version `0.4.1` fixes the requested IDs:
 
 One checked-in identity definition drives Electron runtime identity, builder config, Linux desktop name / WM_CLASS, package metadata, artifact names and default data roots. Production and development packaging explicitly rebuild their own channels and refuse opposite-channel staging. A packaged development app retains `.dev`; `NODE_ENV` or `WB_DESKTOP_CHANNEL` at launch cannot change the embedded identity. Windows AppUserModelID is assigned in source; macOS bundle ID is configured. Neither platform has native validation in this delivery.
 
-`pnpm desktop:build` defaults to development. `pnpm desktop:build:production` builds production staging. Linux package commands are `pnpm desktop:package:linux` and `pnpm desktop:package:linux:dev`; `package:dir` / `package:dir:dev` create unpacked applications. New outputs use separate `release/desktop/production/` and `release/desktop/development/` directories.
+The historical runs used separate `release/desktop/production/` and `release/desktop/development/` outputs. For current local commands, use the development build and packaging entries in the [desktop guide](DESKTOP.md#本地打包).
 
 The original UI, npm workspace names, public CLI command and shared backend remain intact. The Dev system application name and `-dev` executable suffix make the two applications distinguishable. No provider behavior or business schema changed.
 

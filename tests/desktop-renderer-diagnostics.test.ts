@@ -104,6 +104,32 @@ test('unknown and hostile fields never persist private strings or caller identit
   assert.deepEqual(lines.map(record => record.schemaVersion), [1, 1]);
 });
 
+test('startup signature diagnostics record only redacted outcomes in a separate log', async t => {
+  const f = await fixture(t);
+  const diagnostics = f.create();
+  assert.equal(diagnostics.record('unresponsive'), true);
+  const rendererBefore = await readFile(f.file);
+  const signatureFile = path.join(f.logDirectory, 'startup-signature.log');
+  for (const invalid of [null, {result: 'timeout', path: f.directory}, 'verified', 'rejected',
+    'spawn /synthetic/private', 'timeout\n', 'exit:2\nspawn', 'exit:255\n', 'exit:02', 'exit:-1', 'exit:256', 'exit:1.5']) {
+    assert.equal(diagnostics.recordStartupSignature(invalid), false);
+  }
+  await assert.rejects(readFile(signatureFile), {code: 'ENOENT'});
+  for (const outcome of ['timeout', 'spawn', 'exit:2', 'exit:255']) {
+    assert.equal(diagnostics.recordStartupSignature(outcome), true);
+  }
+  assert.equal(await readFile(signatureFile, 'utf8'), 'timeout\nspawn\nexit:2\nexit:255\n');
+  assert.deepEqual(await readFile(f.file), rendererBefore);
+});
+
+test('startup signature diagnostic write failure leaves the existing storage entry intact', async t => {
+  const f = await fixture(t);
+  const original = 'synthetic existing directory entry';
+  await writeFile(f.logDirectory, original);
+  assert.equal(f.create().recordStartupSignature('timeout'), false);
+  assert.equal(await readFile(f.logDirectory, 'utf8'), original);
+});
+
 test('capacity and rotation stay bounded to fileCount files and maxBytes per file', { timeout: 120_000 }, async t => {
   const f = await fixture(t);
   const diagnostics = f.create();

@@ -21,7 +21,7 @@ const asar = dependencies('@electron/asar');
 const { getCurrentFuseWire, FuseV1Options } = dependencies('@electron/fuses');
 const args = process.argv.slice(2);
 const historicalV3 = args.length === 1 && args[0] === '--historical-v3';
-const identity = historicalV3 ? null : desktopIdentity.identityForChannel(desktopIdentity.buildChannel(args.length ? args : ['--channel=production']));
+const identity = historicalV3 ? null : desktopIdentity.identityForChannel(desktopIdentity.buildChannel(args));
 /** Historical V3 packages predate channels; current packages always have one. */
 function requireIdentity(): DesktopIdentity {
   if (!identity) throw new Error('Historical V3 layout has no current desktop identity.');

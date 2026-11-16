@@ -6,8 +6,15 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {seedDesktopQaProject} from './synthetic-qa-project.ts';
 import {providerEnvironmentKeys} from '@mioon/business';
+import {identityForChannel} from '../identity.ts';
 const require = createRequire(import.meta.url);
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const staging = path.join(desktop, 'build');
+const metadata = JSON.parse(await readFile(path.join(staging, 'package.json'), 'utf8'));
+const development = identityForChannel('development');
+if (metadata?.mioonDesktop?.channel !== development.channel || metadata.mioonDesktop.appId !== development.appId) {
+  throw new Error('Local desktop smoke requires build --channel=development.');
+}
 const directory = await mkdtemp(path.join(tmpdir(), 'mioon-electron-smoke-'));
 const output = process.env.MIOON_DESKTOP_SMOKE_OUTPUT || path.join(directory, 'report.json');
 await mkdir(path.dirname(output), { recursive: true });
@@ -15,7 +22,7 @@ await mkdir(path.dirname(output), { recursive: true });
 await seedDesktopQaProject(path.join(directory, 'user-data/data'));
 const env: NodeJS.ProcessEnv = { ...process.env, MIOON_DESKTOP_USER_DATA: path.join(directory, 'user-data'), MIOON_DESKTOP_SMOKE_OUTPUT: output };
 for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', ...providerEnvironmentKeys]) delete env[name];
-const args = [path.join(desktop, 'build')];
+const args = [staging];
 if (process.env.MIOON_DESKTOP_HEADLESS === '1') args.unshift('--ozone-platform=headless');
 const child = spawn(require('electron'), args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
 let tail = '';

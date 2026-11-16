@@ -36,6 +36,7 @@ interface PackagedRuntime {
   readonly env: NodeJS.ProcessEnv;
   readonly binary: string;
 }
+if (process.platform !== 'linux') throw new Error('Historical two-channel packaged identity QA requires Linux.');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const output = path.join(root, 'evidence/v4.1-app-id');
 const directory = await mkdtemp(path.join(tmpdir(), 'wb-packaged-identity-'));

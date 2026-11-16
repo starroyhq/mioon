@@ -12,7 +12,6 @@ node scripts/tooling.ts doctor
 node scripts/tooling.ts typecheck
 node scripts/tooling.ts doctor --native-ready
 node scripts/tooling.ts build --channel=development
-node scripts/tooling.ts build --channel=production
 node scripts/tooling.ts test
 node scripts/tooling.ts test --suite=portable --concurrency=1
 node scripts/tooling.ts test --suite=full --concurrency=1
@@ -20,6 +19,8 @@ node scripts/tooling.ts test --suite=portable --file=agent-protocol.test.ts
 ```
 
 `check:local`, `build:local`, `test:local` are optional root package aliases. Existing `pnpm build`, package scripts and test scripts remain available; they have not all been made cross-platform. `node scripts/doctor.ts` / `pnpm run doctor` now delegates to the same doctor and prints its structured report.
+
+Use development staging for local desktop builds and tests. The desktop release workflow builds production staging and signs the official macOS package.
 
 - **Doctor:** checks Node, root/desktop metadata, exact installed dependency versions, in-memory SQLite and bounded FFmpeg/ffprobe version responses. It also reports a separate, advisory static pnpm version observation. It does not open a workspace, read credentials/user settings, initialize a token, install, repair permissions or call a provider. Explicit `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` overrides are honored by the existing media runner; otherwise its ordinary executable lookup applies. Version probes do not verify codecs, render correctness or native Electron runtime availability.
 - **Build:** validates prerequisites before invoking the verified local Vite JavaScript entrypoint, then the existing desktop staging build, strictly serially. The Vite heap budget is passed as a Node argument (768 MiB), not an inline shell environment assignment. Failure or interruption stops the sequence; there is no retry, automatic installation, signing or packaging. Ordinary staging output is still replaced as before after preflight passes.

@@ -29,18 +29,19 @@ catalog, remote download, preset installation, model or runtime.
 
 ## Automated and build evidence
 
-Under Node 24.21.0, final independent focused validation passed **71/71**,
-zero failures/cancellations/skips, exit 0 (12,289.51449 ms):
+Under Node 24.21.0, the historical focused validation passed **71/71**,
+zero failures/cancellations/skips, exit 0 (12,289.51449 ms). Use development
+staging when rerunning from the current source.
 
 ```sh
-node --test tests/look-pack.test.mjs tests/look-pack-ui.test.mjs \
-  tests/look-pack-inspection.test.mjs tests/look-pack-portability.test.mjs \
-  tests/clip-lut-ui.test.mjs
-node scripts/tooling.mjs typecheck
-node scripts/tooling.mjs build --channel=production
+node --test tests/look-pack.test.ts tests/look-pack-ui.test.ts \
+  tests/look-pack-inspection.test.ts tests/look-pack-portability.test.ts \
+  tests/clip-lut-ui.test.ts
+node scripts/tooling.ts typecheck
+node scripts/tooling.ts build --channel=development
 ```
 
-Normal typecheck and production build exited 0. `git diff --check` was clean.
+The historical typecheck and production staging build exited 0. `git diff --check` was clean.
 The earlier combined 68-test run predates the parser's final three additional
 boundary cases; it is not the final count. No full-suite, Mac or Windows claim.
 Logs: `evidence/look-pack/parent-tests.log`, `parent-typecheck.log`, `build.log`.

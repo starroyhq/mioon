@@ -2,35 +2,31 @@
 
 当前测试使用 `.test.ts`，执行入口见 [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26)；下方历史 macOS 验证命令及结果保留当时记录。
 
-当前增量基线：`783fae70b1aae4d6b032df573d0e1ee9d45c4359`，2026-10-13。本片将四个 Linux 打包入口接到既有完整构建流程，保持渠道、输出目标、安全配置和关闭发布的行为。应用运行代码、依赖与锁文件未改。下方保留的 macOS 记录属于历史单独修复，不是本次原生平台复测。
+2026-11-16 起，本地打包生成开发包 Mioon Dev。下方 2026-10-13 的打包新鲜度证据属于基线 `783fae70b1aae4d6b032df573d0e1ee9d45c4359` 的历史验证。
 
-## 当前六个入口
+## 当前本地入口
 
-| 桌面 workspace 脚本 | 先执行的完整构建 | builder 后续参数 |
+| 桌面 workspace 脚本 | 默认别名 | builder 后续参数 |
 | --- | --- | --- |
-| `package:linux` | `node ../../scripts/tooling.ts build --channel=production` | `--config .generated/electron-builder.cjs --linux --publish never` |
-| `package:dir` | 同上 | `--config .generated/electron-builder.cjs --linux --dir --publish never` |
-| `package:mac` | 同上 | `--config .generated/electron-builder.cjs --mac --publish never` |
-| `package:linux:dev` | `node ../../scripts/tooling.ts build --channel=development` | `--config .generated/electron-builder.dev.cjs --linux --publish never` |
-| `package:dir:dev` | 同上 | `--config .generated/electron-builder.dev.cjs --linux --dir --publish never` |
-| `package:mac:dev` | 同上 | `--config .generated/electron-builder.dev.cjs --mac --publish never` |
+| `package:linux:dev` | `package:linux` | `--config .generated/electron-builder.dev.cjs --linux --publish never` |
+| `package:dir:dev` | `package:dir` | `--config .generated/electron-builder.dev.cjs --linux --dir --publish never` |
+| `package:mac:dev` | `package:mac` | `--config .generated/electron-builder.dev.cjs --mac --publish never` |
 
-完整流程先核验已安装的本地工具和严格类型，再运行 Vite 生成当前 Web，随后构建同渠道桌面暂存；最后才由既有 `&&` 执行 electron-builder。
+`node ../../scripts/tooling.ts build --channel=development` 先核验本地工具和类型，再构建当前 Web 和开发渠道桌面暂存。构建成功后才调用 electron-builder。
 
-桌面 builder 配置已迁移为 typed ESM `apps/desktop/builder-config.ts`（依赖 `identity.ts`、`build-metadata.ts`、`subtitle-resources.ts`、`runtime-notices.ts`）。`apps/desktop/scripts/prepare-builder-config.ts` 把它打包成忽略目录中的 `.generated/electron-builder.cjs` / `.generated/electron-builder.dev.cjs`，只有固定渠道字面量可进入生成入口；`apps/desktop/scripts/build.ts` 在暂存构建时自动重新生成，也可单独运行 `node apps/desktop/scripts/prepare-builder-config.ts`。`apps/desktop` 不再保留手写 builder CJS 入口。生产渠道仍为 `app.starroy.mioon` / `mioon`，开发渠道仍为 `app.starroy.mioon.dev` / `mioon-dev`，输出分别在 `release/desktop/production` 与 `release/desktop/development`。Linux 目标仍为 x64 的 tar.gz 或解包目录，本片不新增安装器、更新器、签名或发布。
+桌面暂存构建从 `apps/desktop/builder-config.ts` 自动生成 `.generated/electron-builder.dev.cjs` 和正式发布用的 `.generated/electron-builder.cjs`。开发渠道 `app.starroy.mioon.dev` / `mioon-dev` 输出到 `release/desktop/development`。正式发布工作流使用 `app.starroy.mioon` / `mioon`，输出到 `release/desktop/production`，macOS 经过 Developer ID 签名和公证。[发布流程](GITHUB-ACTIONS.zh-CN.md#正式发布)
 
-从仓库根目录，四条当前 Linux 命令可独立使用，不需要先手动构建 Web：
+从仓库根目录执行对应目标的命令。
 
 ```sh
-pnpm desktop:package:linux
-pnpm --filter @mioon/desktop package:dir
 pnpm desktop:package:linux:dev
 pnpm --filter @mioon/desktop package:dir:dev
+pnpm --filter @mioon/desktop package:mac:dev
 ```
 
-四条命令共用 Web dist 和桌面暂存，只能串行执行。根目录两个 `desktop:package:linux*` 别名保持原样。直接 `build`、`build:production`、`desktop:build*` 和 `start` 没有改成完整打包流程；直接运行桌面暂存脚本仍由调用方先准备新鲜 Web 输出。已有 Web 开发服务和业务 API 不受影响。
+三条入口共用 Web dist 和桌面暂存，请串行执行。根目录的 `desktop:package:linux` 也转发到开发包。源码试用先运行 `node scripts/tooling.ts build --channel=development`，再运行 `pnpm desktop`。
 
-## 已复现的问题与核验边界
+## 2026-10-13 打包新鲜度验证
 
 旧四条 Linux 命令只调用桌面暂存脚本。该脚本验证类型和版本、检查 `dist/index.html` 存在，然后复制已有 dist；合法的旧 dist 会被接受。真实反例已在隔离工作树运行原 `package:dir`：刻意置入两个带唯一旧标记的生成文件，不预构建 Web，实际打包 exit 0 后 ASAR 仍保留两个文件/两处标记。旧版本与身份检查通过不能证明 renderer 与当前源码一致。
 

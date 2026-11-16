@@ -49,7 +49,7 @@ macOS 发布 runner 使用 [Homebrew `ffmpeg-full`](https://formulae.brew.sh/for
 
 创建临时钥匙链前先保存原用户钥匙链搜索列表，导入身份并设置访问分区后，将临时钥匙链追加到搜索列表，保留原有项且不改变默认钥匙链。打包前在凭据临时目录编译一个最小本机 Mach-O，用相同签名身份和钥匙链执行带时间戳、Hardened Runtime 的签名及严格校验；导入成功不能代替这项自检。探针不公证、不发布，随临时凭据清理。无论打包是否成功，清理先恢复原搜索列表，再删除临时钥匙链；恢复失败仍尝试删除并明确报告清理失败。最终应用签名、公证、Gatekeeper 和安装包冒烟仍须分别通过
 
-正式工作流通过 CI 专用参数启用签名。本地 `package:mac` 仍默认不签名。锁定的 electron-builder v26 先合并 Apple 芯片和 Intel 的 Electron，再签名通用应用并生成 DMG 与 ZIP。
+正式工作流通过 CI 专用参数启用签名。本地 `package:mac:dev` 及其别名 `package:mac` 生成 Mioon Dev。锁定的 electron-builder v26 先合并 Apple 芯片和 Intel 的 Electron，再签名通用正式应用并生成 DMG 与 ZIP。
 
 正式工作流在签名完成后调用专用 `afterSign` hook，复用已锁定的 `@electron/notarize` 提交应用，公证调用仅一次。该库的装订错误出现在 `Accepted` 之后；只有其明确的装订错误前缀、退出68以及 Apple CloudKit 的已识别 URL 网络错误同时存在时，才对同一应用继续装订，计入原失败次数后最多三次。最终 DMG 的装订和应用/DMG 的票据验证同样最多三次，只对明确网络瞬态退避，第二、三次调用前分别等待 30 秒和 90 秒。恢复器执行的命令每次仍限 60 秒；直接调用恢复器时，三次命令加两段等待的配置预算最多 300 秒（不含 runner 调度）。库已执行的首次应用装订仍计入三次上限，其公证及首次装订耗时不计入恢复器的命令预算。没有票据、票据无效、签名/认证失败、未知错误、命令超时或信号终止都直接阻断。不会重新提交公证或重跑整个 builder 碰运气，也不通过修改签名身份、凭据、Hardened Runtime 或 Gatekeeper 绕过问题
 
