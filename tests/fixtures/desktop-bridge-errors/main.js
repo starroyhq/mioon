@@ -32,6 +32,10 @@ const source = {sourceProjectId: projectId, sourceFile, sourceIdentity: {dev: St
 const details = {projectId, requestId: 'fixture-template-request', operation: 'instantiateTemplate', database: 'project', reason: 'occupied', invalidReason: 'fixture'};
 const mediaInput = {projectId, previewToken, requestId: 'fixture-media-request'};
 const mediaSuccess = {status: 'applied', assets: [{id: assetId, projectId, name: 'Fixture asset', mimeType: 'video/mp4', sizeBytes: 1, referenceRevision: 2, sha256: null, fingerprint: {sizeBytes: 1, mtimeMs: 0, sampledSha256: 'a'.repeat(64), fullSha256: null}, hashState: 'sampled', url: `/api/projects/${projectId}/media/${assetId}`}], confirmedDirectories: []};
+const updateView = {revision: 1, currentVersion: '0.2.0', state: {kind: 'ready',
+  offer: {version: '0.2.1', currentVersion: '0.2.0', notes: ['Synthetic release']}, installOnQuit: false},
+  notice: null, activity: {exports: false, generations: true}};
+const updateEvent = 'mioon:desktop-update-state:v1';
 const results = [];
 let win, host, scenario = '', offset = 0, releaseChoice, choiceEntered = false;
 const realNow = Date.now;
@@ -115,8 +119,40 @@ app.whenReady().then(async () => {
     check(input.action === 'apply' || input.action === 'discard', 'UNEXPECTED_MEDIA_ACTION');
     return {ok: false, error};
   });
+  if (!config.baseline) ipcMain.handle('mioon:desktop-update:v1', (event, input) => {
+    check(event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame, 'UNOWNED_FRAME');
+    if (input.kind === 'read') return {ok: true, data: updateView};
+    if (input.kind === 'check') throw new Error('PRIVATE_TRANSPORT_DETAIL');
+    check(input.kind === 'install' && input.expectedVersion === '0.2.2', 'UNEXPECTED_UPDATE_ACTION');
+    return {ok: false, error: {code: 'UPDATE_VERSION_CHANGED', status: 409}};
+  });
   await win.loadFile(path.join(directory, 'index.html'));
   await waitFor(() => page('Boolean(window.desktopBridgeErrors?.ready)'));
+  if (!config.baseline) {
+    await run('update-version-fence', async () => {
+      const result = await page("window.desktopBridgeErrors.updateCall('install', '0.2.2', 'now')");
+      check(!result.resolved && !result.error.isError && result.error.code === 'UPDATE_VERSION_CHANGED' &&
+        result.error.status === 409 && result.error.keys.join(',') === 'code,status', 'EXPECTED_UPDATE_PLAIN_ERROR');
+    });
+    await run('update-transport-is-sanitized', async () => {
+      const result = await page("window.desktopBridgeErrors.updateCall('check')");
+      check(!result.resolved && !result.error.isError && result.error.code === 'UPDATE_UNAVAILABLE' &&
+        result.error.status === 503 && result.error.message === null, 'EXPECTED_SAFE_TRANSPORT_ERROR');
+    });
+    await run('update-bridge-is-bounded', async () => {
+      const methods = await page('window.desktopBridgeErrors.watchUpdate()');
+      check(methods.join(',') === 'cancel,check,download,install,read,subscribe', 'UPDATE_METHODS_NOT_FIXED');
+      const result = await page("window.desktopBridgeErrors.updateCall('read')");
+      check(result.resolved && isDeepStrictEqual(result.value, updateView), 'EXPECTED_UPDATE_VIEW');
+      win.webContents.send(updateEvent, {...updateView, private: 'synthetic'});
+      win.webContents.send(updateEvent, updateView);
+      await waitFor(() => page('window.updateViews.length === 1'));
+      check(isDeepStrictEqual(await page('window.updateViews'), [[updateView]]), 'UPDATE_EVENT_LEAKED_ARGUMENTS');
+      await page('window.unwatchUpdate()');
+      win.webContents.send(updateEvent, {...updateView, revision: 2});
+      check(await page('window.updateViews.length') === 1, 'UPDATE_LISTENER_NOT_REMOVED');
+    });
+  }
   await run('adopt-expired', async () => {
     const selection = await call('openSelectedFile');
     check(selection.status === 'copy', 'EXPECTED_COPY_TICKET');

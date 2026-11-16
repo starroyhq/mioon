@@ -85,3 +85,10 @@ contextBridge.exposeInMainWorld('__mioonAppLanguage', createAppLanguageBridge({
 
 import {createAssetImportBridge} from './asset-import-preload.ts';
 contextBridge.exposeInMainWorld('__mioonAssetImport',createAssetImportBridge({invoke:(channel,input)=>ipcRenderer.invoke(channel,input),pathForFile:file=>webUtils.getPathForFile(file)}));
+
+import {createDesktopUpdateBridge} from './desktop-update-preload.ts';
+if (process.isMainFrame) contextBridge.exposeInMainWorld('mioonDesktopUpdate', createDesktopUpdateBridge({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  on: (channel, listener) => {ipcRenderer.on(channel, listener);},
+  removeListener: (channel, listener) => {ipcRenderer.removeListener(channel, listener);},
+}));

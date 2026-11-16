@@ -11,9 +11,10 @@ import type {LanguageSnapshot} from '../packages/i18n/src/preference.ts';
 // and storage boundaries faked. This does not claim native destruction timing.
 const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 const start = main.indexOf('    languageHost = createAppLanguageHost({ systemLanguages,');
-const end = main.indexOf('\n    installMenu();', start);
+const wiringClose = '\n    });';
+const end = main.indexOf(wiringClose, start);
 assert.ok(start >= 0 && end > start, 'The main-process language host must remain testable.');
-const wiring = main.slice(start, end);
+const wiring = main.slice(start, end + wiringClose.length);
 
 interface Delivery {name: string; channel: string; snapshot: unknown}
 interface FakeLanguageHost {dispatch(event: unknown, request: {action: string; preference?: string}): {preference: string; persistence: string; revision: number}; snapshot(): {revision: number}}

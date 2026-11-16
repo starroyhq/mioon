@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { catalogs, validateCatalogs, translate, LOCALES } from '../packages/i18n/src/index.ts';
+import { desktopUpdateMessages } from '../packages/i18n/src/catalogs/desktop-update.ts';
 import type { Locale, MessageKey } from '../packages/i18n/src/index.ts';
 import { compareUILedger, inspectUILiterals, readUILedger, visibleTemplateFragment } from '../scripts/audit-ui-localization.ts';
 
@@ -14,6 +15,10 @@ test('every composed UI and native catalog has exact four-locale and placeholder
     const source = typeof entry['zh-Hans'] === 'string' ? entry['zh-Hans'] : entry['zh-Hans'].other;
     const params = Object.fromEntries([...source.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/gu)].map(([, name]) => [name, name === 'count' ? 2 : `synthetic-${name}`]));
     for (const locale of LOCALES) assert.ok(translate(locale, key as MessageKey, params as never).trim(), `${key}/${locale}`);
+    if (Object.hasOwn(desktopUpdateMessages, key)) {
+      for (const locale of LOCALES) assert.equal(entry[locale], source, `${key}/${locale}: update copy is currently Simplified Chinese`);
+      continue;
+    }
     const english = typeof entry.en === 'string' ? entry.en : `${entry.en.one}\n${entry.en.other}`;
     assert.doesNotMatch(english, /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u, `${key}: source-language prose leaked into English`);
   }

@@ -325,12 +325,14 @@ test('a superseded initial context rejection cannot unmount an established nativ
     if (name === './SettingsRoot.tsx') return { __esModule: true, default: 'settings' };
     if (name === './NativeEditorRoot.tsx') return { __esModule: true, default: 'editor' };
     if (name === './NativeSettingsBackdrop.tsx') return { __esModule: true, default: 'settings-backdrop' };
+    if (name === './DesktopUpdate.tsx') return { DesktopUpdateRoot: 'updates', DesktopUpdateLauncherVersion: 'version' };
     if (name === './desktop-window-client.ts') return { readDesktopWindowBridge: () => bridge };
     assert.fail(name);
   }, module, module.exports, {});
   const render = (): FakeNode => { cursor = 0; return (module.exports.default as (props: Record<string, unknown>) => FakeNode)({ rpc() {}, contractChecks: {}, renderWeb: () => (actual.createElement as (...args: unknown[]) => unknown)('web'), renderEditor: () => (actual.createElement as (...args: unknown[]) => unknown)('editor'), renderSettings: () => null }); };
   render(); effects.splice(0).forEach(effect => effect()); receive!({ contextId: 'current-owner', role: 'editor' });
-  assert.equal((render().props.children as FakeNode).type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal((render().props.children as FakeNode).type, 'editor');
+  const editor = (tree: FakeNode) => ((tree.props.children as FakeNode).props.children as FakeNode).type;
+  assert.equal(editor(render()), 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal(editor(render()), 'editor');
 });
 
 test('scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner', () => {

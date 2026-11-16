@@ -94,7 +94,8 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
     return !dirty && !blocked;
   }
   const sandbox = vm.createContext({ nt: nativeText,
-    __mioonNativeCloseAdmission: { inspect: options.inspect ?? inspect, commit: options.commit ?? commit, cancel: options.cancel ?? cancel },
+    __mioonNativeCloseAdmission: { inspect: options.inspect ?? inspect, commit: options.commit ?? commit, cancel: options.cancel ?? cancel,
+      isSavedForUpdate: () => !dirty && !blocked },
     __mioonFlushWorkspacePreferences: () => options.flush?.() ?? true,
   });
   const kindOf = (code: string) => code.includes('.inspect(') ? 'inspect' : code.includes('.commit(') ? 'commit' : code.includes('.cancel(') ? 'cancel' : 'flush';
@@ -990,7 +991,7 @@ async function reloadMenuHarness(f: ReturnType<typeof fixture>, isCurrent: () =>
   const context = vm.createContext({ nt: nativeText, applicationMenuTemplate, MENU_COMMAND_IDS, identity: {productName: 'Synthetic'},
     process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => nativeWindow,
       windows: () => [nativeWindow], isTrustedDocument: () => true, settingsForParent: () => null},
-    menuCommands: null, applicationMenu: null, applicationWindowList: '', restarting: false, quitting: false,
+    menuCommands: null, applicationMenu: null, applicationWindowList: '', restarting: false, quitting: false, desktopUpdate: undefined,
     trayCanInteract: () => Boolean(isCurrent()) && !f.win.destroyed, trayCanHide: () => false, quitRouter: {allowsWindows: true},
     initialWindowLoads: new WeakMap(), win: nativeWindow, BrowserWindow: { getFocusedWindow: () => nativeWindow },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
@@ -1035,12 +1036,33 @@ async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: obj
   const context = vm.createContext({ nt: nativeText, window, context: { ready: { url: 'http://127.0.0.1:45000' } },
     owner: {url: 'http://127.0.0.1:45000'}, initialLoad: {consumeClose: () => false}, windowHost: {closeStateChanged() {}, isCandidate: () => false},
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
-    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
+    ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined, updateQuit: undefined,
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
   installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   return callbacks;
 }
+
+test('actual main refuses dirty, unknown and unflushed update closes without discard dialogs', async () => {
+  const callbacks = await actualMainAdmissionCallbacks({showMessageBox: () => assert.fail('An update quit cannot discard unsaved work')},
+    {}, () => true, {updateQuit: {closing: true}});
+  assert.equal(await callbacks.confirmClose('close'), false);
+  assert.equal(await callbacks.confirmDiscard('close'), false);
+  assert.equal(await callbacks.confirmUnknown?.(), false);
+  await callbacks.onBlocked('blocked', 'close');
+});
+
+test('update preflight observes clean covered windows without granting a close permit', async t => {
+  const f = fixture(t, {canAct: () => false});
+  assert.equal(await f.admission.savedForUpdate(), true);
+  assert.deepEqual(f.commits, []);
+  assert.equal(f.win.closeCalls, 0);
+  f.change({nextDirty: true});
+  assert.equal(await f.admission.savedForUpdate(), false);
+  assert.ok(f.scripts.every(script => script.includes('.isSavedForUpdate()')));
+  assert.deepEqual(f.commits, []);
+  assert.equal(f.win.closeCalls, 0);
+});
 
 for (const kind of ['confirmClose', 'confirmDiscard', 'confirmUnknown', 'onBlocked'] as const) {
   test(`actual main ${kind} leaves utility heartbeat schedulable while the native dialog awaits its response`, async () => {

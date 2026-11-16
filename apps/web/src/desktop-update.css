@@ -1,0 +1,93 @@
+.launcher-home-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.launcher-home-version-row .launcher-home-version { flex: none; }
+
+.desktop-update-badge.wb-button[data-size="compact"] {
+  gap: 4px;
+  height: 20px;
+  min-height: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: var(--wb-text-min);
+  line-height: 1.25;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-update-badge.wb-button[data-variant="secondary"] {
+  color: var(--wb-soft);
+  background: var(--wb-selected);
+  border-color: transparent;
+}
+
+.desktop-update-badge.wb-button[data-variant="secondary"]:hover { color: var(--wb-text); }
+.desktop-update-badge.wb-button > svg { flex: none; width: 12px; height: 12px; }
+
+.wb-dialog.desktop-update-dialog[data-slot="dialog-content"] {
+  --update-icon-offset: 70px;
+  width: 440px;
+}
+
+.desktop-update-dialog .wb-dialog-heading { padding: 20px 20px 12px var(--update-icon-offset); }
+.desktop-update-dialog .wb-dialog-heading [data-slot="dialog-title"] { padding-right: 0; }
+.desktop-update-dialog .wb-dialog-heading [data-slot="dialog-description"] { color: var(--wb-muted); }
+
+.desktop-update-dialog-icon {
+  position: absolute;
+  inset: 20px auto auto 20px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--wb-selected);
+}
+
+.desktop-update-dialog .wb-dialog-content { padding: 0 20px 0 var(--update-icon-offset); }
+.desktop-update-dialog .wb-dialog-content:empty { display: none; }
+.desktop-update-dialog .wb-dialog-footer { padding: 24px 20px 20px; border-top: 0; }
+.desktop-update-dialog[data-update-state="checking"] .wb-dialog-heading { padding-bottom: 20px; }
+
+.desktop-update-details {
+  min-width: 0;
+  padding: 12px;
+  color: var(--wb-soft);
+  background: var(--wb-card);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.desktop-update-details > strong { color: var(--wb-text); }
+.desktop-update-details > ul { padding-inline-start: 1.2em; margin: 6px 0 8px; list-style: disc; }
+.desktop-update-details > ul > li + li { margin-top: 5px; }
+.desktop-update-details > a { display: inline-flex; align-items: center; gap: 3px; color: var(--wb-text); }
+.desktop-update-details > a:hover { text-decoration: underline; }
+
+.desktop-update-dialog .wb-progress { height: 4px; margin-block: 1px 6px; }
+.desktop-update-progress-details { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; color: var(--wb-muted); }
+.desktop-update-progress-details > span:first-child { color: var(--wb-soft); font-family: var(--wb-font-mono); }
+.desktop-update-activity > p { display: flex; align-items: center; gap: 8px; margin: 0; }
+.desktop-update-activity > p:has(svg) { color: var(--wb-text); }
+.desktop-update-activity > p + p { margin-top: 6px; padding-inline-start: 24px; }
+.desktop-update-activity svg { flex: none; color: var(--wb-warning); }
+.desktop-update-dialog .wb-alert { margin-top: 8px; }
+.desktop-update-toast > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+@media (width < 900px) {
+  .launcher-home-brand:has(.desktop-update-badge) { flex-direction: column; gap: 6px; }
+  .launcher-home-brand .launcher-home-brand-copy:has(.desktop-update-badge) { display: flex; }
+  .launcher-home-brand-copy:has(.desktop-update-badge) > strong { display: none; }
+  .launcher-home-version-row:has(.desktop-update-badge) { flex-direction: column; gap: 4px; }
+  .desktop-update-badge.wb-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+@media (width < 400px) {
+  .wb-dialog.desktop-update-dialog[data-slot="dialog-content"] { --update-icon-offset: 62px; }
+  .desktop-update-dialog .wb-dialog-heading, .desktop-update-dialog .wb-dialog-content { padding-right: 16px; }
+  .desktop-update-dialog-icon { left: 16px; width: 32px; height: 32px; }
+  .desktop-update-dialog .wb-dialog-footer { padding-inline: 16px; flex-wrap: wrap; }
+}
