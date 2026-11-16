@@ -63,6 +63,7 @@ function harness(operations: readonly string[]|undefined = contracts.DURABLE_EDI
 
       if (name === './reference-connections.ts') return references;
       if (name === './icons.tsx' || name === './SubjectVideoSummary.tsx') return { __esModule: true, default: name };
+      if (name === '@mioon/ui/components/workbench-tooltip') return { WorkbenchTooltip: 'WorkbenchTooltip' };
       const primitives:Record<string,string[]> = { '@mioon/ui/components/workbench-controls': ['WorkbenchBadge', 'WorkbenchButton', 'WorkbenchProgress'], '@mioon/ui/components/badge': ['Badge'], '@mioon/ui/components/button': ['Button'], '@mioon/ui/components/input': ['Input'], '@mioon/ui/components/label': ['Label'], '@mioon/ui/components/dialog': ['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription'] };
       if (primitives[name]) return Object.fromEntries(primitives[name].map((key) => [key, key]));
       assert.fail(`Unexpected TaskCenter dependency: ${name}`);

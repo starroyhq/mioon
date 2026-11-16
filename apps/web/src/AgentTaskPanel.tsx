@@ -97,13 +97,14 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const observeMio = useRef<(next: AgentTaskSessionState) => void>(() => {});
   const admission=useRef(isAdmissionAllowed);admission.current=isAdmissionAllowed;
   const canInteract=()=>{try{return admission.current?.()!==false;}catch{return false;}};
-  const visible=workspaceVisible&&canInteract();
+  const admitted=canInteract(),visible=workspaceVisible&&admitted;
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
   const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
-  const [usage,setUsage]=useState<MioUsageState>(EMPTY_MIO_USAGE_STATE),usageReader=useRef<MioUsageController|null>(null);
+  const [usageState,setUsage]=useState<MioUsageState>(EMPTY_MIO_USAGE_STATE),usageReader=useRef<MioUsageController|null>(null);
+  const usage=admitted?usageState:EMPTY_MIO_USAGE_STATE;
   const usageTriggers=useRef(new Map<string,HTMLButtonElement>());
   const [rulesStatus, setRulesStatus] = useState<ProjectRulesSnapshot | null>(null), [rulesReadError, setRulesReadError] = useState(false), [rulesDismissed, setRulesDismissed] = useState<string | null>(null);
   const rulesRefresh = useRef<() => void>(() => {});
@@ -156,7 +157,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     const current=session.current;if(!current)return;
     const next=current.getState();
     usageReader.current?.sync(next.project?.instanceId?{scope:workspaceScope,projectId,instanceId:next.project.instanceId,selectionKey:next.selectionKey,visible:visible&&!historyOpen&&document.visibilityState!=='hidden'}:null,(next.rounds.length?next.rounds:next.snapshot?[next.snapshot]:[]).map(item=>({runId:item.run.id,revision:item.run.revision,terminal:['completed','failed','stopped','reverted'].includes(item.run.status)&&item.backgroundPending!==true})));
-  },[visible,historyOpen,projectId,workspaceScope]);
+  },[admitted,visible,historyOpen,projectId,workspaceScope]);
   function closeUsage(){
     const reader=usageReader.current,epoch=reader?.epoch,trigger=usage.detailRunId?usageTriggers.current.get(usage.detailRunId):null;
     reader?.close();queueMicrotask(()=>{if(usageReader.current===reader&&reader?.epoch===epoch&&visibility.current&&canInteract()&&!historyVisible.current&&document.visibilityState!=='hidden'&&trigger?.isConnected)trigger.focus();});

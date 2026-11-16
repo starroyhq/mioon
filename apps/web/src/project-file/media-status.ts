@@ -10,8 +10,8 @@ export type MediaStatusDisplay =
   | { readonly kind: 'unconfirmed-found' }
   /** Not confirmed yet and only the modification time differs, so it could not be read to compare. */
   | { readonly kind: 'unconfirmed-maybe-changed' };
-/** What the badges show; adds the two states of the check itself. */
-export type MediaStatusUi = MediaStatusDisplay | { readonly kind: 'checking' } | { readonly kind: 'check-failed' };
+/** Pending checks block media reads before their loading label is shown. */
+export type MediaStatusUi = MediaStatusDisplay | { readonly kind: 'pending' | 'checking' | 'check-failed' };
 
 const isMissingReason = (reason: MediaStatusReason): reason is MediaMissingReason => (MEDIA_MISSING_REASONS as readonly string[]).includes(reason);
 /** L1's status as the screens show it. A file outside the project that the

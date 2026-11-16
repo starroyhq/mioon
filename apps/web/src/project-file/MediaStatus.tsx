@@ -10,18 +10,18 @@ import type { ViewState } from './types.ts';
 import './project-file-common.css';
 import './project-file-media.css';
 
-const TONES: Readonly<Record<Exclude<MediaStatusUi['kind'], 'online'>, WorkbenchTone>> = {
+const TONES: Readonly<Record<Exclude<MediaStatusUi['kind'], 'online' | 'pending'>, WorkbenchTone>> = {
   missing: 'danger', changed: 'warning', 'unconfirmed-found': 'neutral', 'unconfirmed-maybe-changed': 'warning', checking: 'neutral', 'check-failed': 'warning',
 };
 /** Tone of a media card's border and name for this status; null when online. */
 export function mediaStatusTone(status: MediaStatusUi): WorkbenchTone | null {
-  return status.kind === 'online' ? null : TONES[status.kind];
+  return status.kind === 'online' || status.kind === 'pending' ? null : TONES[status.kind];
 }
 
 /** Corner label of a media card (12-04). Nothing while the file is online. */
 export function MediaStatusBadge({ status, className }: { readonly status: MediaStatusUi; readonly className?: string }): ReactElement | null {
   const { t } = useI18n();
-  if (status.kind === 'online') return null;
+  if (status.kind === 'online' || status.kind === 'pending') return null;
   return <WorkbenchBadge tone={TONES[status.kind]} className={['pf-media-badge', className].filter(Boolean).join(' ')} data-media-status={status.kind}>
     {status.kind === 'checking' && <span className="wb-spinner" aria-hidden="true" />}{t(`projectFile.media.badge.${status.kind}`)}
   </WorkbenchBadge>;
@@ -29,7 +29,7 @@ export function MediaStatusBadge({ status, className }: { readonly status: Media
 /** One line under the media name saying what the badge means. */
 export function MediaStatusNote({ status }: { readonly status: MediaStatusUi }): ReactElement | null {
   const { t } = useI18n();
-  if (status.kind === 'online') return null;
+  if (status.kind === 'online' || status.kind === 'pending') return null;
   return <span className="pf-media-note" data-tone={TONES[status.kind]} data-media-status={status.kind}>
     {status.kind === 'missing' ? t(`projectFile.media.note.missing.${status.reason}`) : t(`projectFile.media.note.${status.kind}`)}
   </span>;

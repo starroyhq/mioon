@@ -1,5 +1,5 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { createSettingsNavigationRegistry } from './settings-navigation-state.ts';
@@ -16,6 +16,7 @@ import { Button } from '@mioon/ui/components/button';
 import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
 import { retireSettingsBootClose } from './settings-boot-close.ts';
+import type { SettingsBootView } from './settings-boot.ts';
 export interface SettingsRenderProps {
   readonly selected: SettingsConnectionPage;
   readonly page: SettingsPage;
@@ -32,19 +33,23 @@ export interface SettingsRenderProps {
 type SettingsWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
 /** The singleton owns the same settings forms for its entire document life.
  * Requesting editors have no handle capable of clearing or disposing them. */
-export default function SettingsRoot({ context, bridge, contractChecks, renderSettings }: {
-  context: ProjectWindowContext; bridge: ProjectWindowBridge; contractChecks: LauncherContractChecks;
+export default function SettingsRoot({ context, bridge, contractChecks, renderSettings, boot }: {
+  context: ProjectWindowContext; bridge: ProjectWindowBridge; contractChecks: Pick<LauncherContractChecks, 'readIdentity'>;
   renderSettings: (props: SettingsRenderProps) => ReactNode;
+  boot?: SettingsBootView;
 }) {
   const { t, renderMessage } = useI18n();
   const confirm = useConfirmation();
-  const { pauseObservation } = useUiPreferences();
+  const { pauseObservation, phase: appearancePhase, saved: savedAppearance, reload: reloadAppearance } = useUiPreferences();
   const registry = useRef(createSettingsNavigationRegistry()).current, native = useRef(createNativeCloseRegistry()).current;
   const [, rerender] = useState(0);
   const [entryVersion, setEntryVersion] = useState(0);
   const receiveEntry = useRef<(next: ProjectWindowContext) => void>(() => {});
   const [navigation] = useState(() => createSettingsWindowNavigation({ context, registry, confirm, onChange: () => rerender(value => value + 1) }));
   const [workspace, setWorkspace] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const initialAppearance = navigation.page === 'general' && !savedAppearance;
+  const retryAppearance = useRef(false);
+  retryAppearance.current = initialAppearance;
   const [identity] = useState(() => createSettingsWorkspaceIdentityOwner(contractChecks.readIdentity ? {read: contractChecks.readIdentity} : {}));
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   const [closeFailed, setCloseFailed] = useState(false);
@@ -73,6 +78,7 @@ export default function SettingsRoot({ context, bridge, contractChecks, renderSe
     });
     let intent = 0, latestVersion = context.settingsVersion, quitting = context.quitting;
     const receive = (next: ProjectWindowContext) => {
+      if (!current) return;
       if (next.role === 'settings' && next.windowId === context.windowId && next.contextId === context.contextId && next.backendId === context.backendId) {
         latestVersion = Math.max(latestVersion, next.settingsVersion); quitting = next.quitting;
       }
@@ -87,6 +93,9 @@ export default function SettingsRoot({ context, bridge, contractChecks, renderSe
     };
     receiveEntry.current = receive;
     const release = bridge.subscribe(receive);
+    // A new page can be requested while the settings-only module loads.
+    // Subscribe first, then reconcile the latest intent with its host version.
+    if (boot) void bridge.context().then(receive, () => {});
     const visibility = () => setVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', visibility);
     const win = window as SettingsWindow;
@@ -96,10 +105,19 @@ export default function SettingsRoot({ context, bridge, contractChecks, renderSe
       readScope: () => JSON.stringify([context.backendId, context.contextId, navigation.version, identity.getState().appLibraryScope, identity.getState().instanceId, identity.getState().identityBlocked]), readDocumentURL: () => window.location.href });
     const drain = async () => registry.canLeave(registry.capture());
     win.__mioonFlushWorkspacePreferences = drain;
+    const releaseRetry = boot?.registerRetry(() => {
+      if (!current) return;
+      if (identity.getState().phase !== 'ready') void identity.refresh();
+      if (retryAppearance.current) void reloadAppearance();
+    });
     void identity.discover();
-    return () => { current = false; active.current = false; if (receiveEntry.current === receive) receiveEntry.current = () => {}; release(); releaseIdentity(); identity.dispose(); navigation.dispose(); cleanup(); pauseObservation(false); document.removeEventListener('visibilitychange', visibility);
+    return () => { current = false; active.current = false; if (receiveEntry.current === receive) receiveEntry.current = () => {}; release(); releaseRetry?.(); releaseIdentity(); identity.dispose(); navigation.dispose(); cleanup(); pauseObservation(false); document.removeEventListener('visibilitychange', visibility);
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
-  }, [bridge, navigation, native, registry, pauseObservation, identity]);
+  }, [bridge, navigation, native, registry, pauseObservation, reloadAppearance, identity, boot]);
+  useLayoutEffect(() => {
+    if (workspace === 'failed' || initialAppearance && appearancePhase === 'error') boot?.failed('read');
+    else if (workspace === 'ready' && (!initialAppearance || appearancePhase !== 'loading')) boot?.ready();
+  }, [boot, workspace, initialAppearance, appearancePhase]);
   useEffect(() => receiveEntry.current(context), [context]);
   return <main className="project-home project-home-settings-window native-settings-panel"><header className="native-settings-panel-header"><span className="native-settings-panel-title">{t('settings.title')}</span>
       <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}</summary><div><ProjectEntryIdentityStatus owner={identity} workspace /></div></details>

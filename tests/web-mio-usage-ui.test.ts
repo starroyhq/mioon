@@ -101,3 +101,18 @@ test('read failure retains stale real values and passive buttons call only their
   for(const button of buttons){assert.ok(record(button)&&record(button.props));assert.equal(button.props.type,'button');assert.equal(typeof button.props.onClick,'function');(button.props.onClick as ()=>void)();}
   assert.deepEqual(calls,['read','close']);assert.equal(ui.details({...props,open:false},'zh-Hans'),'');
 });
+
+test('the row and details show first-read text only after the controller reveals loading',()=>{
+  const pending:MioUsageView={phase:'pending',value:null,stale:false,code:null,final:false};
+  assert.equal(ui.row({runId,onOpen(){}},'zh-Hans'),'');
+  assert.equal(row(pending),'');
+  assert.doesNotMatch(details(pending),/正在读取用量/);
+  const loading={...pending,phase:'loading' as const};
+  assert.match(row(loading),/正在读取用量/);
+  assert.match(details(loading),/正在读取用量/);
+
+  const refreshing={...ready(),phase:'loading' as const};
+  assert.equal(row(refreshing),row(ready()));
+  assert.match(details(refreshing),/1,000 tokens/);
+  assert.doesNotMatch(details(refreshing),/正在读取用量|读数尚未更新/);
+});

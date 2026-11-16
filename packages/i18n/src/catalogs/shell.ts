@@ -9,18 +9,6 @@ const shellCoreMessages = {
     "en": "Settings",
     "ja": "設定"
   },
-  "settings.categories": {
-    "zh-Hans": "设置分类",
-    "zh-Hant": "設定分類",
-    "en": "Settings categories",
-    "ja": "設定カテゴリ"
-  },
-  "settings.general": {
-    "zh-Hans": "通用",
-    "zh-Hant": "一般",
-    "en": "General",
-    "ja": "一般"
-  },
   "settings.models": {
     "zh-Hans": "生成服务",
     "zh-Hant": "生成服務",

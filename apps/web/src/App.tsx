@@ -12,7 +12,6 @@ import {timelineAudioMediaReadable} from './project-media-readability.ts';
 import type {AssetImportBridge,NativeAssetSelection} from '../../desktop/src/asset-import-preload.ts';
 import type {CanvasClipboardBridge} from '../../desktop/src/canvas-clipboard.ts';
 import { videoBindingCapabilities, parseVideoBinding } from '../../../packages/contracts/src/video-providers.ts';
-import GenerationServicesSettings from './GenerationServicesSettings.tsx';
 import {WorkbenchIcon} from '@mioon/ui/components/workbench-icons';
 import {touchesLockedTrack} from './timeline-track-locks.ts';
 import { timelineCrossfadeCandidates } from './timeline-crossfade-state.ts';
@@ -51,9 +50,7 @@ import type {CanvasEditBase, CanvasTarget} from '../../../packages/contracts/src
 import type {CanvasLayoutInput, CanvasLayoutMove} from '../../../packages/contracts/src/canvas-tidy-layout.ts';
 import CanvasEmptyState from './CanvasEmptyState.tsx';
 import StoryboardStrip from './StoryboardStrip.tsx';
-import SettingsWorkspace from './SettingsWorkspace.tsx';
-import SettingsVideoTools from './SettingsVideoTools.tsx';
-import SettingsAppearance, { UiPreferencesNotice } from './SettingsAppearance.tsx';
+import { UiPreferencesNotice } from './SettingsAppearance.tsx';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
 import { WorkbenchTopbar, WorkbenchInspectorTabs } from './WorkbenchShell.tsx';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
@@ -65,10 +62,8 @@ import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { preflightErrorMessage, preflightIssueMessage, exportCapabilityMessage } from './export-preflight-state.ts';
 import ExportPreview from './ExportPreview.tsx';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from './export-preview-state.ts';
-import AgentSettings from './AgentSettings.tsx';
-import SettingsNavigationSlot from './SettingsNavigationSlot.tsx';
 import { markSettingsClick, type SettingsClick } from './settings-diagnostics.ts';
-import ProjectHomeConnections from './ProjectHomeConnections.tsx';
+import { SettingsConnectionForms } from './SettingsConnectionForms.tsx';
 import { providerDisplayName, jobStatusDescriptor, statusDescriptor, cancelledBeforeSubmit, unsubmittedVideoConnection } from './creation-i18n.ts';
 import { message as msg, renderMessage as renderCoreMessage, type DisplayMessage, type Locale } from '../../../packages/i18n/src/index.ts';
 import LanguageControl from './LanguageControl.tsx';
@@ -125,8 +120,6 @@ import type {TaskWorkspaceContext} from './task-workspace-intent.ts';
 import type {GenerationAsset, GenerationProvider, GenerationShot, GenerationVideoInput} from './generation-settings.ts';
 import type {ProjectEntryIdentityOwner} from './project-entry-identity.ts';
 import type {ProjectHomeProject} from './ProjectHome.tsx';
-import type {SettingsNavigationRegistry} from './settings-navigation-state.ts';
-import type {HomeConnectionSlot} from './ProjectHomeConnections.tsx';
 import type {SettingsPage} from './settings-window-state.ts';
 import type {NativeCloseRegistry} from './native-close-state.ts';
 import type {ProjectOpenAttempt} from './project-open-state.ts';
@@ -441,13 +434,6 @@ export interface AppProps {
 }
 export interface ModalProps {title: React.ReactNode; subtitle?: React.ReactNode; children: React.ReactNode; onClose: () => void; wide?: boolean}
 export interface CreateProjectProps {onClose: () => void; onCreate: (name: string, description: string, timelinePresetId?: string) => unknown; busy?: boolean; newProjectFormatVersion?: 3 | 4}
-export interface SettingsConnectionFormsProps {
-  selected: HomeConnectionSlot; page: SettingsPage; entryVersion?: number; visible: boolean; registry: SettingsNavigationRegistry;
-  onSelect: (slot: HomeConnectionSlot) => void; onPage: (page: SettingsPage) => void; general: React.ReactNode;
-  connectionsAvailable?: boolean; beforeClose?: () => unknown; onClose?: () => void;
-  /** The open project, where the Mio connection test runs; absent in the home screen and the settings window. */
-  projectId?: string | null;
-}
 declare global {
   interface Window {
     __mioonAssetImport?:AssetImportBridge;
@@ -497,17 +483,6 @@ function CreateProject({ onClose, onCreate, busy, newProjectFormatVersion }: Cre
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   return <Modal title={t('projects.newStory')} subtitle={format4 ? undefined : t('projects.newStoryHint')} onClose={onClose}><form className="modal-form" onSubmit={e => { e.preventDefault(); onCreate(name.trim(), format4 ? '' : description.trim(), format4 ? 'portrait_1080' : undefined); }}><Label className="field-label" htmlFor="project-name">{t('projects.name')}</Label><Input id="project-name" data-testid="project-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('projects.namePlaceholder')} maxLength={150} required autoFocus />{!format4 && <><Label className="field-label" htmlFor="project-description">{t('projects.direction')}<span className="optional">{t('shell.optional')}</span></Label><Textarea id="project-description" rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('projects.directionPlaceholder')} /></>}<Button variant="ghost" className="button primary full" data-testid="create-project-submit" disabled={!name.trim() || busy} type="submit"><Icon name="plus" size={16} />{t('projects.create')}</Button></form></Modal>;
-}
-
-export function SettingsConnectionForms({ selected, page, entryVersion, visible, registry, onSelect, onPage, general, connectionsAvailable = true, beforeClose, onClose, projectId = null }: SettingsConnectionFormsProps) {
-  const { t } = useI18n();
-  const generationCategory = ['models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
-  return <ProjectHomeConnections active={visible} workspace={<SettingsWorkspace active={visible && page === 'workspace'} />}
-    videoTools={<SettingsNavigationSlot registry={registry} slot="home:video-tools">{report => <SettingsVideoTools active={visible && page === 'video-tools'} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
-    generationServices={<SettingsNavigationSlot registry={registry} slot="home:generation-services">{report => <GenerationServicesSettings active={visible && connectionsAvailable && generationCategory} page={page} entryVersion={entryVersion} onNavigationStateChange={report} />}</SettingsNavigationSlot>}
-    selected={selected} page={page} connectionsAvailable={connectionsAvailable} onSelect={onSelect} onPage={onPage}
-    general={<>{general}<SettingsNavigationSlot registry={registry} slot="home:appearance">{report => <SettingsAppearance active={visible && page === 'general'} onNavigationStateChange={report} />}</SettingsNavigationSlot></>}
-    panes={{agent: <AgentDockPane visible={visible && connectionsAvailable && page === 'agent'}><SettingsNavigationSlot registry={registry} slot="home:agent">{report => <AgentSettings closeLabel={t('common.closeSettings')} beforeClose={beforeClose as unknown as () => void} onClose={onClose as unknown as () => void} onNavigationStateChange={report} projectId={projectId} />}</SettingsNavigationSlot></AgentDockPane>}} />;
 }
 
 export default function App({ nativeWindow = null, nativeProjectEntry = null }: AppProps = {}) {

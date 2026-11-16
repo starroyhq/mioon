@@ -37,6 +37,51 @@ test('stale revisions and bad run identities preserve old values without automat
   h.controller.refresh(runId);await flush();h.requests[3]!.resolve(usageFixture({revision:3}));await flush();assert.equal(h.state.rounds[runId]!.phase,'ready');assert.equal(h.state.rounds[runId]!.stale,false);h.controller.dispose();
 });
 
+test('the first usage read reveals loading only after one second and clears the timer after a fast reply',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const slow=harness();t.after(()=>slow.controller.dispose());
+  slow.sync();await flush();t.mock.timers.tick(999);
+  assert.equal(slow.state.rounds[runId]!.phase,'pending');
+  t.mock.timers.tick(1);
+  assert.equal(slow.state.rounds[runId]!.phase,'loading');
+  slow.requests[0]!.resolve(usageFixture());await flush();
+  assert.equal(slow.state.rounds[runId]!.phase,'ready');
+
+  const fast=harness();t.after(()=>fast.controller.dispose());
+  fast.sync();await flush();t.mock.timers.tick(999);
+  fast.requests[0]!.resolve(usageFixture());await flush();
+  const settled=fast.state;t.mock.timers.tick(1);
+  assert.equal(fast.state,settled);
+  assert.equal(fast.state.rounds[runId]!.phase,'ready');
+});
+
+test('visibility return keeps known figures quiet, fences an aborted reply, and refreshes the same round',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const h=harness();t.after(()=>h.controller.dispose());
+  const first=usageFixture();
+  h.sync();await flush();
+  h.requests[0]!.resolve(first);await flush();
+  h.controller.open(runId);await flush();
+  h.controller.sync({...owner,visible:false},[{runId,revision:1,terminal:false}]);
+  assert.equal(h.requests[1]!.signal!.aborted,true);
+  assert.equal(h.state.detailRunId,null);
+
+  h.sync();await flush();
+  assert.equal(h.requests.length,3);
+  assert.deepEqual(h.state.rounds[runId]!.value,first);
+  assert.equal(h.state.rounds[runId]!.stale,false);
+  const beforeLate=h.state;
+  h.requests[1]!.resolve(usageFixture({revision:2}));await flush();t.mock.timers.tick(1000);
+  assert.equal(h.state,beforeLate);
+
+  const updated=usageFixture({revision:2,knownTotals:{inputTokens:500,outputTokens:20,cacheReadTokens:300,cacheWriteTokens:0}});
+  h.requests[2]!.resolve(updated);await flush();
+  assert.deepEqual(h.state.rounds[runId]!.value,updated);
+  h.controller.sync({...owner,instanceId:'server-B'},[{runId,revision:1,terminal:false}]);await flush();
+  assert.equal(h.state.rounds[runId]!.value,null);
+  assert.equal(h.state.rounds[runId]!.phase,'pending');
+});
+
 test('project, instance, scope, selection and visibility epochs fence identical IDs and ignored-signal late replies',async()=>{
   for(const patch of [{projectId:'33333333-3333-4333-8333-333333333333'},{instanceId:'server-B'},{scope:'workspace-B'},{selectionKey:'conversation-B'},{visible:false}]){
     const h=harness();h.sync();await flush();h.controller.open(runId);h.controller.sync({...owner,...patch},[{runId,revision:1,terminal:false}]);await flush();

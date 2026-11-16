@@ -21,6 +21,7 @@ import {stripSourceTypes} from './helpers/eval-source.ts';
 import type { ProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import { isProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import type { SettingsPage } from '../apps/web/src/settings-window-state.ts';
+import * as settingsCategories from '../apps/web/src/settings-categories.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = (name: string) => readFileSync(join(root, 'apps/web/src', name), 'utf8');
@@ -55,6 +56,7 @@ function shellHarness() {
     './icons.tsx': { __esModule: true, default: 'Icon' },
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
     './settings-window-state.ts': { isSettingsConnectionPage: (page: string) => slots.includes(page), normalizeSettingsPage: (page: string) => page === 'extensions' ? 'models' : page },
+    './settings-categories.ts': settingsCategories,
     './SettingsExtraPages.tsx': { SettingsAbout:'SettingsAbout', SettingsShortcuts:'SettingsShortcuts' },
   }).default;
   const panes = {agent: {type: 'form:agent', props: {'data-testid': 'owner-agent', value: 'retained-agent'}}};
@@ -214,8 +216,7 @@ test('settings copy has complete locale coverage and native page intentions use 
 });
 
 test('shared native center receives page routing and visibility without replacing existing close admission', () => {
-  const native = source('SettingsRoot.tsx'), app = source('App.tsx');
-  const main = app.slice(app.indexOf('export function SettingsConnectionForms('), app.indexOf('export default function App('));
+  const native = source('SettingsRoot.tsx'), main = source('SettingsConnectionForms.tsx');
   assert.match(native, /installNativeCloseAdmission/u); assert.match(native, /navigation\.selectPage/u);
   assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /await requestClose\(\); return false/u);
   assert.match(main, /<ProjectHomeConnections\b/u); assert.match(main, /selected=\{selected\} page=\{page\}/u); assert.match(main, /slot="home:video-tools"/u);
@@ -241,14 +242,14 @@ test('shared native center receives page routing and visibility without replacin
 });
 
 test('actual parent composition supplies one generation registry owner and keeps every fixed target inside that page', () => {
-  const app = source('App.tsx'), start = app.indexOf('export function SettingsConnectionForms('), end = app.indexOf('export default function App(');
-  assert.ok(start >= 0 && end > start);
+  const app = source('SettingsConnectionForms.tsx'), start = app.indexOf('export function SettingsConnectionForms(');
+  assert.ok(start >= 0);
   const React = {createElement: (type: string, props: Record<string, unknown> | null, ...children: unknown[]) => ({type, props: {...props, children}}), Fragment: 'Fragment'};
   const dependencies = {React, useI18n: () => createI18nTestContext('en'), ProjectHomeConnections: 'ProjectHomeConnections',
     SettingsWorkspace: 'SettingsWorkspace', SettingsNavigationSlot: 'SettingsNavigationSlot', SettingsVideoTools: 'SettingsVideoTools',
     GenerationServicesSettings: 'GenerationServicesSettings', SettingsAppearance: 'SettingsAppearance', AgentDockPane: 'AgentDockPane', AgentSettings: 'AgentSettings'};
   const module: {exports: {SettingsConnectionForms?: (props: Record<string, unknown>) => RootNode}} = {exports: {}};
-  Function('module', 'exports', ...Object.keys(dependencies), transformSync(app.slice(start, end), {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, ...Object.values(dependencies));
+  Function('module', 'exports', ...Object.keys(dependencies), transformSync(app.slice(start), {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, ...Object.values(dependencies));
   const registry = createSettingsNavigationRegistry(), report = () => {}, forms = module.exports.SettingsConnectionForms;
   assert.ok(forms);
   for (const page of ['general','workspace','video-tools','models','extensions','official','custom','comfy','agent'] as const) for (const visible of [true, false]) for (const connectionsAvailable of [true, false]) {
