@@ -84,8 +84,7 @@ function environment(options:HomeOptions = {}) {
     guardProjectNavigation: async (_message: unknown, _dirty: unknown, current: () => unknown) => options.guard ? options.guard(current) : current(),
     pendingForProject: () => [], reconcileWorkspaceState: (state: unknown) => state,
     reconcilePending: (...args: unknown[]) => calls.push(['reconcile', ...args]),
-    // Home navigation starts without a live Mio step; refresh still reads the shared candidate.
-    mioFollowCandidate: { current: null }, mioFollow: null,
+    mioFollow: null,
     // This fixture owns no editing claims; match the empty-owner refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     updateView: (...args: unknown[]) => calls.push(['updateView', ...args]), migrateBrowserStorage() {}, isBusy: () => false,
@@ -200,23 +199,25 @@ test('causal regression: actual refresh cannot publish a response after renderer
   assert.equal(h.calls.length, count); assert.deepEqual((callsOf(h, 'reconcile') as unknown), []);
 });
 
-test('a Mio focus waits for refreshed project data and skips a change superseded during the read', async () => {
-  const held = deferred(); let reads = 0;
-  const h = refreshHarness({ get: projectId => ++reads === 1 ? held.promise : snapshot(projectId) });
-  const first: MioFollowFocus = { runId: id(3), stepId: id(4), text: 'First change', changeId: id(5) };
+test('a live Mio focus stays current through an in-flight project refresh', async () => {
+  const held = deferred(), h = refreshHarness({ get: () => held.promise });
+  const source = section('  const receiveMioFollowFocus =', '  // "待核对" marks');
+  const receive = Function('env', `with (env) { ${source}\nreturn receiveMioFollowFocus; }`)(h.env) as
+    (projectId: string, focus: MioFollowFocus | null) => void;
+  const first: MioFollowFocus = { runId: id(3), stepId: id(4), text: 'First change', phase: 'operate', changeId: id(5) };
   const latest: MioFollowFocus = { ...first, stepId: id(6), text: 'Latest change', changeId: id(7) };
-  const follow = { current: { projectId: id(1), focus: first } };
-  h.env.mioFollowCandidate = follow;
+  receive(id(1), first);
+  assert.deepEqual(h.env.mioFollow, { projectId: id(1), focus: first });
   const old = h.refresh(id(1), false, { opening: true }); await tick();
-  follow.current = { projectId: id(1), focus: latest };
+  receive(id(1), latest);
+  receive(id(2), first);
   held.resolve(snapshot(id(1)));
   assert.deepEqual(await old, snapshot(id(1)));
-  assert.deepEqual(callsOf(h, 'setMioFollow'), []);
-  const start = h.calls.length;
-  assert.deepEqual(await h.refresh(id(1), false, { opening: true }), snapshot(id(1)));
-  assert.deepEqual(h.calls.slice(start).filter(([name]) => name === 'setData' || name === 'setMioFollow')
-    .map(([name]) => name), ['setData', 'setMioFollow']);
-  assert.deepEqual(callsOf(h, 'setMioFollow'), [['setMioFollow', follow.current]]);
+  assert.deepEqual(h.env.mioFollow, { projectId: id(1), focus: latest });
+  assert.deepEqual(callsOf(h, 'setMioFollow'), [
+    ['setMioFollow', { projectId: id(1), focus: first }],
+    ['setMioFollow', { projectId: id(1), focus: latest }],
+  ]);
 });
 
 test('actual selection keeps home visible after preferences resolve until validated project data settles', async () => {

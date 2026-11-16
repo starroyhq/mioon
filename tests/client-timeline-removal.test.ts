@@ -6,7 +6,7 @@ import {clipRemovalKey,displayTimelineFrame} from '../apps/web/src/timeline-remo
 import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {stepPreviewMedia,previewProgress} from '../apps/web/src/preview-playback.ts';
-import {timelinePointerFrame} from '../apps/web/src/timeline-view-geometry.ts';
+import {timelineClientPointAtFrame, timelinePointerFrame} from '../apps/web/src/timeline-view-geometry.ts';
 
 interface RenderedNode {type?: unknown; props?: Record<string, unknown>; [key: string]: unknown}
 type Nodes = RenderedNode[];
@@ -88,4 +88,12 @@ test('ruler, drag and grab pointer coordinates preserve exact layout frames acro
   assert.ok(Math.abs((timelinePointerFrame(clientX,left,width*zoom,width,px) as number)-frame)<1e-9);
  }
  assert.equal(timelinePointerFrame(100,0,0,400,2),null);
+});
+
+test('Mio places a new clip at its frame on the scrolled and scaled track lane', () => {
+ const lane = {offsetWidth: 1000, getBoundingClientRect: () => ({left: -111, top: 340, width: 1250, height: 50})} as HTMLElement;
+ assert.deepEqual(timelineClientPointAtFrame(100, lane, 2), {x: 139, y: 365});
+ assert.equal(timelineClientPointAtFrame(-1, lane, 2), null);
+ assert.equal(timelineClientPointAtFrame(100, lane, 0), null);
+ assert.equal(timelineClientPointAtFrame(100, {...lane, offsetWidth: 0}, 2), null);
 });

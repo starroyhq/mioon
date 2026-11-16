@@ -1,6 +1,6 @@
 import type {TaskPanelChange,TaskPanelSnapshot,TaskPanelState,TaskPanelOptions,TaskPanelStep,ElementProps} from './helpers/strict-agent-ui-types.ts';
 import type {Locale} from '../packages/i18n/src/types.ts';
-import type {AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskJson, AgentTaskSnapshot, AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,7 +83,7 @@ const followChange = (id:string,stepId:string,kind:string,target:string,operatio
   id, stepId, runId, projectId, operation, status:'applied', reversible:true, targets:[{kind,id:target,revision:1,revisionBefore:0,revisionAfter:1}],
 });
 
-test('Mio follows the latest saved target, keeps history passive and moves to the panel for a wait',()=>{
+test('Mio shows live operation focus while retaining durable row locations and passive history',()=>{
   const h=harness({status:'running',followMio:true,changes:[followChange('historical',stepId,'shot',followShot,'shot.create')]});
   try{
     const initial=h.state.snapshot!;
@@ -93,11 +93,10 @@ test('Mio follows the latest saved target, keeps history passive and moves to th
     assert.equal(h.focused.length,0,'refreshing a historical snapshot does not replay its cursor');
     const saved:TaskPanelSnapshot={...initial,run:{...initial.run,revision:2},steps:[...initial.steps,
       {id:'clip-step',kind:'tool',status:'completed',position:2,tier:'local_reversible',text:'Trim the selected clip',toolCall:{name:'mioon_timeline_clip_add',arguments:{}}},
-      {id:'approval',kind:'tool',status:'awaiting_approval',position:3,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}},
     ],changes:[...initial.changes,followChange('new-shot',stepId,'shot',followShot,'shot.update'),followChange('new-clip','clip-step','timeline_clip',followClip,'timeline.clip.add')]};
     publish(saved);
     const target={kind:'timeline_clip',id:followClip,name:translate('zh-Hans','agent.display.target.timeline_clip')};
-    assert.deepEqual(h.focused,[{projectId,focus:{runId:'run',stepId:'clip-step',text:'Trim the selected clip',target,changeId:'new-clip'}}]);
+    assert.deepEqual(h.focused,[{projectId,focus:{runId:'run',stepId:'clip-step',text:'Trim the selected clip',phase:'operate',highlight:true,target,changeId:'new-clip'}}]);
     const row=h.render().find(node=>node.props['data-step-id']==='clip-step');
     assert.equal(row?.props['data-mio-follow'],'true');
     assert.equal(row?.props.style['--mio-follow-color'],mioFollow.mioFollowColor('run'));
@@ -114,30 +113,136 @@ test('Mio follows the latest saved target, keeps history passive and moves to th
     h.setFollowTargetExists(({kind})=>kind!=='timeline_clip');h.render();
     assert.equal(h.find('mio-follow-timeline-clip-step'),undefined);
 
+    const approval:TaskPanelStep={id:'approval',kind:'tool',status:'awaiting_approval',position:3,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{shotId:followShot}}};
+    publish({...updated,run:{...updated.run,revision:4,status:'awaiting_approval'},steps:[...updated.steps,approval]});
+    assert.equal(h.focused.at(-1)?.focus?.phase,'approval');
+    assert.deepEqual(h.focused.at(-1)?.focus?.target,{kind:'shot',id:followShot,name:'镜头 03'});
+    assert.equal(h.find('mio-follow-canvas-approval'),undefined,'approval focus alone has no durable row action');
+
     const goal:TaskPanelStep={id:'goal-step',kind:'tool',status:'completed',position:4,tier:'read_only',text:'Check the requested subtitles',toolCall:{name:'mioon_goal_set',arguments:{}}};
-    const read={...updated,run:{...updated.run,revision:4},steps:[...updated.steps,goal]};
+    const read={...updated,run:{...updated.run,revision:5},steps:[...updated.steps,goal]};
     publish(read);
-    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'goal-step',text:'Check the requested subtitles'}});
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'goal-step',text:'Check the requested subtitles',phase:'idle'}});
     assert.ok(renderedText(h.render().find(node=>node.props['data-step-id']==='goal-step')!).includes(translate('zh-Hans','agent.panel.goal.title')));
-    publish({...read,run:{...read.run,revision:5},steps:[...read.steps,{id:'wait-step',kind:'tool',status:'dispatch_started',position:5,text:'Wait for the submitted job',toolCall:{name:'mioon_task_wait',arguments:{id:followShot}}}]});
-    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'wait-step',text:'Wait for the submitted job'}});
+    publish({...read,run:{...read.run,revision:6},steps:[...read.steps,{id:'wait-step',kind:'tool',status:'dispatch_started',position:5,text:'Wait for the submitted job',toolCall:{name:'mioon_task_wait',arguments:{id:followShot}}}]});
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:{runId:'run',stepId:'wait-step',text:'Wait for the submitted job',phase:'idle'}});
     assert.equal(h.find('mio-follow-canvas-wait-step'),undefined);
     h.setVisible(false);h.render();
     assert.deepEqual(h.focused.at(-1),{projectId,focus:null});
   }finally{h.unmount();}
 });
 
-test('a matching fast Mio send focuses its first already-committed snapshot',()=>{
+test('a matching live send may focus its first applied snapshot and clears at round end',()=>{
   const h=harness({status:'completed',followMio:true});
   try{
     const runId='just-sent',requestId='send-receipt';
     const current=h.state.snapshot!;
-    h.state.snapshot={...current,run:{...current.run,...{id:runId,requestId}},steps:[{id:stepId,kind:'tool',status:'completed',tier:'local_reversible',toolCall:{name:'mioon_shot_create',arguments:{}}}],changes:[followChange('created',stepId,'shot',followShot,'shot.create',runId)]};
+    h.state.snapshot={...current,run:{...current.run,...{id:runId,requestId},status:'running'},steps:[{id:stepId,kind:'tool',status:'completed',tier:'local_reversible',toolCall:{name:'mioon_shot_create',arguments:{}}}],changes:[followChange('created',stepId,'shot',followShot,'shot.create',runId)]};
     h.state.pending={action:'send',requestId};h.state.rounds=[h.state.snapshot];h.options.onChange(h.state);h.render();
     assert.deepEqual(h.focused.at(-1)?.focus?.target,{kind:'shot',id:followShot,name:'镜头 03'});
     assert.equal(h.focused.at(-1)?.focus?.changeId,'created');
     assert.equal(h.focused.at(-1)?.focus?.text,translate('zh-Hans','agent.display.operation.shot.create'));
+    h.state.snapshot={...h.state.snapshot,run:{...h.state.snapshot.run,revision:2,status:'completed'}};
+    h.state.pending=null;h.state.rounds=[h.state.snapshot];h.options.onChange(h.state);h.render();
+    assert.deepEqual(h.focused.at(-1),{projectId,focus:null});
   }finally{h.unmount();}
+});
+
+const followTrack = '66666666-6666-4666-8666-666666666666', followNode = '77777777-7777-4777-8777-777777777777';
+const liveRunId = '88888888-8888-4888-8888-888888888888', liveRequestId = 'pending-follow-send';
+const followTime = '2026-01-02T00:00:00.000Z';
+const livePresentation = {locale:'zh-Hans' as const, exists: ({id}: Parameters<MioFollowTargetExists>[0]) =>
+  [followShot, followNode, followClip, followTrack].includes(id)};
+const liveTool = (name: string, args: AgentTaskJson, overrides: Partial<AgentTaskStep> = {}): AgentTaskStep => ({
+  id:stepId,runId:liveRunId,position:1,kind:'tool',status:'intent',createdAt:followTime,updatedAt:followTime,
+  toolCall:{id:'mioon-follow-intent',name,arguments:args},...overrides,
+});
+const liveSnapshot = (steps: AgentTaskStep[], revision = 1): AgentTaskSnapshot => ({
+  run:{id:liveRunId,projectId,requestId:liveRequestId,text:'Follow a workbench operation',status:'running',revision,
+    stepsUsed:steps.length,budget:30,stepLimit:30,configuration:{},createdAt:followTime,updatedAt:followTime},
+  steps,changes:[],
+});
+const focusOn = (step: AgentTaskStep) => mioFollow.createMioFollowTracker().observe(liveSnapshot([step]), livePresentation, true, liveRequestId);
+
+test('live tool intent follows a visible-domain identity before dispatch or approval',()=>{
+  const step = liveTool('mioon_shot_update',{shotId:followShot});
+  const tracker = mioFollow.createMioFollowTracker();
+  const initial = tracker.observe(liveSnapshot([step]),livePresentation,true,liveRequestId);
+  assert.equal(initial?.target?.id,followShot);
+  assert.equal(initial?.phase,'operate');
+  assert.equal(initial?.highlight,true);
+  const dispatch = liveSnapshot([{...step,status:'dispatch_started'}],2);
+  assert.equal(tracker.observe(dispatch,livePresentation,true),undefined,'dispatch on the same object keeps the cursor');
+  const approval = tracker.observe(liveSnapshot([{...step,status:'awaiting_approval'}],3),livePresentation,true);
+  assert.equal(approval?.target?.id,followShot);
+  assert.equal(approval?.phase,'approval');
+  assert.equal(approval?.highlight,true);
+  assert.equal(focusOn(liveTool('mioon_timeline_track_update',{trackId:followTrack}))?.target?.kind,'timeline_track');
+  const recorded = liveTool('mioon_timeline_clip_remove',{}, {targets:[
+    {kind:'timeline_track',id:followTrack,revision:1},{kind:'timeline_clip',id:followClip,revision:1},
+  ]});
+  assert.equal(focusOn(recorded)?.target?.id,followClip,'a clip wins over its parent track');
+});
+
+test('concrete reads follow without a highlight and unscoped tool parameters stay idle',()=>{
+  for (const step of [
+    liveTool('mioon_previs_inspect',{nodeId:followNode}),
+    liveTool('mioon_version_list',{shotId:followShot}),
+    liveTool('mioon_timeline_clip_loudness',{clipId:followClip}),
+  ]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'operate');
+    assert.ok(focus.target);
+    assert.equal(focus.highlight,false);
+  }
+  for (const step of [
+    liveTool('mioon_shot_inspect',{shotId:followShot}),
+    liveTool('mioon_task_wait',{id:followShot},{targets:[{kind:'shot',id:followShot,revision:1}]}),
+    liveTool('mioon_shot_update',{shotId:'99999999-9999-4999-8999-999999999999'}),
+    liveTool('mioon_shot_update',{shotId:followShot},{status:'rejected'}),
+    liveTool('mioon_ask',{},{status:'awaiting_answer'}),
+  ]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'idle');
+    assert.equal(focus.target,undefined);
+  }
+});
+
+test('creation intents use real canvas, timeline or subtitle placement before a new object exists',()=>{
+  const canvasLocation = {kind:'canvas',x:-25,y:65};
+  const timelineLocation = {kind:'timeline',trackId:followTrack,startFrame:150};
+  const clip = liveTool('mioon_timeline_clip_add',{trackId:followTrack,startFrame:150}, {
+    targets:[{kind:'timeline_track',id:followTrack,revision:1}],
+  });
+  const node = liveTool('mioon_node_create',{type:'text',position:{x:-25,y:65}});
+  assert.deepEqual(focusOn(node)?.location,canvasLocation);
+  assert.deepEqual(focusOn(clip)?.location,timelineLocation);
+  assert.deepEqual(focusOn(liveTool('mioon_timeline_subtitle_add',{startFrame:25}))?.location,
+    {kind:'timeline',trackId:'subtitle',startFrame:25});
+  for (const step of [node,clip]) {
+    const focus = focusOn(step);
+    assert.equal(focus?.phase,'operate');
+    assert.equal(focus.target,undefined);
+    assert.equal(focus.highlight,undefined);
+  }
+  for (const step of [
+    liveTool('mioon_shot_create',{title:'No planned location'}),
+    liveTool('mioon_timeline_clip_add',{trackId:followTrack}, {targets:clip.targets}),
+    liveTool('mioon_timeline_clip_add',{trackId:'subtitle',startFrame:150}),
+    liveTool('mioon_node_create',{position:{x:'25',y:65}}),
+  ]) assert.equal(focusOn(step)?.phase,'idle');
+
+  const tracker = mioFollow.createMioFollowTracker();
+  tracker.observe(liveSnapshot([clip]),livePresentation,true,liveRequestId);
+  const applied = liveSnapshot([{...clip,status:'completed'}],2);
+  applied.changes = [{...followChange('created-clip',stepId,'timeline_clip',followClip,'timeline.clip.add',liveRunId),
+    status:'applied',before:null,after:null,createdAt:followTime}];
+  const next = tracker.observe(applied,livePresentation,true);
+  assert.equal(next?.target?.id,followClip);
+  assert.deepEqual(next?.location,timelineLocation);
+  assert.equal(next?.highlight,true);
+  const model: AgentTaskStep = {...node,id:followNode,kind:'model',position:2,toolCall:undefined};
+  assert.equal(tracker.observe(liveSnapshot([...applied.steps,model],3),livePresentation,true)?.phase,'idle');
 });
 
 test('Mio follow is on by default and saves only the requested setting with an exact retry',async()=>{

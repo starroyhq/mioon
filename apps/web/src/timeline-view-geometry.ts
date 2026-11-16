@@ -23,3 +23,11 @@ export function timelinePointerFrameAtElement(clientX: number, element: HTMLElem
   const layoutWidth=Number.parseFloat(style.width)+(style.boxSizing==='border-box'?0:value('padding-left')+value('padding-right')+value('border-left-width')+value('border-right-width'));
   return timelinePointerFrame(clientX,rect.left,rect.width,layoutWidth,pixelsPerFrame);
 }
+
+export function timelineClientPointAtFrame(frame: number, lane: HTMLElement, pixelsPerFrame: number): { x: number; y: number } | null {
+  const rect = lane.getBoundingClientRect(), layoutWidth = lane.offsetWidth;
+  if (!Number.isFinite(frame) || frame < 0 || !Number.isFinite(pixelsPerFrame) || pixelsPerFrame <= 0
+    || layoutWidth <= 0 || rect.width <= 0 || rect.height <= 0) return null;
+  // The lane rectangle already reflects scroll and CSS scaling.
+  return { x: rect.left + frame * pixelsPerFrame * rect.width / layoutWidth, y: rect.top + rect.height / 2 };
+}
