@@ -35,6 +35,12 @@ page.desktopBridgeErrors = {
     };
   },
   call(method, input) {return invoke(entry, method, input);},
+  updateCall(method, ...args) {return capture(() => page.mioonDesktopUpdate[method](...args));},
+  watchUpdate() {
+    page.updateViews = [];
+    page.unwatchUpdate = page.mioonDesktopUpdate.subscribe((...args) => page.updateViews.push(args));
+    return Object.keys(page.mioonDesktopUpdate).sort();
+  },
   startBlockedChoice() {
     page.blockedChoice = capture(() => entry.chooseLocation({purpose: 'duplicate', suggestedName: 'Fixture project', message: 'Fixture location'}));
   },

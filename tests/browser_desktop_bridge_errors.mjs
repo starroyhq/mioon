@@ -86,7 +86,7 @@ try {
   const passed = report?.results.filter(value => value.passed).length ?? 0, total = report?.results.length ?? 0;
   // A generic artifact name keeps local workspace and home paths out of output.
   console.log(JSON.stringify({mode: baseline ? 'baseline' : 'current', artifact: path.basename(output), electron: report?.electron ?? null, exitCode: code, passed, total}));
-  if (code !== 0 || total !== 16 || passed !== total || !report?.isolation.sandbox || !report?.isolation.contextIsolation || report?.isolation.nodeIntegration !== false) process.exitCode = 1;
+  if (code !== 0 || total !== (baseline ? 16 : 19) || passed !== total || !report?.isolation.sandbox || !report?.isolation.contextIsolation || report?.isolation.nodeIntegration !== false) process.exitCode = 1;
 } catch (error) {
   const code = /^[A-Z_]+$/u.test(error?.message ?? '') ? error.message : 'FIXTURE_SETUP_FAILED';
   if (output) fs.writeFileSync(path.join(output, 'setup-error.json'), JSON.stringify({code, errors: (error?.errors ?? [{text: String(error?.message ?? code)}]).map(value => ({text: scrub(value.text)}))}, null, 2) + '\n');

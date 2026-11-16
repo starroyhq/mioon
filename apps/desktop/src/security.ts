@@ -98,7 +98,8 @@ export function installSessionPolicy(session: Session, origin: string, getWindow
   });
 }
 
-export function installWindowPolicy(win: BrowserWindow, origin: string, assignedNavigation?: AssignedProjectNavigation): (() => void) | undefined {
+export function installWindowPolicy(win: BrowserWindow, origin: string, assignedNavigation?: AssignedProjectNavigation,
+  openUpdateLink?: (url: string) => void): (() => void) | undefined {
   const contents = win.webContents;
   const settings = assignedNavigation?.url === `${origin}/settings.html`;
   const blockNavigation = (event: Event & {readonly url?: string}, target: string) => { if (!isAllowedNavigation(event.url || target, origin, settings)) event.preventDefault(); };
@@ -109,7 +110,10 @@ export function installWindowPolicy(win: BrowserWindow, origin: string, assigned
     if (!event.isMainFrame || !isAllowedNavigation(event.url, origin, settings)) event.preventDefault();
   });
   contents.on('will-attach-webview', event => event.preventDefault());
-  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.setWindowOpenHandler(details => {
+    if (openUpdateLink && details && !details.postBody && isAllowedNavigation(contents.getURL(), origin, settings)) openUpdateLink(details.url);
+    return { action: 'deny' };
+  });
   if (assignedNavigation) return installAssignedProjectNavigation(contents, assignedNavigation);
   return undefined;
 }

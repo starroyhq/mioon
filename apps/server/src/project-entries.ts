@@ -60,7 +60,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = PROJECT_FILE_SCHEMA_VERSION, catalogClient, catalogTimeoutMs}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = PROJECT_FILE_SCHEMA_VERSION, catalogClient, catalogTimeoutMs, updateActivity}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -69,6 +69,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly readScope: () => string;
   readonly createProject: (input: ProjectEntryCreateInput) => Promise<{readonly registration: RecentProject}>;
   readonly refreshSummaries: () => void;
+  readonly updateActivity?: ProjectEntryControlPort['updateActivity'];
   readonly markRecentOpened?: (projectId: string, lastOpenedAt: string) => void;
   readonly templates?: readonly ProjectDesktopTemplate[];
   readonly copies?: Pick<ProjectCopies, 'duplicate' | 'saveAs' | 'replay' | 'adoptCopy' | 'copyTo' | 'instantiateTemplate' | 'replayAction'>;
@@ -279,6 +280,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
       return projectEntrySourceObservationSchema.parse({source:{sourceProjectId:metadata.projectId,sourceFile:projectFile,sourceIdentity:identity,sourceStamp:{contentSequence:metadata.contentSequence,contentToken:metadata.contentToken}},name:metadata.name,original});
     }}:{}),
     listRecent: () => list(true),
+    ...(updateActivity ? {updateActivity: () => {scope(); return updateActivity();}} : {}),
     observeFormat: async raw => {
       scope();
       const {projectFile, preview} = parse(projectEntryObserveFormatInputSchema, raw);

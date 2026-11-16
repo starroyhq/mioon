@@ -310,6 +310,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, targetFormat, catalogClient,
       catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
+      updateActivity: () => {
+        const active = appLibrary.taskIndex.list().filter(task => task.phase === 'prepared' || task.phase === 'active');
+        return {exports: active.some(task => task.kind === 'export'),
+          generations: active.some(task => task.kind === 'job' || task.kind === 'image_task' || task.kind === 'subject_variant_batch')};
+      },
       markRecentOpened: (projectId, lastOpenedAt) => app.ui.markOpened(projectId, lastOpenedAt),
       templates:projectTemplates.flatMap(entry=>entry.manifest.templateId==='timeline-basics'&&entry.manifest.version===1?[{id:'timeline-basics' as const,version:1 as const}]:[]),
       copyOriginal:candidate=>{const originalPath=appLibrary.registry.copyOf(candidate),entry=originalPath?appLibrary.registry.get(candidate.projectId):null;return entry?.projectFile===originalPath?entry:null;},

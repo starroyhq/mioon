@@ -80,6 +80,8 @@ type BoundedResult = { ok: true; value: unknown } | { ok: false };
 const DEFAULT_TIMEOUT_MS = 1500;
 const RELOAD_PREPARATION_TIMEOUT_MS = 10000;
 const flushScript = "typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : false";
+const inspectScript = (action: NativeCloseAction, targetUrl: string | null) =>
+  `typeof globalThis.__mioonNativeCloseAdmission?.inspect === 'function' ? globalThis.__mioonNativeCloseAdmission.inspect(${JSON.stringify(action)},${JSON.stringify(targetUrl)}) : null`;
 
 function inspection(value: unknown): NativeCloseInspection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -222,8 +224,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       }
       // Retirement may have taken time and input may have changed. Inspect only
       // now; its final ticket still gets the original independent 1.5s lease.
-      const inspectScript = `typeof globalThis.__mioonNativeCloseAdmission?.inspect === 'function' ? globalThis.__mioonNativeCloseAdmission.inspect(${JSON.stringify(attempt.action)},${JSON.stringify(attempt.targetUrl)}) : null`;
-      const result = await bounded(() => contents.executeJavaScript(inspectScript), attempt.abort.signal, Date.now() + timeoutMs);
+      const result = await bounded(() => contents.executeJavaScript(inspectScript(attempt.action, attempt.targetUrl)), attempt.abort.signal, Date.now() + timeoutMs);
       if (!current(attempt)) { cancel(attempt); return; }
       const captured = result.ok ? inspection(result.value) : null;
       if (!captured) { cancel(attempt, 'unavailable'); return; }
@@ -448,6 +449,14 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     /** Presentation only: hiding must not conceal an in-flight native close or
      * reload. This state cannot grant or replace any admission ticket. */
     get pending() { return active !== null || loading.size !== 0; },
+    async savedForUpdate(): Promise<boolean> {
+      const url = readUrl(), generation = documentGeneration, observed = serial;
+      if (!url || active || loading.size) return false;
+      const result = await bounded(() => contents.executeJavaScript(inspectScript('close', null)),
+        new AbortController().signal, Date.now() + timeoutMs);
+      return result.ok && inspection(result.value)?.disposition === 'clean' &&
+        !active && !loading.size && generation === documentGeneration && observed === serial && readUrl() === url;
+    },
     /** Only the captured, already-allowed current URL is reloadable. Callers
      * cannot supply a destination or repurpose a close approval. */
     requestReload,

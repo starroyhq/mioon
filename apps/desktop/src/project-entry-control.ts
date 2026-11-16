@@ -28,7 +28,7 @@ export function safeProjectEntryControlError(error:unknown){
  const parsed=projectEntryControlErrorSchema.safeParse({code,status,details});return parsed.success?parsed.data:{code:'PROJECT_ENTRY_UNAVAILABLE',status:503,details:{}};
 }
 const windowId=(command:ProjectEntryControlCommand):string|undefined=>'windowId'in command.input?command.input.windowId:undefined;
-const mutates=(command:ProjectEntryControlCommand)=>command.operation==='openPath'||command.operation==='acquire'?Boolean(command.input.formatUpgrade):!['capabilities','listRecent','prepareAcquire','inspectCopy','observeSource','observeFormat','readOnlyFormat','release','mediaRelinkCandidate','mediaRelinkDiscard'].includes(command.operation);
+const mutates=(command:ProjectEntryControlCommand)=>command.operation==='openPath'||command.operation==='acquire'?Boolean(command.input.formatUpgrade):!['capabilities','listRecent','updateActivity','prepareAcquire','inspectCopy','observeSource','observeFormat','readOnlyFormat','release','mediaRelinkCandidate','mediaRelinkDiscard'].includes(command.operation);
 const responseBudget=(command:ProjectEntryControlCommand)=>command.operation==='listRecent'?PROJECT_ENTRY_LIMITS.responseBytes:command.operation==='readOnlyFormat'?PROJECT_FORMAT_READ_ONLY_LIMITS.bytes+1024:command.operation.startsWith('mediaRelink')?NATIVE_ASSET_MEDIA_LIMITS.responseBytes:PROJECT_ENTRY_CONTROL_LIMITS.requestBytes;
 
 /** Main's bounded client is tied to one exact utility generation. It never
@@ -81,6 +81,7 @@ export function createProjectEntryControlClient({backendId,send,isCurrent=()=>tr
   },
   capabilities:()=>request({operation:'capabilities',input:{}}),
   listRecent:()=>request({operation:'listRecent',input:{}}),
+  updateActivity:()=>request({operation:'updateActivity',input:{}},{timeoutMs:2000}),
   prepareAcquire:(input:{projectId:string})=>request({operation:'prepareAcquire',input}),
   create:(input:Parameters<ProjectEntryControlPort['create']>[0])=>request({operation:'create',input}),
   openPath:(input:Parameters<ProjectEntryControlPort['openPath']>[0])=>request({operation:'openPath',input}),
@@ -125,7 +126,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
  const respond=(requestId:string,error:unknown)=>{if(!closed&&isCurrent())send({type:'project-entry-control-response',version:1,backendId,requestId,ok:false,error:safeProjectEntryControlError(error)});};
  const abandoned=(requestId:string,command:ProjectEntryControlCommand)=>({type:'project-entry-control-response',version:1,backendId,requestId,ok:false,error:safeProjectEntryControlError(failure(mutates(command)?'PROJECT_ENTRY_OUTCOME_UNKNOWN':'PROJECT_ENTRY_UNAVAILABLE',{requestId,operation:command.operation}))});
  const remember=(requestId:string,command:ProjectEntryControlCommand,fingerprint:string,response:unknown,retired=false)=>{
-  if(closed||command.operation==='listRecent')return;
+  if(closed||command.operation==='listRecent'||command.operation==='updateActivity')return;
   completed.set(requestId,{command,fingerprint,response,retired});if(completed.size>PROJECT_ENTRY_CONTROL_LIMITS.completed)completed.delete(completed.keys().next().value!);
  };
  const retire=(requestId:string,entry:{command:ProjectEntryControlCommand;response:unknown;retired:boolean},releaseWindow=true)=>{
@@ -143,6 +144,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'prepareAcquire':if(!control.prepareAcquire)throw failure();return control.prepareAcquire(command.input);
   case 'markOpened':if(!control.markOpened)throw failure();return control.markOpened(command.input);
   case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input.windowId);return true;
+  case 'updateActivity':if(!control.updateActivity)throw failure();return control.updateActivity();
   case 'inspectCopy':if(!control.inspectSelectedCopy)throw failure();return control.inspectSelectedCopy(command.input);
   case 'observeSource':if(!control.observeSource)throw failure();return control.observeSource(command.input);
   case 'observeFormat':if(!control.observeFormat)throw failure();return control.observeFormat(command.input);

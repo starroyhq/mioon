@@ -12,7 +12,8 @@ import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
 import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project-file-ui.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard } from 'electron';
+import {desktopUpdateMessages} from '../../../packages/i18n/src/catalogs/desktop-update.ts';
+import { app, autoUpdater as squirrelUpdater, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {createMediaToolsInstaller} from './media-tools.ts';
@@ -82,6 +83,14 @@ import {createProjectLocationHelp} from './project-location-help.ts';
 import {createAssetRelinkHost} from './asset-relink-host.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
+import {DESKTOP_UPDATE_CHANNEL, DESKTOP_UPDATE_EVENT} from '../../../packages/contracts/src/desktop-update.ts';
+import {createDesktopUpdate, isDesktopUpdateExternalUrl} from './desktop-update.ts';
+import {createMacDesktopUpdater, createMacDesktopUpdateVerifier} from './desktop-update-mac-verify.ts';
+import {installDesktopUpdateNetworkPolicy} from './desktop-update-network.ts';
+import {createDesktopUpdateHost} from './desktop-update-host.ts';
+import type {UpdateDocument} from './desktop-update-host.ts';
+import {createDesktopUpdateQuit} from './desktop-update-quit.ts';
+import {createDesktopUpdateReopen} from './desktop-update-reopen.ts';
 
 type DesktopStartup = ReturnType<typeof createDesktopStartup>;
 type ProjectWindowHost = ReturnType<typeof createProjectWindowHost<BrowserWindow>>;
@@ -130,6 +139,16 @@ function requestApplicationQuit(source: BrowserWindow | undefined): Promise<bool
   // stack. Never move that permit to a settings child or wait and reuse it.
   const settings = source ? windowHost?.settingsForParent(source) : null;
   if (settings) { if (!settings.isDestroyed()) settings.focus(); return Promise.resolve(false); }
+  if (updateQuit?.pending) return updateQuit.pending.catch(quitFailed);
+  const update = desktopUpdate?.state();
+  if (update?.kind === 'ready' && update.installOnQuit && updateQuit) {
+    return updateQuit.request(update.offer.version, false, source).then(closed => {
+      if (!closed && source && ownsWindow(source, windowContext)) void showOwnedDialog(source, windowContext, {
+        type: 'warning', message: desktopUpdateMessages['desktopUpdate.saveBeforeQuit']['zh-Hans'], buttons: [nt('native.acknowledge')],
+      }).catch(() => {});
+      return closed;
+    }).catch(quitFailed);
+  }
   return quitRouter.request(source).catch(quitFailed);
 }
 
@@ -169,6 +188,9 @@ const rendererDiagnostics = !startupStorageError && typeof createRendererDiagnos
 let win: BrowserWindow | null = null, backend: BackendSupervisor | null = null, activeSession: Session | null = null, ready: BackendReady | null = null, restarting = false, quitting = false;
 type RestartProject = {projectId: string; name: string};
 let restartProjects: readonly RestartProject[] | undefined;
+let desktopUpdate: ReturnType<typeof createDesktopUpdate> | undefined;
+let updateHost: ReturnType<typeof createDesktopUpdateHost> | undefined;
+let updateQuit: ReturnType<typeof createDesktopUpdateQuit<BrowserWindow>> | undefined;
 // Native trash can outlive its utility; retain its project fence across hosts.
 const projectActionReservations = new Map<string, object>();
 let agentSettings: DesktopAgentSettings | null = null;
@@ -910,7 +932,17 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   });
   const initialLoad = observeInitialProjectLoad(window, owner.url, () => ownsWindow(window, context));
   initialWindowLoads.set(window, initialLoad);
-  installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
+  installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() }, url => {
+    if (desktopUpdate?.state().kind !== 'disabled' && updateHost && updateDocument(window)?.isCurrent() && isDesktopUpdateExternalUrl(url)) {
+      void shell.openExternal(url).catch(() => {});
+    }
+  });
+  if (owner.role !== 'settings' && updateHost) window.once('show', () => {
+    setImmediate(() => {
+      const document = updateDocument(window);
+      if (document) updateHost?.start(document);
+    });
+  });
   const closeDialog = async (options: MessageBoxOptions): Promise<number> => {
     const host = windowHost;
     if (!host?.isCandidate(window)) return showOwnedDialog(window, context, options);
@@ -943,19 +975,19 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       return document?.window === window && document.backendId === owner.backendId
         ? context.audioHost?.retireOwnerForReload({ ...document, projectId: document.projectId as string, contents }, signal) ?? false : false;
     },
-    confirmClose: action => Boolean(smokeOutput) || closeDialog({ type: 'warning', title: nt('native.draftTitle'),
+    confirmClose: action => !updateQuit?.closing && (Boolean(smokeOutput) || closeDialog({ type: 'warning', title: nt('native.draftTitle'),
       message: nt(action === 'reload' ? 'native.draftReloadMessage' : 'native.draftQuitMessage'),
       detail: nt(action === 'reload' ? 'native.draftReloadDetail' : 'native.draftQuitDetail'),
-      buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmUnknown: () => closeDialog({ type: 'warning', title: nt('native.unknownTitle'),
+      buttons: [action === 'reload' ? nt('native.reloadAnyway') : nt('native.quitAnyway'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0)),
+    confirmUnknown: () => !updateQuit?.closing && closeDialog({ type: 'warning', title: nt('native.unknownTitle'),
       message: nt('native.unknownMessage'),
       detail: nt('native.unknownDetail'),
       buttons: [nt('native.understandClose'), nt('native.keepWindow')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
-    confirmDiscard: action => smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
+    confirmDiscard: action => updateQuit?.closing ? false : smokeOutput && typeof smokeDiscardDecision === 'boolean' ? smokeDiscardDecision : closeDialog({ type: 'question', title: nt('native.unsavedTitle'),
       message: nt(action === 'reload' ? 'native.discardReloadMessage' : 'native.discardQuitMessage'), detail: nt(action === 'reload' ? 'native.discardReloadDetail' : 'native.discardQuitDetail'),
       buttons: [nt('native.discard'), nt('native.keepEditing')], defaultId: 1, cancelId: 1 }).then(response => response === 0),
     onBlocked: async reason => {
-      if (smokeOutput) return;
+      if (smokeOutput || updateQuit?.closing) return;
       // A ready report racing the P0 snapshot can request one fresh close
       // after retention. Keep any notice attached to the original visible owner.
       if (windowHost?.isCandidate(window)) {
@@ -1010,10 +1042,9 @@ async function cleanupStoppedBackend() {
   ready = null;
 }
 
-async function restart(): Promise<boolean> {
-  if (restartCoordinator.state !== 'idle') return restartCoordinator.request();
+function openedProjectWindows(): readonly RestartProject[] {
   const host = windowHost;
-  const snapshot = (host?.windows() ?? []).flatMap(window => {
+  return (host?.windows() ?? []).flatMap(window => {
     const projectId = host?.contextFor(window)?.editorProjectId;
     if (!projectId) return [];
     let name = '';
@@ -1021,6 +1052,11 @@ async function restart(): Promise<boolean> {
     catch { /* A closing native window may no longer expose its title. */ }
     return [{projectId, name: name || `${nt('native.menuProjectWindow')} ${projectId.slice(0, 8)}`}];
   });
+}
+
+async function restart(): Promise<boolean> {
+  if (restartCoordinator.state !== 'idle') return restartCoordinator.request();
+  const snapshot = openedProjectWindows();
   restartProjects = snapshot;
   try { return await restartCoordinator.request(); }
   finally { if (restartProjects === snapshot) restartProjects = undefined; }
@@ -1090,6 +1126,90 @@ function focusedMenuWindow(): BrowserWindow | null {
   const focused = BrowserWindow.getFocusedWindow();
   return ownsWindow(focused, windowContext) ? focused : null;
 }
+function updateDocument(window: BrowserWindow | null | undefined): UpdateDocument | null {
+  if (!ownsWindow(window, windowContext)) return null;
+  const owner = windowHost?.ownerForContents(window.webContents);
+  if (!owner || owner.role === 'settings' || !windowHost?.isTrustedDocument(window)) return null;
+  return {id: owner.contextId, isCurrent: () => owner.isCurrent() && ownsWindow(window, windowContext),
+    send: view => window.webContents.send(DESKTOP_UPDATE_EVENT, view)};
+}
+
+function focusedUpdateDocument(): UpdateDocument | null {
+  const focused = focusedMenuWindow();
+  const visible = (window: BrowserWindow) => window.isVisible() && !window.isMinimized();
+  if (focused && visible(focused)) {
+    const document = updateDocument(focused);
+    if (document) return document;
+  }
+  const preferred = windowHost?.preferredWindow(focused);
+  return preferred && visible(preferred) ? updateDocument(preferred) : null;
+}
+
+function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
+  const enabled = app.isPackaged && identity.channel === 'production' && process.platform === 'darwin' && !smokeOutput;
+  // Source-only VM lifecycle tests do not have the packaged updater imports.
+  if (typeof createDesktopUpdate !== 'function') return undefined;
+  const currentVersion = app.getVersion();
+  let updater: ReturnType<typeof createMacDesktopUpdater> | null = null;
+  if (enabled) {
+    try {
+      updater = createMacDesktopUpdater(squirrelUpdater);
+      installDesktopUpdateNetworkPolicy(updater, process.resourcesPath);
+    } catch {updater = null;}
+  }
+  const handoff = createDesktopUpdateReopen(paths.dataDir);
+  const engine = desktopUpdate = createDesktopUpdate({
+    updater, enabled: updater !== null, currentVersion,
+    verifyDownload: createMacDesktopUpdateVerifier({applicationPath: path.resolve(process.resourcesPath ?? '.', '../..'),
+      temporaryDirectory: paths.dataDir, downloadCacheRoot: updater?.cacheRoot}),
+    changed: () => updateHost?.changed(),
+    installFailed: () => updateQuit?.failed(),
+  });
+  updateQuit = createDesktopUpdateQuit<BrowserWindow>({
+    windows: () => windowHost?.closeOrder() ?? [],
+    saved: window => windowAdmissions.get(window)?.savedForUpdate() ?? Promise.resolve(false),
+    projects: () => openedProjectWindows().map(project => project.projectId),
+    canStart: version => {
+      const state = engine.state();
+      return state.kind === 'ready' && state.offer.version === version && quitCoordinator.state === 'idle' &&
+        !quitting && !restarting && !quitRouter.isPending && nativeDialogs.size === 0;
+    },
+    quit: source => quitRouter.request(source),
+    handoff, install: (version, relaunch) => engine.install(version, relaunch),
+    installFailed: () => {
+      if (updater) updater.autoInstallOnAppQuit = false;
+      void dialog.showMessageBox({type: 'warning', message: desktopUpdateMessages['desktopUpdate.nativeInstallFailed']['zh-Hans'], buttons: [nt('native.acknowledge')]})
+        .catch(() => {}).finally(() => app.quit());
+    },
+  });
+  updateHost = createDesktopUpdateHost({
+    engine, currentVersion,
+    documents: () => (windowHost?.windows() ?? []).flatMap(window => updateDocument(window) ?? []),
+    focused: focusedUpdateDocument,
+    async activity() {
+      const utility = backend;
+      if (!utility || utility.state !== 'running') throw new Error('Update activity unavailable');
+      const state = await utility.projectEntries.updateActivity();
+      if (backend !== utility || utility.state !== 'running') throw new Error('Update activity unavailable');
+      return state;
+    },
+    install: version => updateQuit!.request(version, true),
+  });
+  if (!enabled) return undefined;
+  try {
+    const projects = handoff.consume(currentVersion);
+    return projects.length ? projects.map(projectId => ({projectId, name: nt('native.menuProjectWindow')})) : undefined;
+  } catch {return undefined;}
+}
+
+async function checkUpdateFromMenu(): Promise<void> {
+  let owner = focusedUpdateDocument();
+  if (!owner) {
+    await openWindow();
+    owner = focusedUpdateDocument();
+  }
+  if (owner) await updateHost?.check(owner);
+}
 function menuDocumentAllowed(document: NativeMenuDocument, command: MenuCommandId): boolean {
   const window = document.window;
   return (document.role === 'editor' || document.role === 'launcher' && command === 'show-help') &&
@@ -1121,6 +1241,7 @@ function readApplicationMenuState(): ApplicationMenuState {
     canHide: Boolean(trayHost?.available && trayCanHide()),
     canClose: available, canResize: available && owner?.role !== 'settings', canReload: available,
     canRestart: quitRouter.allowsWindows && !restarting && !quitting && nativeDialogs.size === 0 && !pending,
+    canCheckUpdates: Boolean(desktopUpdate && desktopUpdate.state().kind !== 'disabled' && quitRouter.allowsWindows && !restarting && !quitting),
     canEditText: available && trusted, canCommand: available && trusted && owner?.role !== 'settings',
     canExportDiagnostics: available && trusted && typeof exportDesktopDiagnostics === 'function',
     business, windows};
@@ -1164,6 +1285,7 @@ function executeMenuCommand(command: MenuCommandId): void {
   if (state.canCommand) menuCommands?.send(window.webContents, command);
 }
 function performApplicationMenuAction(action: ApplicationMenuAction): unknown {
+  if (action === 'check-update') return checkUpdateFromMenu().catch(() => {});
   if (['new-project', 'open-project', 'show', 'hide', 'quit'].includes(action)) {
     return performTrayAction(action as TrayAction).catch(fatal);
   }
@@ -1251,7 +1373,10 @@ const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWind
         await agentSettings?.close(); agentSettings = null;
       }
     });
-  }, finish: () => { trayHost?.dispose(); app.quit(); } });
+  }, finish: () => {
+    trayHost?.dispose();
+    if (!updateQuit?.finish()) app.quit();
+  } });
 
 const restartCoordinator: MultiWindowRestartCoordinator<BrowserWindow> = new MultiWindowRestartCoordinator<BrowserWindow>({
   getWindows: () => windowHost?.closeOrder() || [],
@@ -1309,6 +1434,12 @@ ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
 });
 ipcMain.handle(NATIVE_AUDIO_CHANNEL, (event, request) => nativeAudioHost?.dispatch(event, request) ?? null);
 ipcMain.handle(PROJECT_ENTRY_DESKTOP_CHANNEL,(event,request)=>{if(!projectEntryHost)throw new Error('Project entries unavailable.');return projectEntryHost.handle(event,request);});
+if (typeof DESKTOP_UPDATE_CHANNEL === 'string') ipcMain.handle(DESKTOP_UPDATE_CHANNEL, (event, ...args: unknown[]) => {
+  const window = windowHost?.windowForContents(event.sender);
+  const document = window && event.senderFrame === window.webContents.mainFrame ? updateDocument(window) : null;
+  if (document && window?.isVisible()) updateHost?.start(document);
+  return args.length === 1 && updateHost ? updateHost.dispatch(document, args[0]) : {ok: false, error: {code: 'UPDATE_UNAVAILABLE', status: 503}};
+});
 ipcMain.handle(NATIVE_ASSET_MEDIA_CHANNEL,(event,request)=>{if(!assetRelinkHost)throw new Error('Native media selection unavailable.');return assetRelinkHost.handle(event,request);});
 ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
@@ -1352,7 +1483,7 @@ else {
     if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) { trayIntent++; windowHost?.activate(BrowserWindow.getFocusedWindow()); }
   });
   app.on('window-all-closed', () => { if (!restarting && process.platform !== 'darwin') app.quit(); });
-  app.on('will-quit', () => { menuCommands?.dispose(); trayHost?.dispose(); });
+  app.on('will-quit', () => { menuCommands?.dispose(); trayHost?.dispose(); updateHost?.dispose(); desktopUpdate?.dispose(); });
   app.on('before-quit', event => {
     if (quitCoordinator.state === 'finished') return;
     event.preventDefault();
@@ -1403,9 +1534,10 @@ else {
       },
       onChanged: () => { installMenu(); trayHost?.refresh(); },
     });
+    const projectsAfterUpdate = initializeDesktopUpdates();
     installMenu();
     installTray();
-    const report = await start();
+    const report = await start(projectsAfterUpdate);
     trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
