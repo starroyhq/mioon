@@ -198,7 +198,6 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
     case 'downloading': {
       const {offer, percent, secondsRemaining, transferredBytes, totalBytes} = state;
       title = t('desktopUpdate.downloading', {version: offer.version});
-      description = t('desktopUpdate.downloadHint');
       icon = <Icon name="download" size={19} />;
       const progress = percentLabel(percent);
       const amount = transferredBytes !== undefined && totalBytes !== undefined
@@ -213,11 +212,9 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
     }
     case 'ready':
       title = t('desktopUpdate.ready', {version: state.offer.version});
-      description = t('desktopUpdate.reopen');
       icon = <RefreshCw size={20} aria-hidden="true" />;
-      body = (activity.exports || activity.generations) && <div className="desktop-update-details desktop-update-activity">
-        {activity.exports && <p><AlertTriangle size={16} aria-hidden="true" />{t('desktopUpdate.exportWarning')}</p>}
-        {activity.generations && <p>{t('desktopUpdate.generationHint')}</p>}
+      body = activity.exports && <div className="desktop-update-details desktop-update-activity">
+        <p><AlertTriangle size={16} aria-hidden="true" />{t('desktopUpdate.exportWarning')}</p>
       </div>;
       buttons = <><WorkbenchButton ref={safeFocus} disabled={pending.has('install')} onClick={() => install('on-quit')}>{t('desktopUpdate.installOnQuit')}</WorkbenchButton>
         <WorkbenchButton variant="primary" disabled={pending.has('install')} onClick={() => install('now')}>
@@ -237,7 +234,6 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
       break;
     case 'idle':
       title = t('desktopUpdate.latest');
-      description = t('desktopUpdate.latestBody', {version: view.currentVersion});
       icon = <CircleCheck size={18} aria-hidden="true" />;
       buttons = <WorkbenchButton ref={safeFocus} variant="primary" onClick={() => dismiss()}>{t('desktopUpdate.ok')}</WorkbenchButton>;
       break;

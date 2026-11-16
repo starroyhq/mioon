@@ -43,7 +43,7 @@ const view = (state: DesktopUpdateState, activity = quiet): DesktopUpdateView =>
 test('available renders actual version, metadata, bounded escaped notes and the exact Release URL', () => {
   const html = render(view({kind: 'available', offer}));
   assert.match(html, /Mioon 0\.2\.1 可以更新了/);
-  assert.match(html, /当前 0\.2\.0.+11月20日发布.+约 240 MB/);
+  assert.match(html, /data-slot="dialog-description"[^>]*>当前 0\.2\.0 · 11月20日发布 · 约 240 MB<\/p>/);
   assert.match(html, /修复画布整理/);
   assert.ok(html.includes(escapeHtml(offer.notes[1]!)));
   assert.doesNotMatch(html, /<b>|第四条仅/);
@@ -57,6 +57,7 @@ test('available renders actual version, metadata, bounded escaped notes and the 
 test('downloading renders exact progress, remaining time, cancel and continue in background', () => {
   const html = render(view({kind: 'downloading', offer, percent: 46.7, secondsRemaining: 60, transferredBytes: 112_000_000, totalBytes: 240_000_000}));
   assert.match(html, /正在下载 Mioon 0\.2\.1/);
+  assert.doesNotMatch(html, /data-slot="dialog-description"/);
   assert.match(html, /role="progressbar"[^>]*aria-valuenow="46\.7"/);
   assert.match(html, /112 \/ 240 MB · 46%/);
   assert.match(html, /还要约 1 分钟/);
@@ -66,35 +67,44 @@ test('downloading renders exact progress, remaining time, cancel and continue in
   assert.doesNotMatch(unknown, /还要约| NaN| MB/);
 });
 
-test('downloaded with no active work offers install on quit and restart without an interruption warning', () => {
-  const html = render(view({kind: 'ready', offer, installOnQuit: false}));
-  assert.match(html, /Mioon 0\.2\.1 已准备好/);
-  assert.match(html, /项目会自动重新打开/);
-  assert.match(html, /退出时安装.+立即重启/);
-  assert.doesNotMatch(html, /正在导出|仍然重启|生成任务/);
+test('downloaded renders the title and install actions when generation is the only active work', () => {
+  const state = {kind: 'ready', offer, installOnQuit: false} as const;
+  for (const activity of [quiet, {exports: false, generations: true}]) {
+    const html = render(view(state, activity));
+    assert.match(html, /Mioon 0\.2\.1 已准备好/);
+    assert.match(html, /退出时安装.+立即重启/);
+    assert.doesNotMatch(html, /data-slot="dialog-description"|正在导出|仍然重启|生成任务/);
+    assert.match(html, /<div class="wb-dialog-content"><\/div>/);
+  }
 });
 
-test('downloaded warns about running exports and distinguishes resumable provider generation', () => {
+test('downloaded warns about running exports even while generation is active', () => {
   const html = render(view({kind: 'ready', offer, installOnQuit: false}, {exports: true, generations: true}));
   assert.match(html, /正在导出，现在重启会中断导出/);
-  assert.match(html, /生成任务不受影响，重启后会接着取结果/);
+  assert.doesNotMatch(html, /data-slot="dialog-description"|生成任务/);
   assert.match(html, /退出时安装.+仍然重启/);
   const unsaved = render(view({kind: 'ready', offer, installOnQuit: false}), 'notSaved');
   assert.match(unsaved, /role="alert".+请先保存打开项目中的编辑/);
 });
 
-test('manual check renders checking, current version and safe check failure actions', () => {
+test('manual check renders checking, an acknowledgement, and a concise failure reason', () => {
   assert.match(render(view({kind: 'checking'})), /正在检查更新…/);
-  assert.match(render(view({kind: 'idle'})), /已是最新版本.+Mioon 0\.2\.0 是目前最新的正式版/);
+  const latest = render(view({kind: 'idle'}));
+  assert.match(latest, /已是最新版本/);
+  assert.deepEqual([...latest.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)].map(match => match[1]), ['好']);
+  assert.doesNotMatch(latest, /data-slot="dialog-description"/);
+  assert.match(latest, /<div class="wb-dialog-content"><\/div>/);
   const failure = render(view({kind: 'failed', stage: 'check'}));
-  assert.match(failure, /检查更新失败.+连不上 GitHub/);
+  assert.match(failure, /检查更新失败/);
+  assert.match(failure, /data-slot="dialog-description"[^>]*>连不上 GitHub<\/p>/);
   assert.match(failure, /去网站下载.+重试/);
   assert.ok(tagOf(failure, 'desktop-update-website')?.includes(`href="${DESKTOP_UPDATE_RELEASES}/latest"`));
 });
 
-test('download failure renders checksum guidance, retry and the fixed website instead of a downloaded URL', () => {
+test('download failure renders a concise reason, retry and the fixed website', () => {
   const html = render(view({kind: 'failed', stage: 'download', offer}));
-  assert.match(html, /下载没有完成.+校验不通过/);
+  assert.match(html, /下载没有完成/);
+  assert.match(html, /data-slot="dialog-description"[^>]*>网络中断或文件校验不通过<\/p>/);
   assert.match(html, /去网站下载.+重试/);
   assert.ok(tagOf(html, 'desktop-update-website')?.includes(`href="${DESKTOP_UPDATE_RELEASES}/latest"`));
   assert.equal(tagOf(html, 'desktop-update-full-notes'), null);
