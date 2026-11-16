@@ -297,7 +297,8 @@ test('context limit offers a new conversation, and a scheduled provider retry is
     h.find(`agent-task-error-new-conversation-${stepId}`)!.props.onClick();
     assert.deepEqual(h.calls.pop(),['newConversation']);
 
-    step.error={...contextLimit,diagnostic:{kind:'provider',reason:'quota'}};
+    const quotaError={...contextLimit,diagnostic:{kind:'provider',reason:'quota'}};
+    step.error=quotaError;
     h.render();
     const quotaAction=h.find(`agent-task-error-settings-${stepId}`)!;
     assert.equal(renderedText(quotaAction).trim(),translate('zh-Hans','agent.panel.changeModel'));
