@@ -67,7 +67,10 @@ for (const expected of channels) {
     assert.equal(config.linux.desktop.entry.StartupWMClass, expected.appId);
     assert.equal(config.linux.syncDesktopName, true);
     assert.equal(config.linux.artifactName, `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`);
-    assert.deepEqual(config.mac.target, [{ target: 'dmg', arch: ['arm64', 'x64'] }]);
+    assert.deepEqual(config.mac.target, [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }]);
+    assert.equal(config.mac.artifactName, `${identity.executableName}-\${version}-mac.\${ext}`);
+    assert.equal(config.mac.detectUpdateChannel, false);
+    assert.equal(config.dmg.writeUpdateInfo, false);
     assert.equal(config.mac.identity, null, 'This change must not enable signing');
   });
 }

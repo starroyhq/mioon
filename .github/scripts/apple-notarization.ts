@@ -4,6 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {argumentsFor, CheckFailure, cleanEnvironment, isMain, report, safeFailure} from './media-environment.ts';
+import {MAC_UNIVERSAL_ARCH} from '../../apps/desktop/runtime-notices.ts';
 
 export type AppleStaplerOperation = 'staple' | 'validate';
 export interface AppleStaplerDiagnostic {
@@ -118,7 +119,7 @@ export interface AppleAppNotarizationReport {
   diagnostics: AppleStaplerDiagnostic[];
   error?: string;
 }
-export interface NotarizeAppContext {electronPlatformName?: unknown; appOutDir?: unknown; packager?: {appInfo?: {productFilename?: unknown}}}
+export interface NotarizeAppContext {electronPlatformName?: unknown; arch?: unknown; appOutDir?: unknown; packager?: {appInfo?: {productFilename?: unknown}}}
 interface NotarizeOptions {appPath: string; appleApiKey: string; appleApiKeyId: string; appleApiIssuer: string}
 export interface NotarizeAppDependencies {
   env?: NodeJS.ProcessEnv;
@@ -135,7 +136,7 @@ function installedNotarize(): (options: NotarizeOptions) => Promise<void> {
   return module.notarize;
 }
 function reportPath(env: NodeJS.ProcessEnv): string {
-  if (!['macos-x64', 'macos-arm64'].includes(env.MIOON_TARGET ?? '')) throw new CheckFailure('INVALID_APPLE_RELEASE_TARGET');
+  if (env.MIOON_TARGET !== 'macos-universal') throw new CheckFailure('INVALID_APPLE_RELEASE_TARGET');
   const output = env.MIOON_APPLE_NOTARIZATION_REPORT;
   if (!output || /[\0\r\n]/.test(output)) throw new CheckFailure('APPLE_NOTARIZATION_REPORT_REQUIRED');
   const resolved = path.resolve(root, output), directory = path.join(root, 'artifacts', `desktop-${env.MIOON_TARGET}`);
@@ -148,6 +149,7 @@ export async function notarizeApp(context: NotarizeAppContext, dependencies: Not
   try {
     if (context.electronPlatformName !== 'darwin' || (dependencies.platform ?? process.platform) !== 'darwin' || !/^[a-f0-9]{40}$/.test(env.MIOON_RELEASE_SHA ?? '')) throw new CheckFailure('APPLE_NOTARIZATION_RELEASE_ONLY');
     output = reportPath(env);
+    if (context.arch !== MAC_UNIVERSAL_ARCH) throw new CheckFailure('INVALID_APPLE_APP_CONTEXT');
     const filename = context.packager?.appInfo?.productFilename;
     if (typeof context.appOutDir !== 'string' || !path.isAbsolute(context.appOutDir) || path.resolve(context.appOutDir) !== context.appOutDir || /[\0\r\n]/.test(context.appOutDir) || typeof filename !== 'string' || !filename || /[\/\\\0\r\n]/.test(filename) || filename === '.' || filename === '..') throw new CheckFailure('INVALID_APPLE_APP_CONTEXT');
     const appPath = path.join(context.appOutDir, `${filename}.app`); artifactKind(appPath);
@@ -159,6 +161,8 @@ export async function notarizeApp(context: NotarizeAppContext, dependencies: Not
     const notarize = dependencies.notarize ?? installedNotarize();
     result.notarizeCalls = 1;
     try {
+      // The pinned @electron/notarize awaits app stapling. This entire
+      // afterSign hook must finish before electron-builder creates its ZIP.
       await notarize({appPath, appleApiKey, appleApiKeyId, appleApiIssuer});
       result.acceptedKnown = true;
       record(diagnostic('staple', 'app', 1, {exitCode: 0, signal: null, timedOut: false, stdout: '', stderr: ''}));

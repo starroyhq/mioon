@@ -4,19 +4,18 @@ Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图
 
 本指南适用于 **v0.2.0 桌面版**。前往 [v0.2.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.2.0)下载安装包。本版更新见 [v0.2.0 发布说明](releases/v0.2.0.zh-CN.md)。
 
-## 1. 选对下载文件
+## 1. 下载安装包
 
 在发布页展开 **Assets（附件）**，按电脑选择：
 
 | 你的电脑 | 下载文件 |
 | --- | --- |
-| Mac，Apple Silicon 芯片（M 系列） | `mioon-0.2.0-mac-arm64.dmg` |
-| Mac，Intel 处理器 | `mioon-0.2.0-mac-x64.dmg` |
+| Mac，Apple 芯片或 Intel 处理器 | `mioon-0.2.0-mac.dmg` |
 | Linux 或 Windows | 本版暂不提供桌面安装包 |
 
-在苹果菜单的「关于本机」查看芯片或处理器。两个 DMG 均在 macOS 15 构建环境打包，正式发布前须通过 Developer ID 签名和 Apple 公证。
+通用 DMG 在 macOS 15 构建环境打包，正式发布前须通过 Developer ID 签名和 Apple 公证。
 
-`Source code` 是给开发者的源码压缩包，`SHA256SUMS` 和 `release-manifest.json` 用于核对下载文件，都不是安装程序。使用桌面安装包无需安装 Node.js、pnpm 或下载整个源码仓库
+`mioon-0.2.0-mac.zip`、`latest-mac.yml` 和 `.blockmap` 文件供 Mioon 更新时使用。`SHA256SUMS` 和 `release-manifest.json` 用于核对下载文件。手动安装只需 DMG，无需 Node.js、pnpm 或源码仓库。
 
 ## 2. 安装应用
 
@@ -26,7 +25,7 @@ Mioon 是内置视频 Agent Mio 的创作工作台。你可以先用自己的图
 2. 将 **Mioon** 拖到“应用程序”文件夹
 3. 从「应用程序」打开 Mioon。安装完成后可以在 Finder 推出安装磁盘
 
-若系统阻止打开，请核对下载来源、架构和 `SHA256SUMS` 中的校验值。仍无法打开时，请反馈系统提示和 macOS 版本。请勿删除隔离属性或关闭 Gatekeeper。
+若系统阻止打开，请核对下载来源和 `SHA256SUMS` 中的校验值。仍无法打开时，请反馈系统提示和 macOS 版本。请勿删除隔离属性或关闭 Gatekeeper。
 
 ## 3. 准备视频工具
 
@@ -88,7 +87,7 @@ echo "$(brew --prefix ffmpeg-full)/bin/ffprobe"
 
 打开项目后，点击顶部项目名称，选择「版本历史…」，再切换到「自动备份」。点「查看」可以只读查看备份，点「恢复为新项目…」可以选择保存位置，从备份创建独立项目。版本与备份的区别见[使用指南](USER-GUIDE.zh-CN.md#版本历史与自动备份)。
 
-**本版没有自动更新**。更新前先备份、正常退出 Mioon，再从发布页下载与电脑架构匹配的新安装包。保留原项目、素材和本机记录。
+**从旧版升级到 0.2.0 需要手动安装**。更新前先备份并正常退出 Mioon，再从发布页下载通用安装包。安装 0.2.0 后，可以在应用内检查和安装后续更新。保留原项目、素材和本机记录。
 
 第一次用 0.2.0 打开旧项目时，先看[项目格式升级说明](releases/v0.2.0.zh-CN.md#打开旧项目时先确认升级)。
 

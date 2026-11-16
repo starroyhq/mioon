@@ -2,27 +2,57 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {APPLE_SECRET_FLAGS, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
+import {APPLE_SECRET_FLAGS, isFrozenBranchCandidate, pushedTagForEvent, requireAppleSecrets, resolvePreflight} from '../.github/scripts/release-preflight.ts';
 import {stageRelease, validatePackageReport} from '../.github/scripts/stage-release.ts';
 import {collectReleaseBundle, ownershipMarker, publishRelease, validateDraft} from '../.github/scripts/publish-release.ts';
 import type {DraftRelease, PublishTransport, ReleaseBundle, RemoteAsset, UploadFile} from '../.github/scripts/publish-release.ts';
 import type {ReleaseArch, ReleasePlatform} from '../.github/scripts/release-common.ts';
-import {validateAsset} from '../.github/scripts/release-common.ts';
+import {macArtifactNames, manifestName, validateAsset} from '../.github/scripts/release-common.ts';
 
 const sha = '1'.repeat(40), changedSha = '2'.repeat(40), version = '0.4.1', tag = `v${version}`;
 const hash = (data: string | Uint8Array): string => createHash('sha256').update(data).digest('hex');
+const names = macArtifactNames(version);
+const dmgContents = 'synthetic universal DMG', zipContents = 'synthetic universal ZIP';
+const report = (arch: ReleaseArch | 'arm64' | 'x64') => ({
+  ok: true, platform: 'darwin', arch, package: {name: names.dmg, sha256: hash(dmgContents)},
+});
 const preflight = {rootVersion: version, desktopVersion: version, checkoutSha: sha, resolveTag: () => sha, isOnMain: () => true};
 
 test('release preflight freezes a valid release tag and main SHA', () => {
   assert.deepEqual(resolvePreflight({...preflight, pushedTag: tag}), {release_sha: sha, version, release_tag: tag, should_publish: true, prerelease: false});
   assert.equal(resolvePreflight({...preflight, manualTag: tag}).should_publish, true);
-  assert.equal(resolvePreflight({...preflight, rootVersion: '1.2.0-rc.1+build', desktopVersion: '1.2.0-rc.1+build', manualTag: 'v1.2.0-rc.1+build'}).prerelease, true);
+  assert.throws(() => resolvePreflight({...preflight, rootVersion: '1.2.0-rc.1+build', desktopVersion: '1.2.0-rc.1+build', manualTag: 'v1.2.0-rc.1+build'}), /Prerelease desktop releases are not supported/);
 });
 test('manual artifact-only run does not invent a tag or publish', () => {
   assert.deepEqual(resolvePreflight(preflight), {release_sha: sha, version, release_tag: '', should_publish: false, prerelease: false});
+});
+test('frozen candidate branch permits artifact verification before merge and validates candidate inputs', () => {
+  const environment = {
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF_TYPE: 'branch',
+    GITHUB_REF_NAME: 'howard/mac-universal-update-feed',
+    GITHUB_SHA: sha,
+  };
+  assert.equal(isFrozenBranchCandidate(environment, sha), true);
+  assert.equal(isFrozenBranchCandidate(environment, changedSha), false);
+  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_REF_NAME: 'other-branch'}, sha), false);
+  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_REF_TYPE: 'tag'}, sha), false);
+  assert.equal(isFrozenBranchCandidate({...environment, GITHUB_EVENT_NAME: 'push'}, sha), false);
+  const input = {...preflight, isOnMain: () => false, candidateBranch: true};
+  assert.deepEqual(resolvePreflight({...input, updateFeedUrl: 'http://127.0.0.1:8080/updates', versionOverride: '0.4.2'}),
+    {release_sha: sha, version: '0.4.2', release_tag: '', should_publish: false, prerelease: false});
+  assert.throws(() => resolvePreflight({...input, updateFeedUrl: 'http://example.test/updates'}), /Candidate update feed/);
+  assert.throws(() => resolvePreflight({...input, versionOverride: '0.4.2-rc.1'}), /stable version/);
+  assert.throws(() => resolvePreflight({...input, pushedTag: tag}), /origin\/main/);
+});
+test('tag builds ignore candidate feed and version inputs, keeping the exact tagged package version', () => {
+  const inputs = {...preflight, updateFeedUrl: 'invalid candidate URL', versionOverride: 'invalid candidate version'};
+  const expected = {release_sha: sha, version, release_tag: tag, should_publish: true, prerelease: false};
+  assert.deepEqual(resolvePreflight({...inputs, pushedTag: tag}), expected);
+  assert.deepEqual(resolvePreflight({...inputs, manualTag: tag}), expected);
 });
 test('only a pushed tag can implicitly publish; dispatch on a tag stays artifact-only', () => {
   for (const event of [
@@ -63,78 +93,124 @@ async function fixture(t: TestContext): Promise<{root: string; packageDirectory:
   await mkdir(output);
   return {root, packageDirectory, output};
 }
-async function stageTarget(f: {packageDirectory: string; output: string}, platform: ReleasePlatform, arch: ReleaseArch): Promise<void> {
-  const name = `mioon-${version}-mac-${arch}.dmg`;
-  await writeFile(path.join(f.packageDirectory, name), `synthetic ${platform}-${arch} package`);
-  const report = {ok: true, platform, arch};
-  await stageRelease({platform, arch, packageDirectory: f.packageDirectory, output: path.join(f.output, `${platform}-${arch}`), sha, version, inspectionReport: report, smokeReport: report});
+function packageInput(f: {packageDirectory: string; output: string}) {
+  return {
+    platform: 'darwin' as const,
+    arch: 'universal' as const,
+    packageDirectory: f.packageDirectory,
+    output: path.join(f.output, 'darwin-universal'),
+    sha,
+    version,
+    inspectionReport: report('universal'),
+    smokeReport: report('arm64'),
+    intelSmokeReport: report('x64'),
+  };
 }
-async function completeBundle(t: TestContext): Promise<{bundle: ReleaseBundle; output: string}> {
-  const f = await fixture(t);
-  await stageTarget(f, 'darwin', 'arm64');
-  await stageTarget(f, 'darwin', 'x64');
-  return {bundle: await collectReleaseBundle(f.output, sha), output: f.output};
+async function writePackages(packageDirectory: string, {dmgBlockmap = false, feedContents = zipContents} = {}): Promise<void> {
+  const zipHash = createHash('sha512').update(feedContents).digest('base64');
+  const update = [
+    `version: ${version}`, 'files:', `  - url: ${names.zip}`, `    sha512: ${zipHash}`,
+    `    size: ${Buffer.byteLength(feedContents)}`, `path: ${names.zip}`, `sha512: ${zipHash}`,
+    "releaseDate: '2026-11-16T00:00:00.000Z'", '',
+  ].join('\n');
+  await writeFile(path.join(packageDirectory, names.dmg), dmgContents);
+  await writeFile(path.join(packageDirectory, names.zip), zipContents);
+  await writeFile(path.join(packageDirectory, names.zipBlockmap), 'synthetic ZIP blockmap');
+  await writeFile(path.join(packageDirectory, names.update), update);
+  if (dmgBlockmap) await writeFile(path.join(packageDirectory, names.dmgBlockmap), 'synthetic DMG blockmap');
 }
-test('staging needs passing inspection and smoke reports for the exact target', async t => {
+async function stageTarget(f: {packageDirectory: string; output: string}, dmgBlockmap = false): Promise<void> {
+  await writePackages(f.packageDirectory, {dmgBlockmap});
+  await stageRelease(packageInput(f));
+}
+async function completeBundle(t: TestContext, dmgBlockmap = false): Promise<{bundle: ReleaseBundle; output: string; target: string}> {
   const f = await fixture(t);
-  const report = {ok: true, platform: 'darwin', arch: 'x64'};
-  assert.throws(() => validatePackageReport({...report, ok: false}, {platform: 'darwin', arch: 'x64'}), /reports must pass/);
-  assert.throws(() => validatePackageReport({...report, arch: 'arm64'}, {platform: 'darwin', arch: 'x64'}), /exact target/);
-  await assert.rejects(stageRelease({platform: 'darwin', arch: 'x64', packageDirectory: f.packageDirectory, output: f.output, sha, version, inspectionReport: report, smokeReport: {...report, ok: false}}), /reports must pass/);
-  await assert.rejects(stageRelease({platform: 'darwin', arch: 'x64', packageDirectory: f.packageDirectory, output: f.output, sha, version, inspectionReport: report, smokeReport: report}), /exactly one package/);
-  await stageTarget(f, 'darwin', 'x64');
-  const files = await readdir(path.join(f.output, 'darwin-x64'));
-  assert.deepEqual(files.sort(), ['manifest-darwin-x64.json', 'mioon-0.4.1-mac-x64.dmg']);
+  await stageTarget(f, dmgBlockmap);
+  return {bundle: await collectReleaseBundle(f.output, sha), output: f.output, target: packageInput(f).output};
+}
+test('staging needs passing universal inspection and both native smoke reports for the exact DMG', async t => {
+  const f = await fixture(t);
+  const input = packageInput(f);
+  assert.throws(() => validatePackageReport({...report('x64'), ok: false}, report('x64')), /reports must pass/);
+  assert.throws(() => validatePackageReport(report('arm64'), report('x64')), /exact target/);
+  await assert.rejects(stageRelease(input), /Missing release asset/);
+  await writePackages(f.packageDirectory);
+  await assert.rejects(stageRelease({...input, inspectionReport: report('arm64')}), /exact target: darwin-universal/);
+  await assert.rejects(stageRelease({...input, smokeReport: {...report('arm64'), ok: false}}), /reports must pass/);
+  await assert.rejects(stageRelease({...input, intelSmokeReport: report('arm64')}), /exact target: darwin-x64/);
+  const intelOnOtherDmg = {...report('x64'), package: {name: names.dmg, sha256: hash('foreign DMG')}};
+  await assert.rejects(stageRelease({...input, intelSmokeReport: intelOnOtherDmg}), /exact DMG/);
+  const assets = await stageRelease(input);
+  const required = [names.dmg, names.zip, names.zipBlockmap, names.update];
+  assert.deepEqual(assets.map(asset => asset.name), required);
+  assert.deepEqual((await readdir(input.output)).sort(), [...required, ...required.map(manifestName)].sort());
 });
 test('staging rejects symlink packages and nonempty staging outputs', async t => {
-  const f = await fixture(t), report = {ok: true, platform: 'darwin', arch: 'x64'};
-  const name = 'mioon-0.4.1-mac-x64.dmg';
+  const f = await fixture(t), input = packageInput(f), dmg = path.join(f.packageDirectory, names.dmg);
+  await writePackages(f.packageDirectory);
   await writeFile(path.join(f.root, 'outside'), 'outside');
   // File symlinks need elevated privileges on Windows and are separately covered
   // on Unix; the same lstat rejection runs on every platform in production.
   if (process.platform !== 'win32') {
-    await symlink(path.join(f.root, 'outside'), path.join(f.packageDirectory, name));
-    await assert.rejects(stageRelease({platform: 'darwin', arch: 'x64', packageDirectory: f.packageDirectory, output: f.output, sha, version, inspectionReport: report, smokeReport: report}), /regular release file/);
-    await rm(path.join(f.packageDirectory, name));
+    await rm(dmg);
+    await symlink(path.join(f.root, 'outside'), dmg);
+    await assert.rejects(stageRelease(input), /regular release file/);
+    await rm(dmg);
+    await writeFile(dmg, dmgContents);
   }
-  await writeFile(path.join(f.packageDirectory, name), 'package');
-  await writeFile(path.join(f.output, 'unexpected'), 'unrelated existing output');
-  await assert.rejects(stageRelease({platform: 'darwin', arch: 'x64', packageDirectory: f.packageDirectory, output: f.output, sha, version, inspectionReport: report, smokeReport: report}), /must be empty/);
+  await mkdir(input.output);
+  await writeFile(path.join(input.output, 'unexpected'), 'unrelated existing output');
+  await assert.rejects(stageRelease(input), /must be empty/);
 });
-test('bundle assembly includes exactly two macOS packages, aggregate manifest and checksums', async t => {
-  const {bundle, output} = await completeBundle(t);
-  assert.equal(bundle.files.length, 4);
-  assert.deepEqual(bundle.files.map(file => file.name).sort(), ['SHA256SUMS', 'mioon-0.4.1-mac-arm64.dmg', 'mioon-0.4.1-mac-x64.dmg', 'release-manifest.json'].sort());
-  assert.deepEqual(bundle.manifest.assets.map(asset => `${asset.platform}-${asset.arch}`).sort(), ['darwin-arm64', 'darwin-x64']);
+test('bundle assembly includes one macOS target, all update assets, per-asset manifests and checksums', async t => {
+  const {bundle, output} = await completeBundle(t, true);
+  const expected = [names.dmg, names.dmgBlockmap, names.zip, names.zipBlockmap, names.update];
+  assert.equal(bundle.files.length, 12);
+  assert.deepEqual(bundle.files.map(file => file.name).sort(), ['SHA256SUMS', 'release-manifest.json', ...expected, ...expected.map(manifestName)].sort());
+  assert.deepEqual([...new Set(bundle.manifest.assets.map(asset => `${asset.platform}-${asset.arch}`))], ['darwin-universal']);
+  assert.deepEqual(bundle.manifest.assets.map(asset => asset.name).sort(), expected.sort());
+  for (const asset of bundle.manifest.assets) {
+    const sidecar = bundle.files.find(file => file.name === manifestName(asset.name))!;
+    assert.deepEqual(asset.manifest, {name: sidecar.name, bytes: sidecar.bytes, sha256: sidecar.sha256});
+  }
   const sums = await readFile(path.join(output, 'SHA256SUMS'), 'utf8');
   for (const file of bundle.files.filter(file => file.name !== 'SHA256SUMS')) assert.ok(sums.includes(`${file.sha256}  ${file.name}\n`));
   assert.deepEqual(await collectReleaseBundle(output, sha), bundle, 'retry deterministically reuses generated files');
 });
-test('bundle assembly rejects missing targets, wrong source, hashes and extra files', async t => {
+test('bundle assembly rejects missing target, wrong source, hashes and extra files', async t => {
   const f = await fixture(t);
-  await stageTarget(f, 'darwin', 'x64');
-  await assert.rejects(collectReleaseBundle(f.output, sha), /Missing target manifest/);
-  await stageTarget(f, 'darwin', 'arm64');
+  await assert.rejects(collectReleaseBundle(f.output, sha), /Missing asset manifest for the darwin-universal target/);
+  await stageTarget(f);
   await assert.rejects(collectReleaseBundle(f.output, changedSha), /source SHA or version differs/);
-  const target = path.join(f.output, 'darwin-x64', 'mioon-0.4.1-mac-x64.dmg');
+  const target = path.join(packageInput(f).output, names.dmg);
   const bytes = await readFile(target); await writeFile(target, 'changed');
   await assert.rejects(collectReleaseBundle(f.output, sha), /size or SHA256 differs/);
   await writeFile(target, bytes);
   await writeFile(path.join(f.output, 'unintended-database.sqlite'), 'not a release artifact');
   await assert.rejects(collectReleaseBundle(f.output, sha), /Unexpected release input/);
 });
-test('each macOS architecture is mandatory and Linux packages are refused at every release boundary', async t => {
-  for (const arch of ['arm64', 'x64'] as const) {
-    const f = await fixture(t);
-    await stageTarget(f, 'darwin', arch);
-    await assert.rejects(collectReleaseBundle(f.output, sha), /Missing target manifest: darwin-/);
+test('required update files must all be staged while a DMG blockmap is optional', async t => {
+  const f = await fixture(t);
+  await stageTarget(f);
+  const bundle = await collectReleaseBundle(f.output, sha);
+  assert.ok(!bundle.files.some(file => file.name === names.dmgBlockmap || file.name === manifestName(names.dmgBlockmap)));
+  for (const name of [names.dmg, names.zip, names.zipBlockmap, names.update]) {
+    const staged = path.join(packageInput(f).output, name), original = await readFile(staged);
+    await rm(staged);
+    await assert.rejects(collectReleaseBundle(f.output, sha), /Missing release asset/);
+    await writeFile(staged, original);
   }
+});
+test('single-architecture and Linux packages are refused at every release boundary', async t => {
   const f = await fixture(t), linux = {sourceSha: sha, version, platform: 'linux', arch: 'x64', name: `mioon-${version}-linux-x64.tar.gz`, bytes: 10, sha256: hash('linux-only')};
   assert.throws(() => validateAsset(linux), /Only macOS/);
-  const report = {ok: true, platform: 'linux', arch: 'x64'};
-  await assert.rejects(stageRelease({platform: 'linux' as ReleasePlatform, arch: 'x64', packageDirectory: f.packageDirectory, output: f.output, sha, version, inspectionReport: report, smokeReport: report}), /Only macOS/);
-  const {output} = await completeBundle(t);
-  const manifestFile = path.join(output, 'darwin-x64', 'manifest-darwin-x64.json');
+  for (const arch of ['arm64', 'x64']) {
+    assert.throws(() => validateAsset({...linux, platform: 'darwin', arch}), /expected universal/);
+    await assert.rejects(stageRelease({...packageInput(f), arch: arch as ReleaseArch}), /expected universal/);
+  }
+  await assert.rejects(stageRelease({...packageInput(f), platform: 'linux' as ReleasePlatform}), /Only macOS/);
+  const {output, target} = await completeBundle(t);
+  const manifestFile = path.join(target, manifestName(names.dmg));
   const original = await readFile(manifestFile, 'utf8');
   await writeFile(manifestFile, JSON.stringify(linux));
   await assert.rejects(collectReleaseBundle(output, sha), /Only macOS/);
@@ -142,34 +218,52 @@ test('each macOS architecture is mandatory and Linux packages are refused at eve
   await writeFile(path.join(output, linux.name), 'linux-only');
   await assert.rejects(collectReleaseBundle(output, sha), /Unexpected release input/);
 });
-test('bundle assembly refuses a duplicate macOS architecture and a same-size DMG hash mismatch', async t => {
-  const {output} = await completeBundle(t);
-  const armManifest = path.join(output, 'darwin-arm64', 'manifest-darwin-arm64.json');
-  const x64Manifest = path.join(output, 'darwin-x64', 'manifest-darwin-x64.json');
-  const original = await readFile(x64Manifest, 'utf8');
-  await writeFile(x64Manifest, await readFile(armManifest));
-  await assert.rejects(collectReleaseBundle(output, sha), /Target manifest does not match/);
-  await writeFile(x64Manifest, original);
-  const target = path.join(output, 'darwin-x64', `mioon-${version}-mac-x64.dmg`), bytes = await readFile(target);
+test('bundle assembly refuses split macOS targets, mismatched asset sidecars and a same-size DMG hash mismatch', async t => {
+  const {output, target} = await completeBundle(t);
+  const dmgManifest = path.join(target, manifestName(names.dmg));
+  const zipManifest = path.join(target, manifestName(names.zip));
+  const original = await readFile(dmgManifest, 'utf8');
+  await writeFile(dmgManifest, await readFile(zipManifest));
+  await assert.rejects(collectReleaseBundle(output, sha), /Asset manifest does not match/);
+  await writeFile(dmgManifest, original);
+  const otherTarget = path.join(output, 'another-target');
+  await mkdir(otherTarget);
+  await rename(zipManifest, path.join(otherTarget, manifestName(names.zip)));
+  await assert.rejects(collectReleaseBundle(output, sha), /Exactly one macOS release target/);
+  await rename(path.join(otherTarget, manifestName(names.zip)), zipManifest);
+  const dmg = path.join(target, names.dmg), bytes = await readFile(dmg);
   bytes[0] ^= 1;
-  await writeFile(target, bytes);
+  await writeFile(dmg, bytes);
   await assert.rejects(collectReleaseBundle(output, sha), /size or SHA256 differs/);
 });
 test('bundle assembly rejects path traversal, duplicate manifests and symbolic links', async t => {
-  const {output} = await completeBundle(t);
-  const manifestFile = path.join(output, 'darwin-x64', 'manifest-darwin-x64.json');
+  const {output, target} = await completeBundle(t);
+  const sidecar = manifestName(names.dmg), manifestFile = path.join(target, sidecar);
   const manifest: Record<string, unknown> = JSON.parse(await readFile(manifestFile, 'utf8')) as Record<string, unknown>;
-  await writeFile(manifestFile, JSON.stringify({...manifest, name: '../mioon-0.4.1-mac-x64.dmg'}));
+  await writeFile(manifestFile, JSON.stringify({...manifest, name: `../${names.dmg}`}));
   await assert.rejects(collectReleaseBundle(output, sha), /Invalid package asset name/);
   await writeFile(manifestFile, JSON.stringify(manifest));
   await mkdir(path.join(output, 'duplicate'));
-  await writeFile(path.join(output, 'duplicate', 'manifest-darwin-x64.json'), JSON.stringify(manifest));
+  await writeFile(path.join(output, 'duplicate', sidecar), JSON.stringify(manifest));
   await assert.rejects(collectReleaseBundle(output, sha), /Duplicate release input name/);
   await rm(path.join(output, 'duplicate'), {recursive: true});
   if (process.platform !== 'win32') {
     await symlink(manifestFile, path.join(output, 'unexpected-link'));
     await assert.rejects(collectReleaseBundle(output, sha), /symbolic links/);
   }
+});
+
+test('staging and collection both reject metadata generated for a different ZIP', async t => {
+  const f = await fixture(t);
+  await writePackages(f.packageDirectory, {feedContents: 'an earlier ZIP'});
+  await assert.rejects(stageRelease(packageInput(f)), /ZIP|sha512/i);
+  const {output, target} = await completeBundle(t);
+  await writePackages(target, {feedContents: 'an earlier ZIP'});
+  const manifestFile = path.join(target, manifestName(names.update));
+  const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as Record<string, unknown>;
+  const metadata = await readFile(path.join(target, names.update));
+  await writeFile(manifestFile, JSON.stringify({...manifest, bytes: metadata.length, sha256: hash(metadata)}));
+  await assert.rejects(collectReleaseBundle(output, sha), /ZIP|sha512/i);
 });
 
 function fakeTransport(bundle: ReleaseBundle, initial?: DraftRelease): {transport: PublishTransport; state: {release: DraftRelease | undefined; assets: RemoteAsset[]; uploaded: string[]; published: boolean; prerelease: boolean | undefined; tagSha: string; hashFallbacks: number}} {
@@ -179,7 +273,8 @@ function fakeTransport(bundle: ReleaseBundle, initial?: DraftRelease): {transpor
     loadRelease: async () => state.release,
     createDraft: async input => {
       assert.equal(state.release, undefined);
-      state.release = {id: 41, tag_name: input.tag, target_commitish: input.sha, draft: true, body: input.body};
+      assert.equal(input.prerelease, false);
+      state.release = {id: 41, tag_name: input.tag, target_commitish: input.sha, draft: true, prerelease: input.prerelease, body: input.body};
       return state.release;
     },
     assets: async () => state.assets,
@@ -190,12 +285,13 @@ function fakeTransport(bundle: ReleaseBundle, initial?: DraftRelease): {transpor
   return {transport, state};
 }
 function ownedDraft(bundle: ReleaseBundle): DraftRelease {
-  return {id: 41, tag_name: `v${bundle.version}`, target_commitish: bundle.sourceSha, draft: true, body: `Notes\n${ownershipMarker(`v${bundle.version}`, bundle)}`};
+  return {id: 41, tag_name: `v${bundle.version}`, target_commitish: bundle.sourceSha, draft: true, prerelease: false, body: `Notes\n${ownershipMarker(`v${bundle.version}`, bundle)}`};
 }
-test('publication creates an owned draft, verifies four assets and publishes stable latest', async t => {
+test('publication creates an owned draft, verifies all staged files and publishes stable latest', async t => {
   const {bundle} = await completeBundle(t), f = fakeTransport(bundle);
   await publishRelease(bundle, tag, f.transport);
-  assert.equal(f.state.published, true); assert.equal(f.state.prerelease, false); assert.equal(f.state.uploaded.length, 4);
+  assert.equal(f.state.published, true); assert.equal(f.state.prerelease, false);
+  assert.deepEqual(f.state.uploaded, bundle.files.map(file => file.name));
   validateDraft(f.state.release!, tag, bundle);
 });
 test('publication resumes only the same owned draft and verifies existing asset bytes', async t => {
@@ -203,13 +299,13 @@ test('publication resumes only the same owned draft and verifies existing asset 
   const first = bundle.files[0]!;
   f.state.assets.push({id: 1, name: first.name, size: first.bytes, digest: null});
   await publishRelease(bundle, tag, f.transport);
-  assert.equal(f.state.uploaded.length, 3); assert.equal(f.state.hashFallbacks, 2); assert.equal(f.state.published, true);
+  assert.equal(f.state.uploaded.length, bundle.files.length - 1); assert.equal(f.state.hashFallbacks, 2); assert.equal(f.state.published, true);
 });
 test('publication rejects public releases and drafts with different ownership', async t => {
   const {bundle} = await completeBundle(t);
-  for (const release of [{...ownedDraft(bundle), draft: false}, {...ownedDraft(bundle), target_commitish: changedSha}, {...ownedDraft(bundle), body: 'unowned draft'}, {...ownedDraft(bundle), body: ownershipMarker(tag, {...bundle, manifestSha256: '0'.repeat(64)})}]) {
+  for (const release of [{...ownedDraft(bundle), draft: false}, {...ownedDraft(bundle), prerelease: true}, {...ownedDraft(bundle), target_commitish: changedSha}, {...ownedDraft(bundle), body: 'unowned draft'}, {...ownedDraft(bundle), body: ownershipMarker(tag, {...bundle, manifestSha256: '0'.repeat(64)})}]) {
     const f = fakeTransport(bundle, release);
-    await assert.rejects(publishRelease(bundle, tag, f.transport), /public|differs|not owned/);
+    await assert.rejects(publishRelease(bundle, tag, f.transport), /public|Prerelease|differs|not owned/);
     assert.equal(f.state.uploaded.length, 0); assert.equal(f.state.published, false);
   }
 });
@@ -244,11 +340,12 @@ test('publication refuses a lost upload, changed draft and wrong release tag', a
   assert.equal(changed.state.published, false);
   await assert.rejects(publishRelease(bundle, 'v0.4.2', fakeTransport(bundle).transport), /tag does not match/);
 });
-test('prerelease publication never requests stable latest', async t => {
+test('publication rejects a prerelease before reading or creating a draft', async t => {
   const {bundle} = await completeBundle(t);
   const candidate: ReleaseBundle = {...bundle, version: '0.4.1-rc.1'};
   const f = fakeTransport(candidate);
-  await publishRelease(candidate, 'v0.4.1-rc.1', f.transport);
-  assert.equal(f.state.published, true); assert.equal(f.state.prerelease, true);
+  f.transport.loadRelease = async () => assert.fail('prerelease should fail before remote draft access');
+  await assert.rejects(publishRelease(candidate, 'v0.4.1-rc.1', f.transport), /Prerelease desktop releases are not supported/);
+  assert.equal(f.state.published, false); assert.equal(f.state.release, undefined);
   assert.equal(hash(await readFile(bundle.files[0]!.file)), bundle.files[0]!.sha256);
 });

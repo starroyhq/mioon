@@ -60,7 +60,7 @@ test('explicit GPT-5.4 mini selections retain both protocol profiles independent
 
 test('explicit business fixtures run tools in every requested protocol without rewriting the real default enumeration',()=>{
   const tools=[{name:'synthetic_fixture_tool',description:'Synthetic protocol fixture',parameters:{type:'object',properties:{},required:[],additionalProperties:false}}];
-  for(const [protocol,presetId,model] of [['chat_completions','openai','gpt-6-luna'],['responses','openai','gpt-6.1-terra'],['anthropic_messages','ollama','qwen3:8b']] as const){
+  for(const [protocol,presetId,model] of [['chat_completions','openai','gpt-6-luna'],['responses','openai','gpt-6.1-terra'],['anthropic_messages','ollama','qwen3.5:9b']] as const){
     const selected=defaultTestAgentConfiguration(protocol);assert.equal(selected.protocol,protocol);assert.equal(selected.presetId,presetId);assert.equal(selected.model,model);
     assert.deepEqual(validateAgentGatewayConfiguration(selected,{selfPort:4318}),selected);
     const body=JSON.parse(buildTaskModelRequest(selected,[{role:'user',content:'Synthetic fixture only'}],tools,4318)) as Record<string,unknown>;

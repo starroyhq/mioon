@@ -1,4 +1,3 @@
-// Unsigned production build. Publishing, updates and signing are disabled.
 // electron-builder configuration source. This ESM module is bundled by
 // scripts/prepare-builder-config.ts into the ignored .generated/ CJS entrypoints
 // electron-builder actually loads. No packaging state is written here.
@@ -9,14 +8,17 @@ import {identityForChannel} from './identity.ts';
 import type {DesktopIdentity} from './identity.ts';
 import {readBuildMetadata, validateStagedMetadata} from './build-metadata.ts';
 import {verifySubtitleResources,packagedSubtitleDirectory,SUBTITLE_RESOURCE_FILES} from './subtitle-resources.ts';
-import {preserveMacRuntimeNotices,inspectMacRuntimeNotices,writeMacRuntimeNoticeProvenance} from './runtime-notices.ts';
+import {MAC_UNIVERSAL_ARCH,mergedMacRuntimeNotices,preserveMacRuntimeNotices,inspectMacRuntimeNotices,writeMacRuntimeNoticeProvenance} from './runtime-notices.ts';
 import type {RuntimeNoticeContext,RuntimeNoticeManifest} from './runtime-notices.ts';
 import {verifyProjectExampleResources} from '@mioon/business/project-example-resources';
+import {candidateUpdateFeedUrl} from '../../.github/scripts/mac-update-feed.ts';
 
 /** The electron-builder beforePack context fields this module consumes. */
 export interface BuilderPackContext {
   readonly packager: {readonly info: {readonly appDir: string}};
 }
+type MacPublishConfig = {provider: 'github'; owner: 'starroyhq'; repo: 'mioon'; releaseType: 'release'}
+  | {provider: 'generic'; url: string};
 export interface BuilderConfig {
   appId: string;
   productName: string;
@@ -29,6 +31,7 @@ export interface BuilderConfig {
   extraResources: Array<{from: string; to: string; filter: string[]}>;
   npmRebuild: false;
   publish: null;
+  dmg: {writeUpdateInfo: false};
   beforePack(context: BuilderPackContext): Promise<void>;
   afterExtract(context: RuntimeNoticeContext): Promise<void>;
   afterPack(context: RuntimeNoticeContext): Promise<void>;
@@ -46,6 +49,8 @@ export interface BuilderConfig {
   mac: {
     icon: string;
     target: Array<{target: string; arch: string[]}>;
+    publish: MacPublishConfig | null;
+    detectUpdateChannel: false;
     category: string;
     hardenedRuntime: true;
     gatekeeperAssess: false;
@@ -56,10 +61,16 @@ export interface BuilderConfig {
   };
 }
 const directory = path.dirname(fileURLToPath(import.meta.url));
-export function builderConfig(channel: string): BuilderConfig {
+export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON_RELEASE_UPDATE_FEED_URL ?? ''): BuilderConfig {
   const identity: DesktopIdentity = identityForChannel(channel);
   const { appVersion, electronVersion } = readBuildMetadata();
   const runtimeNotices = new Map<string, RuntimeNoticeManifest | null>();
+  const packedMacNotices = new Map<string, RuntimeNoticeManifest>();
+  let macPublish: MacPublishConfig | null = null;
+  if (identity.channel === 'production') {
+    macPublish = updateFeedUrl ? {provider: 'generic', url: candidateUpdateFeedUrl(updateFeedUrl)}
+      : {provider: 'github', owner: 'starroyhq', repo: 'mioon', releaseType: 'release'};
+  }
   return {
     appId: identity.appId,
     productName: identity.productName,
@@ -75,6 +86,9 @@ export function builderConfig(channel: string): BuilderConfig {
       {from:'build/examples',to:'examples',filter:['**/*']}],
     npmRebuild: false,
     publish: null,
+    // The DMG is stapled after electron-builder exits. Keep the updater
+    // manifest and blockmap tied to the already stapled app in the final ZIP.
+    dmg: {writeUpdateInfo: false},
     // Reject stale versions and identities before any packaging work.
     beforePack: async (context: BuilderPackContext): Promise<void> => {
       const metadata: unknown = JSON.parse(await fs.readFile(path.join(context.packager.info.appDir, 'package.json'), 'utf8'));
@@ -87,16 +101,24 @@ export function builderConfig(channel: string): BuilderConfig {
     afterExtract: async (context: RuntimeNoticeContext): Promise<void> => {
       if (typeof context.appOutDir !== 'string') return;
       runtimeNotices.delete(context.appOutDir);
+      packedMacNotices.delete(context.appOutDir);
       const manifest = await preserveMacRuntimeNotices(context, electronVersion);
       if (manifest) runtimeNotices.set(context.appOutDir, manifest);
     },
     afterPack: async (context: RuntimeNoticeContext): Promise<void> => {
       const appOutDir = typeof context.appOutDir === 'string' ? context.appOutDir : null;
-      const manifest = await inspectMacRuntimeNotices(context, electronVersion, appOutDir === null ? undefined : runtimeNotices.get(appOutDir));
-      await verifySubtitleResources(packagedSubtitleDirectory(context));
-      verifyProjectExampleResources(path.join(path.dirname(packagedSubtitleDirectory(context)), 'examples'));
+      const universal = context.arch === MAC_UNIVERSAL_ARCH;
+      const originalNotices = universal ? mergedMacRuntimeNotices(context, electronVersion, packedMacNotices)
+        : appOutDir === null ? undefined : runtimeNotices.get(appOutDir);
+      const manifest = await inspectMacRuntimeNotices(context, electronVersion, originalNotices);
+      const subtitles = packagedSubtitleDirectory(context);
+      await verifySubtitleResources(subtitles);
+      verifyProjectExampleResources(path.join(path.dirname(subtitles), 'examples'));
       await writeMacRuntimeNoticeProvenance(context, electronVersion, appVersion, manifest);
-      if (appOutDir !== null) runtimeNotices.delete(appOutDir);
+      if (appOutDir !== null) {
+        runtimeNotices.delete(appOutDir);
+        if (manifest && !universal) packedMacNotices.set(appOutDir, manifest);
+      }
     },
     // OS file intents open the original project path through the trusted host.
     fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
@@ -118,10 +140,12 @@ export function builderConfig(channel: string): BuilderConfig {
       desktop: { entry: { StartupWMClass: identity.appId } },
       artifactName: `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`
     },
-    // Configuration only: macOS build, signing, notarization and native QA remain unverified.
+    // The release invocation supplies signing and notarization explicitly.
     mac: {
       icon: path.join(directory, 'resources/icon.icns'),
-      target: [{ target: 'dmg', arch: ['arm64', 'x64'] }],
+      target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
+      publish: macPublish,
+      detectUpdateChannel: false,
       category: 'public.app-category.video',
       hardenedRuntime: true,
       gatekeeperAssess: false,
@@ -136,7 +160,7 @@ export function builderConfig(channel: string): BuilderConfig {
         NSDownloadsFolderUsageDescription: 'Mioon opens and saves the projects and media you choose in Downloads.',
         NSRemovableVolumesUsageDescription: 'Mioon opens and saves the projects and media you choose on removable drives.',
       },
-      artifactName: `${identity.executableName}-\${version}-\${os}-\${arch}.\${ext}`
+      artifactName: `${identity.executableName}-\${version}-mac.\${ext}`
     }
   };
 }

@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, cleanEnvironment, command, mediaCapabilities, mediaFailureReport, MediaCapabilityFailure, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
-import {boundedPoll, extractedTarFor, mountedDmgFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
+import {boundedPoll, extractedTarFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
 import {runMacInspectionCheck, validateArchitecture, validateMacStapledArtifact, validateTarListing, verifyPackagedProjectNotices, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
 import type {MacStaplerDiagnostic} from '../.github/scripts/inspect-desktop.ts';
+import {macDmgEvidence, uniqueMacApp} from '../.github/scripts/mac-dmg.ts';
 import {PROJECT_NOTICES} from '../apps/desktop/scripts/stage-project-notices.ts';
 
 test('desktop helper CLI rejects missing, duplicate, unknown and multiline options', () => {
@@ -80,9 +82,14 @@ test('private discovery is bound to production identity, loopback and exact owne
   for (const changed of [{channel: 'development'}, {appId: 'other'}, {pid: 1}, {tokenFile: '/private/unrelated/token'}, {url: 'https://127.0.0.1:55291'}, {url: 'http://example.com:55291'}, {url: 'http://secret@127.0.0.1:55291'}, {url: 'http://127.0.0.1:55291/path'}, {url: 'http://127.0.0.1:55291?secret=x'}]) assert.throws(() => validateDiscovery({...base, ...changed}, owned));
 });
 
-test('architecture inspection rejects wrong and universal artifacts', () => {
+test('architecture inspection requires exactly the two universal slices, independent of lipo order', () => {
   validateArchitecture('arm64\n', 'darwin', 'arm64'); validateArchitecture('x86_64\n', 'darwin', 'x64');
   validateArchitecture('ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV)', 'linux', 'x64');
+  for (const output of ['arm64 x86_64\n', 'x86_64\tarm64']) validateArchitecture(output, 'darwin', 'universal');
+  for (const output of ['arm64', 'x86_64', 'arm64 arm64 x86_64', 'arm64 x86_64 arm64e']) {
+    assert.throws(() => validateArchitecture(output, 'darwin', 'universal'), {message: 'PACKAGE_ARCHITECTURE_MISMATCH'});
+  }
+  assert.throws(() => validateArchitecture('ELF 64-bit LSB pie executable, x86-64', 'linux', 'universal'));
   assert.throws(() => validateArchitecture('arm64 x86_64', 'darwin', 'arm64'));
   assert.throws(() => validateArchitecture('arm64', 'darwin', 'x64'));
   assert.throws(() => validateArchitecture('ELF 64-bit LSB executable, ARM aarch64', 'linux', 'x64'));
@@ -95,10 +102,33 @@ test('codesign identity requires reviewed Developer ID, Team ID and hardened run
   for (const [body, name, team] of [[output, undefined, 'ABCDEFGHIJ'], [output, identity, undefined], [output.replace('flags=0x10000(runtime)', 'flags=0x0(none)'), identity, 'ABCDEFGHIJ'], [output.replace('TeamIdentifier=ABCDEFGHIJ', 'TeamIdentifier=KLMNOPQRST'), identity, 'ABCDEFGHIJ'], [output.replace(identity, 'Developer ID Application: Another Team (ABCDEFGHIJ)'), identity, 'ABCDEFGHIJ']] as const) assert.throws(() => verifySigningIdentity(body, name, team));
 });
 
-test('only controlled mounted DMG paths are candidates for teardown', () => {
-  assert.equal(mountedDmgFor('/private/tmp/mioon-ci-dmg-abcd/Mioon.app/Contents/MacOS/Mioon'), '/private/tmp/mioon-ci-dmg-abcd');
-  assert.equal(mountedDmgFor('/Applications/Mioon.app/Contents/MacOS/Mioon'), null);
-  assert.equal(mountedDmgFor('/private/tmp/mioon-ci-dmg-abcd/random'), null);
+test('DMG evidence measures the absolute regular universal artifact and omits its directory', async t => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-mac-dmg-test-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const name = 'mioon-0.2.0-mac.dmg';
+  const file = path.join(directory, name);
+  const bytes = Buffer.from('synthetic signed delivery bytes');
+  await writeFile(file, bytes);
+  assert.deepEqual(await macDmgEvidence(file), {name, sha256: createHash('sha256').update(bytes).digest('hex')});
+  await assert.rejects(macDmgEvidence(name), {message: 'INVALID_MAC_DMG'});
+  await assert.rejects(macDmgEvidence(path.join(directory, 'mioon-0.2.0-mac-x64.dmg')), {message: 'INVALID_MAC_DMG'});
+  const empty = path.join(directory, 'mioon-0.2.1-mac.dmg'); await writeFile(empty, '');
+  await assert.rejects(macDmgEvidence(empty), {message: 'INVALID_MAC_DMG'});
+  if (process.platform !== 'win32') {
+    const alias = path.join(directory, 'mioon-0.2.2-mac.dmg');
+    await symlink(file, alias);
+    await assert.rejects(macDmgEvidence(alias), {message: 'INVALID_MAC_DMG'});
+  }
+});
+
+test('a packaged app must be a unique directory directly in the owned mount or extraction', async t => {
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-mac-app-test-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  await assert.rejects(uniqueMacApp(directory), {message: 'UNIQUE_MAC_APP_REQUIRED'});
+  const app = path.join(directory, 'Mioon.app'); await mkdir(app);
+  assert.equal(await uniqueMacApp(directory), app);
+  await writeFile(path.join(directory, 'extra.app'), '');
+  await assert.rejects(uniqueMacApp(directory), {message: 'UNIQUE_MAC_APP_REQUIRED'});
 });
 
 test('only controlled delivered Linux extraction paths are candidates for teardown', () => {
@@ -157,6 +187,7 @@ test('machine-readable diagnostics retain fixed error code only', async () => {
 
 test('Mac package subchecks expose only fixed phases and error codes', async () => {
   const cases = [
+    ['bundle-architecture', 'MAC_BUNDLE_ARCHITECTURE_FAILED'],
     ['asar-content', 'ASAR_STAGING_MISMATCH'], ['asar-metadata', 'ASAR_METADATA_MISMATCH'],
     ['asar-required-files', 'ASAR_REQUIRED_FILES_MISSING'], ['tray-resources', 'TRAY_RESOURCES_INVALID'],
     ['subtitle-resources', 'SUBTITLE_RESOURCES_INVALID'], ['fuses', 'FUSE_INSPECTION_FAILED'],
@@ -164,7 +195,7 @@ test('Mac package subchecks expose only fixed phases and error codes', async () 
     ['codesign', 'CODESIGN_VERIFICATION_FAILED'], ['signing-identity', 'SIGNING_IDENTITY_MISMATCH'],
     ['app-staple', 'APP_STAPLE_INVALID'], ['app-gatekeeper', 'GATEKEEPER_REJECTED']
   ] as const;
-  for (const scope of ['staged-mac-app', 'mounted-dmg-app'] as const) for (const [name, code] of cases) {
+  for (const scope of ['staged-mac-app', 'mounted-dmg-app', 'extracted-zip-app'] as const) for (const [name, code] of cases) {
     const phases: string[] = [];
     const failure = await runMacInspectionCheck(scope, name, async () => { throw new Error('private source bytes/token'); }, phase => phases.push(phase)).catch(error => error as unknown);
     assert.ok(failure instanceof CheckFailure);
@@ -186,7 +217,7 @@ test('staged app, delivered app and DMG validation retain mandatory gates and sa
     {exitCode: null, signal: 'SIGTERM', timedOut: false, category: 'signal'}
   ] as const;
   try {
-    for (const scope of ['staged-mac-app', 'mounted-dmg-app', 'signed-dmg'] as const) for (const fixture of failures) {
+    for (const scope of ['staged-mac-app', 'mounted-dmg-app', 'extracted-zip-app', 'signed-dmg'] as const) for (const fixture of failures) {
       const diagnostics: MacStaplerDiagnostic[] = [], phases: string[] = [], commands: Array<{file: string; args: readonly string[]}> = [];
       const artifact = path.join(directory, `${secret}.${scope === 'signed-dmg' ? 'dmg' : 'app'}`);
       const validate = () => validateMacStapledArtifact(scope, artifact, {

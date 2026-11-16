@@ -22,8 +22,8 @@ const catalog: AgentPresetBase[] = [
     ...([['cn-beijing', '北京'], ['ap-southeast-1', '新加坡'], ['us-east-1', '美国东部'], ['cn-hongkong', '香港'], ['ap-northeast-1', '东京'], ['eu-central-1', '法兰克福']] as const).map(([region, label]) => platform(`workspace-${region}`, `${label} · 工作空间端点`, '', 'qwen3.8-flash', qwenSources, '请填写账户实际工作空间端点；模板不是可直接使用的地址。', `https://{WorkspaceId}.${region}.maas.aliyuncs.com/compatible-mode/v1`)),
   ]},
   {id: 'zhipu', label: 'Zhipu / Z.ai', description: '中国 BigModel 与国际 Z.ai 是独立平台，密钥不假定通用。', platforms: [
-    platform('china', '中国 · BigModel', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4.7', [source('中国平台', 'https://docs.bigmodel.cn/cn/guide/start/quick-start')]),
-    platform('international', '国际 · Z.ai', 'https://api.z.ai/api/paas/v4', 'glm-4.7', [source('国际 Chat API', 'https://docs.z.ai/api-reference/llm/chat-completion')]),
+    platform('china', '中国 · BigModel', 'https://open.bigmodel.cn/api/paas/v4', 'glm-5.3', [source('GLM-5.3 中国', 'https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3')]),
+    platform('international', '国际 · Z.ai', 'https://api.z.ai/api/paas/v4', 'glm-5.3', [source('GLM-5.3 国际', 'https://docs.z.ai/guides/llm/glm-5.3')]),
   ]},
   {id: 'kimi', label: 'Kimi / Moonshot', description: 'K3.1 Pro 使用最低推理强度执行文本与工具任务；区域账户分别配置。', platforms: [
     platform('china', '中国 · Moonshot', 'https://api.moonshot.cn/v1', 'kimi-k3.1-pro', [source('K3.1 Pro', 'https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart'), source('推理强度', 'https://platform.kimi.com/docs/guide/use-reasoning-effort')]),
@@ -35,7 +35,7 @@ const catalog: AgentPresetBase[] = [
   ]},
   {id: 'openrouter', label: 'OpenRouter', description: '实际能力取决于所选模型和路由供应商。', platforms: [platform('global', 'OpenRouter', 'https://openrouter.ai/api/v1', `openai/${AGENT_DEFAULT_OPENAI_MODEL}`, [source('模型文档', `https://openrouter.ai/openai/${AGENT_DEFAULT_OPENAI_MODEL}`)])]},
   {id: 'custom', label: '自定义兼容服务', description: '仅远程 HTTPS；地址和模型由你填写，兼容性未验证。', platforms: [platform('custom', '自定义 · 远程 HTTPS', '', '', [])]},
-  {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环；按协议填写基础地址，通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3:8b', [source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
+  {id: 'ollama', label: 'Ollama 本地', description: '仅本机回环；按协议填写基础地址，通常无需密钥，不下载模型，不包含云端路由授权。', platforms: [platform('local', '本机 · Ollama', 'http://127.0.0.1:11434/v1', 'qwen3.5:9b', [source('Qwen3.5 9B', 'https://ollama.com/library/qwen3.5:9b'), source('OpenAI 兼容接口', 'https://docs.ollama.com/api/openai-compatibility')])]},
 ];
 function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
 // Runnable protocols derive only from their documentation-backed endpoint.
@@ -45,19 +45,20 @@ const responseModelHints: Record<string, string[]> = {
   deepseek: ['deepseek-flash'],
   qwen: ['qwen3.8-flash'],
   custom: [],
-  ollama: ['qwen3:8b'],
+  ollama: ['qwen3.5:9b', 'qwen3:8b'],
 };
 const checkedAt = '2026-11-03';
-function protocolEndpoint(baseUrl: string, url: string, options: {baseUrlTemplate?: string; blockedReason?: string} = {}): AgentProtocolEndpoint {
+function protocolEndpoint(baseUrl: string, url: string, options: {baseUrlTemplate?: string; blockedReason?: string; checkedAt?: string} = {}): AgentProtocolEndpoint {
   return {baseUrl, sources: url ? [source('官方协议文档', url)] : [], checkedAt, ...options};
 }
 function platformEndpoints(presetId: string, item: StartingPlatform): {addressMode: AgentAddressMode; protocols: Partial<Record<AgentProtocol, AgentProtocolEndpoint>>} {
   const cc = 'chat_completions', r = 'responses', m = 'anthropic_messages';
   if (presetId === 'custom') return {addressMode: 'custom', protocols: {[cc]: protocolEndpoint('', ''), [r]: protocolEndpoint('', ''), [m]: protocolEndpoint('', '')}};
+  const rechecked = {checkedAt: '2026-11-16'};
   if (presetId === 'ollama') return {addressMode: 'local', protocols: {
-    [cc]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility'),
-    [r]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility'),
-    [m]: protocolEndpoint(new URL(item.baseUrl).origin, 'https://docs.ollama.com/api/anthropic-compatibility'),
+    [cc]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility', rechecked),
+    [r]: protocolEndpoint(item.baseUrl, 'https://docs.ollama.com/api/openai-compatibility', rechecked),
+    [m]: protocolEndpoint(new URL(item.baseUrl).origin, 'https://docs.ollama.com/api/anthropic-compatibility', rechecked),
   }};
   if (presetId === 'qwen') {
     const workspace = item.id.startsWith('workspace-'), base = workspace ? '' : item.baseUrl;
@@ -84,9 +85,9 @@ function platformEndpoints(presetId: string, item: StartingPlatform): {addressMo
   if (presetId === 'zhipu') {
     const origin = new URL(item.baseUrl).origin, international = item.id === 'international';
     return {addressMode: 'fixed', protocols: {
-      [cc]: protocolEndpoint(item.baseUrl, international ? 'https://docs.z.ai/guides/develop/openai/python.md' : 'https://docs.bigmodel.cn/cn/guide/develop/openai/introduction.md'),
-      [r]: protocolEndpoint(origin + '/api/v1', international ? 'https://docs.z.ai/devpack/tool/codex.md' : 'https://docs.bigmodel.cn/cn/guide/develop/responses/introduction.md', international ? {blockedReason: 'Z.ai Responses尚缺可确认的关闭思考字段，当前不支持。'} : {}),
-      [m]: protocolEndpoint(origin + '/api/anthropic', international ? 'https://docs.z.ai/guides/develop/http/introduction.md' : 'https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md'),
+      [cc]: protocolEndpoint(item.baseUrl, international ? 'https://docs.z.ai/guides/develop/openai/python.md' : 'https://docs.bigmodel.cn/cn/guide/develop/openai/introduction.md', rechecked),
+      [r]: protocolEndpoint(origin + '/api/v1', international ? 'https://docs.z.ai/devpack/tool/codex.md' : 'https://docs.bigmodel.cn/cn/guide/develop/responses/introduction.md', international ? {...rechecked, blockedReason: 'Z.ai Responses 的无状态思考续接尚未验证，当前不支持。'} : rechecked),
+      [m]: protocolEndpoint(origin + '/api/anthropic', international ? 'https://docs.z.ai/guides/develop/http/introduction.md' : 'https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md', rechecked),
     }};
   }
   if (presetId === 'kimi') {

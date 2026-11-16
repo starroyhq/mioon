@@ -4,7 +4,7 @@ import {lstat, readFile} from 'node:fs/promises';
 import path from 'node:path';
 
 export type ReleasePlatform = 'darwin';
-export type ReleaseArch = 'arm64' | 'x64';
+export type ReleaseArch = 'universal';
 export interface ReleaseAsset {
   sourceSha: string;
   version: string;
@@ -14,7 +14,8 @@ export interface ReleaseAsset {
   bytes: number;
   sha256: string;
 }
-export const RELEASE_TARGETS = ['darwin-arm64', 'darwin-x64'] as const;
+export const RELEASE_TARGET = 'darwin-universal';
+export const MAC_UPDATE_MANIFEST = 'latest-mac.yml';
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 export function releaseVersion(value: unknown): string {
@@ -32,18 +33,27 @@ export function object(value: unknown): Record<string, unknown> {
 export async function jsonFile(file: string): Promise<unknown> {
   return JSON.parse(await readFile(file, 'utf8')) as unknown;
 }
-export function manifestName(asset: Pick<ReleaseAsset, 'platform' | 'arch'>): string {
-  return `manifest-${asset.platform}-${asset.arch}.json`;
+export function macArtifactNames(version: string) {
+  const base = `mioon-${version}-mac`;
+  return {dmg: `${base}.dmg`, dmgBlockmap: `${base}.dmg.blockmap`, zip: `${base}.zip`, zipBlockmap: `${base}.zip.blockmap`, update: MAC_UPDATE_MANIFEST};
+}
+export function releaseAssetNames(version: string, available: ReadonlySet<string>): string[] {
+  const {dmg, zip, zipBlockmap, update, dmgBlockmap} = macArtifactNames(version);
+  const required = [dmg, zip, zipBlockmap, update];
+  for (const name of required) if (!available.has(name)) throw new Error(`Missing release asset: ${name}`);
+  return available.has(dmgBlockmap) ? [...required, dmgBlockmap] : required;
+}
+export function manifestName(name: string): string {
+  return `manifest-${name}.json`;
 }
 export function validateAsset(value: unknown): ReleaseAsset {
   const data = object(value);
   const sha = sourceSha(data.sourceSha), version = releaseVersion(data.version);
   const platform = data.platform, arch = data.arch;
   if (platform !== 'darwin') throw new Error('Only macOS release packages are supported');
-  if (arch !== 'arm64' && arch !== 'x64') throw new Error('Invalid package architecture');
+  if (arch !== 'universal') throw new Error('Invalid package architecture: expected universal');
   const name = data.name;
-  const suffix = `-${version}-mac-${arch}.dmg`;
-  if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+_-]*$/.test(name) || path.basename(name) !== name || !name.endsWith(suffix)) throw new Error('Invalid package asset name');
+  if (typeof name !== 'string' || !Object.values(macArtifactNames(version)).includes(name)) throw new Error('Invalid package asset name');
   if (typeof data.bytes !== 'number' || !Number.isSafeInteger(data.bytes) || data.bytes <= 0) throw new Error('Invalid package byte count');
   if (typeof data.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256)) throw new Error('Invalid package SHA256');
   return {sourceSha: sha, version, platform, arch, name, bytes: data.bytes, sha256: data.sha256};

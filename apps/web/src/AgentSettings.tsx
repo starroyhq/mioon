@@ -12,7 +12,7 @@ import {deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protoco
 import {agentOpenAiModelIsAdapted} from '../../../packages/contracts/src/agent-openai-model-family.ts';
 import {createAgentModelListSession,testAgentDraftConnection} from './agent-model-list-session.ts';
 import type {AgentModelListView} from './agent-model-list-session.ts';
-import {agentModelListRows} from './agent-model-list-rows.ts';
+import {agentModelListRows,agentModelRetirementMessage} from './agent-model-list-rows.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import AgentAuthorizations from './AgentAuthorizations.tsx';
 import AgentConnectionTest from './AgentConnectionTest.tsx';
@@ -249,8 +249,15 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  const statusKey=partial?'agent.settings.x6.partial':saving?'mio.settings.footer.saving':attention?'mio.settings.footer.review':dirty?'settings.draftKey.footer':'mio.settings.footer.saved';
  const canSave=visible&&!saving&&!policyState.unknown&&(connectionDirty?agentSettingsCanSave(state):policyState.dirty);
  const statusMessage=state.displayMessages.map(descriptor=>renderMessage(descriptor)).join(' ');
- const currentService=draft?.services.find(item=>item.serviceKey===draft.mioSelection?.serviceKey),currentPlatform=snapshot?.presets.find(item=>item.id===currentService?.presetId)?.platforms.find(item=>item.id===currentService?.platformId);
- const currentAdapted=Boolean(currentService&&currentService.presetId!=='custom'&&(currentPlatform?.supportedModelHints?.[currentService.protocol]?.includes(draft!.mioSelection!.modelId)||agentOpenAiModelIsAdapted(currentService.presetId,currentService.protocol,draft!.mioSelection!.modelId)));
+ const today = new Date();
+ const modelRetirementNotice = (presetId: string, modelId: string) => {
+  const notice = agentModelRetirementMessage(presetId, modelId, today);
+  return notice ? t(notice) : undefined;
+ };
+ const currentSelection = draft?.mioSelection;
+ const currentService=draft?.services.find(item=>item.serviceKey===currentSelection?.serviceKey),currentPlatform=snapshot?.presets.find(item=>item.id===currentService?.presetId)?.platforms.find(item=>item.id===currentService?.platformId);
+ const currentRetirement = currentService && currentSelection && modelRetirementNotice(currentService.presetId, currentSelection.modelId);
+ const currentAdapted=Boolean(currentService&&currentSelection&&currentService.presetId!=='custom'&&(currentPlatform?.supportedModelHints?.[currentService.protocol]?.includes(currentSelection.modelId)||agentOpenAiModelIsAdapted(currentService.presetId,currentService.protocol,currentSelection.modelId)));
  const savedCurrent=snapshot?.services.find(item=>item.serviceKey===currentService?.serviceKey);
  const currentUnchanged=Boolean(currentService&&savedCurrent&&snapshot?.mioSelection?.serviceKey===draft?.mioSelection?.serviceKey&&snapshot?.mioSelection?.modelId===draft?.mioSelection?.modelId&&agentServiceEqual(savedCurrent,currentService,snapshot!.presets)&&!hasKeys.has(currentService.serviceKey)&&state.serviceIntents[currentService.serviceKey]?.action!=='remove');
  const verified=agentDiagnosticMatchesExecution(latest,snapshot?.execution??null)&&latest?.status==='completed'&&currentUnchanged;
@@ -259,7 +266,15 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  const general=<div className="mio-settings-general">
   <section className="mio-settings-section"><header className="mio-settings-section-head"><h2>{t('agent.settings.x6.current')}</h2></header>
    <div className="mio-current-model" data-testid="agent-settings-current-model">
-    {currentService&&draft?.mioSelection?<><div className="mio-current-model-copy"><strong>{draft.mioSelection.modelId}</strong><span>{currentService.presetId==='custom'?currentService.name:agentPresetLabel({id:currentService.presetId},t)} · {currentPlatform?agentPlatformLabel(currentService.presetId,currentPlatform,t):''} · {AGENT_PROTOCOLS[currentService.protocol].label}</span><div className="mio-settings-inline"><WorkbenchBadge>{t(currentAdapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge><span>{t(!currentUnchanged?'agent.settings.x6.pendingModel':verified?'agent.settings.x6.currentPassed':'agent.settings.x6.currentUntested')}</span></div></div></>:<p>{t('agent.settings.x6.unconfigured')}</p>}
+    {currentService && currentSelection ? <div className="mio-current-model-copy">
+     <strong>{currentSelection.modelId}</strong>
+     <span>{currentService.presetId==='custom'?currentService.name:agentPresetLabel({id:currentService.presetId},t)} · {currentPlatform?agentPlatformLabel(currentService.presetId,currentPlatform,t):''} · {AGENT_PROTOCOLS[currentService.protocol].label}</span>
+     <div className="mio-settings-inline">
+      <WorkbenchBadge>{t(currentAdapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge>
+      {currentRetirement && <WorkbenchBadge tone="warning">{currentRetirement}</WorkbenchBadge>}
+      <span>{t(!currentUnchanged?'agent.settings.x6.pendingModel':verified?'agent.settings.x6.currentPassed':'agent.settings.x6.currentUntested')}</span>
+     </div>
+    </div> : <p>{t('agent.settings.x6.unconfigured')}</p>}
     <WorkbenchButton type="button" size="compact" variant="ghost" data-testid="agent-settings-change-model" onClick={()=>{if(usable('general'))session.current?.view(currentService?.serviceKey??'minimax');}}>{t('agent.settings.x6.change')}</WorkbenchButton>
    </div>
   </section>
@@ -286,6 +301,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
    id:model.id,label:model.displayName,
    added:models.some(row=>row.id===model.id),
    active:model.id===savedModel,verified:isAdapted(model.id),
+   retirementNotice: modelRetirementNotice(entry.presetId, model.id),
   })):[];
   const pickerStatus=!list||listBusy?'loading':!latestList?'error':pickerItems.length?'ready':'empty';
   const messagesV1=entry.presetId==='custom'&&entry.protocol==='anthropic_messages'&&/\/v1\/?$/u.test(entry.addressInput.trim());
@@ -340,7 +356,23 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
    <section className="mio-settings-section mio-model-section"><header className="mio-settings-model-heading"><h3>{t('mio.settings.label.model')}</h3><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||!base||listBusy} loading={listBusy} data-testid={`agent-settings-fetch-${key}`} onClick={event=>fetchModels(key,true,event?.currentTarget)}>{t('agent.settings.x6.fetchModels')}</WorkbenchButton></header>
     <p className="agent-settings-help mio-model-observation" role="status" data-testid={`agent-settings-model-list-status-${key}`} data-phase={list?.phase??'idle'}>{t(listStatus)}{list?.observation&&<> · {t('agent.settings.models.fetchedAt',{time:formatDate(list.observation.fetchedAt,{dateStyle:'short',timeStyle:'short'})})}</>}</p>
     {entry.protocol==='responses'&&<p className="agent-settings-help" data-testid={`agent-settings-model-guidance-${key}`}>{entry.presetId==='custom'?t('agent.settings.responsesCustom'):t('agent.task.protocolScope')}{entry.presetId==='qwen'?' '+t('agent.settings.presets.qwenResponses'):''}</p>}{entry.protocol==='anthropic_messages'&&<p className="agent-settings-help" data-testid={`agent-settings-anthropic-guidance-${key}`}>{t('agent.settings.anthropicScope')}</p>}
-    <div className="mio-model-list">{models.map(model=><div className="mio-model-row" key={model.id} data-testid={`agent-settings-model-row-${key}-${model.id}`}><div><strong>{model.id}</strong>{model.displayName&&model.displayName!==model.id&&<span className="mio-model-display-name">{model.displayName}</span>}<WorkbenchBadge tone={model.missing?'warning':'neutral'}>{t(model.missing?'agent.settings.models.missing':model.adapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge>{model.manual&&<WorkbenchBadge>{t('settings.modelPicker.added')}</WorkbenchBadge>}{model.current&&selectedModel!==model.id&&<WorkbenchBadge>{t('agent.settings.x6.usingModel')}</WorkbenchBadge>}</div><div className="mio-settings-inline"><WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||selectedModel===model.id} data-testid={`agent-settings-use-${key}-${model.id}`} onClick={()=>{if(usable(key))session.current?.selectMio(key,model.id);}}>{t(selectedModel===model.id?savedModel===model.id?'agent.settings.x6.usingModel':'agent.settings.x6.pendingModel':'agent.settings.x6.useModel')}</WorkbenchButton>{model.manual&&<WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled} aria-label={t('agent.settings.x6.removeModel')} onClick={()=>{if(usable(key))session.current?.removeModel(key,model.id);}}><Icon name="close" size={12}/></WorkbenchButton>}</div></div>)}</div>
+    <div className="mio-model-list">{models.map(model => {
+     const retirementNotice = modelRetirementNotice(entry.presetId, model.id);
+     return <div className="mio-model-row" key={model.id} data-testid={`agent-settings-model-row-${key}-${model.id}`}>
+      <div>
+       <strong>{model.id}</strong>
+       {model.displayName&&model.displayName!==model.id&&<span className="mio-model-display-name">{model.displayName}</span>}
+       <WorkbenchBadge tone={model.missing?'warning':'neutral'}>{t(model.missing?'agent.settings.models.missing':model.adapted?'agent.settings.x6.adapted':'agent.settings.x6.unverified')}</WorkbenchBadge>
+       {retirementNotice && <WorkbenchBadge tone="warning">{retirementNotice}</WorkbenchBadge>}
+       {model.manual&&<WorkbenchBadge>{t('settings.modelPicker.added')}</WorkbenchBadge>}
+       {model.current&&selectedModel!==model.id&&<WorkbenchBadge>{t('agent.settings.x6.usingModel')}</WorkbenchBadge>}
+      </div>
+      <div className="mio-settings-inline">
+       <WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled||selectedModel===model.id} data-testid={`agent-settings-use-${key}-${model.id}`} onClick={()=>{if(usable(key))session.current?.selectMio(key,model.id);}}>{t(selectedModel===model.id?savedModel===model.id?'agent.settings.x6.usingModel':'agent.settings.x6.pendingModel':'agent.settings.x6.useModel')}</WorkbenchButton>
+       {model.manual&&<WorkbenchButton type="button" size="compact" variant="ghost" disabled={!enabled} aria-label={t('agent.settings.x6.removeModel')} onClick={()=>{if(usable(key))session.current?.removeModel(key,model.id);}}><Icon name="close" size={12}/></WorkbenchButton>}
+      </div>
+     </div>;
+    })}</div>
     {missing&&<p className="agent-settings-binding-warning" role="status" data-testid={`agent-settings-model-missing-${key}`}>{t('agent.settings.models.missingWarning',{model:missing.id})}</p>}
     <div className="mio-settings-inline"><Input ref={manualRef} id={`agent-model-${key}`} data-testid={`agent-settings-model-${key}`} aria-label={t('mio.settings.label.model')} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none"/><WorkbenchButton type="button" size="compact" variant="ghost" data-testid={`agent-settings-add-model-${key}`} disabled={!enabled||entry.manualModelIds.length>=AGENT_CONNECTION_LIMITS.manualModels} onClick={()=>{if(!usable(key))return;const accepted=session.current?.addModel(key,manualRef.current?.value??'');setModelErrors(previous=>new Set([...previous].filter(item=>item!==key).concat(accepted?[]:[key])));if(accepted&&manualRef.current)manualRef.current.value='';}}>{t('agent.settings.x6.addModel')}</WorkbenchButton></div><p className="agent-settings-help">{t('agent.settings.x6.manualHint')}</p>{modelErrors.has(key)&&<p className="mio-settings-notice" role="alert">{t('agent.settings.x6.modelRequired')}</p>}
     <p className="agent-settings-help">{t('agent.settings.models.scope')}</p>

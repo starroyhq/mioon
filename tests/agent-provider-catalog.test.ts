@@ -24,7 +24,7 @@ test('current OpenAI defaults use GPT-6.1 Terra over Responses while older model
  assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openai')!.supportedModelHints?.responses?.includes('gpt-4.1-mini'),false);
 });
 
-test('Qwen and Kimi defaults advance only on their existing platforms while deferred and Q11 defaults stay fixed',()=>{
+test('Qwen and Kimi retain the confirmed defaults on their existing platforms',()=>{
  const qwen=AGENT_PRESETS.find(preset=>preset.id==='qwen')!,kimi=AGENT_PRESETS.find(preset=>preset.id==='kimi')!;
  assert.equal(qwen.platforms.length,8);assert.equal(kimi.platforms.length,2);
  for(const platform of qwen.platforms){
@@ -42,12 +42,36 @@ test('Qwen and Kimi defaults advance only on their existing platforms while defe
   assert.equal(agentModelAdaptation({...configuration('kimi',platform.id,c),model:'kimi-k3.1-pro'}),'adapted');
  }
  assert.equal(qwen.defaultProtocol,c);assert.equal(kimi.defaultProtocol,c);
- for(const platform of AGENT_PRESETS.find(preset=>preset.id==='zhipu')!.platforms)assert.equal(platform.model,'glm-4.7',platform.id);
- assert.equal(AGENT_PRESETS.find(preset=>preset.id==='ollama')!.platforms[0]!.model,'qwen3:8b');
  assert.equal(AGENT_PRESETS.find(preset=>preset.id==='deepseek')!.platforms[0]!.model,'deepseek-flash');
  assert.deepEqual(DEFAULT_AGENT_CONFIGURATION,{presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'gpt-6.1-terra',protocol:r});
  assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openrouter')!.platforms[0]!.model,'openai/gpt-6.1-terra');
  assert.equal(AGENT_PRESETS.find(preset=>preset.id==='openrouter')!.defaultProtocol,c);
+});
+
+test('GLM-5.3 and Ollama Qwen3.5 are starting values while saved model IDs still parse unchanged',()=>{
+ const zhipu=AGENT_PRESETS.find(preset=>preset.id==='zhipu')!,ollama=AGENT_PRESETS.find(preset=>preset.id==='ollama')!;
+ for(const platform of [...zhipu.platforms,...ollama.platforms]){
+  assert.equal(platform.defaultProtocol,c);
+  assert.equal(platform.model,platform.addressMode==='local'?'qwen3.5:9b':'glm-5.3');
+ }
+ for(const platform of zhipu.platforms){
+  const legacy={...configuration('zhipu',platform.id,c),model:'glm-4.7'};
+  assert.deepEqual(parseAgentConfiguration(legacy),legacy);
+  assert.deepEqual(agentChatProfile(legacy).fields,{thinking:{type:'disabled'}});
+  assert.deepEqual(agentModelTokenLimits(legacy),{contextTokens:200000,outputTokens:4096});
+ }
+ for(const protocol of [c,r,m] as const){
+  const local=configuration('ollama','local',protocol,'http://127.0.0.1:11434');
+  const legacy={...local,model:'qwen3:8b'},current={...local,model:ollama.platforms[0]!.model};
+  assert.deepEqual(parseAgentConfiguration(legacy),legacy);
+  assert.equal(agentModelThinkingTier(current),'optional');
+  assert.equal(agentModelAdaptation(current),'adapted');
+  assert.deepEqual(agentModelTokenLimits(current),{contextTokens:null,outputTokens:4096});
+  if(protocol===c)assert.deepEqual(agentChatProfile(current).fields,{reasoning_effort:'none'});
+  if(protocol===r)assert.deepEqual(agentResponsesProfile(current).fields,{reasoning:{effort:'none'}});
+ }
+ assert.deepEqual(ollama.platforms[0]!.supportedModelHints?.responses,['qwen3.5:9b','qwen3:8b']);
+ for(const platform of AGENT_PRESETS.find(preset=>preset.id==='minimax')!.platforms)assert.equal(platform.model,'MiniMax-M3');
 });
 
 test('Sonnet 5.5 is the current Anthropic default while Haiku remains independent and all protocol defaults stay fixed',()=>{
@@ -165,7 +189,7 @@ test('the static catalog derives runnable protocols from exact endpoints and pre
     assert.ok(Object.isFrozen(platform.protocols));
     for (const protocol of platform.availableProtocols) {
       const endpoint = platform.protocols[protocol]; assert.ok(endpoint); assert.equal(endpoint.blockedReason, undefined);
-      assert.equal(endpoint.checkedAt, '2026-11-03');
+      assert.equal(endpoint.checkedAt, ['zhipu','ollama'].includes(preset.id) ? '2026-11-16' : '2026-11-03');
       if (preset.id !== 'custom') assert.ok(endpoint.sources.length);
     }
   }
