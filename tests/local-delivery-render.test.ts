@@ -62,7 +62,7 @@ test('capacity refusal and unknown write have distinct safe choices and inline a
 });
 
 test('saved and unacknowledged original intents disclose execution authority and exact original request', () => {
-  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-request-unchanged/); assert.ok(html.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(html, /可能首次执行之前尚未提交的导出/); assert.match(html, /确认恢复同一原请求/); assert.match(html, /不会改用当前名称或输出规格/); }
+  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-request-unchanged/); assert.ok(html.includes(translate('zh-Hans', 'export.revision', { revision: 2 }))); assert.match(html, /恢复可能会首次提交原导出/); assert.match(html, /确认恢复同一原请求/); assert.doesNotMatch(html, /不会改用当前名称或输出规格/); }
   assert.match(rendered.lostPrepare, /即使读取结果为空/); assert.match(rendered.lostPrepare, /同一编号和原参数再次确认保存/);
 });
 
@@ -92,7 +92,7 @@ test('long provenance is collapsed while frozen output settings remain visible i
 
 
 test('terminal request copy does not imply another execution and keeps provenance collapsed', () => {
-  assert.match(rendered.accepted, /原请求回执已确认接受/); assert.match(rendered.accepted, /是否完成渲染，请查看导出记录/); assert.doesNotMatch(rendered.accepted, /可能首次执行|确认恢复同一原请求/);
-  assert.match(rendered.notApplied, /不会再次重试同一请求/); assert.doesNotMatch(rendered.notApplied, /可能首次执行|确认恢复同一原请求/);
+  assert.match(rendered.accepted, /原导出请求已确认接受/); assert.doesNotMatch(rendered.accepted, /是否完成渲染，请查看导出记录|恢复可能会首次提交原导出|确认恢复同一原请求/);
+  assert.match(rendered.notApplied, /原请求未应用/); assert.doesNotMatch(rendered.notApplied, /恢复可能会首次提交原导出|确认恢复同一原请求/);
   for (const html of [rendered.accepted, rendered.notApplied]) assertCollapsedProvenance(html,'delivery-intent-provenance');
 });

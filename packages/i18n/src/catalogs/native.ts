@@ -418,16 +418,16 @@ export const nativeMessages = {
     "ja": "ローカルサービスが停止しました"
   },
   "native.serviceStopped": {
-    "zh-Hans": "本地服务意外退出。已保存的数据会在重启时恢复",
-    "zh-Hant": "本機服務意外結束。已儲存資料會在重新啟動時恢復",
-    "en": "The local service exited unexpectedly. Saved data will be restored on restart",
-    "ja": "ローカルサービスが予期せず終了しました。保存済みデータは再起動時に復元されます"
+    "zh-Hans": "本地服务意外退出。",
+    "zh-Hant": "本機服務意外結束。",
+    "en": "The local service exited unexpectedly.",
+    "ja": "ローカルサービスが予期せず終了しました。"
   },
   "native.serviceStoppedDetail": {
-    "zh-Hans": "本地服务已停止，未保存的修改可能丢失。",
-    "zh-Hant": "本機服務已停止，未儲存的修改可能遺失。",
-    "en": "The local service stopped, and unsaved changes may be lost.",
-    "ja": "ローカルサービスが停止し、未保存の変更が失われた可能性があります。"
+    "zh-Hans": "未保存的修改可能丢失。",
+    "zh-Hant": "未儲存的修改可能遺失。",
+    "en": "Unsaved changes may be lost.",
+    "ja": "未保存の変更が失われた可能性があります。"
   },
   "native.rendererTitle": {
     "zh-Hans": "界面需要重新载入",
