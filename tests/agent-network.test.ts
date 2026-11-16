@@ -11,27 +11,40 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {isPublicAgentAddress, resolveAgentDestination, assertPinnedAgentSocket, createAgentTransport, wasAgentTransportSubmissionPrevented} from '../packages/business/src/agent/network-policy.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatDiagnostic, agentChatHttpError, agentChatHttpStatus, safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import type {AgentTimeoutPhase} from '../packages/contracts/src/agent-failure-diagnostic.ts';
+import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatDiagnostic, agentChatHttpError, agentChatHttpStatus, agentChatProviderRetryAfterMs, agentChatProviderRetryable, safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest, createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {nativeAnthropicEvents, nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 const configuration = {...DEFAULT_AGENT_CONFIGURATION};
 const publicAnswers = async () => [{address: '8.8.8.8', family: 4}];
-function injectedRequest({peer = '8.8.8.8', authorized = true, status = 200, headers = {'content-type': 'text/event-stream'}, beforeConnect, body = 'data: [DONE]\n\n', responseStream}: {peer?: string;authorized?: boolean;status?: number;headers?: Record<string,string|undefined>;body?: string;responseStream?: MockIncoming|import("node:stream").Readable;beforeConnect?: (state: MockRequestState)=>void} = {}) {
+function injectedRequest({peer = '8.8.8.8', authorized = true, connect = true, sendHeaders = true, status = 200, headers = {'content-type': 'text/event-stream'}, beforeConnect, body = 'data: [DONE]\n\n', responseStream}: {peer?: string;authorized?: boolean;connect?: boolean;sendHeaders?: boolean;status?: number;headers?: Record<string,string|undefined>;body?: string;responseStream?: MockIncoming|import("node:stream").Readable;beforeConnect?: (state: MockRequestState)=>void} = {}) {
   const state = ({calls: 0, ends: 0, destroyed: false} as unknown as MockRequestState);
   state.request = (options, callback) => {
     state.calls++; state.options = (options as unknown as MockRequestState['options']);
     const request = (new EventEmitter() as unknown as MockRequest);
     request.setTimeout = (_milliseconds: unknown, handler: (()=>void)|undefined) => { state.timeout = handler; };
     request.destroy = () => { state.destroyed = true; };
-    request.end = (payload: unknown) => { state.ends++; state.payload = payload; const response = ((responseStream ?? Readable.from([Buffer.from(body)])) as unknown as MockIncoming); response.statusCode = status; response.headers = headers; state.response = response; callback(response); };
+    request.end = (payload: unknown) => { state.ends++; state.payload = payload; if (!sendHeaders) return; const response = ((responseStream ?? Readable.from([Buffer.from(body)])) as unknown as MockIncoming); response.statusCode = status; response.headers = headers; state.response = response; callback(response); };
     queueMicrotask(() => {
       const socket = new EventEmitter(); Object.assign(socket, {remoteAddress: peer, remotePort: 443, authorized, destroy() {state.destroyed = true;}});
-      request.emit('socket', socket); beforeConnect?.(state); socket.emit('secureConnect');
+      request.emit('socket', socket); beforeConnect?.(state); if (connect) socket.emit('secureConnect');
     });
     return request;
   };
   return state;
 }
 const openArgs = {configuration, apiKey: 'synthetic-key-marker', body: '{}'};
+function isTimeout(phase: AgentTimeoutPhase) {
+  return (error: unknown): boolean => {
+    assert.equal((error as Failure).code, 'AGENT_CHAT_TIMEOUT');
+    const diagnostic = agentChatDiagnostic(error);
+    assert.ok(diagnostic?.kind === 'timeout');
+    assert.equal(diagnostic.phase, phase);
+    assert.ok(Number.isSafeInteger(diagnostic.elapsedMs) && diagnostic.elapsedMs >= 0);
+    assert.equal(agentChatDiagnostic({...error as Record<string, unknown>}), undefined);
+    return true;
+  };
+}
 
 test('HTTP rejection keeps its status and omits malformed diagnostics while preserving the sent boundary', async () => {
   for (const status of [301, 401, 403, 404, 429, 503] as const) {
@@ -55,8 +68,8 @@ test('HTTP error type and code are admitted only from bounded, complete error bo
   const sensitive = 'sk-proj-synthetic-private-fixture';
   const providerError = JSON.stringify({error:{type:'permission_error',code:'model_not_found',message:`Synthetic user dialogue ${sensitive}`,param:'synthetic-private-value'}});
   for (const [status, body, expected] of [
-    [403, providerError, {kind:'http',status:403,providerType:'permission_error',providerCode:'model_not_found'}],
-    [503, JSON.stringify({error:{type:'overloaded_error',code:503,message:sensitive}}), {kind:'http',status:503,providerType:'overloaded_error',providerCode:503}],
+    [403, providerError, {kind:'http',status:403,providerType:'permission_error',providerCode:'model_not_found',provider:{kind:'provider',reason:'authentication',providerType:'permission_error',code:'model_not_found'}}],
+    [503, JSON.stringify({error:{type:'overloaded_error',code:503,message:sensitive}}), {kind:'http',status:503,providerType:'overloaded_error',providerCode:503,provider:{kind:'provider',reason:'overloaded',providerType:'overloaded_error'}}],
     [401, JSON.stringify({error:{type:sensitive,code:'private_user_dialogue',message:'invalid_api_key'}}), {kind:'http',status:401}],
     [429, providerError.padEnd(AGENT_HTTP_DIAGNOSTIC_MAX_BYTES+1), {kind:'http',status:429}],
     [301, providerError, {kind:'http',status:301}],
@@ -79,6 +92,27 @@ test('HTTP error type and code are admitted only from bounded, complete error bo
     return (error as Failure).code==='AGENT_CHAT_HTTP_ERROR';
   });
   assert.equal(fixture.response.destroyed,true);
+});
+
+test('transport retains only parsed Retry-After on a recognized temporary HTTP rejection', async () => {
+  for (const [header, delayMs] of [['2', 2_000], ['2 private-header-value', undefined]] as const) {
+    const fixture = injectedRequest({
+      status: 429,
+      headers: {'retry-after': header},
+      body: JSON.stringify({error: {code: 'rate_limit_exceeded'}}),
+    });
+    const open = createAgentTransport({
+      lookup: publicAnswers as unknown as typeof import('node:dns/promises').lookup,
+      httpsRequest: fixture.request as unknown as typeof import('node:https').request,
+    });
+    await assert.rejects(open(openArgs), error => {
+      assert.ok(agentChatProviderRetryable(error));
+      assert.equal(agentChatProviderRetryAfterMs(error), delayMs);
+      assert.equal(agentChatProviderRetryAfterMs({...error as Record<string, unknown>}), undefined);
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)), /private-header-value/u);
+      return (error as Failure).code === 'AGENT_CHAT_HTTP_ERROR';
+    });
+  }
 });
 
 test('an optional non-400 error body has a one-second deadline and cannot erase the known HTTP status', async t => {
@@ -148,7 +182,7 @@ test('HTTP400 hint classification rejects oversized, malformed UTF8, unknown and
   }
 });
 
-test('HTTP400 transport classifies a bounded body without inspecting headers or changing dispatch evidence', async () => {
+test('HTTP400 transport classifies a bounded body without exposing headers or changing dispatch evidence', async () => {
   const headers = {}; Object.defineProperty(headers,'content-type',{get(){assert.fail('HTTP400 diagnosis must not inspect headers');}});
   const fixture = injectedRequest({status:400,headers,body:schemaDiagnostic});let failure;
   await assert.rejects(createAgentTransport({lookup:(publicAnswers as unknown as typeof import('node:dns/promises').lookup),httpsRequest:(fixture.request as unknown as typeof import('node:https').request)})(openArgs),error=>{failure=error;return (error as Failure).code==='AGENT_CHAT_HTTP_ERROR';});
@@ -241,8 +275,57 @@ test('DNS connection timeout and cancellation prevent a resolver completing late
     const controller = new AbortController();
     const pending = createAgentTransport({lookup:((() => new Promise(resolve => {resolveLookup=resolve;})) as unknown as typeof import('node:dns/promises').lookup),httpsRequest:() => {calls++; assert.fail('late socket');},limits:{connectTimeoutMs:20}})({...openArgs,signal:controller.signal});
     if (cancellation) controller.abort('synthetic-key-marker');
-    await assert.rejects(pending,{code:cancellation?'AGENT_CHAT_ABORTED':'AGENT_CHAT_TIMEOUT'});
+    if (cancellation) await assert.rejects(pending, {code: 'AGENT_CHAT_ABORTED'});
+    else await assert.rejects(pending, isTimeout('dns'));
     resolveLookup!(await publicAnswers()); await delay(5); assert.equal(calls,0);
+  }
+});
+
+test('timeout identifies pinned connection and response headers separately with their correct send evidence', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  for (const [phase, connect, didSend, tick] of [['connect', false, 0, 20], ['headers', true, 1, 40]] as const) {
+    const fixture = injectedRequest({connect, sendHeaders: false});
+    const open = createAgentTransport({
+      lookup: publicAnswers as unknown as typeof import('node:dns/promises').lookup,
+      httpsRequest: fixture.request as unknown as typeof import('node:https').request,
+      limits: {connectTimeoutMs: 20, firstResponseTimeoutMs: 40, totalTimeoutMs: 500},
+    });
+    const settled = assert.rejects(open(openArgs), error => {
+      assert.equal(wasAgentTransportSubmissionPrevented(error), didSend === 0);
+      return isTimeout(phase)(error);
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(fixture.ends, didSend);
+    t.mock.timers.tick(tick);
+    await settled;
+    assert.equal(fixture.destroyed, true);
+  }
+});
+
+test('only a verified Mio thinking request gets a longer first-output window', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const cases = [
+    {model: 'gpt-6-astra', task: true, limit: 90_000},
+    {model: 'gpt-6-astra', task: false, limit: 20_000},
+    {model: 'gpt-6.1-terra', task: true, limit: 20_000},
+    {model: 'gpt-19-unverified', task: true, limit: 20_000},
+  ] as const;
+  for (const {model, task, limit} of cases) {
+    const current = {...configuration, model};
+    const fixture = injectedRequest({sendHeaders: false});
+    const open = createAgentTransport({
+      lookup: publicAnswers as unknown as typeof import('node:dns/promises').lookup,
+      httpsRequest: fixture.request as unknown as typeof import('node:https').request,
+    });
+    const body = buildTaskModelRequest(current, [{role: 'user', content: 'Synthetic large-prompt budget'}], [], 4318);
+    const settled = assert.rejects(open({...openArgs, configuration: current, body, timeoutMode: task ? 'mio_task' : undefined}), isTimeout('headers'));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(fixture.payload, body);
+    t.mock.timers.tick(limit - 1);
+    assert.equal(fixture.destroyed, false);
+    t.mock.timers.tick(1);
+    await settled;
+    assert.equal(fixture.destroyed, true);
   }
 });
 
@@ -343,7 +426,7 @@ function nativeEvents(parts: ProviderPart[]=[textPart('你好 🙂')], extra={})
 const responsesFrame = (value: ProviderEvent,named=true) => `${named?`event: ${value.type}\n`:''}data: ${JSON.stringify(value)}\n\n`;
 const wire = (events: ProviderEvent[]=nativeEvents(),named=true) => ': keepalive\n\nid: ignored-id\n'+events.map(value=>responsesFrame(value,named)).join('');
 async function collect(iterator: AsyncIterable<unknown>) { const events: unknown[]=[]; for await (const event of iterator) events.push(event); return events; }
-async function gatewayFixture(t: test.TestContext, protocol: 'chat_completions'|'responses', handler: (response: ServerResponse)=>unknown, dependencies: AgentTransportDependencies = {}) {
+async function gatewayFixture(t: test.TestContext, protocol: 'chat_completions'|'responses'|'anthropic_messages', handler: (response: ServerResponse)=>unknown, dependencies: AgentTransportDependencies = {}) {
   const server=createServer(async (request,response) => {
     for await (const _chunk of request) {/* Read the whole request before replying. */}
     response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
@@ -351,9 +434,9 @@ async function gatewayFixture(t: test.TestContext, protocol: 'chat_completions'|
   });
   await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
   t.after(async () => {server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve()));});
-  const configuration={protocol,presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,model:'qwen3:8b'};
+  const configuration={protocol,presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${(server.address() as AddressInfo).port}${protocol==='anthropic_messages'?'':'/v1'}`,model:'qwen3:8b'};
   const body=buildTaskModelRequest(configuration,messages,[],4318);
-  return {configuration, run:() => createTaskGateway(dependencies)({configuration,body,apiKey:null,selfPort:4318})};
+  return {configuration, run:(taskTimeouts?: boolean) => createTaskGateway(dependencies)({configuration,body,apiKey:null,selfPort:4318,taskTimeouts})};
 }
 // The read-deadline fixtures finish the response after a stall that outlasts the
 // read deadline but not the total deadline. With silence alone, a missing read
@@ -366,9 +449,9 @@ function stallThenFinish(response: ServerResponse, partial: string, rest: string
 
 test('read inactivity and total duration apply to real sockets even after partial output or keepalives', async t => {
   const idle=await gatewayFixture(t,'chat_completions',(response)=>stallThenFinish(response,frame(chunk({content:'partial'})),frame(chunk({},'stop'))+frame('[DONE]')),{limits:{readTimeoutMs:30,totalTimeoutMs:500,connectTimeoutMs:100}});
-  await assert.rejects(collect(idle.run()),{code:'AGENT_CHAT_TIMEOUT'});
+  await assert.rejects(collect(idle.run()),isTimeout('idle'));
   const total=await gatewayFixture(t,'chat_completions',(response)=>{const timer=setInterval(()=>response.write(': alive\n\n'),5);response.on('close',()=>clearInterval(timer));},{limits:{readTimeoutMs:100,totalTimeoutMs:40,connectTimeoutMs:100}});
-  await assert.rejects(collect(total.run()),{code:'AGENT_CHAT_TIMEOUT'});
+  await assert.rejects(collect(total.run()),isTimeout('total'));
 });
 
 test('oversized response headers are rejected by real Node HTTP parsing without disclosing values', async t => {
@@ -381,6 +464,39 @@ test('oversized response headers are rejected by real Node HTTP parsing without 
 });
 
 test('Responses idle and total timeouts preserve network bounds with partial output or keepalives',async t=>{
-  const idle=await gatewayFixture(t,'responses',(res)=>stallThenFinish(res,wire(nativeEvents().slice(0,5)),nativeEvents().slice(5).map(event=>responsesFrame(event)).join('')),{limits:{readTimeoutMs:30,totalTimeoutMs:500,connectTimeoutMs:100}});await assert.rejects(collect(idle.run()),{code:'AGENT_CHAT_TIMEOUT'});
-  const total=await gatewayFixture(t,'responses',(res)=>{const timer=setInterval(()=>res.write(': alive\n\n'),5);res.on('close',()=>clearInterval(timer));},{limits:{readTimeoutMs:100,totalTimeoutMs:40,connectTimeoutMs:100}});await assert.rejects(collect(total.run()),{code:'AGENT_CHAT_TIMEOUT'});
+  const idle=await gatewayFixture(t,'responses',(res)=>stallThenFinish(res,wire(nativeEvents().slice(0,5)),nativeEvents().slice(5).map(event=>responsesFrame(event)).join('')),{limits:{readTimeoutMs:30,totalTimeoutMs:500,connectTimeoutMs:100}});await assert.rejects(collect(idle.run()),isTimeout('idle'));
+  const total=await gatewayFixture(t,'responses',(res)=>{const timer=setInterval(()=>res.write(': alive\n\n'),5);res.on('close',()=>clearInterval(timer));},{limits:{readTimeoutMs:100,totalTimeoutMs:40,connectTimeoutMs:100}});await assert.rejects(collect(total.run()),isTimeout('total'));
+});
+
+test('Mio first-output deadline ignores SSE heartbeats even after response headers', async t => {
+  const fixture = await gatewayFixture(t, 'responses', response => {
+    response.write(': keepalive\n\n');
+    const timer = setInterval(() => response.write(': keepalive\n\n'), 5);
+    response.on('close', () => clearInterval(timer));
+  }, {limits: {firstResponseTimeoutMs: 80, readTimeoutMs: 200, totalTimeoutMs: 1_000}});
+  await assert.rejects(collect(fixture.run(true)), isTimeout('first_byte'));
+});
+
+test('Mio idle deadline starts after real protocol output and ignores subsequent heartbeats', async t => {
+  for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) {
+    const partial = protocol === 'chat_completions' ? frame(chunk({content:'partial'}))
+      : protocol === 'responses' ? wire(nativeEvents().slice(0, 5))
+      : nativeAnthropicSse(nativeAnthropicEvents({model:'qwen3:8b'}).slice(0, 3));
+    const fixture = await gatewayFixture(t, protocol, response => {
+      response.write(partial);
+      const timer = setInterval(() => response.write(': keepalive\n\n'), 5);
+      response.on('close', () => clearInterval(timer));
+    }, {limits: {firstResponseTimeoutMs: 200, readTimeoutMs: 40, totalTimeoutMs: 1_000}});
+    await assert.rejects(collect(fixture.run(true)), isTimeout('idle'), protocol);
+  }
+});
+
+test('Mio total deadline stays absolute while valid model output advances', async t => {
+  const diagnosticFixture = await gatewayFixture(t, 'chat_completions', response => {
+    const delta = frame(chunk({content:'partial'}));
+    response.write(delta);
+    const timer = setInterval(() => response.write(delta), 5);
+    response.on('close', () => clearInterval(timer));
+  }, {limits: {firstResponseTimeoutMs: 150, readTimeoutMs: 200, totalTimeoutMs: 80}});
+  await assert.rejects(collect(diagnosticFixture.run(true)), isTimeout('total'));
 });

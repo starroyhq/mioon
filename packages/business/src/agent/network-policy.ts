@@ -7,13 +7,16 @@ import {request as httpRequestDefault, type ClientRequest, type IncomingMessage,
 import {checkServerIdentity, type TLSSocket} from 'node:tls';
 import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
-import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, agentChatProtocolError, agentChatStreamError, errorCode} from './chat-errors.ts';
+import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, agentChatProtocolError, agentChatStreamError, agentChatTimeoutError, errorCode} from './chat-errors.ts';
 import type {AgentChatFailure} from './chat-errors.ts';
+import type {AgentTimeoutPhase} from '../../../contracts/src/agent-failure-diagnostic.ts';
+import {AGENT_DEFAULT_STREAM_TIMEOUTS, agentStreamTimeouts} from './stream-timeouts.ts';
+import type {AgentStreamTimeoutMode} from './stream-timeouts.ts';
 import {ANTHROPIC_MESSAGES_API_VERSION, SONNET_PREFIX_BINDING_BETA, SONNET_PREFIX_BINDING_API_VERSION, agentSonnetPrefixBinding} from './anthropic-protocol.ts';
 
-export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, readTimeoutMs: 20000, totalTimeoutMs: 120000, maxHeaderBytes: 16384, maxDnsAnswers: 64});
+export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10_000, ...AGENT_DEFAULT_STREAM_TIMEOUTS, maxHeaderBytes: 16_384, maxDnsAnswers: 64});
 const HTTP_ERROR_DIAGNOSTIC_TIMEOUT_MS = 1000;
-type NetworkLimits = Record<'connectTimeoutMs' | 'readTimeoutMs' | 'totalTimeoutMs' | 'maxHeaderBytes' | 'maxDnsAnswers', number>;
+type NetworkLimits = Record<keyof typeof AGENT_NETWORK_LIMITS, number>;
 type NodeLookup = NonNullable<ClientRequestArgs['lookup']>;
 export interface AgentTransportDependencies {
   lookup?: typeof dnsLookup;
@@ -30,7 +33,12 @@ export interface AgentDestination {
   path: string;
   local: boolean;
 }
-export interface AgentTransportStream {body: AsyncIterable<Uint8Array>; close(): void; error(): AgentChatFailure | null}
+export interface AgentTransportStream {
+  body: AsyncIterable<Uint8Array>;
+  close(): void;
+  error(): AgentChatFailure | null;
+  markModelProgress?(): void;
+}
 export interface AgentTransportRequest {
   configuration: unknown;
   apiKey?: string | null;
@@ -38,6 +46,7 @@ export interface AgentTransportRequest {
   signal?: AbortSignal;
   selfPort?: number;
   beforeSubmit?: unknown;
+  timeoutMode?: AgentStreamTimeoutMode;
 }
 export type AgentTransport = (options: AgentTransportRequest) => Promise<AgentTransportStream>;
 const preventedSubmissions=new WeakSet<object>();
@@ -141,12 +150,13 @@ export async function resolvePinnedAgentDestination(url:URL,{local=false,selfPor
   const {address, family} = addresses[0];
   return {hostname, address, family, port, secure: true, path: url.pathname+url.search, local: false};
 }
-function limitsFor(overrides: Record<string, number> = {}): NetworkLimits {
-  const result: NetworkLimits = {...AGENT_NETWORK_LIMITS};
+function checkedOverrides(overrides: Record<string, number> = {}): Partial<NetworkLimits> {
+  const result: Partial<NetworkLimits> = {};
   for (const [key, value] of Object.entries(overrides)) {
-    if (!Object.hasOwn(result, key) || !Number.isInteger(value) || value < 1 || value > result[key as keyof NetworkLimits]) throw agentChatError('AGENT_CHAT_VALIDATION');
+    if (!Object.hasOwn(AGENT_NETWORK_LIMITS, key) || !Number.isInteger(value) || value < 1 || value > AGENT_NETWORK_LIMITS[key as keyof NetworkLimits]) throw agentChatError('AGENT_CHAT_VALIDATION');
     result[key as keyof NetworkLimits] = value;
   }
+  if (result.firstResponseTimeoutMs === undefined && result.readTimeoutMs !== undefined) result.firstResponseTimeoutMs = result.readTimeoutMs;
   return result;
 }
 /** Retain at most the diagnostic limit; incomplete/failed streams have no hints.
@@ -167,15 +177,22 @@ async function readHttpErrorDiagnostic(incoming: IncomingMessage): Promise<Uint8
  * option. Production uses Node HTTPS directly: no fetch, proxy, redirects,
  * cookie jar, global pooled agent, arbitrary header input or second lookup. */
 export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRequestDefault, httpRequest = httpRequestDefault, limits: overrides}: AgentTransportDependencies = {}): AgentTransport {
-  const limits = limitsFor(overrides);
-  return async function openAgentStream({configuration, apiKey, body, signal, selfPort, beforeSubmit}: AgentTransportRequest): Promise<AgentTransportStream> {
+  const overridesInput = checkedOverrides(overrides);
+  return async function openAgentStream({configuration, apiKey, body, signal, selfPort, beforeSubmit, timeoutMode}: AgentTransportRequest): Promise<AgentTransportStream> {
+    const startedAt = performance.now();
+    const semanticProgress = timeoutMode === 'mio_task';
     const controller = new AbortController();
+    let config: AgentConfiguration | undefined;
+    let setupPhase: 'dns' | 'connect' = 'dns';
+    let firstPhase: 'headers' | 'first_byte' = 'headers';
+    let connectTimer: ReturnType<typeof setTimeout> | undefined, totalTimer: ReturnType<typeof setTimeout> | undefined;
+    let firstTimer: ReturnType<typeof setTimeout> | undefined, idleTimer: ReturnType<typeof setTimeout> | undefined;
     let request: ClientRequest | undefined, response: IncomingMessage | undefined, failed: AgentChatFailure | null = null, rejectPending: ((reason: AgentChatFailure) => void) | undefined, closed = false, mayHaveSent = false;
-    let httpDiagnosticStatus: number | undefined;
+    let httpDiagnosticStatus: number | undefined, retryAfter: unknown;
     let httpDiagnosticTimer: ReturnType<typeof setTimeout> | undefined;
     function fail(code: string | AgentChatFailure, httpStatus?: number, diagnosticBody?: Uint8Array): void {
       if (closed || failed) return;
-      failed = typeof code !== 'string' ? code : code === 'AGENT_CHAT_HTTP_ERROR' ? agentChatHttpError(httpStatus, diagnosticBody) : agentChatError(code);
+      failed = typeof code !== 'string' ? code : code === 'AGENT_CHAT_HTTP_ERROR' ? agentChatHttpError(httpStatus, diagnosticBody, config, retryAfter) : agentChatError(code);
       controller.abort(failed);
       request?.destroy(); response?.destroy();
       rejectPending?.(failed);
@@ -185,22 +202,24 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
     if (signal?.aborted) externalAbort();
     // Once a rejection status is known, a stalled optional body must not hide
     // it. Keep the original timeout semantics of HTTP 400 parameter diagnosis.
-    const timeOut = () => httpDiagnosticStatus !== undefined && httpDiagnosticStatus !== 400
-      ? fail('AGENT_CHAT_HTTP_ERROR', httpDiagnosticStatus) : fail('AGENT_CHAT_TIMEOUT');
-    const totalTimer = setTimeout(timeOut, limits.totalTimeoutMs);
-    const connectTimer = setTimeout(() => fail('AGENT_CHAT_TIMEOUT'), limits.connectTimeoutMs);
+    const timeOut = (phase: AgentTimeoutPhase) => httpDiagnosticStatus !== undefined && httpDiagnosticStatus !== 400
+      ? fail('AGENT_CHAT_HTTP_ERROR', httpDiagnosticStatus)
+      : fail(agentChatTimeoutError(phase, Math.round(performance.now() - startedAt)));
     const close = () => {
       if (closed) return;
       closed = true;
-      clearTimeout(totalTimer); clearTimeout(connectTimer); clearTimeout(httpDiagnosticTimer);
+      clearTimeout(totalTimer); clearTimeout(connectTimer); clearTimeout(firstTimer); clearTimeout(idleTimer); clearTimeout(httpDiagnosticTimer);
       signal?.removeEventListener('abort', externalAbort);
       request?.destroy(); response?.destroy();
     };
     try {
       invokeAgentSubmissionFence(beforeSubmit);
-      let config: AgentConfiguration;
       try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return denied(); }
+      const limits = {...AGENT_NETWORK_LIMITS, ...agentStreamTimeouts(config, body, timeoutMode), ...overridesInput};
+      totalTimer = setTimeout(() => timeOut('total'), limits.totalTimeoutMs);
+      connectTimer = setTimeout(() => timeOut(setupPhase), limits.connectTimeoutMs);
       const destination = await resolveAgentDestination(config, {selfPort, lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
+      setupPhase = 'connect';
       if (failed || controller.signal.aborted) throw failed || abortError(controller.signal);
       invokeAgentSubmissionFence(beforeSubmit);
       const headers: Record<string, string> = {'Content-Type': 'application/json', Accept: 'text/event-stream', 'Accept-Encoding': 'identity', 'Content-Length': String(Buffer.byteLength(body)), Connection: 'close'};
@@ -229,6 +248,20 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
         autoSelectFamily: false, maxHeaderSize: limits.maxHeaderBytes, lookup: pinnedLookup,
         ...(destination.secure ? {rejectUnauthorized: true, servername: isIP(destination.hostname) ? '' : destination.hostname, checkServerIdentity: (_host: string, certificate: Parameters<typeof checkServerIdentity>[1]) => checkServerIdentity(destination.hostname, certificate)} : {}),
       };
+      const byteIdle = () => request?.setTimeout(limits.readTimeoutMs, () => timeOut('idle'));
+      let modelStarted = false;
+      const markProgress = () => {
+        if (closed || failed) return;
+        if (!modelStarted) {
+          modelStarted = true;
+          clearTimeout(firstTimer);
+          if (!semanticProgress) { byteIdle(); return; }
+        }
+        if (semanticProgress) {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => timeOut('idle'), limits.readTimeoutMs);
+        }
+      };
       const requestFn = (destination.secure ? httpsRequest : httpRequest) as (options: HttpRequestOptions | HttpsRequestOptions, callback: (response: IncomingMessage) => void) => ClientRequest;
       response = await new Promise<IncomingMessage>((resolve, reject) => {
         rejectPending = reject;
@@ -237,6 +270,9 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
           const status = incoming.statusCode;
           if (typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599) {
             httpDiagnosticStatus = status;
+            retryAfter = incoming.headers['retry-after'];
+            clearTimeout(firstTimer);
+            byteIdle();
             // Track the response before awaiting bytes so abort/timeout destroys
             // it and settles the pending open, even if the body never completes.
             response = incoming;
@@ -253,12 +289,12 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
           if (encoding && encoding !== 'identity') {
             fail(agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'content_encoding'})); return;
           }
+          firstPhase = 'first_byte';
           incoming.on('error', () => { if (!closed && !failed) failed = agentChatStreamError('read_failed'); });
           resolve(incoming);
         });
         request.on('error', () => httpDiagnosticStatus !== undefined ? fail('AGENT_CHAT_HTTP_ERROR', httpDiagnosticStatus) : fail('AGENT_CHAT_CONNECT_FAILED'));
         request.on('upgrade', (_res, socket) => { socket.destroy(); fail(agentChatProtocolError('AGENT_CHAT_PROTOCOL_ERROR', 'invalid_event', {field: 'upgrade'})); });
-        request.setTimeout(limits.readTimeoutMs, timeOut);
         request.once('socket', socket => {
           (socket as TLSSocket).once(destination.secure ? 'secureConnect' : 'connect', () => {
             if (failed || controller.signal.aborted || closed) { socket.destroy(); return; }
@@ -269,13 +305,20 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
             // verified before transmitting any headers, key or request content.
             // end() can partially send and then throw; retire the no-send proof
             // before entering it, regardless of any resulting error's code.
+            firstTimer = setTimeout(() => timeOut(firstPhase), limits.firstResponseTimeoutMs);
             mayHaveSent = true;
             try { request?.end(body); } catch { fail('AGENT_CHAT_CONNECT_FAILED'); }
           });
         });
       });
       const resolved = response;
-      return {body: resolved, close, error: () => failed};
+      const bodyStream = async function* (): AsyncGenerator<Uint8Array> {
+        for await (const chunk of resolved) {
+          if (!semanticProgress && !modelStarted) markProgress();
+          yield chunk;
+        }
+      };
+      return {body: semanticProgress ? resolved : bodyStream(), close, error: () => failed, ...(semanticProgress ? {markModelProgress: markProgress} : {})};
     } catch (error) {
       close();
       const failure = failed || agentChatError(errorCode(error) || 'AGENT_CHAT_CONNECT_FAILED');

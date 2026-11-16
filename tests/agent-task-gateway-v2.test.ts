@@ -369,7 +369,8 @@ for(const protocol of ['chat_completions','responses'] as const){
     await assert.rejects(syntheticOutput(protocol,network),error=>{failure=error;return safeAgentChatError(error).code==='AGENT_CHAT_HTTP_ERROR';});
     assert.deepEqual(safeAgentChatError(failure),{code:'AGENT_CHAT_HTTP_ERROR',status:502,message:'模型服务拒绝了请求（HTTP 429），请检查账户、模型和配置后手动重试。'});
     assert.equal(agentChatHttpStatus(failure),429);assert.equal(network.calls,1);assert.equal(network.ends,1);assert.equal(wasTaskSubmissionPrevented(failure),false);
-    assert.deepEqual(agentChatDiagnostic(failure),{kind:'http',status:429,providerType:'rate_limit_error',providerCode:'insufficient_quota'});
+    assert.deepEqual(agentChatDiagnostic(failure),{kind:'http',status:429,providerType:'rate_limit_error',providerCode:'insufficient_quota',
+      provider:{kind:'provider',reason:'quota',providerType:'rate_limit_error',code:'insufficient_quota'}});
     assert.equal(agentChatHttpStatus({...failure as Record<string,unknown>}),undefined);
   });
   test(`${protocol}: real fragmented local SSE preserves multiple calls and exact continuation IDs`,async t=>{
@@ -1212,6 +1213,43 @@ test('a completed OpenAI response cannot promote an incomplete item into executa
     let completed=0,toolPlans=0;
     await assert.rejects(async()=>{for await(const event of f.stream)if(event.type==='done'){completed++;toolPlans+=event.output.toolCalls.length;}},{code:'AGENT_CHAT_PROTOCOL_ERROR'});
     assert.equal(completed,0);assert.equal(toolPlans,0);assert.equal(f.network.calls,1);
+  }
+});
+
+test('stream failures expose only bounded provider details for each protocol',async()=>{
+  const openaiResponses=q11OpenAi('gpt-5.4-mini');
+  const privateText='PRIVATE_REQUEST_BODY_AND_API_KEY';
+  const cases:Array<{configuration:AgentConfiguration;wire:string;expected:object;visible?:string}> = [
+    {configuration:legacyOpenAiChat,wire:json({error:{type:'invalid_request_error',code:'unsupported_parameter',param:'max_tokens',message:privateText}}),
+      expected:{kind:'provider',reason:'invalid_parameter',event:'message',providerType:'invalid_request_error',code:'unsupported_parameter',param:'max_tokens'}},
+    {configuration:openaiResponses,wire:q11ResponseWire([{type:'error',code:'context_length_exceeded',param:'input',message:privateText,sequence_number:0}]),
+      expected:{kind:'provider',reason:'context_length',event:'error',code:'context_length_exceeded',param:'input'}},
+    {configuration:openaiResponses,wire:q11ResponseWire([{type:'response.failed',response:{id:'resp_failed',status:'failed',error:{code:'server_error',message:privateText}},sequence_number:0}]),
+      expected:{kind:'provider',reason:'server',event:'response.failed',code:'server_error'}},
+    {configuration:q12Sonnet,wire:'event: error\ndata: '+JSON.stringify({type:'error',error:{type:'overloaded_error',message:'Overloaded'}})+'\n\n',
+      expected:{kind:'provider',reason:'overloaded',event:'error',providerType:'overloaded_error',message:'Overloaded'}},
+    {configuration:miniMaxChina,wire:json({base_resp:{status_code:1008,status_msg:privateText}}),
+      expected:{kind:'provider',reason:'quota',event:'message',code:1008}},
+    {configuration:{presetId:'zhipu',platformId:'china',protocol:'chat_completions',model:'glm-5.3',baseUrl:'https://open.bigmodel.cn/api/paas/v4'},
+      wire:json({choices:[{index:0,delta:{content:'Partial'},finish_reason:'model_context_window_exceeded'}]}),visible:'Partial',
+      expected:{kind:'provider',reason:'context_length',event:'message',code:'model_context_window_exceeded'}},
+  ];
+  for(const {configuration,wire,expected,visible=''} of cases){
+    const body=buildTaskModelRequest(configuration,[{role:'user',content:'Offline failure diagnostics'}],[],4318);
+    const fixture=q11Stream(configuration,body,wire);let delivered='';
+    await assert.rejects(async()=>{
+      for await(const item of fixture.stream){
+        assert.equal(item.type,'delta');
+        delivered+=item.text;
+      }
+    },error=>{
+      assert.equal(safeAgentChatError(error).code,'AGENT_CHAT_PROVIDER_ERROR');
+      assert.deepEqual(agentChatDiagnostic(error),expected);
+      assert.doesNotMatch(JSON.stringify(agentChatDiagnostic(error)),/PRIVATE_REQUEST_BODY_AND_API_KEY/u);
+      return true;
+    });
+    assert.equal(delivered,visible);
+    assert.equal(fixture.network.requests.length,1);
   }
 });
 

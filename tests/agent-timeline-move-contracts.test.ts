@@ -176,6 +176,8 @@ test('public proposal union guards all statuses, exact immutable diff and reques
   for (const key of ['timelineId', 'clipId'] as const) { const value = proposal('applied'); ((value.outcome! as unknown as Record<PropertyKey,unknown>))[key] = id(99); assert.equal(isAgentTimelineMoveProposal(value), false); }
   const revision = proposal('applied'); (revision.outcome! as unknown as {revision: number}).revision = 6; assert.equal(isAgentTimelineMoveProposal(revision), false);
   for (const reason of ['NOT_FOUND', 'UNAUTHORIZED', 'NETWORK', 'PRIVATE', 'AGENT_EDIT_CONFLICT'] as const) {
-    const value = proposal('failed'); value.outcome!.code = reason; assert.equal(isAgentTimelineMoveProposal(value), false, reason);
+    const failed = proposal('failed');
+    const value = {...failed, outcome: {...failed.outcome!, code: reason}};
+    assert.equal(isAgentTimelineMoveProposal(value), false, reason);
   }
 });

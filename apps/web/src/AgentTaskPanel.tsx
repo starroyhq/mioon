@@ -28,7 +28,7 @@ import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from 
 import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
 import Icon from './icons.tsx';
 import { agentTaskDiagnosticDetails, agentTaskErrorKey } from './agent-task-errors.ts';
-import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
+import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskEarlierExport, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle, taskStepBadge, taskUpdatedGoalStepIds, taskFirstGoalRepairStepIds } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import {ProjectRulesNotice, ProjectRulesChangeCard} from './project-file/ProjectRules.tsx';
 import {createMioUsageClient} from './mio-usage-client.ts';
@@ -88,7 +88,7 @@ function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
   </span>;
 }
 export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry, onReviewProjectRules, onMioFollowFocus, onMioFollowLocate, mioFollowTargetExists }: AgentTaskPanelProps) {
-  const { t, locale } = useI18n(), workspaceVisible = useWorkspaceVisibility();
+  const { t, locale, formatNumber } = useI18n(), workspaceVisible = useWorkspaceVisibility();
   const preferences = useUiPreferences();
   const [mioFocus, setMioFocus] = useState<MioFollowFocus | null>(null);
   const [savingFollow, setSavingFollow] = useState(false), [followError, setFollowError] = useState(false), followFlight = useRef(false);
@@ -310,19 +310,21 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
   const markedConflicts = steps.filter(step => step.display?.conflict === true);
   const conflictSteps = markedConflicts.length ? markedConflicts : [steps.filter(step => step.kind === 'tool' && ['intent', 'awaiting_approval'].includes(step.status)).at(-1)].filter((step): step is AgentTaskStep => step !== undefined);
   const parameters = (step: AgentTaskStep, options = formatOptions) => <dl className="mio-parameters">{taskDisplayEntries(step.display, locale, options).map((entry, index) => <div key={index}><dt>{entry.label}</dt><dd>{entry.value}</dd></div>)}</dl>;
-  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>) => {
-    const diagnostic = step.kind === 'model' ? agentTaskDiagnosticDetails(step.error?.diagnostic) : undefined;
+  const detail = (step: AgentTaskStep, firstRepairs: ReadonlySet<string>, diagnostic: ReturnType<typeof agentTaskDiagnosticDetails>) => {
     return <details className="mio-safe-details">
       <summary>{t('agent.panel.details')}</summary>
-      <p>{taskStepTitle(step,locale,firstRepairs)}</p>
+      {!diagnostic && <p>{taskStepTitle(step,locale,firstRepairs)}</p>}
       {parameters(step)}
       {diagnostic && <>
-        <p>{diagnostic.key === 'agent.panel.diagnostic.http' ? t(diagnostic.key, diagnostic.values) : t(diagnostic.key)}</p>
+        {diagnostic.key === 'agent.panel.diagnostic.http' ? <p>{t(diagnostic.key, diagnostic.values)}</p>
+          : !diagnostic.timeout && !diagnostic.provider ? <p>{t(diagnostic.key)}</p> : null}
+        {diagnostic.provider?.fields.length ? <dl className="mio-parameters" data-testid={`agent-task-provider-details-${step.id}`}>
+          {diagnostic.provider.fields.map(({label, value}) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}
+        </dl> : null}
         <Input className="mio-diagnostic-code" aria-label={t('agent.panel.diagnostic.code')}
           data-testid={`agent-task-diagnostic-${step.id}`} data-text-selectable="true"
           readOnly value={diagnostic.code} onFocus={event => event.currentTarget.select()} />
       </>}
-      <p>{t('agent.panel.detailsPrivacy')}</p>
     </details>;
   };
   function recoveryFor(snapshot:AgentTaskSnapshot){
@@ -376,6 +378,11 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
     // A retry can end the round before a new step exists, e.g. when the model
     // settings changed. Show that round reason instead of only the older step error.
     const runFailure=agentTaskRunFailure(run,steps),settingsChanged=runFailure!==null&&settingsChangedCodes.has(runFailure);
+    const failedStep=run.status==='failed'?steps.filter(step=>step.status==='failed').at(-1):undefined;
+    const failedModel=failedStep?.kind==='model'?failedStep:undefined;
+    const earlierExport=failedModel?taskEarlierExport(steps.slice(0,steps.indexOf(failedModel)),run.projectId):undefined;
+    const failedDiagnostic=agentTaskDiagnosticDetails(failedModel?.error?.diagnostic);
+    const describesModelFailure=Boolean(failedDiagnostic?.provider||failedDiagnostic?.timeout);
     const updatedGoals=taskUpdatedGoalStepIds(steps),firstRepairs=taskFirstGoalRepairStepIds(steps);
     const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskRunDurationSeconds(snapshot),canUndo=['completed','failed','stopped'].includes(run.status)&&unknown.length===0&&!snapshot.backgroundPending,backgroundPending=snapshot.backgroundPending===true;
     const approval=steps.filter(step=>(step.status==='awaiting_approval'||step.approvalRequired===true)&&step.toolCall?.name!=='mioon_project_rules_set'),marked=steps.filter(step=>step.display?.conflict===true);
@@ -411,6 +418,16 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
         {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => {
           const targets = followTargets?.get(step.id) ?? [], canvas = targets.find(target => target.kind === 'shot' || target.kind === 'node'), timeline = targets.find(target => target.kind === 'timeline_clip' || target.kind === 'timeline_subtitle');
           const focused = preferences.preferences.mioFollow && mioFocus?.runId === run.id && mioFocus.stepId === step.id;
+          const diagnostic = step === failedModel ? failedDiagnostic
+            : step.kind === 'model' && step.error ? agentTaskDiagnosticDetails(step.error.diagnostic) : undefined;
+          const providerReason = diagnostic?.provider?.reason;
+          const failureReason = providerReason ? t(`agent.panel.provider.${providerReason}`) : diagnostic?.timeout
+            ? t(diagnostic.key, {seconds: formatNumber(diagnostic.timeout.seconds)}) : step.error ? t(agentTaskErrorKey(step.error.code)) : '';
+          const settings = step.error && (
+            providerReason === undefined && (!diagnostic?.timeout || ['agent.panel.timeout.dns','agent.panel.timeout.connect'].includes(diagnostic.key)) ||
+            providerReason !== undefined && ['authentication','model_unavailable','invalid_parameter','quota'].includes(providerReason)
+          ) ? errorSettings(step.error.code) : undefined;
+          const startNewConversation = providerReason === 'context_length' && run.status === 'failed' && step === failedModel;
           return <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step" data-read={readIcon(step) ? 'true' : undefined} data-mio-follow={focused ? 'true' : undefined} style={focused ? { '--mio-follow-color': mioFollowColor(run.id) } as React.CSSProperties : undefined}>
           <div className="mio-step-line"><StepIcon step={step} read={readIcon(step)} /><span>{taskStepTitle(step, locale,firstRepairs)}{['awaiting_approval', 'unknown', 'awaiting_answer'].includes(step.status) && <> · {t(taskStepStatusKey(step.status))}</>}{step.status === 'completed' && step.toolCall?.name === 'mioon_ask' && <> · {t('agent.panel.question.answered')}</>}</span>{taskStepBadge(step,updatedGoals,firstRepairs)&&<span className="mio-step-badge" data-testid="agent-task-step-badge" data-badge={taskStepBadge(step,updatedGoals,firstRepairs)}>{t(taskStepBadge(step,updatedGoals,firstRepairs)==='repair'?'agent.panel.goal.repairBadge':'agent.panel.goal.updatedBadge')}</span>}<span className="mio-step-time">{['intent', 'dispatch_started'].includes(step.status) ? '…' : taskDurationSeconds(step.createdAt, step.updatedAt) !== undefined ? t('agent.panel.stepElapsed', { seconds: taskDurationSeconds(step.createdAt, step.updatedAt)! }) : ''}</span></div>
           {step.kind === 'model' && step !== latest && modelText(step) && <p className="agent-task-text mio-previous-reply">{modelText(step)}</p>}
@@ -419,7 +436,24 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           }}><Icon name="locate" size={12} />{t(`agent.follow.${mode}`)}<Icon name="arrow" size={12} /></Button>)}</div>}
           {generationServiceDenied(step) && <p className="mio-secondary" data-testid={`agent-task-generation-unsubmitted-${step.id}`}>{t('agent.panel.generationNotSubmitted')}</p>}
           {step.cost && <p data-testid={`agent-task-cost-${step.id}`} className="mio-secondary">{t(`agent.task.cost.${step.cost}`)}</p>}
-          {step.error && <div className="mio-error-card"><p role="alert" data-testid={`agent-task-step-error-${step.id}`}>{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(step.error.code))})}</p><div className="mio-failure-actions">{run.status==='failed'&&!settingsChanged&&step.status==='failed'&&step===steps.at(-1)&&unknown.length===0&&!steps.some(item=>item.status==='dispatch_started')&&<Button size="compact" data-testid={`agent-task-retry-${step.id}`} disabled={blocked||backgroundPending} onClick={()=>{void act('retry',{stepId:step.id});}}><Icon name="undo" />{t('agent.panel.retry')}</Button>}{detail(step,firstRepairs)}</div>{errorSettings(step.error.code) && <Button variant="ghost" className="mio-settings-link" data-testid={`agent-task-error-settings-${step.id}`} onClick={event => { if (visibility.current) onSettings(errorSettings(step.error!.code), event?.nativeEvent); }} disabled={!visible}>{t(`agent.panel.errorSettings.${errorSettings(step.error.code)!}`)} <Icon name="arrow" /></Button>}</div>}
+          {step.error && <div className="mio-error-card">
+            <p role={step.providerRetryAttempt===undefined?'alert':undefined} data-testid={`agent-task-step-error-${step.id}`}>{t('agent.panel.failureReason',{reason:failureReason})}</p>
+            {step.providerRetryAttempt !== undefined &&
+              <p className="mio-secondary" data-testid={`agent-task-step-auto-retry-${step.id}`}>{t('agent.panel.providerRetryScheduled',{attempt:step.providerRetryAttempt})}</p>}
+            <div className="mio-failure-actions">
+              {startNewConversation && <Button size="compact" data-testid={`agent-task-error-new-conversation-${step.id}`}
+                disabled={!visible||composing||Boolean(newBlocked)} onClick={newConversation}><Icon name="plus" />{t('agent.panel.newConversation')}</Button>}
+              {!startNewConversation&&run.status==='failed'&&!settingsChanged&&step.status==='failed'&&step===steps.at(-1)&&unknown.length===0&&!steps.some(item=>item.status==='dispatch_started')&&
+                <Button size="compact" data-testid={`agent-task-retry-${step.id}`} disabled={blocked||backgroundPending} onClick={()=>{void act('retry',{stepId:step.id});}}>
+                  <Icon name="undo" />{t('agent.panel.retry')}
+                </Button>}
+              {detail(step,firstRepairs,diagnostic)}
+            </div>
+            {settings && <Button variant="ghost" className="mio-settings-link" data-testid={`agent-task-error-settings-${step.id}`}
+              onClick={event => { if (visibility.current) onSettings(settings, event?.nativeEvent); }} disabled={!visible}>
+              {t(providerReason==='quota'?'agent.panel.changeModel':`agent.panel.errorSettings.${settings}`)} <Icon name="arrow" />
+            </Button>}
+          </div>}
         </article>;})}</div></details>}
         {askedAfter.map(item=>item.step.status==='completed'?<AgentTaskAnswerRow key={item.step.id} step={item.step} question={item.question} />:item.step.status==='awaiting_answer'?<AgentTaskQuestionCard key={item.step.id} step={item.step} question={item.question} state={finished(run.status)?'stopped':'waiting'} disabled={blocked||run.status!=='awaiting_answer'} onAnswer={(choices,text)=>session.current?.answer(item.step.id,choices,text,run.id)} />:null)}
         {(changes.length > 0||skipped.length>0) && <section className="mio-changes" aria-live="polite"><header><h4>{t(finished(run.status) ? 'agent.panel.roundChanges' : 'agent.panel.changes', { count: changes.length })}</h4><Button variant="ghost" size="compact" data-testid="agent-task-undo-all" disabled={blocked || undoLoading || !canUndo || !changes.length} onClick={event=>{void undoAll(snapshot,event.currentTarget);}}>{t('agent.task.undoAll')}</Button></header>{changes.map(change => <article key={change.id} className="agent-task-change mio-change" data-change-id={change.id} data-status={change.status}>
@@ -478,8 +512,15 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           {pause.supplement&&snapshot===state.snapshot&&!readOnly&&<p className="mio-secondary">{t('agent.panel.pauseSupplement')}</p>}
           <div className="mio-card-actions"><Button data-mio-primary data-testid="agent-task-resume" disabled={blocked || unknown.length > 0} onClick={() => { void act(conflictPaused?'skip':'resume'); }}>{t(conflictPaused?'agent.panel.skipContinue':'agent.task.resume')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>
         </section>}
+        {earlierExport && <section className="mio-card" aria-label={t('agent.display.operation.timeline.render')} data-testid="agent-task-export-before-model-failure">
+          <p>{t(`agent.panel.exportBeforeModelFailure.${earlierExport.status}`)}</p>
+          {onOpenRequests && <Button variant="ghost" size="compact" className="mio-settings-link" disabled={!visible}
+            onClick={() => { if (visibility.current) onOpenRequests(`render:${earlierExport.id}`); }}>
+            {t('agent.panel.checkOriginal')} <Icon name="arrow" />
+          </Button>}
+        </section>}
         {run.status === 'failed' && runFailure && <p className="mio-error" role="alert" data-testid="agent-task-run-failure">{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(runFailure))})}</p>}
-        {run.status === 'failed' && <p className="mio-error" role="alert" data-testid="agent-task-run-error">{t(settingsChanged?'agent.panel.settingsChangedTail':'agent.panel.failedTail')}</p>}
+        {run.status === 'failed' && (!describesModelFailure || settingsChanged) && <p className="mio-error" role="alert" data-testid="agent-task-run-error">{t(settingsChanged?'agent.panel.settingsChangedTail':'agent.panel.failedTail')}</p>}
         {backgroundPending && <section className="mio-card" data-testid="agent-task-background-pending"><p>{t('agent.task.backgroundPending')}</p>{onOpenRequests && steps.filter(step => step.kind !== 'model' && taskBackgroundLocation(step) !== undefined).map(step => <Button key={step.id} variant="ghost" disabled={!visible} data-testid={`agent-task-background-request-${step.id}`} onClick={() => { if (visibility.current) onOpenRequests(taskBackgroundLocation(step)); }}>{taskStepTitle(step, locale,firstRepairs)} · {t('agent.panel.checkOriginal')}</Button>)}{run.status === 'completed' && <div className="mio-card-actions"><Button data-testid="agent-task-pause" disabled={blocked} onClick={() => { void act('pause'); }}>{t('agent.task.pause')}</Button><Button data-testid="agent-task-stop" disabled={blocked} onClick={() => { void act('stop'); }}>{t('agent.task.stop')}</Button></div>}</section>}
       {snapshot!==state.snapshot&&(run.status==='interrupted'||unknown.length>0)&&<section className="mio-card">{recoveryFor(snapshot)}</section>}
       <MioUsageRow runId={run.id} view={usage.rounds[run.id]} disabled={!visible||historyOpen||!usage.rounds[run.id]} triggerRef={node=>{if(node)usageTriggers.current.set(run.id,node);else usageTriggers.current.delete(run.id);}} onOpen={()=>{if(visibility.current&&!historyVisible.current)usageReader.current?.open(run.id);}} /></article>;

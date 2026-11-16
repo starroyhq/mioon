@@ -64,7 +64,7 @@ OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `i
 
 ### Responses 字节边界
 
-仅官方 OpenAI Responses 使用 4 MiB 整流上限；五个生命周期事件 created/in_progress/completed/incomplete/failed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件、120 秒总时限以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
+仅官方 OpenAI Responses 使用 4 MiB 整流上限；五个生命周期事件 created/in_progress/completed/incomplete/failed 每个 2 MiB；已知 item、content、arguments 和推理摘要 done 等完整载体每个 512 KiB。普通 delta、未命名或未列出的事件仍是 64 KiB。大事件必须先出现显式 event 名称，网关再核对名称与 JSON type 一致；改名、下一帧、分片行均重新核对，不能借生命周期名称绕过。8192 事件以及文本/单推理项 128 KiB、工具参数 32 KiB、历史 128 KiB 等本地边界保留。请求总时限按下文的任务超时档案设置。Chat Completions、Messages 和其他厂商 Responses 仍用原 1 MiB / 64 KiB。
 
 离线实测全部 111 个工具与 instructions，短回复 UTF-8 整流 455916 字节，ASCII 转义为 616795 字节。再加入 131072 字节可见文本和 123026 字节 reasoning 条目及真实 done/terminal 重复回显，整流分别为 1360062 / 2831621 字节，最大 ASCII 事件 721454 字节；原 1 MiB / 64 KiB 不足，现上限可容纳。独立字段都取最大值不代表聚合可豁免：30 个大参数调用等超过整流或历史预算时仍精确拒绝，不声称无界输出。
 
@@ -303,9 +303,15 @@ Sources: [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility
 | 所有协议 · Ollama | `qwen3.5:9b`、`qwen3:8b` | 未知，由本地服务设置 | — | 4,096 |
 | 所有协议 · custom 及其他组合 | 任意 | 未知 | — | 4,096 |
 
+### Mio 运行中的错误与超时
+
+- Responses、Chat Completions 和 Messages 的错误事件在失败步骤里记录安全的类型、错误码、参数和说明片段。类型、错误码及参数只保留已知值。说明只取可识别的固定短语，舍弃回显内容。HTTP 诊断保留原状态字段。[OpenAI 错误码](https://developers.openai.com/api/docs/guides/error-codes) · [Responses 流事件](https://developers.openai.com/api/reference/resources/responses/streaming-events) · [Anthropic 错误](https://platform.claude.com/docs/en/api/errors) · [OpenRouter 错误结构](https://openrouter.ai/docs/api/reference/errors-and-debugging)
+- 普通 Mio 任务每次请求最多 120 秒，从发出请求到首次模型输出最多 20 秒，输出后的空闲上限为 20 秒。已适配的云端思考模型在实际请求开启思考时使用 240、90、45 秒。DNS 和受信连接仍共用 10 秒；心跳不刷新 Mio 的模型输出计时。超时按发生阶段记录请求经过的时间。
+- 对能确认的服务端暂时性错误、过载和短期速率限制，原模型步骤先落盘为失败，再按 1 秒、2 秒退避创建至多两次新模型尝试。有效的 HTTP `Retry-After` 会延长等待，超过 30 秒则保留失败供用户处理。重试每次重新核对授权，继续使用已完成工具的原回执。额度、上下文、参数、可用性错误及原因不明的失败保留在原步骤。连接诊断和已中断的未知请求沿用各自规则。
+
 ### 按协议选择上限的原因
 
-Chat Completions、Responses 的长回复仍受每条流 **1 MiB、8,192 个 SSE 事件、单事件 64 KiB 和 120 秒总期限**约束。假设每个事件 250–330 字节、约一个 token，则 `1,048,576 ÷ (250–330) ≈ 3,178–4,194` 个事件，约在 3K–4K token 触及字节上限。这是分块假设下的估算，不是所有模型的实际截断点；只把输出上限放大，不能保证更长的回复通过。[OpenAI 速率限制指南](https://developers.openai.com/api/docs/guides/rate-limits#reduce-the-max_tokens-to-match-the-size-of-your-completions)还说明，请求计数取 `max_tokens` 与按请求字符数估算的 token 较大者。例如原估算约 5K 的请求改设 16,384，会把该计数抬到 16,384；本轮保持 4,096。
+Chat Completions、Responses 的长回复仍受每条流 **整流字节、8,192 个 SSE 事件、单事件字节和请求总时限**约束。下列估算采用普通流的 1 MiB 整流上限与 64 KiB 单事件上限。假设每个事件 250–330 字节、约一个 token，则 `1,048,576 ÷ (250–330) ≈ 3,178–4,194` 个事件，约在 3K–4K token 触及字节上限。这是分块假设下的估算，不是所有模型的实际截断点；只把输出上限放大，不能保证更长的回复通过。[OpenAI 速率限制指南](https://developers.openai.com/api/docs/guides/rate-limits#reduce-the-max_tokens-to-match-the-size-of-your-completions)还说明，请求计数取 `max_tokens` 与按请求字符数估算的 token 较大者。例如原估算约 5K 的请求改设 16,384，会把该计数抬到 16,384；本轮保持 4,096。
 
 Messages 取 16,384，给较长的工具参数留出输出额度：单个参数限 32 KiB，假设每 token 3–4 字节，约需 8K–11K token。16,384 token 的解码内容在同一假设下约 48–64 KiB，可处于共用的 128 KiB 输出计数内，但工具参数、思考、签名和实际编码都会影响剩余额度。[Anthropic 的 OTPM](https://platform.claude.com/docs/en/api/rate-limits)按实际产生的输出 token 计数，`max_tokens` 不参与 OTPM 计算；提高请求上限本身不增加 OTPM 预留，实际多生成的 token 仍消耗额度和费用。
 
