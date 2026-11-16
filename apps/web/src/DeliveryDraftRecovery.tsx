@@ -53,7 +53,6 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
   return <section className="notice delivery-draft-recovery" data-testid="delivery-draft-recovery" data-recovery-needed={recoveryNeeded} aria-label={t('recovery.delivery.label')}>
     <p role="status" aria-live="polite" data-testid="delivery-draft-status">{status}</p>
     <RecoveryStorageDetails domain="delivery" />
-    {state.phase === 'unsupported' && <p className="input-hint">{t('recovery.delivery.unsupportedHelp')}</p>}
     {state.candidate && <div data-testid="delivery-draft-candidate">
       <p>{t('recovery.delivery.savedName')}<strong style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{title(state.candidate.raw.deliveryName, t)}</strong></p>
       <p className="input-hint">{t('export.revision', { revision: state.candidate.baseRevision })} · <time dateTime={state.candidate.updatedAt}>{formatDate(state.candidate.updatedAt, { dateStyle: 'medium', timeStyle: 'medium' })}</time></p>
@@ -63,7 +62,6 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
         <Button type="button" size="sm" variant="ghost" data-testid="keep-current-delivery-name" disabled={blocked || state.autosavePaused || unconfirmedPreparation} onClick={() => { void controller.keepCurrent(); }}>{t('recovery.delivery.keep')}</Button>
         <Button type="button" size="sm" variant="ghost" data-testid="discard-stored-delivery-draft" disabled={blocked || state.autosavePaused || unconfirmedPreparation} onClick={() => { void controller.discardStored(); }}>{t('recovery.delivery.discard')}</Button>
       </div>
-      <p className="input-hint">{t('recovery.delivery.choicesHelp')}</p>
     </div>}
     {state.baselineConflict && state.baseline && <div className="notice warning" data-testid="delivery-draft-baseline-conflict">
       <p>{t('recovery.delivery.baseline', { revision: state.baseline.baseRevision })}</p>
@@ -86,7 +84,6 @@ export default function DeliveryDraftRecovery({ state, controller, disabled = fa
         <ExportRangeSummary input={originalInput} label={t('recovery.delivery.originalRange')} showWhole testId="delivery-original-range" />
         <details data-testid="delivery-intent-provenance"><summary>{t('recovery.delivery.originalDetails')}</summary><p style={{ overflowWrap: 'anywhere' }}>{t('recovery.delivery.requestDetails', { request: originalInput.requestId, timeline: originalTimelineId ?? '' })}</p><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 'inherit' }}>{JSON.stringify(originalInput, null, 2)}</pre></details>
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <p className="input-hint">{t('recovery.delivery.recoverHelp')}</p>}
-        {original?.outcome.status === 'accepted' && !state.intentUncertain && <p className="input-hint">{t('recovery.delivery.acceptedHelp')}</p>}
         {original?.outcome.status === 'not_applied' && !state.intentUncertain && <p className="input-hint">{t('recovery.delivery.notAppliedHelp')}</p>}
         {(original?.outcome.status === 'pending' || state.intentUncertain) && <Button type="button" size="sm" variant="outline" data-testid="recover-original-delivery" disabled={blocked} onClick={() => { void controller.recover(); }}>{t('recovery.delivery.recover')}</Button>}
       </details>}

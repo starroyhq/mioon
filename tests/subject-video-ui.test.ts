@@ -97,7 +97,7 @@ const slots: HookSlot[] = [], modules = new Map<string,{default:(props:Record<st
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
       if (name === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => String(key) });
-      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' };
       if (name === './SubjectLibrary.tsx') return { SubjectPager: 'SubjectPager' };
       if (name === './VideoFrameControls.tsx') return { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true };
       if (name === './ReferenceConnections.tsx') return { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' };
@@ -179,7 +179,8 @@ test('real selector requires a separate version action, uses paginated library, 
   assert.equal(props.changes[1].subjectReference.subjectVersionId, version().id);
   const pagers = h.nodes().filter((node: ElementNode) => node.type === 'SubjectPager');
   pagers[0].props.onPage('next'); pagers[1].props.onPage('previous'); assert.deepEqual(props.reads, ['next', 'previous']);
-  assert.match(h.text(), /Ark 不支持直接上传真实人脸图片/); assert.match(h.text(), /不进行人脸检测/); assert.match(h.text(), /仅保留在当前页面会话/);
+  assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], 'Ark 不接受真实人脸图片');
+  assert.doesNotMatch(h.text(), /Ark 不接受真实人脸图片|不进行人脸检测|仅保留在当前页面会话/);
   assert.doesNotMatch(h.text(), /保证检测所有|保证身份锁定/);
 });
 
@@ -204,7 +205,8 @@ test('selector exposes unavailable reasons and never auto-clears saved first or 
   h.find('subject-video-enabled')!.props.onCheckedChange(true); assert.deepEqual((props.changes as unknown), []);
   h.render({ shot: shot(), draft: shot(), provider: provider('mock'), model: provider('mock').models[0] });
   h.find('subject-video-enabled')!.props.onCheckedChange(true); assert.deepEqual(props.changes, [{ inputMode: 'subject' }]);
-  assert.match(h.text(), /Mock 仅验证工作流，输出为测试图案/);
+  assert.equal(h.find('subject-video-mock-warning')?.props['aria-label'], '模拟结果为测试图案');
+  assert.doesNotMatch(h.text(), /模拟结果为测试图案|Mock 仅验证工作流/);
 });
 
 test('subject provenance summary shows human labels, pinned old/current versions and collapsed source identity', () => {
@@ -354,7 +356,7 @@ test('subject selection and immutable provenance relabel live in all four locale
   for (const locale of i18n.LOCALES) {
     h.locale = locale; h.render(); summary.locale = locale; summary.render();
     assert.equal(h.find('subject-video-selection')!.props['aria-label'], i18n.translate(locale, 'subjects.video.sectionLabel'));
-    assert.ok(h.text().includes(i18n.renderMessage(locale, subjectVideo.ARK_SUBJECT_WARNING_MESSAGE)));
+    assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], i18n.renderMessage(locale, subjectVideo.ARK_SUBJECT_WARNING_MESSAGE));
     assert.ok(summary.text().includes(i18n.translate(locale, 'subjects.source.import')));
     assert.equal(h.find('subject-video-version')!.props.value, selected!.subjectVersionId);
     assert.equal(JSON.stringify(selected), before);
@@ -367,7 +369,7 @@ test('subject selection and immutable provenance relabel live in all four locale
   assert.equal(props.changes[0].subjectReference.subjectVersionId, selected!.subjectVersionId);
 });
 
-test('subject warning and reason descriptor sidecars preserve exact legacy meaning and all locales', () => {
+test('subject warning tooltips are concise and reason descriptors preserve the legacy messages', () => {
   // Display catalogs intentionally omit paragraph-final periods; immutable
   // machine/legacy messages keep their internal and terminal punctuation.
   const displayLegacy = (value: string) => value.replace(/[。.]+$/u, '');
@@ -376,8 +378,10 @@ test('subject warning and reason descriptor sidecars preserve exact legacy meani
   const references:Parameters<typeof subjectVideo.subjectVideoReferenceDescriptor>[] = [[null, assets, projectId], [{}, assets, projectId], [reference(), assets, id(999)], [reference(), [], projectId], [reference(), [asset(1, { sha256: 'f'.repeat(64) })], projectId], [reference(), assets, projectId]];
   for (const values of references) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), displayLegacy(subjectVideo.subjectVideoReferenceIssue(...values)));
   for (const provenance of [null, { kind: 'user-import' }, { kind: 'extracted-frame' }, { kind: 'synthetic-mock' }, { kind: 'generated', imageSource: {} }, { kind: 'generated' }, { kind: 'export' }, { kind: 'future-kind' }]) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoSourceDescriptor(({ provenance } as unknown as Parameters<typeof subjectVideo.subjectVideoSourceDescriptor>[0]))), displayLegacy(subjectVideo.subjectVideoSourceLabel(({ provenance } as unknown as Parameters<typeof subjectVideo.subjectVideoSourceLabel>[0]))));
-  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), displayLegacy(subjectVideo.ARK_SUBJECT_WARNING));
-  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE), displayLegacy(subjectVideo.MOCK_SUBJECT_WARNING));
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), 'Ark 不接受真实人脸图片');
+  assert.match(subjectVideo.ARK_SUBJECT_WARNING, /不进行人脸检测/);
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE), '模拟结果为测试图案');
+  assert.match(subjectVideo.MOCK_SUBJECT_WARNING, /Mock 仅验证工作流/);
   for (const locale of i18n.LOCALES) for (const value of [subjectVideo.ARK_SUBJECT_WARNING_MESSAGE, subjectVideo.MOCK_SUBJECT_WARNING_MESSAGE, ...conflicts.map(([value, options]) => subjectVideo.subjectVideoConflictDescriptor(value, (options as unknown as Parameters<typeof subjectVideo.subjectVideoConflictDescriptor>[1]))).filter(Boolean), ...references.map(values => subjectVideo.subjectVideoReferenceDescriptor(...values)).filter(Boolean)]) {
     assert.ok(i18n.renderMessage(locale, value));
     if (locale !== 'zh-Hans') assert.notEqual(i18n.renderMessage(locale, value), i18n.renderMessage('zh-Hans', value));

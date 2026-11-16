@@ -32,7 +32,7 @@ export default function ClipTransformControls({ clip, frame, disabled, disabledR
     <Input id={`${id}-${key}`} data-testid={key === 'rotation' ? 'clip-transform-rotation' : `clip-transform-crop-${key}`} type="number" step="1" required value={statics[key]} disabled={disabled}
       onChange={event => setStatics(current => ({ ...current, [key]: event.target.value }))} />
   </div>;
-  return <fieldset className="clip-transform" data-testid="clip-transform" aria-describedby={`${id}-hint`}>
+  return <fieldset className="clip-transform" data-testid="clip-transform">
     <legend>{t('clip.transform.title')}</legend>
     <p className="input-hint" data-testid="clip-transform-frame">{t('clip.transform.frame', { frame })} · {t(atKeyframe ? 'clip.transform.atKeyframe' : saved ? 'clip.transform.derived' : 'clip.transform.none')}</p>
     <div className="rect-grid clip-transform-grid">{field('x', t('clip.transform.x'))}{field('y', t('clip.transform.y'))}{field('scale', t('clip.transform.scale'))}</div>
@@ -56,9 +56,7 @@ export default function ClipTransformControls({ clip, frame, disabled, disabledR
         <Button type="button" variant="outline" size="sm" data-testid="clip-transform-apply-static" disabled={disabled || Boolean(staticProblem) || !staticChanged(clip, statics) || !onSetTransform}
           onClick={() => { const next = withStatic(clip, statics); if (next !== undefined) apply(next); }}>{t('clip.transform.applyStatic')}</Button>
       </div>
-      <p className="input-hint">{t('clip.transform.staticHint')}</p>
     </div>
     {disabledReason && <p className="input-hint" role="status" data-testid="clip-transform-disabled">{disabledReason}</p>}
-    <p id={`${id}-hint`} className="input-hint">{t('clip.transform.hint')}</p>
   </fieldset>;
 }

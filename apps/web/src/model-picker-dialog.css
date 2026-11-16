@@ -147,7 +147,7 @@
 }
 .model-picker-row[data-selected] .model-picker-row-state { color: var(--wb-text); }
 
-.model-picker-note, .model-picker-status, .model-picker-limit {
+.model-picker-status, .model-picker-limit {
   flex: none;
   margin: 10px 0 0;
   font-size: var(--wb-text-label);

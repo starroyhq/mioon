@@ -62,8 +62,8 @@ before(async () => {
 test('actual SSR card is discoverable, opt-in, saved-only and has no target/gain suggestion/apply controls', () => {
   assert.match(rendered.idle, /<section[^>]*data-testid="timeline-clip-loudness"/); assert.doesNotMatch(rendered.idle, /<details[^>]* open|<input|role="dialog"/);
   assert.match(rendered.idle, /最长 60 秒/); assert.match(rendered.idle, /不会自动裁短或替换范围/);
-  assert.match(rendered.idle, /不是整片混音或已导出文件/); assert.match(rendered.idle, /不修改音量/); assert.match(rendered.idle, /未实现逐段响度统一/);
-  assert.match(rendered.idle, /报告仅临时显示/); assert.match(rendered.idle, /估算真峰值不保证混音或 AAC 编码后的峰值/);
+  assert.doesNotMatch(rendered.idle, /不是整片混音或已导出文件|不修改音量|未实现逐段响度统一/);
+  assert.doesNotMatch(rendered.idle, /报告仅临时显示|估算真峰值不保证混音或 AAC 编码后的峰值/);
   assert.doesNotMatch(rendered.idle.match(/<button[^>]*data-testid="clip-loudness-analyze"[^>]*>/)![0], /\sdisabled(?:=|\s|>)/);
   assert.doesNotMatch(rendered.idle, /data-testid="[^"]*(?:apply|target|candidate)/);
 });

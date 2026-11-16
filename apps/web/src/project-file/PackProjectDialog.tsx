@@ -5,6 +5,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent, WorkbenchProgress } from '@mioon/ui/components/workbench-controls';
 import { AlertTriangle, CircleCheck, Film, Link } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import { PROJECT_RULES_FILE } from '../../../../packages/contracts/src/project-file.ts';
 import type { ProjectPackResult } from '../../../../packages/contracts/src/project-versions.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
@@ -79,11 +80,12 @@ export function PackProjectDialog(props: PackProjectDialogProps): ReactElement {
         <WorkbenchProgress value={pack.progress} label={t('projectFile.pack.progress')} />
       </div>}
       {pack.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-pack-failed">{t('projectFile.pack.failed')}</WorkbenchAlert>}
-      <p className="pf-pack-note"><Icon name="shield" size={14} />{t('projectFile.pack.excludes')}</p>
     </>;
   }
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !packing) props.onClose(); }}>
-    <WorkbenchDialogContent title={t('projectFile.pack.title')} description={props.projectName} size="standard" className="pf-dialog pf-pack-dialog" data-testid="pf-pack-dialog" showCloseButton={!packing}
+    <WorkbenchDialogContent title={<>{t('projectFile.pack.title')} <WorkbenchTooltip content={t('projectFile.pack.excludes')}>
+      <WorkbenchButton type="button" variant="icon" size="compact" className="pf-info" aria-label={t('shell.details')} data-testid="pf-pack-privacy"><Icon name="info" size={14} /></WorkbenchButton>
+    </WorkbenchTooltip></>} description={props.projectName} size="standard" className="pf-dialog pf-pack-dialog" data-testid="pf-pack-dialog" showCloseButton={!packing}
       footer={<>
         <WorkbenchButton data-testid="pf-pack-cancel" disabled={packing} onClick={props.onClose}>{t('common.cancel')}</WorkbenchButton>
         <WorkbenchButton variant="primary" data-testid="pf-pack-submit" loading={packing} disabled={manifest.kind !== 'ready'} onClick={props.onPack}>{t('projectFile.pack.submit')}</WorkbenchButton>

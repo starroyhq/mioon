@@ -44,8 +44,9 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
     '../../../packages/contracts/src/image-compatible.ts': imageCompatible,
     './SettingsServicesLayout.tsx': {useSettingsServicesPanel: () => ({selected: panelKey === selected, pageVisible: visible, active: visible && panelKey === selected})},
     '@mioon/ui/components/button': {Button: 'Button'}, '@mioon/ui/components/input': {Input: 'Input'}, '@mioon/ui/components/label': {Label: 'Label'},
+    './icons.tsx': {__esModule: true, default: 'Icon'},
     '@mioon/ui/components/switch': {Switch: 'Switch'},
-    '@mioon/ui/components/workbench-confirm': {useConfirmation: () => confirm}, './WorkspaceControls.tsx': {WorkbenchSelect: 'WorkbenchSelect'},
+    '@mioon/ui/components/workbench-confirm': {useConfirmation: () => confirm}, './WorkspaceControls.tsx': {WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip'},
   };
   Function('module', 'exports', 'require', transformSync(source, {loader: 'tsx', format: 'cjs'}).code)(module, module.exports, (name: string) => {if (name.endsWith('.css')) return {}; assert.ok(name in imports, name); return imports[name];});
   const scope = <T>(key: string, callback: () => T): T => {hooks = scopes.get(key) ?? []; scopes.set(key, hooks); cursor = 0; effects = []; const result = callback(); const pending = effects; effects = []; for (const effect of pending) effect(); return result;};
@@ -95,7 +96,10 @@ test('retained UUID panels preserve independent fields across detail/locale chan
   assert.ok(a && b); const aId = a.key.slice(6), bId = b.key.slice(6), aField = `${aId}-key`, bField = `${bId}-key`;
   const all = ui.elements(), toggle = ui.find(`${aId}-enabled`), label = all.find(item => item.props.className === 'generation-image-enable');
   assert.equal(all.filter(item => item.props['data-testid'] === `${aId}-enabled`).length, 1); assert.equal(label?.props.htmlFor, toggle.props.id);
-  assert.ok(all.indexOf(toggle) > all.indexOf(ui.find(aField))); assert.ok(nodes(label).some(item => item.type === 'small' && item.props.id === toggle.props['aria-describedby']));
+  assert.ok(all.indexOf(toggle) > all.indexOf(ui.find(aField)));
+  const enableGroup = all.find(item => item.props.className === 'settings-with-help' && nodes(item).some(child => child === label));
+  assert.equal(nodes(enableGroup).find(item => item.type === 'WorkbenchTooltip')?.props.content, i18n.translate('zh-Hans', 'image.settings.enableScope'));
+  assert.equal(toggle.props['aria-describedby'], undefined);
   ui.select(a.key); ui.key(aField, 'synthetic-panel-a'); const first = ui.fields.get(aField);
   assert.equal(ui.find(`${aId}-enabled`).type, 'Switch');
   const stale = ui.find(`${aId}-enabled`).props.onCheckedChange as (checked: boolean) => void;

@@ -182,16 +182,15 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   assert.match(translate('zh-Hans', 'projects.structureStopped', { count: 1 }), /已确认 1\/3.*其余镜头不会自动创建/);
 });
 
-test('six-op recovery warns about session-only unencrypted receipts without changing generation guarantees', () => {
+test('six-op recovery exposes session-only unencrypted receipts on demand', () => {
   const card = readFileSync(new URL('../apps/web/src/PendingSubmission.tsx', import.meta.url), 'utf8');
-  assert.match(card, /mutation &&/);
-  assert.match(card, /t\('tasks\.pending\.mutationStorage'\)/);
+  assert.match(card, /<WorkbenchTooltip content=/);
+  assert.match(card, /t\(mutation \? 'tasks\.pending\.mutationStorage' : 'tasks\.pending\.submissionStorage'\)/);
   const notice = translate('zh-Hans', 'tasks.pending.mutationStorage');
   assert.match(notice, /恢复记录仅存于当前浏览器会话，未经保险库加密/);
   assert.match(notice, /关闭窗口或重建应用会话可能丢失记录/);
-  const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-  assert.match(readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8'), /t\('tasks\.workspace\.durableState'\)/);
-  assert.match(translate('zh-Hans', 'tasks.workspace.durableState'), /生成任务状态持久保存/);
+  const workspace = readFileSync(new URL('../apps/web/src/TaskWorkspace.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(workspace, /tasks\.workspace\.durableState/);
 });
 
 test('a colliding legacy receipt can never silently turn a new edit into another operation', t => {

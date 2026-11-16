@@ -159,7 +159,7 @@ test('actual Inspector input/save/discard handlers preserve literal text, reacha
   ui.render(props()); (ui.find('subtitle-text'))!.props.onChange({ target: { value: 'discard me' } }); ui.render(props()); (ui.find('subtitle-discard'))!.props.onClick();
   assert.equal((h.controller.getState().draft)!.text, '原样 {a}%\\\nEnglish'); assert.ok((ui.find('subtitle-render-status'))!.props.children.join('').includes('旧快照'));
   const footer = ui.nodes().find((node) => node.type === 'footer'); assert.ok(footer); assert.ok(footer.props.children.flat().some((node) => (node as RootNode)!.props?.['data-testid'] === 'subtitle-save'));
-  assert.ok(ui.source.includes('subtitles.ui.renderNote')); assert.ok(translate('zh-Hans', 'subtitles.ui.renderNote').includes('不是最终画面预览')); assert.ok(!ui.source.includes('maxLength='));
+  assert.ok(!ui.source.includes('subtitles.ui.renderNote')); assert.ok(ui.source.includes('subtitle-render-status')); assert.ok(!ui.source.includes('maxLength='));
 });
 
 test('actual Inspector retained handlers reject hidden, changed selection, unmount, and late remove confirmation', async () => {

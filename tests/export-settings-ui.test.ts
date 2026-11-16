@@ -264,11 +264,11 @@ function component(file: string, extra: Loose = {}): (props: Loose)=>Element {
 test('actual selectors show separate editing/output dimensions, explicit CRF and bitrate semantics, upscale warning and fixed audio/timebase', () => {
   const View = component('TimelineExportSettings.tsx'), changes: Loose[] = []; const choice = settings({ resolution: 'short_1080' });
   let tree = View({ timeline, value: choice, disabled: false, onChange: (value: Loose) => changes.push(value) });
-  const text = textOf(tree); for (const expected of ['720 × 1280','1080 × 1920','CRF 23','30 fps','AAC 128 kb/s','不增加原始画面细节','不更改时间线或编辑预览']) assert.ok(text.includes(expected), expected);
+  const text = textOf(tree); for (const expected of ['720 × 1280','1080 × 1920','CRF 23','30 fps','AAC 128 kb/s','720 → 1080（短边）']) assert.ok(text.includes(expected), expected);
   const mode=(nodes(tree).find(node => node.props['data-testid'] === 'export-rate-mode')!.props.onChange as (value: unknown)=>void);mode({ target: { value: 'bitrate' } });
   assert.deepEqual(changes[0], settings({ resolution: 'short_1080', rateControl: { mode: 'bitrate', targetKbps: 4000 } }));
   tree = View({ timeline, value: changes[0], disabled: true, onChange() {} });
-  assert.match(textOf(tree), /单遍编码/); assert.match(textOf(tree), /不保证文件大小/);
+  assert.match(textOf(tree), /4 Mb\/s/); assert.doesNotMatch(textOf(tree), /单遍编码|不保证文件大小/);
   assert.equal(nodes(tree).find(node => node.props['data-testid'] === 'export-bitrate')!.props.disabled, true);
 });
 

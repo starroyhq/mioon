@@ -166,10 +166,10 @@ export const nativeMessages = {
     "ja": "インストール済みの FFmpeg と ffprobe が必要です"
   },
   "native.toolsDetail": {
-    "zh-Hans": "本应用包含 Electron / Node / SQLite，但不捆绑 FFmpeg。请选择从可信来源安装的 ffmpeg 和 ffprobe 可执行文件。仅保存所选路径，不修改原始素材",
-    "zh-Hant": "本應用程式包含 Electron / Node / SQLite，但未隨附 FFmpeg。請選擇從可信來源安裝的 ffmpeg 和 ffprobe 執行檔。僅儲存所選路徑，不會修改原始素材",
-    "en": "This app includes Electron / Node / SQLite, but not FFmpeg. Select ffmpeg and ffprobe executables installed from a trusted source. Only their paths are saved; original media is not modified",
-    "ja": "このアプリには Electron / Node / SQLite が含まれますが、FFmpeg は同梱されていません。信頼できる配布元からインストールした ffmpeg と ffprobe の実行ファイルを選択してください。選択したパスのみを保存し、元の素材は変更しません"
+    "zh-Hans": "缺少 ffmpeg 或 ffprobe。",
+    "zh-Hant": "缺少 ffmpeg 或 ffprobe。",
+    "en": "ffmpeg or ffprobe is missing.",
+    "ja": "ffmpeg または ffprobe が見つかりません。"
   },
   "native.chooseTools": {
     "zh-Hans": "选择工具",
@@ -190,10 +190,10 @@ export const nativeMessages = {
     "ja": "動画の処理には FFmpeg と ffprobe が必要です"
   },
   "native.toolsDownloadDetail": {
-    "zh-Hans": "可以下载 Mioon 提供的 FFmpeg {version}（约 {size}）。下载后会校验文件，并安装到本应用的数据目录。也可以选择你已安装的 ffmpeg 和 ffprobe。\n\nMioon 提供的版本按 GPL 许可分发，源码见 {source}",
-    "zh-Hant": "可以下載 Mioon 提供的 FFmpeg {version}（約 {size}）。下載後會校驗檔案，並安裝到本應用程式的資料目錄。也可以選擇你已安裝的 ffmpeg 和 ffprobe。\n\nMioon 提供的版本依 GPL 授權散布，原始碼見 {source}",
-    "en": "You can download FFmpeg {version} provided by Mioon (about {size}). The files are verified and installed in this app's data folder. You can also choose ffmpeg and ffprobe that you have installed.\n\nThe Mioon build is distributed under the GPL. Source code: {source}",
-    "ja": "Mioon が提供する FFmpeg {version}（約 {size}）をダウンロードできます。ファイルを検証してから、このアプリのデータフォルダーにインストールします。インストール済みの ffmpeg と ffprobe を選ぶこともできます。\n\nMioon 提供版は GPL で配布されています。ソースコード：{source}"
+    "zh-Hans": "FFmpeg {version} · 约 {size}\n\nMioon 提供的版本按 GPL 许可分发，源码见 {source}",
+    "zh-Hant": "FFmpeg {version} · 約 {size}\n\nMioon 提供的版本依 GPL 授權散布，原始碼見 {source}",
+    "en": "FFmpeg {version} · about {size}\n\nThe Mioon build is distributed under the GPL. Source code: {source}",
+    "ja": "FFmpeg {version} · 約 {size}\n\nMioon 提供版は GPL で配布されています。ソースコード：{source}"
   },
   "native.downloadTools": {
     "zh-Hans": "下载并安装",
@@ -310,16 +310,16 @@ export const nativeMessages = {
     "ja": "一部の下書きや表示位置の保存を確認できません。それでも終了しますか？"
   },
   "native.draftReloadDetail": {
-    "zh-Hans": "重新载入可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态",
-    "zh-Hant": "重新載入可能遺失最後未確認的輸入或位置；不會變更已儲存的專案與媒體，也不會取消可能仍在處理的儲存請求。可以繼續編輯並核對儲存狀態",
-    "en": "Reloading may lose the last unconfirmed input or position. It will not change saved projects or media, or cancel save requests that may still be processing. You can keep editing and check the save status",
-    "ja": "再読み込みにより、最後の未確認の入力や位置が失われる可能性があります。保存済みのプロジェクトやメディアは変更されず、処理中かもしれない保存リクエストもキャンセルされません。編集を続けて保存状態を確認できます"
+    "zh-Hans": "重新载入可能丢失未确认的输入或位置。",
+    "zh-Hant": "重新載入可能遺失未確認的輸入或位置。",
+    "en": "Reloading may lose unconfirmed input or position changes.",
+    "ja": "再読み込みすると未確認の入力や位置の変更が失われることがあります。"
   },
   "native.draftQuitDetail": {
-    "zh-Hans": "直接退出可能丢失最后未确认的输入或位置；不会改变已保存的项目和媒体，也不会取消可能仍在处理的保存请求。可以继续编辑并核对保存状态",
-    "zh-Hant": "直接結束可能遺失最後未確認的輸入或位置；不會變更已儲存的專案與媒體，也不會取消可能仍在處理的儲存請求。可以繼續編輯並核對儲存狀態",
-    "en": "Quitting may lose the last unconfirmed input or position. It will not change saved projects or media, or cancel save requests that may still be processing. You can keep editing and check the save status",
-    "ja": "終了により、最後の未確認の入力や位置が失われる可能性があります。保存済みのプロジェクトやメディアは変更されず、処理中かもしれない保存リクエストもキャンセルされません。編集を続けて保存状態を確認できます"
+    "zh-Hans": "退出可能丢失未确认的输入或位置。",
+    "zh-Hant": "結束可能遺失未確認的輸入或位置。",
+    "en": "Quitting may lose unconfirmed input or position changes.",
+    "ja": "終了すると未確認の入力や位置の変更が失われることがあります。"
   },
   "native.reloadAnyway": {
     "zh-Hans": "仍然重新载入",
@@ -346,10 +346,10 @@ export const nativeMessages = {
     "ja": "リスクを理解したうえで、このウィンドウを閉じますか？"
   },
   "native.unknownDetail": {
-    "zh-Hans": "操作可能已经在后台完成。关闭只放弃本窗口的未确认线索，不代表失败或取消，不会删除已保存数据或重发请求。重新导入可能产生重复素材。建议保留窗口，先核对原项目与记录；本次选择仅用于这一次关闭",
-    "zh-Hant": "操作可能已在背景完成。關閉只會捨棄此視窗中的未確認線索，不代表失敗或取消，也不會刪除已儲存資料或重送請求。重新匯入可能產生重複素材。建議保留視窗，先核對原專案與記錄；本次選擇僅適用於此次關閉",
-    "en": "The operation may already have completed in the background. Closing only discards this window’s unconfirmed clues; it does not mean failure or cancellation, delete saved data, or resend requests. Importing again may create duplicate media. Keep the window open and check the original project and records first. This choice applies only to this close action",
-    "ja": "操作はバックグラウンドですでに完了している可能性があります。閉じると、このウィンドウにある未確認の手掛かりのみが破棄されます。失敗やキャンセルを意味せず、保存済みデータの削除やリクエストの再送信も行いません。再度インポートすると素材が重複する可能性があります。ウィンドウを保持して、先に元のプロジェクトと記録を確認することをお勧めします。この選択は今回の閉じる操作にのみ適用されます"
+    "zh-Hans": "关闭将丢失本窗口的核对线索，重复导入可能生成重复素材。",
+    "zh-Hant": "關閉將遺失此視窗的核對線索，重複匯入可能產生重複素材。",
+    "en": "Closing loses this window’s reconciliation details, and importing again may duplicate media.",
+    "ja": "閉じるとこのウィンドウの照合情報が失われ、再読み込みで素材が重複することがあります。"
   },
   "native.understandClose": {
     "zh-Hans": "了解风险并关闭",
@@ -376,16 +376,16 @@ export const nativeMessages = {
     "ja": "未保存の変更と未送信の入力を破棄して、終了しますか？"
   },
   "native.discardReloadDetail": {
-    "zh-Hans": "包括 Mio、图像工坊和连接设置中的未保存输入。重新载入不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
-    "zh-Hant": "包含 Mio、圖像工坊與連線設定中的未儲存輸入。重新載入不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
-    "en": "This includes unsaved input in Mio, Image Studio, and connection settings. Reloading will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
-    "ja": "Mio、画像スタジオ、接続設定の未保存の入力も含まれます。再読み込みしても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
+    "zh-Hans": "重新载入会丢弃未保存的输入。",
+    "zh-Hant": "重新載入會捨棄未儲存的輸入。",
+    "en": "Reloading discards unsaved input.",
+    "ja": "再読み込みすると未保存の入力が失われます。"
   },
   "native.discardQuitDetail": {
-    "zh-Hans": "包括 Mio、图像工坊和连接设置中的未保存输入。退出不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
-    "zh-Hant": "包含 Mio、圖像工坊與連線設定中的未儲存輸入。結束不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
-    "en": "This includes unsaved input in Mio, Image Studio, and connection settings. Quitting will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
-    "ja": "Mio、画像スタジオ、接続設定の未保存の入力も含まれます。終了しても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
+    "zh-Hans": "退出会丢弃未保存的输入。",
+    "zh-Hant": "結束會捨棄未儲存的輸入。",
+    "en": "Quitting discards unsaved input.",
+    "ja": "終了すると未保存の入力が失われます。"
   },
   "native.leaveBlockedTitle": {
     "zh-Hans": "暂时无法安全离开",
@@ -411,12 +411,6 @@ export const nativeMessages = {
     "en": "The current input’s save status could not be confirmed. This action was cancelled",
     "ja": "現在の入力の保存状態を確認できないため、この操作はキャンセルされました"
   },
-  "native.leaveDetail": {
-    "zh-Hans": "当前操作未继续，窗口和本地服务仍保留。不会放弃输入、保存连接设置或自动重试请求",
-    "zh-Hant": "目前操作未繼續，視窗與本機服務仍保留。不會捨棄輸入、儲存連線設定或自動重試請求",
-    "en": "The action did not proceed. The window and local service remain open. Input is not discarded, connection settings are not saved, and requests are not retried automatically",
-    "ja": "操作は続行されていません。ウィンドウとローカルサービスは維持されます。入力の破棄、接続設定の保存、リクエストの自動再試行は行いません"
-  },
   "native.serviceStoppedTitle": {
     "zh-Hans": "本地服务已停止",
     "zh-Hant": "本機服務已停止",
@@ -430,10 +424,10 @@ export const nativeMessages = {
     "ja": "ローカルサービスが予期せず終了しました。保存済みデータは再起動時に復元されます"
   },
   "native.serviceStoppedDetail": {
-    "zh-Hans": "未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Mio 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
-    "zh-Hant": "未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Mio 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
-    "en": "Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Mio conversation text is retained; restarting does not automatically resume reasoning or resend requests",
-    "ja": "未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Mio の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
+    "zh-Hans": "本地服务已停止，未保存的修改可能丢失。",
+    "zh-Hant": "本機服務已停止，未儲存的修改可能遺失。",
+    "en": "The local service stopped, and unsaved changes may be lost.",
+    "ja": "ローカルサービスが停止し、未保存の変更が失われた可能性があります。"
   },
   "native.rendererTitle": {
     "zh-Hans": "界面需要重新载入",
@@ -448,10 +442,10 @@ export const nativeMessages = {
     "ja": "ワークスペースの画面が応答していません。バックグラウンドタスクは引き続きローカルサービスが管理しています"
   },
   "native.rendererDetail": {
-    "zh-Hans": "如果界面进程已经崩溃，未保存的输入可能已经丢失。重新载入只恢复当前界面，不会重新提交任务或生成请求",
-    "zh-Hant": "若介面程序已當機，未儲存的輸入可能已遺失。重新載入只會恢復目前介面，不會重新提交任務或生成請求",
-    "en": "If the interface process has crashed, unsaved input may already be lost. Reloading restores only the current interface; it does not resubmit tasks or generation requests",
-    "ja": "画面のプロセスがクラッシュした場合、未保存の入力はすでに失われている可能性があります。再読み込みは現在の画面のみを復元し、タスクや生成リクエストを再送信しません"
+    "zh-Hans": "界面进程停止，未保存的输入可能已丢失。",
+    "zh-Hant": "介面程序停止，未儲存的輸入可能已遺失。",
+    "en": "The interface stopped, and unsaved input may have been lost.",
+    "ja": "画面のプロセスが停止し、未保存の入力が失われた可能性があります。"
   },
   "native.emptyWindowTitle": {
     "zh-Hans": "窗口尚未载入",
@@ -464,12 +458,6 @@ export const nativeMessages = {
     "zh-Hant": "此視窗尚未開啟任何專案介面",
     "en": "This window has not opened a project interface yet",
     "ja": "このウィンドウでは、まだプロジェクト画面を開いていません"
-  },
-  "native.emptyWindowDetail": {
-    "zh-Hans": "可以重试固定入口，或关闭这个尚未载入的空窗口。其他窗口与后台任务会保留",
-    "zh-Hant": "可以重試固定入口，或關閉這個尚未載入的空視窗。其他視窗與背景任務會保留",
-    "en": "Retry the fixed entry point, or close this unloaded empty window. Other windows and background tasks remain open",
-    "ja": "固定の入口を再試行するか、まだ読み込まれていない空のウィンドウを閉じることができます。他のウィンドウやバックグラウンドタスクは維持されます"
   },
   "native.retryLoad": {
     "zh-Hans": "重试载入",
@@ -502,10 +490,10 @@ export const nativeMessages = {
     "ja": "ローカルサービスを再起動しますか？"
   },
   "native.restartDetail": {
-    "zh-Hans": "所有窗口都需通过关闭检查后才停止服务。已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Mio 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
-    "zh-Hant": "所有視窗都須通過關閉檢查後才會停止服務。已儲存資料會保留。未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Mio 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
-    "en": "The service stops only after every window passes its close checks. Saved data is retained. Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Mio conversation text is retained; restarting does not automatically resume reasoning or resend requests",
-    "ja": "すべてのウィンドウが終了チェックを通過してからサービスを停止します。保存済みデータは保持されますが、未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Mio の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
+    "zh-Hans": "重启可能丢失未保存的界面修改。",
+    "zh-Hant": "重新啟動可能遺失未儲存的介面修改。",
+    "en": "Restarting may lose unsaved changes in the interface.",
+    "ja": "再起動すると画面上の未保存の変更が失われることがあります。"
   },
   "native.waitExitTitle": {
     "zh-Hans": "正在等待本地进程退出",
@@ -518,12 +506,6 @@ export const nativeMessages = {
     "zh-Hant": "尚未確認本機程序已結束，應用程式將繼續等待",
     "en": "The local process has not been confirmed exited. The app will keep waiting",
     "ja": "ローカルプロセスの終了をまだ確認できません。アプリは待機を続けます"
-  },
-  "native.waitExitDetail": {
-    "zh-Hans": "当前不会重启服务或继续发送终止信号。确认本地进程退出后，应用会完成清理并退出",
-    "zh-Hant": "目前不會重新啟動服務或繼續傳送終止訊號。確認本機程序結束後，應用程式會完成清理並結束",
-    "en": "The service will not be restarted and no further termination signals will be sent. Once the local process is confirmed exited, the app will finish cleanup and quit",
-    "ja": "現在、サービスの再起動や追加の終了シグナルの送信は行いません。ローカルプロセスの終了が確認でき次第、アプリは後処理を完了して終了します"
   },
   "native.mediaExitTitle": {
     "zh-Hans": "无法确认媒体进程退出",
@@ -538,10 +520,10 @@ export const nativeMessages = {
     "ja": "ローカルサービスは終了しましたが、メディアの子プロセスは動作中の可能性があります"
   },
   "native.mediaExitDetail": {
-    "zh-Hans": "应用无法安全核验这些进程，因此不会自动重启服务或按记录的进程编号强制终止。退出应用前或再次使用前，请在系统任务管理器中检查 FFmpeg 和 ffprobe 是否仍在运行",
-    "zh-Hant": "應用程式無法安全核驗這些程序，因此不會自動重新啟動服務，也不會依記錄的程序編號強制終止。結束應用程式前或再次使用前，請在系統工作管理工具中檢查 FFmpeg 與 ffprobe 是否仍在執行",
-    "en": "The app cannot safely verify these processes, so it will not automatically restart the service or forcibly terminate recorded process IDs. Before quitting or using the app again, check your system process manager to see whether FFmpeg and ffprobe are still running",
-    "ja": "これらのプロセスを安全に検証できないため、サービスの自動再起動や、記録されたプロセス ID を使った強制終了は行いません。アプリを終了する前、または再び使用する前に、システムのプロセス管理ツールで FFmpeg と ffprobe がまだ動作していないか確認してください"
+    "zh-Hans": "无法核实 FFmpeg 或 ffprobe 进程是否已退出。",
+    "zh-Hant": "無法核實 FFmpeg 或 ffprobe 程序是否已結束。",
+    "en": "It is not possible to verify that FFmpeg or ffprobe exited.",
+    "ja": "FFmpeg または ffprobe の終了を確認できません。"
   },
   "native.cleanupTitle": {
     "zh-Hans": "退出清理未完成",
@@ -831,6 +813,6 @@ export const nativeMessages = {
   'native.projectLocationSync': { 'zh-Hans': '这个位置由系统 File Provider 同步。同步到一半时打开，或者在两台电脑上同时打开，可能产生冲突副本或不完整的文件。建议放在本机或外置盘上。', 'zh-Hant': '這個位置由系統 File Provider 同步。同步到一半時開啟，或在兩台電腦上同時開啟，可能產生衝突副本或不完整的檔案。建議放在本機或外接磁碟上。', en: 'A system File Provider syncs this location. Opening during sync or on two computers can cause conflicting or incomplete copies. Prefer a local or external drive.', ja: 'この場所はシステムのFile Providerで同期されます。同期中や2台で同時に開くと競合や不完全なコピーが生じる場合があります。ローカルまたは外部ドライブを推奨します。' },
   'native.projectLocationPermissions': { 'zh-Hans': '这块磁盘不支持文件权限，这台电脑上的其他账户也能读写项目文件。拔出磁盘前，请先关闭项目。', 'zh-Hant': '這個磁碟不支援檔案權限，這台電腦上的其他帳戶也能讀寫專案檔案。拔出磁碟前，請先關閉專案。', en: 'This drive does not enforce file permissions. Other accounts can read and write the project. Close the project before disconnecting the drive.', ja: 'このドライブはファイル権限を適用しません。他のアカウントもプロジェクトを読み書きできます。取り外す前にプロジェクトを閉じてください。' },
   'native.relinkOutsideTitle': { 'zh-Hans': '允许读取这个素材位置？', 'zh-Hant': '允許讀取這個素材位置？', en: 'Allow access to this media location?', ja: 'このメディアの場所へのアクセスを許可しますか？' },
-  'native.relinkOutsideDetail': { 'zh-Hans': '将读取“{path}”及其所在目录中可重新指向的素材，供本次预览。只有确认应用后才保存该目录的读取授权。取消不更改授权。', 'zh-Hant': '將讀取「{path}」及其所在目錄中可重新指向的素材，供本次預覽。只有確認套用後才儲存該目錄的讀取授權。取消不變更授權。', en: 'Read “{path}” and relinkable media in its directory for this preview. The directory permission is saved only when you apply. Cancelling leaves permissions unchanged.', ja: 'プレビューのために「{path}」と同じフォルダ内の再リンク可能なメディアを読み取ります。適用を確定した時だけフォルダの読み取り許可を保存します。キャンセルでは許可を変更しません。' },
+  'native.relinkOutsideDetail': { 'zh-Hans': "预览需读取「{path}」所在的目录，应用时会保存读取授权。", 'zh-Hant': "預覽需讀取「{path}」所在的目錄，套用時會儲存讀取授權。", en: "Preview reads the folder containing “{path}”, and applying saves access to that folder.", ja: "プレビューでは「{path}」のフォルダを読み込み、適用時に読み取り権限を保存します。" },
   'native.relinkOutsideAllow': { 'zh-Hans': '允许预览', 'zh-Hant': '允許預覽', en: 'Allow preview', ja: 'プレビューを許可' },
 } as const satisfies MessageCatalog;

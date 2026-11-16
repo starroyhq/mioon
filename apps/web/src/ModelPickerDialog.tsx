@@ -132,7 +132,7 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
       </> : <p className="model-picker-status" role={status === 'error' ? 'alert' : 'status'}>
         {statusMessage ?? t(status === 'loading' ? 'agent.settings.models.loading' : status === 'empty' ? 'agent.settings.models.empty' : 'agent.settings.models.unreachable')}
       </p>}
-      <p className="model-picker-note">{t(single ? 'settings.modelPicker.singleNote' : 'settings.modelPicker.manual')}{usesDraftKey && <> {t('settings.modelPicker.draftKey')}</>}</p>
+      {usesDraftKey && <p className="model-picker-status">{t('settings.modelPicker.draftKey')}</p>}
       {capacity !== null && <p className="model-picker-limit" role="status">{t('settings.modelPicker.limit', {count: capacity})}</p>}
     </WorkbenchDialogContent>
   </Dialog>;

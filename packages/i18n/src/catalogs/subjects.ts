@@ -128,10 +128,10 @@ export const subjectsMessages = {
     "ja": "すべて / リセット"
   },
   "subjects.library.planningNote": {
-    "zh-Hans": "策划关联不会自动用于生成；生成输入需另行选择版本",
-    "zh-Hant": "規劃關聯不會自動用於生成；生成輸入須另行選擇版本",
-    "en": "Planning links are not used automatically for generation. Select an input version separately",
-    "ja": "企画用の関連付けは生成に自動では使われません。生成入力のバージョンは別途選択してください"
+    "zh-Hans": "生成时需另选主体版本",
+    "zh-Hant": "生成時需另選主體版本",
+    "en": "Choose a separate subject version for generation",
+    "ja": "生成時は被写体バージョンを別途選択します"
   },
   "subjects.library.search": {
     "zh-Hans": "搜索本页主体",
@@ -236,10 +236,10 @@ export const subjectsMessages = {
     "ja": "このページに一致するサブジェクトはありません。絞り込みをリセットするか、ページを切り替えてください"
   },
   "subjects.library.empty": {
-    "zh-Hans": "还没有主体。用已导入的图片建立角色、产品、场景或风格",
-    "zh-Hant": "尚無主體。使用已匯入的圖片建立角色、產品、場景或風格",
-    "en": "No subjects yet. Use imported images to create characters, products, locations, or styles",
-    "ja": "サブジェクトはまだありません。読み込み済みの画像からキャラクター、製品、シーン、スタイルを作成できます"
+    "zh-Hans": "还没有主体",
+    "zh-Hant": "還沒有主體",
+    "en": "No subjects yet",
+    "ja": "被写体はまだありません"
   },
   "subjects.version.detailLabel": {
     "zh-Hans": "{name} 的主体版本",
@@ -553,18 +553,6 @@ export const subjectsMessages = {
     "en": "The subject or link has changed. Your draft is retained. Reconfirm the subject and pinned version",
     "ja": "サブジェクトまたは関連付けが変更されました。下書きは保持されています。サブジェクトと固定バージョンを再確認してください"
   },
-  "subjects.binding.styleNote": {
-    "zh-Hans": "将作为风格参考关联。当前固定选择不会随新版本自动变化",
-    "zh-Hant": "將作為風格參考關聯。目前固定的選擇不會隨新版本自動變更",
-    "en": "This will be linked as a style reference. The pinned selection will not change automatically with new versions",
-    "ja": "スタイル参照として関連付けます。新しいバージョンが追加されても、固定した選択は自動では変わりません"
-  },
-  "subjects.binding.subjectNote": {
-    "zh-Hans": "将作为主体参考关联。当前固定选择不会随新版本自动变化",
-    "zh-Hant": "將作為主體參考關聯。目前固定的選擇不會隨新版本自動變更",
-    "en": "This will be linked as a subject reference. The pinned selection will not change automatically with new versions",
-    "ja": "サブジェクト参照として関連付けます。新しいバージョンが追加されても、固定した選択は自動では変わりません"
-  },
   "subjects.binding.save": {
     "zh-Hans": "保存固定关联",
     "zh-Hant": "儲存固定關聯",
@@ -582,12 +570,6 @@ export const subjectsMessages = {
     "zh-Hant": "已達到 8 個有效關聯；可修改既有版本或先解除一個關聯",
     "en": "The limit of 8 active links is reached. Change an existing version or unlink one first",
     "ja": "有効な関連付けの上限 8 件に達しています。既存のバージョンを変更するか、先に 1 件解除してください"
-  },
-  "subjects.binding.libraryHelp": {
-    "zh-Hans": "在左侧主体页可创建主体、追加版本。此处关联不改变首帧参考图",
-    "zh-Hant": "可在左側主體頁建立主體、追加版本。此處關聯不會變更首幀參考圖",
-    "en": "Create subjects and add versions on the left subject page. These links do not change the first-frame reference image",
-    "ja": "左側のサブジェクトページで作成やバージョン追加ができます。ここでの関連付けは先頭フレームの参照画像を変更しません"
   },
   "subjects.video.libraryLoading": {
     "zh-Hans": "主体库尚未加载，请等待当前项目读取完成",
@@ -619,12 +601,6 @@ export const subjectsMessages = {
     "en": "Use a subject image for this video",
     "ja": "今回の動画にサブジェクト画像を使用"
   },
-  "subjects.video.sessionNote": {
-    "zh-Hans": "这次选择仅保留在当前页面会话中，不保存为镜头参数，也不保证跨重启保留。策划关联不会自动作为生成输入；提示词保持原样",
-    "zh-Hant": "本次選擇僅保留於目前頁面工作階段，不會儲存為鏡頭參數，也不保證重新啟動後仍保留。規劃關聯不會自動成為生成輸入；提示詞保持原樣",
-    "en": "This selection lasts only for the current page session. It is not saved as a shot parameter and may not survive a restart. Planning links are not automatically used as generation inputs; the prompt remains unchanged",
-    "ja": "この選択は現在のページセッションでのみ保持されます。ショットのパラメータには保存されず、再起動後の保持も保証されません。企画用の関連付けは生成入力に自動では使われず、プロンプトも変更されません"
-  },
   "subjects.video.choose": {
     "zh-Hans": "明确选择角色、产品或场景",
     "zh-Hant": "明確選擇角色、產品或場景",
@@ -650,10 +626,10 @@ export const subjectsMessages = {
     "ja": "画像バージョンを明示的に固定"
   },
   "subjects.video.pinPlaceholder": {
-    "zh-Hans": "请选择固定版本，不会自动选用当前版本",
-    "zh-Hant": "請選擇固定版本，不會自動選用目前版本",
-    "en": "Choose a pinned version; the current version is not selected automatically",
-    "ja": "固定するバージョンを選択してください。現在のバージョンは自動選択されません"
+    "zh-Hans": "选择固定版本",
+    "zh-Hant": "選擇固定版本",
+    "en": "Choose a fixed version",
+    "ja": "固定バージョンを選択"
   },
   "subjects.video.currentSuffix": {
     "zh-Hans": " · 主体库当前版本",
@@ -782,16 +758,16 @@ export const subjectsMessages = {
     "ja": "サブジェクトの変更を確認できませんでした。下書きは保持されています。タスクセンターで元のリクエストを確認し、重複して送信しないでください"
   },
   "subjects.warning.ark": {
-    "zh-Hans": "Ark 不支持直接上传真实人脸图片。请勿选择含真实人脸的主体图；工作台不进行人脸检测，也不提供身份锁定",
-    "zh-Hant": "Ark 不支援直接上傳真實人臉圖片。請勿選擇含真實人臉的主體圖片；工作台不會進行人臉偵測，也不提供身分鎖定",
-    "en": "Ark does not support direct uploads of real human face images. Do not select subject images containing real faces. The workbench does not detect faces or provide identity locking",
-    "ja": "Ark は実在する人の顔画像の直接アップロードに対応していません。実在する人の顔を含むサブジェクト画像は選択しないでください。ワークベンチは顔検出も、人物の同一性の固定も行いません"
+    "zh-Hans": "Ark 不接受真实人脸图片",
+    "zh-Hant": "Ark 不接受真實人臉圖片",
+    "en": "Ark does not accept images of real faces",
+    "ja": "Ark は実在の人物の顔画像を受け付けません"
   },
   "subjects.warning.mock": {
-    "zh-Hans": "Mock 仅验证工作流，输出为测试图案，不会呈现主体图片或提示词描述的内容",
-    "zh-Hant": "Mock 僅驗證工作流程，輸出為測試圖案，不會呈現主體圖片或提示詞描述的內容",
-    "en": "Mock only validates the workflow. Its output is a test pattern, not the subject image or content described by the prompt",
-    "ja": "Mock はワークフローの検証のみを行います。出力はテストパターンであり、サブジェクト画像やプロンプトの内容は再現しません"
+    "zh-Hans": "模拟结果为测试图案",
+    "zh-Hant": "模擬結果為測試圖案",
+    "en": "Simulated output is a test pattern",
+    "ja": "シミュレーション出力はテストパターンです"
   },
   "subjects.conflict.boundFrame": {
     "zh-Hans": "主体图片不能与首帧连线一起提交。请先明确断开首帧连线，再选择本次主体输入",
@@ -966,12 +942,6 @@ export const subjectsMessages = {
     "zh-Hant": "打光",
     "en": "Relight",
     "ja": "ライティング"
-  },
-  "subjects.inspector.variantNote": {
-    "zh-Hans": "不会成为默认版本。默认版本仍是 V{number}，用到{name}的镜头不需要复核。",
-    "zh-Hant": "不會成為預設版本。預設版本仍是 V{number}，用到{name}的鏡頭不需要複核。",
-    "en": "This doesn't become the default version. The default is still V{number}, so shots that use {name} don't need review.",
-    "ja": "既定のバージョンにはなりません。既定は引き続き V{number} なので、{name} を使うショットの再確認は不要です。"
   },
   "subjects.inspector.viewVersion": {
     "zh-Hans": "查看 V{number}",
@@ -1268,10 +1238,10 @@ export const subjectsMessages = {
     "ja": "結果不明"
   },
   "subjects.variants.item.unknownHint": {
-    "zh-Hans": "不会自动重发，请到任务中心核对原请求",
-    "zh-Hant": "不會自動重送，請到工作中心核對原請求",
-    "en": "Not resent automatically. Check the original request in the task center",
-    "ja": "自動では再送しません。タスクセンターで元のリクエストを確認してください"
+    "zh-Hans": "原请求结果未确认",
+    "zh-Hant": "原請求結果未確認",
+    "en": "Original request unconfirmed",
+    "ja": "元のリクエスト結果を確認できません"
   },
   "subjects.variants.retry": {
     "zh-Hans": "重试",
@@ -1459,18 +1429,6 @@ export const subjectsMessages = {
     "en": "Choose the source version",
     "ja": "元画像のバージョンを選択"
   },
-  "subjects.variants.sourceAngleHint": {
-    "zh-Hans": "以这张图为准，只改变机位",
-    "zh-Hant": "以這張圖為準，只改變機位",
-    "en": "Keeps this image and changes only the camera",
-    "ja": "この画像のまま、カメラ位置だけを変えます"
-  },
-  "subjects.variants.sourceLightHint": {
-    "zh-Hans": "以这张图为准，只改变光线",
-    "zh-Hant": "以這張圖為準，只改變光線",
-    "en": "Keeps this image and changes only the light",
-    "ja": "この画像のまま、光だけを変えます"
-  },
   "subjects.variants.sourceUsable": {
     "zh-Hans": "可以用于图片编辑",
     "zh-Hant": "可以用於圖片編輯",
@@ -1603,12 +1561,6 @@ export const subjectsMessages = {
     "en": "Height",
     "ja": "高さ"
   },
-  "subjects.variants.heightHint": {
-    "zh-Hans": "俯拍、仰拍以正面为基准",
-    "zh-Hant": "俯拍、仰拍以正面為基準",
-    "en": "High and low angles are taken from the front",
-    "ja": "ハイ・ローアングルは正面が基準です"
-  },
   "subjects.variants.willGenerate": {
     "zh-Hans": "将生成",
     "zh-Hant": "將產生",
@@ -1644,12 +1596,6 @@ export const subjectsMessages = {
     "zh-Hant": "廣角 24mm",
     "en": "Wide 24mm",
     "ja": "広角 24mm"
-  },
-  "subjects.variants.focalHint": {
-    "zh-Hans": "焦距按机位分别设置。",
-    "zh-Hant": "焦距按機位分別設定。",
-    "en": "Each camera keeps its own focal length.",
-    "ja": "焦点距離はカメラ位置ごとに設定します。"
   },
   "subjects.variants.focalExisting": {
     "zh-Hans": "{angle}已有{focal}版本。",
@@ -1734,12 +1680,6 @@ export const subjectsMessages = {
     "zh-Hant": "水平",
     "en": "Level",
     "ja": "水平"
-  },
-  "subjects.variants.lightHint": {
-    "zh-Hans": "拖动球面上的光点，或直接输入角度。0° 为镜头方向。",
-    "zh-Hant": "拖曳球面上的光點，或直接輸入角度。0° 為鏡頭方向。",
-    "en": "Drag the light on the sphere, or type the angles. 0° faces the camera.",
-    "ja": "球面の光点をドラッグするか、角度を入力します。0° はカメラ方向です。"
   },
   "subjects.variants.sphereLabel": {
     "zh-Hans": "光源位置",

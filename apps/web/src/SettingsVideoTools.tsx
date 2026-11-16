@@ -41,7 +41,7 @@ export default function SettingsVideoTools({active,onNavigationStateChange}:{act
   if(!restart||!mounted.current||!visible.current||busyRef.current||!saved||!same(saved,pathsRef.current))return;
   void restart().catch(()=>{});
  };
- return <section className="settings-video-tools" data-testid="settings-video-tools"><div className="settings-video-tools-body"><p>{t('workspace.tools.help')}</p>{!native&&<p>{t('workspace.tools.browser')}</p>}
+ return <section className="settings-video-tools" data-testid="settings-video-tools"><div className="settings-video-tools-body">
  {native&&<SettingsMediaToolsDownload native={native} active={active&&!pathBusy} saved={saved} onInstalled={installed} onBusyChange={downloadBusyChange}/>}
  {failed&&<WorkbenchAlert tone="warning">{t('workspace.tools.failed')}</WorkbenchAlert>}
  {pathsSaved&&<WorkbenchAlert tone="success" actions={restart&&<WorkbenchButton disabled={busy||dirty||!active} onClick={requestRestart}>{t('native.restartService')}</WorkbenchButton>}>{t('workspace.tools.saved')}</WorkbenchAlert>}

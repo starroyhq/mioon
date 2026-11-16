@@ -42,7 +42,7 @@ export function ProjectHomeNativeActionsView(props: ProjectHomeNativeActionsView
       :state.kind==='example-blocked'?t(exampleReasons[state.reason??'unavailable'])
         :state.kind==='trash-blocked'?t(state.reason==='facts'?'projectHomeNative.trash.factsUnavailable':state.reason==='confirmation'?'projectHomeNative.trash.confirmation':state.reason==='changed'?'projectHomeNative.trash.preparationChanged':state.reason==='denied'?'projectHomeNative.trash.denied':state.reason==='busy'?(actualWindow?'projectHomeNative.trash.open':'projectHomeNative.trash.busy'):'projectHomeNative.trash.unavailable')
         :example?t('projectHomeNative.example.working')
-          :<span className="pf-open-copy">{project&&<span className="pf-open-path" data-testid="project-home-trash-path">{project.projectFile}</span>}<span>{t('projectHomeNative.trash.fileOnly')}</span><span>{t('projectHomeNative.trash.records')}</span></span>;
+          :project&&<span className="pf-open-path" data-testid="project-home-trash-path">{project.projectFile}</span>;
   return <>
     {state.notice&&<WorkbenchAlert tone={state.notice.kind==='success'?'success':'neutral'} className="project-home-native-notice" data-testid="project-home-native-notice" actions={<WorkbenchButton size="compact" onClick={props.onDismissNotice}>{t('common.close')}</WorkbenchButton>}>
       {state.notice.kind==='example-cancelled'?t('projectHomeNative.example.cancelled'):t(state.notice.kind==='success'?'projectHomeNative.trash.success':'projectHomeNative.trash.changed',{name:state.notice.name})}

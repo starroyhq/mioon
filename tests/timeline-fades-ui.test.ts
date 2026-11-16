@@ -267,10 +267,10 @@ test('keyed project unmount fences late fade acknowledgments and retained form s
   assert.match(source, /key: `\$\{data\.project\?\.id\}:\$\{chosenClip\.id\}:\$\{inspectorEpoch\}`/);
 });
 
-test('source playback copy stays explicit about dry audio and the shared render path', () => {
+test('source playback copy distinguishes dry audio while omitting passive render explanation', () => {
   const source = readFileSync(new URL('../apps/web/src/Preview.tsx', import.meta.url), 'utf8');
   assert.match(source, /timeline.preview.sourceUnprocessed/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.sourceUnprocessed'), /源素材原声 · 不应用片段音量或淡入\/淡出/);
-  assert.match(source, /timeline.preview.renderDetail/); assert.match(i18nCore.translate('zh-Hans', 'timeline.preview.renderDetail'), /音频淡入\/淡出均使用与导出相同的本地渲染/);
+  assert.doesNotMatch(source, /timeline.preview.renderDetail|timeline.preview.sourceDetail/);
 });
 
 test('real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline', async () => {

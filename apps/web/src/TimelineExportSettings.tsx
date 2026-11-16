@@ -47,13 +47,12 @@ export default function TimelineExportSettings({ timeline, value, disabled, aspe
     {aspectFrameRatio && <><AspectFrameExportRatio ratio={aspectFrameRatio} />{resolution}</>}
     {delivery?.upscale && <p className="notice warning" data-testid="export-upscale-warning">{t('export.settings.upscaleHelp')}</p>}
     <details className="export-settings-help export-settings-advanced"><summary>{t('redesign.export.advancedSettings')}</summary><TimelineExportProfile value={value} disabled={disabled} onChange={onChange} Select={WorkbenchSelect} />
-    <p className="export-preflight-note">{t('export.settings.scope')}</p><p className="export-preflight-note">{t('export.settings.previewHelp')}</p>
     {delivery && <dl className="export-preflight-summary" data-testid="export-settings-summary">
       <div><dt>{t('export.settings.composition')}</dt><dd>{timeline?.width} × {timeline?.height}</dd></div>
       <div><dt>{t('export.settings.output')}</dt><dd data-testid="export-output-dimensions">{delivery.dimensions}</dd></div>
       <div><dt>{t('export.settings.video')}</dt><dd>{renderMessage(delivery.rateMessage)}</dd></div>
       <div><dt>{t('export.settings.fixed')}</dt><dd>30 fps · AAC 128 kb/s</dd></div>
     </dl>}
-    <p className="export-preflight-note" data-testid="export-rate-explanation">{value.rateControl.mode === 'bitrate' ? t('export.settings.bitrateHelp') : t('export.settings.crfHelp')}</p></details>
+    </details>
   </section>;
 }

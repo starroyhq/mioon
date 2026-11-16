@@ -1,8 +1,10 @@
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
 import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog';
 import { Input } from '@mioon/ui/components/input';
+import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { Slider } from '@mioon/ui/components/slider';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
@@ -197,14 +199,13 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
     : result && !current ? <WorkbenchAlert tone="warning" data-testid="scene-result-stale">{t(response?.staleReason === 'PROFILE_CHANGED' ? 'scene.stale.profile' : 'scene.stale.source')}</WorkbenchAlert>
     : outdated ? <WorkbenchAlert tone="warning" data-testid="scene-draft-outdated" actions={<WorkbenchButton variant="secondary" size="compact" onClick={() => result && setDraft(seed(result))}>{t('scene.draft.useLatest')}</WorkbenchButton>}>{t('scene.draft.outdated')}</WorkbenchAlert>
     : dirty ? <div className="scene-status-card" data-tone="warning" data-testid="scene-draft-dirty"><div className="scene-status-head"><strong><Icon name="pencil" size={13} />{t('scene.draft.adjusted', { count: adjustments })}</strong>
-      <div className="scene-status-actions"><WorkbenchButton variant="ghost" size="compact" data-testid="scene-draft-discard" onClick={() => result && setDraft(seed(result))}>{t('scene.draft.discard')}</WorkbenchButton><WorkbenchButton variant="secondary" size="compact" data-testid="scene-draft-save" disabled={!writable} onClick={() => void save()}>{t('scene.draft.save')}</WorkbenchButton></div></div>
-      <span>{t('scene.draft.redetectWarning')}</span></div>
+      <div className="scene-status-actions"><WorkbenchButton variant="ghost" size="compact" data-testid="scene-draft-discard" onClick={() => result && setDraft(seed(result))}>{t('scene.draft.discard')}</WorkbenchButton><WorkbenchButton variant="secondary" size="compact" data-testid="scene-draft-save" disabled={!writable} onClick={() => void save()}>{t('scene.draft.save')}</WorkbenchButton></div></div></div>
     : result ? <div className="scene-status-card" data-testid="scene-draft-saved"><div className="scene-status-head"><strong><Icon name="check" size={13} />{t('scene.draft.saved', { count: segments.length })}</strong></div></div> : null;
 
   const cutsSection = result && <section className="scene-cuts-section" aria-label={t('scene.cuts.title')}>
     <header><h3>{t('scene.cuts.title')}</h3><span>{`${t('scene.cuts.count', { count: frames.length })} · ${t('scene.segments.count', { count: segments.length })}`}</span>
       {storyboard ? <span className="scene-hints" data-testid="scene-cuts-locked"><span><Icon name="lock" size={12} />{t('scene.storyboard.locked')}</span></span>
-        : current && writable ? <span className="scene-hints"><span>{t('scene.cuts.hintAdd')}</span><span>{t('scene.cuts.hintDrag')}</span><span>{t('scene.cuts.hintRemove')}</span></span> : null}</header>
+        : current && writable ? <WorkbenchTooltip content={[t('scene.cuts.hintAdd'), t('scene.cuts.hintDrag'), t('scene.cuts.hintRemove')].join(' · ')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('scene.cuts.title')}>ⓘ</Button></WorkbenchTooltip> : null}</header>
     <SceneCutBar frameCount={frameCount} cuts={draft?.cuts ?? sceneDraftFrom(result.cuts)} editable={writable && current && !outdated && !storyboard} selected={segment} playhead={position}
       tiles={tileFrames.map(frame => ({ frame, url: thumbnail(frame) }))} onSeek={frame => { const at = sceneSegmentAt(segments, frame); if (at) setSelected(at.index); seek(frame); }}
       onAdd={frame => editDraft(cuts => addSceneCut(cuts, frame, frameCount))} onMove={(index, frame) => editDraft(cuts => moveSceneCut(cuts, index, frame, frameCount))} onRemove={index => editDraft(cuts => removeSceneCut(cuts, index))} />
@@ -213,8 +214,8 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
   const choosing = !state.readOnly && Boolean(storyboard || current);
   const keyframes = result && <section className="scene-keyframes" aria-label={t('scene.keyframes.title')}>
     <header><h3>{t('scene.keyframes.title')}</h3>
-      <span data-testid="scene-keyframes-summary">{storyboard ? t('scene.keyframes.captured', { done: storyboard.state === 'persisting' ? storyboard.segments.length : storyboard.progress?.done ?? 0, total: storyboard.segments.length })
-        : choosing ? `${t('scene.keyframes.selected', { selected: chosenSegments.length, total: segments.length })} · ${t('scene.keyframes.hint')}` : t('scene.keyframes.hint')}</span>
+      {(storyboard || choosing) && <span data-testid="scene-keyframes-summary">{storyboard ? t('scene.keyframes.captured', { done: storyboard.state === 'persisting' ? storyboard.segments.length : storyboard.progress?.done ?? 0, total: storyboard.segments.length })
+        : t('scene.keyframes.selected', { selected: chosenSegments.length, total: segments.length })}</span>}
       {choosing && !storyboard && <WorkbenchButton variant="ghost" size="compact" className="scene-keyframes-toggle" data-testid="scene-keyframes-toggle" disabled={!segments.length || !writable}
         onClick={() => chooseAll(!allChosen)}>{t(allChosen ? 'scene.keyframes.selectNone' : 'scene.keyframes.selectAll')}</WorkbenchButton>}</header>
     <SceneSegmentStrip segments={segments} selected={segment?.index ?? null} thumbnail={thumbnail} onSelect={choose}
@@ -229,10 +230,9 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
       <h3>{task.state === 'running' ? <LoaderCircle size={16} className="scene-spin" /> : <Icon name="clock" size={16} />}{task.state === 'queued' ? t('scene.detecting.queued') : task.state === 'cancelling' ? t('scene.detecting.cancelling') : t('scene.detecting.title', { percent: sceneTaskPercent(task) })}</h3>
       <div className="scene-progress-meta"><span>{t('scene.detecting.found', { count: task.progress?.cuts ?? 0 })}</span><span>{`${sceneTime(detected ?? 0)} / ${sceneTime(frameCount)}`}</span></div>
       <WorkbenchProgress value={sceneTaskPercent(task)} label={t('scene.detecting.part')} />
-      <header className="scene-progress-strip"><h4>{t('scene.detecting.part')}</h4><span>{t('scene.detecting.partHint')}</span></header>
+      <header className="scene-progress-strip"><h4>{t('scene.detecting.part')}</h4></header>
       <SceneCutBar frameCount={frameCount} cuts={[]} editable={false} detectedFrames={detected} selected={null} playhead={null} tiles={tileFrames.map(frame => ({ frame, url: thumbnail(frame) }))} />
       <dl className="scene-params-summary"><dt>{t('scene.params.mode')}</dt><dd>{t(summary.mode === 'fixed' ? 'scene.mode.fixed' : 'scene.mode.adaptive')}</dd><dt>{t('scene.params.sensitivity')}</dt><dd>{sensitivityLabel(summary.sensitivity)}</dd><dt>{t('scene.params.minShot')}</dt><dd>{t('scene.seconds', { seconds: seconds(summary.minShotSeconds) })}</dd></dl>
-      <WorkbenchAlert tone="neutral" icon={<Icon name="info" size={14} />}>{t('scene.detecting.background')}</WorkbenchAlert>
       {requestAlert}{readOnlyAlert}
     </section>
   </div>;
@@ -265,7 +265,7 @@ export default function SceneDetectionDialog({ asset, state, controller, timelin
       </> : storyboard ? <>
         <div className="scene-storyboard-progress" aria-live="polite" data-testid="scene-storyboard-progress" data-state={storyboard.state}>
           <strong>{storyboard.state === 'queued' ? <Icon name="clock" size={15} /> : <LoaderCircle size={15} className="scene-spin" />}{storyboardTitle(storyboard)}</strong>
-          <span><Icon name="grid" size={12} /><span className="scene-storyboard-note">{t('scene.storyboard.note', { count: storyboard.segments.length })}</span>{capturing === null ? null : <em>{storyboardShotTitle(storyboard, capturing)}</em>}</span>
+          {capturing !== null && <span><Icon name="grid" size={12} /><em>{storyboardShotTitle(storyboard, capturing)}</em></span>}
           <WorkbenchProgress value={sceneTaskPercent(storyboard)} label={storyboardTitle(storyboard)} />
         </div>
         <WorkbenchButton variant="secondary" data-testid="scene-storyboard-cancel" disabled={!writable || !sceneTaskCanCancel(storyboard)} onClick={() => void run(() => controller.cancel(storyboard))}>{t('scene.storyboard.cancel')}</WorkbenchButton>

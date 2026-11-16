@@ -86,7 +86,7 @@ test('General derives its read-only number-format example from the current langu
     assert.equal(example.type, 'output');
     assert.equal(example.props.onChange, undefined);
     assert.equal(text(example), createI18nTestContext(locale).formatNumber(12345.6));
-    assert.ok(text(find(tree, 'settings-number-format')).includes(translate(locale, 'redesign.settings.followLanguage')));
+    assert.equal(nodes(find(tree, 'settings-number-format')).some(node => node.type === 'p'), false);
   }
   assert.deepEqual((h.calls as unknown), []);
 });
@@ -145,7 +145,7 @@ test('General language controls and category copy change in four locales without
     const tree = h.render({ page: 'general' }, locale), general = find(tree, 'settings-general');
     assert.equal(general.props.hidden, false); assert.equal(general.props.inert, false);
     assert.ok(text(general).includes(translate(locale, 'language.label')));
-    assert.ok(text(general).includes(translate(locale, 'settings.languageHint')));
+    assert.equal(nodes(general).some(node => node.type === 'p'), false);
     assert.equal(nodes(general).filter((node) => node.type === 'LanguageControl').length, 1);
     for (const category of ['general','workspace','video-tools','models','agent','shortcuts','about']) assert.equal(text(find(tree, `settings-category-${category}`)), translate(locale, ((category === 'general' ? 'settings.general' : `redesign.settings.${category}`) as unknown as Parameters<typeof translate>[1])));
     headings.add(text(find(tree, 'settings-category-models')));
@@ -190,7 +190,7 @@ test('actual shared controls render accessible four-language settings and one co
   for (const locale of LOCALES) {
     const html = renderPresentation(locale, 'general');
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'settings.categories'))}"`));
-    for (const key of ['settings.general', 'redesign.settings.models', 'settings.languageHint']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
+    for (const key of ['settings.general', 'redesign.settings.models', 'language.label']) assert.ok(html.includes(htmlText(translate(locale, ((key) as unknown as Parameters<typeof translate>[1])))), `${locale}/${key}`);
     assert.equal((html.match(/data-testid="language-select"/gu) || []).length, 1);
     assert.match(html, /role="combobox"/u);
     assert.ok(html.includes(`aria-label="${htmlText(translate(locale, 'language.label'))}"`));
@@ -203,7 +203,7 @@ test('actual shared controls render accessible four-language settings and one co
 
 test('settings copy has complete locale coverage and native page intentions use a fixed allowlist', () => {
   const messages = Object.fromEntries(Object.entries(shellMessages).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
-  assert.ok(Object.keys(messages).length >= 10); assert.deepEqual((validateCatalogs(messages) as unknown), []);
+  for (const key of ['settings.title', 'settings.categories', 'settings.general', 'settings.back']) assert.ok(Object.hasOwn(messages, key), key); assert.deepEqual((validateCatalogs(messages) as unknown), []);
   assert.deepEqual((validateCatalogs(settingsRedesignMessages) as unknown), []);
   for (const value of [...slots, 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'])
     assert.equal(isProjectWindowSettingsSlot(value), true);

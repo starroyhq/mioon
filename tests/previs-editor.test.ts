@@ -449,7 +449,7 @@ function harness(file: string) {
       if (request.endsWith('reference-connections.ts')) return {VISUAL_SOURCE_HANDLE: 'visual-source', VISUAL_TARGET_HANDLE: 'visual-target'};
       if (request.endsWith('packages/i18n/src/index.ts')) return i18nIndex;
       if (request.endsWith('BoardInspectorGroup.tsx')) return {__esModule: true, default: 'BoardInspectorGroup'};
-      if (request.endsWith('WorkspaceControls.tsx')) return {WorkbenchSelect: 'WorkbenchSelect'};
+      if (request.endsWith('WorkspaceControls.tsx')) return {WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip'};
       const base = path.basename(request);
       if (real[base]) return real[base];
       if (request.startsWith('.') && /\.tsx$/u.test(request)) return load(path.posix.normalize(path.posix.join(path.posix.dirname(name), request)));
@@ -515,6 +515,8 @@ test('the inspector names the node, follows the project frame and opens the edit
   assert.deepEqual(opened, [1]);
   tree = render({...props, readOnly: true});
   assert.equal(byId(tree, 'previs-node-name')?.props.disabled, true);
+  assert.doesNotMatch(text(tree), /本地渲染，不产生费用/);
+  assert.equal(byId(tree, 'previs-local-rendering-info')?.props['aria-label'], '本地渲染，不产生费用');
   assert.match(text(tree), /恢复副本里只能查看预演/);
   assert.equal(byId(tree, 'previs-open')?.props.disabled, false, 'a restored copy can still be viewed');
   visible.value = false;

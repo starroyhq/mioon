@@ -12,7 +12,7 @@ export default function ClipCrossfadeControls({ candidates, disabled, disabledRe
 }) {
   const { t } = useI18n();
   const id = useId();
-  return <fieldset className="clip-crossfade" data-testid="clip-crossfade" aria-describedby={`${id}-hint`}>
+  return <fieldset className="clip-crossfade" data-testid="clip-crossfade">
     <legend>{t('crossfade.title')}</legend>
     {candidates.length === 0 ? <p className="input-hint" data-testid="crossfade-empty">{t('crossfade.empty')}</p> : candidates.map(candidate => {
       const blocked = candidate.blocked ? t(blockedMessage[candidate.blocked]) : '';
@@ -27,6 +27,5 @@ export default function ClipCrossfadeControls({ candidates, disabled, disabledRe
       </div>;
     })}
     {disabledReason && candidates.length > 0 && <p className="input-hint" role="status" data-testid="crossfade-disabled">{disabledReason}</p>}
-    <p id={`${id}-hint`} className="input-hint">{t('crossfade.hint')}</p>
   </fieldset>;
 }

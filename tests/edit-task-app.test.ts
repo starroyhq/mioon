@@ -248,8 +248,9 @@ test('TaskCenter separates durable, legacy and generation details, retains gener
   const rendered = (key: string, params?: { readonly [x: string]: string|number; }|undefined) => renderMessage('zh-Hans', (messageKey as (key: string, params?: unknown) => DisplayMessage)(key, params));
   assert.match(source, /t\('tasks\.center\.localEditRequests'\)/); assert.equal(rendered('tasks.center.localEditRequests'), '本地编辑请求');
   assert.match(source, /t\('tasks\.center\.generationTasks'\)/); assert.equal(rendered('tasks.center.generationTasks'), '生成任务');
-  const durableStorage = rendered('tasks.center.durableStorage', {length: DURABLE_EDIT_OPERATIONS.length});
-  assert.match(durableStorage, /明文 SQLite/); assert.match(durableStorage, /未经保险库加密/); assert.match(durableStorage, /不会自动执行/);
+  const storagePrivacy = rendered('recovery.storage.privacy');
+  assert.match(storagePrivacy, /明文用户数据/); assert.match(storagePrivacy, /未经保险库加密/);
+  assert.doesNotMatch(source, /tasks\.center\.durableStorage/);
   assert.match(source, /import RecoveryStorageDetails from '\.\/RecoveryStorageDetails\.tsx'/);
   assert.match(source, /<RecoveryStorageDetails domain="task-center" durableOperationCount=\{DURABLE_EDIT_OPERATIONS\.length\} \/>/);
   assert.doesNotMatch(source, /其他 8 类画板\/素材编辑、时间线渲染及生成\/导出提交的待确认参数仍依赖当前浏览器会话/);
@@ -294,7 +295,7 @@ test('actual TaskCenter does not render an empty-list claim when loading or erro
     const rendered = nodes(module.exports.default({ ...props, tasks: { phase, items: [], uncertain: [], busy: [] } }));
     const details = rendered.find(node => (node.type as unknown) === disclosure.exports.default);
     assert.equal((details)!.props.domain, 'task-center'); assert.equal((details)!.props.durableOperationCount, DURABLE_EDIT_OPERATIONS.length);
-    assert.match((rendered.find((node: RootNode) => node.props?.['data-testid'] === 'durable-task-storage'))!.props.children.join(''), new RegExp(`^${DURABLE_EDIT_OPERATIONS.length} 类时间线元数据（含输出规格）`));
+    assert.ok(!rendered.some((node: RootNode) => node.props?.['data-testid'] === 'durable-task-storage'));
     assert.equal(rendered.some((node: RootNode) => node.props?.['data-testid'] === 'no-durable-tasks'), phase === 'ready');
     assert.equal(rendered.some((node: RootNode) => node.props?.['data-testid'] === 'task-list-unavailable'), phase !== 'ready');
   }

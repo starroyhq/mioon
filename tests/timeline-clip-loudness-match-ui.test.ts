@@ -55,7 +55,7 @@ test('actual matching card explains a measured peak conflict and short LRA witho
   assert.equal(byTest(tree, 'clip-loudness-lra').props.children[0], '不足 3 秒');
   assert.match(text(tree), /0\.5 dB 余量/); assert.match(text(tree), /候选响度/); assert.equal(byTest(tree, 'clip-loudness-match').props.disabled, true);
   byTest(tree, 'clip-loudness-match').props.onClick(); assert.deepEqual(f.gains, []);
-  assert.doesNotMatch(text(tree), /未实现逐段响度统一/); assert.match(text(tree), /保存后才改变时间线/);
+  assert.doesNotMatch(text(tree), /未实现逐段响度统一/); assert.doesNotMatch(text(tree), /保存后才改变时间线/);
 });
 
 test('a saved −26 LUFS match shows positive zero and already matched for float32 residue instead of another gain edit', async () => {
@@ -67,12 +67,12 @@ test('a saved −26 LUFS match shows positive zero and already matched for float
   byTest(tree, 'clip-loudness-match').props.onClick(); assert.deepEqual(f.gains, []);
 });
 
-test('matching labels, units, limitations and invalid-target feedback are localized in all four catalogs', () => {
+test('matching labels, units and invalid-target feedback are localized in all four catalogs', () => {
   assert.deepEqual(validateCatalogs(clipLoudnessMatchMessages), []);
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const C = component(locale), f = matching(), tree = C({ loudness: { state: f.state(), controller: f.controller } });
     assert.ok(byTest(tree, 'clip-loudness-targets')); assert.match(text(tree), /LUFS/); assert.match(text(tree), /dBTP/);
-    assert.match(text(tree), /0\.5 dB/);
+    assert.doesNotMatch(text(tree), /0\.5 dB/);
     for (const node of flatten(tree)) if (typeof node.props?.children?.[0] === 'string') assert.doesNotMatch(node.props.children[0], /^audio\.loudness\.match\./);
   }
 });

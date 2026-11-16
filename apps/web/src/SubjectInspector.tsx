@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
-import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { Camera, Check, Lock, Sun, Upload } from '@mioon/ui/components/workbench-icons';
 import BoardInspectorGroup from './BoardInspectorGroup.tsx';
 import AgentEditingBoundary from './AgentEditingBoundary.tsx';
@@ -122,11 +122,10 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
           <div className="subject-version-detail-title"><strong>V{selected.number}{selectedTag ? ` · ${selectedTag}` : ''}</strong>{selectedHead ? <span className="subject-badge">{t('subjects.inspector.defaultVersion')}</span> : selected.variant ? <span className="subject-badge is-variant">{selected.variant.kind === 'light' ? t('subjects.inspector.variantLight') : t('subjects.inspector.variantAngle')}</span> : null}</div>
           <p className="subject-version-meta">{renderMessage(subjectVersionOriginDescriptor(selected))} · {selected.width}×{selected.height} · {date(selected.createdAt)}</p>
           {selected.variant?.kind === 'light' && <p className="subject-version-meta">{t('subjects.light.detail', { azimuth: selected.variant.azimuth, elevation: selected.variant.elevation, kelvin: selected.variant.kelvin })}</p>}
-          {selected.variant && <p className="subject-helper">{t('subjects.inspector.variantNote', { number: subject.headVersion.number, name: subject.name })}</p>}
         </div>
       </BoardInspectorGroup>
-      <BoardInspectorGroup key={`usage:${subjectId}`} title={t('subjects.inspector.usage')} meta={uses?.phase === 'ready' && !uses.nextCursor ? active.length : undefined}>
-        <p className="subject-local-note">{t('subjects.library.planningNote')}</p>
+      <BoardInspectorGroup key={`usage:${subjectId}`} title={t('subjects.inspector.usage')} meta={uses?.phase === 'ready' && !uses.nextCursor ? active.length : undefined}
+        actions={<WorkbenchTooltip content={t('subjects.library.planningNote')}><Button type="button" variant="ghost" size="sm" className="icon-button" aria-label={t('subjects.library.planningNote')}>ⓘ</Button></WorkbenchTooltip>}>
         {uses?.phase === 'loading' && <p role="status">{t('subjects.binding.loading')}</p>}
         {uses?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(uses.error)}</p>}
         {uses?.phase === 'ready' && !active.length && <p className="subject-helper">{t('subjects.binding.noneLoaded')}</p>}

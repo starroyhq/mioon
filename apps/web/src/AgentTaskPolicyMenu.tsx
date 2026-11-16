@@ -3,7 +3,7 @@ import type { RefObject } from 'react';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@mioon/ui/components/dropdown-menu';
 import { WorkbenchButton as Button, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
-import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { AGENT_TASK_POLICY_PRESETS, agentTaskPolicyPreset } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type { AgentTaskPolicyModes, AgentTaskPolicyPreset } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -65,12 +65,16 @@ export default function AgentTaskPolicyMenu({ modes, global, disabled, anchor, o
         <DropdownMenuGroup>
           <DropdownMenuLabel className="mio-policy-title">{t('agent.panel.policy.title')}</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={preset ?? ''} onValueChange={value => run(agentTaskPolicyMenuStep(modes, global, value as AgentTaskPolicyPreset))}>
-            {PRESETS.map(item => <DropdownMenuRadioItem key={item} value={item} closeOnClick className="mio-policy-option" data-preset={item} data-testid={`agent-task-policy-${item}`}>
-              <Icon name={ICONS[item]} /><span className="mio-policy-copy"><strong>{name(item)}</strong><span>{t(`agent.panel.policy.preset.${item}.hint`)}</span></span>
-            </DropdownMenuRadioItem>)}
+            {PRESETS.map(item => <WorkbenchTooltip key={item} content={t(`agent.panel.policy.preset.${item}.hint`)}>
+              <DropdownMenuRadioItem value={item} closeOnClick className="mio-policy-option" data-preset={item} data-testid={`agent-task-policy-${item}`}>
+                <Icon name={ICONS[item]} /><strong>{name(item)}</strong><Icon name="info" className="mio-policy-info" />
+              </DropdownMenuRadioItem>
+            </WorkbenchTooltip>)}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
-        {preset === 'custom' && <p className="mio-policy-custom" data-testid="agent-task-policy-custom"><Icon name={ICONS.custom} />{t('agent.panel.policy.preset.custom.hint')}</p>}
+        {preset === 'custom' && <WorkbenchTooltip content={t('agent.panel.policy.preset.custom.hint')}>
+          <Button type="button" variant="ghost" size="compact" className="mio-policy-custom" data-testid="agent-task-policy-custom"><Icon name="info" />{name('custom')}</Button>
+        </WorkbenchTooltip>}
         <div className="mio-policy-foot">
           <span>{followsGlobal || !global ? t('agent.panel.policy.same') : t('agent.panel.policy.own', { name: name(agentTaskPolicyPreset(global)) })}</span>
           {!followsGlobal && global && <DropdownMenuItem className="mio-policy-global" data-testid="agent-task-policy-global" onClick={() => run(agentTaskPolicyMenuStep(modes, global, 'global'))}>{t('agent.panel.policy.setGlobal')}</DropdownMenuItem>}

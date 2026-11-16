@@ -108,10 +108,10 @@ test('models page SSR renders safe inactive controls without provider calls', ()
     const {outputFiles}=await build({stdin:{contents:${JSON.stringify("import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server.browser'; import VideoProviderSettings from './VideoProviderSettings.tsx'; import GenerationServicesSettings from './GenerationServicesSettings.tsx'; import { ConfirmationProvider } from '@mioon/ui/components/workbench-confirm'; export const html=renderToStaticMarkup(<ConfirmationProvider><VideoProviderSettings active={false}/><GenerationServicesSettings active={false}/></ConfirmationProvider>);")},loader:'tsx',resolveDir:${JSON.stringify(resolve('apps/web/src'))}},bundle:true,format:'esm',platform:'browser',write:false,loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"production"'},logLevel:'silent'});
     try { const {html}=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(html);process.exit(0); } catch(error) { process.stderr.write(error.message); process.exit(1); }`;
   const html = execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), input: script, encoding: 'utf8', timeout: 30000 });
-  assert.ok(html.includes('Seedance')); assert.doesNotMatch(html, /Runway|官方供应商/); assert.ok(html.includes('供应商')); assert.ok(html.includes('video-add-connection')); assert.ok(html.includes('disabled'));
+  assert.ok(html.includes('Seedance')); assert.doesNotMatch(html, /Runway|官方供应商/); assert.ok(html.includes('视频生成连接')); assert.ok(html.includes('video-add-connection')); assert.ok(html.includes('disabled'));
   assert.ok(html.includes('video-provider-settings')); assert.doesNotMatch(html, /value="sk-|Bearer /);
   assert.match(html, /generation-available-video/); assert.match(html, /generation-available-image/);
-  assert.match(html, /每家服务的密钥分开填写/);
+  assert.match(html, /aria-label="帮助"/u); assert.doesNotMatch(html, /每家服务的密钥分开填写/u);
   assert.doesNotMatch(html, /settings-live-generation|generation-services-simulation|真实生成|本地模拟/);
 });
 

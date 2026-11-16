@@ -112,7 +112,7 @@ test('the stale banner selects each outdated clip in turn, updates them all and 
   const render = loadBanner(), calls: unknown[] = [];
   const props = { staleClipIds: ['c1', 'c2'], outcome: null, describeSkip: () => '', onRefreshAll: (ids: unknown) => calls.push(['refresh', ids]), onSelectClip: (id: unknown) => calls.push(['select', id]), onUndo: () => calls.push(['undo']), onDismissOutcome: () => calls.push(['dismiss']) };
   const tree = render(props);
-  assert.match(text(tree), /2 个片段的来源已有新版本/); assert.match(text(tree), /更新后保留入点、时长、音量和淡入淡出/);
+  assert.match(text(tree), /2 个片段的来源已有新版本/); assert.doesNotMatch(text(tree), /更新后保留入点、时长、音量和淡入淡出/);
   for (let index = 0; index < 3; index++) (byTestId(render(props), 'timeline-source-view'))!.props.onClick();
   (byTestId(render(props), 'timeline-source-refresh-all'))!.props.onClick();
   assert.deepEqual(calls, [['select', 'c1'], ['select', 'c2'], ['select', 'c1'], ['refresh', ['c1', 'c2']]]);
@@ -130,7 +130,7 @@ test('the result banner reports updated and skipped clips, undoes the batch once
   const outcome = { revision: 9, refreshed: [{ clipId: 'c1' }, { clipId: 'c2' }], skipped: [{ clipId: 'c3', reason: 'SOURCE_TOO_SHORT', shotId: 's', toVersionId: 'v', shortByFrames: 36 }] };
   const props = { staleClipIds: ['c3'], outcome, describeSkip: (skip: { clipId: unknown; }) => `skip:${skip.clipId}`, canUndo: true, onRefreshAll() {}, onSelectClip: (id: unknown) => calls.push(['select', id]), onUndo: () => calls.push(['undo']), onDismissOutcome: () => calls.push(['dismiss']) };
   const tree = render(props);
-  assert.match(text(tree), /已更新 2 个片段，1 个跳过/); assert.match(text(tree), /撤销会一次恢复全部 2 个片段/); assert.match(text(tree), /跳过skip:c3定位/);
+  assert.match(text(tree), /已更新 2 个片段，1 个跳过/); assert.doesNotMatch(text(tree), /撤销会一次恢复全部 2 个片段/); assert.match(text(tree), /跳过skip:c3定位/);
   assert.equal(byTestId(tree, 'timeline-source-banner'), undefined, 'the outcome replaces the stale banner');
   (byTestId(tree, 'timeline-source-undo'))!.props.onClick(); (byTestId(tree, 'timeline-source-locate-c3'))!.props.onClick(); (byTestId(tree, 'timeline-source-result-close'))!.props.onClick();
   assert.deepEqual(calls, [['undo'], ['select', 'c3'], ['dismiss']]);
@@ -138,7 +138,7 @@ test('the result banner reports updated and skipped clips, undoes the batch once
   assert.equal(byTestId(render(props), 'timeline-source-skipped'), undefined, 'skips collapse on request');
   assert.equal((byTestId(render({ ...props, canUndo: false }), 'timeline-source-undo'))!.props.disabled, true, 'undo needs the batch to be the latest history entry');
   const none = render({ ...props, outcome: { revision: 9, refreshed: [], skipped: outcome.skipped } });
-  assert.match(text(none), /没有片段被更新，1 个跳过/); assert.match(text(none), /时间线没有改动/); assert.equal(byTestId(none, 'timeline-source-undo'), undefined);
+  assert.match(text(none), /没有片段被更新，1 个跳过/); assert.doesNotMatch(text(none), /时间线没有改动/); assert.equal(byTestId(none, 'timeline-source-undo'), undefined);
   assert.match(text(loadBanner('en')({ ...props, outcome: { ...outcome, refreshed: [{ clipId: 'c1' }] } })), /Updated 1 clip, 1 skipped/);
 });
 
@@ -173,12 +173,12 @@ test('the export dialog offers the timeline first and swaps its settings for a s
   assert.equal(second.props.checkAction.type, 'ExportWorkflowSection'); assert.deepEqual(second.props.checkAction.props.steps, [1], 'the timeline check stays on its own step');
   assert.equal(second.props.nextAction.props['data-testid'], 'export-storyboard-draft'); assert.equal(second.props.nextAction.props.disabled, false);
   second.props.nextAction.props.onClick(); assert.deepEqual(drafts, ['storyboard']);
-  assert.match(text(byTestId(second, 'export-content-choice')), /导出后可在导出记录里查看/);
+  assert.doesNotMatch(text(byTestId(second, 'export-content-choice')), /导出后可在导出记录里查看/);
   const blocked = render({ timeline, contentChoice: { ...choice('storyboard'), storyboardDisabledReason: translate('zh-Hans', 'shell.generateAllShots') } });
   assert.equal(blocked.props.nextAction.props.disabled, true); assert.match(text(byTestId(blocked, 'export-content-choice')), /请先为每个镜头生成并选用一个版本/);
 });
 
-test('the storyboard strip renders the append action, its hint and each shot’s timeline status', () => {
+test('the storyboard strip renders the append action and each shot’s timeline status', () => {
   const strip = { shots: [{ id: 's1', title: '开场', duration: 4, selectedVersionId: 'v2' }, { id: 's2', title: '海面', duration: 5, selectedVersionId: 'w1' }, { id: 's3', title: '夕阳', duration: 6, selectedVersionId: null }], versions: [{ id: 'v2', number: 2 }, { id: 'w1', number: 1 }] };
   const fixture = `import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server.browser'; import StoryboardStrip from './src/StoryboardStrip.tsx';
     const base = { scope: 's', open: true, onOpenChange() {}, ...${JSON.stringify(strip)}, selectedId: null, reordering: false, assetDragType: 'x', onSelect() {}, onReorder() {}, onAddShot() {}, renderThumbnail: () => null, onViewInEditing() {} };
@@ -194,7 +194,7 @@ test('the storyboard strip renders the append action, its hint and each shot’s
   const append = button(html.ready, 'storyboard-append-timeline');
   const disabled = /\sdisabled=""|\sdata-disabled/;
   assert.ok(append); assert.match(append[1], /追加到时间线（1 个镜头）/); assert.doesNotMatch(append[0], disabled);
-  assert.match(html.ready, /只追加未加入的镜头，已有片段不动/);
+  assert.doesNotMatch(html.ready, /只追加未加入的镜头，已有片段不动/);
   assert.match((button(html.ready, 'storyboard-timeline-s1'))![1], /在时间线 · 已过期/); assert.match((button(html.ready, 'storyboard-timeline-s2'))![1], /在时间线</);
   assert.equal(button(html.ready, 'storyboard-timeline-s3'), null, 'a shot that is not placed shows no status');
   assert.match((button(html.none, 'storyboard-append-timeline'))![0], disabled); assert.match((button(html.none, 'storyboard-append-timeline'))![0], /title="没有可追加的镜头/);

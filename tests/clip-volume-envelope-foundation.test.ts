@@ -94,15 +94,17 @@ test('preset curves retain linear endpoint limits and half-open playback samples
  assert.equal(fadeOut.atSample(0),1);assert.equal(fadeOut.atSample(90*1600),1);assert.equal(fadeOut.atSample(105*1600),.5);
  assert.ok(Math.abs(fadeOut.atSample(samples-1)-1/48000)<1e-14);assert.equal(fadeOut.limitAtSample(samples),0);assert.equal(fadeOut.atSample(samples),0);
 });
-test('all four locales expose explicit replacement presets, fixed frame choices and Save disclosure',()=>{
+test('all four locales expose replacement notices for an existing draft and fixed frame choices',()=>{
  const locales=['zh-Hans','zh-Hant','en','ja'] as const;
  for(const suffix of ['title','hint','duration','frames','in','out','unavailable'] as const)assert.deepEqual(Object.keys(volumeEnvelopeMessages[`volume.envelope.preset.${suffix}`]).sort(),[...locales].sort());
  for(const locale of locales){
-  const h=harness(locale);h.render({proposedDuration:120});const select=byTestId(h,'envelope-preset-frames');
+  const h=harness(locale,null);h.render({proposedDuration:120});const select=byTestId(h,'envelope-preset-frames');
   assert.equal(select!.type,'select');assert.equal(select!.props.value,30);assert.equal(select!.props.disabled,false);
   assert.deepEqual(nodes(select!.props.children).filter(node=>node.type==='option').map(node=>[node.props.value,node.props.children[0]]),[15,30,60].map(frames=>[frames,translate(locale,'volume.envelope.preset.frames',{frames})]));
   assert.ok(h.all().some(node=>node.type==='label'&&node.props.htmlFor===select!.props.id&&node.props.children[0]===translate(locale,'volume.envelope.preset.duration')));
-  assert.ok(h.all().some(node=>node.type==='p'&&node.props.children[0]===translate(locale,'volume.envelope.preset.hint')));
+  assert.ok(!h.all().some(node=>node.type==='p'&&node.props.id?.endsWith('-preset-hint')));
+  const replacement=harness(locale,raw([['0','1']]).volumeEnvelope,120);
+  assert.ok(replacement.all().some(node=>node.type==='p'&&node.props.id?.endsWith('-preset-hint')&&node.props.children[0]===translate(locale,'volume.envelope.preset.hint')));
   for(const kind of ['in','out'] as const){const button=preset(h,kind);assert.equal(button!.props.type,'button');assert.equal(button!.props.disabled,false);assert.equal(button!.props.children[0],translate(locale,`volume.envelope.preset.${kind}`));}
  }
 });
@@ -259,7 +261,7 @@ test('manual ducking parameters are temporary text controls and Apply alone repl
  assert.deepEqual(h.edits.at(-1),raw([['20','1'],['30','0.25'],['80','0.25'],['100','1']]).volumeEnvelope);assert.deepEqual(initial,raw([['0','0.5'],['60','1'],['120','0.5']]).volumeEnvelope);
  h.render();h.input('multiplier',1)!.props.onChange(event('0.5'));assert.equal(h.edits.at(-1)!.points[1].multiplier,'0.5');
 });
-test('all four manual ducking copies disclose temporary settings, full replacement and original Save',()=>{
+test('all four manual ducking copies identify temporary settings and the replacement of draft keyframes',()=>{
  const locales=['zh-Hans','zh-Hant','en','ja'] as const;
  for(const suffix of ['title','hint','temporary','bounds',...duckingFields,'apply'] as const)assert.deepEqual(Object.keys(volumeEnvelopeMessages[`volume.ducking.${suffix}`]).sort(),[...locales].sort());
  for(const locale of locales){

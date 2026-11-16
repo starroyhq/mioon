@@ -17,9 +17,6 @@ export default function DeliveryWorkspace({ page, onPage, children }: DeliveryWo
   return <section className="delivery-workspace" lang={locale} data-testid="delivery-workspace" data-page={page} aria-labelledby="delivery-workspace-heading">
     <header className="delivery-workspace-heading">
       <h2 id="delivery-workspace-heading">{page === 'history' ? t('export.workspace.history') : t('export.workspace.delivery')}</h2>
-      <p>{page === 'history'
-        ? t('export.workspace.historyHelp')
-        : t('export.workspace.composeHelp')}</p>
     </header>
     <Tabs className="delivery-workspace-tabs" value={page} onValueChange={value => { if (value === 'compose' || value === 'history') onPage(value); }}>
       <TabsList className="delivery-workspace-tablist" aria-label={t('export.workspace.pages')}>

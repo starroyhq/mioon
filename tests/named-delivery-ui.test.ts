@@ -77,10 +77,10 @@ before(() => {
   ({html: rendered, actions, fileActions, unchanged} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
 });
 
-test('actual shared Input is controlled, labelled and explicit about blank legacy omission', () => {
+test('actual shared Input is controlled, labelled and offers a short example for the optional name', () => {
   assert.match(rendered.blank, /data-slot="input"/); assert.match(rendered.blank, /data-testid="delivery-name-input"/);
-  assert.match(rendered.blank, /本次成片名称/); assert.match(rendered.blank, /留空使用默认文件名/); assert.match(rendered.blank, /value=""/);
-  assert.match(rendered.blank, /不会保存一个新名称/); assert.match(rendered.blank, /aria-describedby=/);
+  assert.match(rendered.blank, /本次成片名称/); assert.match(rendered.blank, /placeholder="成片"/); assert.match(rendered.blank, /value=""/);
+  assert.doesNotMatch(rendered.blank, /不会保存一个新名称|aria-describedby=/);
   assert.doesNotMatch(rendered.blank, /role="dialog"|delivery-name-error/);
   assert.match(rendered.namedInput, /value="  中文 &lt;第一版&gt;  "/);
   assert.match(rendered.disabledInput, /disabled=""/); assert.match(rendered.disabledInput, /value="暂停中的草稿"/);
@@ -125,7 +125,7 @@ test('completed and failed exports keep owned downloads, safe errors and disable
   assert.deepEqual(actions.completed, [{...actions.named[0], disabled:false}]);
   assert.match(fileActions.completed[0], /data-testid="export-file-check"/);
   assert.doesNotMatch(fileActions.completed[0], /download-export|href=|download="[^"\n]+"|untrusted-row-url|filename=/, 'a completed row still requires its actual file inspection before download');
-  assert.match(rendered.failure, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.failure, /unsafe failure/); assert.doesNotMatch(rendered.failure, /download-export/);
+  assert.match(rendered.failure, /导出失败/); assert.doesNotMatch(rendered.failure, /unsafe failure/); assert.doesNotMatch(rendered.failure, /download-export/);
   assert.deepEqual((actions.failure as unknown), []);
   assert.equal(actions.recoveryDisabled[0].disabled, true);
   assert.equal(actions.recoveryDisabled[0].downloadHref, actions.named[0].downloadHref);

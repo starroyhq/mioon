@@ -70,7 +70,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
     if(id==='@mioon/ui/components/switch')return{Switch:'switch'};
     if(id==='./mio-usage-client.ts')return usageModule;if(id==='./mio-usage-state.ts')return usageState;if(id==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
     if(id==='./project-rules-client.ts')return rulesModule;if(id==='./project-rules-proposal.ts')return rulesProposal;
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id==='./agent-task-requirements.ts')return requirements;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id==='./WorkspaceControls.tsx')return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskDiagnosticDetails,agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./agent-task-reviews.ts')return reviews;if(id==='./AgentTaskContinuityReport.tsx')return{__esModule:true,default:'continuity-report'};if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: PanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string,refreshOptions?: unknown)=>{calls.push(refreshOptions===undefined?['refreshRound',id]:['refreshRound',id,refreshOptions]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({isAdmissionAllowed:()=>currentAdmission,projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onOpenRequests:openRequests?(selectedId:unknown)=>calls.push(['requests',selectedId]):undefined,onClose(){},...(followMio?{onMioFollowFocus:(projectId:string,focus:MioFollowFocus|null)=>focused.push({projectId,focus}),onMioFollowLocate:(target:MioFollowTarget)=>located.push(target),mioFollowTargetExists:(target:Parameters<MioFollowTargetExists>[0])=>targetExists(target),shotNumber:()=>3}:{})});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
@@ -389,7 +389,7 @@ test('preparing has no step budget and a locale change retains the panel session
   }finally{h.unmount();}
 });
 test('an already accepted generation with renewed approval requirement renders the same exact-step approval card',()=>{
-  const h=harness();try{h.render();assert.ok(h.find(`agent-task-approval-${stepId}`));h.find(`agent-task-approve-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[0],['approve',{stepId},'run']);const card=h.find(`agent-task-approval-${stepId}`),buttons=nodes(card).filter((node)=>node.type==='button');assert.equal(buttons.length,3);h.find(`agent-task-deny-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[1],['deny',{stepId},'run']);buttons.at(-1)!.props.onClick();assert.deepEqual(h.calls[2],['settings']);}finally{h.unmount();}
+  const h=harness();try{h.render();assert.ok(h.find(`agent-task-approval-${stepId}`));h.find(`agent-task-approve-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[0],['approve',{stepId},'run']);const card=h.find(`agent-task-approval-${stepId}`),buttons=nodes(card).filter((node)=>node.type==='button');assert.equal(buttons.length,4);assert.equal(buttons[0]!.props['aria-label'],translate('zh-Hans','agent.panel.authorizationFeeTitle'));h.find(`agent-task-deny-${stepId}`)!.props.onClick();assert.deepEqual(h.calls[1],['deny',{stepId},'run']);buttons.at(-1)!.props.onClick();assert.deepEqual(h.calls[2],['settings']);}finally{h.unmount();}
 });
 test('canvas archive approval shows the selected shots and the impact before exact-step approval',()=>{
   const h=harness({status:'awaiting_approval',locale:'en',followMio:true});
@@ -409,7 +409,7 @@ test('canvas archive approval shows the selected shots and the impact before exa
     const card=h.find(`agent-task-approval-${stepId}`)!;
     const text=renderedText(card);
     assert.ok(text.includes(translate('en','agent.display.operation.canvas.archive')));
-    assert.ok(text.includes(translate('en','agent.panel.canvasArchiveEffect')));
+    assert.doesNotMatch(text,/remain in the library|timeline will not change|can be restored from/u);
     assert.match(text,/#01 · Close-up · Generated video versions\s+2/u);
     assert.match(text,/#01 · Close-up · Clips used on the timeline\s+2/u);
     assert.match(text,/#01 · Close-up · Video versions used on the timeline\s+1/u);
@@ -479,8 +479,8 @@ test('the header opens the conversation overlay and selects a conversation throu
  test('the next-send model label uses current settings rather than the selected historical round',()=>{
   const h=harness({status:'completed'});try{const tree=h.render(),menu=tree.find((node)=>node!.type==='popover-content');assert.match(renderedText(menu),/current-model/u);assert.ok(!renderedText(menu).includes('historical-model'));}finally{h.unmount();}
 });
-test('only target conflicts show the conflict pause explanation and unknown results use recovery',()=>{
-  const h=harness({status:'paused'});try{for(const reason of ['conflict','editing','user','AGENT_TASK_CONSENT_REQUIRED'] as const){h.state.snapshot!.run.pauseReason=reason;h.render();const text=renderedText(h.find('agent-task-paused'));assert.equal(text.includes(translate('zh-Hans','agent.panel.conflictBody')),['conflict','editing'].includes(reason));}h.state.snapshot!.steps[0].status='unknown';h.render();assert.equal(h.find('agent-task-paused'),undefined);assert.ok(h.find(`agent-task-unknown-${stepId}`));assert.equal(h.find('agent-task-resume')!.props.disabled,true);}finally{h.unmount();}
+test('only target conflicts show the conflict heading and unknown results use recovery',()=>{
+  const h=harness({status:'paused'});try{for(const reason of ['conflict','editing','user','AGENT_TASK_CONSENT_REQUIRED'] as const){h.state.snapshot!.run.pauseReason=reason;h.render();const text=renderedText(h.find('agent-task-paused'));assert.equal(text.includes(translate('zh-Hans','agent.panel.conflictTitle')),['conflict','editing'].includes(reason));}h.state.snapshot!.steps[0].status='unknown';h.render();assert.equal(h.find('agent-task-paused'),undefined);assert.ok(h.find(`agent-task-unknown-${stepId}`));assert.equal(h.find('agent-task-resume')!.props.disabled,true);}finally{h.unmount();}
 });
 
 test('running and paused rounds show steps used without displaying their legacy budget',()=>{
@@ -495,7 +495,7 @@ test('running and paused rounds show steps used without displaying their legacy 
   }
 });
 
-test('Mio explains each execution safeguard and offers an ordinary resume after a supplement',async()=>{
+test('Mio names execution safeguards and offers an ordinary resume after a supplement',async()=>{
   const h=harness({status:'paused'});
   try{
     const step=h.state.snapshot!.steps[0];
@@ -506,7 +506,7 @@ test('Mio explains each execution safeguard and offers an ordinary resume after 
     for(const [reason,expected] of [
       ['repeated_tool_failure',/卡住了.*连续三次/u],
       ['no_tool_progress',/卡住了.*连续多次请求模型/u],
-      ['safety_limit',/安全上限/u],
+      ['safety_limit',/执行上限/u],
       ['budget',/已暂停/u],
     ] as const){
       h.state.snapshot!.run.pauseReason=reason;
@@ -514,7 +514,7 @@ test('Mio explains each execution safeguard and offers an ordinary resume after 
       assert.match(text,expected,reason);
       assert.doesNotMatch(text,/UNTRUSTED_|每轮步数上限|你暂停了|继续执行\s*30\s*步/u,reason);
       if(reason==='repeated_tool_failure')assert.ok(text.includes(presentation.taskOperationTitle('generation.submit','zh-Hans')));
-      assert.ok(text.includes('先补充说明'),reason);
+      assert.doesNotMatch(text,/先补充说明/u,reason);
       assert.equal(h.find('agent-task-send')!.props.disabled,false,reason);
       tree.find(node=>node.type==='form')!.props.onSubmit({preventDefault(){}});
       await new Promise(resolve=>setImmediate(resolve));
@@ -537,7 +537,7 @@ test('conflict pause shows only the exact safe planned values and server-project
   const missing=harness({status:'paused'});try{missing.state.snapshot!.run.pauseReason='conflict';missing.render();assert.ok(!renderedText(missing.find('agent-task-paused')).includes(translate('zh-Hans','agent.panel.yourChanges')));}finally{missing.unmount();}
 });
 
-test('conflict comparison shares target, current and planned rows before its explanation in all four languages',()=>{
+test('conflict comparison shares target, current and planned rows above its actions in all four languages',()=>{
   const content={
     'zh-Hans':['A/B 对比：雨后的城市，保留左/右机位的长镜头','慢慢推进，让街道的反光进入画面'],
     'zh-Hant':['A/B 對比：雨後的城市，保留左/右機位的長鏡頭','慢慢推進，讓街道的反光進入畫面'],
@@ -554,7 +554,7 @@ test('conflict comparison shares target, current and planned rows before its exp
       assert.ok(renderedText(comparison).includes('左/右机位'));for(const value of content[locale])assert.ok(renderedText(comparison).includes(value));
       assert.ok(!renderedText(comparison).includes(stepId));
       const children=(card!.props.children as unknown[]).flat(Infinity).filter(Boolean) as Element[],index=children.indexOf(comparison!);
-      assert.ok(index>0);assert.equal(children[index+1].type,'p');assert.equal(renderedText(children[index+1]),translate(locale,'agent.panel.conflictBody'));assert.equal(children[index+2].props.className,'mio-card-actions');
+      assert.ok(index>0);assert.equal(children[index+1].props.className,'mio-card-actions');assert.equal(children.length,index+2);
       step.display.fields=[];h.render();assert.equal(nodes(h.find('agent-task-conflict-values')).filter((node)=>node.type==='dt').length,1,'Missing current and planned evidence must not create guessed values');
     }finally{h.unmount();}
   }
@@ -573,7 +573,7 @@ test('a completed conversation keeps the project recovery owner mounted and visi
 test('active round text sends only a note in all three allowed states, and only the running tag offers pause',async()=>{
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)for(const status of ['running','awaiting_approval','paused'] as const){
     const h=harness({locale,status});try{
-      h.render();const field=h.find('agent-task-draft'),button=h.find('agent-task-send');assert.equal(field!.props.placeholder,translate(locale,status==='paused'?'agent.panel.pausedNoteDraft':'agent.panel.noteDraft'));assert.equal(button!.props['aria-label'],translate(locale,'agent.panel.sendNote'));assert.equal(button!.props.disabled,false);
+      h.render();const field=h.find('agent-task-draft'),button=h.find('agent-task-send');assert.equal(field!.props.placeholder,undefined);assert.equal(field!.props['aria-label'],translate(locale,'agent.panel.note'));assert.equal(button!.props['aria-label'],translate(locale,'agent.panel.sendNote'));assert.equal(button!.props.disabled,false);
       assert.equal(Boolean(h.find('agent-task-pause')),status==='running');assert.equal(h.find('agent-task-attach')!.props.disabled,true);assert.equal(h.find('agent-task-upload')!.props.disabled,true);
       field!.props.onKeyDown({key:'Enter',shiftKey:false,keyCode:13,nativeEvent:{isComposing:false},preventDefault(){}});h.render().find((node)=>node.type==='form')!.props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(h.calls,[['note']]);
       h.state.draft='';h.render();assert.equal(h.find('agent-task-send'),undefined);assert.ok(h.find('agent-task-stop'));
@@ -583,10 +583,10 @@ test('active round text sends only a note in all three allowed states, and only 
 
 test('the note composer updates after status changes without consuming the draft or its attachments',async()=>{
   const h=harness({status:'running'});try{
-    const upload={id:'saved-file',name:'next.mp4',status:'staged',mimeType:'video/mp4'};h.state.uploads=[upload];h.render();assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.noteDraft'));assert.ok(renderedText(h.render()[0]).includes(translate('zh-Hans','agent.panel.attachNextRound')));
-    h.state.snapshot!.run.status='paused';h.render();assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.pausedNoteDraft'));
-    h.state.snapshot!.run.status='completed';h.render();assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.continuedraft'));assert.equal(h.find('agent-task-send')!.props['aria-label'],translate('zh-Hans','agent.task.send'));assert.equal(h.find('agent-task-upload')!.props.disabled,false);
-    assert.equal(h.state.draft,'next task');assert.deepEqual(h.state.uploads,[upload]);h.state.unknownOutcome=true;h.render();assert.equal(h.find('agent-task-draft')!.props.disabled,true);assert.equal(h.find('agent-task-send')!.props.disabled,true);assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.blockedDraft'));
+    const upload={id:'saved-file',name:'next.mp4',status:'staged',mimeType:'video/mp4'};h.state.uploads=[upload];h.render();assert.equal(h.find('agent-task-draft')!.props['aria-label'],translate('zh-Hans','agent.panel.note'));assert.ok(h.find('agent-task-uploaded'));
+    h.state.snapshot!.run.status='paused';h.render();assert.equal(h.find('agent-task-draft')!.props['aria-label'],translate('zh-Hans','agent.panel.note'));
+    h.state.snapshot!.run.status='completed';h.render();assert.equal(h.find('agent-task-draft')!.props['aria-label'],translate('zh-Hans','agent.task.draft'));assert.equal(h.find('agent-task-send')!.props['aria-label'],translate('zh-Hans','agent.task.send'));assert.equal(h.find('agent-task-upload')!.props.disabled,false);
+    assert.equal(h.state.draft,'next task');assert.deepEqual(h.state.uploads,[upload]);h.state.unknownOutcome=true;h.render();assert.equal(h.find('agent-task-draft')!.props.disabled,true);assert.equal(h.find('agent-task-send')!.props.disabled,true);assert.equal(h.find('agent-task-draft')!.props.placeholder,undefined);
   }finally{h.unmount();}
 });
 
@@ -735,7 +735,7 @@ test('a waiting question shows its card, makes the composer its answer box and m
   const h=harness({status:'awaiting_answer'});try{
     h.state.snapshot!.steps=[askStep('awaiting_answer')];h.state.draft='Open on the harbour';
     const tree=h.render(),card=tree.find(node=>node.type==='question-card');assert.ok(card);assert.equal(card.props.state,'waiting');assert.equal(card.props.disabled,false);
-    assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.question.answerDraft'));
+    assert.equal(h.find('agent-task-draft')!.props['aria-label'],translate('zh-Hans','agent.panel.question.otherInput'));
     assert.equal(h.find('agent-task-attach')!.props.disabled,true,'an answer carries no attachments');
     assert.ok(h.find('agent-task-send'));assert.equal(h.find('agent-task-stop'),undefined,'the composer keeps sending; stop moves to the status row');
     h.find('agent-task-stop-question')!.props.onClick();assert.deepEqual(h.calls.at(-1),['stop',undefined,'run']);
@@ -748,7 +748,7 @@ test('a waiting question shows its card, makes the composer its answer box and m
 test('a stopped question stays in place, unanswered and read-only, and the composer returns to normal',()=>{
   const h=harness({status:'stopped'});try{
     h.state.snapshot!.steps=[askStep('awaiting_answer')];const card=h.render().find(node=>node.type==='question-card');assert.ok(card);assert.equal(card.props.state,'stopped');
-    assert.equal(h.find('agent-task-stop-question'),undefined);assert.notEqual(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.question.answerDraft'));
+    assert.equal(h.find('agent-task-stop-question'),undefined);assert.equal(h.find('agent-task-draft')!.props['aria-label'],translate('zh-Hans','agent.task.draft'));
   }finally{h.unmount();}
 });
 test('an answered question collapses before the reply that followed it, and a later paid step still needs its approval',()=>{
@@ -756,7 +756,10 @@ test('an answered question collapses before the reply that followed it, and a la
     h.state.snapshot!.steps=[askStep('completed',{answer:{choices:[1]},selected:['Close-up']}),{id:'model-2',kind:'model',status:'completed',position:3,text:'Planning the close-up opening'},{id:'paid',kind:'tool',status:'awaiting_approval',position:4,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}];
     const tree=h.render(),row=tree.findIndex(node=>node.type==='answer-row'),reply=tree.findIndex(node=>node.props?.['data-testid']==='agent-task-reply');
     assert.ok(row>=0&&reply>row,'the answer precedes the reply that followed it');assert.equal(tree.some(node=>node.type==='question-card'),false);
-    assert.ok(h.find('agent-task-answer-not-approval'));assert.ok(h.find('agent-task-approval-paid'));
+    const approval=h.find('agent-task-approval-paid');assert.ok(approval);
+    const information=nodes(approval).find(node=>node.type==='tooltip');
+    assert.ok(renderedText(information?.props.content as Tree).includes(translate('zh-Hans','agent.panel.question.notApproval')));
+    assert.ok(!renderedText(approval).includes(translate('zh-Hans','agent.panel.question.notApproval')));
     assert.ok(renderedText(tree.find(node=>node.props?.className==='mio-steps')).includes(translate('zh-Hans','agent.panel.question.answered')));
   }finally{h.unmount();}
 });

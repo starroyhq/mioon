@@ -125,7 +125,7 @@ function harness(patch: Partial<VideoProps> = {}) {
       if (name === './Timeline.tsx') return { dragAsset() {} };
       if (name === './ProviderSettings.tsx') return { default: 'ProviderSettings', __esModule: true };
       if (name === './ShotSubjectBindings.tsx') return { default: 'ShotSubjectBindings', __esModule: true };
-      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect' };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' };
       if (name === './ReferenceConnections.tsx') return { BoundReference: 'BoundReference', ReferenceSourcePanel: 'ReferenceSourcePanel' };
       throw Error(`Unexpected dependency ${name}`);
     }, module, module.exports);
@@ -737,7 +737,7 @@ test('Seedance 2.5 sets duration, ratio, resolution and sound for one generation
   const p = seedanceProvider(), h = harness({ shot: shot({ referenceAssetIds: [], duration: 4, aspectRatio: '9:16' }), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
   h.render();
   for (const testId of ['wan-video-input', 'wan-prompt-extend', 'wan-watermark', 'shot-duration', 'seedance-hevc-hint']) assert.equal(h.find(testId), undefined, testId);
-  assert.match(text(h.find('seedance-session-hint')), /只用于本次生成/);
+  assert.equal(h.find('seedance-session-hint'), undefined);
   assert.equal(h.find('wan-video-duration')!.props.value, 4); assert.equal(h.find('wan-video-ratio')!.props.value, '9:16');
   assert.equal(h.find('generation-resolution')!.props.value, '720p'); assert.equal(h.find('generation-audio')!.props.checked, false);
   const durations = nodes(h.find('wan-video-duration')).filter(node => node.type === 'option').map(node => Number(node.props.value));
@@ -745,7 +745,7 @@ test('Seedance 2.5 sets duration, ratio, resolution and sound for one generation
   assert.ok(nodes(h.find('wan-video-ratio')).some(node => node.type === 'option' && node.props.value === 'adaptive'));
   h.edit('wan-video-duration', '30'); h.edit('wan-video-ratio', '21:9'); h.edit('generation-resolution', '1080p');
   h.find('generation-audio')!.props.onChange({ target: { checked: true } }); h.render();
-  assert.match(text(h.find('seedance-hevc-hint')), /10 位 HEVC/);
+  assert.match(String(h.find('seedance-hevc-hint')?.props['aria-label']), /10 位 HEVC/);
   assert.deepEqual(h.props().generationOptions.parameters, { durationSeconds: 30, aspectRatio: '21:9', resolution: '1080p', generateAudio: true });
   assert.equal(h.saves.length, 0); assert.equal(h.props().shot.duration, 4); assert.equal(h.props().shot.aspectRatio, '9:16');
   await h.click('generate-shot');
@@ -775,7 +775,7 @@ test('Seedance 2.5 reference mode builds an ordered group for one generation and
   h.edit('input-mode-select', 'reference'); h.render();
   assert.deepEqual(h.props().generationOptions.videoInput, { version: 1, mode: 'reference_images', images: [] });
   assert.ok(h.find('wan-video-input')); assert.equal(h.find('wan-video-prompt'), undefined, 'The prompt stays the saved shot prompt');
-  assert.match(text(h.find('seedance-reference-hint')), /@图片1、@图片2/); assert.match(text(h.find('seedance-face-warning')), /真实人脸/);
+  assert.match(String(h.find('seedance-reference-hint')?.props['aria-label']), /@图片1、@图片2/); assert.match(String(h.find('seedance-face-warning')?.props['aria-label']), /真人脸/);
   for (const assetId of [tailId, otherId, firstId]) { h.click(`wan-image-choice-${assetId}`); h.render(); }
   const group = [tailId, otherId, firstId].map(assetId => ({ assetId, role: 'reference_image' }));
   assert.deepEqual(h.props().generationOptions.videoInput!.images, group);
@@ -826,7 +826,7 @@ test('Seedance 2.5 reference mode fills from the bound subjects only on request,
   // Planning bindings are never applied on their own.
   assert.deepEqual(h.props().generationOptions.videoInput!.images, []);
   assert.equal(text(h.find(`seedance-subject-${id(604)}`)), '林夏 V2：未加入');
-  assert.match(text(h.find('seedance-subject-map')), /预填顺序：先角色、产品、场景，再风格/);
+  assert.doesNotMatch(text(h.find('seedance-subject-map')), /预填顺序：先角色、产品、场景，再风格/);
   h.click('seedance-subject-prefill'); h.render();
   const group = [tailId, otherId, firstId].map(assetId => ({ role: 'reference_image', assetId }));
   assert.deepEqual(h.props().generationOptions.videoInput!.images, group, 'Character, product, then look; the webp location is not sent');
@@ -861,7 +861,7 @@ const voice = audioAsset(1, '旁白.wav', 'audio/wav', 12), music = audioAsset(2
 test('Seedance 2.5 reference mode lists audio clips, takes them in order and explains the ones it cannot send', async () => {
   const p = seedanceProvider(), h = harness({ shot: shot({ referenceAssetIds: [] }), assets: [...assets, voice, music, m4a, long, loud], providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
   h.render(); h.edit('input-mode-select', 'reference'); h.render();
-  assert.match(text(h.find('seedance-audio-hint')), /@音频1、@音频2/);
+  assert.match(String(h.find('seedance-audio-hint')?.props['aria-label']), /@音频1、@音频2/);
   assert.equal(text(h.find('seedance-audio-budget')), '已选 0/10 段，合计 0 秒，上限 30 秒');
   assert.equal(text(h.find(`seedance-audio-reason-${m4a.id}`)), '方舟只收 WAV 或 MP3，这段音频不会被转换'); assert.equal(h.find(`seedance-audio-choice-${m4a.id}`)!.props.disabled, true);
   assert.equal(text(h.find(`seedance-audio-reason-${long.id}`)), '时长须在 2–30 秒之间');

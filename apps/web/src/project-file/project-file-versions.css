@@ -41,8 +41,6 @@
 .pf-version-compare-title { margin-top: 4px; color: var(--wb-muted); font-size: var(--wb-text-label); font-weight: 500; }
 .pf-version-diff > li { min-height: 56px; }
 .pf-version-diff .pf-row-detail { white-space: normal; }
-.pf-version-note { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
-.pf-version-note > svg { flex: none; margin-top: 3px; }
 .pf-version-actions { display: flex; justify-content: flex-end; gap: var(--wb-space-2); margin-top: auto; padding-top: var(--wb-space-3); }
 .pf-version-actions .wb-button { height: var(--wb-control-large); min-height: var(--wb-control-large); gap: 6px; padding-inline: var(--wb-space-4); font-size: var(--wb-text-body); }
 .pf-version-actions .wb-button svg { width: 14px; height: 14px; }

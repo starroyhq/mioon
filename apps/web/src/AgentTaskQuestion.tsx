@@ -31,7 +31,6 @@ export function AgentTaskQuestionCard({ step, question, state, disabled, onAnswe
   const typed = other ? otherText.trim() : '';
   const ready = !locked && (chosen.length > 0 || other) && (!other || agentTaskAnswerTextValid(typed));
   const count = chosen.length + (other ? 1 : 0);
-  const hint = count === 0 ? t(multiple ? 'agent.panel.question.pickSome' : 'agent.panel.question.pickOne') : multiple ? t('agent.panel.question.selected', { count }) : t('agent.panel.question.continue');
   // Options are shared buttons carrying the radio or checkbox role (no native inputs).
   const role = multiple ? 'checkbox' : 'radio';
   return <section className="mio-card mio-question" data-state={state} data-testid={`agent-task-question-${step.id}`}>
@@ -47,8 +46,7 @@ export function AgentTaskQuestionCard({ step, question, state, disabled, onAnswe
           onChange={event => { setOtherText(event.target.value); if (event.target.value.trim()) chooseOther(true); }} />
       </div>}
     </div>
-    {state === 'stopped' ? <p className="mio-secondary" data-testid="agent-task-question-stopped-body">{t('agent.panel.question.stoppedBody')}</p>
-      : <footer className="mio-question-foot"><span className="mio-secondary" data-testid="agent-task-question-hint">{hint}</span><Button variant="primary" size="compact" data-testid="agent-task-question-answer" disabled={!ready} onClick={() => { if (ready) void onAnswer(chosen, other ? typed : undefined); }}>{t('agent.panel.question.answer')}</Button></footer>}
+    {state === 'waiting' && <footer className="mio-question-foot">{multiple && count > 0 && <span className="mio-secondary" role="status" data-testid="agent-task-question-selection-count">{t('agent.panel.question.selected', { count })}</span>}<Button variant="primary" size="compact" data-testid="agent-task-question-answer" disabled={!ready} onClick={() => { if (ready) void onAnswer(chosen, other ? typed : undefined); }}>{t('agent.panel.question.answer')}</Button></footer>}
   </section>;
 }
 

@@ -1132,10 +1132,10 @@ const timelineCoreMessages = {
     "ja": "画像や動画をドロップ · 映像を重ねる"
   },
   "timeline.view.empty": {
-    "zh-Hans": "创建或打开项目后，开始编排画面与声音",
-    "zh-Hant": "建立或開啟專案後，即可開始編排畫面與聲音",
-    "en": "Create or open a project to arrange visuals and sound",
-    "ja": "プロジェクトを作成または開いて、映像と音声を配置しましょう"
+    "zh-Hans": "暂无项目",
+    "zh-Hant": "暫無專案",
+    "en": "No project yet",
+    "ja": "プロジェクトはまだありません"
   },
   "timeline.view.positionUnchanged": {
     "zh-Hans": "位置未改变",
@@ -1172,12 +1172,6 @@ const timelineCoreMessages = {
     "zh-Hant": "吸附已關閉",
     "en": "Snapping disabled",
     "ja": "スナップ無効"
-  },
-  "timeline.view.dragHint": {
-    "zh-Hans": "拖动片段可跨兼容轨道移动 · Alt 临时关闭吸附 · 同轨不允许重叠",
-    "zh-Hant": "拖曳片段可在相容軌道之間移動 · Alt 暫時關閉吸附 · 同軌不可重疊",
-    "en": "Drag clips between compatible tracks · Alt temporarily disables snapping · No overlaps on the same track",
-    "ja": "クリップを互換トラック間でドラッグ移動 · Alt でスナップを一時停止 · 同じトラック上の重なりは不可"
   },
   "timeline.view.clipCount": {
     "zh-Hans": {
@@ -1653,18 +1647,6 @@ const timelineCoreMessages = {
     "en": "Source is fixed",
     "ja": "ソースは固定されています"
   },
-  "timeline.inspector.frozenHint": {
-    "zh-Hans": "后续生成或切换镜头版本，不会替换此片段",
-    "zh-Hant": "後續生成或切換鏡頭版本，不會替換此片段",
-    "en": "Later generation or changing the shot version will not replace this clip",
-    "ja": "後から生成したりショットのバージョンを変更したりしても、このクリップは差し替わりません"
-  },
-  "timeline.inspector.staleHint": {
-    "zh-Hans": "可在下方“替换片段来源”核对改用",
-    "zh-Hant": "可在下方「替換片段來源」核對並改用",
-    "en": "Review and change it using “Replace clip source” below",
-    "ja": "下の「クリップのソースを差し替え」で確認して変更できます"
-  },
   "timeline.inspector.returnSource": {
     "zh-Hans": "返回来源",
     "zh-Hant": "返回來源",
@@ -1694,12 +1676,6 @@ const timelineCoreMessages = {
     "zh-Hant": "高",
     "en": "Height",
     "ja": "高さ"
-  },
-  "timeline.inspector.rectHint": {
-    "zh-Hans": "偶数像素，画面完整包含于矩形内。矩形留白透明，会显示下层；无任何画面的时间段为黑色",
-    "zh-Hant": "使用偶數像素，畫面完整包含於矩形內。矩形留白透明，會顯示下層；沒有任何畫面的時段為黑色",
-    "en": "Use even pixel values. The picture fits entirely within the rectangle. Empty space is transparent and shows lower tracks; intervals with no picture are black",
-    "ja": "偶数ピクセルを使用し、映像全体が矩形内に収まるようにします。矩形内の余白は透明で下のトラックが表示され、映像のない時間帯は黒になります"
   },
   "timeline.inspector.rectInvalid": {
     "zh-Hans": "画面位置与尺寸必须是有效偶数像素",
@@ -1971,12 +1947,6 @@ const timelineCoreMessages = {
     "en": "Replace clip source",
     "ja": "クリップのソースを差し替え"
   },
-  "timeline.replace.scope": {
-    "zh-Hans": "只更新这个片段的来源。名称、位置、时长、入点、画面、音量及淡入/淡出保持原值",
-    "zh-Hant": "僅更新此片段的來源。名稱、位置、時長、入點、畫面、音量及淡入／淡出保持原值",
-    "en": "Only this clip’s source is updated. Its name, position, duration, in point, picture, gain, and fades remain unchanged",
-    "ja": "このクリップのソースのみを更新します。名前、位置、長さ、イン点、映像、ゲイン、フェードは変更しません"
-  },
   "timeline.replace.choose": {
     "zh-Hans": "选择替换来源",
     "zh-Hant": "選擇替換來源",
@@ -1994,12 +1964,6 @@ const timelineCoreMessages = {
     "zh-Hant": "請選擇來源",
     "en": "Select a source",
     "ja": "ソースを選択"
-  },
-  "timeline.replace.candidatesHint": {
-    "zh-Hans": "仅列出可保留原范围与淡入/淡出的同类素材，最终由服务端验证。选择“仅素材”不会绑定镜头版本",
-    "zh-Hant": "僅列出可保留原範圍與淡入／淡出的同類素材，最後由伺服器驗證。選擇「僅素材」不會綁定鏡頭版本",
-    "en": "Only same-type assets that can preserve the range and fades are listed. The server performs final validation. “Asset only” does not bind a shot version",
-    "ja": "元の範囲とフェードを保持できる同種の素材のみを表示します。最終検証はサーバーで行います。「素材のみ」ではショットのバージョンを関連付けません"
   },
   "timeline.replace.noCandidates": {
     "zh-Hans": "没有已知兼容的其他来源。需要同类素材覆盖原入点与片段时长；非零淡入/淡出还需已确认音轨",
@@ -2062,16 +2026,10 @@ const timelineCoreMessages = {
     "ja": "タイムラインの位置を保持"
   },
   "timeline.replace.colourWarning": {
-    "zh-Hans": "LUT、启用状态与强度会保留；新来源的色彩解释将清除。替换后必须重新核对并确认 Rec.709 SDR 与范围，才能渲染",
-    "zh-Hant": "LUT、啟用狀態與強度會保留；新來源的色彩解讀將清除。替換後必須重新核對並確認 Rec.709 SDR 與範圍，才能算繪",
-    "en": "The LUT, enabled state, and strength are preserved; the source color interpretation is cleared. After replacement, recheck and confirm Rec.709 SDR and range before rendering",
-    "ja": "LUT、有効状態、強度は保持しますが、ソースの色解釈は消去します。差し替え後にレンダリングするには、Rec.709 SDR とレンジを再確認してください"
-  },
-  "timeline.replace.preserveHint": {
-    "zh-Hans": "不会自动裁短或清除淡入/淡出。不修改镜头选用版本、其他片段或已有导出",
-    "zh-Hant": "不會自動裁短或清除淡入／淡出。不修改鏡頭選用的版本、其他片段或既有匯出",
-    "en": "Fades will not be trimmed or cleared automatically. The selected shot version, other clips, and existing exports are unchanged",
-    "ja": "フェードを自動で短縮したり消去したりしません。選択されたショットのバージョン、他のクリップ、既存の書き出しは変更しません"
+    "zh-Hans": "替换将清除来源色彩设置",
+    "zh-Hant": "取代將清除來源色彩設定",
+    "en": "Replacement clears source colour settings",
+    "ja": "差し替えると素材の色設定が消去されます"
   },
   "timeline.replace.approve": {
     "zh-Hans": "确认替换此片段来源",
@@ -2782,10 +2740,10 @@ const timelineCoreMessages = {
     "ja": "現在の再生ヘッドは保存済みタイムラインの外にあるため、準備できる区間がありません"
   },
   "audio.preview.draftWarning": {
-    "zh-Hans": "尚未保存的编辑不包含在试听中；草稿会保留",
-    "zh-Hant": "尚未儲存的編輯不包含在試聽中；草稿會保留",
-    "en": "Unsaved edits are not included in audio preview. Your drafts are retained",
-    "ja": "未保存の編集内容は試聴に含まれません。下書きは保持されます"
+    "zh-Hans": "试听仅包含已保存的编辑",
+    "zh-Hant": "試聽僅包含已儲存的編輯",
+    "en": "Audio preview uses saved edits",
+    "ja": "音声プレビューには保存済みの編集が使われます"
   },
   "audio.preview.prepareAgain": {
     "zh-Hans": "重新准备当前区间",
@@ -3057,12 +3015,6 @@ const timelineCoreMessages = {
     "en": "Bottom center · Common Chinese characters, ASCII, and supported punctuation · 1–2 lines, up to 20 Unicode characters per line. Text is saved exactly as entered, without automatic wrapping or edits",
     "ja": "下部中央 · 対応する常用漢字、ASCII、句読点 · 1–2 行、各行最大 20 Unicode 文字。テキストは入力どおりに保存され、自動改行や書き換えはしません"
   },
-  "subtitles.ui.renderNote": {
-    "zh-Hans": "源素材保持原样。字幕烧录在时间线渲染预览和导出中；此处文字框不是最终画面预览",
-    "zh-Hant": "來源素材保持原樣。字幕會燒錄在時間軸算繪預覽與匯出中；此處文字框不是最終畫面預覽",
-    "en": "Source assets remain unchanged. Subtitles are burned into rendered timeline previews and exports; this text box is not a preview of the final image",
-    "ja": "ソース素材は変更しません。字幕はタイムラインのレンダリングプレビューと書き出しに焼き込まれます。このテキスト欄は最終映像のプレビューではありません"
-  },
   "subtitles.ui.checking": {
     "zh-Hans": "正在核对当前时间线",
     "zh-Hant": "正在核對目前時間軸",
@@ -3098,12 +3050,6 @@ const timelineCoreMessages = {
     "zh-Hant": "已儲存的字幕",
     "en": "Saved subtitle",
     "ja": "保存済み字幕"
-  },
-  "subtitles.ui.selectHint": {
-    "zh-Hans": "在时间线选择字幕，或在播放头处新增",
-    "zh-Hant": "在時間軸選擇字幕，或在播放頭處新增",
-    "en": "Select a subtitle on the timeline or add one at the playhead",
-    "ja": "タイムライン上で字幕を選択するか、再生ヘッドの位置に追加してください"
   },
   "subtitles.ui.text": {
     "zh-Hans": "字幕文字（原样保存）",
@@ -3332,12 +3278,6 @@ const timelineCoreMessages = {
     "zh-Hant": "時間軸輸出規格",
     "en": "Timeline output format",
     "ja": "タイムラインの出力形式"
-  },
-  "timeline.format.scope": {
-    "zh-Hans": "只调整时间线合成与导出的画面尺寸。源素材、生成比例不会改变；分镜导出固定 9:16",
-    "zh-Hant": "僅調整時間軸合成與匯出的畫面尺寸。來源素材、生成比例不會改變；分鏡匯出固定為 9:16",
-    "en": "Changes only the image size for timeline compositing and export. Source assets and generation aspect ratios stay unchanged; storyboard export remains 9:16",
-    "ja": "タイムラインの合成と書き出しの画面サイズのみ変更します。ソース素材や生成時の縦横比は変わりません。絵コンテの書き出しは 9:16 固定です"
   },
   "timeline.format.eligibility": {
     "zh-Hans": "仅在尚无片段、编辑历史、请求历史或时间线导出记录时可修改；有待确认编辑时也会阻止保存。开始编辑前可重新选择，规格变更不进入片段撤销历史",
@@ -4090,22 +4030,10 @@ const timelineCoreMessages = {
     "ja": "最初のクリップを配置"
   },
   "timeline.preview.empty": {
-    "zh-Hans": "在这里认真看每一个画面",
-    "zh-Hant": "在這裡細看每個畫面",
-    "en": "See every frame clearly here",
-    "ja": "ここで一つひとつの映像を確認"
-  },
-  "timeline.preview.renderDetail": {
-    "zh-Hans": "多轨叠加、裁剪、空隙、混音与音频淡入/淡出均使用与导出相同的本地渲染",
-    "zh-Hant": "多軌疊加、裁切、間隙、混音與音訊淡入／淡出，均使用與匯出相同的本機算繪",
-    "en": "Track compositing, cropping, gaps, mixing, and audio fades use the same local rendering as export",
-    "ja": "複数トラックの合成、クロップ、空白、ミキシング、音声フェードには、書き出しと同じローカルレンダリングを使用します"
-  },
-  "timeline.preview.sourceDetail": {
-    "zh-Hans": "点击左侧素材，或选择时间线片段，即可在大画面中查看",
-    "zh-Hant": "點選左側素材，或選擇時間軸片段，即可在大畫面中檢視",
-    "en": "Choose an asset on the left or a timeline clip to view it here at a larger size",
-    "ja": "左側の素材またはタイムラインのクリップを選択すると、大きな画面で確認できます"
+    "zh-Hans": "暂无预览",
+    "zh-Hant": "暫無預覽",
+    "en": "No preview yet",
+    "ja": "プレビューはまだありません"
   },
   "timeline.preview.render": {
     "zh-Hans": "渲染时间线预览",

@@ -7,15 +7,13 @@ export const timelineDeliveryMessages = {
   "export.sample.checkState": {"zh-Hans": "试导出检查：{state}", "zh-Hant": "試導出檢查：{state}", "en": "Sample check: {state}", "ja": "試し書き出しチェック：{state}"},
 
   "export.sample.title": {"zh-Hans": "试导出预览", "zh-Hant": "試導出預覽", "en": "Sample export preview", "ja": "試し書き出しプレビュー"},
-  "export.sample.help": {"zh-Hans": "使用当前导出设置生成真实 MP4，范围最多 300 帧（10 秒）。先选择短范围，再检查导出。短片仍可能需要较长素材检查或渲染时间", "zh-Hant": "使用目前的導出設定產生真實 MP4，範圍最多 300 幀（10 秒）。先選擇短範圍，再檢查導出。短片仍可能需要較長的素材檢查或算圖時間", "en": "Generate a real MP4 using the current export settings, up to 300 frames (10 seconds). Select a short range, then check the export. Source checks and rendering can still take time", "ja": "現在の書き出し設定で最大 300 フレーム（10 秒）の実際の MP4 を生成します。短い範囲を選択してから書き出しチェックを行ってください。素材の確認やレンダリングには時間がかかる場合があります"},
   "export.sample.select": {"zh-Hans": "选择播放头附近的短范围", "zh-Hant": "選擇播放頭附近的短範圍", "en": "Select a short range", "ja": "短い範囲を選択"},
   "export.sample.generate": {"zh-Hans": "生成试导出预览", "zh-Hant": "產生試導出預覽", "en": "Generate sample export", "ja": "試し書き出しを生成"},
   "export.sample.stale": {"zh-Hans": "设置、范围、已保存时间线或素材已变化。此结果已过期，请重新检查并生成", "zh-Hant": "設定、範圍、已儲存時間軸或素材已變更。此結果已過期，請重新檢查並產生", "en": "Settings, range, saved timeline or sources have changed. This result is stale; check and generate again", "ja": "設定、範囲、保存済みタイムライン、または素材が変更されました。この結果は古いため、再チェックして生成してください"},
   "export.sample.receipt": {"zh-Hans": "本次导出：{id}", "zh-Hant": "本次導出：{id}", "en": "This export: {id}", "ja": "今回の書き出し：{id}"},
-  "export.sample.retained": {"zh-Hans": "关闭播放器或离开面板不会取消导出。试导出会保留真实文件和导出记录；重开项目后请到导出记录查找", "zh-Hant": "關閉播放器或離開面板不會取消導出。試導出會保留真實檔案及導出記錄；重新開啟專案後請到導出記錄查找", "en": "Closing the player or leaving this panel does not cancel the export. The real file and export record are retained; find them in export history after reopening the project", "ja": "プレーヤーを閉じたりパネルを離れたりしても書き出しは取り消されません。実ファイルと履歴が残ります。プロジェクトを開き直した後は書き出し履歴で確認できます"},
   "export.sample.close": {"zh-Hans": "关闭播放器", "zh-Hant": "關閉播放器", "en": "Close player", "ja": "プレーヤーを閉じる"},
   "export.sample.reopen": {"zh-Hans": "重新打开播放器", "zh-Hant": "重新開啟播放器", "en": "Reopen player", "ja": "プレーヤーを開く"},
-  "export.sample.mediaError": {"zh-Hans": "无法播放此文件。请到导出记录下载并检查；不会自动重新导出", "zh-Hant": "無法播放此檔案。請到導出記錄下載並檢查；不會自動重新導出", "en": "This file could not be played. Download it from export history to inspect it; no export will be retried automatically", "ja": "このファイルを再生できません。書き出し履歴からダウンロードして確認してください。自動で再書き出しはしません"},
+  "export.sample.mediaError": {"zh-Hans": "无法播放样片", "zh-Hant": "無法播放樣片", "en": "The sample cannot play", "ja": "サンプルを再生できません"},
   "export.sample.phase.submitting": {"zh-Hans": "正在提交试导出…", "zh-Hant": "正在提交試導出…", "en": "Submitting sample export…", "ja": "試し書き出しを送信中…"},
   "export.sample.phase.queued": {"zh-Hans": "试导出正在排队…", "zh-Hant": "試導出正在排隊…", "en": "Sample export queued…", "ja": "試し書き出し待機中…"},
   "export.sample.phase.running": {"zh-Hans": "正在生成试导出文件…", "zh-Hant": "正在產生試導出檔案…", "en": "Rendering sample export…", "ja": "試し書き出しを処理中…"},
@@ -102,12 +100,6 @@ export const timelineDeliveryMessages = {
     "en": "No exports yet",
     "ja": "書き出し履歴はありません"
   },
-  "export.history.emptyHelp": {
-    "zh-Hans": "将媒体编排到时间线后导出，或为镜头选好版本后使用分镜导出",
-    "zh-Hant": "將媒體編排至時間軸後匯出，或為鏡頭選好版本後使用分鏡匯出",
-    "en": "Arrange media on the timeline and export, or choose shot versions and export the storyboard",
-    "ja": "メディアをタイムラインに配置して書き出すか、ショットのバージョンを選んで絵コンテを書き出してください"
-  },
   "export.history.title": {
     "zh-Hans": "时间线导出记录",
     "zh-Hant": "時間軸匯出記錄",
@@ -151,16 +143,10 @@ export const timelineDeliveryMessages = {
     "ja": "確認した書き出し名"
   },
   "export.name.placeholder": {
-    "zh-Hans": "留空使用默认文件名",
-    "zh-Hant": "留空使用預設檔名",
-    "en": "Leave blank for the default filename",
-    "ja": "空欄の場合は既定のファイル名を使用"
-  },
-  "export.name.help": {
-    "zh-Hans": "仅用于本次时间线导出；导出记录会保留此名称。留空沿用默认文件名，不会保存一个新名称",
-    "zh-Hant": "僅用於本次時間軸匯出；匯出記錄會保留此名稱。留空沿用預設檔名，不會儲存新名稱",
-    "en": "Used only for this timeline export; the export record retains this name. Leave blank to use the default filename without saving a new name",
-    "ja": "今回のタイムライン書き出しにのみ使用し、書き出し履歴にこの名前を保持します。空欄なら既定のファイル名を使い、新しい名前は保存しません"
+    "zh-Hans": "成片",
+    "zh-Hant": "成片",
+    "en": "Final cut",
+    "ja": "完成動画"
   },
   "export.name.invalid": {
     "zh-Hans": "请输入 1–120 个字符，不能只有空格，也不能包含换行或控制字符",
@@ -179,18 +165,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "成片交付",
     "en": "Delivery",
     "ja": "完成映像の出力"
-  },
-  "export.workspace.historyHelp": {
-    "zh-Hans": "每个文件使用创建时的固定快照。已命名成片保留原名称，后续修改不会覆盖旧文件",
-    "zh-Hant": "每個檔案使用建立時的固定快照。已命名成片保留原名稱，後續修改不會覆寫舊檔案",
-    "en": "Each file uses the snapshot fixed at creation. Named exports keep their original names; later edits do not overwrite old files",
-    "ja": "各ファイルには作成時に固定したスナップショットを使用します。名前付きの書き出しは元の名前を保持し、後の変更で古いファイルを上書きしません"
-  },
-  "export.workspace.composeHelp": {
-    "zh-Hans": "填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿",
-    "zh-Hant": "填寫本次名稱、檢查已儲存的時間軸，再確認匯出。切換至記錄不會清除草稿",
-    "en": "Enter a name, check the saved timeline, then confirm the export. Switching to history does not clear drafts",
-    "ja": "今回の名前を入力し、保存済みのタイムラインを確認してから書き出しを確定してください。履歴に切り替えても下書きは消えません"
   },
   "export.workspace.pages": {
     "zh-Hans": "成片交付页面",
@@ -246,12 +220,6 @@ export const timelineDeliveryMessages = {
     "en": "End frame (exclusive)",
     "ja": "終了フレーム（含まない）"
   },
-  "export.range.boundsHelp": {
-    "zh-Hans": "范围为左闭右开，至少 1 帧。开始帧从 0 起，结束帧不超过已保存时间线",
-    "zh-Hant": "範圍包含起點、不含終點，至少 1 影格。開始影格從 0 起，結束影格不可超過已儲存時間軸",
-    "en": "The range includes the start but excludes the end and must contain at least 1 frame. Start at frame 0 or later; the end cannot exceed the saved timeline",
-    "ja": "開始を含み終了を含まない範囲で、最低 1 フレーム必要です。開始は 0 フレーム以降、終了は保存済みタイムライン内にしてください"
-  },
   "export.range.unavailable": {
     "zh-Hans": "原范围信息不可用",
     "zh-Hant": "原範圍資訊無法使用",
@@ -263,12 +231,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "整段原時間軸",
     "en": "Entire original timeline",
     "ja": "元のタイムライン全体"
-  },
-  "export.range.help": {
-    "zh-Hans": "范围仅用于本次导出，不改变已保存时间线或编辑预览。未提交的范围不保存；重启或重新打开项目后请重新选择",
-    "zh-Hant": "範圍僅用於本次匯出，不會變更已儲存時間軸或編輯預覽。尚未提交的範圍不會儲存；重新啟動或重新開啟專案後請重新選擇",
-    "en": "This range applies only to this export, not the saved timeline or editing preview. Unsubmitted ranges are not saved; select again after restarting or reopening the project",
-    "ja": "範囲は今回の書き出しにのみ適用され、保存済みタイムラインや編集プレビューは変わりません。未送信の範囲は保存されないため、再起動やプロジェクトの再オープン後に選び直してください"
   },
   "export.range.invalid": {
     "zh-Hans": "请输入有效整数帧：开始帧不能小于 0，结束帧必须大于开始帧且不超过已保存时间线，至少选择 1 帧",
@@ -295,28 +257,16 @@ export const timelineDeliveryMessages = {
     "ja": "浮動小数点検査 v2 · エンコード前のサンプルピーク検査"
   },
   "export.settings.v2Help": {
-    "zh-Hans": "本次明确选择浮点 v2：完整检查编码前样本峰值；超过 1 则不生成成片，不会自动降增益。仍需测量导出文件，不能保证 AAC 真峰值或输出响度",
-    "zh-Hant": "本次明確選擇浮點 v2：完整檢查編碼前樣本峰值；超過 1 則不產生成片，不會自動降低增益。仍須測量匯出檔案，無法保證 AAC 真峰值或輸出響度",
-    "en": "Float v2 is explicitly selected for this export: it fully checks pre-encoding sample peaks. Peaks above 1 prevent output; gain is not reduced automatically. Measure the exported file too; AAC true peak and output loudness are not guaranteed",
-    "ja": "今回の書き出しでは浮動小数点 v2 を明示的に選択しています。エンコード前のサンプルピークを全体で検査し、1 を超える場合は出力せず、ゲインも自動で下げません。書き出したファイルの測定も必要です。AAC のトゥルーピークや出力ラウドネスは保証しません"
-  },
-  "export.settings.v1Help": {
-    "zh-Hans": "默认 v1 保持原有导出方式；浮点候选测量不代表 v1 成片响度。应用增益不会改选导出方式",
-    "zh-Hant": "預設 v1 維持原有匯出方式；浮點候選測量不代表 v1 成片響度。套用增益不會變更匯出方式",
-    "en": "Default v1 keeps the original export method. Float candidate measurements do not represent v1 output loudness. Applying gain does not change the export method",
-    "ja": "既定の v1 は従来の書き出し方法を維持します。浮動小数点候補の測定値は v1 出力のラウドネスではありません。ゲインを適用しても書き出し方法は変わりません"
+    "zh-Hans": "样本峰值超过 1 时会停止导出",
+    "zh-Hant": "樣本峰值超過 1 時會停止匯出",
+    "en": "Export stops if the sample peak exceeds 1",
+    "ja": "サンプルピークが 1 を超えると書き出しを停止します"
   },
   "export.settings.title": {
     "zh-Hans": "本次成片设置",
     "zh-Hant": "本次成片設定",
     "en": "Settings for this export",
     "ja": "今回の出力設定"
-  },
-  "export.settings.scope": {
-    "zh-Hans": "MP4 · H.264。仅用于本次导出，不更改时间线或编辑预览；重新打开项目后恢复默认",
-    "zh-Hant": "MP4 · H.264。僅用於本次匯出，不會變更時間軸或編輯預覽；重新開啟專案後恢復預設值",
-    "en": "MP4 · H.264. Applies only to this export, not the timeline or editing preview. Defaults return when you reopen the project",
-    "ja": "MP4 · H.264。今回の書き出しにのみ使用し、タイムラインや編集プレビューは変更しません。プロジェクトを開き直すと既定値に戻ります"
   },
   "export.settings.resolution": {
     "zh-Hans": "成片分辨率",
@@ -415,28 +365,10 @@ export const timelineDeliveryMessages = {
     "ja": "固定仕様"
   },
   "export.settings.upscaleHelp": {
-    "zh-Hans": "1080 短边会放大当前 720 短边合成，不增加原始画面细节。字幕随整幅画面缩放",
-    "zh-Hant": "1080 短邊會放大目前 720 短邊合成，不會增加原始畫面細節。字幕隨整幅畫面縮放",
-    "en": "A 1080 short edge upscales the current 720-short-edge composition without adding original detail. Subtitles scale with the whole image",
-    "ja": "短辺 1080 では現在の短辺 720 のコンポジションを拡大しますが、元の映像の細部は増えません。字幕は画面全体と一緒に拡大縮小されます"
-  },
-  "export.settings.bitrateHelp": {
-    "zh-Hans": "单遍编码的平均视频码率目标，不是严格带宽上限，也不保证文件大小",
-    "zh-Hant": "單次編碼的平均視訊位元率目標，並非嚴格的頻寬上限，也不保證檔案大小",
-    "en": "An average video bitrate target for single-pass encoding, not a strict bandwidth limit or a guarantee of file size",
-    "ja": "シングルパスエンコードの平均映像ビットレート目標です。厳密な帯域上限ではなく、ファイルサイズも保証しません"
-  },
-  "export.settings.crfHelp": {
-    "zh-Hans": "CRF 按画质编码，实际码率和文件大小随画面内容变化",
-    "zh-Hant": "CRF 依畫質編碼，實際位元率與檔案大小會隨畫面內容變化",
-    "en": "CRF encodes for quality; actual bitrate and file size vary with image content",
-    "ja": "CRF は画質を基準にエンコードします。実際のビットレートとファイルサイズは映像内容に応じて変わります"
-  },
-  "export.settings.previewHelp": {
-    "zh-Hans": "编辑预览始终使用原始合成尺寸与默认画质。检查或改选设置不会自动导出",
-    "zh-Hant": "編輯預覽一律使用原始合成尺寸與預設畫質。檢查或變更設定不會自動匯出",
-    "en": "Editing previews always use the original composition size and default quality. Checking or changing settings does not automatically export",
-    "ja": "編集プレビューは常に元のコンポジションサイズと既定の画質を使用します。設定の確認や変更だけでは自動で書き出しません"
+    "zh-Hans": "720 → 1080（短边）",
+    "zh-Hant": "720 → 1080（短邊）",
+    "en": "720 → 1080 (short edge)",
+    "ja": "720 → 1080（短辺）"
   },
   "recovery.common.unknown": {
     "zh-Hans": "未知",
@@ -744,12 +676,6 @@ export const timelineDeliveryMessages = {
     "en": "Local delivery draft and original export request",
     "ja": "出力のローカル下書きと元の書き出しリクエスト"
   },
-  "recovery.delivery.unsupportedHelp": {
-    "zh-Hans": "此恢复分支不读写交付草稿或原请求记录。现有的明确确认本机导出流程仍可使用",
-    "zh-Hant": "此還原分支不會讀寫交付草稿或原請求記錄。既有的明確確認本機匯出流程仍可使用",
-    "en": "This restored branch does not read or write delivery drafts or original request records. The existing explicitly confirmed local export flow remains available",
-    "ja": "この復元ブランチでは出力下書きや元のリクエスト記録を読み書きしません。明示的に確認する既存のローカル書き出し手順は引き続き利用できます"
-  },
   "recovery.delivery.savedName": {
     "zh-Hans": "已保存名称：",
     "zh-Hant": "已儲存名稱：",
@@ -779,12 +705,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "放棄已儲存名稱",
     "en": "Discard saved name",
     "ja": "保存済みの名前を破棄"
-  },
-  "recovery.delivery.choicesHelp": {
-    "zh-Hans": "以上选择只处理名称草稿，不会删除或取消原导出请求",
-    "zh-Hant": "以上選擇僅處理名稱草稿，不會刪除或取消原匯出請求",
-    "en": "These choices affect only the name draft, not deletion or cancellation of the original export request",
-    "ja": "これらの選択は名前の下書きのみを処理し、元の書き出しリクエストは削除もキャンセルもしません"
   },
   "recovery.delivery.rebase": {
     "zh-Hans": "明确改用于当前时间线，再检查",
@@ -871,22 +791,16 @@ export const timelineDeliveryMessages = {
     "ja": "元のリクエストと全パラメーターを表示"
   },
   "recovery.delivery.recoverHelp": {
-    "zh-Hans": "恢复只使用上方原编号、名称、范围与已保存参数，可能首次执行之前尚未提交的导出。不会改用当前名称或输出规格，也不会改用当前范围",
-    "zh-Hant": "還原僅使用上方原編號、名稱、範圍與已儲存參數，可能首次執行先前尚未提交的匯出。不會改用目前名稱、輸出規格或範圍",
-    "en": "Recovery uses only the original ID, name, range and saved parameters above. It may execute a previously unsubmitted export for the first time. It does not use the current name, output specifications or range",
-    "ja": "復元には上記の元の ID、名前、範囲、保存済みパラメーターのみを使用します。未送信だった書き出しを初めて実行する場合があります。現在の名前、出力仕様、範囲には切り替えません"
-  },
-  "recovery.delivery.acceptedHelp": {
-    "zh-Hans": "原请求回执已确认接受。是否完成渲染，请查看导出记录",
-    "zh-Hant": "原請求回執已確認接受。是否完成算繪，請查看匯出記錄",
-    "en": "The original request receipt confirms acceptance. Check export history to see whether rendering is complete",
-    "ja": "元のリクエストの受理を受領記録で確認しました。レンダリングが完了したかは書き出し履歴で確認してください"
+    "zh-Hans": "恢复可能会首次提交原导出",
+    "zh-Hant": "復原可能會首次提交原匯出",
+    "en": "Recovery may submit the original export for the first time",
+    "ja": "復元により元の書き出しが初めて送信されることがあります"
   },
   "recovery.delivery.notAppliedHelp": {
-    "zh-Hans": "原请求已确认未应用，不会再次重试同一请求。请核对当前名称后重新检查",
-    "zh-Hant": "原請求已確認未套用，不會再次重試同一請求。請核對目前名稱後重新檢查",
-    "en": "The original request is confirmed not applied and will not be retried again. Review the current name, then check again",
-    "ja": "元のリクエストは未適用と確認されたため、同じリクエストを再試行しません。現在の名前を確認してから、再度検査してください"
+    "zh-Hans": "原请求未应用",
+    "zh-Hant": "原請求未套用",
+    "en": "Original request not applied",
+    "ja": "元のリクエストは未適用です"
   },
   "recovery.delivery.recover": {
     "zh-Hans": "确认恢复同一原请求",
@@ -977,12 +891,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "儲存鏡頭需要 1–150 字元的有效標題，提示詞最多 5000 字元。原始輸入仍可儲存為本機草稿",
     "en": "Saving a shot requires a valid 1–150-character title and a prompt of at most 5000 characters. Raw input can still be saved in a local draft",
     "ja": "ショットを保存するには 1～150 文字の有効なタイトルが必要で、プロンプトは最大 5000 文字です。元の入力は引き続きローカル下書きに保存できます"
-  },
-  "recovery.text.unsupportedHelp": {
-    "zh-Hans": "此恢复分支不读写本地文字记录，现有镜头编辑与保存仍可使用",
-    "zh-Hant": "此還原分支不會讀寫本機文字記錄，既有鏡頭編輯與儲存仍可使用",
-    "en": "This restored branch does not read or write local text records. Existing shot editing and saving remain available",
-    "ja": "この復元ブランチはローカルのテキスト記録を読み書きしません。既存のショット編集と保存は引き続き利用できます"
   },
   "recovery.text.savedTitle": {
     "zh-Hans": "已保存标题：",
@@ -1147,10 +1055,10 @@ export const timelineDeliveryMessages = {
     "ja": "元のテキストリクエストの結果は確認待ちです"
   },
   "recovery.text.recoverHelp": {
-    "zh-Hans": "恢复只使用原编号与原文字，可能首次执行尚未提交的文字保存；不会改用当前输入，也不会生成镜头",
-    "zh-Hant": "還原僅使用原編號與原文字，可能首次執行尚未提交的文字儲存；不會改用目前輸入，也不會生成鏡頭",
-    "en": "Recovery uses only the original ID and text and may execute a previously unsubmitted save for the first time. It does not use current input or generate a shot",
-    "ja": "復元には元の ID とテキストのみを使用し、未送信の保存を初めて実行する場合があります。現在の入力に切り替えたり、ショットを生成したりはしません"
+    "zh-Hans": "恢复可能会首次提交原保存请求",
+    "zh-Hant": "復原可能會首次提交原儲存請求",
+    "en": "Recovery may submit the original save request for the first time",
+    "ja": "復元により元の保存リクエストが初めて送信されることがあります"
   },
   "recovery.text.recover": {
     "zh-Hans": "确认恢复同一原文字请求",
@@ -1159,16 +1067,16 @@ export const timelineDeliveryMessages = {
     "ja": "同一の元テキストリクエストの復元を確認"
   },
   "recovery.text.notAppliedHelp": {
-    "zh-Hans": "不会再次重试同一请求。当前输入仍保留，请核对后重新保存",
-    "zh-Hant": "不會再次重試同一請求。目前輸入仍保留，請核對後重新儲存",
-    "en": "The same request will not be retried again. Current input is retained; review it before saving again",
-    "ja": "同じリクエストを再試行しません。現在の入力は保持します。内容を確認してから保存し直してください"
+    "zh-Hans": "原请求未应用",
+    "zh-Hant": "原請求未套用",
+    "en": "Original request not applied",
+    "ja": "元のリクエストは未適用です"
   },
   "recovery.text.appliedHelp": {
-    "zh-Hans": "已刷新保存结果。恢复旧请求不会覆盖当前表单或继续生成",
-    "zh-Hant": "已重新整理儲存結果。還原舊請求不會覆寫目前表單或繼續生成",
-    "en": "The saved result has been refreshed. Recovering an old request does not overwrite the current form or continue generation",
-    "ja": "保存結果を更新しました。古いリクエストを復元しても、現在のフォームの上書きや生成の続行は行いません"
+    "zh-Hans": "原请求已应用",
+    "zh-Hant": "原請求已套用",
+    "en": "Original request applied",
+    "ja": "元のリクエストは適用済みです"
   },
   "recovery.storage.title": {
     "zh-Hans": "保存范围与容量说明",
@@ -1380,18 +1288,6 @@ export const timelineDeliveryMessages = {
     "en": "Local encoding capability",
     "ja": "ローカルのエンコード機能"
   },
-  "export.preflight.scopeTitle": {
-    "zh-Hans": "仅检查已保存的时间线快照",
-    "zh-Hant": "僅檢查已儲存的時間軸快照",
-    "en": "Checks only the saved timeline snapshot",
-    "ja": "保存済みタイムラインのスナップショットのみ確認"
-  },
-  "export.preflight.scope": {
-    "zh-Hans": "镜头、片段和源范围，以及输出规格的未保存修改均不包含在检查或本次导出中。检查不会保存或放弃草稿",
-    "zh-Hant": "鏡頭、片段、來源範圍與輸出規格的未儲存修改皆不包含在檢查或本次匯出中。檢查不會儲存或放棄草稿",
-    "en": "Unsaved changes to shots, clips, source ranges or output specifications are excluded from checks and this export. Checking does not save or discard drafts",
-    "ja": "ショット、クリップ、ソース範囲、出力仕様の未保存変更は、確認や今回の書き出しに含まれません。確認だけでは下書きの保存や破棄は行いません"
-  },
   "export.preflight.unsaved": {
     "zh-Hans": "有未保存修改，本次不包含；保存后请重新检查",
     "zh-Hant": "有未儲存修改，本次不包含；儲存後請重新檢查",
@@ -1411,28 +1307,16 @@ export const timelineDeliveryMessages = {
     "ja": "確認したスナップショット"
   },
   "export.preflight.empty": {
-    "zh-Hans": "已保存的时间线还没有片段，暂时无法导出。请先在剪辑里“从分镜建立时间线”，或把素材加入时间线",
-    "zh-Hant": "已儲存的時間軸尚無片段，暫時無法匯出。請先在剪輯中「從分鏡建立時間軸」，或將素材加入時間軸",
-    "en": "The saved timeline has no clips and cannot be exported yet. First build a timeline from the storyboard in the editor, or add assets to the timeline",
-    "ja": "保存済みタイムラインにクリップがないため、まだ書き出せません。編集画面で絵コンテからタイムラインを作成するか、素材をタイムラインに追加してください"
-  },
-  "export.preflight.idleHelp": {
-    "zh-Hans": "点击“检查本次设置”，先验证本机编码能力，再检查已保存的素材与时间线。打开面板不会开始检查",
-    "zh-Hant": "按下「檢查本次設定」，先驗證本機編碼能力，再檢查已儲存的素材與時間軸。開啟面板不會開始檢查",
-    "en": "Select “Check these settings” to verify local encoding capability, then check saved assets and the timeline. Opening the panel does not start checks",
-    "ja": "「今回の設定を確認」を押すと、ローカルのエンコード機能を検証してから保存済み素材とタイムラインを確認します。パネルを開くだけでは確認は始まりません"
+    "zh-Hans": "已保存的时间线为空",
+    "zh-Hant": "已儲存的時間軸為空",
+    "en": "The saved timeline is empty",
+    "ja": "保存済みのタイムラインが空です"
   },
   "export.preflight.stale": {
     "zh-Hans": "项目、时间线、成片名称、导出范围、成片设置或连接状态已变化。此报告不能用于导出，请重新检查",
     "zh-Hant": "專案、時間軸、成片名稱、匯出範圍、成片設定或連線狀態已變更。此報告不能用於匯出，請重新檢查",
     "en": "The project, timeline, export name, range, settings or connection has changed. This report cannot authorize export; check again",
     "ja": "プロジェクト、タイムライン、書き出し名、範囲、出力設定、または接続状態が変わりました。このレポートは書き出しに使用できません。再確認してください"
-  },
-  "export.preflight.oldHelp": {
-    "zh-Hans": "下方保留上次报告供参考，不能作为当前导出依据",
-    "zh-Hant": "下方保留上次報告供參考，不能作為目前匯出的依據",
-    "en": "The previous report is retained below for reference, not as the basis for the current export",
-    "ja": "以下に前回のレポートを参考として残していますが、今回の書き出しの根拠にはできません"
   },
   "export.preflight.attention": {
     "zh-Hans": "需要注意",
@@ -1524,29 +1408,17 @@ export const timelineDeliveryMessages = {
     "en": "Fixed font not yet verified",
     "ja": "固定フォントは未検証"
   },
-  "export.preflight.rangeScope": {
-    "zh-Hans": "范围只限定成片输出；仍会检查完整已保存时间线的全部引用素材，包括范围外素材",
-    "zh-Hant": "範圍僅限制成片輸出；仍會檢查整段已儲存時間軸的所有引用素材，包括範圍外素材",
-    "en": "The range limits only the output. All referenced assets across the entire saved timeline are still checked, including those outside the range",
-    "ja": "範囲が制限するのは出力のみです。範囲外の素材も含め、保存済みタイムライン全体で参照するすべての素材を確認します"
-  },
   "export.preflight.sourceScope": {
     "zh-Hans": "素材检查范围",
     "zh-Hant": "素材檢查範圍",
     "en": "Asset check scope",
     "ja": "素材の確認範囲"
   },
-  "export.preflight.limitedChecks": {
-    "zh-Hans": "有限额的文件状态、流式 SHA-256 与媒体探测检查。未进行完整解码，也不能保证检查后文件不再变化",
-    "zh-Hant": "有限額的檔案狀態、串流 SHA-256 與媒體探測檢查。未進行完整解碼，也無法保證檢查後檔案不再變更",
-    "en": "Bounded checks of file status, streaming SHA-256 and media probing. Files are not fully decoded, and may still change after checking",
-    "ja": "ファイル状態、ストリーミング SHA-256、メディア解析を上限付きで確認します。完全なデコードは行わず、確認後にファイルが変わらないことも保証しません"
-  },
   "export.preflight.incompleteWarning": {
-    "zh-Hans": "检查未完成，不代表通过",
-    "zh-Hant": "檢查未完成，不代表通過",
-    "en": "Incomplete checks do not mean checks passed",
-    "ja": "確認が未完了であり、合格したわけではありません"
+    "zh-Hans": "检查未完成",
+    "zh-Hant": "檢查未完成",
+    "en": "Checks incomplete",
+    "ja": "チェック未完了"
   },
   "export.preflight.tryBound": {
     "zh-Hans": "仍尝试导出可能失败，渲染进程会重新验证素材与快照",
@@ -1577,18 +1449,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "已發起一次匯出提交。請在工作或匯出記錄查看結果；此報告不代表匯出已完成",
     "en": "One export submission has been initiated. Check tasks or export history for its result; this report does not mean export is complete",
     "ja": "書き出しの送信を 1 回開始しました。結果はタスクまたは書き出し履歴で確認してください。このレポートは書き出し完了を意味しません"
-  },
-  "export.preflight.encodingScope": {
-    "zh-Hans": "本机编码检查会进行有限额的短时合成编码与 MP4 封装，测试输出仅留在内存中；后续素材预检为只读。均不创建成片任务",
-    "zh-Hant": "本機編碼檢查會進行有限額的短時間合成編碼與 MP4 封裝，測試輸出僅留在記憶體中；後續素材預檢為唯讀。兩者皆不建立成片工作",
-    "en": "Local encoding checks perform bounded, short synthetic encodes and MP4 muxing, with test output kept only in memory. Subsequent asset preflight checks are read-only. Neither creates an export task",
-    "ja": "ローカルのエンコード確認では、短い合成映像のエンコードと MP4 多重化を上限付きで行い、テスト出力はメモリ内にのみ保持します。その後の素材事前確認は読み取り専用です。いずれも書き出しタスクは作成しません"
-  },
-  "export.preflight.limits": {
-    "zh-Hans": "上限：100 个片段、12 条轨道、18000 帧。实际导出仍会重新验证；检查报告不是导出成功凭据",
-    "zh-Hant": "上限：100 個片段、12 條軌道、18000 影格。實際匯出仍會重新驗證；檢查報告不是匯出成功憑據",
-    "en": "Limits: 100 clips, 12 tracks and 18000 frames. Actual export still revalidates; a check report is not proof of export success",
-    "ja": "上限は 100 クリップ、12 トラック、18000 フレームです。実際の書き出し時にも再検証します。確認レポートは書き出し成功の証明ではありません"
   },
   "export.preflight.checkCapability": {
     "zh-Hans": "检查编码能力…",
@@ -1638,23 +1498,11 @@ export const timelineDeliveryMessages = {
     "en": "Exported file loudness and true peak",
     "ja": "書き出し済みファイルのラウドネスとトゥルーピーク"
   },
-  "audio.loudness.export.limitation": {
-    "zh-Hans": "仅对此导出文件作估算，不是标准认证、无削波证明或再次 AAC 编码的保证。建议不会修改音量",
-    "zh-Hant": "僅對此匯出檔案作估算，並非標準認證、無削波證明或再次 AAC 編碼的保證。建議不會修改音量",
-    "en": "An estimate for this exported file only, not standards certification, proof of no clipping or a guarantee for another AAC encode. Suggestions do not change volume",
-    "ja": "この書き出し済みファイルだけの推定値です。規格認証、クリッピングがない証明、AAC 再エンコードの保証ではありません。提案だけで音量は変更しません"
-  },
   "audio.loudness.peak.label": {
     "zh-Hans": "已导出文件解码样本峰值",
     "zh-Hant": "已匯出檔案解碼樣本峰值",
     "en": "Decoded sample peak of exported file",
     "ja": "書き出し済みファイルのデコード後サンプルピーク"
-  },
-  "audio.loudness.peak.limitation": {
-    "zh-Hans": "仅检查成片样本，不是响度或真峰值，也不能证明源音频或混音未削波",
-    "zh-Hant": "僅檢查成片樣本，並非響度或真峰值，也無法證明來源音訊或混音未削波",
-    "en": "Checks only output samples, not loudness or true peak. It cannot prove that source audio or the mix is free of clipping",
-    "ja": "出力サンプルのみを検査し、ラウドネスやトゥルーピークは測定しません。ソース音声やミックスにクリッピングがない証明にはなりません"
   },
   "audio.loudness.state.valid": {
     "zh-Hans": "可计算综合响度",
@@ -1685,12 +1533,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "自訂參考目標（選填）",
     "en": "Custom reference targets (optional)",
     "ja": "参照目標を指定（任意）"
-  },
-  "audio.loudness.target.optionalHelp": {
-    "zh-Hans": "两项留空仅测量；不预设平台标准",
-    "zh-Hant": "兩項留空則僅測量；不預設平台標準",
-    "en": "Leave both blank for measurement only; no platform standard is assumed",
-    "ja": "両方を空欄にすると測定のみ行います。プラットフォームの基準はあらかじめ設定しません"
   },
   "audio.loudness.target.lufs": {
     "zh-Hans": "目标响度（LUFS，−60 至 −5）",
@@ -1775,12 +1617,6 @@ export const timelineDeliveryMessages = {
     "zh-Hant": "所需增益超過參考真峰值餘量，兩個目標存在衝突",
     "en": "The required gain exceeds the reference true-peak headroom; the two targets conflict",
     "ja": "必要ゲインが参照トゥルーピークの余裕を超えており、2 つの目標が競合しています"
-  },
-  "audio.loudness.adviceHelp": {
-    "zh-Hans": "仅供参考，未验证当前时间线；未来如另行调整音量，须重新导出并测量",
-    "zh-Hant": "僅供參考，未驗證目前時間軸；日後若另行調整音量，須重新匯出並測量",
-    "en": "For reference only; the current timeline was not verified. If you later adjust volume separately, export and measure again",
-    "ja": "参考用であり、現在のタイムラインは検証していません。後で音量を別途変更した場合は、再度書き出して測定してください"
   },
   "audio.loudness.noAdvice": {
     "zh-Hans": "本次综合响度不可用，无法提供增益参考",
@@ -1932,18 +1768,6 @@ export const timelineDeliveryMessages = {
     "en": "Current full-timeline float mix and fixed-gain candidate",
     "ja": "現在のタイムライン全体の浮動小数点ミックスと固定ゲイン候補"
   },
-  "audio.loudness.mix.limitation": {
-    "zh-Hans": "仅测量当前已保存时间线的编码前浮点混音，不是已导出文件。准备测量不会修改音量或创建导出任务，应用须另行确认；不代表已实现逐段响度统一，也不保证 AAC 编码后的峰值",
-    "zh-Hant": "僅測量目前已儲存時間軸的編碼前浮點混音，並非已匯出檔案。準備測量不會修改音量或建立匯出工作，套用須另外確認；不代表已實現逐段響度一致，也不保證 AAC 編碼後的峰值",
-    "en": "Measures only the pre-encoding float mix of the currently saved timeline, not an exported file. Preparing measurement does not change volume or create an export task; applying requires separate confirmation. This does not provide per-clip loudness normalization or guarantee peaks after AAC encoding",
-    "ja": "現在保存済みのタイムラインのエンコード前の浮動小数点ミックスのみを測定し、書き出し済みファイルは測定しません。測定の準備では音量を変更せず、書き出しタスクも作成しません。適用は別途確認が必要です。クリップごとのラウドネス統一を実現するものではなく、AAC エンコード後のピークも保証しません"
-  },
-  "audio.loudness.mix.targetHelp": {
-    "zh-Hans": "请填写两个明确目标；不预设平台标准。真峰值比较额外预留 0.5 dB，准备结果保持只读，应用需另行核对确认",
-    "zh-Hant": "請填寫兩個明確目標；不預設平台標準。真峰值比較額外預留 0.5 dB，準備結果保持唯讀，套用須另外核對確認",
-    "en": "Enter both explicit targets; no platform standard is assumed. True-peak comparisons reserve an extra 0.5 dB. Prepared results remain read-only; applying requires a separate review and confirmation",
-    "ja": "2 つの目標値を明示的に入力してください。プラットフォームの基準はあらかじめ設定しません。トゥルーピーク比較には追加で 0.5 dB の余裕を設けます。準備結果は読み取り専用で、適用には別途確認が必要です"
-  },
   "audio.loudness.mix.prepare": {
     "zh-Hans": "准备并测量候选",
     "zh-Hant": "準備並測量候選",
@@ -2076,12 +1900,6 @@ export const timelineDeliveryMessages = {
     "en": "Check original request",
     "ja": "元のリクエストを確認"
   },
-  "audio.loudness.apply.limitation": {
-    "zh-Hans": "候选是整片编码前浮点混音，不是默认 v1 导出结果。应用只保存一组固定增益，可用一次撤销恢复；不会自动选择 v2 或导出，也不保证输出响度或 AAC 真峰值。需要明确选择浮点检查 v2 导出，再测量实际成片",
-    "zh-Hant": "候選是整片編碼前浮點混音，並非預設 v1 匯出結果。套用僅儲存一組固定增益，可透過一次復原還原；不會自動選擇 v2 或匯出，也不保證輸出響度或 AAC 真峰值。須明確選擇浮點檢查 v2 匯出，再測量實際成片",
-    "en": "The candidate is the full pre-encoding float mix, not the default v1 export result. Applying saves one set of fixed gains, reversible with one undo; it does not automatically select v2 or export, and does not guarantee output loudness or AAC true peak. Explicitly select float-check v2 export, then measure the actual output",
-    "ja": "候補は全体のエンコード前浮動小数点ミックスであり、既定の v1 書き出し結果ではありません。適用では 1 組の固定ゲインのみを保存し、1 回の取り消しで元に戻せます。v2 の自動選択や書き出しは行わず、出力ラウドネスや AAC のトゥルーピークも保証しません。浮動小数点検査 v2 を明示的に選んで書き出してから、実際の出力を測定してください"
-  },
   "export.history.storyboard": {
     "zh-Hans": {
       "one": "分镜顺序导出 · {count} 个镜头",
@@ -2119,10 +1937,10 @@ export const timelineDeliveryMessages = {
     "ja": "タイムライン書き出し · リビジョン {revision}{snapshot}"
   },
   "export.history.safeError": {
-    "zh-Hans": "此导出遇到问题，请核对原记录与当前状态",
-    "zh-Hant": "此匯出遇到問題，請核對原記錄與目前狀態",
-    "en": "This export encountered a problem. Check the original record and current status",
-    "ja": "この書き出しで問題が発生しました。元の記録と現在の状態を確認してください"
+    "zh-Hans": "导出失败",
+    "zh-Hant": "匯出失敗",
+    "en": "Export failed",
+    "ja": "書き出しに失敗しました"
   },
   "export.settings.rateTarget": {
     "zh-Hans": "平均目标 {rate} Mb/s",
@@ -2353,10 +2171,10 @@ export const timelineDeliveryMessages = {
     "ja": "推定トゥルーピーク {truePeak} · サンプルピーク {sample}"
   },
   "audio.loudness.mix.scope": {
-    "zh-Hans": "完整已保存时间线：第 0 帧至第 {end} 帧（不含）· 修订版 {revision}。始终测量整片，不使用本次所选导出范围",
-    "zh-Hant": "完整已儲存時間軸：第 0 影格至第 {end} 影格（不含）· 修訂版 {revision}。一律測量整片，不使用本次所選匯出範圍",
-    "en": "Entire saved timeline: frame 0 to {end} (exclusive) · revision {revision}. Always measures the full timeline, not the selected export range",
-    "ja": "保存済みタイムライン全体：フレーム 0～{end}（含まない）· リビジョン {revision}。常に全体を測定し、今回選択した書き出し範囲は使いません"
+    "zh-Hans": "完整已保存时间线 · 第 0 帧至第 {end} 帧（不含）· 修订版 {revision}",
+    "zh-Hant": "完整已儲存時間軸 · 第 0 影格至第 {end} 影格（不含）· 修訂版 {revision}",
+    "en": "Full saved timeline · frames 0 to {end} (exclusive) · revision {revision}",
+    "ja": "保存済みのタイムライン全体 · 0〜{end} フレーム（終端を除く）· リビジョン {revision}"
   },
   "audio.loudness.mix.target": {
     "zh-Hans": "本次目标：{lufs} LUFS · 上限 {peak} dBTP；额外预留 {margin} dB（应用参考余量）",
@@ -2923,28 +2741,28 @@ export const timelineDeliveryMessages = {
     "ja": "タイムラインまたは素材情報が変わりました。保存済みスナップショットを再確認してください"
   },
   "export.preflight.error.unauthorized": {
-    "zh-Hans": "会话已过期，请重新登录后重新检查",
-    "zh-Hant": "工作階段已過期，請重新登入後重新檢查",
-    "en": "Your session expired. Sign in again and recheck",
-    "ja": "セッションの有効期限が切れました。再ログインして再確認してください"
+    "zh-Hans": "会话已过期",
+    "zh-Hant": "工作階段已過期",
+    "en": "Session expired",
+    "ja": "セッションの有効期限が切れました"
   },
   "export.preflight.error.changed": {
-    "zh-Hans": "时间线已变化，请重新检查已保存的快照",
-    "zh-Hant": "時間軸已變更，請重新檢查已儲存快照",
-    "en": "The timeline changed. Check the saved snapshot again",
-    "ja": "タイムラインが変わりました。保存済みスナップショットを再確認してください"
+    "zh-Hans": "时间线已变化",
+    "zh-Hant": "時間軸已變更",
+    "en": "The timeline changed",
+    "ja": "タイムラインが変更されました"
   },
   "export.preflight.error.protocol": {
-    "zh-Hans": "检查响应不完整或与当前快照不匹配，请重新检查",
-    "zh-Hant": "檢查回應不完整，或與目前快照不符，請重新檢查",
-    "en": "The check response is incomplete or does not match the current snapshot. Check again",
-    "ja": "確認応答が不完全、または現在のスナップショットと一致しません。再確認してください"
+    "zh-Hans": "检查响应不完整或与当前快照不匹配",
+    "zh-Hant": "檢查回應不完整或與目前快照不符",
+    "en": "The check response is incomplete or mismatched",
+    "ja": "確認結果が不完全か現在のスナップショットと一致しません"
   },
   "export.preflight.error.failed": {
-    "zh-Hans": "检查未完成，请检查连接后重新检查",
-    "zh-Hant": "檢查未完成，請檢查連線後重新檢查",
-    "en": "Checks did not complete. Check the connection and try again",
-    "ja": "確認が完了しませんでした。接続を確認してやり直してください"
+    "zh-Hans": "检查未完成",
+    "zh-Hant": "檢查未完成",
+    "en": "Checks did not complete",
+    "ja": "チェックが完了しませんでした"
   },
   "export.preflight.issue.unknownError": {
     "zh-Hans": "素材或时间线检查未通过，请核对源素材与编排",
@@ -2995,10 +2813,10 @@ export const timelineDeliveryMessages = {
     "ja": "プロジェクト、タイムライン、またはエンコードツールが変わりました。再確認してください"
   },
   "export.preflight.capability.blocked": {
-    "zh-Hans": "当前项目或时间线不符合编码检查要求，请先核对已保存的编排",
-    "zh-Hant": "目前專案或時間軸不符合編碼檢查要求，請先核對已儲存編排",
-    "en": "The current project or timeline does not meet encoding-check requirements. Review the saved arrangement first",
-    "ja": "現在のプロジェクトまたはタイムラインがエンコード検査の要件を満たしていません。先に保存済みの配置を確認してください"
+    "zh-Hans": "编码检查条件未满足",
+    "zh-Hant": "編碼檢查條件未滿足",
+    "en": "Encoding check requirements not met",
+    "ja": "エンコードの確認条件を満たしていません"
   },
   "export.preflight.capability.unknown": {
     "zh-Hans": "本机编码能力尚未确认，请重新检查",

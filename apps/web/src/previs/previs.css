@@ -25,7 +25,6 @@
 .previs-inspector-readonly{display:flex;align-items:center;gap:5px}
 .previs-inspector-footer{display:flex;align-items:center;gap:var(--wb-space-2);padding:var(--wb-space-3);border-top:1px solid var(--wb-line-subtle)}
 .previs-saved{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:var(--wb-text-caption);color:var(--wb-text);white-space:nowrap}
-.previs-saved>span:last-child{color:var(--wb-muted);overflow:hidden;text-overflow:ellipsis}
 .previs-saved-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--wb-success)}
 .previs-saved[data-busy] .previs-saved-dot{background:var(--wb-warning)}
 .previs-inspector-keyframes{display:flex;flex-direction:column;gap:var(--wb-space-2);margin:0;padding:0;list-style:none}

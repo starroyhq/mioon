@@ -48,10 +48,11 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
     if (name === './i18n/I18nProvider.tsx') return {useI18n: () => ({t: (key: string) => `${locale}:${key}`})};
     if (name === './SettingsServicesLayout.tsx') return {useSettingsServicesPanel: () => ({selected: context === selected, pageVisible, active: context === selected && pageVisible})};
     if (name === '@mioon/ui/components/workbench-confirm') return {useConfirmation: () => () => confirmValue};
+    if (name === './icons.tsx') return {__esModule: true, default: 'Icon'};
     if (name === '@mioon/ui/components/button') return {Button: 'Button'};
     if (name === '@mioon/ui/components/input') return {Input: 'input'};
     if (name === '@mioon/ui/components/textarea') return {Textarea: 'textarea'};
-    if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select'};
+    if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select', WorkbenchTooltip: 'WorkbenchTooltip'};
     if (name === './VideoProviderSettings.tsx') return {ModelEditor: 'ModelEditor'};
     if (name === './ModelPickerDialog.tsx') return {__esModule: true, default: 'ModelPickerDialog'};
     if (name.endsWith('.css')) return {};

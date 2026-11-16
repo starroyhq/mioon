@@ -41,7 +41,7 @@ export function useClipRemoval(options: Options) {
   const dialog = <Dialog open={valid} onOpenChange={open => {if (!open && !inFlight.current) setPending(null);}}>
     <DialogContent className="clip-remove-dialog" showCloseButton={false}>
       <div className="clip-remove-title"><AlertTriangle size={18} /><DialogTitle>{t(mode === 'ripple' ? 'edit.remove.rippleTitle' : 'edit.remove.title', {name: options.clip?.name || t('timeline.view.mediaClip')})}</DialogTitle></div>
-      <DialogDescription>{t(mode === 'ripple' ? 'edit.remove.rippleDetail' : 'edit.remove.detail', {frames: options.clip?.durationFrames || 0})}</DialogDescription>
+      {mode === 'ripple' && <DialogDescription>{t('edit.remove.rippleDetail', {frames: options.clip?.durationFrames || 0})}</DialogDescription>}
       <div className="clip-remove-actions"><Button variant="outline" disabled={submitting} onClick={() => setPending(null)}>{t('edit.remove.cancel')}</Button><Button className="clip-remove-confirm" data-testid="confirm-clip-removal" disabled={!valid || submitting} onClick={() => {void submit();}}>{t(mode === 'ripple' ? 'edit.remove.ripple' : 'edit.remove.action')}</Button></div>
     </DialogContent>
   </Dialog>;

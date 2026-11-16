@@ -18,5 +18,5 @@ export const comparisonMessages = {
   'comparison.player': { 'zh-Hans': '{label} 侧，版本 {number}', 'zh-Hant': '{label} 側，版本 {number}', en: 'Side {label}, version {number}', ja: '{label} 側、バージョン {number}' },
   'comparison.hash': { 'zh-Hans': 'SHA-256：{hash}', 'zh-Hant': 'SHA-256：{hash}', en: 'SHA-256: {hash}', ja: 'SHA-256: {hash}' },
   'comparison.hashBoundary': { 'zh-Hans': '此摘要匹配已保存的版本与素材记录；播放时不会重新计算整个文件摘要', 'zh-Hant': '此摘要符合已儲存的版本與素材記錄；播放時不會重新計算整個檔案摘要', en: 'This hash matches saved version and asset records; playback does not rehash the whole file', ja: 'このハッシュは保存済みのバージョンと素材の記録に一致します。再生時にファイル全体を再ハッシュしません' },
-  'comparison.mediaError': { 'zh-Hans': '无法播放这个固定素材。不会改用其他版本', 'zh-Hant': '無法播放這個固定素材。不會改用其他版本', en: 'This fixed media could not be played. No other version will be substituted', ja: 'この固定素材を再生できません。別のバージョンには切り替えません' },
+  'comparison.mediaError': { 'zh-Hans': "无法播放固定素材", 'zh-Hant': "無法播放固定素材", en: "Pinned media cannot play", ja: "固定素材を再生できません" },
 } as const satisfies MessageCatalog;

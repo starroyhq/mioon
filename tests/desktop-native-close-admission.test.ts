@@ -798,8 +798,8 @@ test('main captures incident-bound recovery before asking and discloses possible
   assert.ok(coordinator.indexOf('options.capture(window)') < coordinator.indexOf('await options.prompt(window)'));
   assert.ok(coordinator.indexOf('recovery.claimPrompt()') < coordinator.indexOf('await options.prompt(window)'));
   assert.ok(recovery.includes("detail: nt('native.rendererDetail')"));
-  assert.match(nativeText('native.rendererDetail'), /未保存的输入可能已经丢失/);
-  assert.match(nativeText('native.rendererDetail'), /不会重新提交任务或生成请求/);
+  assert.match(nativeText('native.rendererDetail'), /未保存的输入可能已丢失/);
+  assert.ok(recovery.includes("buttons: [nt('native.reload'), nt('native.quitApplication'), nt('native.keepWindow')]"));
   assert.match(coordinator, /if \(result === 0\) await recovery\.reload\(\)/);
 });
 

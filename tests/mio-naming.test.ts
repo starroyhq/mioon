@@ -37,11 +37,11 @@ test('Mio wording distinguishes execution from the background task center and re
   }
   for (const locale of LOCALES) {
     assert.notEqual(translate(locale, 'agent.task.history'), translate(locale, 'redesign.tasks.search'));
-    assert.ok(translate(locale, 'agent.task.unknown').length > 20);
-    assert.ok(translate(locale, 'agent.task.editingDiscardConfirm').includes('Mio'));
+    assert.ok(translate(locale, 'agent.task.unknown').trim());
+    assert.match(translate(locale, 'agent.task.editingDiscardConfirm'), /[？?]$/u);
   }
-  assert.match(translate('zh-Hans', 'agent.task.waitReconcile'), /任务中心/);
-  assert.match(translate('zh-Hans', 'agent.task.paidReconcile'), /任务中心/);
+  assert.equal(translate('zh-Hans', 'agent.task.waitReconcile'), '生成结果待核对');
+  assert.equal(translate('zh-Hans', 'agent.task.paidReconcile'), '生成结果待核对');
   assert.match(translate('en', 'redesign.tasks.search'), /tasks/);
   assert.deepEqual(validateCatalogs(agentTaskMessages), []);
 });

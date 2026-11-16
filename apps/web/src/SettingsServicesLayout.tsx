@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
+import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import './SettingsServicesLayout.css';
 
 export interface SettingsServicesAction {
@@ -34,7 +35,6 @@ export interface SettingsServicesFooter {
 }
 export interface SettingsServicesLayoutProps {
   title: string;
-  description?: string;
   groups: readonly SettingsServicesGroup[];
   selectedKey: string;
   onSelect: (key: string) => void;
@@ -104,7 +104,7 @@ export default function SettingsServicesLayout(props: SettingsServicesLayoutProp
   const focusKey = available.find(item => item.key === props.selectedKey)?.key ?? available[0]?.key;
   return <section className={`settings-services-layout${props.className ? ` ${props.className}` : ''}`} hidden={!props.pageVisible} inert={!props.pageVisible}
     aria-label={props.title} data-testid={props.testId ?? 'settings-services-layout'}>
-    <header className="settings-services-heading"><h2>{props.title}</h2>{props.description && <p>{props.description}</p>}</header>
+    <header className="settings-services-heading"><h2>{props.title}</h2></header>
     <div className="settings-services-layout-body">
       <nav className="settings-services-navigation" aria-label={props.title}>
         <div className="settings-services-groups" role="tablist" aria-orientation="vertical" aria-label={props.title}>
@@ -129,9 +129,12 @@ export default function SettingsServicesLayout(props: SettingsServicesLayoutProp
       <div className="settings-services-panels">
         {props.panels.map(panel => {
           const selected = panel.key === props.selectedKey;
+          const active = selected && props.pageVisible;
           return <section key={panel.key} id={panelId(panel.key)} role="tabpanel" aria-labelledby={tabId(panel.key)}
-            hidden={!selected} inert={!selected || !props.pageVisible} className="settings-services-panel" data-service-panel={panel.key}>
-            <PanelVisibility.Provider value={{ selected, pageVisible: props.pageVisible, active: selected && props.pageVisible }}>{panel.content}</PanelVisibility.Provider>
+            hidden={!selected} inert={!active} className="settings-services-panel" data-service-panel={panel.key}>
+            <WorkspaceVisibilityProvider visible={active}>
+              <PanelVisibility.Provider value={{ selected, pageVisible: props.pageVisible, active }}>{panel.content}</PanelVisibility.Provider>
+            </WorkspaceVisibilityProvider>
           </section>;
         })}
       </div>

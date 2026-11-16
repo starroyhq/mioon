@@ -2,7 +2,8 @@ import React, {useRef} from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
-import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
+import { Info, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import type {ProjectOpenIssue} from './project-open-issue.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import { fileNameOf, revealLabelKey, stemOf } from './format.ts';
@@ -69,7 +70,7 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
   };
   const close = (label: string, primary = false) =>
     <WorkbenchButton key="close" variant={primary ? 'primary' : 'secondary'} data-testid="pf-open-close" disabled={locked} onClick={() => {const next = current.current; if (!next.interactionBlocked && next.open && next.action.kind !== 'working' && next.action.kind !== 'unknown') next.onClose();}}>{label}</WorkbenchButton>;
-  let title: string, body: ReactNode, buttons: ReactNode;
+  let title: ReactNode, body: ReactNode, buttons: ReactNode;
   switch (failure.code) {
     case 'PROJECT_MISSING':
       title = t('projectFile.open.missing.title', { name });
@@ -81,7 +82,6 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       break;
     case 'PROJECT_LOCKED':
       title = t('projectFile.open.locked.title', { name });
-      body = t('projectFile.open.locked.body');
       buttons = close(t('projectFile.open.locked.ok'), true);
       break;
     case 'PROJECT_FORMAT_NEWER': {
@@ -98,10 +98,9 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
       title = t('projectFile.open.invalid.title', { file: failure.projectFile ? fileNameOf(failure.projectFile) : name });
       if (failure.reason === 'read-only') {
         title = t('projectFile.open.readOnly.title', {name});
-        body = t('projectFile.open.readOnly.body');
         buttons = <>{close(t('common.close'), !props.onReveal && !props.onCopyTo)}{run('reveal', t(revealLabelKey(props.platform)), props.onReveal, !props.onCopyTo)}{run('copyTo', t('projectFile.open.copyTo'), props.onCopyTo, true)}</>;
       } else {
-        body = t(props.onRestoreBackup ? 'projectFile.open.invalid.bodyWithBackup' : 'projectFile.open.invalid.body');
+        body = t('projectFile.open.invalid.body');
         buttons = <>{close(t('common.close'), !props.onRestoreBackup)}{props.onRestoreBackup && run('restore', t('projectFile.open.invalid.restore'), props.onRestoreBackup, true)}</>;
       }
       break;
@@ -120,16 +119,18 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
     }
     case 'PROJECT_ACCESS_DENIED': {
       const creating = 'context' in failure && failure.context === 'create';
-      title = t('projectFile.open.access.title', {name});
-      body = <span className="pf-open-access"><span>{t(props.platform === 'mac' ? 'projectFile.open.access.mac' : 'projectFile.open.access.system')}</span>
-        {props.platform === 'mac' && <span role="list"><span role="listitem">{t('projectFile.open.access.macSettings')}</span><span role="listitem">{t('projectFile.open.access.folder')}</span></span>}
-        <span>{t(creating ? 'projectFile.open.access.choose' : 'projectFile.open.access.retry')}</span></span>;
+      const label = t('projectFile.open.access.title', {name});
+      const details = `${t('projectFile.open.access.macSettings')} ${t('projectFile.open.access.folder')}`;
+      title = props.platform === 'mac' ? <>{label} <WorkbenchTooltip content={details}>
+        <WorkbenchButton type="button" variant="icon" size="compact" className="pf-info" aria-label={t('shell.details')}><Info size={14} /></WorkbenchButton>
+      </WorkbenchTooltip></> : label;
+      body = t(props.platform === 'mac' ? 'projectFile.open.access.mac' : 'projectFile.open.access.system');
       buttons = <><span className="pf-open-system-action">{run('systemSettings', t('projectFile.open.access.settings'), props.onOpenSystemSettings)}</span>{close(t(creating ? 'common.cancel' : 'common.close'))}
         {creating ? run('chooseLocation', t('projectFile.open.access.otherLocation'), props.onChooseLocation, true) : run('retry', t('projectFile.common.retry'), props.onRetry, true)}</>;
       break;
     }
     case 'NETWORK_LOCATION':
-      title = t('projectFile.open.network.title', {name}); body = t('projectFile.open.network.body');
+      title = t('projectFile.open.network.title', {name});
       buttons = <>{close(t('common.close'), !props.onCopyTo)}{run('copyTo', t('projectFile.open.copyTo'), props.onCopyTo, true)}</>;
       break;
     case 'OPEN_UNAVAILABLE':

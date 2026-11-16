@@ -4,6 +4,7 @@ import { Dialog } from '@mioon/ui/components/dialog';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Check } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import { PROJECT_RULES_FILE } from '../../../../packages/contracts/src/project-file.ts';
 import { rulesTextProblem } from '../../../../packages/contracts/src/mio-rules.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
@@ -76,7 +77,9 @@ export function ProjectRulesDialog(props: ProjectRulesDialogProps): ReactElement
     ? <WorkbenchButton variant="primary" data-testid="pf-rules-enable" loading={saving && save.action === 'enable'} disabled={locked || props.conflict || problem !== null} onClick={props.onEnable}>{t(dirty ? 'projectFile.rules.saveAndEnable' : 'projectFile.rules.enable')}</WorkbenchButton>
     : <WorkbenchButton variant="primary" data-testid="pf-rules-save" loading={saving && save.action === 'save'} disabled={ready === null || locked || props.conflict || !dirty || problem !== null} onClick={props.onSave}>{t('projectFile.rules.save')}</WorkbenchButton>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !saving) props.onClose(); }}>
-    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={t('projectFile.rules.title')} description={t('projectFile.rules.description', file)} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
+    <WorkbenchDialogContent inert={props.interactionBlocked||undefined} title={<>{t('projectFile.rules.title')} <WorkbenchTooltip content={t('projectFile.rules.description', file)}>
+      <WorkbenchButton type="button" variant="icon" size="compact" className="pf-info" aria-label={t('shell.details')} data-testid="pf-rules-privacy"><Icon name="info" size={14} /></WorkbenchButton>
+    </WorkbenchTooltip></>} className="pf-dialog pf-rules-dialog" data-testid="pf-rules-dialog" showCloseButton={!saving}
       footer={<>
         <div className="pf-footer-note pf-rules-file">
           <span className="pf-rules-path"><Icon name="note" size={14} /><span className="pf-mono" data-testid="pf-rules-path">{displayPath(props.path, props.homeDirectory)}</span>{status}</span>

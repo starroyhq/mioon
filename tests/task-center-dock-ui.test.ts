@@ -61,17 +61,16 @@ test('actual TaskCenter renders an inline named dock with keyboard-scrollable bo
     assert.match(html, /<section class="task-workspace" data-testid="task-workspace" aria-labelledby="task-workspace-heading"/);
     assert.match(html, /<h2 id="task-workspace-heading">任务中心<\/h2>/);
     assert.match(html, /class="task-workspace-body"[^>]*role="region"[^>]*aria-label="任务记录"[^>]*tabindex="0"/);
-    assert.match(html, /<footer class="task-workspace-note">/);
+    assert.doesNotMatch(html, /task-workspace-note|刷新或重启不会重复提交/);
     assert.doesNotMatch(html, /role="dialog"|aria-modal=|data-slot="dialog|jobs-drawer|关闭任务中心|drawer-backdrop/);
   }
-  assert.match(rendered.empty, /没有待确认的本地编辑请求/); assert.match(rendered.empty, /还没有生成任务/);
+  assert.match(rendered.empty, /没有待确认的本地编辑请求/); assert.match(rendered.empty, /暂无任务/);
   assert.match(rendered.normal, /1 个任务正在处理/);
   assert.match(rendered.normal, /data-slot="button"/); assert.match(rendered.normal, /data-slot="input"/);
   assert.match(rendered.normal, /服务商可能已接受任务并计费/);
   assert.match(rendered.normal, /<details[^>]*data-testid="recovery-task-storage-disclosure"/);
   assert.match(rendered.normal, /<summary data-text-selectable="false">保存范围与容量说明<\/summary>/);
   assert.ok(rendered.normal.indexOf('recovery-task-storage-disclosure') > rendered.normal.indexOf('task-workspace-body'));
-  assert.ok(rendered.normal.indexOf('recovery-task-storage-disclosure') < rendered.normal.indexOf('task-workspace-note'));
   assert.match(rendered.hidden, /id="right-dock-tasks"[^>]*hidden=""[^>]*inert=""[^>]*aria-hidden="true"/);
   assert.match(rendered.hidden, /exact-original-request-2/);
 });
@@ -98,6 +97,7 @@ function harness(languageStore?: Parameters<typeof creationTestDependency>[1]) {
     const i18nDependency = creationTestDependency(name, languageStore); if (i18nDependency) return i18nDependency;
       if (name === 'react') return react;
       if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => h.visible };
+      if (name === './WorkspaceControls.tsx') return { WorkbenchTooltip: 'WorkbenchTooltip' };
       if (name === './TaskWorkspace.css') return {};
       if (['./TaskWorkspace.tsx', './PendingSubmission.tsx', './RecoveryStorageDetails.tsx', './TaskRenderList.tsx'].includes(name)) return load(name.slice(2));
       const business = { '@mioon/contracts': contracts, './api.ts': api, './submissions.ts': submissions, './mutation-submissions.ts': mutations, './edit-task-client.ts': editTasks, './reference-connections.ts': references };
@@ -395,7 +395,7 @@ test('task list and details scroll independently while narrow docks wrap and ret
   const css = read('TaskWorkspace.css');
   assert.match(css, /\.task-workspace\{[^}]*min-width:0[^}]*min-height:0[^}]*overflow:hidden/);
   assert.match(css, /\.task-workspace-heading\{[^}]*flex:none/);
-  assert.match(css, /\.task-workspace-note\{[^}]*flex:none/);
+  assert.doesNotMatch(css, /\.task-workspace-note/);
   assert.match(css, /\.task-workspace-body\{[^}]*min-width:0[^}]*min-height:0[^}]*overflow:auto[^}]*overscroll-behavior:contain[^}]*overflow-wrap:anywhere/);
   assert.match(css, /\.task-workspace \.job-actions\{[^}]*flex-wrap:wrap/);
   assert.match(css, /\.task-workspace \.job-title strong\{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
@@ -498,7 +498,7 @@ test('unknown durable edits keep mark-failed in the same footer as exact-request
 test('task identifier copy uses the real clipboard result and exposes failures without changing task state', async () => {
   const h=harness(),uncertain={...job(11,'submission_unknown'),requestId:'original-generation-request'},prior=Object.getOwnPropertyDescriptor(navigator,'clipboard'),writes: unknown[]=[];
   try {Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async (value: unknown)=>{writes.push(value);}}});let tree=h.render({jobs:[uncertain]});await (find(tree,'task-copy-id'))!.props.onClick();tree=h.render({jobs:[uncertain]});assert.deepEqual(writes,[uncertain.id]);assert.match(text(find(tree,'task-copy-result')),/已复制/);
-    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied');}}});await (find(tree,'task-copy-id'))!.props.onClick();tree=h.render({jobs:[uncertain]});assert.match(text(find(tree,'task-copy-result')),/复制失败/);assert.deepEqual((h.calls as unknown),[]);
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied');}}});await (find(tree,'task-copy-id'))!.props.onClick();tree=h.render({jobs:[uncertain]});assert.equal(text(find(tree,'task-copy-result')),'无法复制任务 ID');assert.deepEqual((h.calls as unknown),[]);
   } finally {if(prior)Object.defineProperty(navigator,'clipboard',prior);else delete (navigator as unknown as {clipboard?: Clipboard}).clipboard;}
 });
 

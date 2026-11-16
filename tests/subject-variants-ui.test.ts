@@ -565,7 +565,7 @@ test('a batch row shows progress and every reason it cannot be undone yet', () =
   assert.deepEqual(nodes(byId(tree, `subject-variant-blocked-${batch.id}`)!).filter(node => node.type === 'p').map(text), ['暂时不能撤销本批', '右 · 广角 还在生成，完成后再撤销', '俯拍 的结果未知，先到任务中心核对',
     'V2 已被镜头 02 霓虹特写 选用，先在镜头里换成别的版本', 'V2 已被镜头选用，先在镜头里换成别的版本', 'V2 已用于生成视频，不能撤销这批', 'V2 是另一批的源图，先撤销那一批']);
   assert.match(text(tree), /图片队列已满，这张没有提交/);
-  assert.match(text(tree), /不会自动重发，请到任务中心核对原请求/);
+  assert.match(text(tree), /原请求结果未确认/);
   click(byId(tree, `subject-variant-tasks-${batch.id}`)); assert.equal(tasks, 1);
   click(byId(tree, `subject-variant-reread-${batch.id}`)); assert.deepEqual(fake.named('readBatch'), [['readBatch', batch.id]]);
   assert.equal(byId(tree, `subject-variant-continue-${batch.id}`), undefined, 'nothing is waiting to be submitted');

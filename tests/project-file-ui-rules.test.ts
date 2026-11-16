@@ -27,7 +27,8 @@ test('12-12 trusted rules: byte count, path, "enabled" and save', () => {
   assert.equal(label(page, 'pf-rules-save'), text('projectFile.rules.save'));
   assert.equal(disabled(tagOf(page, 'pf-rules-save')), false);
   assert.equal(tagOf(page, 'pf-rules-enable'), null);
-  assert.ok(page.includes(text('projectFile.rules.description', { file: 'AGENTS.md' })));
+  assert.ok(tagOf(page, 'pf-rules-privacy'));
+  assert.ok(!page.includes(text('projectFile.rules.description', { file: 'AGENTS.md' })));
 });
 
 test('12-12 untrusted rules offer "enable", never "enabled"; with edits "save and enable"', () => {

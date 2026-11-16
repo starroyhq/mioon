@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Clapperboard, Film, Image, Info, Layers, RotateCcw, Sparkles, User } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import type { ProjectVersionSummary } from '../../../../packages/contracts/src/project-versions.ts';
 import type { MessageDescriptor } from '../../../../packages/i18n/src/index.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
@@ -138,7 +139,7 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
   else body = <div className="pf-versions-body">
     <nav className="pf-versions-list" aria-label={t('projectFile.versions.title')}>
       {days.map(day => <section key={day.key} className="pf-versions-day"><h3>{day.label}</h3><ul>{day.items.map(row)}</ul></section>)}
-      {list.length === 0 && <div className="pf-versions-empty" data-testid="pf-versions-empty"><strong>{t('projectFile.versions.emptyTitle')}</strong><p>{t('projectFile.versions.emptyBody')}</p></div>}
+      {list.length === 0 && <div className="pf-versions-empty" data-testid="pf-versions-empty"><strong>{t('projectFile.versions.emptyTitle')}</strong></div>}
     </nav>
     <section className="pf-version-detail" data-testid="pf-version-detail">
       <h3 className="pf-version-detail-title">{chosen ? versionTitle(t, chosen, now) : t('projectFile.versions.current')}</h3>
@@ -146,10 +147,9 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
         <span>{display.when(chosen.summary.createdAt, now, true)}</span><span>{t(`projectFile.versions.source.${chosen.summary.trigger}`)}</span>
         {chosen.conversationTitle && <span>{t('projectFile.versions.conversation', { title: chosen.conversationTitle })}</span>}
       </> : <span>{t('projectFile.versions.currentDetail')}</span>}</p>
-      {isCurrent ? <p className="pf-help">{t('projectFile.versions.currentHint')}</p> : <>
+      {!isCurrent && <>
         <h4 className="pf-version-compare-title">{t('projectFile.versions.compareTitle')}</h4>
         {props.detail ?? compared}
-        <p className="pf-version-note"><Info size={14} aria-hidden="true" />{t('projectFile.versions.restoreNote')}</p>
       </>}
       <div className="pf-version-actions">
         {props.onCompare && <WorkbenchButton data-testid="pf-version-compare" disabled={isCurrent} onClick={props.onCompare}>{t('projectFile.versions.compareCurrent')}</WorkbenchButton>}
@@ -158,7 +158,9 @@ export function VersionHistoryDialog(props: VersionHistoryDialogProps): ReactEle
     </section>
   </div>;
   return <Dialog open={props.open} onOpenChange={next => { if (!next && !props.interactionBlocked) props.onClose(); }}>
-    <WorkbenchDialogContent ref={props.contentRef} inert={props.interactionBlocked||undefined} title={props.title ?? t('projectFile.versions.title')} description={props.subtitle ?? t('projectFile.versions.subtitle', { name: props.projectName })} size="large"
+    <WorkbenchDialogContent ref={props.contentRef} inert={props.interactionBlocked||undefined} title={<>{props.title ?? t('projectFile.versions.title')} <WorkbenchTooltip content={t('projectFile.versions.subtitle', {name: props.projectName})}>
+      <WorkbenchButton type="button" variant="icon" size="compact" className="pf-info" aria-label={t('shell.details')}><Info size={14} aria-hidden="true" /></WorkbenchButton>
+    </WorkbenchTooltip></>} description={props.subtitle ?? props.projectName} size="large"
       className="pf-dialog pf-versions-dialog" data-testid="pf-versions-dialog" footer={props.footerNote ?? <p className="pf-footer-note" data-testid="pf-versions-retention">{t('projectFile.versions.retention', props.retention)}</p>}>
       {props.onSaveVersion && <WorkbenchButton ref={props.saveButtonRef} className="pf-versions-save" data-testid="pf-versions-save" onClick={props.onSaveVersion}><ProjectFileIcon name="bookmarkPlus" size={14} />{t('projectFile.menu.saveVersion')}</WorkbenchButton>}
       {props.toolbar}

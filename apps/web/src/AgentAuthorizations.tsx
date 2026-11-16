@@ -1,3 +1,4 @@
+import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import {measureSettingsRead} from './settings-diagnostics.ts';
 import React,{useEffect,useRef,useState} from 'react';
 import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
@@ -39,7 +40,7 @@ export default function AgentAuthorizations({visible=true}:{visible?:boolean}){
     finally{pending.current=false;}
   }
   return <section className="mio-settings-section" data-testid="agent-authorizations" aria-busy={busy}>
-    <header className="mio-settings-section-head"><h2>{t('agent.authorization.listTitle')}</h2><p>{t('mio.settings.authorizations.description')}</p></header>
+    <header className="mio-settings-section-head"><h2>{t('agent.authorization.listTitle')}<WorkbenchTooltip content={t('mio.settings.authorizations.description')}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></h2></header>
     {failed&&<div className="mio-settings-notice" role="alert" data-testid="agent-authorizations-error"><span data-text-selectable>{t('agent.authorization.error')}</span><WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-authorizations-refresh" disabled={!visible||busy} onClick={()=>{void load();}}>{t('agent.authorization.refresh')}</WorkbenchButton></div>}
     {data&&<>{data.authorizations.length?<ul className="mio-settings-grants">{data.authorizations.map(grant=><li key={grant.id} className="mio-settings-grant" data-testid="agent-authorization-target">
       <Icon name="link" size={16} />

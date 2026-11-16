@@ -39,6 +39,5 @@ export default function ExportSamplePeak({ exportId, samplePeak }: ExportSampleP
         <details><summary>{t('audio.loudness.peak.details')}</summary><p>{t('audio.loudness.exportId')}{ready.exportId}<br />{t('audio.loudness.assetId')}{ready.artifact.assetId}<br />SHA-256：{ready.artifact.sha256}<br />{t('audio.loudness.frozenRevision', { revision: ready.artifact.timelineRevision })}<br />{t('audio.loudness.peak.linear', { overall: formatNumber(ready.measurement.peakLinear), left: formatNumber(ready.measurement.channelPeaks[0].peakLinear), right: formatNumber(ready.measurement.channelPeaks[1].peakLinear) })}<br />{t('audio.loudness.sampleFrames', { frames: formatNumber(ready.measurement.sampleFrames) })}</p></details>
       </> : status ? <p data-testid="export-sample-peak-not-ready">{status}</p> : busy ? <p>{t('audio.loudness.peak.another')}</p> : !state.connected ? <p>{t('audio.loudness.peak.reconnect')}</p> : null}
     </div>
-    <p className="export-sample-peak-limitation">{t('audio.loudness.peak.limitation')}</p>
   </section>;
 }
