@@ -132,6 +132,12 @@
   background: var(--wb-input);
 }
 .model-picker-name { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.model-picker-name > .model-picker-retirement {
+  display: flex;
+  width: fit-content;
+  margin-block-start: 4px;
+  white-space: normal;
+}
 .model-picker-row-state {
   flex: none;
   margin-inline-start: auto;

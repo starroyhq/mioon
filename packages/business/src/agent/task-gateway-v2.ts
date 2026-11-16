@@ -2,7 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {agentOpenAiReasoningFamily} from '../../../contracts/src/agent-openai-model-family.ts';
 import {validateAgentGatewayConfiguration} from './model-profiles.ts';
 import {agentChatProfile,agentChatAllowsNaturalEof} from './model-profiles.ts';
-import {agentResponsesProfile,agentResponsesReasoningCapable} from './model-profiles.ts';
+import {agentGlm53Configuration,agentGlm53Request,agentResponsesProfile,agentResponsesReasoningCapable} from './model-profiles.ts';
 import {agentReadToolProfile} from './model-profiles.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
@@ -211,6 +211,29 @@ function reasoningItem(item:Record<string,unknown>,requireEncrypted=false,event?
     string(part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
   }
 }
+/** BigModel Responses uses one plaintext reasoning part, including for
+ * stateless input. Output metadata is not part of the input item schema. */
+function glmResponsesReasoning(item:Record<string,unknown>,event?:string):Record<string,unknown>|undefined {
+  const diagnostic={event,item:'reasoning'};
+  const extraField=Object.keys(item).find(key=>!['type','id','status','content'].includes(key));
+  if(extraField!==undefined)protocolFailure('invalid_field',{...diagnostic,field:extraField});
+  if(item.content===undefined&&event==='response.output_item.added')return;
+  const part=item.content;
+  if(!object(part)||part.type!=='reasoning_text'||Object.keys(part).length!==2)protocolFailure('invalid_field',{...diagnostic,field:'content'});
+  string(part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+  if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_item_bytes');
+  return part;
+}
+function glmResponsesInput(history:readonly AgentTaskJson[]):Record<string,unknown>[] {
+  return history.map(item=>{
+    if(!object(item))return fail();
+    if(item.type==='reasoning')return {type:'reasoning',content:glmResponsesReasoning(item)};
+    if(item.type==='function_call')return {type:item.type,name:item.name,call_id:item.call_id,arguments:item.arguments,...(item.namespace!==undefined?{namespace:item.namespace}:{})};
+    if(item.type==='function_call_output')return {type:item.type,call_id:item.call_id,output:item.output};
+    if((item.type===undefined||item.type==='message')&&typeof item.role==='string'&&['user','system','assistant','developer'].includes(item.role))return {type:'message',role:item.role,content:item.content};
+    return fail();
+  });
+}
 /** Preserve the public task parser's original bounds and failure semantics. */
 export function parseTaskArguments(source:string):AgentTaskJson {
   string(source,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');
@@ -269,9 +292,10 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:options.toolLoading!==true}}:{})};
   }else{
     const responses=agentResponsesProfile(configuration);
+    const glm=configuration.platformId==='china'&&agentGlm53Configuration(configuration);
     if(configuration.presetId==='openai')for(const item of modelHistory)if(object(item)&&Object.hasOwn(item,'phase'))responsesFields(item.type===undefined?{...item,type:'message'}:item,true);
     if(agentResponsesReasoningCapable(configuration))for(const item of modelHistory)if(object(item)&&item.type==='reasoning')reasoningItem(item,true);
-    body={model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:limits.outputTokens,
+    body={model:configuration.model,stream:true,store:false,instructions:instruction,input:glm?glmResponsesInput(modelHistory):modelHistory,max_output_tokens:limits.outputTokens,
       ...responses.fields,...(agentResponsesReasoningCapable(configuration)?{include:['reasoning.encrypted_content']}:{}),
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
   }
@@ -398,7 +422,9 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
       } else {
         let responseId:string|null=null,completed=false,text='';const added=new Map<number,Record<string,unknown>>(),done=new Map<number,Record<string,unknown>>(),argumentsByIndex=new Map<number,string>(),parts=new Map<string,string>();
         let terminal:Record<string,unknown>|null=null;
-        const native=options.configuration.presetId==='openai',reasoning=thinking||agentResponsesReasoningCapable(options.configuration);
+        const native=options.configuration.presetId==='openai';
+        const glm=options.configuration.platformId==='china'&&agentGlm53Request(options.configuration,parsed);
+        const reasoning=thinking||agentResponsesReasoningCapable(options.configuration);
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal,includeEventName:true,...(native?{maxBytes:4*1024*1024,eventByteLimits:responsesEventByteLimits}:{})})) {
           const eventDetails={event:frame.eventName??undefined,eventProtocol:'responses' as const};
           if(completed)protocolFailure('invalid_event',{...eventDetails,field:'done'});
@@ -432,6 +458,15 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
               if(native&&item.status==='incomplete')protocolFailure('terminal_mismatch',{event:type,item:item.type,field:'status'});
               if(item.type==='reasoning'){
                 if(!reasoning)protocolFailure('unsupported_item',{event:type,item:item.type},native?'AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED':'AGENT_CHAT_TOOLS_UNSUPPORTED');
+                if(glm){
+                  glmResponsesReasoning(item,type);
+                  if(streamed.type!=='reasoning')protocolFailure('terminal_mismatch',{event:type,item:item.type,field:'type'});
+                  if(item.id!==streamed.id)protocolFailure('terminal_mismatch',{event:type,item:item.type,field:'id'});
+                  if(item.status!==undefined&&item.status!=='completed')protocolFailure('terminal_mismatch',{event:type,item:item.type,field:'status'});
+                  // Keep the terminal carrier while tolerating differences in
+                  // earlier representations of the same reasoning item.
+                  continue;
+                }
                 reasoningItem(item,native,type);
               }else responsesFields(item,native);
               // OpenAI can re-encrypt an already validated reasoning item at
@@ -457,7 +492,9 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(!object(raw.item))protocolFailure('invalid_event',{event:type},unsupported);
             if(!['message','function_call',...(reasoning?['reasoning']:[])].includes(String(raw.item.type)))protocolFailure('unsupported_item',{event:type,item:raw.item.type},unsupported);
             identifier(raw.item.id);
-            if(raw.item.type==='reasoning')reasoningItem(raw.item,false,type);else responsesFields(raw.item,native);
+            if(raw.item.type==='reasoning'){
+              if(glm)glmResponsesReasoning(raw.item,type);else reasoningItem(raw.item,false,type);
+            }else responsesFields(raw.item,native);
             added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
           }
           const item=added.get(position);
@@ -481,7 +518,13 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           }else if(type==='response.output_text.done'){
             if(raw.text!==parts.get(`${position}:${raw.content_index}`))protocolFailure('terminal_mismatch',{...details,field:'text'});
           }else if(type==='response.content_part.added'||type==='response.content_part.done'){
-            if(item.type!=='message'||!object(raw.part))protocolFailure('invalid_event',details);
+            if(!object(raw.part))protocolFailure('invalid_event',details);
+            if(glm&&item.type==='reasoning'){
+              if(raw.content_index!==0)protocolFailure('invalid_field',{...details,field:'content_index'});
+              glmResponsesReasoning({content:raw.part},type);
+              continue;
+            }
+            if(item.type!=='message')protocolFailure('invalid_event',details);
             if(raw.part.type!=='output_text')protocolFailure('unsupported_item',{event:type,item:raw.part.type});
             if(!Number.isSafeInteger(raw.content_index))protocolFailure('invalid_field',{...details,field:'content_index'});
             responsesFields(raw.part,native);
@@ -490,19 +533,22 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(!object(raw.item))protocolFailure('invalid_event',details);
             if(raw.item.id!==item.id)protocolFailure('terminal_mismatch',{...details,field:'id'});
             if(raw.item.type!==item.type)protocolFailure('terminal_mismatch',{...details,item:raw.item.type===undefined?item.type:raw.item.type,field:'type'});
-            if(raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!(item.type==='reasoning'&&raw.item.status===undefined))protocolFailure('terminal_mismatch',{...details,field:'status'});
+            if(raw.item.status!=='completed'&&!(native&&raw.item.status==='incomplete')&&!((glm||item.type==='reasoning')&&raw.item.status===undefined))protocolFailure('terminal_mismatch',{...details,field:'status'});
             // Item streaming can finish while its contents remain incomplete.
             // Only the response terminal classifies the truncation; these items
             // never become a completed result or an executable tool call.
-            if(item.type==='reasoning')reasoningItem(raw.item,native&&raw.item.status!=='incomplete',type);else responsesFields(raw.item,native);
+            if(item.type==='reasoning'){
+              if(glm)glmResponsesReasoning(raw.item,type);else reasoningItem(raw.item,native&&raw.item.status!=='incomplete',type);
+            }else responsesFields(raw.item,native);
             if(item.type==='function_call'){
               if(raw.item.name!==item.name)protocolFailure('terminal_mismatch',{...details,field:'name'});
               if(raw.item.call_id!==item.call_id)protocolFailure('terminal_mismatch',{...details,field:'call_id'});
               if(raw.item.arguments!==argumentsByIndex.get(position))protocolFailure('terminal_mismatch',{...details,field:'arguments'});
             }else if(item.type==='message'){
               if(raw.item.role!=='assistant')protocolFailure('invalid_field',{...details,field:'role'});
-              if(!Array.isArray(raw.item.content))protocolFailure('invalid_field',{...details,field:'content'});
-              for(const [partIndex,part] of raw.item.content.entries()){
+              const content=glm&&object(raw.item.content)?[raw.item.content]:raw.item.content;
+              if(!Array.isArray(content))protocolFailure('invalid_field',{...details,field:'content'});
+              for(const [partIndex,part] of content.entries()){
                 if(!object(part))protocolFailure('invalid_field',{...details,field:'content'});
                 if(part.type!=='output_text')protocolFailure('unsupported_item',{event:type,item:part.type});
                 if(part.text!==(parts.get(`${position}:${partIndex}`)??''))protocolFailure('terminal_mismatch',{...details,field:'text'});
@@ -513,6 +559,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             done.set(position,raw.item);
           }else if(item.type==='reasoning'&&reasoningEvents.has(type)){
             // Streamed reasoning is checked, never shown; continuation returns the completed item.
+            if(glm){
+              if(type!=='response.reasoning_text.delta'&&type!=='response.reasoning_text.done')protocolFailure('invalid_event',details);
+              string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+              continue;
+            }
             const field=type.startsWith('response.reasoning_summary_')?'summary_index':'content_index';
             if(!Number.isSafeInteger(raw[field]))protocolFailure('invalid_field',{...details,field});
             if(type.includes('_part.')){if(!object(raw.part)||raw.part.type!=='summary_text')protocolFailure('invalid_field',{...details,field:'part'});string(raw.part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');}

@@ -70,19 +70,19 @@ OpenAI 推理档案的 Responses 始终使用 `store:false`，保留显式的 `i
 
 验证仅使用真实形状离线流、真实桌面设置 broker 接线和合成供应商传输，不发真实模型请求、不使用真实密钥；签名包实际 Responses 对话和工具调用由协调人与用户验收。
 
-## 其他厂商新配置默认与兼容（Q12，核对 2026-11-10）
+## 其他厂商新配置默认与兼容（核对 2026-11-16）
 
 本轮以各家当前目录、生命周期及协议原页为依据，只更新已确认组合的新配置。所有厂商原默认协议、端点、鉴权方式、旧保存配置和原始 journal 不迁移；OpenAI/OpenRouter 的 Q11 默认及行为不变。型号页可用不代表账号、地域或本机已获权，以下均为离线适配和官方文档证据。
 
 | 厂商 / 平台 | 新建默认与状态 | 协议与思考控制 | 容量与本地请求预算 | 日期 |
 | --- | --- | --- | --- | --- |
-| Anthropic 全球 | `claude-sonnet-5-5`，当前/Active | Messages；按用户批准使用 adaptive + `output_config.effort:low` 和下述固定 beta | context 原页 1M、精确整数未知；最大输出已证 128000；本地仍16384 | 2026-11-10 |
-| DeepSeek 全球 | `deepseek-flash`，当前别名，保持 | CC `thinking.type:disabled`；Responses `reasoning.effort:none`；Messages disabled，保留原实现 | 目录1M/384K；原字段/本地4096不变，不把缩写追加包装成精确整数来源 | 2026-11-10 |
-| Qwen 北京/新加坡共享域及六个workspace | `qwen3.8-flash`，当前/正式 | CC `enable_thinking:false`；Responses `reasoning.effort:none`；Messages `thinking.type:disabled` | 原页1M/128K，精确context/max均null；三协议本地4096 | 2026-11-10 |
-| Kimi 中国/国际 | `kimi-k3.1-pro`，当前标准档 | 仅现已开放CC；强制思考，最低 `reasoning_effort:low`，不发送K2旧thinking开关；`max_completion_tokens` | context及CC最大输出均1048576；本地4096 | 2026-11-10 |
-| 智谱中国/国际 | `glm-4.7`，旧代仍可用，按用户决定暂保 | 新Flash CC有依据，但中国Responses说明冲突、两地Messages精确契约不足；现开放/blocked状态不变 | 旧档案/预算不变，不以CC能力认证其他协议 | 2026-11-10 |
-| MiniMax中国/国际 | `MiniMax-M3`，旧代仍可用，按用户决定暂保 | 新Flash强制思考，但Responses输入/输出reasoning schema不对称且无完整回放例子补证；不自造转换 | 旧档案、自然EOF特例和预算不变 | 2026-11-10 |
-| Ollama本机 | `qwen3:8b`，旧代库tag仍在，未确认新默认 | Granite4.2 3B/Qwen3.5 4B的精确量化tag、思考metadata、内存与任务质量待定；不下载/切云端 | 本机有效窗口和独立最大输出未知；原字段/4096不变 | 2026-11-10 |
+| Anthropic 全球 | [`claude-sonnet-5-5`](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)，当前 Sonnet | Messages，adaptive + `output_config.effort:low` 和下述固定 beta | 原页 1M，最大输出 128,000，本地 16,384 | 2026-11-16 |
+| DeepSeek 全球 | [`deepseek-flash`](https://api-docs.deepseek.com/quick_start/pricing/)，当前别名，保持 | CC `thinking.type:disabled`；Responses `reasoning.effort:none`；Messages disabled，保留原实现 | 目录1M/384K；原字段/本地4096不变，不把缩写追加包装成精确整数来源 | 2026-11-16 |
+| Qwen 北京/新加坡共享域及六个workspace | [`qwen3.8-flash`](https://docs.qwencloud.com/models/qwen3-8-flash)，当前 Flash | CC `enable_thinking:false`；Responses `reasoning.effort:none`；Messages `thinking.type:disabled` | 原页1M/128K，精确context/max均null；三协议本地4096 | 2026-11-16 |
+| Kimi 中国/国际 | [`kimi-k3.1-pro`](https://platform.kimi.ai/docs/models)，当前标准档 | 仅现已开放CC；强制思考，最低 `reasoning_effort:low`，不发送K2旧thinking开关；`max_completion_tokens` | context及CC最大输出均1048576；本地4096 | 2026-11-16 |
+| 智谱中国/国际 | `glm-5.3`，当前旗舰。[中国](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3) / [国际](https://docs.z.ai/guides/llm/glm-5.3) | 默认 Chat Completions，强制思考、低档。两地 Messages 与中国 Responses 的参数见下文 | 1,000,000 / 128,000，Chat Completions 与 Responses 本地 4,096，Messages 本地 16,384 | 2026-11-16 |
+| MiniMax 中国/国际 | [`MiniMax-M3`](https://platform.minimax.io/docs/guides/models-intro)，在售。M3.1 Flash 主打效率 | 保留 M3 非思考档和原协议策略 | 原预算及 Chat Completions 自然结束特例 | 2026-11-16 |
+| Ollama 本机 | [`qwen3.5:9b`](https://ollama.com/library/qwen3.5:9b)，等同当前 latest。8 GB 内存的 Mac 建议 [`qwen3.5:4b`](https://ollama.com/library/qwen3.5:4b) | 三协议均显式关闭可选思考 | 模型原生窗口 262,144，本机有效窗口由服务设置。无独立最大输出数据，本地 4,096 | 2026-11-16 |
 
 ### Sonnet 的明确模式、版本和代价
 
@@ -100,19 +100,25 @@ Qwen八平台都按已核[区域发布记录](https://help.aliyun.com/zh/model-s
 
 Kimi两个平台分别核对[中国CC](https://platform.kimi.com/docs/api/chat)、[国际CC](https://platform.kimi.ai/docs/api/chat)、[快速上手](https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart)、[精确context](https://platform.kimi.ai/docs/pricing/chat)、[推理档位](https://platform.kimi.com/docs/guide/use-reasoning-effort)。标准K3.1 Pro是当前代中较便宜版本，官方仍称旗舰，不以名称“Pro”误作最贵Highspeed。流式reasoning_content只私有校验/保留，下一工具轮原样回传assistant推理、tool_calls及匹配的tool结果，low和输出字段不变；推理不显示。Responses/Messages仍按原目录blocked，不借更换默认开放新协议或改变鉴权。
 
-K2.6在[中国](https://platform.kimi.com/docs/models)/[国际](https://platform.kimi.ai/docs/models)目录已停止向新账号开放，旧账号仍可用，预计2026年底全面退役但无精确日期；旧ID档案、disabled/max_tokens和原字节继续作为显式兼容选择，不作为新账号默认。
+`kimi-k2.6` 自 2026 年 11 月起停止向新账号开放。存量账号暂可用，供应商预计 12 月底退役，未给出具体时刻。型号列表按公告月份提示，保留旧选项、原请求和已保存的配置。[中国型号表](https://platform.kimi.com/docs/models) · [国际型号表](https://platform.kimi.ai/docs/models)
 
-### 未确认项和保留项
+### GLM-5.3 的协议和工具续接
 
-DeepSeek从[当前目录](https://api-docs.deepseek.com/quick_start/pricing/)、[更新](https://api-docs.deepseek.com/updates/)及三协议原文复核，Flash别名已经是当前V4.1-Flash-1017，所以不为“换代”杜撰另一个ID。
+- 中国 BigModel 与国际 Z.ai 的 Chat Completions 都发送 `thinking:{type:"enabled"}` 和顶层 `reasoning_effort:"low"`。续接按原序传回完整 assistant `reasoning_content`、调用和对应工具结果。两地默认保持 Chat Completions，按平台选用各自的密钥。官方模型页提示曾订阅 Coding Plan 的账号对模型 API 暂只支持 Chat Completions。[中国思考模式](https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode) · [国际思考模式](https://docs.z.ai/guides/capabilities/thinking-mode)
+- Messages 使用 `thinking:{type:"enabled"}` 与 `output_config:{effort:"low"}`，按原序续传服务返回的签名思考块和工具块，沿用原 Messages 接口版本和鉴权。[智谱 ZCode 协议档案](https://github.com/zai-org/ZCode/blob/main/config/provider/zcode-builtin.json) · [签名块续传测试](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/adapters/tests/runtime-reasoning-provider-replay.test.ts)
+- 中国 Responses 使用 `store:false` 和 `reasoning:{effort:"low"}`。供应商文档说明该兼容协议将 `low` 映射为内部 `high`。续传使用该接口的明文 `reasoning_text` 条目和工具输入项。国际文档已列明 Responses 端点与努力档，国际无状态思考续接的形状仍待确认，暂保留原来的禁用状态。[中国 Responses 指南](https://docs.bigmodel.cn/cn/guide/develop/responses/introduction) · [中国 Responses 规范](https://docs.bigmodel.cn/openapi/openapi-responses.json) · [国际 Responses 配置](https://docs.z.ai/devpack/tool/codex)
 
-智谱[两地目录](https://docs.bigmodel.cn/cn/guide/start/model-overview)、[国际目录](https://docs.z.ai/guides/overview/overview)虽列当前5.3 Flash，但[中国Responses](https://docs.bigmodel.cn/cn/guide/develop/responses/introduction)的none/low映射与型号强制思考说明冲突，Flash组合及两地Messages严格契约仍不足。用户已决定暂保两平台旧默认，不能用已确认CC去掩盖共享默认的其他开放协议缺口。
+`glm-4.7` 保留既有档案。GLM-5.3 的公开模型档案取官方客户端列出的 1,000,000 上下文与 128,000 最大输出，区分了 API 参数上限与具体模型容量。思考内容用于后续请求，界面只展示最终回复和工具步骤。[智谱 ZCode 型号档案](https://github.com/zai-org/ZCode/blob/main/config/provider/zcode-builtin.json)
 
-MiniMax两地的[中国Responses schema](https://platform.minimax.cn/docs/api-reference/text/api/openapi-responses.json)/[国际schema](https://platform.minimax.io/docs/api-reference/text/api/openapi-responses.json)明确输出reasoning.content含reasoning_text，输入ContentPart却未列该类型；CC和Messages回放指南不构成Responses的补证。未发现完整下一轮例子填平，故用户决定暂保M3。此处是文档不能确认，不是证明服务端一定拒绝。两地[状态表](https://platform.minimax.cn/docs/faq/models)/[国际状态表](https://platform.minimax.io/docs/faq/models)仍列M3可用；M2.5/M2.7的退役安排不套给M3。
+### 其他复核结论
 
-Ollama按调研“未确认”不改。官方[新发布目录](https://ollama.com/library?sort=newest)、[Granite4.2标签](https://ollama.com/library/granite4.2)、[Qwen3.5标签](https://ollama.com/library/qwen3.5)和[兼容文档](https://docs.ollama.com/api/openai-compatibility)只能支持候选研究；文件大小不能替代8GB整机实测、工具质量或逐tag思考关闭绑定证据。不下载权重，不调用本机模型，不切云路由。
+DeepSeek 仍使用 `deepseek-flash` 别名。[当前目录](https://api-docs.deepseek.com/quick_start/pricing/) · [更新记录](https://api-docs.deepseek.com/updates/)
 
-所有可用旧默认均保留精确匹配和原请求语义。未发现上述旧默认已全面关停的明确证据，不因“旧代”而批量删除；明确已下线型号不会加入新建议。没有新增SDK依赖、持久格式、公共设置DTO、并行/strict授权或资源上限；所有测试均为合成凭据、网络替身或本地受控服务，不是模型账户认证。
+MiniMax M3 与 M3.1 Flash 都在售。M3.1 Flash 的 Responses 输入输出规范仍未证明可完整续传思考。M2.5、M2.7（含高速版）的按量 API 定于 2026 年 11 月 18 日退役，两系在 Mio 中没有专用档案。M Plan 和 Token Plan 自 10 月 19 日起将旧名路由至 M3.1 Flash。[中国型号页](https://platform.minimax.cn/docs/faq/models) · [国际型号页](https://platform.minimax.io/docs/faq/models) · [M3.1 Flash 发布说明](https://www.minimax.io/blog/minimax-m31f)
+
+Ollama 的 Qwen3.5 9B 与 4B 都提供工具、图像和布尔思考开关。9B 权重约 6.6–7.6 GB，4B 约 3.3–4.0 GB，实际运行还需要上下文和进程内存。设置仍需用户自行安装模型，Mio 只连接本机回环地址。[Ollama 型号标签](https://ollama.com/library/qwen3.5/tags) · [本机上下文](https://docs.ollama.com/context-length) · [模型思考开关](https://github.com/ollama/ollama/blob/main/model/renderers/qwen35.go)
+
+本轮使用合成凭据和离线传输替身验证。旧配置和旧 journal 保持原样。签名包上的实际账户与工具任务由协调人和用户验收。
 
 ## 当前模型清单与检查（X6b）
 
@@ -196,7 +202,7 @@ Sources: [endpoint matrix](https://www.alibabacloud.com/help/en/model-studio/bas
 - China BigModel base: `https://open.bigmodel.cn/api/paas/v4`
 - International Z.ai base: `https://api.z.ai/api/paas/v4`
 - Treat these as distinct platform/account presets. Credential portability is not assumed.
-- Conservative example: `glm-4.7`; baseline request uses `thinking: {"type":"disabled"}`.
+- New configurations use `glm-5.3` with thinking enabled at low effort. The retained `glm-4.7` Chat Completions profile continues to send `thinking: {"type":"disabled"}`.
 - The Chat reference documents SSE ending in `[DONE]` and lists automatic tool choice. Do not require forced tool choices.
 - Streaming function arguments additionally use `tool_stream: true` for documented supported GLM families. Do not send it to arbitrary models without capability confirmation.
 - Examples vary in argument representation; verify the actual OpenAI-compatible JSON-string tool round trip rather than accepting every shape opportunistically.
@@ -210,10 +216,10 @@ Sources: [China setup](https://docs.bigmodel.cn/cn/guide/start/quick-start), [GL
 
 - China base: `https://api.moonshot.cn/v1`
 - International base: `https://api.moonshot.ai/v1`
-- Conservative baseline: `kimi-k2.6` with `thinking: {"type":"disabled"}`. Current flagship documentation also uses `kimi-k3`, which is not interchangeable with this non-thinking profile.
+- New configurations use `kimi-k3.1-pro` at low reasoning effort. `kimi-k2.6` retains its disabled-thinking profile and carries a retirement notice.
 - K2.6 supports function calls and SSE but rejects `tool_choice: "required"`.
 - Omit temperature in the baseline: accepted values depend on model/mode.
-- K3 always reasons and requires preservation of assistant reasoning for continuation; defer until separately implemented/tested.
+- K3.1 Pro always reasons. Continue tool turns with the original assistant reasoning and matching tool results.
 - Current tool documentation has strict schemas enabled by default and an MFJS schema subset. Use explicit `strict: false` for the initial non-strict profile where documented; continue local validation.
 
 Required checks: endpoint/account pairing, model-specific schema acceptance, fragmented tool SSE and multi-round replay.
@@ -255,7 +261,7 @@ Sources: [model](https://openrouter.ai/openai/gpt-4.1-mini), [tool calling](http
 ### Ollama local
 
 - Suggested local base: `http://127.0.0.1:11434/v1` (official examples also use `localhost`).
-- Example model: `qwen3:8b`, only if installed, tool-capable and suitable for the user's machine. The model field remains editable; do not download models automatically.
+- New configurations suggest `qwen3.5:9b`. For an 8 GB Mac, consider `qwen3.5:4b`. Use a model already installed on the local server. Existing `qwen3:8b` selections retain their profile.
 - The local API normally ignores API keys. Omit authentication unless the selected local gateway explicitly requires it; an SDK placeholder is not a real credential.
 - Official compatibility docs list Chat Completions streaming and tools. Behavior still depends on server version and the selected model/template.
 - Do not reuse native `/api/chat` parsing: its messages/tool arguments differ from the `/v1` compatibility interface.
@@ -288,12 +294,13 @@ Sources: [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility
 | Chat Completions · OpenRouter | `openai/gpt-4.1-mini` | 1,047,576（沿用 OpenAI 模型文档） | 32,768 | 4,096 |
 | Chat Completions, Responses · DeepSeek | `deepseek-flash` | 1,000,000 | 393,216 | 4,096 |
 | Chat Completions · Zhipu | `glm-4.7` | 200,000 | 128,000 | 4,096 |
+| Chat Completions, Responses, Messages · Zhipu | `glm-5.3`（Responses 仅中国） | 1,000,000 | 128,000 | Chat Completions / Responses 4,096，Messages 16,384 |
 | Chat Completions · Kimi | `kimi-k2.6` | 262,144 | 未单列；输入加输出须在窗口内 | 4,096 |
 | Chat Completions · MiniMax | `MiniMax-M3` | 1,000,000（输入加输出） | 未单列；输入加输出须在窗口内 | 4,096 |
 | Messages · Anthropic | `claude-haiku-4-5`, `claude-haiku-4-5-20251001` | 200,000 | 64,000 | 16,384 |
 | Responses · Qwen | `qwen3.8-flash` | 1,000,000 | 暂无已核对数字 | 4,096 |
 | Chat Completions · Qwen | `qwen-plus` | 未知 | 暂无已核对数字 | 4,096 |
-| 所有协议 · Ollama | `qwen3:8b` | 未知，由本地服务设置 | — | 4,096 |
+| 所有协议 · Ollama | `qwen3.5:9b`、`qwen3:8b` | 未知，由本地服务设置 | — | 4,096 |
 | 所有协议 · custom 及其他组合 | 任意 | 未知 | — | 4,096 |
 
 ### 按协议选择上限的原因

@@ -71,17 +71,21 @@ test('default thinking tiers keep the documented minimum and isolate the new Ope
     const configuration=selected.presetId==='openai'&&selected.protocol==='chat_completions'?{...selected,model:'gpt-6-luna'}:selected;
     const {protocol,presetId,platformId}=configuration,tier=agentModelThinkingTier(configuration),label=`${presetId}/${platformId}/${protocol}`;
     const sonnet=presetId==='anthropic'&&configuration.model==='claude-sonnet-5-5'&&protocol==='anthropic_messages';
-    const required=sonnet||presetId==='kimi'&&configuration.model==='kimi-k3.1-pro'&&protocol==='chat_completions';
+    const glm=presetId==='zhipu'&&configuration.model==='glm-5.3';
+    const required=sonnet||glm||presetId==='kimi'&&configuration.model==='kimi-k3.1-pro'&&protocol==='chat_completions';
     assert.equal(tier,required?'required':protocol==='anthropic_messages'||optionalPresets[protocol].includes(presetId)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
     assert.equal(agentRequestThinks(configuration,body),required,`${label} sends its documented off switch or required minimum`);
     const outputTokens=presetId==='openai'||presetId==='openrouter'&&protocol==='chat_completions'?AGENT_OPENAI_REASONING_OUTPUT_TOKENS:4096;
     if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,outputTokens,label);
-    if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,sonnet?{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}}:{type:'disabled'});
-    // An optional model can lift its off switch; a required model keeps thinking
-    // even without the minimum effort. Unsupported models still reject it.
+    if(protocol==='anthropic_messages'){
+      const thinking=sonnet?{type:'adaptive',block_binding:{prefix_mismatch_behavior:'drop_block'}}:glm?{type:'enabled'}:{type:'disabled'};
+      assert.deepEqual(body.thinking,thinking,label);
+    }
+    // GLM admits reasoning only for the exact new request fields. A retained
+    // pre-profile intent with the same model ID must keep its original behavior.
     const off=offSwitch(configuration),lifted=Object.fromEntries(Object.entries(body).filter(([key])=>!Object.hasOwn(off,key)));
-    assert.equal(agentRequestThinks(configuration,lifted),tier!=='unsupported',label);
+    assert.equal(agentRequestThinks(configuration,lifted),!glm&&tier!=='unsupported',label);
     if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,outputTokens,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }

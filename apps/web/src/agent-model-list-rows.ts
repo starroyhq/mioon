@@ -1,5 +1,13 @@
 import type {AgentModelListResult} from '../../../packages/contracts/src/agent-model-list.ts';
 
+export function agentModelRetirementMessage(presetId: string, modelId: string, today: Date) {
+ if (presetId !== 'kimi' || modelId !== 'kimi-k2.6') return undefined;
+ // Moonshot announced retirement in late December 2026 without an exact day.
+ return today.getFullYear() < 2027
+  ? 'agent.settings.models.kimiRetirementScheduled' as const
+  : 'agent.settings.models.kimiRetirementSchedulePassed' as const;
+}
+
 type Observation=Extract<AgentModelListResult,{outcome:'success'}>;
 export interface AgentModelListRow {id:string;displayName?:string;adapted:boolean;manual:boolean;current:boolean;pending:boolean;missing:boolean}
 /** The settings list retains models the user added and the current selections.

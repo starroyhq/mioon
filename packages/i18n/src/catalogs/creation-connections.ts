@@ -1491,10 +1491,10 @@ export const connectionMessages = {
     "ja": "リモート HTTPS のみです。接続先とモデルはご自身で入力してください。互換性は未検証です"
   },
   "agent.settings.presets.ollamaNote": {
-    "zh-Hans": "仅本机回环；Chat Completions / Responses 基址使用 /v1，Messages 使用根地址。切换协议后请自行核对地址；不下载模型或授权云端路由",
-    "zh-Hant": "僅限本機回環；Chat Completions / Responses 基底位址使用 /v1，Messages 使用根位址。切換協定後請自行核對位址；不會下載模型或授權雲端路由",
-    "en": "Local loopback only. Use /v1 as the base path for Chat Completions / Responses and the service root for Messages. Check the URL after switching protocols. No model downloads or cloud routing authorization",
-    "ja": "ローカルループバックのみです。Chat Completions / Responses のベースパスは /v1、Messages はサービスルートです。切り替え後は URL を確認してください。モデルのダウンロードやクラウドルーティングの認可は行いません"
+    "zh-Hans": "仅本机回环；Chat Completions / Responses 基址使用 /v1，Messages 使用根地址。切换协议后请自行核对地址；不下载模型或授权云端路由。如果你的 Mac 只有 8 GB 内存，建议用 qwen3.5:4b。",
+    "zh-Hant": "僅限本機回環；Chat Completions / Responses 基底位址使用 /v1，Messages 使用根位址。切換協定後請自行核對位址；不會下載模型或授權雲端路由。如果你的 Mac 只有 8 GB 記憶體，建議使用 qwen3.5:4b。",
+    "en": "Local loopback only. Use /v1 as the base path for Chat Completions / Responses and the service root for Messages. Check the URL after switching protocols. No model downloads or cloud routing authorization. For a Mac with 8 GB of memory, try qwen3.5:4b.",
+    "ja": "ローカルループバックのみです。Chat Completions / Responses のベースパスは /v1、Messages はサービスルートです。切り替え後は URL を確認してください。モデルのダウンロードやクラウドルーティングの認可は行いません。メモリが 8 GB の Mac には qwen3.5:4b を推奨します。"
   },
   "agent.settings.presets.qwenResponses": {
     "zh-Hans": "仅 qwen3.8-flash 非思考文本配置；本应用限制上下文大小，但供应商自动截断无法禁用。区域、工作空间与账户权限须匹配，未经真实调用验证",

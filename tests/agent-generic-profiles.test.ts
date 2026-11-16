@@ -4,7 +4,9 @@ import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {resolveAgentPresetBaseUrl} from '../packages/contracts/src/agent-provider-catalog.ts';
 import {agentAdaptedModelHints, agentChatAllowsNaturalEof, agentModelAdaptation, agentModelThinkingTier, agentModelTokenLimits, agentRequestThinks, validateAgentGatewayConfiguration} from '../packages/business/src/agent/model-profiles.ts';
-import {buildTaskModelRequest, createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {buildTaskModelRequest, createTaskGateway, taskContinuation} from '../packages/business/src/agent/task-gateway-v2.ts';
+import type {TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
+import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {collectGenericRequestFingerprints, genericConfigurations, genericNetwork, genericSse, GENERIC_MODEL, readGenericRequestFingerprints} from './helpers/agent-generic-request-fingerprints.ts';
 
@@ -81,6 +83,56 @@ test('Kimi K3.1 exact CC controls cannot leak into retained K2.6 or an unverifie
       assert.deepEqual(agentModelTokenLimits(configuration),{contextTokens:model==='kimi-k2.6'?262144:null,outputTokens:4096});
       assert.equal(agentModelThinkingTier(configuration),model==='kimi-k2.6'?'optional':'unsupported');
     }
+  }
+});
+
+for (const platformId of ['china', 'international']) test(`GLM-5.3 ${platformId}: low-effort Chat Completions carries reasoning across two successive tool steps`, async () => {
+  const configuration = configured('zhipu', platformId, 'chat_completions', 'glm-5.3');
+  const tool = {name: 'mioon_shot_inspect', description: 'Read a test shot', parameters: {type: 'object', properties: {id: {type: 'string'}}, required: ['id']}};
+  const input: AgentTaskJson[] = [...history], expected: AgentTaskJson[] = [];
+  assert.equal(agentModelThinkingTier(configuration), 'required');
+  assert.deepEqual(agentModelTokenLimits(configuration), {contextTokens: 1000000, outputTokens: 4096});
+  // An older request for the same hand-entered model used the generic off switch.
+  assert.equal(agentRequestThinks(configuration, {model: configuration.model, stream: true, thinking: {type: 'disabled'}}), false);
+  for (const index of [0, 1, 2]) {
+    const body = buildTaskModelRequest(configuration, input, [tool], 4318);
+    const request = object(JSON.parse(body));
+    assert.deepEqual(request.thinking, {type: 'enabled'});
+    assert.equal(request.reasoning_effort, 'low');
+    assert.equal(request.max_tokens, 4096);
+    assert.deepEqual((request.messages as AgentTaskJson[]).slice(2), expected);
+    const wire = (delta: AgentTaskJson, finish_reason: string | null = null) =>
+      `data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason}]})}\n\n`;
+    const name = tool.name;
+    const id = `call_${index}`;
+    const args = JSON.stringify({id: `shot_${index}`, _mio_step: 'Read the test shot'});
+    const call = {id, type: 'function', function: {name, arguments: args}};
+    const frames = wire({role: 'assistant', reasoning_content: `PRIVATE_${index}_`}) +
+      wire({reasoning_content: 'CONTINUED'}) +
+      (index < 2 ? wire({tool_calls: [{index: 0, ...call}]}) : wire({content: 'Done'})) +
+      wire({}, index < 2 ? 'tool_calls' : 'stop') + 'data: [DONE]\n\n';
+    const network = genericNetwork(configuration, frames);
+    let output: TaskModelOutput | undefined;
+    const visible: string[] = [];
+    for await (const event of createTaskGateway(network.dependencies)({configuration, body, apiKey: 'SYNTHETIC_GENERIC_WIRE_ONLY', selfPort: 4318})) {
+      if (event.type === 'done') output = event.output;
+      if (event.type === 'delta') visible.push(event.text);
+    }
+    assert.ok(output);
+    assert.deepEqual(network.requests.map(row => row.body), [body]);
+    assert.equal(visible.join(''), index < 2 ? '' : 'Done');
+    if (index === 2) {
+      assert.deepEqual(output.toolCalls, []);
+      continue;
+    }
+    assert.deepEqual(output.toolCalls, [{id, name, arguments: {id: `shot_${index}`}}]);
+    const result = {shot: `shot_${index}`};
+    const continuation = taskContinuation(configuration.protocol, output, [{callId: id, result}]);
+    const assistant = {role: 'assistant', content: null, reasoning_content: `PRIVATE_${index}_CONTINUED`, tool_calls: [call]};
+    const toolResult = {role: 'tool', tool_call_id: id, content: JSON.stringify(result)};
+    assert.deepEqual(continuation, [assistant, toolResult]);
+    input.push(...continuation);
+    expected.push(assistant, toolResult);
   }
 });
 

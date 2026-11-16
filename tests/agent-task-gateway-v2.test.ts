@@ -1281,6 +1281,64 @@ for(const platformId of ['china','international'] as const)test(`Kimi K2.6 ${pla
   assert.equal(completed,0);assert.doesNotMatch(shown.join(''),/PRIVATE_KIMI_PLAN_|CONTINUED/u);assert.equal(first.network.calls,1);assert.equal(rejected.network.calls,1);assert.equal(rejected.network.requests[0]!.body,body);
 });
 
+for(const [platformId,host] of [['china','open.bigmodel.cn'],['international','api.z.ai']] as const)test(`GLM-5.3 Messages ${platformId}: low effort preserves signed thinking through two tool continuations`,async()=>{
+  const configuration:AgentConfiguration={presetId:'zhipu',platformId,baseUrl:`https://${host}/api/anthropic`,model:'glm-5.3',protocol:'anthropic_messages'};
+  const history:AgentTaskJson[]=[{role:'user',content:'Run the synthetic two-step tool task'}];
+  for(const [step,signatureAtStart] of [false,true,false].entries()){
+    const toolRound=step<2;
+    const reasoning={type:'thinking',thinking:`PRIVATE_GLM_THINKING_${step} `,signature:`SYNTHETIC_GLM_SIGNATURE_${step}\n `};
+    const resultText='Done with the synthetic tool task.';
+    const toolInput={title:`Offline shot ${step}`,_mio_step:'Create the synthetic shot'};
+    const [start,...tail]=nativeAnthropicEvents({model:configuration.model,text:resultText,
+      ...(toolRound?{toolName:definitions[0]!.name,argumentsJson:JSON.stringify(toolInput)}:{})});
+    const callId=`tool_glm_${step}`;
+    const signatureDelta={type:'content_block_delta',index:0,delta:{type:'signature_delta',signature:reasoning.signature}} as const;
+    const events=nativeAnthropicSse([
+      start!,
+      {type:'content_block_start',index:0,content_block:{type:'thinking',thinking:'',signature:signatureAtStart?reasoning.signature:''}},
+      {type:'content_block_delta',index:0,delta:{type:'thinking_delta',thinking:reasoning.thinking}},
+      ...(signatureAtStart?[]:[signatureDelta]),
+      {type:'content_block_stop',index:0},
+      ...tail.map(event=>{
+        if(event.type==='content_block_start'&&event.content_block.type==='tool_use')
+          return {...event,index:1,content_block:{...event.content_block,id:callId}};
+        return 'index' in event?{...event,index:1}:{...event};
+      }),
+    ]);
+    const body=buildTaskModelRequest(configuration,history,definitions,4318);
+    const {model,thinking,output_config,max_tokens,messages}=JSON.parse(body) as Record<string,unknown>;
+    assert.equal(model,'glm-5.3');
+    assert.deepEqual(thinking,{type:'enabled'});
+    assert.deepEqual(output_config,{effort:'low'});
+    assert.equal(max_tokens,16384);
+    assert.deepEqual(messages,history);
+    for(const previous of history.filter(message=>typeof message==='object'&&message!==null&&!Array.isArray(message)&&message.role==='assistant'))
+      assert.ok(body.includes(JSON.stringify(previous)),'the previous assistant block order and opaque bytes are retained');
+    const exchange=q11Stream(configuration,body,events);
+    const visible:string[]=[];
+    let output:TaskModelOutput|undefined;
+    for await(const item of exchange.stream){if(item.type==='done')output=item.output;else visible.push(item.text);}
+    assert.ok(output);
+    const expectedBlock=toolRound?{type:'tool_use',name:definitions[0]!.name,id:callId,input:toolInput}:{type:'text',text:resultText};
+    assert.deepEqual(output.providerOutput,{role:'assistant',content:[reasoning,expectedBlock]});
+    assert.equal(visible.join(''),toolRound?'':resultText);
+    assert.equal(output.text,visible.join(''));
+    assert.deepEqual(output.toolCalls,toolRound?[{id:callId,name:definitions[0]!.name,arguments:{title:toolInput.title}}]:[]);
+    assert.equal(exchange.network.calls,1);
+    assert.equal(exchange.network.ends,1);
+    assert.equal(exchange.network.requests[0]!.body,body);
+    const headers=(exchange.network.requests[0]!.options as {headers:Record<string,string>}).headers;
+    assert.equal(headers['anthropic-version'],'2023-06-01');
+    assert.equal(headers['anthropic-beta'],undefined);
+    assert.equal(headers['x-api-key'],'SYNTHETIC_Q11_OFFLINE_ONLY');
+    if(toolRound){
+      const continuation=taskContinuation('anthropic_messages',output,[{callId,result:{saved:true}}]);
+      assert.deepEqual(continuation,[output.providerOutput,{role:'user',content:[{type:'tool_result',tool_use_id:callId,content:'{"saved":true}'}]}]);
+      history.push(...continuation);
+    }
+  }
+});
+
 const q12Sonnet:AgentConfiguration={presetId:'anthropic',platformId:'global',protocol:'anthropic_messages',model:'claude-sonnet-5-5',baseUrl:'https://api.anthropic.com'};
 function q12SonnetWire({thinkingText,toolCall,transformLocation}:{thinkingText:string;toolCall:boolean;transformLocation?:'start'|'delta'}):string{
   const events:Array<Record<string,unknown>>=nativeAnthropicEvents({model:q12Sonnet.model,text:'The offline shot was saved.',...(toolCall?{toolName:'mioon_shot_create',argumentsJson:JSON.stringify({title:'Sonnet saved shot',_mio_step:'Create the saved shot'})}:{})}).map(event=>({...event}));
@@ -1322,4 +1380,111 @@ for(const [thinkingText,transformLocation] of [['PRIVATE_SONNET_REASONING','star
     const headers=(exchange.network.requests[0]!.options as {headers:Record<string,string>}).headers;
     assert.equal(headers['anthropic-beta'],'thinking-binding-controls-2026-08-01');assert.equal(headers['anthropic-version'],'2026-10-21');assert.equal(headers['x-api-key'],'SYNTHETIC_Q11_OFFLINE_ONLY');
   }
+});
+
+const glm53ChinaResponses:AgentConfiguration={presetId:'zhipu',platformId:'china',protocol:'responses',model:'glm-5.3',baseUrl:'https://open.bigmodel.cn/api/v1'};
+
+function glm53ResponseEvents(round:number,tools:boolean){
+  const responseId=`glm_response_${round}`;
+  const reasoning={type:'reasoning',id:`glm_reasoning_${round}`,content:{type:'reasoning_text',text:`PRIVATE_GLM_${round} 中文\n `}};
+  const part={type:'output_text',text:`GLM 离线回复 ${round}`};
+  const message={type:'message',role:'assistant',id:`glm_message_${round}`,status:'completed',content:part};
+  const output:Record<string,unknown>[]=[reasoning,message];
+  const response=(status:string,items:unknown[])=>({id:responseId,object:'response',status,output:items});
+  const events:Record<string,unknown>[]=[
+    {type:'response.created',response:response('in_progress',[])},
+    {type:'response.output_item.added',output_index:0,item:{type:'reasoning',id:reasoning.id}},
+    {type:'response.content_part.added',output_index:0,item_id:reasoning.id,content_index:0,part:{type:'reasoning_text',text:''}},
+    {type:'response.reasoning_text.delta',output_index:0,item_id:reasoning.id,delta:'PRIVATE_GLM streamed'},
+    {type:'response.reasoning_text.done',output_index:0,item_id:reasoning.id,text:'PRIVATE_GLM earlier representation'},
+    {type:'response.content_part.done',output_index:0,item_id:reasoning.id,content_index:0,part:{type:'reasoning_text',text:'PRIVATE_GLM content part'}},
+    {type:'response.output_item.done',output_index:0,item:{...reasoning,content:{type:'reasoning_text',text:'PRIVATE_GLM item done representation'}}},
+    {type:'response.output_item.added',output_index:1,item:{...message,status:'in_progress',content:{...part,text:''}}},
+    {type:'response.output_text.delta',output_index:1,item_id:message.id,content_index:0,delta:part.text},
+    {type:'response.output_text.done',output_index:1,item_id:message.id,content_index:0,text:part.text},
+    {type:'response.output_item.done',output_index:1,item:message},
+  ];
+  if(tools){
+    const call={type:'function_call',id:`glm_tool_item_${round}`,call_id:`glm_call_${round}`,name:'mioon_shot_create',arguments:`{ "title": "Offline shot ${round}" }`};
+    output.push(call);
+    events.push(
+      {type:'response.output_item.added',output_index:2,item:{...call,arguments:''}},
+      {type:'response.function_call_arguments.delta',output_index:2,item_id:call.id,delta:call.arguments},
+      {type:'response.function_call_arguments.done',output_index:2,item_id:call.id,arguments:call.arguments},
+      {type:'response.output_item.done',output_index:2,item:call},
+    );
+  }
+  events.push({type:'response.completed',response:response('completed',output)});
+  return {events:events.map<Record<string,unknown>>((event,sequence_number)=>({...event,sequence_number})),output,reasoning,message};
+}
+
+test('BigModel GLM-5.3 Responses keeps terminal plaintext reasoning private and replays it through two tool rounds',async()=>{
+  const history:AgentTaskJson[]=[{role:'user',content:'Synthetic two-tool sequence'}];
+  const expected:AgentTaskJson[]=[{type:'message',role:'user',content:'Synthetic two-tool sequence'}];
+  for(const round of [1,2,3]){
+    const tools=round<3;
+    const body=buildTaskModelRequest(glm53ChinaResponses,history,tools?definitions:[],4318);
+    const request=JSON.parse(body) as Record<string,unknown>;
+    assert.deepEqual(request.input,expected);
+    assert.equal(request.store,false);
+    assert.deepEqual(request.reasoning,{effort:'low'});
+    assert.equal(request.include,undefined);
+    assert.equal(request.thinking,undefined);
+    assert.equal(request.parallel_tool_calls,undefined);
+    assert.equal(request.tool_choice,tools?'auto':undefined);
+    const {events,output,reasoning,message}=glm53ResponseEvents(round,tools);
+    const fixture=q11Stream(glm53ChinaResponses,body,q11ResponseWire(events));
+    const visible:string[]=[];let completed:TaskModelOutput|undefined;
+    for await(const event of fixture.stream){
+      if(event.type==='done')completed=event.output;else visible.push(event.text);
+    }
+    assert.ok(completed);
+    assert.equal(fixture.network.calls,1);
+    assert.equal(fixture.network.requests[0]!.body,body);
+    assert.deepEqual(completed.providerOutput,output);
+    assert.equal(completed.text,message.content.text);
+    assert.deepEqual(visible,[message.content.text]);
+    assert.doesNotMatch(completed.text,/PRIVATE_GLM/u);
+    assert.equal(completed.toolCalls.length,tools?1:0);
+    if(tools){
+      const {id:callId,name,arguments:input}=completed.toolCalls[0]!;
+      assert.equal(name,'mioon_shot_create');
+      assert.deepEqual(input,{title:`Offline shot ${round}`});
+      history.push(...taskContinuation('responses',completed,[{callId,result:{saved:true}}]));
+      expected.push(
+        {type:'reasoning',content:reasoning.content},
+        {type:'message',role:'assistant',content:message.content},
+        {type:'function_call',call_id:callId,name,arguments:`{ "title": "Offline shot ${round}" }`},
+        {type:'function_call_output',call_id:callId,output:'{"saved":true}'},
+      );
+    }
+  }
+});
+
+test('BigModel GLM-5.3 Responses rejects mismatched or malformed reasoning and keeps old recorded bodies isolated',async()=>{
+  const body=buildTaskModelRequest(glm53ChinaResponses,[{role:'user',content:'Synthetic validation'}],[],4318);
+  const {events,reasoning}=glm53ResponseEvents(1,false);
+  const failure=async(request:string,frames:readonly Record<string,unknown>[],code:string)=>{
+    const fixture=q11Stream(glm53ChinaResponses,request,q11ResponseWire(frames));
+    let completed=false;
+    await assert.rejects(async()=>{
+      for await(const event of fixture.stream)if(event.type==='done')completed=true;
+    },{code});
+    assert.equal(completed,false);
+    assert.equal(fixture.network.calls,1);
+  };
+  for(const changed of [
+    {...reasoning,id:'another_reasoning_id'},
+    {...reasoning,content:[reasoning.content]},
+    {...reasoning,content:undefined},
+    {...reasoning,encrypted_content:'undocumented_glm_ciphertext'},
+  ]){
+    const last=events.at(-1)!;
+    const terminal=last.response as {output:unknown[]};
+    const incorrect=[...events.slice(0,-1),{...last,response:{...terminal,output:[changed,...terminal.output.slice(1)]}}];
+    await failure(body,incorrect,'AGENT_CHAT_PROTOCOL_ERROR');
+  }
+  const prior=JSON.parse(body) as Record<string,unknown>;
+  prior.reasoning={effort:'none'};
+  await failure(JSON.stringify(prior),events,'AGENT_CHAT_TOOLS_UNSUPPORTED');
 });
