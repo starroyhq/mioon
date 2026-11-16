@@ -55,7 +55,8 @@ test('Messages SDK wrapping preserves the safe HTTP diagnostic from the pinned t
   const f = fixture({status,body:JSON.stringify({type:'error',error:{type:'permission_error',message:'Synthetic private message with sk-proj-synthetic-credential'}})});
   const open = createAnthropicSdkTransport({lookup,httpsRequest:f.request});
   await assert.rejects(open({configuration,apiKey:'synthetic-bound-key',body}), error=>{
-    assert.deepEqual(agentChatDiagnostic(error),{kind:'http',status,providerType:'permission_error'});
+    assert.deepEqual(agentChatDiagnostic(error),{kind:'http',status,providerType:'permission_error',
+      provider:{kind:'provider',reason:'authentication',providerType:'permission_error'}});
     assert.equal(wasAgentTransportSubmissionPrevented(error),false);
     return (error as {code?:string}).code==='AGENT_CHAT_HTTP_ERROR';
   });

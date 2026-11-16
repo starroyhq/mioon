@@ -1,5 +1,5 @@
 import {agentHttpFailureDiagnostic, agentProtocolFailureDiagnostic} from '../../../contracts/src/agent-failure-diagnostic.ts';
-import type {AgentFailureDiagnostic, AgentFailureLimit, AgentProtocolFailureReason, AgentProviderFailureDiagnostic} from '../../../contracts/src/agent-failure-diagnostic.ts';
+import type {AgentFailureDiagnostic, AgentFailureLimit, AgentProtocolFailureReason, AgentProviderFailureDiagnostic, AgentTimeoutPhase} from '../../../contracts/src/agent-failure-diagnostic.ts';
 import type {AgentConfiguration} from './config.ts';
 import {providerFailureDiagnostic, providerFailureIsTemporary, providerFailureRetryAfterMs} from './provider-failure.ts';
 export {hasProviderChatCompletionFailure} from './provider-failure.ts';
@@ -192,7 +192,7 @@ export function safeAgentChatError(error: unknown): {code: AgentChatErrorCode; s
 }
 
 /** Timeout evidence is attached only at a host-owned network deadline. */
-export function agentChatTimeoutError(phase: import('../../../contracts/src/agent-failure-diagnostic.ts').AgentTimeoutPhase, elapsedMs: number): AgentChatFailure {
+export function agentChatTimeoutError(phase: AgentTimeoutPhase, elapsedMs: number): AgentChatFailure {
   const failure = agentChatError('AGENT_CHAT_TIMEOUT');
   if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
     diagnostics.set(failure, Object.freeze({kind: 'timeout', phase, elapsedMs: Math.min(24 * 60 * 60 * 1000, Math.round(elapsedMs))}));
