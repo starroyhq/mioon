@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {candidateUpdateFeedUrl, validateMacAppUpdateProvider, validateMacUpdateFeed} from '../.github/scripts/mac-update-feed.ts';
 import {isFrozenBranchCandidate, resolvePreflight} from '../.github/scripts/release-preflight.ts';
+
+test('the signed release step passes the final DMG as an absolute path to the stapler', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /dmg="\$GITHUB_WORKSPACE\/release\/desktop\/production\/mioon-\$\{MIOON_RELEASE_VERSION\}-mac\.dmg"/);
+  assert.match(workflow, /apple-notarization\.ts --operation=staple --artifact="\$dmg"/);
+});
 
 test('candidate URLs use a safe directory base and allow local loopback HTTP', () => {
   assert.equal(candidateUpdateFeedUrl('https://example.test/updates'), 'https://example.test/updates/');

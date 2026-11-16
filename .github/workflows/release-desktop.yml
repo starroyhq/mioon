@@ -242,7 +242,7 @@ jobs:
             "-c.mac.identity=$signing_qualifier" -c.mac.notarize=false \
             -c.afterSign=../../.github/scripts/notarize-app.cjs -c.dmg.sign=true -c.forceCodeSigning=true
           # The hook notarizes the application; submit the final signed DMG too.
-          dmg="../../release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg"
+          dmg="$GITHUB_WORKSPACE/release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg"
           test -f "$dmg"
           notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
