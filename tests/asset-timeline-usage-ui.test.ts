@@ -66,6 +66,7 @@ const h = { visible: true } as CapturedHarness1;
     './AssetDispositionControls.tsx': { __esModule: true, default: 'AssetDispositionControls', useDispositionInteraction: () => ({ visible: h.visible, admit: (action: () => void) => { if (h.visible) action(); } }) },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0] || 'image', dragAsset() {} },
     './WorkspaceControls.tsx': { WorkbenchTooltip: 'WorkbenchTooltip', WorkbenchSelect: 'WorkbenchSelect' },
+    './WorkbenchPanelHeader.tsx': { WorkbenchPanelHeader: 'WorkbenchPanelHeader', WorkbenchPanelTabList: 'WorkbenchPanelTabList' },
     './AssetLibraryToolbar.tsx': { __esModule: true, default: 'AssetLibraryToolbar', useAssetLibraryLayout: () => ({ layout: 'grid', setLayout() {} }) },
     './asset-annotation-state.ts': annotations,
     './workspace-visibility.tsx': { WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider' },
@@ -234,9 +235,13 @@ test('usage, type and mark filters compose once in the shared filter popover abo
 test('actual library passes explicit hidden and subjects visibility to usage controls', () => {
   const h = harness(), props = libraryProps({ subjects: {} });
   let tree = h.render(h.library, props); const card = () => nodes(tree).find((node: ElementNode) => node.type === h.usage.default);
+  const select = (view: 'assets' | 'subjects') => {
+    const tabs = nodes(tree).find(node => node.props.className === 'panel-header-tabs');
+    assert.ok(tabs); tabs.props.onValueChange(view);
+  };
   assert.equal(card()!.props.visible, true);
-  find(tree, 'library-subjects-tab')!.props.onClick(); tree = h.render(h.library, props); assert.equal(card()!.props.visible, false);
-  find(tree, 'library-assets-tab')!.props.onClick(); tree = h.render(h.library, { ...props, collapsed: true }); assert.equal(card()!.props.visible, false);
+  select('subjects'); tree = h.render(h.library, props); assert.equal(card()!.props.visible, false);
+  select('assets'); tree = h.render(h.library, { ...props, collapsed: true }); assert.equal(card()!.props.visible, false);
   tree = h.render(h.library, props); assert.equal(card()!.props.visible, true);
   h.visible = false; tree = h.render(h.library, props); assert.equal(card()!.props.visible, false);
 });

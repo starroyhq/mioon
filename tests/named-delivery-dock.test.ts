@@ -39,7 +39,9 @@ test('actual right-dock workspace uses shared labelled tabs and inline headings,
   for (const [page, html] of Object.entries(rendered)) {
     assert.match(html, new RegExp(`data-testid="delivery-workspace" data-page="${page}"`));
     assert.match(html, /aria-labelledby="delivery-workspace-heading"/);
-    assert.match(html, /data-slot="tabs"/); assert.match(html, /data-slot="tabs-list"/); assert.match(html, /role="tablist"/);
+    assert.match(html, /data-slot="tabs"/);
+    assert.match(html, /<[^>]*data-slot="tabs-list"[^>]*data-variant="line"[^>]*workbench-panel-tablist/u);
+    assert.match(html, /role="tablist"/);
     assert.match(html, /aria-label="成片交付页面"/); assert.equal((html.match(/role="tab"/g) || []).length, 2);
     assert.match(html, /本次导出/); assert.match(html, /导出记录/);
     assert.doesNotMatch(html, /role="dialog"|aria-modal=|modal-backdrop|data-slot="dialog/);
@@ -58,6 +60,7 @@ test('controlled tab semantics link to App-owned panes and retain both child tre
     const inactiveTab = html.match(new RegExp(`<button[^>]*id="${inactive}"[^>]*>`))?.[0];
     assert.ok(activeTab); assert.ok(inactiveTab); assert.match(activeTab, /aria-selected="true"/); assert.match(inactiveTab, /aria-selected="false"/);
     assert.match(activeTab, new RegExp(`aria-controls="delivery-${page}-pane"`));
+    assert.match(inactiveTab, new RegExp(`aria-controls="delivery-${page === 'compose' ? 'history' : 'compose'}-pane"`));
     assert.match(html, /id="delivery-compose-pane"[^>]*role="tabpanel"[^>]*aria-labelledby="delivery-compose-tab"/);
     assert.match(html, /id="delivery-history-pane"[^>]*role="tabpanel"[^>]*aria-labelledby="delivery-history-tab"/);
     assert.match(html, /retained-compose-draft/); assert.match(html, /value="  未提交草稿  "/); assert.match(html, /retained-history/);
@@ -70,9 +73,15 @@ test('actual component delegates valid page callbacks without local state, draft
   const source = readFileSync(sourcePath, 'utf8');
   const element = (type: unknown, props:Record<string,unknown>|null,...children:ElementTree[]) => ({ type, props: { ...props, children } });
   const react = { createElement: element }; (react as typeof react&{default:unknown}).default=react;
-  const shared = { Tabs: 'Tabs', TabsList: 'TabsList', TabsTrigger: 'TabsTrigger' }, module={exports:{}} as ElementModule;
+  const shared = { Tabs: 'Tabs', TabsTrigger: 'TabsTrigger' }, module={exports:{}} as ElementModule;
   Function('module', 'exports', 'require', transformSync(source, { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)(module, module.exports,
-(    name: string) => name === 'react' ? react : name === '@mioon/ui/components/tabs' ? shared : name === './i18n/I18nProvider.tsx' ? { useI18n: () => ({ t: (key: unknown) => key, locale: 'zh-Hans', formatDate: (value: unknown) => String(value), formatNumber: (value: unknown) => String(value), renderMessage: (value: { key: unknown; }) => (value && typeof value === 'object' ? String(value.key ?? '') : String(value ?? '')) }) } : assert.fail(`Unexpected dependency: ${name}`));
+    (name: string) => {
+      if (name === 'react') return react;
+      if (name === '@mioon/ui/components/tabs') return shared;
+      if (name === './WorkbenchPanelHeader.tsx') return { WorkbenchPanelTabList: 'WorkbenchPanelTabList' };
+      if (name === './i18n/I18nProvider.tsx') return { useI18n: () => ({ t: (key: unknown) => key, locale: 'zh-Hans' }) };
+      return assert.fail(`Unexpected dependency: ${name}`);
+    });
   const changes: (unknown)[] = [], supplied = Object.freeze({ marker: 'App-owned retained panes' });
   const tree = module.exports.default({ page: 'compose', onPage: (value: unknown) => changes.push(value), children:supplied}) as ElementNode;
   const tabs = (tree!.props.children.find((child:ElementTree) => (child as ElementNode)?.type==='Tabs') as ElementNode);
@@ -87,9 +96,11 @@ test('actual component delegates valid page callbacks without local state, draft
 
 test('unique dock styles keep headings and tabs fixed while each existing pane scrolls independently', () => {
   const css = readFileSync(path.join(root, 'apps/web/src/styles.css'), 'utf8');
+  const exportCss = readFileSync(path.join(root, 'apps/web/src/export-workflow.css'), 'utf8');
   assert.match(css, /\.delivery-workspace\{[^}]*min-height:0[^}]*overflow:hidden/);
   assert.match(css, /\.delivery-workspace-heading\{[^}]*flex:none/);
-  assert.match(css, /\.delivery-workspace-tablist\{[^}]*flex:none/);
+  assert.match(exportCss, /\.delivery-workspace-tablist\s*\{[^}]*--panel-tablist-height: 48px;[^}]*padding-inline: 68px 40px;/u);
+  assert.match(exportCss, /\.delivery-workspace:lang\(ja\) \.delivery-workspace-tablist\s*\{\s*padding-inline-start: calc\(68px \+ 2em\);/u);
   assert.match(css, /\.delivery-workspace-content\{[^}]*min-height:0[^}]*overflow:hidden/);
   assert.match(css, /\.delivery-workspace-content>\.right-dock-page\{[^}]*overflow:auto[^}]*overscroll-behavior:contain/);
   assert.match(css, /\.delivery-workspace-content>\.right-dock-page\[hidden\]\{display:none\}/);

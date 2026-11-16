@@ -36,9 +36,17 @@
 [data-testid="timeline-export-dialog"] .delivery-workspace { height: 100%; min-height: 0; }
 [data-testid="timeline-export-dialog"] .delivery-workspace-heading { display: none; }
 [data-testid="timeline-export-dialog"] .delivery-workspace-tabs { height: 100%; display: flex; flex-direction: column; min-height: 0; gap: 0; }
-[data-testid="timeline-export-dialog"] .delivery-workspace-tablist { flex: none; height: 48px; border-bottom: 1px solid var(--wb-line-subtle); padding-left: 68px; padding-right: 40px; border-radius: 0; background: var(--wb-raised); }
+[data-testid="timeline-export-dialog"] .delivery-workspace-tabs > .delivery-workspace-tablist {
+  --panel-tablist-height: 48px;
+  width: 100%;
+  gap: 16px;
+  padding-inline: 68px 40px;
+  background: var(--wb-raised);
+  box-shadow: inset 0 -1px var(--wb-line-subtle);
+}
 /* The Japanese heading occupies four full-width glyphs beside the tab list. */
-[data-testid="timeline-export-dialog"] .delivery-workspace:lang(ja) .delivery-workspace-tablist { padding-left: calc(68px + 2em); }
+[data-testid="timeline-export-dialog"] .delivery-workspace:lang(ja) .delivery-workspace-tablist { padding-inline-start: calc(68px + 2em); }
+[data-testid="timeline-export-dialog"] .delivery-workspace-tablist [data-slot="tabs-trigger"] { width: max-content; padding-inline: 10px; }
 [data-testid="timeline-export-dialog"] .delivery-workspace-content, [data-testid="timeline-export-dialog"] #delivery-compose-pane { flex: 1; min-height: 0; overflow: hidden; height: 100%; }
 [data-testid="timeline-export-dialog"] #delivery-history-pane { min-height: 0; height: 100%; overflow-y: auto; padding: 16px 24px; }
 @media (max-height: 720px) { .export-workflow-preview .export-preview-player { max-height: 280px; } .export-workflow-steps { margin-bottom: 16px; } }
@@ -49,11 +57,6 @@
 .export-file-actions > small { flex-basis: 100%; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; text-align: right; }
 .export-file-actions > .wb-alert { flex-basis: 100%; }
 
-/* The export dialog uses page tabs and a stable sample area. Technical detail
- * stays available without displacing the primary settings and step actions. */
-[data-testid="timeline-export-dialog"] .delivery-workspace-tablist { margin: 0; width: 100%; border: 0; border-bottom: 1px solid var(--wb-line-subtle); justify-content: flex-start; gap: 16px; }
-[data-testid="timeline-export-dialog"] .delivery-workspace-tablist [data-slot="tabs-trigger"] { flex: 0 0 auto; width: max-content; height: 48px; min-height: 48px; padding: 0 10px; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; box-shadow: none; font-size: var(--wb-text-label); }
-[data-testid="timeline-export-dialog"] .delivery-workspace-tablist [data-slot="tabs-trigger"][data-active] { background: transparent; border-bottom-color: var(--wb-accent-line); }
 .export-workflow-preview .export-preview { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .export-preview-stage { position: relative; flex: 0 0 clamp(180px, 33vh, 300px); height: clamp(180px, 33vh, 300px); min-height: 0; display: grid; place-items: center; background: var(--wb-bg); border: 1px solid var(--wb-line-subtle); border-radius: var(--wb-radius-control); overflow: hidden; }
 .export-workflow-preview .export-preview-stage video { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; max-height: none; object-fit: contain; margin: 0; }

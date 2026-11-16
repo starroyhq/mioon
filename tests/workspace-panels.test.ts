@@ -389,6 +389,20 @@ for (const active of ['body', 'trigger'] as const) {
   });
 }
 
+test('PanelRecall focuses the pin control when the revealed panel is an overlay', () => {
+  const h = harness('PanelRecall'), panel = new Element(), toggle = new Element(), pin = new Element(), trigger = new Element();
+  panel.dataset = {panelScope: 'project-one:canvas', visible: 'false'};
+  panel.selectors.set('[data-testid=toggle-assets]', toggle);
+  panel.selectors.set('[data-testid=pin-assets]', pin);
+  h.document.byId.set('dock-assets', panel);
+  h.document.activeElement = trigger;
+  h.render({name: 'assets', label: '素材库', icon: 'image', onClick: () => { panel.dataset.visible = 'true'; }});
+  h.node('reopen-assets')!.props.onClick({currentTarget: trigger});
+  h.flushFrames();
+  assert.equal(pin.focuses, 1);
+  assert.equal(toggle.focuses, 0);
+});
+
 for (const reason of ['changed scope', 'detached panel', 'still hidden', 'newer focus', 'missing panel'] as const) {
   test(`PanelRecall does not steal focus after ${reason}`, () => {
     const h = harness('PanelRecall'), panel = new Element(), toggle = new Element(), trigger = new Element();

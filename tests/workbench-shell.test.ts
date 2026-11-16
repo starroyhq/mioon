@@ -52,7 +52,16 @@ test('project view and help keep the moved function entrances and the inspector 
   const shell = readFileSync(new URL('../apps/web/src/WorkbenchShell.tsx', import.meta.url), 'utf8');
   assert.match(shell, /mode === 'canvas' && <TabsTrigger[^>]*value="versions"/);
   assert.doesNotMatch(shell, /value="(?:tasks|image|delivery)"/);
-  assert.match(app, /<WorkbenchTopbar/); assert.match(app, /<WorkbenchInspectorTabs/);
+  assert.match(app, /<WorkbenchTopbar/);
+  assert.match(app, /<WorkbenchPanelHeader[^>]*collapseTestId="toggle-inspector"[^>]*>\s*<WorkbenchInspectorTabs/);
+  const library = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
+  assert.match(library, /<WorkbenchPanelHeader[^>]*collapseTestId="toggle-assets"[^>]*>\s*<Tabs/);
+  assert.match(library, /<WorkbenchPanelTabList aria-label=\{t\('assets.assetsSubjects'\)\}/);
+  assert.match(shell, /<WorkbenchPanelTabList aria-label=\{labels.workspace\}/);
+  const header = readFileSync(new URL('../apps/web/src/WorkbenchPanelHeader.tsx', import.meta.url), 'utf8');
+  assert.match(header, /<TabsList[^>]*variant="line"[^>]*activateOnFocus=\{activateOnFocus\}/);
+  assert.match(header, /activateOnFocus = false/);
+  assert.match(header, /\{children\}\s*<CollapsibleTrigger[^>]*render=\{<WorkbenchButton/);
   assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
 });
 

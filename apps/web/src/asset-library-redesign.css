@@ -1,7 +1,3 @@
-.asset-panel .library-view-tabs{height:var(--wb-panel-heading);min-height:var(--wb-panel-heading);gap:var(--wb-space-3);padding:0 var(--wb-space-3);border-bottom:1px solid var(--wb-line-subtle)}
-.asset-panel .library-view-tabs [role=tab]{height:100%;padding:0 var(--wb-space-1);border:0;border-radius:0;color:var(--wb-soft);background:transparent;font-size:var(--wb-text-label)}
-.asset-panel .library-view-tabs [role=tab][aria-selected=true]{color:var(--wb-text);box-shadow:inset 0 -2px var(--wb-accent-line)}
-.asset-panel .library-view-tabs>.icon-button{margin-left:auto;min-width:var(--wb-control-compact)}
 .asset-panel .import-button{height:var(--wb-control);margin:var(--wb-space-3) var(--wb-space-3) var(--wb-space-2);width:calc(100% - var(--wb-space-6));font-size:var(--wb-text-label)}
 .asset-panel .asset-drag-help{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .asset-library-toolbar{padding:0 var(--wb-space-3);flex:none;display:flex;flex-direction:column;gap:var(--wb-space-2)}
