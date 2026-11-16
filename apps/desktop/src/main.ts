@@ -156,8 +156,10 @@ function requestApplicationQuit(source: BrowserWindow | undefined): Promise<bool
 
 // Embedded by build.ts. Runtime env and app.isPackaged cannot change the channel.
 const identity: DesktopIdentity = desktopIdentity.identityForChannel(__MIOON_DESKTOP_CHANNEL__);
+const macSignatureResult = identity.channel === 'production' && app.isPackaged && process.platform === 'darwin'
+  ? verifyOfficialMacDesktopProcess() : null;
 const productionChannelRejected = identity.channel === 'production' &&
-  (!app.isPackaged || (process.platform === 'darwin' && !verifyOfficialMacDesktopProcess()));
+  (!app.isPackaged || macSignatureResult === 'rejected');
 let languageHost: LanguageHost | null = null;
 const systemLanguages = (): readonly string[] => { try { return app.getPreferredSystemLanguages(); } catch { return [process.env.LC_ALL || process.env.LANG || 'en']; } };
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
@@ -1491,6 +1493,9 @@ async function quitFailed(error: unknown): Promise<void> {
 if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStorageError);
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
+  if (macSignatureResult && macSignatureResult !== 'verified' && macSignatureResult !== 'rejected') {
+    rendererDiagnostics?.recordStartupSignature(macSignatureResult);
+  }
   app.on('second-instance', (_event, argv, workingDirectory) => {
     const files=projectFileArguments(argv,workingDirectory);
     if (!files.length && quitCoordinator.state === 'idle' && !restarting) { trayIntent++; windowHost?.activate(BrowserWindow.getFocusedWindow()); }

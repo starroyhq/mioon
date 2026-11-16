@@ -11,6 +11,7 @@ import type { SettingsDiagnosticRecord } from './settings-diagnostics-protocol.t
 export const RENDERER_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileCount: 3 });
 export const RENDERER_DIAGNOSTIC_FILE = 'renderer-health.jsonl';
 export const SLOW_SETTINGS_DIAGNOSTIC_FILE = 'settings-open-slow.jsonl';
+const startupSignatureDiagnosticFile = 'startup-signature.log';
 const settingsBatch = {delayMs: 200, maxRows: 64, maxBytes: 16 * 1024};
 
 export function isSlowSettingsDiagnostic(event: SettingsDiagnosticRecord['event']): boolean {
@@ -41,6 +42,7 @@ export interface RendererDiagnosticRecord {
 export interface RendererDiagnostics {
   record(event: unknown, details?: unknown): boolean;
   recordSettings(value: SettingsDiagnosticRecord): boolean;
+  recordStartupSignature(result: unknown): boolean;
   flushSettings(): void;
 }
 interface Metadata {
@@ -327,5 +329,14 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
       return true;
     } catch { return false; }
   }
-  return {record, recordSettings, flushSettings};
+  function recordStartupSignature(result: unknown): boolean {
+    if (result !== 'timeout' && result !== 'spawn') {
+      if (typeof result !== 'string') return false;
+      const exit = /^exit:(0|[1-9]\d{0,2})$/.exec(result);
+      if (!exit || exit[0] !== result || Number(exit[1]) > 255) return false;
+    }
+    try { return append(Buffer.from(`${result}\n`), startupSignatureDiagnosticFile); }
+    catch { return false; }
+  }
+  return {record, recordSettings, recordStartupSignature, flushSettings};
 }

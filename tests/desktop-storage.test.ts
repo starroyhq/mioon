@@ -229,7 +229,7 @@ test('main isolates fatal storage handling from lock acquisition and normal read
   assert.doesNotMatch(main, /mkdirSync\(paths\.userData|app\.setPath\('userData', paths\.userData\)/);
 });
 
-test('the real startup guard requires a packaged official Mac process before enabling production storage', async () => {
+test('startup rejects unpackaged production or a definite Mac signature failure before accessing storage', async () => {
   const source = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const begin = source.indexOf('const identity: DesktopIdentity = desktopIdentity.identityForChannel');
   const end = source.indexOf('const appearanceCache', begin);
@@ -237,19 +237,25 @@ test('the real startup guard requires a packaged official Mac process before ena
   const startup = stripTypeScriptTypes(source.slice(begin, end), {mode: 'strip'});
   const failure = source.slice(source.indexOf('if (startupStorageError) void showStorageStartupFailure'), source.indexOf("  app.on('second-instance'"));
   for (const platform of ['darwin', 'linux', 'win32']) {
-    for (const [channel, isPackaged, signed] of [['production', false, true], ['production', true, false],
-      ['production', true, true], ['development', false, false], ['development', true, false]] as const) {
+    for (const [channel, isPackaged, signature, lock = true] of [
+      ['production', false, 'verified'], ['production', true, 'rejected'], ['production', true, 'verified'],
+      ['production', true, 'timeout'], ['production', true, 'spawn'], ['production', true, 'exit:2'],
+      ['production', true, 'timeout', false], ['development', false, 'rejected'], ['development', true, 'rejected'],
+    ] as const) {
       const events: string[] = [];
       const app = {
         isPackaged, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {}, commandLine: {appendSwitch() {}},
-        requestSingleInstanceLock() {events.push('lock'); return true;},
+        requestSingleInstanceLock() {events.push('lock'); return lock;},
+        quit() {events.push('quit');},
       };
       const verify = channel === 'production' && isPackaged && platform === 'darwin';
-      const reject = channel === 'production' && (!isPackaged || verify && !signed);
+      const reject = channel === 'production' && (!isPackaged || verify && signature === 'rejected');
+      const record = verify && signature !== 'verified' && signature !== 'rejected';
       runInNewContext(`${startup}\n${failure} startWorkspace(); }`, {
         app, desktopIdentity, __MIOON_DESKTOP_CHANNEL__: channel,
         process: {platform, env: {MIOON_DESKTOP_CHANNEL: 'development', MIOON_DESKTOP_USER_DATA: '/synthetic/explicit-profile'}},
-        verifyOfficialMacDesktopProcess() {events.push('signature'); return signed;},
+        verifyOfficialMacDesktopProcess() {events.push('signature'); return signature;},
+        rendererDiagnostics: {recordStartupSignature(result: string) {events.push(`signature diagnostic ${result}`);}},
         setNativeLanguageReader() {}, privateStorageHelperFile() {events.push('storage path');},
         initializeDesktopPrivateStorage() {events.push('storage helper');},
         prepareDesktopStorage() {events.push('profile');},
@@ -262,8 +268,9 @@ test('the real startup guard requires a packaged official Mac process before ena
       });
       assert.deepEqual(events, [
         ...(verify ? ['signature'] : []),
-        ...(reject ? ['rejected'] : ['storage path', 'storage helper', 'profile', 'lock', 'workspace and vault']),
-      ], `${platform}/${channel}/${isPackaged}/${signed}`);
+        ...(reject ? ['rejected'] : ['storage path', 'storage helper', 'profile', 'lock']),
+        ...(reject ? [] : lock ? [...(record ? [`signature diagnostic ${signature}`] : []), 'workspace and vault'] : ['quit']),
+      ], `${platform}/${channel}/${isPackaged}/${signature}/${lock}`);
     }
   }
 });
