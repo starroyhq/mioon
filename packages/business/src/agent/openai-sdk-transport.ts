@@ -2,7 +2,8 @@ import OpenAI from 'openai';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatDiagnostic, agentChatError, agentChatProtocolError, agentChatStreamError} from './chat-errors.ts';
-import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
+import {createAgentTransport} from './network-policy.ts';
+import {agentSdkTimeoutMs} from './stream-timeouts.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 
 /** The SDK owns the API call and JSON serialization. Its fetch boundary stays
@@ -28,7 +29,7 @@ export function createOpenAiSdkTransport(dependencies: AgentTransportDependencie
       // host's bound options.apiKey reaches the actual HTTP transport.
       apiKey: options.apiKey || 'mioon-local-sdk-placeholder',
       adminAPIKey: null, organization: null, project: null,
-      maxRetries: 0, timeout: AGENT_NETWORK_LIMITS.totalTimeoutMs, logLevel: 'off',
+      maxRetries: 0, timeout: agentSdkTimeoutMs(options.timeoutMode), logLevel: 'off',
       fetch: async (input, init) => {
         try {
           // Compare exact serialized bytes with the request already journaled.
@@ -83,7 +84,7 @@ export function createOpenAiSdkTransport(dependencies: AgentTransportDependencie
           throw failure && failure.code !== 'AGENT_CHAT_TRUNCATED' ? failure : agentChatStreamError('read_failed');
         } finally { close(); }
       };
-      return {body: bodyStream(), close, error: () => incoming.error()};
+      return {body: bodyStream(), close, error: () => incoming.error(), markModelProgress: incoming.markModelProgress};
     } catch (error) {
       close();
       if (transportFailure !== undefined) throw transportFailure;

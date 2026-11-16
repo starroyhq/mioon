@@ -22,7 +22,7 @@ import {AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOA
 import {agentTaskSkillInstructions} from './task-skills-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
-import {agentChatError,agentChatLimitError,agentChatProtocolError,agentChatStreamError,annotateAgentChatStreamError} from './chat-errors.ts';
+import {agentChatError,agentChatLimitError,agentChatProtocolError,agentChatProviderError,agentChatStreamError,annotateAgentChatStreamError,hasProviderChatCompletionFailure} from './chat-errors.ts';
 import type {AgentChatErrorCode,AgentStreamState} from './chat-errors.ts';
 import type {AgentFailureLimit,AgentProtocolFailureReason} from '../../../contracts/src/agent-failure-diagnostic.ts';
 import type {AgentConfiguration} from './config.ts';
@@ -32,7 +32,7 @@ import type {AgentTaskJson,AgentTaskToolCall,AgentTaskLocale} from '@mioon/contr
 export interface TaskToolDefinition {name:string;description:string;parameters:unknown}
 export interface TaskModelOutput {text:string;toolCalls:AgentTaskToolCall[];providerOutput:AgentTaskJson;usage?:TaskModelUsage}
 export type TaskModelItem={type:'delta';text:string}|{type:'done';output:TaskModelOutput};
-export interface TaskModelRequest {configuration:AgentConfiguration;body:string;apiKey?:string|null;signal?:AbortSignal;selfPort?:number;beforeSubmit?:()=>void;knownTools?:readonly TaskToolDefinition[]}
+export interface TaskModelRequest {configuration:AgentConfiguration;body:string;apiKey?:string|null;signal?:AbortSignal;selfPort?:number;beforeSubmit?:()=>void;knownTools?:readonly TaskToolDefinition[];taskTimeouts?:boolean}
 export type TaskGateway=(request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
 const preventedSubmissions=new WeakSet<object>();
 export const wasTaskSubmissionPrevented=(error:unknown):boolean=>error!==null&&typeof error==='object'&&preventedSubmissions.has(error);
@@ -350,7 +350,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
     let blocked:unknown;
     const guarded={...options,beforeSubmit:()=>{try{options.beforeSubmit?.();}catch(error){blocked=error;if(error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}}};
     let stream:Awaited<ReturnType<typeof open>>;
-    try{stream=await open(guarded);}catch(error){if(blocked)throw blocked;if(wasAgentTransportSubmissionPrevented(error)&&error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}
+    try{stream=await open({...guarded,timeoutMode:options.taskTimeouts?'mio_task':undefined});}catch(error){if(blocked)throw blocked;if(wasAgentTransportSubmissionPrevented(error)&&error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}
     let streamState:AgentStreamState|undefined;
     const usageCollector=createTaskUsageCollector(options.configuration.protocol);
     const usageOutput=():{usage?:TaskModelUsage}=>{const usage=usageCollector.usage();return usage?{usage}:{};};
@@ -363,13 +363,19 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         streamState={finishReason:null,done:false,frameCount:0,toolCount:0,outputBytes:0};
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal})) {
           streamState.frameCount=(streamState.frameCount??0)+1;
-          if(frame.event==='error')protocolFailure('provider_error',{event:'error'},'AGENT_CHAT_PROVIDER_ERROR');
+          if(frame.event==='error'){
+            let errorFrame:unknown;
+            try{errorFrame=JSON.parse(frame.data);}catch{/* Some compatible services send an unstructured error event. */}
+            throw agentChatProviderError(options.configuration,'error',errorFrame);
+          }
           if(frame.event!=='message')protocolFailure('unknown_event',{event:frame.event});
           if(done)protocolFailure('invalid_event',{event:'message',field:'done'});
           if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
           let raw:unknown;try{raw=JSON.parse(frame.data);}catch{protocolFailure('invalid_event',{event:'message',field:'json'});}
           if(!object(raw))protocolFailure('invalid_event',{event:'message',field:'json'},'AGENT_CHAT_PROVIDER_ERROR');
-          if(raw.error)protocolFailure('provider_error',{event:'message'},'AGENT_CHAT_PROVIDER_ERROR');
+          const compatibleFailure=hasProviderChatCompletionFailure(options.configuration,raw);
+          if(raw.error||compatibleFailure&&(!Array.isArray(raw.choices)||!raw.choices.length))
+            throw agentChatProviderError(options.configuration,'message',raw);
           noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)protocolFailure('invalid_field',{event:'message',field:'choices'});
           usageCollector.observe(raw.usage);if(!raw.choices.length)continue;
           const choice=raw.choices[0];
@@ -378,19 +384,27 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           noReasoning(choice.delta,thinking?'reasoning_content':undefined);
           if(finished)protocolFailure('invalid_event',{event:'message',field:'finish_reason'});
           const delta=choice.delta;
-          if(delta.content!=null){const part=string(delta.content,TASK_MODEL_LIMITS.outputBytes,'content');text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part)yield {type:'delta',text:part};}
+          if(delta.content!=null){const part=string(delta.content,TASK_MODEL_LIMITS.outputBytes,'content');text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part){stream.markModelProgress?.();yield {type:'delta',text:part};}}
+          if(compatibleFailure)throw agentChatProviderError(options.configuration,'message',raw);
           // Reasoning is retained for this round's continuation, never shown as text.
-          if(thinking&&delta.reasoning_content!=null){reasoning+=string(delta.reasoning_content,TASK_MODEL_LIMITS.outputBytes,'reasoning_content','reasoning_bytes');if(Buffer.byteLength(reasoning)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_bytes');}
+          if(thinking&&delta.reasoning_content!=null){
+            const part=string(delta.reasoning_content,TASK_MODEL_LIMITS.outputBytes,'reasoning_content','reasoning_bytes');
+            reasoning+=part;
+            if(Buffer.byteLength(reasoning)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('reasoning_bytes');
+            if(part)stream.markModelProgress?.();
+          }
           if(delta.refusal!=null&&delta.refusal!=='')refused=true;
           if(delta.function_call!=null)protocolFailure('unsupported_item',{event:'message',item:'function_call'},'AGENT_CHAT_TOOLS_UNSUPPORTED');
           if(delta.tool_calls!=null){if(!Array.isArray(delta.tool_calls))protocolFailure('invalid_field',{event:'message',field:'tool_calls'});for(const fragment of delta.tool_calls){
             if(!object(fragment)||!Number.isSafeInteger(fragment.index)||(fragment.index as number)<0)protocolFailure('invalid_field',{event:'message',field:'index'});
             if((fragment.index as number)>=TASK_MODEL_LIMITS.toolCalls)throw agentChatLimitError('tool_calls','AGENT_CHAT_PROTOCOL_ERROR');
             const index=fragment.index as number,current=calls.get(index)??{id:'',name:'',arguments:''};
+            const previousLength=current.id.length+current.name.length+current.arguments.length;
             if(fragment.type!==undefined&&fragment.type!=='function')protocolFailure('unsupported_item',{event:'message',item:fragment.type});
             if(fragment.id!==undefined)current.id+=string(fragment.id,256,'id','identifier_bytes');
             if(fragment.function!==undefined){if(!object(fragment.function))protocolFailure('invalid_field',{event:'message',item:'function',field:'function_call'});if(fragment.function.name!==undefined)current.name+=string(fragment.function.name,256,'name','identifier_bytes');if(fragment.function.arguments!==undefined)current.arguments+=string(fragment.function.arguments,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');}
             if(Buffer.byteLength(current.arguments)>TASK_MODEL_LIMITS.argumentBytes)throw agentChatLimitError('argument_bytes');calls.set(index,current);streamState.toolCount=calls.size;
+            if(current.id.length+current.name.length+current.arguments.length>previousLength)stream.markModelProgress?.();
           }}
           if(choice.finish_reason!=null){if(!['stop','tool_calls','length','content_filter'].includes(String(choice.finish_reason)))protocolFailure('invalid_field',{event:'message',field:'finish_reason'});finished=String(choice.finish_reason);streamState.finishReason=finished as AgentStreamState['finishReason'];}
         }
@@ -405,7 +419,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         yield {type:'done',output:{text,toolCalls,providerOutput,...usageOutput()}};
       } else if(options.configuration.protocol==='anthropic_messages') {
         let completion:AnthropicCompletion|undefined;
-        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe,thinking,sonnetPrefixBinding:agentSonnetPrefixBinding(options.configuration,parsed)})){
+        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe,onProgress:stream.markModelProgress,onProviderError:raw=>{throw agentChatProviderError(options.configuration,'error',raw);},thinking,sonnetPrefixBinding:agentSonnetPrefixBinding(options.configuration,parsed)})){
           if(item.type==='delta')yield item;
           else completion=item.completion;
         }
@@ -433,7 +447,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           if(frame.eventName&&frame.eventName!==raw.type)protocolFailure('invalid_event',{...eventDetails,field:'event_name'});
           responsesFields(raw,native);
           const type=raw.type;
-          if(type==='error'||type==='response.failed')protocolFailure('provider_error',{event:type},'AGENT_CHAT_PROVIDER_ERROR');
+          if(type==='error'||type==='response.failed'){
+            if(type==='response.failed'&&responseId&&object(raw.response)&&raw.response.id!==undefined&&raw.response.id!==responseId)
+              protocolFailure('terminal_mismatch',{event:type,field:'id'});
+            throw agentChatProviderError(options.configuration,type,raw);
+          }
           if(type==='response.incomplete'){
             if(!native)protocolFailure('provider_error',{event:type},'AGENT_CHAT_PROVIDER_ERROR');
             if(object(raw.response)&&object(raw.response.incomplete_details)&&raw.response.incomplete_details.reason==='max_output_tokens')throw agentChatLimitError('max_output_tokens','AGENT_CHAT_OUTPUT_LIMIT');
@@ -505,12 +523,14 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(item.type!=='message')protocolFailure('invalid_event',details);
             if(!Number.isSafeInteger(raw.content_index))protocolFailure('invalid_field',{...details,field:'content_index'});
             const part=string(raw.delta),key=`${position}:${raw.content_index}`;
-            parts.set(key,(parts.get(key)??'')+part);text+=part;if(Buffer.byteLength(text)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part)yield {type:'delta',text:part};
+            parts.set(key,(parts.get(key)??'')+part);text+=part;if(Buffer.byteLength(text)>TASK_MODEL_LIMITS.outputBytes)throw agentChatLimitError('output_bytes');if(part){stream.markModelProgress?.();yield {type:'delta',text:part};}
           }else if(type==='response.function_call_arguments.delta'){
             if(item.type!=='function_call')protocolFailure('invalid_event',details);
-            const next=(argumentsByIndex.get(position)??'')+string(raw.delta,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');
+            const part=string(raw.delta,TASK_MODEL_LIMITS.argumentBytes,'arguments','argument_bytes');
+            const next=(argumentsByIndex.get(position)??'')+part;
             if(Buffer.byteLength(next)>TASK_MODEL_LIMITS.argumentBytes)throw agentChatLimitError('argument_bytes');
             argumentsByIndex.set(position,next);
+            if(part)stream.markModelProgress?.();
           }else if(type==='response.function_call_arguments.done'){
             if(item.type!=='function_call')protocolFailure('invalid_event',details);
             if(raw.arguments!==argumentsByIndex.get(position))protocolFailure('terminal_mismatch',{...details,field:'arguments'});
@@ -538,7 +558,12 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             // Only the response terminal classifies the truncation; these items
             // never become a completed result or an executable tool call.
             if(item.type==='reasoning'){
-              if(glm)glmResponsesReasoning(raw.item,type);else reasoningItem(raw.item,native&&raw.item.status!=='incomplete',type);
+              if(glm){
+                if(glmResponsesReasoning(raw.item,type)?.text)stream.markModelProgress?.();
+              }else{
+                reasoningItem(raw.item,native&&raw.item.status!=='incomplete',type);
+                if(raw.item.encrypted_content||Array.isArray(raw.item.content)&&raw.item.content.length||Array.isArray(raw.item.summary)&&raw.item.summary.length)stream.markModelProgress?.();
+              }
             }else responsesFields(raw.item,native);
             if(item.type==='function_call'){
               if(raw.item.name!==item.name)protocolFailure('terminal_mismatch',{...details,field:'name'});
@@ -561,13 +586,17 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             // Streamed reasoning is checked, never shown; continuation returns the completed item.
             if(glm){
               if(type!=='response.reasoning_text.delta'&&type!=='response.reasoning_text.done')protocolFailure('invalid_event',details);
-              string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+              const part=string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+              if(part&&type.endsWith('.delta'))stream.markModelProgress?.();
               continue;
             }
             const field=type.startsWith('response.reasoning_summary_')?'summary_index':'content_index';
             if(!Number.isSafeInteger(raw[field]))protocolFailure('invalid_field',{...details,field});
             if(type.includes('_part.')){if(!object(raw.part)||raw.part.type!=='summary_text')protocolFailure('invalid_field',{...details,field:'part'});string(raw.part.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');}
-            else string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+            else{
+              const part=string(type.endsWith('.delta')?raw.delta:raw.text,TASK_MODEL_LIMITS.outputBytes,'text','reasoning_bytes');
+              if(part&&type.endsWith('.delta'))stream.markModelProgress?.();
+            }
           }else protocolFailure('invalid_event',details);
         }
         if(stream.error())throw stream.error();if(!terminal||!completed)throw agentChatStreamError('missing_done');

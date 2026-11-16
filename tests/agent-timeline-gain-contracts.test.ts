@@ -244,7 +244,9 @@ test('strict public proposal union distinguishes gain provenance and every appro
   for (const key of ['timelineId', 'clipId'] as const) { const value = proposal('applied'); ((value.outcome! as unknown as Record<PropertyKey,unknown>))[key] = id(99); assert.equal(isAgentTimelineGainProposal(value), false); }
   const revision = proposal('applied'); (revision.outcome! as unknown as {revision: number}).revision = 6; assert.equal(isAgentTimelineGainProposal(revision), false);
   for (const reason of ['NOT_FOUND', 'UNAUTHORIZED', 'NETWORK', 'PRIVATE', 'AGENT_EDIT_CONFLICT'] as const) {
-    const value = proposal('failed'); value.outcome!.code = reason; assert.equal(isAgentTimelineGainProposal(value), false, reason);
+    const failed = proposal('failed');
+    const value = {...failed, outcome: {...failed.outcome!, code: reason}};
+    assert.equal(isAgentTimelineGainProposal(value), false, reason);
   }
   for (const status of ['approved', 'dispatching', 'unknown', 'applied', 'failed'] as const) {
     const value = proposal(status); delete value.approval; assert.equal(isAgentTimelineGainProposal(value), false);

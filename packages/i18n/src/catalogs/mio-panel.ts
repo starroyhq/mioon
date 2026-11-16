@@ -115,12 +115,6 @@ export const mioPanelMessages = {
     "en": "View details",
     "ja": "詳細を表示"
   },
-  "agent.panel.detailsPrivacy": {
-    "zh-Hans": "仅显示可安全展示的操作信息",
-    "zh-Hant": "僅顯示可安全展示的操作資訊",
-    "en": "Only safe operation information is shown",
-    "ja": "安全に表示できる操作情報のみ表示します"
-  },
   "agent.panel.diagnostic.code": {
     "zh-Hans": "诊断码（可复制）",
     "zh-Hant": "診斷碼（可複製）",
@@ -133,6 +127,28 @@ export const mioPanelMessages = {
     "en": "The model service returned HTTP error {status}.",
     "ja": "モデルサービスが HTTP エラー {status} を返しました。"
   },
+  "agent.panel.provider.server": {"zh-Hans": "模型服务暂时无法处理请求。", "zh-Hant": "模型服務暫時無法處理請求。", "en": "The model service is temporarily unable to process the request.", "ja": "モデルサービスが一時的にリクエストを処理できません。"},
+  "agent.panel.provider.overloaded": {"zh-Hans": "模型服务当前负载过高。", "zh-Hant": "模型服務目前負載過高。", "en": "The model service is currently overloaded.", "ja": "モデルサービスが混み合っています。"},
+  "agent.panel.provider.rate_limit": {"zh-Hans": "请求过于频繁，已触发模型服务限流。", "zh-Hant": "請求過於頻繁，已觸發模型服務限流。", "en": "Too many requests triggered the model service’s rate limit.", "ja": "リクエストが多すぎるため、モデルサービスのレート制限に達しました。"},
+  "agent.panel.provider.quota": {"zh-Hans": "模型服务的余额或用量额度不足。", "zh-Hant": "模型服務的餘額或用量額度不足。", "en": "The model service has insufficient balance or usage quota.", "ja": "モデルサービスの残高または利用枠が不足しています。"},
+  "agent.panel.provider.context_length": {"zh-Hans": "这轮发送的内容超出了模型的上下文上限。", "zh-Hant": "這輪傳送的內容超出了模型的上下文上限。", "en": "The content sent for this round exceeds the model’s context limit.", "ja": "このラウンドで送信した内容がモデルのコンテキスト上限を超えています。"},
+  "agent.panel.provider.model_unavailable": {"zh-Hans": "模型服务无法使用当前型号。", "zh-Hant": "模型服務無法使用目前的型號。", "en": "The current model is unavailable on the model service.", "ja": "モデルサービスで現在のモデルを利用できません。"},
+  "agent.panel.provider.invalid_parameter": {"zh-Hans": "模型服务拒绝了此请求的参数。", "zh-Hant": "模型服務拒絕了此請求的參數。", "en": "The model service rejected this request’s parameters.", "ja": "モデルサービスがこのリクエストのパラメーターを拒否しました。"},
+  "agent.panel.provider.authentication": {"zh-Hans": "模型服务拒绝了连接凭据或访问权限。", "zh-Hant": "模型服務拒絕了連線憑證或存取權限。", "en": "The model service rejected the credentials or access permissions.", "ja": "モデルサービスが認証情報またはアクセス権限を拒否しました。"},
+  "agent.panel.provider.unknown": {"zh-Hans": "模型服务终止了请求，原因未能识别。", "zh-Hant": "模型服務終止了請求，原因未能辨識。", "en": "The model service ended the request for an unrecognized reason.", "ja": "モデルサービスがリクエストを終了しました。原因は特定できませんでした。"},
+  "agent.panel.providerRetryScheduled": {"zh-Hans": "已安排第 {attempt} 次自动重试。", "zh-Hant": "已安排第 {attempt} 次自動重試。", "en": "Automatic retry {attempt} was scheduled.", "ja": "{attempt} 回目の自動再試行がスケジュールされました。"},
+  "agent.panel.diagnostic.providerType": {"zh-Hans": "服务商错误类型", "zh-Hant": "服務商錯誤類型", "en": "Provider error type", "ja": "プロバイダーのエラー種別"},
+  "agent.panel.diagnostic.providerCode": {"zh-Hans": "服务商错误码", "zh-Hant": "服務商錯誤碼", "en": "Provider error code", "ja": "プロバイダーのエラーコード"},
+  "agent.panel.diagnostic.providerParam": {"zh-Hans": "相关参数", "zh-Hant": "相關參數", "en": "Parameter", "ja": "パラメーター"},
+  "agent.panel.diagnostic.providerMessage": {"zh-Hans": "服务商说明", "zh-Hant": "服務商說明", "en": "Provider explanation", "ja": "プロバイダーの説明"},
+  "agent.panel.timeout.dns": {"zh-Hans": "请求已耗时 {seconds} 秒，查找模型服务地址时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，查找模型服務位址時逾時。", "en": "The request timed out during the model service address lookup, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、モデルサービスのアドレス検索中にタイムアウトしました。"},
+  "agent.panel.timeout.connect": {"zh-Hans": "请求已耗时 {seconds} 秒，连接模型服务时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，連線至模型服務時逾時。", "en": "The request timed out while connecting to the model service, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、モデルサービスへの接続中にタイムアウトしました。"},
+  "agent.panel.timeout.headers": {"zh-Hans": "请求已耗时 {seconds} 秒，等待模型服务响应头时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待模型服務回應標頭時逾時。", "en": "The request timed out while waiting for response headers, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答ヘッダーの待機中にタイムアウトしました。"},
+  "agent.panel.timeout.first_byte": {"zh-Hans": "请求已耗时 {seconds} 秒，等待模型回复的首批数据时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待模型回覆的首批資料時逾時。", "en": "The request timed out while waiting for the first response data, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答の最初のデータを待機中にタイムアウトしました。"},
+  "agent.panel.timeout.idle": {"zh-Hans": "请求已耗时 {seconds} 秒，等待回复的后续数据时超时。", "zh-Hant": "請求已耗時 {seconds} 秒，等待回覆的後續資料時逾時。", "en": "The request timed out while waiting for more response data, after {seconds} s overall.", "ja": "リクエストは開始から {seconds} 秒後、応答の続きのデータを待機中にタイムアウトしました。"},
+  "agent.panel.timeout.total": {"zh-Hans": "模型请求在 {seconds} 秒内未完成，已到达总时限。", "zh-Hant": "模型請求在 {seconds} 秒內未完成，已達到總時限。", "en": "The model request reached its overall time limit of {seconds} s.", "ja": "モデルリクエストが全体の制限時間（{seconds} 秒）に達しました。"},
+  "agent.panel.exportBeforeModelFailure.succeeded": {"zh-Hans": "导出完成", "zh-Hant": "匯出完成", "en": "Export complete", "ja": "書き出し完了"},
+  "agent.panel.exportBeforeModelFailure.submitted": {"zh-Hans": "导出任务已提交", "zh-Hant": "匯出任務已提交", "en": "Export submitted", "ja": "書き出しタスクを送信済み"},
   "agent.panel.diagnostic.terminal_mismatch": {
     "zh-Hans": "模型在回复结束时返回的数据与之前收到的内容不一致。",
     "zh-Hant": "模型在回覆結束時傳回的資料與先前收到的內容不一致。",

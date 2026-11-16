@@ -1,7 +1,7 @@
 import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
-import {agentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {agentChatError,agentChatHttpError,agentChatProviderError,agentChatTimeoutError} from '../packages/business/src/agent/chat-errors.ts';
 
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
@@ -152,6 +152,98 @@ async function m4ConflictPause(f:RuntimeFixture,{reason,target,calls,script,prot
  else await f.services.call('shot.update',{shotId:target.id,expectedRevision:revisionField(f.store.get('shots',target.id)),patch:{prompt:'manual conflict'}});
  return {sent,paused:m4PauseFromApproval(f,sent.run.id,reason),stepId,...(owner?{ownerId:owner}:{})};
 }
+test('temporary model errors retry twice, retain partial text and never rerun a completed tool',async t=>{
+  const f=await fixture(t),started:number[]=[];
+  let executed=0;
+  f.beforeTool(async prepared=>{if(prepared.operation==='project.inspect')executed++;});
+  f.setScript(async function*(index,request){
+    started.push(performance.now());
+    if(index===1){yield {type:'done',output:output('responses',[call('mioon_project_inspect')])};return;}
+    yield {type:'delta',text:`Partial reply ${index}`};
+    throw agentChatProviderError(request.configuration,'response.failed',{response:{error:{code:'server_error',message:'PRIVATE_PROVIDER_ECHO'}}});
+  });
+  const sent=await f.send(),done=await f.settle(sent.run.id);
+  assert.equal(done.run.status,'failed');
+  assert.equal(done.run.pauseReason,'AGENT_CHAT_PROVIDER_ERROR');
+  assert.equal(f.requests.length,4);
+  assert.ok(started[2]!-started[1]!>=950);
+  assert.ok(started[3]!-started[2]!>=1950);
+  assert.equal(executed,1);
+  const tools=done.steps.filter(step=>step.kind==='tool');
+  assert.equal(tools.length,1);
+  assert.equal(tools[0]?.status,'completed');
+  const failed=done.steps.filter(step=>step.kind==='model'&&step.status==='failed');
+  assert.deepEqual(failed.map(step=>step.providerRetryAttempt),[1,2,undefined]);
+  assert.deepEqual(failed.map(step=>step.text),['Partial reply 2','Partial reply 3','Partial reply 4']);
+  assert.ok(failed.every(step=>step.error?.diagnostic?.kind==='provider'&&step.error.diagnostic.reason==='server'));
+  assert.doesNotMatch(JSON.stringify(failed),/PRIVATE_PROVIDER_ECHO/u);
+  assert.deepEqual(f.requests.slice(1).map(request=>request.body),Array(3).fill(f.requests[1]!.body));
+  const replay=await f.send('执行测试',sent.run.requestId);
+  assert.equal(replay.run.id,sent.run.id);
+  assert.equal(executed,1);
+  assert.equal(f.requests.length,4);
+});
+
+test('a hard quota failure remains a single model attempt with its cause',async t=>{
+  const f=await fixture(t);
+  f.setScript(async function*(_index,request){
+    throw agentChatProviderError(request.configuration,'error',{type:'error',code:'insufficient_quota'});
+  });
+  const sent=await f.send(),done=await f.settle(sent.run.id);
+  assert.equal(f.requests.length,1);
+  assert.equal(done.run.status,'failed');
+  assert.equal(done.steps[0]?.providerRetryAttempt,undefined);
+  assert.deepEqual(done.steps[0]?.error?.diagnostic,{kind:'provider',reason:'quota',event:'error',code:'insufficient_quota'});
+});
+
+test('a provider Retry-After beyond the automatic wait budget keeps a resolvable failure',async t=>{
+  const f=await fixture(t);
+  f.setScript(async function*(_index,request){
+    throw agentChatHttpError(429,Buffer.from(JSON.stringify({error:{code:'rate_limit_exceeded'}})),request.configuration,'60');
+  });
+  const sent=await f.send(),done=await f.settle(sent.run.id);
+  assert.equal(f.requests.length,1);
+  assert.equal(done.run.status,'failed');
+  assert.equal(done.steps[0]?.providerRetryAttempt,undefined);
+  assert.deepEqual(done.steps[0]?.error?.diagnostic,{kind:'http',status:429,providerCode:'rate_limit_exceeded',
+    provider:{kind:'provider',reason:'rate_limit',code:'rate_limit_exceeded'}});
+});
+
+test('stopping during a recorded model retry backoff prevents another dispatch',async t=>{
+  const f=await fixture(t);
+  f.setScript(async function*(_index,request){
+    throw agentChatHttpError(503,undefined,request.configuration,'5');
+  });
+  const sent=await f.send();
+  let snapshot=f.runtime.get(f.projectId,sent.run.id);
+  const deadline=Date.now()+2000;
+  while(Date.now()<deadline&&snapshot.steps.at(-1)?.providerRetryAttempt!==1){
+    await delay(5);
+    snapshot=f.runtime.get(f.projectId,sent.run.id);
+  }
+  assert.equal(snapshot.steps.at(-1)?.providerRetryAttempt,1);
+  await f.action(snapshot,'stop');
+  assert.equal((await f.settle(sent.run.id)).run.status,'stopped');
+  assert.equal(f.requests.length,1);
+  assert.equal(f.effects.size,0);
+});
+
+test('timeout phase and elapsed time persist on the failed model step across restart',async t=>{
+  const f=await fixture(t);
+  f.setScript(async function*(){
+    throw agentChatTimeoutError('first_byte',90180);
+  });
+  const sent=await f.send(),done=await f.settle(sent.run.id);
+  assert.equal(done.run.status,'failed');
+  assert.equal(done.run.pauseReason,'AGENT_CHAT_TIMEOUT');
+  assert.equal(f.requests.length,1);
+  const diagnostic={kind:'timeout',phase:'first_byte',elapsedMs:90180};
+  assert.deepEqual(done.steps[0]?.error?.diagnostic,diagnostic);
+  f.restart();
+  assert.deepEqual(f.runtime.get(f.projectId,sent.run.id).steps[0]?.error?.diagnostic,diagnostic);
+  assert.equal(f.requests.length,1);
+});
+
 test('all classified Chat Completions stream failures persist safe diagnostics, execute no tools and never replay',async t=>{
   const frame=(value:unknown)=>`data: ${JSON.stringify(value)}\n\n`,finish=(reason:string)=>frame({choices:[{index:0,delta:{},finish_reason:reason}]});
   for(const reason of ['missing_done','missing_finish','unframed_sse','output_limit','read_failed'] as const){
@@ -1379,13 +1471,31 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal(done.run.status,'completed');assert.equal(done.run.id,failed.run.id);assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.notEqual(done.steps[1]!.id,step.id);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[1]!.status,'completed');assert.equal(done.executionEndedAt,done.run.updatedAt);
  f.restart();await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.drain();assert.equal(f.requests.length,2);assert.equal(f.runtime.lookupAction(f.projectId,sent.run.id,control.requestId).receipt?.action,'retry');await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...control,stepId:randomUUID()}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
 });
-for(const protocol of ['chat_completions','responses'] as const)for(const statusCode of [429,500] as const)test(`${protocol}: HTTP ${statusCode} after sending is a failure retried only on explicit request`,async t=>{
+for(const protocol of ['chat_completions','responses'] as const)for(const statusCode of [422,429] as const)test(`${protocol}: HTTP ${statusCode} after sending is a failure retried only on explicit request`,async t=>{
  const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',statusCode);f.setScript(async function*(index,request){if(index===1){yield*transport.gateway(request);return;}yield {type:'done',output:output(protocol,[],'Retry completed')};});
  const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
  assert.equal(failed.run.status,'failed');assert.equal(step.kind,'model');assert.equal(step.status,'failed');assert.equal(step.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.match(step.error!.message,new RegExp(`HTTP ${statusCode}`,'u'));assert.equal(failed.steps.some(item=>item.status==='unknown'),false);
  await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
  await f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id});const done=await f.settle(sent.run.id);
  assert.equal(done.run.status,'completed');assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[0]!.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps[1]!.status,'completed');assert.equal(f.effects.size,0);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a trusted OpenAI HTTP 500 records the failed attempt before automatic retry`,async t=>{
+ const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',500);
+ f.setScript(async function*(index,request){
+   if(index===1){yield*transport.gateway(request);return;}
+   yield {type:'done',output:output(protocol,[],'Automatic retry completed')};
+ });
+ const sent=await f.send(),done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');
+ assert.deepEqual(done.steps.map(step=>step.status),['failed','completed']);
+ assert.equal(done.steps[0]?.error?.code,'AGENT_CHAT_HTTP_ERROR');
+ assert.match(done.steps[0]!.error!.message,/HTTP 500/u);
+ assert.equal(done.steps[0]?.providerRetryAttempt,1);
+ assert.equal(done.run.stepsUsed,2);
+ assert.equal(f.requests.length,2);
+ assert.equal(f.requests[1]?.body,f.requests[0]?.body);
+ assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
+ assert.equal(f.effects.size,0);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a timeout after partial text records a failure and the retry does not feed that text back`,async t=>{
  // Below 8 KiB: a failure must flush received text before recording its status.

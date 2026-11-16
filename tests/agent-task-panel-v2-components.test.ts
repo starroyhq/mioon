@@ -247,6 +247,131 @@ test('Mio failure details show a localized cause and a selectable, stable diagno
   }finally{h.unmount();}
 });
 
+test('Mio localizes a provider failure and confines its validated metadata to collapsed details',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const step=h.state.snapshot!.steps[0]!;
+    const diagnostic={kind:'provider',reason:'invalid_parameter',event:'response.failed',providerType:'invalid_request_error',
+      code:'unsupported_parameter',param:'reasoning',message:'Unsupported parameter'} as const;
+    const error={code:'AGENT_CHAT_PROVIDER_ERROR',message:'SYNTHETIC_PRIVATE_ERROR_TEXT',diagnostic};
+    step.kind='model';
+    step.status='failed';
+    for (const protocolError of [error,{...error,code:'AGENT_CHAT_HTTP_ERROR',diagnostic:{kind:'http',status:400,provider:diagnostic}}]) {
+      step.error=protocolError;
+      for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const) {
+        h.setLocale(locale);
+        const panel=h.render();
+        const cause=h.find(`agent-task-step-error-${stepId}`)!;
+        assert.equal(renderedText(cause),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.panel.provider.invalid_parameter')}));
+        const details=panel.find(node=>node.type==='details'&&node.props.className==='mio-safe-details')!;
+        assert.equal(details.props.open,undefined);
+        const fields=h.find(`agent-task-provider-details-${stepId}`)!;
+        assert.ok(nodes(details).includes(fields));
+        for(const [field,value] of [['providerType','invalid_request_error'],['providerCode','unsupported_parameter'],['providerParam','reasoning'],['providerMessage','Unsupported parameter']] as const) {
+          assert.ok(renderedText(fields).includes(translate(locale,`agent.panel.diagnostic.${field}`)));
+          assert.ok(renderedText(fields).includes(value));
+        }
+        assert.doesNotMatch(renderedText(panel[0]),/SYNTHETIC_PRIVATE_ERROR_TEXT/u);
+        assert.equal(h.find('agent-task-run-error'),undefined,'the typed failure already explains this round');
+        assert.ok(h.find(`agent-task-error-settings-${stepId}`));
+      }
+    }
+    const invalid={...error,diagnostic:{...diagnostic,requestText:'SYNTHETIC_UNTRUSTED_REQUEST'}};
+    step.error=invalid;
+    const panel=h.render();
+    assert.equal(h.find(`agent-task-provider-details-${stepId}`),undefined);
+    assert.doesNotMatch(renderedText(panel[0]),/SYNTHETIC_UNTRUSTED_REQUEST/u);
+  } finally {h.unmount();}
+});
+
+test('context limit offers a new conversation, and a scheduled provider retry is recorded as a status',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const snapshot=h.state.snapshot!,step=snapshot.steps[0]!;
+    const contextLimit={code:'AGENT_CHAT_PROVIDER_ERROR',message:'private diagnostic',diagnostic:{kind:'provider',reason:'context_length'}};
+    step.kind='model';
+    step.status='failed';
+    step.error=contextLimit;
+    h.render();
+    assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+    h.find(`agent-task-error-new-conversation-${stepId}`)!.props.onClick();
+    assert.deepEqual(h.calls.pop(),['newConversation']);
+
+    const quotaError={...contextLimit,diagnostic:{kind:'provider',reason:'quota'}};
+    step.error=quotaError;
+    h.render();
+    const quotaAction=h.find(`agent-task-error-settings-${stepId}`)!;
+    assert.equal(renderedText(quotaAction).trim(),translate('zh-Hans','agent.panel.changeModel'));
+    quotaAction.props.onClick();
+    assert.deepEqual(h.calls.pop(),['settings','agent']);
+
+    snapshot.run.status='running';
+    const retryStep:TaskPanelStep & {providerRetryAttempt:1}={...step,providerRetryAttempt:1};
+    const temporaryError={...contextLimit,diagnostic:{kind:'provider',reason:'overloaded'}};
+    retryStep.error=temporaryError;
+    snapshot.steps=[retryStep];
+    h.render();
+    assert.equal(h.find(`agent-task-step-error-${stepId}`)?.props.role,undefined);
+    assert.equal(renderedText(h.find(`agent-task-step-auto-retry-${stepId}`)),translate('zh-Hans','agent.panel.providerRetryScheduled',{attempt:1}));
+    assert.equal(h.find(`agent-task-error-settings-${stepId}`),undefined);
+    assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+  } finally {h.unmount();}
+});
+
+test('Mio shows which timeout phase ended a model request and its overall elapsed time',()=>{
+  const h=harness({status:'failed'});
+  try {
+    const step=h.state.snapshot!.steps[0]!;
+    step.kind='model';
+    step.status='failed';
+    for(const phase of ['dns','connect','headers','first_byte','idle','total'] as const) {
+      const error={code:'AGENT_CHAT_TIMEOUT',message:'private diagnostic',diagnostic:{kind:'timeout',phase,elapsedMs:12345}};
+      step.error=error;
+      for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const) {
+        h.setLocale(locale);
+        h.render();
+        const description=translate(locale,`agent.panel.timeout.${phase}`,{seconds:'12.3'});
+        assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.panel.failureReason',{reason:description}));
+        assert.equal(h.find(`agent-task-diagnostic-${stepId}`)?.props.value,`MIO/timeout/${phase}/elapsed_ms=12345`);
+        assert.ok(h.find(`agent-task-retry-${stepId}`));
+      }
+    }
+  } finally {h.unmount();}
+});
+
+test('the failed model row does not mislabel the earlier completed export',()=>{
+  const h=harness({status:'failed',openRequests:true});
+  try {
+    const snapshot=h.state.snapshot!,failedModel=snapshot.steps[0]!;
+    const exportId='33333333-3333-4333-8333-333333333333',assetId='44444444-4444-4444-8444-444444444444';
+    const exportResult={id:exportId,projectId,mode:'timeline',purpose:'export',status:'succeeded',assetId};
+    const exportStep:TaskPanelStep={id:'export-step',kind:'tool',status:'completed',toolCall:{name:'mioon_timeline_render',arguments:{}},result:{...exportResult,status:'queued',assetId:null}};
+    const waitStep:TaskPanelStep={id:'wait-step',kind:'tool',status:'completed',toolCall:{name:'mioon_task_wait',arguments:{kind:'export',id:exportId}},result:exportResult};
+    const error={code:'AGENT_CHAT_PROVIDER_ERROR',message:'private diagnostic',diagnostic:{kind:'provider',reason:'server'}};
+    failedModel.kind='model';
+    failedModel.status='failed';
+    failedModel.error=error;
+    snapshot.steps=[exportStep,waitStep,failedModel];
+    h.render();
+    const group=h.find('agent-task-export-before-model-failure')!;
+    assert.ok(renderedText(group).includes(translate('zh-Hans','agent.panel.exportBeforeModelFailure.succeeded')));
+    nodes(group).find(node=>node.type==='button')!.props.onClick();
+    assert.deepEqual(h.calls.pop(),['requests',`render:${exportId}`]);
+
+    snapshot.steps=[exportStep,failedModel];
+    h.render();
+    assert.ok(renderedText(h.find('agent-task-export-before-model-failure')).includes(translate('zh-Hans','agent.panel.exportBeforeModelFailure.submitted')));
+    for(const result of [{...exportResult,purpose:'sample'},{...exportResult,assetId:null},{...exportResult,projectId:assetId}]) {
+      snapshot.steps=[{...exportStep,result},failedModel];
+      h.render();
+      assert.equal(h.find('agent-task-export-before-model-failure'),undefined);
+    }
+    snapshot.steps=[exportStep,{...waitStep,result:{...exportResult,status:'failed',assetId:null}},failedModel];
+    h.render();
+    assert.equal(h.find('agent-task-export-before-model-failure'),undefined);
+  } finally {h.unmount();}
+});
+
 test('Mio formats validated HTTP, limit and protocol diagnostics',()=>{
   assert.deepEqual(agentTaskDiagnosticDetails({kind:'http',status:403,providerType:'permission_error',providerCode:'permission_denied'}),{
     key:'agent.panel.diagnostic.http',values:{status:403},code:'MIO/http/403/type=permission_error/code=permission_denied',
