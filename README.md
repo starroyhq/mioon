@@ -77,9 +77,9 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 
 ## 开始使用
 
-从 [v0.2.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.2.0)下载适合你的 Mac 的安装包，再按[安装与首次运行指南](docs/INSTALL.zh-CN.md)安装。正式发布的 Apple Silicon 和 Intel 安装包均须通过 Developer ID 签名和 Apple 公证。目前只提供 macOS 桌面安装包。
+从 [v0.2.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.2.0)下载通用 macOS 安装包，再按[安装与首次运行指南](docs/INSTALL.zh-CN.md)安装。Apple 芯片和 Intel Mac 使用同一个 DMG，正式安装包须通过 Developer ID 签名和 Apple 公证。
 
-桌面版无需 Node.js 或 pnpm。首次启动按提示配置 FFmpeg 和 ffprobe，可以下载 Mioon 提供的 7.1.5，也可以选择自己安装的工具。更新时需手动下载新安装包。配置和更新步骤见[安装指南](docs/INSTALL.zh-CN.md)。
+桌面版无需 Node.js 或 pnpm。首次启动按提示配置 FFmpeg 和 ffprobe，可以下载 Mioon 提供的 7.1.5，也可以选择自己安装的工具。从旧版升级到 0.2.0 需手动下载安装包。安装 0.2.0 后，可以在应用内检查和安装后续更新。具体步骤见[安装指南](docs/INSTALL.zh-CN.md)。
 
 希望从源码运行时，继续按[源码试用指南](docs/CORE-TRIAL.zh-CN.md)操作；Mac 用户另见 [Mac 源码启动说明](docs/MAC-SOURCE-TRIAL.zh-CN.md)
 

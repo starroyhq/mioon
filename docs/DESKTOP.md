@@ -184,7 +184,7 @@ pnpm --filter @mioon/desktop package:dir:dev
 
 正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `mioon` 或开发版 `mioon-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
 
-`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。生成的 `apps/desktop/.generated/electron-builder.cjs` / `.dev.cjs`（源自 typed `apps/desktop/builder-config.ts`）配置 macOS arm64/x64 DMG，目前 `identity:null`，没有已验证的签名/公证、Gatekeeper 或安装升级结果，不能将构建成功称为可分发认证。入口依据见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，平台门槛见 [发布门槛](PLATFORM-RELEASE-GATES.md)。
+`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。生成的 `apps/desktop/.generated/electron-builder.cjs` / `.dev.cjs`（源自 typed `apps/desktop/builder-config.ts`）配置 macOS 通用 DMG 和 ZIP，包含 Apple 芯片和 Intel 两种架构。本地配置默认使用 `identity: null`。正式包由发布流程签名、公证并装订票据，两种架构分别启动同一份 DMG。入口见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，更新资产见 [发布流程](GITHUB-ACTIONS.zh-CN.md#正式发布)。
 
 ## 验证
 

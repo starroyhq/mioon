@@ -24,8 +24,10 @@ interface NoticeContext {appOutDir: string; electronPlatformName?: string; arch?
   packager: {config: NoticeConfigLike; appInfo: {productFilename: string}; info: {framework: {version: string; distMacOsAppName: string}}}}
 interface NoticeFixture {root: string; config: NoticeConfigLike; context: NoticeContext; originals: Map<string, Buffer>; info: string;
   extracted: string; packaged: string; resources: string; destination: string}
-async function fixture(t: TestContext, { config = builderConfig('production'), platform = 'darwin', arch = 1 }: {config?: NoticeConfigLike; platform?: string | undefined; arch?: number | undefined} = {}): Promise<NoticeFixture> {
-  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-runtime-notices-'));
+async function fixture(t: TestContext, { config = builderConfig('production'), platform = 'darwin', arch = 1, output }: {
+  config?: NoticeConfigLike; platform?: string | undefined; arch?: number | undefined; output?: string
+} = {}): Promise<NoticeFixture> {
+  const root = output ?? await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-runtime-notices-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const extracted = path.join(root, 'Electron.app');
   const resources = path.join(extracted, 'Contents/Resources');
@@ -98,6 +100,47 @@ test('both channels preserve each Mac target notice byte-for-byte through cleanu
         }
       }
     }
+  }
+});
+
+test('the merged Mac bundle needs both verified architecture notices and rechecks the merged resources', async t => {
+  for (const matchingNotices of [true, false]) {
+    const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-universal-notices-'));
+    t.after(() => rm(root, {recursive: true, force: true}));
+    const config = builderConfig('production'), appOutDir = path.join(root, 'mac-universal');
+    const x64 = await fixture(t, {config, arch: 1, output: `${appOutDir}-x64-temp`});
+    const arm64 = await fixture(t, {config, arch: 3, output: `${appOutDir}-arm64-temp`});
+    if (matchingNotices) {
+      for (const file of NOTICE_FILES) await writeFile(path.join(arm64.root, file.source), x64.originals.get(file.output)!);
+    }
+    await config.afterExtract(x64.context);
+    await config.afterExtract(arm64.context);
+    await packageRename(x64);
+    await packageRename(arm64);
+    await config.afterPack(x64.context);
+    const context = {...x64.context, arch: 4, appOutDir};
+    const app = path.join(appOutDir, path.basename(x64.packaged));
+    await cp(x64.packaged, app, {recursive: true});
+    await assert.rejects(config.afterPack(context), /missing or mismatched target notice provenance/);
+    await config.afterPack(arm64.context);
+    await rm(x64.root, {recursive: true});
+    await rm(arm64.root, {recursive: true});
+    if (!matchingNotices) {
+      await assert.rejects(config.afterPack(context), /architecture notices differ/);
+      await assertMissing(path.join(appOutDir, RUNTIME_NOTICE_PROVENANCE_FILE));
+      continue;
+    }
+    const examples = path.join(app, 'Contents/Resources/examples');
+    const manifest = path.join(examples, 'timeline-basics/manifest.json');
+    const original = await readFile(manifest);
+    await rm(manifest);
+    await assert.rejects(config.afterPack(context), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID'});
+    await assertMissing(path.join(appOutDir, RUNTIME_NOTICE_PROVENANCE_FILE));
+    await writeFile(manifest, original, {flag: 'wx', mode: 0o444});
+    await config.afterPack(context);
+    const proof = await readMacRuntimeNoticeProvenance(context, config.electronVersion, readBuildMetadata().appVersion);
+    assert.equal(proof.arch, 4);
+    await verifyMacRuntimeNoticeFiles(app, proof);
   }
 });
 

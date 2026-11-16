@@ -36,10 +36,15 @@ async function builderFixture(t: TestContext) {
   // Keep the real verifier while resolving it from its original module URL.
   // The fixture may be on a different Windows drive from the workspace.
   const source = await readFile(new URL('../apps/desktop/builder-config.ts', import.meta.url), 'utf8');
-  const specifier = "from '@mioon/business/project-example-resources'";
-  assert.equal(source.split(specifier).length, 2, 'exactly one reviewed builder dependency is rebound');
-  await writeFile(path.join(directory, 'apps/desktop/builder-config.ts'), source.replace(specifier,
-    `from ${JSON.stringify(new URL('../packages/business/src/project-example-resources.ts', import.meta.url).href)}`));
+  const rebind = [
+    ["from '@mioon/business/project-example-resources'", '../packages/business/src/project-example-resources.ts'],
+    ["from '../../.github/scripts/mac-update-feed.ts'", '../.github/scripts/mac-update-feed.ts'],
+  ] as const;
+  const rebounded = rebind.reduce((input, [specifier, target]) => {
+    assert.equal(input.split(specifier).length, 2, 'each reviewed builder dependency is rebound once');
+    return input.replace(specifier, `from ${JSON.stringify(new URL(target, import.meta.url).href)}`);
+  }, source);
+  await writeFile(path.join(directory, 'apps/desktop/builder-config.ts'), rebounded);
   return { directory, builderConfig: require(path.join(directory, 'apps/desktop/builder-config.ts')).builderConfig };
 }
 
@@ -173,6 +178,17 @@ test('builder config takes its Electron version from root metadata and validates
   await writeFile(path.join(directory, 'apps/desktop/package.json'), JSON.stringify(desktopPackage()));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(rootPackage('2.3.4', '^55.6.7')));
   assert.throws(() => builderConfig('production'), /devDependencies\.electron/);
+});
+
+test('Mac packaging selects the fixed GitHub source or a candidate generic URL without changing other platforms', async t => {
+  const {builderConfig} = await builderFixture(t);
+  const production = builderConfig('production', '');
+  assert.deepEqual(production.mac.publish, {provider: 'github', owner: 'starroyhq', repo: 'mioon', releaseType: 'release'});
+  const candidate = builderConfig('production', 'http://127.0.0.1:9090/releases');
+  assert.deepEqual(candidate.mac.publish, {provider: 'generic', url: 'http://127.0.0.1:9090/releases/'});
+  assert.equal(candidate.publish, null);
+  assert.deepEqual(candidate.linux, production.linux);
+  assert.equal(builderConfig('development', 'https://example.org/candidate').mac.publish, null);
 });
 
 test('beforePack rejects stale same-channel versions and names for both channels using fixture manifests only', async t => {
