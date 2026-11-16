@@ -436,31 +436,41 @@ test('Mio stops frames while hidden and honors both sources of reduced motion', 
   }
 });
 
-test('Mio leaves the viewport alone during a pointer hold and two seconds after the last input', () => {
+test('Mio waits for timeline dragging, zoom and editing to finish before smoothly revealing an offscreen clip', () => {
   const h = followHarness();
-  const outside = new FollowElement(box(1000, 200, 200, 100)); outside.visible = false;
-  h.targets.set('03', outside);
+  const clip = new FollowElement(box(960, 660, 140, 42)); clip.visible = false;
+  h.targets.set('clip', clip);
   try {
     h.render(null);
     h.event('pointerdown', { pointerId: 3 });
-    h.render(followFocus('03'));
+    h.render(followFocus('clip', 'timeline_clip'), { mode: 'editing' });
     h.frame(6000);
     assert.equal(h.pointer.dataset.placed, 'false');
     assert.equal(h.locator.dataset.placed, 'true');
-    assert.equal(h.locator.style.transform, 'translate(778px, 236px)');
+    assert.equal(h.locator.style.transform, 'translate(778px, 667px)');
+    h.event('dragstart');
     h.event('pointerup', { pointerId: 3 });
-    h.frame(7999);
+    h.frame(8000);
     assert.deepEqual(h.revealed, []);
-    h.event('wheel');
-    h.frame(9998);
+    h.event('dragend');
+    h.frame(9999);
+    assert.deepEqual(h.revealed, []);
+    h.event('wheel', { ctrlKey: true });
+    h.frame(11998);
     assert.deepEqual(h.revealed, []);
     h.event('input');
-    h.frame(11997);
+    h.frame(13997);
     assert.deepEqual(h.revealed, []);
-    h.frame(11998);
-    assert.deepEqual(h.revealed, [['03', 'smooth']]);
-    h.frame(13000);
-    assert.deepEqual(h.revealed, [['03', 'smooth']], 'a successful reveal never repeats for the same step');
+    assert.equal(h.locator.dataset.placed, 'true');
+    h.frame(13998);
+    assert.deepEqual(h.revealed, [['clip', 'smooth']]);
+
+    clip.rect = box(560, 660, 140, 42); clip.visible = true;
+    h.frame(14300);
+    assert.deepEqual(position(h.pointer), {x: 628, y: 677});
+    assert.equal(clip.getAttribute('data-mio-follow-highlight'), 'editing');
+    assert.equal(h.locator.dataset.placed, 'false');
+    assert.deepEqual(h.revealed, [['clip', 'smooth']], 'a successful reveal never repeats for the same step');
   } finally { h.unmount(); }
 });
 
@@ -473,6 +483,7 @@ test('Mio offers an explicit reveal while follow is off and places reduced-motio
     const focus = followFocus('clip', 'timeline_clip');
     const tree = h.render(focus, { mode: 'editing', enabled: false, reduceMotion: true });
     h.frame(0);
+    h.frame(4000);
     assert.equal(tree?.props['data-reduced-motion'], 'true');
     assert.deepEqual(h.revealed, []);
     assert.equal(h.locator.dataset.placed, 'true');
@@ -483,7 +494,7 @@ test('Mio offers an explicit reveal while follow is off and places reduced-motio
     button?.props.onClick();
     assert.deepEqual(h.revealed, [['clip', 'auto']]);
     clip.rect = box(560, 660, 140, 42); clip.visible = true;
-    h.frame(100);
+    h.frame(4100);
     assert.equal(h.pointer.style.transform, 'translate(628px, 677px)');
     assert.equal(clip.getAttribute('data-mio-follow-highlight'), 'editing');
     assert.equal(h.locator.dataset.placed, 'false');
