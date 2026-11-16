@@ -104,7 +104,10 @@ export function PanelRecall({ name, label, icon, onClick, expanded = false }: Pa
     const trigger = event.currentTarget, panel = document.getElementById(`dock-${name}`), owner = panel?.dataset.panelScope;
     onClick();
     requestAnimationFrame(() => {
-      if (panel?.isConnected && panel.dataset.panelScope === owner && panel.dataset.visible === 'true' && (document.activeElement === document.body || document.activeElement === trigger)) panel.querySelector<HTMLElement>(`[data-testid=toggle-${name}]`)?.focus({ preventScroll: true });
+      if (panel?.isConnected && panel.dataset.panelScope === owner && panel.dataset.visible === 'true' && (document.activeElement === document.body || document.activeElement === trigger)) {
+        const target = panel.querySelector<HTMLElement>(`[data-testid=pin-${name}]`) ?? panel.querySelector<HTMLElement>(`[data-testid=toggle-${name}]`);
+        target?.focus({ preventScroll: true });
+      }
     });
   }}><Icon name={icon} size={15} /><span>{label}</span><Icon name="plus" size={12} /></Button>;
 }

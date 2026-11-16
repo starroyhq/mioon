@@ -71,8 +71,14 @@ test('no stylesheet or utility class sets text below the 10px floor', () => {
 });
 
 test('small controls keep 24px pointer targets, growing an invisible hit area where the visual stays smaller', () => {
-  for (const rule of [/\.library-view-tabs button \{ min-height: 24px; \}/, /\.asset-tabs button \{ min-width: 24px; min-height: 24px;/, /\.asset-disposition-summary \.text-button \{ min-width: 24px; min-height: 24px; \}/,
+  for (const rule of [/\.asset-tabs button \{ min-width: 24px; min-height: 24px;/, /\.asset-disposition-summary \.text-button \{ min-width: 24px; min-height: 24px; \}/,
     /\.asset-disposition-buttons > button,\n[^{]*\.asset-disposition-controls \.text-button \{ min-height: 24px; \}/, /\.track-label \[role="switch"\]::after \{ content: ""; position: absolute; inset: -6px -4px; \}/, /\.track-label \.subtitle-add::after \{ content: ""; position: absolute; inset: -2px -4px; \}/]) assert.match(css, rule);
+  const header = read('workbench-panel-header.css');
+  const tokens = readFileSync(new URL('../packages/ui/src/styles/globals.css', import.meta.url), 'utf8');
+  assert.match(tokens, /--wb-control-compact:\s*24px/);
+  assert.match(header, /\.workbench-panel-tablist \[data-slot="tabs-trigger"\] \{[^}]*min-height: var\(--wb-control-compact\)/);
+  assert.match(header, /\.workbench-panel-header > \.workbench-panel-collapse \{[^}]*min-width: var\(--wb-control-compact\)[^}]*min-height: var\(--wb-control-compact\)/);
+  assert.match(header, /\.workbench-panel-header \{[^}]*align-items: center[^}]*height: var\(--wb-panel-heading\)/);
   // The marks buttons are wrapped by a tooltip trigger that replaces data-slot="button", so their rules must not depend on it.
   const disposition = read('asset-disposition.css');
   assert.match(disposition, /\.asset-disposition-buttons > button \{/); assert.doesNotMatch(disposition, /\.asset-disposition-buttons \[data-slot="button"\]/);

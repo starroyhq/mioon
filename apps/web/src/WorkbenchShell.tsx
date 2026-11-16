@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
+import { Tabs, TabsTrigger } from '@mioon/ui/components/tabs';
+import { WorkbenchPanelTabList } from './WorkbenchPanelHeader.tsx';
 
 export interface WorkbenchTopbarProps {
   readonly brand: React.ReactNode;
@@ -29,11 +30,11 @@ export interface WorkbenchInspectorTabsProps {
 export function WorkbenchInspectorTabs({ mode, value, onValueChange, agentDisabled, labels }: WorkbenchInspectorTabsProps) {
   return <Tabs value={value} onValueChange={next => {
     if (next === 'properties' || next === 'versions' && mode === 'canvas' || next === 'agent' && !agentDisabled) onValueChange(next);
-  }} className="right-dock-tabs workbench-inspector-tabs">
-    <TabsList aria-label={labels.workspace} variant="line" activateOnFocus={false}>
+  }} className="panel-header-tabs">
+    <WorkbenchPanelTabList aria-label={labels.workspace}>
       <TabsTrigger id="right-dock-properties-tab" value="properties" data-testid="right-dock-tab-properties" aria-controls="right-dock-properties">{labels.properties}</TabsTrigger>
       {mode === 'canvas' && <TabsTrigger id="right-dock-versions-tab" value="versions" data-testid="right-dock-tab-versions" aria-controls="right-dock-properties">{labels.versions}</TabsTrigger>}
       <TabsTrigger id="right-dock-agent-tab" value="agent" disabled={agentDisabled} data-testid="right-dock-tab-agent" aria-controls="right-dock-agent"><span data-testid="agent-chat-open">{labels.agent}</span></TabsTrigger>
-    </TabsList>
+    </WorkbenchPanelTabList>
   </Tabs>;
 }

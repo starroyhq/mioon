@@ -21,13 +21,6 @@
 .task-workspace .reconcile-job{min-width:0}
 .task-workspace .reconcile-job input{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
 .task-workspace .small-empty{padding:28px 4px}
-/* Five shared dock tabs scroll within the heading at narrow panel widths;
-   the sibling collapse button never joins that overflow area. */
-.inspector-region-heading>.right-dock-tabs{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
-.inspector-region-heading>.right-dock-tabs [data-slot="tabs-list"]{flex:none;width:max-content;max-width:none;justify-content:flex-start}
-.inspector-region-heading>.right-dock-tabs [data-slot="tabs-trigger"]{flex:none}
-.inspector-region-heading>[data-testid="toggle-inspector"]{flex:none;margin-left:6px}
-
 /* List and details keep independent scroll positions inside the task dialog. */
 .task-workspace{container-type:inline-size;container-name:task-center}
 .task-workspace .task-workspace-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;min-height:36px;background:var(--wb-raised)}

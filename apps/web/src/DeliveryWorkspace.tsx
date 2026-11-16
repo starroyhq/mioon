@@ -1,7 +1,8 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs';
+import { Tabs, TabsTrigger } from '@mioon/ui/components/tabs';
+import { WorkbenchPanelTabList } from './WorkbenchPanelHeader.tsx';
 
 export type DeliveryWorkspacePage = 'compose' | 'history';
 export interface DeliveryWorkspaceProps {
@@ -13,16 +14,16 @@ export interface DeliveryWorkspaceProps {
 /** Presentation only. App supplies its existing keep-mounted AgentDockPane
  * children and owns page visibility, project fences, drafts and requests. */
 export default function DeliveryWorkspace({ page, onPage, children }: DeliveryWorkspaceProps) {
-  const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
+  const { t, locale } = useI18n();
   return <section className="delivery-workspace" lang={locale} data-testid="delivery-workspace" data-page={page} aria-labelledby="delivery-workspace-heading">
     <header className="delivery-workspace-heading">
       <h2 id="delivery-workspace-heading">{page === 'history' ? t('export.workspace.history') : t('export.workspace.delivery')}</h2>
     </header>
     <Tabs className="delivery-workspace-tabs" value={page} onValueChange={value => { if (value === 'compose' || value === 'history') onPage(value); }}>
-      <TabsList className="delivery-workspace-tablist" aria-label={t('export.workspace.pages')}>
+      <WorkbenchPanelTabList className="delivery-workspace-tablist" aria-label={t('export.workspace.pages')}>
         <TabsTrigger id="delivery-compose-tab" value="compose" aria-controls="delivery-compose-pane" data-testid="delivery-page-compose">{t('export.workspace.compose')}</TabsTrigger>
         <TabsTrigger id="delivery-history-tab" value="history" aria-controls="delivery-history-pane" data-testid="delivery-page-history"><span data-testid="export-history">{t('export.workspace.history')}</span></TabsTrigger>
-      </TabsList>
+      </WorkbenchPanelTabList>
       <div className="delivery-workspace-content" data-testid="delivery-workspace-content">{children}</div>
     </Tabs>
   </section>;

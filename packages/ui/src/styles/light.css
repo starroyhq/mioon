@@ -83,7 +83,6 @@
   border-bottom-color: var(--wb-line);
 }
 :root.light .dock-workbench .dock-panel > .asset-panel,
-:root.light .dock-workbench .inspector-region-heading,
 :root.light .dock-workbench .timeline-panel.edit-timeline .track-label,
 :root.light .dock-workbench .timeline-panel.edit-timeline .timeline-ruler,
 :root.light .dock-workbench .timeline-panel.edit-timeline .ruler-label {

@@ -426,9 +426,11 @@ test('task list and details scroll independently while narrow docks wrap and ret
   assert.match(css, /\.task-workspace \.job-actions\{[^}]*flex-wrap:wrap/);
   assert.match(css, /\.task-workspace \.job-title strong\{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
   assert.match(css, /\.task-workspace \.job-actions>button[^}]*max-width:100%[^}]*height:auto[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
-  assert.match(css, /\.inspector-region-heading>\.right-dock-tabs\{[^}]*flex:1[^}]*min-width:0[^}]*overflow-x:auto/);
-  assert.match(css, /\.inspector-region-heading>\.right-dock-tabs \[data-slot="tabs-list"\]\{[^}]*width:max-content/);
-  assert.match(css, /\.inspector-region-heading>\[data-testid="toggle-inspector"\]\{[^}]*flex:none/);
+  const header = read('workbench-panel-header.css');
+  assert.match(header, /\.workbench-panel-header > \.panel-header-tabs \{[^}]*flex: 1[^}]*min-width: 0[^}]*overflow-x: auto/);
+  assert.match(header, /\.workbench-panel-tablist\[data-slot="tabs-list"\] \{[^}]*width: max-content/);
+  assert.match(header, /\.workbench-panel-header > \.workbench-panel-collapse \{[^}]*flex: none/);
+  assert.doesNotMatch(css, /inspector-region-heading|right-dock-tabs/);
   assert.doesNotMatch(css, /position:fixed|min-width:(240|310|420)px/);
   assert.match(css, /\.task-center-browser\{[^}]*grid-template-columns:280px minmax\(0,1fr\)/);
   assert.match(css, /\.task-center-sidebar,\.task-center-detail\{[^}]*overflow:auto/);

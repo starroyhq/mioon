@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/t
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip, WorkbenchSelect } from './WorkspaceControls.tsx';
+import { WorkbenchPanelHeader, WorkbenchPanelTabList } from './WorkbenchPanelHeader.tsx';
 import AssetContextMenu from './AssetContextMenu.tsx';
 import Icon from './icons.tsx';
 import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
@@ -130,10 +131,18 @@ export default function AssetLibrary({ activeTab, onTabChange, assets, filter, o
   const menuAsset = menu && menu.scope === libraryScope && interaction.visible ? visible.find(asset => asset.id === menu.assetId) ?? null : null;
 
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label={t('assets.indexedLibrary')} />} data-testid="asset-panel" onDragOver={(e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); } }} onDrop={(e: DragEvent) => { if (e.dataTransfer.files.length) { e.preventDefault(); if (typeof onFiles === 'function') onFiles(Array.from(e.dataTransfer.files)); } }}>
-     {!subjects && <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
-     <CollapsibleContent keepMounted className="asset-panel-content">
-       {subjects && <div className="library-view-tabs" role="tablist" aria-label={t('assets.assetsSubjects')}><Button variant="ghost" size="sm" role="tab" id="library-assets-tab" aria-controls="library-assets-pane" aria-selected={libraryView === 'assets'} data-testid="library-assets-tab" onClick={() => chooseLibraryTab('assets')}>{t('assets.assets')}</Button><Button variant="ghost" size="sm" role="tab" id="library-subjects-tab" aria-controls="library-subjects-pane" aria-selected={libraryView === 'subjects'} data-testid="library-subjects-tab" onClick={() => chooseLibraryTab('subjects')}>{t('subjects.subjects')}</Button><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
-       <WorkspaceVisibilityProvider visible={libraryView === 'assets'}><div className="library-view-pane" id="library-assets-pane" role="tabpanel" aria-labelledby="library-assets-tab" hidden={libraryView !== 'assets'} inert={libraryView !== 'assets'}>
+    {subjects ? <WorkbenchPanelHeader collapseLabel={t('assets.collapse')} collapseTestId="toggle-assets">
+      <Tabs value={libraryView} className="panel-header-tabs" onValueChange={value => {
+        if (value === 'assets' || value === 'subjects') chooseLibraryTab(value);
+      }}>
+        <WorkbenchPanelTabList aria-label={t('assets.assetsSubjects')}>
+          <TabsTrigger value="assets" id="library-assets-tab" aria-controls="library-assets-pane" data-testid="library-assets-tab">{t('assets.assets')}</TabsTrigger>
+          <TabsTrigger value="subjects" id="library-subjects-tab" aria-controls="library-subjects-pane" data-testid="library-subjects-tab">{t('subjects.subjects')}</TabsTrigger>
+        </WorkbenchPanelTabList>
+      </Tabs>
+    </WorkbenchPanelHeader> : <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
+    <CollapsibleContent keepMounted className="asset-panel-content">
+       <WorkspaceVisibilityProvider visible={libraryView === 'assets'}><div className="library-view-pane" id="library-assets-pane" role={subjects ? 'tabpanel' : undefined} aria-labelledby={subjects ? 'library-assets-tab' : undefined} hidden={libraryView !== 'assets'} inert={libraryView !== 'assets'}>
        <Button variant="outline" className="button import-button full" data-testid="import-button" title={editing ? t('assets.inspectEditHint') : t('assets.inspectCanvasHint')} disabled={busy.import || typeof onImport !== 'function'} onClick={onImport}>{busy.import ? <span className="spinner" /> : <Icon name="upload" size={15} />}{busy.import ? t('assets.importing') : t('assets.importMedia')}</Button>
        {gate && mediaAttention && <MediaAttentionBanner state={mediaAttention} onRetry={() => {void gate.controller.refreshStatus();}} onRelink={() => gate.state.locations.kind === 'ready' && gate.state.locations.value.locations.some(value => !value.confirmed) ? gate.controller.openOutside() : gate.controller.openRelink()} />}
        <p className="asset-drag-help">{editing ? t('assets.editHint') : t('assets.canvasHint')}</p>

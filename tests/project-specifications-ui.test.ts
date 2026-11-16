@@ -657,10 +657,13 @@ test('actual format 4 selection reports locked edits and refreshes conflicts wit
 test('App keeps both Properties subpages mounted and keeps format dirtiness outside inspector reset logic', () => {
   transformSync(app, { loader: 'tsx', format: 'esm' });
   for (const id of ['properties-inspector-pane', 'properties-format-pane', 'properties-subtitle-pane']) assert.ok(app.includes(`<AgentDockPane id="${id}"`));
-  const {WorkbenchInspectorTabs}=component('WorkbenchShell.tsx');
+  const {WorkbenchInspectorTabs}=component('WorkbenchShell.tsx', { './WorkbenchPanelHeader.tsx': { WorkbenchPanelTabList: 'WorkbenchPanelTabList' } });
   for(const [mode,expected] of [['canvas',['properties','versions','agent']],['editing',['properties','agent']]] as const) {
     const tabs=WorkbenchInspectorTabs({mode,value:'properties',onValueChange(){},agentDisabled:false,labels:{workspace:'Workspace',properties:'Properties',versions:'Versions',agent:'Agent'}});
-    assert.deepEqual(nodes(tabs).filter((node: ElementNode)=>node.props['data-testid']?.startsWith('right-dock-tab-')).map((node: ElementNode)=>node.props.value),expected);
+    const list = nodes(tabs).find(node => node.type === 'WorkbenchPanelTabList');
+    assert.ok(list);
+    assert.equal(list.props['aria-label'], 'Workspace');
+    assert.deepEqual(nodes(list).filter((node: ElementNode)=>node.props['data-testid']?.startsWith('right-dock-tab-')).map((node: ElementNode)=>node.props.value),expected);
   }
   assert.match(app + readFileSync(new URL('../apps/web/src/TaskPopover.tsx', import.meta.url), 'utf8'), /data-testid="right-dock-tab-tasks"/);
   assert.match(app, /const inspectorDirty = shotDirty \|\| clipDirty \|\| sourceDirty \|\| subjectDirty \|\| subtitleDirty;/);
