@@ -102,6 +102,11 @@ export function validateDesktopStorage(paths: DesktopPaths): void {
 
 export function storageFailureDialog(error: unknown): StorageFailureDialog {
   const failure = codedFailure(error);
+  if (failure.code === 'DESKTOP_PRODUCTION_CHANNEL_REJECTED') {
+    return { type: 'error', title: desktopIdentity.identityForChannel('production').productName,
+      message: '正式版只能以官方签名包运行，开发和测试请用开发版', detail: '',
+      buttons: [nt('native.quit')], defaultId: 0, cancelId: 0 };
+  }
   let message = nt('native.storageMessage');
   let detail = nt('native.storageDetail');
   let recovery = nt('native.storageRecovery');
@@ -139,8 +144,15 @@ export function storageFailureDialog(error: unknown): StorageFailureDialog {
 // verified private directory lets Electron show the fatal dialog without ever
 // touching the rejected userData or its normal default location. This is only
 // an error-display session: no lock, workspace, settings, token or main window.
-export async function showStorageStartupFailure(app: App, dialog: Dialog, error: unknown, { temporaryRoot = tmpdir() }: {temporaryRoot?: string} = {}): Promise<void> {
+export async function showStorageStartupFailure(app: App, dialog: Dialog, error: unknown, {
+  temporaryRoot = tmpdir(), platform = process.platform,
+}: {temporaryRoot?: string; platform?: NodeJS.Platform} = {}): Promise<void> {
   const message = storageFailureDialog(error);
+  if (codedFailure(error).code === 'DESKTOP_PRODUCTION_CHANNEL_REJECTED' && platform !== 'linux') {
+    try { dialog.showErrorBox(message.title, message.message); }
+    finally { app.exit(1); }
+    return;
+  }
   let diagnostic: string;
   let created: Stats | null;
   try {
@@ -162,7 +174,7 @@ export async function showStorageStartupFailure(app: App, dialog: Dialog, error:
   } catch {
     // If a private diagnostic session cannot be established, do not become
     // ready using a default location or attempt workspace startup again.
-    dialog.showErrorBox(message.title, `${message.message}\n\n${message.detail}`);
+    dialog.showErrorBox(message.title, message.detail ? `${message.message}\n\n${message.detail}` : message.message);
   } finally { app.exit(1); }
 }
 

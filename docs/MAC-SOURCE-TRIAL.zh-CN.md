@@ -94,7 +94,7 @@ pnpm desktop
 
 当前应用源码为 TypeScript（如 `apps/desktop/src/*.ts`、`apps/desktop/scripts/*.ts`）；桌面 builder 配置来自 typed `apps/desktop/builder-config.ts`，构建时生成到忽略的 `apps/desktop/.generated/`，不再有手写 `.cjs` / `.mjs` 入口。
 
-build 会依次构建网页和桌面代码；不要在前一步失败后继续。portable 仅运行明确列出的可移植测试，不等于完整测试或原生验收。`pnpm desktop` 只运行现有暂存产物，不会重新构建。桌面进程使用 Electron 自带的 Node 和 SQLite。首次进入桌面工作区会自动连接本机服务，不需要手动复制令牌。
+build 会依次构建网页和桌面代码。portable 仅运行明确列出的可移植测试。`pnpm desktop` 启动现有的开发暂存产物。如果上一次暂存是正式渠道，先重新执行开发构建。桌面进程使用 Electron 自带的 Node 和 SQLite。首次进入工作区会自动连接本机服务。
 
 doctor 检查 Node、构建身份、依赖包版本、内存 SQLite 和媒体工具版本；它不验证编码器、Electron 可执行文件能否启动、Mac 窗口、媒体导出、Keychain 或安装包。普通 doctor 通过可返回 0，同时 nativeReadiness 仍为未验证。若另行运行 `node scripts/tooling.ts doctor --native-ready`，本地前提检查通过后 macOS 仍返回未验证状态和退出码 2；前提检查失败则返回 1。不能把此固定门槛当作实际 Mac 测试结果。
 
@@ -104,7 +104,7 @@ doctor 检查 Node、构建身份、依赖包版本、内存 SQLite 和媒体工
 
 ## 数据位置与旧项目保护
 
-上面的构建明确选择 development；`pnpm desktop` 运行刚构建的渠道。未设置 MIOON_DESKTOP_USER_DATA 时，源码开发版预期使用：
+上面的构建明确选择 development。未设置 MIOON_DESKTOP_USER_DATA 时，源码开发版预期使用：
 
 ```text
 ~/Library/Application Support/app.starroy.mioon.dev/

@@ -92,6 +92,7 @@ import {createDesktopUpdateHost} from './desktop-update-host.ts';
 import type {UpdateDocument} from './desktop-update-host.ts';
 import {createDesktopUpdateQuit} from './desktop-update-quit.ts';
 import {createDesktopUpdateReopen} from './desktop-update-reopen.ts';
+import {verifyOfficialMacDesktopProcess} from './production-channel-signing.ts';
 
 type DesktopStartup = ReturnType<typeof createDesktopStartup>;
 type ProjectWindowHost = ReturnType<typeof createProjectWindowHost<BrowserWindow>>;
@@ -153,25 +154,32 @@ function requestApplicationQuit(source: BrowserWindow | undefined): Promise<bool
   return quitRouter.request(source).catch(quitFailed);
 }
 
-// The renderer never receives privileged Electron APIs or native filesystem paths.
-app.enableSandbox();
 // Embedded by build.ts. Runtime env and app.isPackaged cannot change the channel.
 const identity: DesktopIdentity = desktopIdentity.identityForChannel(__MIOON_DESKTOP_CHANNEL__);
-app.setName(identity.productName);
-app.setAppUserModelId(identity.appId);
-if (process.platform === 'linux') {
-  app.setDesktopName(`${identity.appId}.desktop`);
-  app.commandLine.appendSwitch('class', identity.appId);
-}
+const productionChannelRejected = identity.channel === 'production' &&
+  (!app.isPackaged || (process.platform === 'darwin' && !verifyOfficialMacDesktopProcess()));
 let languageHost: LanguageHost | null = null;
 const systemLanguages = (): readonly string[] => { try { return app.getPreferredSystemLanguages(); } catch { return [process.env.LC_ALL || process.env.LANG || 'en']; } };
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
 let paths!: DesktopPaths;
 let startupStorageError: unknown;
-// Windows storage runs only through the shipped ACL helper; it registers before
-// any storage access and refuses startup through the same dialog when absent.
-try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
-catch (error) { startupStorageError = error; }
+if (productionChannelRejected) {
+  // The existing fatal startup path shows a dialog in an isolated profile and
+  // exits before the single-instance lock, workspace or vault can start.
+  startupStorageError = Object.assign(new Error('Production desktop identity could not be verified'), {code: 'DESKTOP_PRODUCTION_CHANNEL_REJECTED'});
+} else {
+  // The renderer never receives privileged Electron APIs or native filesystem paths.
+  app.enableSandbox();
+  app.setName(identity.productName);
+  app.setAppUserModelId(identity.appId);
+  if (process.platform === 'linux') {
+    app.setDesktopName(`${identity.appId}.desktop`);
+    app.commandLine.appendSwitch('class', identity.appId);
+  }
+  // Register the shipped Windows ACL helper before any storage access.
+  try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
+  catch (error) { startupStorageError = error; }
+}
 const appearanceCache = !startupStorageError ? createDesktopAppearanceCache({root:paths.userData,dataRoot:paths.dataDir,appId:identity.appId,channel:identity.channel}) : null;
 // Renderer health evidence for issue #4: bounded local records for unresponsive,
 // responsive and render-process-gone transitions. The factory is feature-detected
@@ -583,7 +591,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
       settingsDiagnostics, settingsBootAckTimeoutMs: 1500,
       createWindow: creation => {
         const launcher = creation.role === 'launcher';
-        const title = launcher ? 'Mioon' : identity.productName;
+        const title = identity.productName;
         const settingsBoot = creation.role === 'settings' ? settingsAppearance() : undefined;
         const window = new BrowserWindow({
           title,
@@ -603,6 +611,12 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
             if (pageTitle !== title) event.preventDefault();
           });
           launcherWindowState.track(window);
+        } else if (identity.channel === 'development') {
+          window.on('page-title-updated', (event, pageTitle) => {
+            if (pageTitle !== 'Mioon' && !pageTitle.endsWith(' · Mioon')) return;
+            event.preventDefault();
+            window.setTitle(`${pageTitle.slice(0, -'Mioon'.length)}${title}`);
+          });
         }
         if (warmOnFocus && settingsBoot) warmedAppearance.set(window, settingsBoot);
         if (warmOnFocus && creation.role !== 'settings') {
@@ -1503,6 +1517,7 @@ else {
   process.on('SIGINT', () => app.quit());
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'icons/icon.png'));
+    if (process.platform === 'darwin' && identity.channel === 'development') app.dock?.setBadge('DEV');
     workspaceToolsHost=createWorkspaceToolsHost<IpcMainInvokeEvent>({
       isTrusted:event=>{
         const window=windowHost?.windowForContents(event.sender as ProjectWindowWebContents),owner=windowHost?.ownerForContents(event.sender as ProjectWindowWebContents);

@@ -83,10 +83,11 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 
 - 正式版 application / bundle ID：`app.starroy.mioon`
 - 开发版 application / bundle ID：`app.starroy.mioon.dev`
-- `pnpm desktop:build` 默认构建开发版；`pnpm desktop:build:production` 明确构建正式版暂存产物。之后 `pnpm desktop` 运行刚刚构建的渠道。
+- 本机先运行 `node scripts/tooling.ts build --channel=development`，再用 `pnpm desktop` 启动 Mioon Dev。`pnpm desktop:build` 使用现有 Web 产物构建开发版暂存。
+- 正式渠道要求已打包。macOS 启动时校验正式 bundle ID 和发布团队的 Developer ID 签名。
 - 渠道在构建时写入主进程和 `build/package.json` 的 `mioonDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
 - `app.setAppUserModelId`（Windows）、Linux desktop name / WM_CLASS 与打包 ID 保持一致；macOS bundle ID 来自 builder 配置，尚未实机验证。
-- 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；界面统一为 Mioon，npm workspace 为 `@mioon/*`，CLI 为 `mioon`，不提供旧命令别名。
+- 开发版应用菜单和窗口标题显示 Mioon Dev，macOS Dock 图标带 `DEV` 标记，可执行文件为 `mioon-dev`。npm workspace 为 `@mioon/*`，CLI 为 `mioon`。
 - 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.2.0`。
 
 ## 数据位置与单实例
@@ -172,19 +173,14 @@ MCP bridge 可以配置 `MIOON_CONNECTION_FILE` 指向所选渠道的 descriptor
 ## 本地打包
 
 ```sh
-pnpm build
-# 正式版
-pnpm desktop:package:linux
-# 可安装并存的开发版
 pnpm desktop:package:linux:dev
-# 仅生成解包目录
-pnpm --filter @mioon/desktop package:dir
 pnpm --filter @mioon/desktop package:dir:dev
+pnpm --filter @mioon/desktop package:mac:dev
 ```
 
-正式版输出在 `release/desktop/production/`，开发版在 `release/desktop/development/`：Linux x64 解包目录及 `tar.gz`。两个渠道输出互不覆盖，旧 `release/desktop/` 历史产物保持原样。压缩包中包含 Electron / Node / SQLite / 页面 / 后端；解包后运行正式版 `mioon` 或开发版 `mioon-dev`，仍需外部 FFmpeg / ffprobe。必须在支持 Chromium 沙箱的非 root Linux 图形会话中运行。若系统策略阻止用户命名空间或沙箱辅助程序，保持安全失败，不添加 `--no-sandbox` 或静默降级。
+本机打包输出在 `release/desktop/development/`。Linux x64 开发包提供解包目录和 `tar.gz`，解包后运行 `mioon-dev`。包内包含 Electron、Node、SQLite、页面和后端，使用外部 FFmpeg 与 ffprobe。请在支持 Chromium 沙箱的非 root Linux 图形会话中运行。
 
-`pnpm --filter @mioon/desktop package:mac` 与 `package:mac:dev` 先通过 tooling 串行构建 Web 和对应渠道，再运行 builder（`--publish never`）；不能并行共用 staging。生成的 `apps/desktop/.generated/electron-builder.cjs` / `.dev.cjs`（源自 typed `apps/desktop/builder-config.ts`）配置 macOS 通用 DMG 和 ZIP，包含 Apple 芯片和 Intel 两种架构。本地配置默认使用 `identity: null`。正式包由发布流程签名、公证并装订票据，两种架构分别启动同一份 DMG。入口见 [打包入口说明](PACKAGE-ENTRYPOINTS.md)，更新资产见 [发布流程](GITHUB-ACTIONS.zh-CN.md#正式发布)。
+三个开发包入口都先构建 Web 和桌面暂存，再运行 builder。它们共用暂存目录，请串行执行。macOS 开发包包含 Apple 芯片和 Intel 两种架构。发布流程生成正式包并在 macOS 上签名、公证、装订票据。[打包入口说明](PACKAGE-ENTRYPOINTS.md) · [发布流程](GITHUB-ACTIONS.zh-CN.md#正式发布)
 
 ## 验证
 
@@ -203,7 +199,7 @@ Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RU
 
 历史 V3 打包黑盒验证针对 `release/desktop/linux-unpacked/video-workbench`，检查空 PATH 启动、捆绑 utility、正常 HTTP 渲染与原生退出；历史证据保留在 `evidence/v3-desktop/`，不是当前 Mioon 构建的验证。
 
-当前 `apps/desktop/scripts/packaged-qa.ts` 默认检查正式渠道 `release/desktop/production/linux-unpacked/mioon`；传入 `--channel=development` 检查开发渠道的 `mioon-dev`。`inspect-package.ts` 使用相同渠道参数检查该渠道的包、归档和当前暂存构建，报告写入 `evidence/mioon-desktop/<channel>/`。只有显式 `--historical-v3` 才检查未改动的旧 0.3.0 归档，且不与当前暂存构建比较；报告为 `evidence/mioon-desktop/historical-v3-inspection.json`。这些脚本没有启用 smoke bridge 或远程调试。本次更名修改了脚本入口，但没有构建安装包或运行上述打包版检查。
+`apps/desktop/scripts/packaged-qa.ts` 只启动 Linux 开发包 `release/desktop/development/linux-unpacked/mioon-dev`。`inspect-package.ts` 默认检查开发包、归档和暂存构建，并写入 `evidence/mioon-desktop/<channel>/`。发布流程可给只读检查器显式传入正式渠道参数。`--historical-v3` 检查旧 0.3.0 归档，报告为 `evidence/mioon-desktop/historical-v3-inspection.json`。
 
 历史 V3 Linux x64 打包黑盒测试通过 6 项：ASAR 启动、捆绑 utility 身份、迁移项目、真实多轨 MP4、匿名拒绝、正常原生退出清理。`packaged-qa.json` 记录完成状态，`packaged-electron-preview.jpg` 是原生窗口检查截图。最终 `tar.gz` 已通过 gzip 完整性检查，内含 ASAR 哈希与这个实测目录一致；打包检查记录 SHA-256。macOS 仍只交付配置，未验证。
 

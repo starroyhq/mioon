@@ -210,6 +210,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     isFullScreen() { return this.fullScreen; }
     setFullScreen(value: boolean) { this.fullScreen = value; }
     getTitle() { return String(this.config.title ?? 'Synthetic'); }
+    setTitle(title: string) { this.config.title = title; }
     getContentBounds() { return {x: 80, y: 60, width: Number(this.config.width), height: Number(this.config.height)}; }
     setBackgroundColor(value: string) { this.backgroundColor = value; }
     isMinimized() { return false; }
@@ -934,7 +935,7 @@ test('actual main centers and titles the launcher with its own window state', as
   const windowOptions = ({width, height, minWidth, minHeight, center, title}: DesktopHarnessWindowConfig) =>
     ({width, height, minWidth, minHeight, center, title});
   assert.deepEqual(windowOptions(launcher.config), {
-    width: 1000, height: 680, minWidth: 820, minHeight: 560, center: true, title: 'Mioon',
+    width: 1000, height: 680, minWidth: 820, minHeight: 560, center: true, title: 'Synthetic',
   });
   assert.equal(Object.hasOwn(launcher.config, 'x'), false);
   assert.equal(Object.hasOwn(launcher.config, 'y'), false);
@@ -952,14 +953,18 @@ test('actual main centers and titles the launcher with its own window state', as
     return !prevented;
   };
   assert.equal(allowsPageTitle(launcher, 'Localized bootstrap title'), false);
-  assert.equal(allowsPageTitle(launcher, 'Mioon'), true);
-  assert.equal(allowsPageTitle(editor, 'Synthetic Project · Mioon'), true);
+  assert.equal(allowsPageTitle(launcher, 'Mioon'), false);
+  assert.equal(allowsPageTitle(launcher, 'Synthetic'), true);
+  assert.equal(allowsPageTitle(editor, 'Synthetic Project · Mioon'), false);
+  assert.equal(editor.getTitle(), 'Synthetic Project · Synthetic');
   const host = f.get('windowHost');
   assert.equal(host.showSettings('agent', editor), true);
   assert.equal(f.r.windows.length, 3);
   const settingsArgs = f.r.windows[2]?.config.webPreferences.additionalArguments;
   assert.ok(Array.isArray(settingsArgs));
   assert.deepEqual(Array.from(settingsArgs), ['--mioon-settings-locale=en', '--mioon-settings-theme=dark']);
+  assert.equal(allowsPageTitle(f.r.windows[2]!, 'Mioon'), false);
+  assert.equal(f.r.windows[2]!.getTitle(), 'Synthetic');
   assert.deepEqual(f.trackedLaunchers.map(window => window.index), [launcher.index]);
 });
 

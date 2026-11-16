@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {createMacDesktopUpdateVerifier} from '../apps/desktop/src/desktop-update-mac-verify.ts';
+import {verifyOfficialMacDesktopProcess} from '../apps/desktop/src/production-channel-signing.ts';
 import {testEnv} from './helpers/test-env.ts';
 
 const identity = 'org.example.mioon.synthetic',
@@ -81,4 +82,29 @@ test('macOS discards verification scratch after an incorrect digest, version, si
   await verifyFailed(archive('mioon.app', version, identity, candidate => {
     writeFileSync(path.join(candidate, 'Contents', 'Resources', 'payload.txt'), 'Changed after signing');
   }));
+});
+
+test('production startup pins the live PID to the signed identifier, Developer ID Application chain and release team', () => {
+  const calls: unknown[] = [];
+  assert.equal(verifyOfficialMacDesktopProcess((...args) => calls.push(args)), true);
+  assert.deepEqual(calls, [[
+    '/usr/bin/codesign',
+    ['--verify', '--ignore-resources',
+      '-R=identifier "app.starroy.mioon" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "A7C3K354YP"',
+      String(process.pid)],
+    {env: {}, stdio: 'ignore', timeout: 2000, killSignal: 'SIGKILL'},
+  ]]);
+});
+
+test('production startup fails closed for an unsuitable signing certificate, process mismatch or unavailable verifier', () => {
+  for (const [reason, failure] of [
+    ['same identifier and team with an unsuitable certificate', {status: 3}],
+    ['invalid dynamic signature', {status: 1}],
+    ['missing system verifier', {code: 'ENOENT'}],
+    ['verifier exceeded its deadline', {code: 'ETIMEDOUT', signal: 'SIGKILL'}],
+  ] as const) {
+    assert.equal(verifyOfficialMacDesktopProcess(() => {
+      throw Object.assign(new Error('Signature verification failed'), failure);
+    }), false, reason);
+  }
 });

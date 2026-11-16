@@ -133,7 +133,9 @@ test('actual shared window factory adds the local icon while retaining the secur
     assert.equal(config.webPreferences.contextIsolation, true); assert.equal(config.webPreferences.nodeIntegration, false);
   }
   const dock = source.match(/^\s*(if \(process\.platform === 'darwin'\) app\.dock\?\.setIcon\([^\n]+;)$/m)?.[1];
+  const badge = source.match(/^\s*(if \(process\.platform === 'darwin' && identity\.channel === 'development'\) app\.dock\?\.setBadge\([^\n]+;)$/m)?.[1];
   assert.ok(dock);
+  assert.ok(badge);
   assert.ok(source.indexOf(dock) > source.indexOf('app.whenReady().then(async () => {'));
   assert.ok(source.indexOf(dock) < source.indexOf('languageHost = createAppLanguageHost('));
   for (const platform of ['darwin', 'linux', 'win32']) {
@@ -141,6 +143,11 @@ test('actual shared window factory adds the local icon while retaining the secur
     Function('app', 'path', 'process', dock)({ getAppPath: () => '/synthetic/mioon-stage', dock: { setIcon: (value: unknown) => calls.push(value) } }, path, { platform });
     assert.deepEqual(calls, platform === 'darwin' ? [path.join('/synthetic/mioon-stage', 'icons/icon.png')] : []);
     assert.doesNotThrow(() => Function('app', 'path', 'process', dock)({ getAppPath: () => '/synthetic/mioon-stage' }, path, { platform }));
+    for (const channel of ['development', 'production']) {
+      const badges: string[] = [];
+      Function('app', 'process', 'identity', badge)({dock: {setBadge: (value: string) => badges.push(value)}}, {platform}, {channel});
+      assert.deepEqual(badges, platform === 'darwin' && channel === 'development' ? ['DEV'] : []);
+    }
   }
 });
 

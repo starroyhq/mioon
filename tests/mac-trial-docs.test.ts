@@ -58,11 +58,10 @@ test('Mac instructions use the real serialized Web-desktop build and existing st
   assert.match(guide, /^pnpm desktop$/m);
   assert.equal(application.scripts.desktop, 'pnpm --filter @mioon/desktop start');
   assert.equal(desktop.scripts.start, 'electron build');
-  for (const [name, channel, config] of [['package:mac', 'production', 'electron-builder.cjs'],
-    ['package:mac:dev', 'development', 'electron-builder.dev.cjs']]) {
-    assert.equal(desktop.scripts[name], `node ../../scripts/tooling.ts build --channel=${channel} && electron-builder --config .generated/${config} --mac --publish never`);
-    assert.ok(desktopDoc.includes(name));
-  }
+  assert.equal(desktop.scripts['package:mac'], 'pnpm run package:mac:dev');
+  assert.equal(desktop.scripts['package:mac:dev'], 'node ../../scripts/tooling.ts build --channel=development && electron-builder --config .generated/electron-builder.dev.cjs --mac --publish never');
+  assert.match(desktopDoc, /^pnpm --filter @mioon\/desktop package:mac:dev$/m);
+  assert.doesNotMatch(guide + desktopDoc, /^node scripts\/tooling\.ts build --channel=production$|^pnpm --filter @mioon\/desktop package:mac$/m);
   assert.equal(nativeReadiness('darwin', 'arm64').ready, false);
   assert.equal(getStoragePrivacyCapability('win32').available, false);
   assert.match(checklist, /Windows ACL 后端仍阻止正常启动/);

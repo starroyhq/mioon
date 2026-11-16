@@ -6,6 +6,8 @@ import {mkdtemp, mkdir, chmod, stat, lstat, writeFile, readFile, readdir, rm, sy
 import {lstatSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {stripTypeScriptTypes} from 'node:module';
+import {runInNewContext} from 'node:vm';
 import desktopIdentity from '../apps/desktop/identity.ts';
 import {dataPaths, prepareDesktopStorage, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity,
   readToolConfig, saveToolConfig, writeConnection, removeConnection, removeConnectionOnShutdown} from '../apps/desktop/src/config.ts';
@@ -225,6 +227,80 @@ test('main isolates fatal storage handling from lock acquisition and normal read
   assert.match(main, /try \{ initializeDesktopPrivateStorage\(privateStorageHelperFile\(app\)\); paths = prepareDesktopStorage\(/);
   assert.match(main, /if \(startupStorageError\) void showStorageStartupFailure\(app, dialog, startupStorageError\);\s*else if \(!app\.requestSingleInstanceLock\(\)\)/);
   assert.doesNotMatch(main, /mkdirSync\(paths\.userData|app\.setPath\('userData', paths\.userData\)/);
+});
+
+test('the real startup guard requires a packaged official Mac process before enabling production storage', async () => {
+  const source = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
+  const begin = source.indexOf('const identity: DesktopIdentity = desktopIdentity.identityForChannel');
+  const end = source.indexOf('const appearanceCache', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const startup = stripTypeScriptTypes(source.slice(begin, end), {mode: 'strip'});
+  const failure = source.slice(source.indexOf('if (startupStorageError) void showStorageStartupFailure'), source.indexOf("  app.on('second-instance'"));
+  for (const platform of ['darwin', 'linux', 'win32']) {
+    for (const [channel, isPackaged, signed] of [['production', false, true], ['production', true, false],
+      ['production', true, true], ['development', false, false], ['development', true, false]] as const) {
+      const events: string[] = [];
+      const app = {
+        isPackaged, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {}, commandLine: {appendSwitch() {}},
+        requestSingleInstanceLock() {events.push('lock'); return true;},
+      };
+      const verify = channel === 'production' && isPackaged && platform === 'darwin';
+      const reject = channel === 'production' && (!isPackaged || verify && !signed);
+      runInNewContext(`${startup}\n${failure} startWorkspace(); }`, {
+        app, desktopIdentity, __MIOON_DESKTOP_CHANNEL__: channel,
+        process: {platform, env: {MIOON_DESKTOP_CHANNEL: 'development', MIOON_DESKTOP_USER_DATA: '/synthetic/explicit-profile'}},
+        verifyOfficialMacDesktopProcess() {events.push('signature'); return signed;},
+        setNativeLanguageReader() {}, privateStorageHelperFile() {events.push('storage path');},
+        initializeDesktopPrivateStorage() {events.push('storage helper');},
+        prepareDesktopStorage() {events.push('profile');},
+        startWorkspace() {events.push('workspace and vault');},
+        dialog: {},
+        showStorageStartupFailure(_app: unknown, _dialog: unknown, error: {code: string}) {
+          assert.equal(error.code, 'DESKTOP_PRODUCTION_CHANNEL_REJECTED');
+          events.push('rejected');
+        },
+      });
+      assert.deepEqual(events, [
+        ...(verify ? ['signature'] : []),
+        ...(reject ? ['rejected'] : ['storage path', 'storage helper', 'profile', 'lock', 'workspace and vault']),
+      ], `${platform}/${channel}/${isPackaged}/${signed}`);
+    }
+  }
+});
+
+test('Linux production refusal uses only an isolated native dialog and exits without changing existing data', posix, async t => {
+  const f = await fixture(t), {app, calls} = fakeApp(f.root);
+  await writeFile(path.join(f.userData, 'untouched.txt'), 'synthetic original', {mode: 0o600});
+  const before = await snapshot(f.root);
+  // Even querying the default profile root is forbidden in this path.
+  app.getPath = () => assert.fail('Rejected production must not query the actual data directory');
+  const dialog = {showMessageBox: async (message: ReturnType<typeof storageFailureDialog>) => {
+    assert.equal(message.title, 'Mioon');
+    assert.equal(message.message, '正式版只能以官方签名包运行，开发和测试请用开发版');
+    assert.equal(message.detail, '');
+    calls.push(['dialog']);
+  }, showErrorBox: () => assert.fail('unexpected pre-ready fallback')};
+  await showStorageStartupFailure(app as unknown as Parameters<typeof showStorageStartupFailure>[0],
+    dialog as unknown as Parameters<typeof showStorageStartupFailure>[1],
+    {code: 'DESKTOP_PRODUCTION_CHANNEL_REJECTED'}, {temporaryRoot: f.root, platform: 'linux'});
+  const diagnostic = calls[0]?.[2];
+  assert.notEqual(diagnostic, f.userData);
+  assert.deepEqual(calls, [['setPath', 'userData', diagnostic], ['setPath', 'sessionData', diagnostic], ['ready'], ['dialog'], ['exit', 1]]);
+  assert.deepEqual(await snapshot(f.root), before);
+});
+
+test('Mac and Windows production refusal report the reason before native readiness or profile access', async () => {
+  for (const platform of ['darwin', 'win32'] as const) {
+    const calls: unknown[][] = [];
+    const unexpected = () => assert.fail('Rejected production must not open a diagnostic profile on this platform');
+    const app = {once: unexpected, getPath: unexpected, setPath: unexpected, whenReady: unexpected,
+      exit: (code: number) => calls.push(['exit', code])};
+    const dialog = {showMessageBox: unexpected,
+      showErrorBox: (title: string, message: string) => calls.push(['error', title, message])};
+    await showStorageStartupFailure(app as unknown as Parameters<typeof showStorageStartupFailure>[0],
+      dialog as unknown as Parameters<typeof showStorageStartupFailure>[1], {code: 'DESKTOP_PRODUCTION_CHANNEL_REJECTED'}, {platform});
+    assert.deepEqual(calls, [['error', 'Mioon', '正式版只能以官方签名包运行，开发和测试请用开发版'], ['exit', 1]]);
+  }
 });
 
 test('fatal startup copy distinguishes identity, channel, canonical-path and ACL blockers without raw errors', () => {

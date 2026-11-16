@@ -83,14 +83,13 @@ test('packaging refuses missing or opposite-channel staging, including packaged 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('package commands explicitly rebuild the correct channel before electron-builder', async () => {
+test('local package commands explicitly rebuild development before electron-builder', async () => {
   const pkg = JSON.parse(await readFile(new URL('../apps/desktop/package.json', import.meta.url), 'utf8'));
   for (const target of ['linux', 'dir', 'mac']) {
     const build = 'node ../../scripts/tooling.ts build';
     const targetFlags = target === 'dir' ? '--linux --dir' : `--${target}`;
-    for (const [suffix, channel, config] of [['', 'production', 'electron-builder.cjs'], [':dev', 'development', 'electron-builder.dev.cjs']]) {
-      assert.equal(pkg.scripts[`package:${target}${suffix}`], `${build} --channel=${channel} && electron-builder --config .generated/${config} ${targetFlags} --publish never`);
-    }
+    assert.equal(pkg.scripts[`package:${target}`], `pnpm run package:${target}:dev`);
+    assert.equal(pkg.scripts[`package:${target}:dev`], `${build} --channel=development && electron-builder --config .generated/electron-builder.dev.cjs ${targetFlags} --publish never`);
   }
 });
 

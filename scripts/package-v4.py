@@ -51,7 +51,7 @@ if args.app_id_patch:
 
 Source version 0.4.1. Production application ID: `app.starroy.mioon`; development: `app.starroy.mioon.dev`. Both channels use isolated data/connection roots. Source builds default to development; packaged development keeps `.dev`. Launch-time environment variables cannot change the compiled channel. CLI and npm workspace names are now mioon and @mioon/*; environment variables use MIOON_*. Previous names have no compatibility aliases.
 
-Install Node24+, pnpm11.25.0 and FFmpeg/ffprobe; then run `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm desktop:build` and `pnpm desktop`. For explicit production staging use `pnpm desktop:build:production`; Linux package commands are `pnpm desktop:package:linux` / `pnpm desktop:package:linux:dev`.
+Install Node24+, pnpm11.25.0 and FFmpeg/ffprobe; then run `pnpm install --frozen-lockfile`, `node scripts/tooling.ts build --channel=development` and `pnpm desktop`. To package the Linux development app, run `pnpm desktop:package:linux:dev`.
 
 Old `video-workbench` data is preserved, not moved or auto-imported. Close both applications, back up the old workspace, then use the documented copy-only migration helper into a nonexistent new workspace. Update CLI/MCP to the exact channel-specific descriptor path. Read docs/DESKTOP.md before migration.
 
