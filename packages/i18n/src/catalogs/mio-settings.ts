@@ -66,6 +66,14 @@ export const mioSettingsMessages = {
   "agent.settings.models.fetchedAt": {"zh-Hans":"上次获取 {time}","zh-Hant":"上次取得 {time}","en":"Last fetched {time}","ja":"最終取得 {time}"},
   "agent.settings.models.missing": {"zh-Hans":"列表里已没有","zh-Hant":"清單中已沒有","en":"No longer listed","ja":"一覧にありません"},
   "agent.settings.models.missingWarning": {"zh-Hans":"{model} 不在服务商最新的完整列表里，可能已经下线。先测试连接确认，或换一个模型。当前选择不会自动更换。","zh-Hant":"{model} 不在服務商最新的完整清單中，可能已經下線。先測試連線確認，或換一個模型。目前選擇不會自動更換。","en":"{model} is absent from the service’s latest complete list and may have been retired. Test the connection or choose another model. The current selection will not change automatically.","ja":"{model} は最新の完全な一覧にありません。提供終了の可能性があります。接続をテストするか、別のモデルを選んでください。現在の選択は自動変更しません。"},
+  "agent.settings.models.kimiRetirementScheduled": {
+    "zh-Hans":"即将下线（预计 2026 年 12 月底）","zh-Hant":"即將下線（預計 2026 年 12 月底）",
+    "en":"Retiring in late December 2026","ja":"2026年12月末に提供終了予定"
+  },
+  "agent.settings.models.kimiRetirementSchedulePassed": {
+    "zh-Hans":"已过计划下线时间","zh-Hant":"已過計畫下線時間",
+    "en":"Scheduled retirement date passed","ja":"提供終了予定日を経過"
+  },
   "agent.settings.models.manual": {"zh-Hans":"手动添加","zh-Hant":"手動新增","en":"Manual","ja":"手動追加"},
   "agent.settings.models.scope": {"zh-Hans":"检查只调用模型列表，不发送项目内容，也不验证推理能力。未验证模型使用服务的通用写法；先测试连接再使用。","zh-Hant":"檢查僅呼叫模型清單，不傳送專案內容，也不驗證推論能力。未驗證模型使用服務的通用格式；先測試連線後使用。","en":"Checking only lists models: it sends no project content and does not verify inference. Unverified models use the service’s generic template. Test the connection before use.","ja":"チェックは一覧の取得のみで、プロジェクトの内容を送信せず、推論能力も検証しません。未検証モデルはサービスの汎用形式を使用します。使用前に接続をテストしてください。"},
   "mio.settings.connection.title": {"zh-Hans": "模型连接", "zh-Hant": "模型連線", "en": "Model connection", "ja": "モデル接続"},

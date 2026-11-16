@@ -134,7 +134,7 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
  const h={render(){cursor=0;pending=[];tree=module.exports.default!({onClose:()=>{},onNavigationStateChange:(next:navigation.SettingsNavigationState)=>reports.push(next)});for(const node of nodes(tree)){const ref=node.props.ref;if(ref&&typeof ref==='object'&&'current'in ref){const id=String(node.props.id);if(!dom.has(id))dom.set(id,{value:''});ref.current=dom.get(id);}}for(const effect of pending)effect();return tree;},
   find(id:string){const node=nodes(tree).find(item=>item.props['data-testid']===id);assert.ok(node,id);return node;},click(id:string){invoke(h.find(id),'onClick');h.render();},view(key:string){h.click(`agent-settings-nav-${key}`);},
   picker:()=>nodes(tree).find(item=>item.type==='ModelPickerDialog'),
-  pickerItems:()=>h.picker()?.props.items as {id:string;added?:boolean;active?:boolean;verified?:boolean}[]|undefined,
+  pickerItems:()=>h.picker()?.props.items as {id:string;added?:boolean;active?:boolean;verified?:boolean;retirementNotice?:string}[]|undefined,
   modelRow(key:string,id:string){return nodes(tree).find(node=>node.props['data-testid']===`agent-settings-model-row-${key}-${id}`);},
   closePicker(){const picker=h.picker();assert.ok(picker);invoke(picker,'onClose');h.render();},
   addPicked(...ids:string[]){const picker=h.picker();assert.ok(picker);invoke(picker,'onAdd',ids);h.render();},
@@ -388,6 +388,62 @@ test('actual OpenAI manual and observed legacy rows retain compatibility without
    assert.equal(f.calls.length,0);assert.deepEqual(f.saved().mioSelection,initial.mioSelection);assertNoSecrets(h.reports);
   }finally{h.unmount();}
  }
+});
+
+test('Kimi retirement follows the announced month in both regions without changing saved models', async t => {
+ const before = new Date(2026, 11, 31, 23, 59), after = new Date(2027, 0, 1);
+ t.mock.timers.enable({apis:['Date'], now:before});
+ const oldModel = 'kimi-k2.6', currentModel = 'kimi-k3.1-pro';
+ const copy = {
+  'zh-Hans':['即将下线（预计 2026 年 12 月底）','已过计划下线时间'],
+  'zh-Hant':['即將下線（預計 2026 年 12 月底）','已過計畫下線時間'],
+  en:['Retiring in late December 2026','Scheduled retirement date passed'],
+  ja:['2026年12月末に提供終了予定','提供終了予定日を経過'],
+ } as const;
+ for (const [platformId, baseUrl] of [['china','https://api.moonshot.cn/v1'],['international','https://api.moonshot.ai/v1']] as const) {
+  t.mock.timers.setTime(before.getTime());
+  const initial = adapterSettings({presetId:'kimi',platformId,baseUrl,protocol:'chat_completions',model:oldModel},{revision:0,secretStorage:'session'});
+  initial.services.find(item=>item.serviceKey==='openai')!.manualModelIds=[oldModel];
+  const result = listed([oldModel,currentModel]), f = settingsUiFixture({initial});
+  const h = uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
+  try{
+   await ready(h);
+   h.view('kimi');await flush();h.render();
+   h.click('agent-settings-fetch-kimi');await flush();h.render();
+   assert.equal(h.picker()?.props.status,'ready');
+   for (const [date, phase] of [[before,0],[after,1]] as const) {
+    t.mock.timers.setTime(date.getTime());
+    for (const locale of i18n.LOCALES) {
+     h.setLocale(locale);
+     const notice = copy[locale][phase];
+     assert.ok(JSON.stringify(h.find('agent-settings-current-model')).includes(notice));
+     assert.ok(JSON.stringify(h.modelRow('kimi',oldModel)).includes(notice));
+     assert.ok(!JSON.stringify(h.modelRow('openai',oldModel)).includes(notice));
+     const models = h.pickerItems();
+     assert.equal(models?.find(model=>model.id===oldModel)?.retirementNotice,notice);
+     assert.equal(models?.find(model=>model.id===oldModel)?.active,true);
+     assert.equal(models?.find(model=>model.id===currentModel)?.retirementNotice,undefined);
+    }
+   }
+   assert.equal(h.latest().dirty,false);
+   assert.equal(f.calls.length,0);
+   assert.deepEqual(f.saved().mioSelection,initial.mioSelection);
+   assert.deepEqual(f.saved().services.find(item=>item.serviceKey==='kimi')?.manualModelIds,[oldModel]);
+  }finally{h.unmount();}
+ }
+});
+
+test('the Ollama setup note recommends the 4b model for an 8 GB Mac in every locale',async()=>{
+ const f=settingsUiFixture(),h=uiHarness(f.client);
+ try{
+  await ready(h);h.view('ollama');
+  for (const locale of i18n.LOCALES) {
+   h.setLocale(locale);
+   const note=JSON.stringify(h.find('agent-settings-preset-note-ollama'));
+   assert.match(note,/8 GB[^"]*qwen3\.5:4b/u);
+  }
+  assert.equal(f.calls.length,0);
+ }finally{h.unmount();}
 });
 
 test('actual fetching and closing a failed or successful picker preserve the settings list',async()=>{

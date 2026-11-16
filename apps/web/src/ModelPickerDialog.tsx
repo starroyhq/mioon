@@ -13,6 +13,7 @@ export interface ModelPickerItem {
   added?: boolean;
   active?: boolean;
   verified?: boolean;
+  retirementNotice?: string;
   unavailable?: boolean;
 }
 
@@ -97,13 +98,15 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
       </>}
       {(ready || visible.length > 0) &&
         <ul className="model-picker-list" aria-label={t(single ? 'settings.modelPicker.singleTitle' : 'settings.modelPicker.list')}>
-          {visible.map(item => {
+          {visible.map((item, index) => {
             const locked = item.active || item.added;
             const disabled = Boolean(locked || item.unavailable);
             const checked = !disabled && selection.has(item.id);
+            const noticeId = item.retirementNotice ? `${radioName}-retirement-${index}` : undefined;
             const inputProps = {
               disabled,
               'aria-label': item.label ?? item.id,
+              'aria-describedby': noticeId,
               onChange: (event: ChangeEvent<HTMLInputElement>) => {if (!disabled) toggle(item.id, event.target.checked);},
             };
             return <li key={item.id}>
@@ -112,7 +115,10 @@ export default function ModelPickerDialog({serviceName, items, status, statusMes
                   ? <Input type="radio" className="wb-radio" name={radioName}
                     checked={Boolean(checked || locked && selected.length === 0)} {...inputProps} />
                   : <input type="checkbox" className="wb-checkbox" checked={Boolean(locked || checked)} {...inputProps} />}
-                <span className="model-picker-name" title={item.id}>{item.label ?? item.id}</span>
+                <span className="model-picker-name">
+                  <span title={item.id}>{item.label ?? item.id}</span>
+                  {item.retirementNotice && <WorkbenchBadge id={noticeId} tone="warning" className="model-picker-retirement">{item.retirementNotice}</WorkbenchBadge>}
+                </span>
                 {item.verified !== undefined && <WorkbenchBadge tone={item.verified ? 'success' : 'warning'}>{t(item.verified ? 'agent.settings.x6.adapted' : 'agent.settings.x6.unverified')}</WorkbenchBadge>}
                 <span className="model-picker-row-state">{item.active ? t('settings.modelPicker.inUse') : locked ? t(single ? 'settings.modelPicker.current' : 'settings.modelPicker.added') :
                   item.unavailable ? t('settings.modelPicker.unavailable') : checked ? t(single ? 'settings.modelPicker.willUse' : 'settings.modelPicker.willAdd') : null}</span>

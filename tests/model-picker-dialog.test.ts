@@ -155,3 +155,18 @@ test('single picker keeps the current model visible while searching and counts o
   assert.equal(picker.label('alpha'), undefined);
   assert.ok(picker.render().some(node => node.props.role === 'status' && text(node) === '没有匹配的模型。'));
 });
+
+test('a retirement notice describes the choice without locking an otherwise selectable model', () => {
+  for (const mode of ['multiple', 'single'] as const) {
+    const notice = 'Scheduled retirement date passed';
+    const picker = mount({mode, items: [{id: 'legacy-model', retirementNotice: notice}]}, 'en');
+    const input = picker.label('legacy-model')!;
+    assert.equal(input.props.disabled, false);
+    const description = input.props['aria-describedby'];
+    assert.equal(typeof description, 'string');
+    assert.equal(text(picker.render().find(node => node.props.id === description)!), notice);
+    input.props.onChange({target: {checked: true}});
+    picker.byId('model-picker-add').props.onClick();
+    assert.deepEqual(picker.calls, [['legacy-model']]);
+  }
+});
