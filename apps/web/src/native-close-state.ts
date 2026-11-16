@@ -131,7 +131,23 @@ export function createNativeCloseAdmission({ registry, settings, readScope, read
   };
   const current = (value: Ticket) => ticket === value && matchesCapture(value);
   const block = (event: UnloadEvent) => { event.preventDefault(); event.returnValue = ''; return false; };
+  function captureDisposition(action: NativeCloseAction, targetUrl: string | null, observationReady: boolean) {
+    const documentURL = readDocumentURL();
+    const validAction = action === 'close' ? targetUrl === null : action === 'reload' &&
+      typeof targetUrl === 'string' && targetUrl.length > 0 && targetUrl.length <= 8192 && targetUrl === documentURL;
+    const sources = registry.capture(), configuration = settings.capture(), legacy = readLegacySnapshot(), additional = readAdditional();
+    const dirty = Boolean(legacy.dirty) || Boolean(additional?.dirty) || sources.some(source => source.dirty) || settings.needsConfirmation(configuration);
+    const disposition: Disposition = !validAction || !active || !observationReady || sourceBlocked(sources) || !settings.canLeave(configuration) ||
+      additional === null || additional.busy || additional.unknown && action !== 'close' ? 'blocked' :
+      additional.unknown ? dirty ? 'unknown-dirty' : 'unknown' : dirty ? 'dirty' : 'clean';
+    return {sources, settings: configuration, documentURL, dirty, legacy, additional, disposition};
+  }
   return {
+    /** Update preflight must leave the real close ticket and observers alone. */
+    isSavedForUpdate(): boolean {
+      try {return captureDisposition('close', null, true).disposition === 'clean';}
+      catch {return false;}
+    },
     inspect(action: NativeCloseAction = 'close', targetUrl: string | null = null): NativeCloseInspection {
       admittedRiskExit = null;
       const token = newToken();
@@ -143,16 +159,9 @@ export function createNativeCloseAdmission({ registry, settings, readScope, read
         try { onObservationPause?.(true); } catch { observationReady = false; }
       }
       try {
-      const documentURL = readDocumentURL();
-      const validAction = action === 'close' ? targetUrl === null : action === 'reload' &&
-        typeof targetUrl === 'string' && targetUrl.length > 0 && targetUrl.length <= 8192 && targetUrl === documentURL;
-      const sources = registry.capture(), configuration = settings.capture(), legacy = readLegacySnapshot(), additional = readAdditional();
-      const dirty = Boolean(legacy.dirty) || Boolean(additional?.dirty) || sources.some(source => source.dirty) || settings.needsConfirmation(configuration);
-      const disposition: Disposition = !validAction || !active || !observationReady || sourceBlocked(sources) || !settings.canLeave(configuration) ||
-        additional === null || additional.busy || additional.unknown && action !== 'close' ? 'blocked' :
-        additional.unknown ? dirty ? 'unknown-dirty' : 'unknown' : dirty ? 'dirty' : 'clean';
-      ticket = { token, sources, settings: configuration, scope: readScope(), action, documentURL, targetUrl, interaction, dirty, legacy, additional, disposition };
-      return Object.freeze({ version: 1, token, disposition });
+        const observed = captureDisposition(action, targetUrl, observationReady);
+        ticket = {token, ...observed, scope: readScope(), action, targetUrl, interaction};
+        return Object.freeze({version: 1, token, disposition: observed.disposition});
       } catch {
         // Preserve the opaque cancellation handle even if a pure owner reader
         // fails, so main can resume this exact observation without guessing.

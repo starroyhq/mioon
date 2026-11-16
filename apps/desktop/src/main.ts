@@ -937,7 +937,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       void shell.openExternal(url).catch(() => {});
     }
   });
-  if (owner.role !== 'settings' && updateHost) window.once('show', () => {
+  if (owner.role !== 'settings' && updateHost) window.on('show', () => {
     setImmediate(() => {
       const document = updateDocument(window);
       if (document) updateHost?.start(document);
@@ -1131,6 +1131,7 @@ function updateDocument(window: BrowserWindow | null | undefined): UpdateDocumen
   const owner = windowHost?.ownerForContents(window.webContents);
   if (!owner || owner.role === 'settings' || !windowHost?.isTrustedDocument(window)) return null;
   return {id: owner.contextId, isCurrent: () => owner.isCurrent() && ownsWindow(window, windowContext),
+    isVisible: () => window.isVisible() && !window.isMinimized(),
     send: view => window.webContents.send(DESKTOP_UPDATE_EVENT, view)};
 }
 
@@ -1193,7 +1194,7 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
       if (backend !== utility || utility.state !== 'running') throw new Error('Update activity unavailable');
       return state;
     },
-    install: version => updateQuit!.request(version, true),
+    install: (version, beforeClose) => updateQuit!.request(version, true, undefined, beforeClose),
   });
   if (!enabled) return undefined;
   try {
@@ -1205,8 +1206,12 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
 async function checkUpdateFromMenu(): Promise<void> {
   let owner = focusedUpdateDocument();
   if (!owner) {
-    await openWindow();
+    windowHost?.activate(focusedMenuWindow());
     owner = focusedUpdateDocument();
+    if (!owner) {
+      await openWindow();
+      owner = focusedUpdateDocument();
+    }
   }
   if (owner) await updateHost?.check(owner);
 }

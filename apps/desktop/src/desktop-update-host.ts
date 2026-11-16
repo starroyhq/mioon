@@ -6,6 +6,7 @@ import type {
 export interface UpdateDocument {
   readonly id: string;
   isCurrent(): boolean;
+  isVisible(): boolean;
   send(view: DesktopUpdateView): void;
 }
 interface UpdateEngine {
@@ -22,7 +23,7 @@ interface UpdateHostOptions {
   documents(): readonly UpdateDocument[];
   focused(): UpdateDocument | null;
   activity(): Promise<DesktopUpdateActivity>;
-  install(version: string): Promise<boolean>;
+  install(version: string, beforeClose: () => Promise<boolean>): Promise<boolean>;
 }
 const inactive = Object.freeze({exports: false, generations: false});
 const refuse = (code: DesktopUpdateError['code'], status: DesktopUpdateError['status']): DesktopUpdateReply =>
@@ -35,6 +36,7 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
   let revision = 0;
   let noticeId = 0;
   let started = false;
+  let launchPending = false;
   let previousKind = engine.state().kind;
   const notices = new Map<string, DesktopUpdateNotice>();
   const view = (owner: UpdateDocument): DesktopUpdateView => ({
@@ -52,7 +54,8 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
   const notice = (owner: UpdateDocument | null, kind: DesktopUpdateNotice['kind']) => {
     if (owner?.isCurrent()) notices.set(owner.id, {id: ++noticeId, kind});
   };
-  async function refreshActivity(): Promise<DesktopUpdateActivity> {
+  async function refreshActivity(fresh = false): Promise<DesktopUpdateActivity> {
+    if (fresh && activityRead) await activityRead.catch(() => {});
     const next = await (activityRead ??= activity().finally(() => {activityRead = undefined;}));
     if (engine.state().kind === 'ready' && (next.exports !== activityState.exports || next.generations !== activityState.generations)) {
       activityState = next;
@@ -62,6 +65,7 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
   }
   function changed(): void {
     const {kind} = engine.state();
+    if (kind !== 'available') launchPending = false;
     if (kind === 'ready' && previousKind !== 'ready') {
       notice(focused(), 'ready');
       void refreshActivity().catch(() => {});
@@ -77,17 +81,23 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
     previousKind = kind;
     publish();
   }
+  function presentLaunch(first: UpdateDocument): void {
+    if (!launchPending || engine.state().kind !== 'available') return;
+    const owner = first.isCurrent() && first.isVisible() ? first : focused();
+    if (!owner?.isCurrent() || !owner.isVisible()) return;
+    launchPending = false;
+    if (notices.get(owner.id)?.kind === 'manual') return;
+    notice(owner, 'launch');
+    publish();
+  }
   function start(first: UpdateDocument): void {
-    if (started || !first.isCurrent()) return;
+    if (!first.isCurrent() || !first.isVisible()) return;
+    if (started) {presentLaunch(first); return;}
     started = true;
     void engine.start().then(result => {
       if (result.kind !== 'available' || engine.state().kind !== 'available') return;
-      // An explicit check may already be showing the same initial result.
-      const owner = first.isCurrent() ? first : focused();
-      if (owner && notices.get(owner.id)?.kind !== 'manual') {
-        notice(owner, 'launch');
-        publish();
-      }
+      launchPending = true;
+      presentLaunch(first);
     }).catch(() => {});
   }
   async function check(owner: UpdateDocument): Promise<void> {
@@ -122,10 +132,14 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
             if (!engine.setInstallOnQuit(request.expectedVersion)) return refuse('UPDATE_VERSION_CHANGED', 409);
             break;
           }
-          const current = await refreshActivity();
-          if (!owner.isCurrent()) return refuse('UPDATE_UNAVAILABLE', 503);
-          if (current.exports && !request.acknowledgeExports) return refuse('UPDATE_EXPORT_ACTIVE', 409);
-          if (!await install(request.expectedVersion)) return refuse('UPDATE_NOT_SAVED', 409);
+          let refusal = refuse('UPDATE_NOT_SAVED', 409);
+          const confirmActivity = async (fresh: boolean) => {
+            const current = await refreshActivity(fresh);
+            if (!owner.isCurrent()) {refusal = refuse('UPDATE_UNAVAILABLE', 503); return false;}
+            if (current.exports && !request.acknowledgeExports) {refusal = refuse('UPDATE_EXPORT_ACTIVE', 409); return false;}
+            return true;
+          };
+          if (!await confirmActivity(false) || !await install(request.expectedVersion, () => confirmActivity(true))) return refusal;
           break;
         }
       }

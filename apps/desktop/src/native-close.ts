@@ -82,6 +82,7 @@ const RELOAD_PREPARATION_TIMEOUT_MS = 10000;
 const flushScript = "typeof globalThis.__mioonFlushWorkspacePreferences === 'function' ? globalThis.__mioonFlushWorkspacePreferences() : false";
 const inspectScript = (action: NativeCloseAction, targetUrl: string | null) =>
   `typeof globalThis.__mioonNativeCloseAdmission?.inspect === 'function' ? globalThis.__mioonNativeCloseAdmission.inspect(${JSON.stringify(action)},${JSON.stringify(targetUrl)}) : null`;
+const checkSavedScript = "typeof globalThis.__mioonNativeCloseAdmission?.isSavedForUpdate === 'function' && globalThis.__mioonNativeCloseAdmission.isSavedForUpdate() === true";
 
 function inspection(value: unknown): NativeCloseInspection | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -452,9 +453,9 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     async savedForUpdate(): Promise<boolean> {
       const url = readUrl(), generation = documentGeneration, observed = serial;
       if (!url || active || loading.size) return false;
-      const result = await bounded(() => contents.executeJavaScript(inspectScript('close', null)),
+      const result = await bounded(() => contents.executeJavaScript(checkSavedScript),
         new AbortController().signal, Date.now() + timeoutMs);
-      return result.ok && inspection(result.value)?.disposition === 'clean' &&
+      return result.ok && result.value === true &&
         !active && !loading.size && generation === documentGeneration && observed === serial && readUrl() === url;
     },
     /** Only the captured, already-allowed current URL is reloadable. Callers

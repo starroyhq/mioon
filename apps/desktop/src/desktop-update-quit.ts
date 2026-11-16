@@ -20,7 +20,7 @@ interface Attempt {
  * The updater is called only by the QuitCoordinator's finished callback. */
 export function createDesktopUpdateQuit<W>({windows, saved, projects, canStart, quit, handoff, install, installFailed}: UpdateQuitOptions<W>) {
   let attempt: Attempt | undefined;
-  function request(version: string, relaunch: boolean, source?: W): Promise<boolean> {
+  function request(version: string, relaunch: boolean, source?: W, beforeClose?: () => Promise<boolean>): Promise<boolean> {
     if (attempt) return attempt.version === version ? attempt.pending : Promise.resolve(false);
     if (!canStart(version)) return Promise.resolve(false);
     const current: Attempt = {version, relaunch, pending: Promise.resolve(false), projects: [], phase: 'checking'};
@@ -29,7 +29,9 @@ export function createDesktopUpdateQuit<W>({windows, saved, projects, canStart, 
       try {
         const owners = windows();
         if (source && !owners.includes(source)) return false;
-        if (!(await Promise.all(owners.map(saved))).every(Boolean) || !canStart(version)) return false;
+        if (!(await Promise.all(owners.map(saved))).every(Boolean)) return false;
+        if (beforeClose && !await beforeClose()) return false;
+        if (!canStart(version)) return false;
         const latest = windows();
         if (latest.length !== owners.length || owners.some(window => !latest.includes(window))) return false;
         current.projects = projects();

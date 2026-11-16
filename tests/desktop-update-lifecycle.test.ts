@@ -15,9 +15,9 @@ const offer = {version, currentVersion: '0.2.0', notes: ['Synthetic notes']};
 const project = '77000000-0000-4000-8000-000000000001';
 function owner(id: string) {
   const received: DesktopUpdateView[] = [];
-  let current = true;
-  const document: UpdateDocument = {id, isCurrent: () => current, send: view => received.push(view)};
-  return {document, received, retire: () => {current = false;}};
+  let current = true, visible = true;
+  const document: UpdateDocument = {id, isCurrent: () => current, isVisible: () => visible, send: view => received.push(view)};
+  return {document, received, retire: () => {current = false;}, hide: () => {visible = false;}};
 }
 
 test('each host opens only its first launch notice and publishes shared state for later checks', async t => {
@@ -75,6 +75,47 @@ test('install rejects a stale version or an unacknowledged new export before req
     {ok: false, error: {code: 'UPDATE_NOT_SAVED', status: 409}});
   assert.equal((await host.dispatch(window.document, {kind: 'install', mode: 'on-quit', expectedVersion: version})).ok, true);
   assert.deepEqual(choices, ['now:0.2.1', 'later:0.2.1']);
+});
+
+test('a launch result targets the first visible project rather than a launcher hidden in the meantime', async t => {
+  const launcher = owner('launcher'), projectWindow = owner('project');
+  const initial = Promise.withResolvers<DesktopUpdateState>();
+  let state: DesktopUpdateState = {kind: 'idle'};
+  const host = createDesktopUpdateHost({
+    engine: {state: () => state, start: () => initial.promise, check: async () => state, download: async () => state,
+      cancel: () => false, setInstallOnQuit: () => false},
+    currentVersion: '0.2.0', documents: () => [launcher.document, projectWindow.document], focused: () => projectWindow.document,
+    activity: async () => ({exports: false, generations: false}), install: async () => false,
+  });
+  t.after(() => host.dispose());
+  host.start(launcher.document);
+  launcher.hide();
+  state = {kind: 'available', offer};
+  host.changed(); initial.resolve(state); await setImmediate();
+  assert.equal(launcher.received.at(-1)?.notice, null);
+  assert.equal(projectWindow.received.at(-1)?.notice?.kind, 'launch');
+});
+
+test('an export started while windows report saved requires a new confirmation at the close boundary', async t => {
+  const window = owner('current');
+  const state: DesktopUpdateState = {kind: 'ready', offer, installOnQuit: false};
+  let busy = false, closed = false;
+  const host = createDesktopUpdateHost({
+    engine: {state: () => state, start: async () => state, check: async () => state, download: async () => state,
+      cancel: () => false, setInstallOnQuit: () => false},
+    currentVersion: '0.2.0', documents: () => [window.document], focused: () => window.document,
+    activity: async () => ({exports: busy, generations: false}),
+    install: async (_version, beforeClose) => {
+      busy = true;
+      closed = await beforeClose();
+      return closed;
+    },
+  });
+  t.after(() => host.dispose());
+  assert.deepEqual(await host.dispatch(window.document, {kind: 'install', mode: 'now', expectedVersion: version}),
+    {ok: false, error: {code: 'UPDATE_EXPORT_ACTIVE', status: 409}});
+  assert.equal(closed, false);
+  assert.equal(window.received.at(-1)?.activity.exports, true);
 });
 
 test('an unsaved or changed window blocks update before close and only completed Quit starts installation', async () => {

@@ -94,7 +94,8 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
     return !dirty && !blocked;
   }
   const sandbox = vm.createContext({ nt: nativeText,
-    __mioonNativeCloseAdmission: { inspect: options.inspect ?? inspect, commit: options.commit ?? commit, cancel: options.cancel ?? cancel },
+    __mioonNativeCloseAdmission: { inspect: options.inspect ?? inspect, commit: options.commit ?? commit, cancel: options.cancel ?? cancel,
+      isSavedForUpdate: () => !dirty && !blocked },
     __mioonFlushWorkspacePreferences: () => options.flush?.() ?? true,
   });
   const kindOf = (code: string) => code.includes('.inspect(') ? 'inspect' : code.includes('.commit(') ? 'commit' : code.includes('.cancel(') ? 'cancel' : 'flush';
@@ -1058,6 +1059,7 @@ test('update preflight observes clean covered windows without granting a close p
   assert.equal(f.win.closeCalls, 0);
   f.change({nextDirty: true});
   assert.equal(await f.admission.savedForUpdate(), false);
+  assert.ok(f.scripts.every(script => script.includes('.isSavedForUpdate()')));
   assert.deepEqual(f.commits, []);
   assert.equal(f.win.closeCalls, 0);
 });
