@@ -14,12 +14,14 @@ import {TIMELINE_EXPORT_DEFAULT_SETTINGS} from '../../packages/contracts/src/tim
 import type {ExitDiagnosticRecord} from '../../apps/desktop/src/exit-diagnostics.ts';
 import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/renderer-diagnostics.ts';
 import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
+import {attachMacDmg, detachMacDmg, macBundleExecutable, macDmgEvidence, uniqueMacApp} from './mac-dmg.ts';
+import type {MacDmgEvidence} from './mac-dmg.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
 interface Timeline {revision: number; tracks: Array<{id: string; kind: string}>; clips: unknown[]}
 interface Job {id: string; status: string; url?: string; assetId?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
-interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
+interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; package?: MacDmgEvidence; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
 export function smokeEnvironment(source: NodeJS.ProcessEnv, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
   return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
@@ -131,13 +133,6 @@ export function validateDiscovery(value: unknown, userData: string): Discovery {
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) fail('INVALID_DISCOVERY_ORIGIN');
   return data as Discovery;
 }
-export function mountedDmgFor(binary: string): string | null {
-  // This parses a macOS bundle path even when pure checks run on Windows.
-  const marker = '/Contents/MacOS/';
-  const index = binary.lastIndexOf(marker); if (index < 0) return null;
-  const app = binary.slice(0, index), mount = path.posix.dirname(app);
-  return path.posix.basename(app).endsWith('.app') && path.posix.basename(mount).startsWith('mioon-ci-dmg-') ? mount : null;
-}
 export function extractedTarFor(binary: string): string | null {
   const app = path.posix.dirname(binary), directory = path.posix.dirname(app);
   return path.posix.basename(binary) === 'mioon' && /^mioon-[0-9A-Za-z.+-]+-linux-x64$/.test(path.posix.basename(app)) &&
@@ -223,20 +218,30 @@ export async function exerciseComposition(options: CompositionOptions): Promise<
   check('real-authenticated-mp4-with-video-audio-and-expected-geometry');
   return {bytes: bytes.length, width: stream.width, height: stream.height};
 }
-export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binary: string, output: string): Promise<void> {
+type SmokeInput = {dmg: string} | {executable: string};
+export async function runSmoke(platform: TargetPlatform, arch: TargetArch, input: SmokeInput, output: string): Promise<void> {
   const result: SmokeReport = {ok: false, platform, arch, checks: [], phase: 'preflight'};
   const check = (name: string): void => { result.checks.push({name, ok: true}); };
   let ownedRoot: string | undefined, child: ReturnType<typeof spawn> | undefined, outcome: Promise<Outcome> | undefined, ended = false;
-  const mountPoint = platform === 'darwin' ? mountedDmgFor(binary) : null;
-  const extractRoot = platform === 'linux' ? extractedTarFor(binary) : null;
+  const extractRoot = platform === 'linux' && 'executable' in input ? extractedTarFor(input.executable) : null;
+  let mountPoint: string | undefined;
   let ownsExtractRoot = false;
   try {
-    if (process.platform !== platform || process.arch !== arch || !path.isAbsolute(binary)) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
-    if (platform === 'darwin' && !mountPoint) fail('FINAL_DMG_EXECUTABLE_REQUIRED');
-    if (platform === 'linux') {
+    if (process.platform !== platform || process.arch !== arch) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
+    let binary: string;
+    if (platform === 'darwin') {
+      if (!('dmg' in input)) fail('FINAL_DMG_REQUIRED');
+      result.phase = 'dmg';
+      result.package = await macDmgEvidence(input.dmg);
+      mountPoint = await attachMacDmg(input.dmg);
+      binary = await macBundleExecutable(await uniqueMacApp(mountPoint));
+      check('read-only-final-dmg-mounted');
+    } else {
+      if (!('executable' in input) || !path.isAbsolute(input.executable)) fail('SMOKE_HOST_OR_EXECUTABLE_MISMATCH');
       if (process.getuid?.() === 0) fail('NON_ROOT_LINUX_RUNNER_REQUIRED');
       if (!extractRoot || path.dirname(extractRoot) !== await realpath(tmpdir()) || (await lstat(extractRoot)).isSymbolicLink() || await realpath(extractRoot) !== extractRoot) fail('FINAL_TARBALL_EXECUTABLE_REQUIRED');
       ownsExtractRoot = true;
+      binary = input.executable;
     }
     const ffmpeg = await executable('ffmpeg', process.env.MIOON_FFMPEG_PATH), ffprobe = await executable('ffprobe', process.env.MIOON_FFPROBE_PATH);
     ownedRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-native-')); await chmod(ownedRoot, 0o700);
@@ -275,7 +280,13 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binar
     finally { clearTimeout(timer); }
     if (result.exit.code !== 0 || result.exit.signal !== null) fail('UNCLEAN_NATIVE_EXIT');
     for (const relative of ['mcp-connection.json', 'mcp-token', 'workspace/server.lock']) if (!await absent(path.join(userData, relative))) fail('TRANSIENT_STORAGE_NOT_CLEANED');
-    check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock'); result.ok = true; result.phase = 'complete';
+    check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock');
+    if ('dmg' in input) {
+      result.phase = 'dmg-sha256';
+      if ((await macDmgEvidence(input.dmg)).sha256 !== result.package?.sha256) fail('DMG_CHANGED_DURING_VERIFICATION');
+      check('final-dmg-sha256-unchanged-after-native-smoke');
+    }
+    result.ok = true; result.phase = 'complete';
   } catch (error) { result.error = safeFailure(error); }
   finally {
     // Snapshot before any forced kill or fixture deletion can erase the cause.
@@ -285,7 +296,7 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binar
       await Promise.race([outcome?.catch(() => {}), new Promise(resolve => setTimeout(resolve, 5000))]);
     }
     if (mountPoint) {
-      try { await command('hdiutil', ['detach', mountPoint], 'DMG_DETACH_FAILED'); await rm(mountPoint, {recursive: true}); check('read-only-dmg-unmounted'); }
+      try { await detachMacDmg(mountPoint); check('read-only-dmg-unmounted'); }
       catch { result.ok = false; result.error = 'DMG_DETACH_FAILED'; }
     }
     if (ownedRoot) await rm(ownedRoot, {recursive: true, force: true}).catch(() => { result.ok = false; result.error = 'PRIVATE_FIXTURE_CLEANUP_FAILED'; });
@@ -299,7 +310,8 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binar
 }
 if (isMain(import.meta.url)) {
   try {
-    const args = argumentsFor(process.argv.slice(2), ['platform', 'arch', 'executable', 'output']);
-    await runSmoke(targetPlatform(args.platform), targetArch(args.arch), args.executable, args.output);
+    const args = argumentsFor(process.argv.slice(2), ['platform', 'arch', 'output'], ['dmg', 'executable']);
+    if (Boolean(args.dmg) === Boolean(args.executable)) fail('INVALID_ARGUMENTS');
+    await runSmoke(targetPlatform(args.platform), targetArch(args.arch), args.dmg ? {dmg: path.resolve(args.dmg)} : {executable: args.executable}, args.output);
   } catch (error) { console.error(safeFailure(error)); process.exitCode = 1; }
 }

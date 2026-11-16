@@ -73,7 +73,7 @@
 
 既有 `apps/desktop/scripts/smoke.mjs` 使用临时目录、预置项目和故障注入，不能不加核对地充当上述 Mac UI 导入验收；Mac 临时目录可能有被隐私策略拒绝的路径别名。只有明确安排的隔离工程故障测试才执行对应步骤。
 
-如果只完成浏览器入口，上述 Electron 桌面项保持未做。隐私存储拒绝不能靠浏览器入口绕过。Agent 与官方/自定义 Images 专用设置及安全存储接入已实现；Keychain 真实持久化、异步 safeStorage 候选、强杀孤儿进程恢复、双架构安装包、签名、公证、升级和 Windows 仍是独立验收范围。9e基线使用同步 safeStorage；本次macOS异步候选另列版本/构建和原生验收，不把合成通过当作Keychain授权/退出保证，Linux仍保留原同步限制；Windows ACL 后端仍阻止正常启动。本文不将这些项目记为已通过。
+如果只完成浏览器入口，上述 Electron 桌面项保持未做。隐私存储拒绝不能靠浏览器入口绕过。Agent 与官方/自定义 Images 专用设置及安全存储接入已实现；Keychain 真实持久化、异步 safeStorage 候选、强杀孤儿进程恢复、通用 DMG 在 Apple 芯片和 Intel Mac 上的安装、签名、公证、升级和 Windows 仍是独立验收范围。9e基线使用同步 safeStorage；本次macOS异步候选另列版本/构建和原生验收，不把合成通过当作Keychain授权/退出保证，Linux仍保留原同步限制；Windows ACL 后端仍阻止正常启动。本文不将这些项目记为已通过。
 
 ## 可以怎样描述结果
 

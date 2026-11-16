@@ -22,10 +22,10 @@ function executor(sequence: readonly AppleStaplerCommandResult[]) {
   return {execute, calls};
 }
 const waitRecorder = () => {const waits: number[] = []; return {waits, wait: async (milliseconds: number) => {waits.push(milliseconds);}};};
-const syntheticEnv = (): NodeJS.ProcessEnv => ({MIOON_RELEASE_SHA: 'a'.repeat(40), MIOON_TARGET: 'macos-x64',
-  MIOON_APPLE_NOTARIZATION_REPORT: path.join(root, 'artifacts', 'desktop-macos-x64', 'app-notarization.json'),
+const syntheticEnv = (): NodeJS.ProcessEnv => ({MIOON_RELEASE_SHA: 'a'.repeat(40), MIOON_TARGET: 'macos-universal',
+  MIOON_APPLE_NOTARIZATION_REPORT: path.join(root, 'artifacts', 'desktop-macos-universal', 'app-notarization.json'),
   APPLE_API_KEY_PATH: `/synthetic/${PRIVATE}.p8`, APPLE_API_KEY_ID: PRIVATE, APPLE_API_ISSUER: PRIVATE});
-const context = () => ({electronPlatformName: 'darwin', appOutDir: path.dirname(app), packager: {appInfo: {productFilename: 'mioon'}}});
+const context = () => ({electronPlatformName: 'darwin', arch: 4, appOutDir: path.dirname(app), packager: {appInfo: {productFilename: 'mioon'}}});
 function appDependencies(sequence: readonly AppleStaplerCommandResult[], notarize: NonNullable<NotarizeAppDependencies['notarize']>) {
   const execution = executor(sequence), waiting = waitRecorder(), reports: AppleAppNotarizationReport[] = [];
   const dependencies: NotarizeAppDependencies = {env: syntheticEnv(), platform: 'darwin', notarize, execute: execution.execute, wait: waiting.wait,
@@ -205,6 +205,8 @@ test('release context, credentials and report location are validated before invo
   }
   const f = appDependencies([], async () => assert.fail('bad app path cannot notarize'));
   await assert.rejects(notarizeApp({...context(), packager: {appInfo: {productFilename: '../outside'}}}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
+  await assert.rejects(notarizeApp({...context(), arch: 1}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
+  await assert.rejects(notarizeApp({...context(), arch: 3}, f.dependencies), {code: 'INVALID_APPLE_APP_CONTEXT'});
 });
 
 test('electron-builder resolves the actual release-only CJS hook from its desktop working directory', async () => {

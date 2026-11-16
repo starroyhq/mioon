@@ -12,6 +12,9 @@ export const NOTICE_FILES: readonly RuntimeNoticeFile[] = Object.freeze([
   Object.freeze({ source: 'LICENSES.chromium.html', output: 'LICENSES.chromium.html', maxBytes: 32 * 1024 * 1024 })
 ]);
 export const PLIST_MAX_BYTES = 1024 * 1024;
+// electron-builder Arch values for the two extracted bundles and their result.
+const MAC_COMPONENTS = [[1, 'x64'], [3, 'arm64']] as const;
+export const MAC_UNIVERSAL_ARCH = 4;
 // Build evidence remains beside the target bundle, never inside the app or a
 // release attachment. It records the bytes captured before builder cleanup.
 export const RUNTIME_NOTICE_PROVENANCE_FILE = 'mioon-runtime-notices.json';
@@ -62,8 +65,7 @@ function macTarget(context: RuntimeNoticeContext, electronVersion: string): Runt
   if (framework?.version !== electronVersion || context.packager?.config?.electronVersion !== electronVersion) {
     fail('target framework/config version does not match the pinned Electron version');
   }
-  // electron-builder Arch.x64 === 1 and Arch.arm64 === 3; these are our Mac targets.
-  if (context.arch !== 1 && context.arch !== 3) fail('unsupported or missing Mac target architecture');
+  if (context.arch !== MAC_UNIVERSAL_ARCH && !MAC_COMPONENTS.some(([arch]) => arch === context.arch)) fail('unsupported or missing Mac target architecture');
   if (typeof context.appOutDir !== 'string' || !path.isAbsolute(context.appOutDir)) fail('target output directory must be absolute');
   const extractedApp = component(framework.distMacOsAppName, 'extracted bundle name');
   if (!extractedApp.endsWith('.app')) fail('extracted bundle name must end in .app');
@@ -141,6 +143,21 @@ function validateManifest(value: unknown, target: RuntimeNoticeTarget): RuntimeN
   return value as unknown as RuntimeNoticeManifest;
 }
 
+export function mergedMacRuntimeNotices(context: RuntimeNoticeContext, electronVersion: string,
+  packed: ReadonlyMap<string, RuntimeNoticeManifest>): RuntimeNoticeManifest {
+  const target = macTarget(context, electronVersion);
+  if (target?.arch !== MAC_UNIVERSAL_ARCH) fail('expected a merged universal target');
+  const [x64, arm64] = MAC_COMPONENTS.map(([arch, name]) => {
+    const root = `${target.root}-${name}-temp`;
+    return validateManifest(packed.get(root), {...target, root, arch});
+  });
+  for (const [index, file] of x64!.files.entries()) {
+    const other = arm64!.files[index];
+    if (file.sha256 !== other?.sha256 || file.bytes !== other.bytes) fail(`architecture notices differ: ${file.name}`);
+  }
+  return {...target, files: x64!.files};
+}
+
 export async function verifyMacRuntimeNoticeFiles(app: string, manifest: RuntimeNoticeManifest): Promise<void> {
   if (path.basename(app) !== manifest.packagedApp) fail('packaged bundle does not match target notice provenance');
   const destination = await directory(path.dirname(app), [path.basename(app), 'Contents', 'Resources', 'licenses']);
@@ -189,6 +206,7 @@ export async function readMacRuntimeNoticeProvenance(context: RuntimeNoticeConte
 export async function preserveMacRuntimeNotices(context: RuntimeNoticeContext, electronVersion: string): Promise<RuntimeNoticeManifest | null> {
   const target = macTarget(context, electronVersion);
   if (!target) return null;
+  if (target.arch === MAC_UNIVERSAL_ARCH) fail('runtime notices are extracted for each architecture before merging');
   const contents = await directory(target.root, [target.extractedApp, 'Contents']);
   const resources = await directory(target.root, [target.extractedApp, 'Contents', 'Resources']);
   targetPlistVersion(await boundedRead(path.join(contents, 'Info.plist'), PLIST_MAX_BYTES), electronVersion);

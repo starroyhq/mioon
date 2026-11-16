@@ -9,6 +9,14 @@ on:
         description: Existing version tag to publish; leave empty for signed artifact-only verification
         required: false
         type: string
+      update_feed_url:
+        description: Candidate-only update feed directory (HTTPS or local loopback HTTP)
+        required: false
+        type: string
+      version_override:
+        description: Candidate-only package version (major.minor.patch)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -86,33 +94,23 @@ jobs:
       source_sha: ${{ needs.preflight.outputs.release_sha }}
 
   desktop:
-    name: Package ${{ matrix.target }}
+    name: Package and smoke test universal macOS on Apple silicon
     needs: [preflight, checks]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: macos-arm64
-            platform: darwin
-            arch: arm64
-            os: macos-15
-          - target: macos-x64
-            platform: darwin
-            arch: x64
-            os: macos-15-intel
     defaults:
       run:
         shell: bash
     env:
       MIOON_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
-      MIOON_TARGET: ${{ matrix.target }}
-      MIOON_PLATFORM: ${{ matrix.platform }}
-      MIOON_ARCH: ${{ matrix.arch }}
-      MIOON_DESKTOP_INSPECTION_REPORT: artifacts/desktop-${{ matrix.target }}/inspection.json
-      MIOON_DESKTOP_SMOKE_REPORT: artifacts/desktop-${{ matrix.target }}/smoke.json
-      MIOON_APPLE_NOTARIZATION_REPORT: artifacts/desktop-${{ matrix.target }}/app-notarization.json
+      MIOON_RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      MIOON_RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      MIOON_TARGET: macos-universal
+      MIOON_PLATFORM: darwin
+      MIOON_ARCH: universal
+      MIOON_DESKTOP_INSPECTION_REPORT: artifacts/desktop-macos-universal/inspection.json
+      MIOON_DESKTOP_SMOKE_REPORT: artifacts/desktop-macos-universal/smoke.json
+      MIOON_APPLE_NOTARIZATION_REPORT: artifacts/desktop-macos-universal/app-notarization.json
     steps:
       - name: Checkout frozen source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -122,10 +120,7 @@ jobs:
 
       - name: Verify native runner architecture
         run: |
-          actual_arch=$(uname -m)
-          expected_arch="$MIOON_ARCH"
-          if [[ "$expected_arch" == x64 ]]; then expected_arch=x86_64; fi
-          test "$actual_arch" = "$expected_arch"
+          test "$(uname -m)" = arm64
           test "$(id -u)" -ne 0
 
       - name: Install Linux media and native dependencies
@@ -182,6 +177,10 @@ jobs:
           node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(process.env[key] || execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
           node .github/scripts/media-environment.ts --platform="$MIOON_PLATFORM" --output="artifacts/desktop-$MIOON_TARGET/media.json"
 
+      - name: Apply candidate version to packaging checkout
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && needs.preflight.outputs.should_publish == 'false' && inputs.version_override != ''
+        run: node .github/scripts/release-preflight.ts --apply-candidate-version
+
       - name: Build production application
         id: build
         run: node scripts/tooling.ts build --channel=production
@@ -222,7 +221,7 @@ jobs:
         working-directory: apps/desktop
         run: pnpm exec electron-builder --config .generated/electron-builder.cjs --linux tar.gz --x64 --publish never
 
-      - name: Package signed and notarized macOS DMG
+      - name: Build the signed universal macOS DMG and update ZIP
         id: package_macos
         if: runner.os == 'macOS'
         working-directory: apps/desktop
@@ -233,15 +232,18 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
         run: |
           export APPLE_API_KEY="$APPLE_API_KEY_PATH"
+          MIOON_RELEASE_UPDATE_FEED_URL=$(node ../../.github/scripts/release-preflight.ts --candidate-update-feed-url)
+          export MIOON_RELEASE_UPDATE_FEED_URL
           # electron-builder selects the certificate type and rejects its prefix.
           signing_qualifier="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
           # The release-only hook submits the app once and recovers only explicit
           # transient ticket-service failures; it must finish before DMG creation.
-          pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg "--$MIOON_ARCH" --publish never \
+          pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg zip --universal --publish never \
             "-c.mac.identity=$signing_qualifier" -c.mac.notarize=false \
             -c.afterSign=../../.github/scripts/notarize-app.cjs -c.dmg.sign=true -c.forceCodeSigning=true
           # The hook notarizes the application; submit the final signed DMG too.
-          dmg=$(node --input-type=module -e 'import {readdirSync} from "node:fs"; import path from "node:path"; const dir=path.resolve("../../release/desktop/production"); const names=readdirSync(dir).filter(name=>name.endsWith("-mac-"+process.env.MIOON_ARCH+".dmg")); if(names.length!==1)process.exit(1); process.stdout.write(path.join(dir,names[0]));')
+          dmg="../../release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg"
+          test -f "$dmg"
           notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
           xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$notarization_report"
@@ -258,29 +260,38 @@ jobs:
           node .github/scripts/inspect-desktop.ts --platform="$MIOON_PLATFORM" --arch="$MIOON_ARCH" \
             --package-dir=release/desktop/production --output="$MIOON_DESKTOP_INSPECTION_REPORT"
 
-      - name: Smoke test final packaged application
+      - name: Verify the packaged update provider and final ZIP manifest
+        run: |
+          MIOON_RELEASE_UPDATE_FEED_URL=$(node .github/scripts/release-preflight.ts --candidate-update-feed-url)
+          export MIOON_RELEASE_UPDATE_FEED_URL
+          node .github/scripts/mac-update-feed.ts release/desktop/production "$MIOON_RELEASE_VERSION" "$MIOON_DESKTOP_INSPECTION_REPORT"
+          mount_point=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8")); if(!report.mountPoint)process.exit(1); process.stdout.write(report.mountPoint);')
+          hdiutil detach "$mount_point"
+          if [[ -d "$mount_point" ]]; then rmdir "$mount_point"; fi
+
+      - name: Smoke test the final DMG on Apple silicon
         id: smoke
         run: |
-          executable=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8")); if(!report.ok || typeof report.executable!=="string")process.exit(1); process.stdout.write(report.executable);')
-          smoke_args=(.github/scripts/desktop-smoke.ts "--platform=$MIOON_PLATFORM" "--arch=$MIOON_ARCH" "--executable=$executable" "--output=$MIOON_DESKTOP_SMOKE_REPORT")
-          if [[ "$RUNNER_OS" == Linux ]]; then
-            dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' node "${smoke_args[@]}"
-          else
-            node "${smoke_args[@]}"
-          fi
+          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=arm64 \
+            --dmg="release/desktop/production/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output="$MIOON_DESKTOP_SMOKE_REPORT"
 
-      - name: Stage verified release artifacts
+      - name: Collect signed packages and Apple silicon evidence
         id: stage
         run: |
-          node .github/scripts/stage-release.ts --platform="$MIOON_PLATFORM" --arch="$MIOON_ARCH" \
-            --package-dir=release/desktop/production --output="artifacts/release/$MIOON_TARGET"
+          root=release/desktop/production
+          stem="mioon-${MIOON_RELEASE_VERSION}-mac"
+          mkdir -p artifacts/macos-verified/{packages,evidence}
+          cp "$root/$stem.dmg" "$root/$stem.zip" "$root/$stem.zip.blockmap" "$root/latest-mac.yml" artifacts/macos-verified/packages/
+          if [[ -f "$root/$stem.dmg.blockmap" ]]; then cp "$root/$stem.dmg.blockmap" artifacts/macos-verified/packages/; fi
+          cp "artifacts/desktop-$MIOON_TARGET/"{inspection,smoke,app-notarization,dmg-stapling}.json artifacts/macos-verified/evidence/
 
-      - name: Upload verified package
+      - name: Transfer the signed universal package and arm64 evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: mioon-desktop-${{ matrix.target }}
-          path: artifacts/release/${{ matrix.target }}/
+          name: universal-package-for-native-smoke
+          path: artifacts/macos-verified/
           retention-days: 14
+          compression-level: 0
           if-no-files-found: error
 
       - name: Write safe package diagnostics
@@ -304,14 +315,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: desktop-${{ matrix.target }}-diagnostics
+          name: desktop-macos-universal-diagnostics
           path: |
-            artifacts/desktop-${{ matrix.target }}/media.json
-            artifacts/desktop-${{ matrix.target }}/inspection.json
-            artifacts/desktop-${{ matrix.target }}/smoke.json
-            artifacts/desktop-${{ matrix.target }}/status.log
-            artifacts/desktop-${{ matrix.target }}/app-notarization.json
-            artifacts/desktop-${{ matrix.target }}/dmg-stapling.json
+            artifacts/desktop-macos-universal/media.json
+            artifacts/desktop-macos-universal/inspection.json
+            artifacts/desktop-macos-universal/smoke.json
+            artifacts/desktop-macos-universal/status.log
+            artifacts/desktop-macos-universal/app-notarization.json
+            artifacts/desktop-macos-universal/dmg-stapling.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -335,10 +346,120 @@ jobs:
         run: |
           node --input-type=module -e 'import {lstatSync,readFileSync,realpathSync,rmSync} from "node:fs"; import path from "node:path"; import os from "node:os"; let report; try{report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8"));}catch(error){if(error.code==="ENOENT")process.exit(0);throw error;} const root=report.extractRoot; if(root===undefined)process.exit(0); const temp=realpathSync(os.tmpdir()); if(typeof root!=="string" || path.dirname(root)!==temp || !/^mioon-ci-extract-[A-Za-z0-9]{6}$/.test(path.basename(root)))throw new Error("INVALID_OWNED_EXTRACTION_ROOT"); let info; try{info=lstatSync(root);}catch(error){if(error.code==="ENOENT")process.exit(0);throw error;} if(!info.isDirectory() || info.isSymbolicLink() || realpathSync(root)!==root)throw new Error("INVALID_OWNED_EXTRACTION_ROOT"); rmSync(root,{recursive:true});'
 
+  intel-smoke:
+    name: Smoke test the same universal DMG on Intel
+    needs: [preflight, desktop]
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    env:
+      MIOON_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      MIOON_RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          persist-credentials: false
+
+      - name: Verify the Intel runner and install macOS media tools
+        shell: bash
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(id -u)" -ne 0
+          if ! brew list --versions ffmpeg-full >/dev/null 2>&1; then brew install ffmpeg-full; fi
+          mioon_media_prefix="$(brew --prefix ffmpeg-full)"
+          printf 'MIOON_FFMPEG_PATH=%s/bin/ffmpeg\nMIOON_FFPROBE_PATH=%s/bin/ffprobe\n' "$mioon_media_prefix" "$mioon_media_prefix" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Download the signed package used by Apple silicon
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: universal-package-for-native-smoke
+          path: artifacts/macos-verified
+
+      - name: Install frozen dependencies for the smoke harness
+        run: pnpm install --frozen-lockfile
+
+      - name: Smoke test the final DMG on Intel
+        shell: bash
+        run: |
+          node .github/scripts/desktop-smoke.ts --platform=darwin --arch=x64 \
+            --dmg="artifacts/macos-verified/packages/mioon-${MIOON_RELEASE_VERSION}-mac.dmg" --output=artifacts/intel/smoke.json
+
+      - name: Upload Intel smoke evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-macos-intel-smoke
+          path: artifacts/intel/smoke.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  stage:
+    name: Stage native-verified universal release files
+    needs: [preflight, desktop, intel-smoke]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Download the signed package and inspection evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: universal-package-for-native-smoke
+          path: artifacts/macos-verified
+
+      - name: Download Intel smoke evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-macos-intel-smoke
+          path: artifacts/intel
+
+      - name: Stage verified release artifacts
+        env:
+          MIOON_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          MIOON_RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          MIOON_DESKTOP_INSPECTION_REPORT: artifacts/macos-verified/evidence/inspection.json
+          MIOON_DESKTOP_SMOKE_REPORT: artifacts/macos-verified/evidence/smoke.json
+          MIOON_DESKTOP_INTEL_SMOKE_REPORT: artifacts/intel/smoke.json
+        run: |
+          node .github/scripts/stage-release.ts --platform=darwin --arch=universal \
+            --package-dir=artifacts/macos-verified/packages --output=artifacts/release/darwin-universal
+
+      - name: Upload verified release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mioon-desktop-macos-universal
+          path: artifacts/release/darwin-universal/
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+
   publish:
     name: Publish verified desktop release
     if: needs.preflight.outputs.should_publish == 'true'
-    needs: [preflight, checks, desktop]
+    needs: [preflight, stage]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -355,12 +476,11 @@ jobs:
         with:
           node-version: 24.21.0
 
-      - name: Download all verified targets
+      - name: Download the native-verified universal target
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: mioon-desktop-*
-          path: artifacts/release
-          merge-multiple: false
+          name: mioon-desktop-macos-universal
+          path: artifacts/release/darwin-universal
 
       - name: Revalidate remote tag and publish immutable release
         env:
