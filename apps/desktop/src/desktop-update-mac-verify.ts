@@ -1,7 +1,7 @@
 import {execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {constants, createWriteStream} from 'node:fs';
-import {lstat, mkdir, open, readdir, realpath, rm} from 'node:fs/promises';
+import type * as nodeFileSystem from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {Transform} from 'node:stream';
@@ -21,6 +21,7 @@ const maxDirectoryBytes = 8 * 1024 ** 2;
 const maxEndRecordBytes = 22 + 65_535;
 const decode = new TextDecoder('utf-8', {fatal: true});
 const invalid = () => new Error('UPDATE_MAC_VERIFY_FAILED');
+type ArchiveFileSystem = Pick<typeof nodeFileSystem, 'lstat' | 'mkdir' | 'open' | 'readdir' | 'realpath' | 'rm'>;
 
 class DesktopMacUpdater extends electronUpdater.MacUpdater {
   private readonly squirrel: Pick<AutoUpdater, 'checkForUpdates' | 'once' | 'removeListener'>;
@@ -71,8 +72,8 @@ async function readAt(file: FileHandle, length: number, position: number): Promi
   return buffer;
 }
 
-async function inspectArchive(zip: string, appName: string, signal: AbortSignal): Promise<void> {
-  const file = await open(zip, 'r');
+async function inspectArchive(zip: string, appName: string, signal: AbortSignal, fileSystem: ArchiveFileSystem): Promise<void> {
+  const file = await fileSystem.open(zip, 'r');
   try {
     const {size} = await file.stat();
     const tail = await readAt(file, Math.min(size, maxEndRecordBytes), Math.max(0, size - maxEndRecordBytes));
@@ -127,18 +128,18 @@ function contained(base: string, file: string): boolean {
   return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
-async function verifyExtractedTree(app: string, signal: AbortSignal): Promise<void> {
-  if (!(await lstat(app)).isDirectory()) throw invalid();
+async function verifyExtractedTree(app: string, signal: AbortSignal, fileSystem: ArchiveFileSystem): Promise<void> {
+  if (!(await fileSystem.lstat(app)).isDirectory()) throw invalid();
   let entries = 0, expanded = 0;
   async function visit(directory: string): Promise<void> {
-    for (const entry of await readdir(directory, {withFileTypes: true})) {
+    for (const entry of await fileSystem.readdir(directory, {withFileTypes: true})) {
       signal.throwIfAborted();
       if (++entries > maxEntries) throw invalid();
       const file = path.join(directory, entry.name);
-      const info = await lstat(file);
+      const info = await fileSystem.lstat(file);
       if (info.isDirectory()) await visit(file);
       else if (info.isSymbolicLink()) {
-        if (!contained(app, await realpath(file))) throw invalid();
+        if (!contained(app, await fileSystem.realpath(file))) throw invalid();
       } else {
         expanded += info.size;
         if (!info.isFile() || info.nlink !== 1 || expanded > maxExpandedBytes) throw invalid();
@@ -148,10 +149,10 @@ async function verifyExtractedTree(app: string, signal: AbortSignal): Promise<vo
   await visit(app);
 }
 
-async function copyCheckedZip(source: string, zip: string, digest: string, signal: AbortSignal, root?: string): Promise<void> {
+async function copyCheckedZip(source: string, zip: string, digest: string, signal: AbortSignal, fileSystem: ArchiveFileSystem, root?: string): Promise<void> {
   const before = validateManagedFile(source, {root});
   if (!before || before.size > maxZipBytes) throw invalid();
-  const file = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const file = await fileSystem.open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const opened = await file.stat(), hash = createHash('sha512');
     if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size) throw invalid();
@@ -167,10 +168,11 @@ async function copyCheckedZip(source: string, zip: string, digest: string, signa
   } finally { await file.close(); }
 }
 
-export function createMacDesktopUpdateVerifier({applicationPath, temporaryDirectory, downloadCacheRoot}: {
+export function createMacDesktopUpdateVerifier({applicationPath, temporaryDirectory, downloadCacheRoot, fileSystem}: {
   readonly applicationPath: string;
   readonly temporaryDirectory: string;
   readonly downloadCacheRoot?: string;
+  readonly fileSystem: ArchiveFileSystem;
 }): DesktopUpdateVerifier {
   const bundleName = `${desktopIdentity.identityForChannel('production').executableName}.app`;
   return async (files, offer, signal, expectedSha512) => {
@@ -179,17 +181,17 @@ export function createMacDesktopUpdateVerifier({applicationPath, temporaryDirect
     const owned = validatePrivateDirectory(scratch);
     try {
       const zip = path.join(scratch, 'update.zip'), tree = path.join(scratch, 'app');
-      await copyCheckedZip(files[0]!, zip, expectedSha512, signal, downloadCacheRoot);
-      await inspectArchive(zip, bundleName, signal);
-      await mkdir(tree, {mode: 0o700});
+      await copyCheckedZip(files[0]!, zip, expectedSha512, signal, fileSystem, downloadCacheRoot);
+      await inspectArchive(zip, bundleName, signal, fileSystem);
+      await fileSystem.mkdir(tree, {mode: 0o700});
       const options = {signal, timeout: 120_000, maxBuffer: 1024 ** 2};
       // bsdtar's default extraction rejects writes through symlinks and
       // traversal. Never pass -P, which would disable those path protections.
       await run('/usr/bin/tar', ['-xf', zip, '--no-same-owner', '--no-same-permissions', '--no-acls',
         '--no-xattrs', '--no-fflags', '-C', tree], options);
       const application = path.join(tree, bundleName);
-      if ((await readdir(tree)).length !== 1) throw invalid();
-      await verifyExtractedTree(application, signal);
+      if ((await fileSystem.readdir(tree)).length !== 1) throw invalid();
+      await verifyExtractedTree(application, signal, fileSystem);
       const version = await run('/usr/bin/plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-',
         path.join(application, 'Contents', 'Info.plist')], options);
       if (version.stdout.trim() !== offer.version) throw invalid();
@@ -200,7 +202,7 @@ export function createMacDesktopUpdateVerifier({applicationPath, temporaryDirect
     } catch { throw invalid(); }
     finally {
       const current = validatePrivateDirectory(scratch, {allowMissing: true});
-      if (current && owned && current.dev === owned.dev && current.ino === owned.ino) await rm(scratch, {recursive: true, force: true});
+      if (current && owned && current.dev === owned.dev && current.ino === owned.ino) await fileSystem.rm(scratch, {recursive: true, force: true});
     }
   };
 }

@@ -33,7 +33,7 @@ await mkdir(output, { recursive: true });
 const desktopModuleManifests = new Set<string>();
 for (const name of ['main', 'backend', 'project-catalog']) {
   const result = await build({ entryPoints: [path.join(desktop, `src/${name}.ts`)], outfile: path.join(output, `${name}.cjs`),
-    absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron'], metafile: name === 'main',
+    absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', target: 'node24', external: ['electron', 'original-fs'], metafile: name === 'main',
     plugins:[localRequireBundlePlugin(root)],
     define: { 'import.meta.url': '__mioon_import_meta_url', __MIOON_DESKTOP_CHANNEL__: JSON.stringify(identity.channel) },
     banner: { js: 'const __mioon_import_meta_url = require("node:url").pathToFileURL(__filename).href;' },

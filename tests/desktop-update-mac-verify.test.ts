@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import * as fileSystem from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -40,7 +41,7 @@ function fixture(t: test.TestContext) {
   const temporaryDirectory = path.join(root, 'work');
   mkdirSync(temporaryDirectory, {mode: 0o700});
   t.after(() => rmSync(root, {recursive: true, force: true}));
-  const verifier = createMacDesktopUpdateVerifier({applicationPath, temporaryDirectory, downloadCacheRoot: root});
+  const verifier = createMacDesktopUpdateVerifier({applicationPath, temporaryDirectory, downloadCacheRoot: root, fileSystem});
   function archive(candidateName = 'mioon.app', candidateVersion = version, identifier = identity,
     change?: (file: string) => void) {
     const candidateRoot = mkdtempSync(path.join(root, 'candidate-'));

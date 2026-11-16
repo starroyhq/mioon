@@ -15,6 +15,7 @@ import {projectFileUiMessages} from '../../../packages/i18n/src/catalogs/project
 import {desktopUpdateMessages} from '../../../packages/i18n/src/catalogs/desktop-update.ts';
 import { app, autoUpdater as squirrelUpdater, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, MessageChannelMain, safeStorage, ipcMain, shell, nativeTheme, net, screen, clipboard } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
+import {promises as updateFileSystem} from 'original-fs';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
 import {createMediaToolsInstaller} from './media-tools.ts';
 import type {MediaToolsInstaller, MediaToolsInstallOutcome} from './media-tools.ts';
@@ -1161,8 +1162,9 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
   const handoff = createDesktopUpdateReopen(paths.dataDir);
   const engine = desktopUpdate = createDesktopUpdate({
     updater, enabled: updater !== null, currentVersion,
+    // Inspect and remove the downloaded bundle as physical files, including its ASAR archives.
     verifyDownload: createMacDesktopUpdateVerifier({applicationPath: path.resolve(process.resourcesPath ?? '.', '../..'),
-      temporaryDirectory: paths.dataDir, downloadCacheRoot: updater?.cacheRoot}),
+      temporaryDirectory: paths.dataDir, downloadCacheRoot: updater?.cacheRoot, fileSystem: updateFileSystem}),
     changed: () => updateHost?.changed(),
     installFailed: () => updateQuit?.failed(),
   });
