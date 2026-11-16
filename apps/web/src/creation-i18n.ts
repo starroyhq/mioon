@@ -64,6 +64,7 @@ export function videoJobConnection(job: JobDisplay | null | undefined) {
   const requiresAction = unsubmitted || diagnostic.success && diagnostic.data.recovery === 'user_action';
   const hasProviderTask = typeof job.providerJobId === 'string' && job.providerJobId.length > 0;
   const legacyCode = safeTaskErrorCode(job.error);
+  const storageBlocked = cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' || cause === null && legacyCode === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE';
   let result: DisplayMessage | null = null;
   if (unsubmitted) result = message('tasks.error.videoUnsubmittedNoCharge');
   else if (hasProviderTask) {
@@ -83,11 +84,11 @@ export function videoJobConnection(job: JobDisplay | null | undefined) {
   return {
     diagnosticCode: cause ?? (legacyCode && Object.hasOwn(videoConnectionDetails, legacyCode) ? legacyCode : null),
     requiresAction,
-    status: message(requiresAction ? 'tasks.status.videoConnectionRequired' : 'tasks.status.videoConnectionWaiting'),
-    detail: message(cause ? videoConnectionDetails[cause] : unsubmitted ? 'tasks.error.videoCredentialUnavailable' : 'tasks.error.videoConnectionUnclassified'),
-    continuation: cause === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' ? message('tasks.error.videoKeychainContinues') : null,
-    canCheckAgain: hasProviderTask && (job.status === 'running' || job.status === 'downloading'),
-    result,
+    storageBlocked,
+    status: message(storageBlocked ? 'tasks.status.videoSecretStoreWaiting' : requiresAction ? 'tasks.status.videoConnectionRequired' : 'tasks.status.videoConnectionWaiting'),
+    detail: storageBlocked ? null : message(cause ? videoConnectionDetails[cause] : unsubmitted ? 'tasks.error.videoCredentialUnavailable' : 'tasks.error.videoConnectionUnclassified'),
+    canCheckAgain: !storageBlocked && hasProviderTask && (job.status === 'running' || job.status === 'downloading'),
+    result: storageBlocked ? null : result,
   };
 }
 

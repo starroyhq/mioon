@@ -808,6 +808,25 @@ test('usage details stay on the reviewed historical run when a later reply arriv
   }finally{h.unmount();}
 });
 
+test('returning to the visible Mio panel retains its last usage before the refresh completes',async()=>{
+  const runId='22222222-2222-4222-8222-222222222222',h=harness({status:'completed',usageRunId:runId});
+  const usageView=()=>h.render().find(node=>node.type==='usage-row'&&node.props.runId===runId)?.props.view as usageState.MioUsageView;
+  try{
+    await new Promise(setImmediate);
+    const value=usageView().value;
+    assert.equal(value?.knownTotals.inputTokens,1000);
+
+    Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    assert.equal(usageView().value,value);
+    assert.equal(usageView().stale,false);
+    await new Promise(setImmediate);
+    assert.equal(h.usageReads.length,2);
+  }finally{h.unmount();}
+});
+
 for (const outcome of ['success','failure'] as const) test(`a revoked admission fences rules focus reads and a late ${outcome} before rerender without clearing the Mio session`,async()=>{
   let finish!:(value:ProjectRulesSnapshot)=>void,reject!:(reason:Error)=>void;
   const h=harness({status:'completed',readRules:()=>new Promise((resolve,no)=>{finish=resolve;reject=no;})});

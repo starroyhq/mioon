@@ -70,6 +70,13 @@ test('online current media renders content; a different version/foreign project/
   for (const kind of ['version', 'foreign-comparison', 'unknown']) assert.doesNotMatch(ui.render(kind, true), /<(?:img|video|audio)\b[^>]*\bsrc=/u, kind);
 });
 
+test('pending media has neither a reading label nor a source before the check is old enough to show', () => {
+  for (const kind of ['image', 'video', 'audio', 'preview']) {
+    const markup = ui.render(kind, false, 'pending');
+    assert.doesNotMatch(markup, /data-media-status=|<(?:img|video|audio)\b[^>]*\bsrc=/u, kind);
+  }
+});
+
 test('a missing chooser removes its action, and a changed-only staged selection enables explicit apply', () => {
   assert.doesNotMatch(ui.relink(false), /data-testid="pf-relink-choose-/u);
   assert.match(ui.relink(true), /data-testid="pf-relink-choose-/u);

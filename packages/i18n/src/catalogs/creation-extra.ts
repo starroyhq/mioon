@@ -1,4 +1,5 @@
 import type { MessageCatalog } from '../types.ts';
+const videoConnectionWaiting = { 'zh-Hans': '等待视频连接', 'zh-Hant': '等待影片連線', en: 'Waiting for video connection', ja: '動画サービスへの接続待ち' } as const;
 export const creationExtraMessages = {
   'tasks.status.queued': { 'zh-Hans': '等待生成', 'zh-Hant': '等待生成', en: 'Waiting to generate', ja: '生成待ち' },
   'tasks.status.submitting': { 'zh-Hans': '正在提交', 'zh-Hant': '正在提交', en: 'Submitting', ja: '送信中' },
@@ -13,7 +14,8 @@ export const creationExtraMessages = {
   'tasks.status.notStarted': { 'zh-Hans': '待生成', 'zh-Hant': '待生成', en: 'Not generated', ja: '未生成' },
   'tasks.status.unknown': { 'zh-Hans': '状态待确认', 'zh-Hant': '狀態待確認', en: 'Status unconfirmed', ja: '状態の確認待ち' },
   'tasks.status.outputReview': { 'zh-Hans': '输出待核验', 'zh-Hant': '輸出待核驗', en: 'Output awaiting verification', ja: '出力の検証待ち' },
-  'tasks.status.videoConnectionWaiting': { 'zh-Hans': '等待视频连接', 'zh-Hant': '等待影片連線', en: 'Waiting for video connection', ja: '動画サービスへの接続待ち' },
+  'tasks.status.videoConnectionWaiting': videoConnectionWaiting,
+  'tasks.status.videoSecretStoreWaiting': { ...videoConnectionWaiting, 'zh-Hans': '系统安全存储不可用' },
   'tasks.status.videoConnectionRequired': { 'zh-Hans': '视频连接需要处理', 'zh-Hant': '影片連線需要處理', en: 'Video connection needs attention', ja: '動画サービスへの接続に対応が必要' },
   'tasks.outputReviewDisclosure': { 'zh-Hans': '服务商已完成生成，但下载视频的画幅比例与请求不符，尚未保存为版本。请核验服务商结果；这里只核对并恢复同一任务，不会自动重新生成', 'zh-Hant': '服務商已完成生成，但下載影片的畫幅比例與請求不符，尚未儲存為版本。請核驗服務商結果；此處只核對並還原同一工作，不會自動重新生成', en: 'The provider finished generation, but the downloaded video’s aspect ratio differs from the request and has not been saved as a version. Verify the provider result. This only checks and recovers the same task; it does not regenerate automatically', ja: 'プロバイダー側の生成は完了しましたが、ダウンロードした動画のアスペクト比がリクエストと異なるため、バージョンとして保存していません。プロバイダーの結果を検証してください。ここでは同じタスクを確認・復元するだけで、自動再生成はしません' },
   'tasks.heldReason': { 'zh-Hans': '此请求属于原工作区或另一个恢复分支，原编号和参数已保留；不能在当前分支恢复、确认或转存', 'zh-Hant': '此請求屬於原工作區或另一個還原分支，原編號與參數已保留；不能在目前分支還原、確認或轉存', en: 'This request belongs to the original workspace or another recovery branch. Its original ID and parameters are retained; it cannot be recovered, acknowledged, or transferred in this branch', ja: 'このリクエストは元のワークスペースまたは別の復元ブランチに属します。元のIDとパラメーターを保持していますが、現在のブランチでは復元、確認、移管できません' },

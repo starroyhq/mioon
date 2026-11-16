@@ -52,12 +52,90 @@ test('complete strict status and locations are read without content, permission 
   f.controller.dispose();
 });
 
+test('the first observation stays quiet for one second, including a newly imported asset', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const first = Promise.withResolvers<{items: AssetMediaState[]; nextCursor: null}>();
+  const imported = Promise.withResolvers<{items: AssetMediaState[]; nextCursor: null}>();
+  let reads = 0;
+  const f = fixture({status: async () => ++reads === 1 ? first.promise : imported.promise});
+  t.after(() => f.controller.dispose());
+  const reading = f.controller.refreshStatus();
+  assert.deepEqual(f.controller.statusFor(asset()), {kind: 'pending'});
+  assert.equal(f.controller.canRead(asset()), false);
+  t.mock.timers.tick(999);
+  assert.deepEqual(f.controller.statusFor(asset()), {kind: 'pending'});
+  t.mock.timers.tick(1);
+  assert.deepEqual(f.controller.statusFor(asset()), {kind: 'checking'});
+  first.resolve({items: [status()], nextCursor: null});
+  await reading;
+  f.setAssets([asset(), asset(2)]);
+  f.controller.update(f.owner);
+  const checkingImport = f.controller.refreshStatus();
+  t.mock.timers.tick(999);
+  assert.deepEqual(f.controller.statusFor(asset(2)), {kind: 'pending'});
+  assert.equal(f.controller.canRead(asset()), true);
+  t.mock.timers.tick(1);
+  assert.deepEqual(f.controller.statusFor(asset(2)), {kind: 'checking'});
+  imported.resolve({items: [status(), status(2)], nextCursor: null});
+  await checkingImport;
+  assert.equal(f.controller.canRead(asset(2)), true);
+});
+
+test('a failed background recheck retains its verified snapshot, retries, and updates only changed items', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let reads = 0;
+  const changed = status(2, {status: 'missing', reason: 'not-found', readable: false});
+  const f = fixture({status: async () => {
+    reads++;
+    if (reads === 2) throw new ProjectMediaError('INTERNAL_ERROR', {status: 500});
+    return {items: [status(), reads > 2 ? changed : status(2)], nextCursor: null};
+  }});
+  t.after(() => f.controller.dispose());
+  f.setAssets([asset(), asset(2)]);
+  f.controller.update(f.owner);
+  await f.controller.refreshStatus();
+  const verified = f.controller.getState().status;
+  assert.equal(verified.kind, 'ready');
+  if (verified.kind !== 'ready') assert.fail();
+  assert.equal(await f.controller.refreshStatus(), false);
+  assert.equal(f.controller.getState().status, verified);
+  assert.equal(f.controller.canRead(asset(2)), true);
+  t.mock.timers.tick(30_000);
+  await turn();
+  assert.equal(reads, 3);
+  const recovered = f.controller.getState().status;
+  assert.equal(recovered.kind, 'ready');
+  if (recovered.kind !== 'ready') assert.fail();
+  assert.equal(recovered.value[id(1)], verified.value[id(1)]);
+  assert.deepEqual(recovered.value[id(2)], changed);
+  assert.equal(f.controller.canRead(asset(2)), false);
+  const changes = f.changes.length;
+  await f.controller.refreshStatus();
+  assert.equal(f.controller.getState().status, recovered);
+  assert.equal(f.changes.length, changes);
+});
+
 test('unconfirmed, changed, missing, unreadable and failure never admit media bytes', async () => {
   for (const value of [status(1, {outside: true, readable: false}), status(1, {status: 'changed', reason: 'unverified', outside: true, readable: false}), status(1, {status: 'changed', reason: 'content'}), status(1, {status: 'missing', reason: 'not-found', readable: false}), status(1, {readable: false})]) {
     const f = fixture({status: async () => ({items: [value], nextCursor: null})}); await f.controller.refresh(); assert.equal(f.controller.canRead(asset()), false); f.controller.dispose();
   }
   const f = fixture({status: async () => {throw new ProjectMediaError('UNAUTHORIZED', {status: 401});}});
   await f.controller.refresh(); assert.deepEqual(f.controller.statusFor(asset()), {kind: 'check-failed'}); assert.equal(f.controller.canRead(asset()), false); assert.equal(f.controller.getState().lastError, 'UNAUTHORIZED'); f.controller.dispose();
+});
+
+test('definitive authorization rejection retires a previously verified media status', async t => {
+  let authorized = true;
+  const f = fixture({status: async () => {
+    if (!authorized) throw new ProjectMediaError('FORBIDDEN', {status: 403});
+    return {items: [status()], nextCursor: null};
+  }});
+  t.after(() => f.controller.dispose());
+  await f.controller.refreshStatus();
+  assert.equal(f.controller.canRead(asset()), true);
+  authorized = false;
+  assert.equal(await f.controller.refreshStatus(), false);
+  assert.equal(f.controller.canRead(asset()), false);
+  assert.deepEqual(f.controller.statusFor(asset()), {kind: 'check-failed'});
 });
 
 test('pagination publishes no partial statuses and rejects duplicate, loop, foreign and stale revisions', async () => {
@@ -236,9 +314,13 @@ test('actual App focus rechecks unchanged-reference assets after the strict dire
   for (const changed of [status(1, {status: 'changed', reason: 'content'}), status(1, {status: 'missing', reason: 'not-found', readable: false})]) {
     const h = await focusFixture();
     assert.equal(h.f.controller.canRead(asset()), true);
-    const held = deferred<unknown>(); h.readDirectory(() => held.promise); h.setStatus(changed); h.recheck();
+    const previous = h.f.controller.getState().status, pendingStatus = deferred<Response>();
+    const held = deferred<unknown>(); h.readDirectory(() => held.promise); h.holdMedia(pendingStatus.promise); h.recheck();
     await turn(); assert.equal(h.directories.length, 1); assert.equal(h.refreshes(), 0); assert.deepEqual([...h.http], []);
     held.resolve(h.snapshot); await turn();
+    assert.equal(h.refreshes(), 1); assert.equal(h.f.controller.getState().status, previous);
+    assert.equal(h.f.controller.canRead(asset()), true);
+    pendingStatus.resolve(response({items: [changed], nextCursor: null})); await turn();
     assert.equal(h.refreshes(), 1); assert.equal(h.f.controller.canRead(asset()), false);
     const state = h.f.controller.getState(); assert.equal(state.status.kind, 'ready');
     if (state.status.kind === 'ready') assert.deepEqual(state.status.value[id(1)], changed);
@@ -271,9 +353,9 @@ test('actual App ordinary same-owner directory error never starts media reads or
   }
 });
 
-test('actual App same-owner media status failure keeps content unknown and makes no authorization mutation', async () => {
+test('actual App same-owner media status failure keeps its known state and makes no authorization mutation', async () => {
   const h = await focusFixture(); h.failMedia(); h.recheck(); await turn();
-  assert.equal(h.refreshes(), 1); assert.equal(h.f.controller.getState().status.kind, 'error'); assert.equal(h.f.controller.canRead(asset()), false);
+  assert.equal(h.refreshes(), 1); assert.equal(h.f.controller.getState().status.kind, 'ready'); assert.equal(h.f.controller.canRead(asset()), true);
   metadataOnly(h.http); assert.equal(h.http.filter(call => call.operation === 'asset.media.status.list').length, 1); h.dispose();
 });
 
