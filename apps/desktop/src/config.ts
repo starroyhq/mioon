@@ -104,7 +104,7 @@ export function storageFailureDialog(error: unknown): StorageFailureDialog {
   const failure = codedFailure(error);
   if (failure.code === 'DESKTOP_PRODUCTION_CHANNEL_REJECTED') {
     return { type: 'error', title: desktopIdentity.identityForChannel('production').productName,
-      message: '正式版只能以官方签名包运行，开发和测试请用开发版', detail: '',
+      message: nt('native.productionChannelRejected'), detail: '',
       buttons: [nt('native.quit')], defaultId: 0, cancelId: 0 };
   }
   let message = nt('native.storageMessage');

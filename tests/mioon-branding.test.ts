@@ -28,7 +28,7 @@ test('every workspace package uses @mioon and CLI publishes no old command alias
   assert.deepEqual(JSON.parse(await read('apps/cli/package.json')).bin, { mioon: './src/index.ts' });
 });
 
-test('login, loading, header and browser title display Mioon rather than prior branding', async () => {
+test('web surfaces display Mioon and native windows use the channel product name', async () => {
   const app = await read('apps/web/src/App.tsx'), login = await read('apps/web/src/LoginScreen.tsx'), html = await read('apps/web/index.html');
   assert.match(app, /className="boot-page"[\s\S]*?<\/span>Mioon/);
   assert.match(app, /<WorkbenchTopbar brand=\{<a[\s\S]*?className="brand-name">Mioon/);
@@ -42,7 +42,7 @@ test('login, loading, header and browser title display Mioon rather than prior b
   assert.doesNotMatch(login, />frame|Frame 影像|Video Workbench|VideoWorkbench/);
   assert.match(html, /<title>Mioon<\/title>/);
   const desktop = await read('apps/desktop/src/main.ts');
-  assert.match(desktop, /const title = launcher \? 'Mioon' : identity\.productName;/);
+  assert.match(desktop, /const title = identity\.productName;/);
   assert.match(desktop, /new BrowserWindow\(\{\s+title,/);
 });
 
