@@ -71,7 +71,6 @@
 .project-home-presets input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .project-home-presets label:focus-within { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
 .project-home-presets small { font: 11px/1.5 var(--wb-font-mono); color: var(--wb-muted); white-space: nowrap; }
-.project-home-format-help { margin: 6px 0 0; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
 .project-home-presets input:disabled { cursor: default; }
 .project-home-create-dialog .project-home-form-error { color: var(--wb-danger); font-size: var(--wb-text-label); margin-top: 12px; }
 :root[data-desktop-frame="mac-inset"] .project-home-page .project-home-header { padding-left: 88px; -webkit-app-region: drag; }

@@ -43,11 +43,11 @@ test('actual right-dock workspace uses shared labelled tabs and inline headings,
     assert.match(html, /aria-label="成片交付页面"/); assert.equal((html.match(/role="tab"/g) || []).length, 2);
     assert.match(html, /本次导出/); assert.match(html, /导出记录/);
     assert.doesNotMatch(html, /role="dialog"|aria-modal=|modal-backdrop|data-slot="dialog/);
+    const heading = html.match(/<header class="delivery-workspace-heading">([\s\S]*?)<\/header>/)?.[1];
+    assert.ok(heading); assert.doesNotMatch(heading, /<p\b/);
   }
   assert.match(rendered.compose, /<h2 id="delivery-workspace-heading">成片交付<\/h2>/);
-  assert.match(rendered.compose, /切换到记录不会清除草稿/);
   assert.match(rendered.history, /<h2 id="delivery-workspace-heading">导出记录<\/h2>/);
-  assert.match(rendered.history, /创建时的固定快照/); assert.match(rendered.history, /已命名成片保留原名称/);
 });
 
 test('controlled tab semantics link to App-owned panes and retain both child trees', () => {

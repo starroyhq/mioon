@@ -6,6 +6,7 @@ import { Label } from '@mioon/ui/components/label';
 import { Textarea } from '@mioon/ui/components/textarea';
 import { WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Check } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import type { NewProjectFormatVersion } from '../../../../packages/contracts/src/project-entry.ts';
 import { DEFAULT_TIMELINE_OUTPUT_PRESET, TIMELINE_CURRENT_OUTPUT_PRESETS } from '../../../../packages/contracts/src/timeline-output-geometry.ts';
 import { useI18n } from '../i18n/I18nProvider.tsx';
@@ -113,7 +114,9 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
             : t('projectFile.create.willCreate', { path: projectFilePathPreview(location.display, values.name, false) })}</p>}
         </div>
         {showProjectOptions && <><div className="pf-field">
-          <Label htmlFor={`${id}-direction`} className="pf-label-with-icon">{t('projectFile.create.direction')}<span className="pf-info" title={t('projectFile.create.directionHelp')}><Icon name="info" size={13} /></span></Label>
+          <div className="pf-label-with-icon"><Label htmlFor={`${id}-direction`}>{t('projectFile.create.direction')}</Label>
+            <WorkbenchTooltip content={t('projectFile.create.directionHelp')}><WorkbenchButton type="button" variant="icon" size="compact" className="pf-info" aria-label={t('shell.details')}><Icon name="info" size={13} /></WorkbenchButton></WorkbenchTooltip>
+          </div>
           <div className="pf-create-direction">
             <Textarea id={`${id}-direction`} data-testid="pf-create-description" value={values.description} rows={2} maxLength={NEW_PROJECT_DESCRIPTION_MAX_LENGTH} readOnly={frozen}
               placeholder={t('projectFile.create.directionPlaceholder')} onChange={event => changeProjectOptions({ description: event.target.value })} />
@@ -132,7 +135,6 @@ export function NewProjectFileDialog(props: NewProjectFileDialogProps): ReactEle
               <small>{aspectLabel(preset.width, preset.height)} · {preset.width}×{preset.height}</small>
             </label>;
           })}</div>
-          <p className="pf-help">{t('projectFile.create.formatHelp')}</p>
         </fieldset></>}
         {state.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-create-error">{t(state.code === 'PROJECT_FILE_EXISTS' ? 'projectFile.create.exists' : 'projectFile.create.failed')}</WorkbenchAlert>}
         {state.kind === 'unknown' && <WorkbenchAlert tone="warning" data-testid="pf-create-unknown">{t('projectFile.create.unknown')}</WorkbenchAlert>}

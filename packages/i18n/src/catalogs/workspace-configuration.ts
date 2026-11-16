@@ -5,7 +5,7 @@ export const workspaceConfigurationMessages={
  'workspace.settings.readOnly':{'zh-Hans':'服务器配置 · 只读','zh-Hant':'伺服器設定 · 唯讀',en:'Server configuration · read only',ja:'サーバー設定・読み取り専用'},
  'workspace.settings.saving':{'zh-Hans':'正在保存','zh-Hant':'正在儲存',en:'Saving',ja:'保存中'},
  'workspace.settings.unconfirmed':{'zh-Hans':'状态未确认','zh-Hant':'狀態未確認',en:'Status unconfirmed',ja:'状態未確認'},
- 'workspace.settings.failed':{'zh-Hans':'操作未能确认，请刷新查看当前状态','zh-Hant':'操作未能確認，請重新整理查看目前狀態',en:'The operation could not be confirmed. Refresh to check its current status',ja:'操作を確認できませんでした。更新して現在の状態を確認してください'},
- 'workspace.settings.conflict':{'zh-Hans':'设置已在其他窗口更改，请刷新后重试','zh-Hant':'設定已在其他視窗變更，請重新整理後重試',en:'Settings changed in another window. Refresh before trying again',ja:'別のウィンドウで設定が変更されました。更新してから再試行してください'},
+ 'workspace.settings.failed':{'zh-Hans':"操作结果未确认。",'zh-Hant':"操作結果未確認。",en:"The operation could not be confirmed.",ja:"操作結果を確認できませんでした。"},
+ 'workspace.settings.conflict':{'zh-Hans':"设置已在其他窗口更改。",'zh-Hant':"設定已在其他視窗更改。",en:"Settings changed in another window.",ja:"別のウィンドウで設定が変更されました。"},
  'workspace.settings.open':{'zh-Hans':'配置','zh-Hant':'設定',en:'Configure',ja:'設定'},
 } as const satisfies MessageCatalog;

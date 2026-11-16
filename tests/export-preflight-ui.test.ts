@@ -347,16 +347,18 @@ test('blocked Check retains accessible recovery controls and pending copy points
   assert.doesNotMatch(textOf(tree), /请在任务面板恢复同一请求/); assert.deepEqual(events, []);
 });
 
-test('actual dock view names saved-only scope, excludes all drafts and never performs reads itself', async () => {
+test('actual dock view keeps the unsaved status and uses the checked snapshot without initiating reads', async () => {
   const f = fixture(); await f.ready(); const tree = renderPanel({ state: f.state(), projectName: '片名', dirty: true });
-  const text = textOf(tree); for (const expected of ['仅检查已保存', '镜头、片段和源范围', '未保存修改', '未进行完整解码', '实际导出仍会重新验证', '不是导出成功凭据', '720 × 1280', '30 fps']) assert.ok(text.includes(expected), expected);
+  const text = textOf(tree);
+  for (const expected of ['未保存修改', '720 × 1280', '30 fps']) assert.ok(text.includes(expected), expected);
+  assert.doesNotMatch(text, /镜头、片段和源范围|检查报告不是导出成功凭据/);
   assert.equal(findNode(tree, 'preflight-export').props.disabled, false);
   assert.doesNotMatch(panelSource, /useEffect|useState|\bfetch\s*\(|\brpc\s*\(|localStorage|sessionStorage|role="dialog"/);
 });
 
 test('actual dock view separates ready, incomplete, stale, error, pending receipt and export-in-progress', async () => {
   const f = fixture(); await f.ready(report({ status: 'incomplete' })); let tree = renderPanel({ state: f.state() });
-  assert.match(textOf(tree), /检查未完成，仍尝试导出/); assert.match(textOf(tree), /不代表通过/);
+  assert.match(textOf(tree), /检查未完成，仍尝试导出/); assert.match(textOf(findNode(tree, 'preflight-incomplete-warning')), /检查未完成/);
   const exportButton = (tree: unknown): RenderNode => findNode(tree, 'preflight-export');
   assert.equal(exportButton(tree).props.disabled, false);
   for (const props of [{ exportBusy: true }, { pendingExport: true }, { state: { ...f.state(), phase: 'stale' } }, { state: { ...f.state(), phase: 'error' } }, { state: { ...f.state(), binding: null } }]) assert.equal(exportButton(renderPanel({ state: f.state(), ...props })).props.disabled, true);
@@ -516,15 +518,12 @@ test('unchecked export control respects pending receipt and submission busy stat
   }
 });
 
-test('compact dock exposes saved-snapshot scope and dirty warning while showing blocking issues before statistics', async () => {
+test('compact dock keeps the dirty warning and shows blocking issues before statistics', async () => {
   const f = fixture(); await f.ready(report({ status: 'blocked', issues: [{ code: 'PREFLIGHT_SOURCE_INVALID', severity: 'error', message: 'Missing managed source', assetId: id(20) }] }));
   const tree = renderPanel({ state: f.state(), dirty: true, projectName: 'Missing media project' }), all = nodes(tree);
-  const disclosure = all.find(node => node.props['data-testid'] === 'preflight-scope-details')!;
-  assert.equal(disclosure.type, 'details'); assert.equal(disclosure.props.open, undefined);
-  assert.match(textOf(nodes(disclosure).find(node => node.type === 'summary')), /仅检查已保存的时间线快照/);
-  assert.match(textOf(disclosure), /镜头、片段和源范围/);
+  assert.equal(all.some(node => node.props['data-testid'] === 'preflight-scope-details'), false);
   const dirty = all.find(node => node.props['data-testid'] === 'preflight-unsaved')!; assert.ok(dirty);
-  assert.equal(nodes(disclosure).includes(dirty), false, 'Draft warning must remain visible while disclosure is closed');
+  assert.equal(all.filter(node => node.type === 'details').some(detail => nodes(detail).includes(dirty)), false, 'Draft status must stay visible');
   assert.match(textOf(dirty), /本次不包含/);
   const issues = all.findIndex(node => node.props['data-testid'] === 'preflight-issues');
   assert.ok(issues > 0); assert.ok(issues < all.findIndex(node => node.props.className === 'export-preflight-checked'));
@@ -537,24 +536,17 @@ test('compact dock exposes saved-snapshot scope and dirty warning while showing 
   assert.match(css, /\.export-preflight-body\{min-height:0;flex:1;overflow:auto;/);
 });
 
-test('passive check instructions are collapsed while current state and explicit check remain visible', () => {
+test('check instructions are omitted and the current state and explicit action remain visible', () => {
   let checks = 0;
   const tree = renderPanel({ state: { phase: 'idle' }, canCheck: true, exportBusy: false, onCheck: () => { checks++; } });
-  const help = findNode(tree, 'preflight-help-details');
-  assert.equal(help.type, 'details');
-  assert.equal(help.props.open, undefined);
-  assert.match(textOf(nodes(help).find(node => node.type === 'summary')), /说明/);
-  assert.match(textOf(help), /打开面板不会开始检查/);
-  assert.match(textOf(help), /短时合成编码与 MP4 封装/);
-  assert.match(textOf(help), /100 个片段/);
+  assert.doesNotMatch(textOf(tree), /打开面板不会开始检查|短时合成编码与 MP4 封装/);
   assert.match(textOf(findNode(tree, 'export-check-result')), /尚未检查/);
   const check = findNode(tree, 'preflight-check');
-  assert.equal(nodes(help).some(node => node.props['data-testid'] === 'preflight-check'), false);
+  assert.equal(nodes(tree).filter(node => node.props['data-testid'] === 'preflight-check').length, 1);
   assert.equal(check.props.disabled, false);
   assert.equal(checks, 0);
   (check.props.onClick as () => void)();
   assert.equal(checks, 1);
-  const readyHelp = findNode(renderPanel({ state: { phase: 'ready' } }), 'preflight-help-details');
-  assert.doesNotMatch(textOf(readyHelp), /打开面板不会开始检查/);
-  assert.match(textOf(readyHelp), /短时合成编码与 MP4 封装/);
+  const ready = renderPanel({ state: { phase: 'ready' } });
+  assert.doesNotMatch(textOf(ready), /打开面板不会开始检查|短时合成编码与 MP4 封装/);
 });

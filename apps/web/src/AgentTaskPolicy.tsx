@@ -1,7 +1,8 @@
+import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
-import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchTabs } from '@mioon/ui/components/workbench-controls';
+import { WorkbenchBadge, WorkbenchButton, WorkbenchTabs } from '@mioon/ui/components/workbench-controls';
 import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
@@ -57,10 +58,10 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
   // Viewing is always direct by default; only a stored exception (for example set through the CLI) is shown as a choice.
   const tiers: readonly AgentTaskTier[] = draft && (draft.modes.read_only !== 'direct' || saved?.modes.read_only !== 'direct') ? ['read_only', 'local_reversible', 'local_irreversible', 'paid'] : ['local_reversible', 'local_irreversible', 'paid'];
   return <section className="mio-settings-section" data-testid="agent-task-policy" aria-busy={busy}>
-      <header className="mio-settings-section-head"><h2>{t('agent.task.policyTitle')}</h2><p>{t('mio.settings.policy.description')}</p></header>
+      <header className="mio-settings-section-head"><h2>{t('agent.task.policyTitle')}{draft && !tiers.includes('read_only') && <WorkbenchTooltip content={t('mio.settings.policy.locked')}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')} data-testid="agent-policy-locked"><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip>}</h2></header>
       {draft && preset && <div className="mio-settings-tier mio-settings-preset" data-testid="agent-policy-preset">
         <div className="mio-settings-tier-main">
-          <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t('mio.settings.policy.preset')}{preset === 'custom' && <WorkbenchBadge data-testid="agent-policy-custom">{t('agent.panel.policy.preset.custom')}</WorkbenchBadge>}</span><span className="agent-settings-help">{t(`agent.panel.policy.preset.${preset}.hint`)}</span></div>
+          <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t('mio.settings.policy.preset')}{preset === 'custom' && <WorkbenchBadge data-testid="agent-policy-custom">{t('agent.panel.policy.preset.custom')}</WorkbenchBadge>}<WorkbenchTooltip content={t(`agent.panel.policy.preset.${preset}.hint`)}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></span></div>
           <WorkbenchTabs data-testid="agent-policy-presets" value={preset === 'custom' ? '' : preset} label={t('mio.settings.policy.preset')} onValueChange={value => { void choosePreset(value as AgentTaskPolicyPreset); }}
             options={presets.map(item => ({ value: item, label: t(`agent.panel.policy.preset.${item}`), disabled: locked, testId: `agent-policy-preset-${item}` }))} />
         </div>
@@ -69,14 +70,12 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
       {draft && open && <div className="mio-settings-tiers" data-testid="agent-policy-tiers">
         {tiers.map(tier => <div key={tier} className={`mio-settings-tier ${tier === 'paid' ? 'is-paid' : ''}`} data-testid={`agent-policy-row-${tier}`}>
           <div className="mio-settings-tier-main">
-            <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t(tierCopy[tier].title)}{tier === 'paid' && <WorkbenchBadge tone="warning">{t('mio.settings.policy.paidBadge')}</WorkbenchBadge>}</span><span className="agent-settings-help">{t(tierCopy[tier].hint)}</span></div>
+            <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t(tierCopy[tier].title)}{tier === 'paid' && <WorkbenchBadge tone="warning">{t('mio.settings.policy.paidBadge')}</WorkbenchBadge>}<WorkbenchTooltip content={tier === 'paid' ? <>{t(tierCopy[tier].hint)}<br />{t('mio.settings.policy.paidWarning')}</> : t(tierCopy[tier].hint)}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></span></div>
             <WorkbenchTabs data-testid={`agent-policy-${tier}`} value={draft.modes[tier]} label={t(tierCopy[tier].title)} onValueChange={value => { void mode(tier, value as AgentTaskMode); }}
               options={[{ value: 'direct', label: t('agent.task.direct'), disabled: locked, testId: `agent-policy-${tier}-direct` }, { value: 'confirm', label: t('agent.task.confirm'), disabled: locked, testId: `agent-policy-${tier}-confirm` }]} />
           </div>
-          {tier === 'paid' && <WorkbenchAlert tone="warning" icon={<Icon name="warning" size={14} />} data-testid="agent-policy-fee-warning">{t('mio.settings.policy.paidWarning')}</WorkbenchAlert>}
         </div>)}
       </div>}
-      {draft && !tiers.includes('read_only') && <p className="mio-settings-locked" data-testid="agent-policy-locked"><Icon name="lock" size={12} />{t('mio.settings.policy.locked')}</p>}
       {notice && <div className="mio-settings-notice" role={notice === 'saved' ? 'status' : 'alert'}><span>{t(notice === 'saved' ? 'agent.task.policySaved' : notice === 'unknown' ? 'agent.task.unknown' : 'agent.task.error')}</span>{notice !== 'saved' && <WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-policy-reload" disabled={!visible || busy} onClick={() => { void load(); }}>{t('agent.task.reload')}</WorkbenchButton>}</div>}
   </section>;
 }

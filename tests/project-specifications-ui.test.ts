@@ -209,7 +209,8 @@ test('actual format panel uses accessible shared controls and tells the truth ab
   const Panel = component('TimelineFormatPanel.tsx').default;
   let tree = Panel({ state: f.state(), controller: f.controller, onBack: () => events.push('back'), onOpenTasks: () => events.push('tasks') });
   const text = textOf(tree);
-  for (const label of ['时间线输出规格', '返回属性', '源素材、生成比例不会改变', '分镜导出固定 9:16', '30 fps', '不进入片段撤销历史', '服务器会再次核对资格']) assert.ok(text.includes(label), label);
+  for (const label of ['时间线输出规格', '返回属性', '30 fps', '不进入片段撤销历史', '服务器会再次核对资格']) assert.ok(text.includes(label), label);
+  assert.doesNotMatch(text, /源素材、生成比例不会改变|分镜导出固定 9:16/);
   assert.match(text, /默认时间线规格（尚未创建）/); assert.doesNotMatch(text, /已保存的时间线规格/);
   const persisted = Panel({ state: { ...f.state(), saved: metadata({ timelineId, timelineRevision: 1 }) }, controller: f.controller });
   assert.match(textOf(persisted), /已保存的时间线规格/); assert.doesNotMatch(textOf(persisted), /默认时间线规格（尚未创建）/);

@@ -57,13 +57,13 @@ test('the real generation selector labels a custom model unverified while preser
   assert.equal(result.model,entry.modelId);assert.equal(result.modelEntryId,entry.id);
   assert.match(result.configured,/data-testid="model-select"[^>]*>[\s\S]*?Custom exact model · 尚未验证[\s\S]*?<\/button>/);
   assert.match(result.configured,/data-testid="video-model-unverified"/);
-  assert.ok(result.configured.includes(catalogs['video.providers.unverifiedHint']['zh-Hans']));
+  assert.ok(result.configured.includes(catalogs['video.providers.unverified']['zh-Hans']));
   assert.doesNotMatch(result.environment,/data-testid="video-model-unverified"|尚未验证/);
 });
 
 test('verification and bound credential recovery messages cover all four languages',()=>{
   assert.deepEqual(validateCatalogs(),[]);
-  for(const key of ['video.providers.unverified','video.providers.unverifiedHint','video.providers.credentialRestored','video.providers.credentialRestoredDraft','video.providers.restoreKey','video.providers.history']as const){
+  for(const key of ['video.providers.unverified','video.providers.credentialRestored','video.providers.credentialRestoredDraft','video.providers.restoreKey','video.providers.history']as const){
     for(const locale of ['zh-Hans','zh-Hant','en','ja']as const)assert.ok(catalogs[key][locale].trim());
   }
 });

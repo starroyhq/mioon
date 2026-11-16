@@ -48,10 +48,10 @@ test('unknown write, local refusal and ambiguous delete expose distinct choices'
 });
 
 test('pending original recovery is explicit and terminal outcomes never offer redispatch', () => {
-  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-text-request/); assert.match(html, /确认恢复同一原文字请求/); assert.match(html, /可能首次执行/); assert.match(html, /不会改用当前输入，也不会生成镜头/); }
+  for (const html of [rendered.pending, rendered.lostPrepare]) { assert.match(html, /original-text-request/); assert.match(html, /确认恢复同一原文字请求/); assert.match(html, /恢复可能会首次提交原保存请求/); assert.doesNotMatch(html, /不会改用当前输入，也不会生成镜头/); }
   assert.match(rendered.lostPrepare, /即使读取结果为空/);
-  assert.match(rendered.applied, /恢复旧请求不会覆盖当前表单或继续生成/); assert.match(rendered.notApplied, /不会再次重试同一请求/);
-  for (const html of [rendered.applied, rendered.notApplied]) assert.doesNotMatch(html, /确认恢复同一原文字请求|可能首次执行/);
+  assert.match(rendered.applied, /原请求已应用/); assert.match(rendered.notApplied, /原请求未应用/);
+  for (const html of [rendered.applied, rendered.notApplied]) assert.doesNotMatch(html, /确认恢复同一原文字请求|恢复可能会首次提交原保存请求/);
 });
 
 test('pending other shot is visible and all busy controls are disabled type buttons', () => {

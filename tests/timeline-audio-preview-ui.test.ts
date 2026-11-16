@@ -297,5 +297,5 @@ test('presentation covers explicit prepare/cancel/play/pause/end, warnings and d
   assert.match(rendered.idle, /准备当前区间/); assert.match(rendered.preparing, /取消准备/); assert.match(rendered.preparing, /声音 1\/3/);
   assert.match(rendered.paused, /继续播放/); assert.match(rendered.paused, /声音已暂停/);
   assert.match(rendered.ended, /本区间已结束；这不代表整条时间线已播放完/);
-  assert.match(rendered.ended, /重播本区间/); assert.match(rendered.draft, /尚未保存的编辑不包含在试听中；草稿会保留/);
+  assert.match(rendered.ended, /重播本区间/); assert.match(rendered.draft, /试听仅包含已保存的编辑/);
 });

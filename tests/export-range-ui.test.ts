@@ -113,12 +113,12 @@ test('incomplete unchecked intent preserves exact range and opening or hiding ne
   assert.equal(f.controller.takeUncheckedExportIntent(state.uncheckedIntent), state.uncheckedIntent);
 });
 
-test('range controls use labelled shared inputs, half-open semantics, session disclosure and disabled actions', () => {
+test('range controls use labelled shared inputs, half-open semantics and disabled actions', () => {
   const View = component('ExportRangeControls.tsx').default, changes: (unknown)[] = [];
   let tree = View({ draft: { mode: 'whole', startText: '', endText: '' }, durationFrames: 120, onChange: (value: unknown) => changes.push(value) });
   nodes(tree).find(node => node.props['data-testid'] === 'export-range-selected')!.props.onClick(); assert.deepEqual(changes, [draft('0', '120')]);
   tree = View({ draft: draft(), value: range, durationFrames: 120, disabled: true });
-  assert.match(textOf(tree), /30 fps|60 帧/); assert.match(textOf(tree), /重启或重新打开项目后请重新选择/); assert.match(textOf(tree), /结束帧（不包含）/);
+  assert.match(textOf(tree), /30 fps|60 帧/); assert.doesNotMatch(textOf(tree), /重启或重新打开项目后请重新选择/); assert.match(textOf(tree), /结束帧（不包含）/);
   for (const key of ['export-range-whole', 'export-range-selected', 'export-range-start', 'export-range-end']) assert.equal(nodes(tree).find(node => node.props['data-testid'] === key)!.props.disabled, true);
   const broken = View({ draft: draft('', '90'), value: null, error: 'Invalid range' }); assert.equal(nodes(broken).find(node => node.props['data-testid'] === 'export-range-start')!.props['aria-invalid'], true);
   assert.ok(nodes(broken).some(node => node.props.role === 'alert'));
@@ -128,7 +128,7 @@ test('preflight shows frozen selected duration separately from full composition 
   const View = component('TimelineExportPreflight.tsx').default;
   const tree = View({ state: { phase: 'ready', report: report(range), binding: {} }, exportRange: { startFrame: 0, endFrame: 1 }, rangeDraft: draft('0', '1'), canCheck: true });
   const frozen = nodes(tree).find(node => node.props['data-testid'] === 'preflight-export-range'); assert.match(textOf(frozen), /第 30 帧.*第 90 帧.*60 帧.*2.00 秒/);
-  assert.match(textOf(tree), /完整时间线时长.*120 帧/); assert.match(textOf(tree), /范围外素材/);
+  assert.match(textOf(tree), /完整时间线时长.*120 帧/); assert.doesNotMatch(textOf(tree), /范围外素材/);
   const invalid = View({ rangeError: 'Invalid range', canCheck: true }); assert.equal(nodes(invalid).find(node => node.props['data-testid'] === 'preflight-check')!.props.disabled, true);
 });
 

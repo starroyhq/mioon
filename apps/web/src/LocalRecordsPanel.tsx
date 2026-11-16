@@ -1,3 +1,5 @@
+import Icon from './icons.tsx';
+import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import React, {useEffect, useRef, useSyncExternalStore} from 'react';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
@@ -26,8 +28,7 @@ export function LocalRecordsView({active,state,controller}:{readonly active:bool
     : state.notice?.code === 'LOCAL_RECORDS_IN_USE' ? 'localRecords.inUse' : state.notice?.code === 'LOCAL_RECORDS_SUPER_JOURNAL' ? 'localRecords.journalHelp'
     : state.notice?.code === 'LOCAL_RECORDS_NOT_FOUND' ? 'localRecords.notFound' : state.notice?.code === 'LOCAL_RECORDS_IDENTITY_CHANGED' ? 'localRecords.identityChanged' : 'localRecords.deleteError';
   return <section className="local-records-panel" aria-labelledby="local-records-heading" data-testid="local-records-panel">
-    <header><h2 id="local-records-heading">{t('localRecords.title')}</h2><WorkbenchButton type="button" size="compact" disabled={!active||state.loading||state.deleting} onClick={()=>void controller.refresh()}>{t('localRecords.refresh')}</WorkbenchButton></header>
-    <p data-text-selectable>{t('localRecords.help')}</p>
+    <header><h2 id="local-records-heading">{t('localRecords.title')}<WorkbenchTooltip content={t('localRecords.help')}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></h2><WorkbenchButton type="button" size="compact" disabled={!active||state.loading||state.deleting} onClick={()=>void controller.refresh()}>{t('localRecords.refresh')}</WorkbenchButton></header>
     {state.notice&&<WorkbenchAlert data-testid="local-records-notice" tone={state.notice.code==='DELETED'?'success':'warning'} data-text-selectable>{t(noticeKey)}</WorkbenchAlert>}
     {state.loading&&<p role="status">{t('localRecords.loading')}</p>}
     {state.readError&&<WorkbenchAlert tone="warning" data-text-selectable>{t(state.readError==='LOCAL_RECORDS_SCAN_FAILED'?'localRecords.scanFailed':'localRecords.readError')} <code>{state.readError}</code></WorkbenchAlert>}

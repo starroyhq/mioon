@@ -372,6 +372,7 @@ test('shot node and Inspector replace stalled video progress with a short Keycha
     const status = translate(locale, 'tasks.status.videoSecretStoreWaiting');
     assert.equal(node.find(`shot-connection-${job.shotId}`), undefined);
     const panel = inspector.find('inspector-generation-progress');
+    assert.equal(treeNodes(panel).some(element => element.type === 'p'), false, 'Waiting on Keychain needs no secondary paragraph');
     for (const view of [nodeView, panel]) {
       assert.equal(treeText(view).split(status).length - 1, 1);
       assert.ok(!treeText(view).includes(guidance));
@@ -399,6 +400,13 @@ test('shot node and Inspector replace stalled video progress with a short Keycha
     node.render({data: {...data, job: polling, generationUnavailableReason: null}});
     inspector.render(inspectorProps({tab: 'settings', jobs: [polling], highlightedVersionId: null}));
     for (const harness of [node, inspector]) assert.ok(harness.nodes().some(element => element.props.role === 'progressbar' && element.props['aria-valuenow'] === 45));
+    const pollingPanel = inspector.find('inspector-generation-progress');
+    assert.equal(treeNodes(pollingPanel).some(element => element.type === 'p'), false, 'Normal progress needs no explanation');
+    const deleted = {...job, phase: 'connection_required', error: {code: 'VIDEO_CREDENTIAL_UNAVAILABLE', diagnostic: {kind: 'video_credential', cause: 'VIDEO_SETTINGS_DELETED', recovery: 'user_action'}}};
+    inspector.render(inspectorProps({tab: 'settings', jobs: [deleted], highlightedVersionId: null}));
+    const blocked = inspector.find('inspector-generation-progress');
+    assert.ok(treeText(blocked).includes(translate(locale, 'tasks.error.videoConnectionDeleted')));
+    assert.ok(treeText(blocked).includes(translate(locale, 'tasks.error.videoResultAtProvider')));
     node.unmount(); inspector.unmount();
   }
 });

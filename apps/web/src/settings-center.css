@@ -3,16 +3,13 @@
 .settings-center-nav-label { padding: 0 12px 16px; color: var(--muted-foreground); font-size: 11px; letter-spacing: .08em; }
 .settings-center-nav [data-slot="button"] { justify-content: flex-start; min-height: 42px; padding: 10px 12px; white-space: normal; text-align: left; font-size: 13px; }
 .settings-center [aria-current="page"] { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
-.settings-center-nav > p { margin: 20px 12px 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.8; }
 .settings-center-content { min-width: 0; }
 .settings-center-heading { margin-bottom: 24px; }
 .settings-center-heading h1 { margin: 0 0 10px; font-size: 26px; font-weight: 550; line-height: 1.35; }
-.settings-center-heading p { color: var(--muted-foreground); font-size: 12px; line-height: 1.8; max-width: 700px; }
 .settings-service-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .settings-service-nav [data-slot="button"] { min-height: 36px; padding: 8px 12px; font-size: 12px; }
 .settings-preference { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .settings-preference h2 { font-size: 14px; font-weight: 550; margin: 0 0 8px; }
-.settings-preference p { font-size: 12px; color: var(--muted-foreground); line-height: 1.8; }
 .settings-preference .language-control { margin: 0; flex-shrink: 0; }
 .settings-workspace-status { margin-top: 24px; border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
 .settings-workspace-status > summary { cursor: pointer; font-size: 12px; color: var(--muted-foreground); }
@@ -47,7 +44,7 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 @media (max-width: 600px) {
   .settings-center { display: block; }
   .settings-center-nav { flex-direction: row; flex-wrap: wrap; margin-bottom: 24px; gap: 4px; }
-  .settings-center-nav-label, .settings-center-nav > p { display: none; }
+  .settings-center-nav-label { display: none; }
   .settings-center-nav [data-slot="button"] { min-height: 36px; font-size: 12px; }
   .settings-center-heading h1 { font-size: 23px; }
 }
@@ -73,15 +70,12 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav-label { padding: 0 12px 14px; color: var(--wb-text); font-size: var(--wb-text-title); letter-spacing: 0; font-weight: 600; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav [data-slot="button"] { min-height: 32px; height: 32px; gap: var(--wb-space-2); padding: 0 12px; border-radius: var(--wb-radius-control); color: var(--wb-soft); }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center [aria-current="page"] { background: var(--wb-hover); color: var(--wb-text); }
-:is(.web-settings-dialog, .project-home-settings-window) .settings-center-nav > p { margin: auto 10px 0; font-size: var(--wb-text-caption); line-height: 1.5; color: var(--wb-muted); }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-content { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 16px 24px 0; scrollbar-gutter: stable; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading { margin: 0 28px 24px 0; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading h1 { margin-bottom: 4px; font-size: var(--wb-text-section); font-weight: 600; }
-:is(.web-settings-dialog, .project-home-settings-window) .settings-center-heading p { font-size: var(--wb-text-caption); line-height: 1.5; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference { min-height: 60px; padding: 0; border: 0; border-radius: 0; background: none; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference h2 { font-size: var(--wb-text-body); margin-bottom: 4px; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-preference h3 { font-size: var(--wb-text-body); font-weight: 500; margin-bottom: var(--wb-space-1); }
-:is(.web-settings-dialog, .project-home-settings-window) .settings-preference p { font-size: var(--wb-text-caption); color: var(--wb-muted); line-height: 1.5; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance { margin-top: 20px; gap: 16px; }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-row { min-height: var(--wb-control-large); }
 :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-actions { margin-top: 24px; margin-inline: -24px; padding-inline: 24px; background: var(--wb-raised); }
@@ -108,8 +102,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .settings-center-content > .settings-general { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
 .settings-category-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--wb-space-4); width: var(--wb-space-4); height: var(--wb-space-4); }
 .settings-category-icon svg { width: var(--wb-space-4); height: var(--wb-space-4); }
-.settings-center-nav > .settings-local-status { display: flex; align-items: center; gap: var(--wb-space-2); }
-.settings-local-status > svg { flex: none; }
 .settings-section-title { flex: none; font-size: var(--wb-text-section); font-weight: 600; margin-bottom: var(--wb-space-2); }
 .settings-general > .settings-preference { flex: none; min-height: var(--wb-control-large); padding-block: var(--wb-space-2); }
 .settings-general .language-control { width: 240px; max-width: 100%; }
@@ -173,7 +165,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-settings-section { display: flex; flex-direction: column; gap: var(--wb-space-3); flex: none; }
 .mio-settings-section-head h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; }
 .mio-settings-section-head h2 label { font: inherit; color: inherit; }
-.mio-settings-section-head p { margin-top: var(--wb-space-1); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
 .mio-settings-rows { display: flex; flex-direction: column; gap: var(--wb-space-3); padding-inline-start: var(--wb-space-3); }
 .mio-settings-row { display: grid; grid-template-columns: minmax(96px, 132px) minmax(0, 1fr); align-items: start; gap: var(--wb-space-3); }
 .mio-settings-row > label, .mio-settings-label { display: flex; align-items: center; min-height: var(--wb-control); color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 400; }
@@ -203,8 +194,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-settings-preset { margin-bottom: var(--wb-space-1); }
 .mio-settings-details.wb-button { align-self: flex-start; gap: var(--wb-space-1); color: var(--wb-soft); }
 .mio-settings-details[aria-expanded=true] > svg { transform: rotate(180deg); }
-.mio-settings-locked { display: flex; align-items: center; gap: var(--wb-space-2); padding: var(--wb-space-1) var(--wb-space-3); color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
-.mio-settings-locked > svg { flex: none; }
 .mio-settings-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-warning); font-size: var(--wb-text-caption); line-height: 1.6; }
 .mio-settings-notice[role="status"] { color: var(--wb-soft); }
 .mio-settings-grants { display: flex; flex-direction: column; }
@@ -233,7 +222,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .settings-center-content:has(.settings-services-layout:not([hidden])) { padding: 0; }
 .settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading { padding: 16px 24px; margin: 0; border-bottom: 1px solid var(--wb-line-subtle); }
 .settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading h1 { font-size: var(--wb-text-section); }
-.settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-center-heading p { display: none; }
 .settings-center-content:has(.settings-services-layout:not([hidden])) > .settings-connection-panes { padding-bottom: 0; }
 .mio-services-settings .agent-settings-form { width: 100%; min-width: 0; height: 100%; }
 .mio-settings-general, .mio-settings-service { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
@@ -263,3 +251,5 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-model-observation { min-height: 1.6em; }
 @media (max-width: 860px) { .mio-services-settings .mio-settings-row { grid-template-columns: minmax(0, 1fr); } }
 .mio-services-settings .wb-tabs > [data-slot="tabs-list"] { width: fit-content; min-width: 0; max-width: 100%; }
+
+.settings-with-help { display: flex; align-items: center; gap: var(--wb-space-1); min-width: 0; }

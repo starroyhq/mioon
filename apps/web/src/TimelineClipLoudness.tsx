@@ -45,15 +45,11 @@ export default function TimelineClipLoudness({ loudness }: { readonly loudness: 
         <Button type="button" variant="outline" size="sm" data-testid="clip-loudness-match" disabled={!timelineClipLoudnessMatchable(state)} onClick={() => { controller.match(state); }}>{t('audio.loudness.match.stage')}</Button>
       </div>}
     </>}
-    <p className="input-hint">{t('round3.audio.measurementScope')}</p>
     {!available && <p className="clip-loudness-blocked" data-testid="clip-loudness-blocked">{state.durationFrames > TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames ? t('audio.loudness.clip.tooLong') : t(!state.audioSupported || state.muted || state.gain <= 0 ? 'audio.loudness.clip.inaudible' : 'audio.loudness.clip.blocked')}</p>}
     <div id={statusId} role="status" aria-live="polite" aria-atomic="true">{status && <p data-testid="clip-loudness-status">{status}</p>}</div>
     {preparing && available && <Button type="button" variant="ghost" size="sm" data-testid="clip-loudness-cancel" onClick={() => controller.cancel(state)}>{t('audio.loudness.cancelObservation')}</Button>}
     <details className="clip-audio-help"><summary>{t('round3.audio.learnMore')}</summary>
       <p data-testid="clip-loudness-limit">{t('audio.loudness.clip.durationLimit', { seconds: TIMELINE_CLIP_LOUDNESS_LIMITS.clipSeconds })}</p>
-      <p data-testid="clip-loudness-limitation">{t(matching ? 'audio.loudness.match.limitation' : 'audio.loudness.clip.limitation')}</p>
-      {!matching && <p data-testid="clip-loudness-missing-metrics">{t('round3.audio.missingMetrics')}</p>}
-      {matching && <p>{t('audio.loudness.match.rangeLimitation')}</p>}
       {report && <>
         <p>{t('round3.audio.samplePeak')} {peak(report.measurement.samplePeakDbfs, 'dBFS')}</p>
         <p data-testid="clip-loudness-range">{t('audio.loudness.clip.range', { start: report.identity.startFrame, end: report.identity.startFrame + report.identity.durationFrames,

@@ -121,7 +121,7 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
     {state.error && <p className="mio-error" role="alert">{t('agent.checks.readFailed')}</p>}
     <div id={contentId} hidden={!open}>
       {requirements.length>0&&<section className="mio-check-group" data-check-group="requirements">
-        <h5 className="mio-requirements-head">{t('agent.requirements.group')}<span>{t('agent.requirements.hint')}</span></h5>
+        <h5>{t('agent.requirements.group')}</h5>
         {requirements.map(item=><RequirementRow key={item.id} item={item} snapshot={snapshot}/>)}
         {note&&<p className="mio-check-note" data-testid="agent-task-check-note">{t(`agent.requirements.note.${note}`)}</p>}
       </section>}

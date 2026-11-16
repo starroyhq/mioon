@@ -113,7 +113,8 @@ function uiHarness(client: CustomImageServicesClient, confirm: (value: unknown) 
     react: reactModule, '@mioon/ui/components/button': {Button: 'Button'}, '@mioon/ui/components/input': {Input: 'Input'}, '@mioon/ui/components/label': {Label: 'Label'},
     '@mioon/ui/components/workbench-confirm': {useConfirmation: () => confirm}, '../../../packages/i18n/src/index.ts': {message},
     '../../../packages/contracts/src/generation-image-settings.ts': {CUSTOM_IMAGE_SETTINGS_V2_LIMITS}, './i18n/I18nProvider.tsx': {useI18n: () => createI18nTestContext('zh-Hans')},
-    './workspace-visibility.tsx': {useWorkspaceVisibility: () => true}, './WorkspaceControls.tsx': {WorkbenchSelect: 'WorkbenchSelect'},
+    './workspace-visibility.tsx': {useWorkspaceVisibility: () => true, WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider'},
+    './WorkspaceControls.tsx': {WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip'}, './icons.tsx': {__esModule: true, default: 'Icon'},
     './settings-navigation-state.ts': {createSettingsNavigationReporter, closeSettingsAfterPermission}, './custom-image-services-settings.ts': sessions,
   };
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/CustomImageServicesSettings.tsx', import.meta.url), 'utf8'), {loader: 'tsx', format: 'cjs'}).code)((name: string) => {if (name.endsWith('.css')) return {}; assert.ok(Object.hasOwn(imports, name), name); return imports[name];}, module, module.exports);

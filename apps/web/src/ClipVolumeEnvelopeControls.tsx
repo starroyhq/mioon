@@ -78,9 +78,10 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
     <details className="clip-envelope-editor"><summary>{t('round3.audio.editEnvelope')}</summary>
     <p id={`${id}-effect`} className="input-hint">{t('volume.envelope.effect')}</p>
     <p id={`${id}-bounds`} className="input-hint" role={invalid ? 'alert' : undefined}>{t('volume.envelope.bounds', { duration: displayedDuration })}</p>
-    <fieldset disabled={disabled || !!transient} aria-describedby={`${id}-preset-hint${!presetAvailable ? ` ${id}-preset-unavailable` : ''}`}>
+    <fieldset disabled={disabled || !!transient} aria-describedby={[
+        points.length > 0 && `${id}-preset-hint`, !presetAvailable && `${id}-preset-unavailable`,
+      ].filter(Boolean).join(' ') || undefined}>
       <legend>{t('volume.envelope.preset.title')}</legend>
-      <p id={`${id}-preset-hint`} className="input-hint">{t('volume.envelope.preset.hint')}</p>
       <label htmlFor={`${id}-preset-frames`}>{t('volume.envelope.preset.duration')}</label>
       <select id={`${id}-preset-frames`} data-testid="envelope-preset-frames" value={presetFrames} disabled={disabled || !!transient}
         onChange={event => {
@@ -91,14 +92,14 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
         {[15, 30, 60].map(frames => <option key={frames} value={frames} disabled={!createVolumeEnvelopeFadePreset('in', proposedDuration, frames)}>{t('volume.envelope.preset.frames', { frames })}</option>)}
       </select>
       {!presetAvailable && <p id={`${id}-preset-unavailable`} className="input-hint" role="status">{t('volume.envelope.preset.unavailable')}</p>}
+      {points.length > 0 && <p id={`${id}-preset-hint`} className="input-hint">{t('volume.envelope.preset.hint')}</p>}
       <div className="field-row">
         <button type="button" data-testid="envelope-preset-in" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('in')}>{t('volume.envelope.preset.in')}</button>
         <button type="button" data-testid="envelope-preset-out" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('out')}>{t('volume.envelope.preset.out')}</button>
       </div>
     </fieldset>
-    <details className="clip-audio-help"><summary>{t('volume.ducking.title')}</summary><fieldset disabled={disabled} aria-describedby={`${id}-ducking-hint ${id}-ducking-bounds ${id}-ducking-temporary`}>
+    <details className="clip-audio-help"><summary>{t('volume.ducking.title')}</summary><fieldset disabled={disabled} aria-describedby={`${id}-ducking-bounds ${id}-ducking-temporary${points.length > 0 ? ` ${id}-ducking-hint` : ''}`}>
       <legend>{t('volume.ducking.title')}</legend>
-      <p id={`${id}-ducking-hint`} className="input-hint">{t('volume.ducking.hint')}</p>
       <p id={`${id}-ducking-temporary`} className="input-hint">{t('volume.ducking.temporary')}</p>
       <p id={`${id}-ducking-bounds`} className="input-hint" role={!duckingEnvelope ? 'status' : undefined}>{t('volume.ducking.bounds')}</p>
       {MANUAL_DUCKING_FIELDS.map(field => {
@@ -137,6 +138,7 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
         </label>;
       })}
       {duckingRejected && <p id={`${id}-ducking-error`} role="alert">{t('volume.envelope.rejected', { limit: RAW_VOLUME_ENVELOPE_LIMITS[duckingRejected === 'multiplier' ? 'multiplier' : 'frame'] })}</p>}
+      {points.length > 0 && <p id={`${id}-ducking-hint`} className="input-hint">{t('volume.ducking.hint')}</p>}
       <button type="button" data-testid="ducking-apply" disabled={disabled || !!transient || !duckingEnvelope} onClick={() => {
         if (rendered === renderEpoch.current && duckingEnvelope) structure(duckingEnvelope);
       }}>{t('volume.ducking.apply')}</button>

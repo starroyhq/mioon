@@ -190,7 +190,7 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
     if(name.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(locale)};
     if(name.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};
     if(name.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};
-    if(name.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};
+    if(name==='./WorkspaceControls.tsx')return{WorkbenchTooltip:'tooltip'};
     if(name.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};
     if(name.includes('/dialog'))return{Dialog:'dialog'};
     if(name.includes('/textarea'))return{Textarea:'textarea'};

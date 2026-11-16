@@ -94,7 +94,8 @@ test('header actions and native settings remain reachable without locale or resi
   assert.doesNotMatch(header, /<LanguageControl \/>/u);
   const settingsCenter = readFileSync(new URL('../apps/web/src/ProjectHomeConnections.tsx', import.meta.url), 'utf8');
   assert.match(settingsCenter, /data-testid="settings-general"/u);
-  assert.match(settingsCenter, /t\('settings\.languageHint'\).*<LanguageControl visible=\{active && page === 'general'\} \/>/u);
+  assert.match(settingsCenter, /<LanguageControl visible=\{active && page === 'general'\} \/>/u);
+  assert.doesNotMatch(settingsCenter, /settings\.languageHint/u);
   const home = readFileSync(new URL('../apps/web/src/ProjectHome.tsx', import.meta.url), 'utf8');
   assert.match(home, /data-testid="project-home-page-settings"/u);
   assert.match(home, /onPage\('settings', event\?\.nativeEvent\)/u); assert.doesNotMatch(home, /<LanguageControl \/>/u);

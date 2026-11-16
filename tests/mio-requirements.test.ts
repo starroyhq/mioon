@@ -5,12 +5,12 @@ import {mioRequirementMessages} from '../packages/i18n/src/catalogs/mio-requirem
 import {taskRequirementTitle,taskRequirementCurrent,taskRequirementStatus,taskRequirementNote,isTaskGoalRepairActive,visibleTaskRequirements} from '../apps/web/src/agent-task-requirements.ts';
 import {component,goalStep,goalId,modelId,nodes,repairStep,report,requirement,snapshot,text} from './helpers/agent-task-requirements-ui.ts';
 
-test('H4b requirements precede host groups with the approved hint and one combined worst summary',()=>{
+test('H4b requirements precede host groups with a heading and one combined worst summary',()=>{
   const snap=snapshot(),value=report([requirement()]);
   value.groups[2]!.items.push({id:'host',source:'host',type:'timeline_references',status:'passed',target:{kind:'timeline',id:snap.run.projectId},basis:[{kind:'timeline',id:snap.run.projectId,revision:1}]});
   const tree=component(snap,value).render();
   assert.deepEqual(nodes(tree).filter(node=>node.props['data-check-group']).map(node=>node.props['data-check-group']),['requirements','timeline']);
-  assert.match(text(tree),/要求Mio 根据你的话整理/u);assert.match(text(tree),/完成情况 2 项 · 1 项要求未达成/u);
+  assert.match(text(tree),/要求时长/u);assert.doesNotMatch(text(tree),/Mio 根据你的话整理/u);assert.match(text(tree),/完成情况 2 项 · 1 项要求未达成/u);
   const summary=nodes(tree).find(node=>node.props['data-testid']==='agent-task-check-summary')!;assert.equal(summary.props['data-tone'],'danger');
   assert.match(text(tree),/时长 30 秒（允许 ±1 秒）当前 31.6 秒/u);
 });
@@ -63,7 +63,7 @@ test('H4b range, count, format and generation copy use only observed machine val
 });
 test('H4b restored views show requirements and notes through existing read controls, including English',()=>{
   const snap=snapshot();snap.steps.push(repairStep());const tree=component(snap,report([requirement()]),{locale:'en',readOnly:true}).render();
-  assert.match(text(tree),/1 requirement not met/u);assert.match(text(tree),/Set by Mio from your request/u);assert.match(text(tree),/Now 31.6 s/u);assert.match(text(tree),/Mio repairs automatically once per round/u);
+  assert.match(text(tree),/1 requirement not met/u);assert.match(text(tree),/RequirementsDuration/u);assert.match(text(tree),/Now 31.6 s/u);assert.match(text(tree),/One automatic repair per round/u);
   assert.equal(nodes(tree).filter(node=>node.type==='button').length,2);assert.equal(nodes(tree).filter(node=>node.props['data-testid']==='agent-task-requirement').length,1);
 });
 test('H4b all-met requirements default collapsed and every added phrase has four-language placeholders',()=>{

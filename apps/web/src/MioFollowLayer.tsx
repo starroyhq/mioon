@@ -288,7 +288,6 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
         <path d={CURSOR_PATH} fill={`url(#${gradient})`} stroke="white" strokeWidth="1.6" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
       <div ref={label} className="mio-follow-cursor-label">
-        <span className="mio-follow-name"><Icon name="sparkle" size={11} />{t('agent.task.title')}</span>
         <span className="mio-follow-bubble" data-testid="mio-follow-bubble">{focus.text}</span>
       </div>
     </div>

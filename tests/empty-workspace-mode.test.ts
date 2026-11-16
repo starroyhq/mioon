@@ -209,7 +209,7 @@ test('actual empty startup shows the independent home and never mounts project m
   assert.equal(f.env.currentProject.current, null); assert.equal(f.env.viewReady.current, false); assert.equal(f.env.loading, false);
   assert.equal(f.env.openedProject.current, null); assert.equal(f.env.projectSessionReady(), false);
   const html = ui.render(modeProps(f)); assertHome(html);
-  assert.match(html, /还没有项目/); assert.ok(html.includes(createI18nTestContext().t('projects.emptyBody')));
+  assert.match(html, /还没有项目/); assert.doesNotMatch(html, /在画板中构思镜头/);
   for (const id of ['project-home-page-projects', 'project-home-page-settings', 'project-home-create-toggle']) {
     assert.match(openingTag(html, id), /type="button"/);
     assert.match(openingTag(html, id), /tabindex="0"/);

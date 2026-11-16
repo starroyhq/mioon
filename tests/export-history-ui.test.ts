@@ -75,13 +75,13 @@ before(() => {
 
 test('export history preserves its empty-state text and original single wrapper', () => {
   assert.match(rendered.empty, /^<div class="export-history-table-view export-list">/); assert.match(rendered.empty, /<table class="export-history-table">/); assert.match(rendered.empty, /colSpan="6"/i);
-  assert.match(rendered.empty, /还没有导出记录/); assert.match(rendered.empty, /将媒体编排到时间线后导出，或为镜头选好版本后使用分镜导出/);
+  assert.match(rendered.empty, /还没有导出记录/); assert.doesNotMatch(rendered.empty, /将媒体编排到时间线后导出，或为镜头选好版本后使用分镜导出/);
   assert.doesNotMatch(rendered.empty, /download-export|role="dialog"|export-card/);
   assert.deepEqual((actions.empty as unknown), []);
 });
 test('failed and pending outcomes keep the exact errors, badge and non-download behavior', () => {
   assert.match(rendered.statuses, /排队中/); assert.match(rendered.statuses, /提交状态待确认/);
-  assert.equal((rendered.statuses.match(/此导出遇到问题，请核对原记录与当前状态/g) || []).length, 2); assert.doesNotMatch(rendered.statuses, /字符串失败|对象失败|unsafe|&amp; detail/);
+  assert.equal((rendered.statuses.match(/导出失败/g) || []).length, 2); assert.doesNotMatch(rendered.statuses, /字符串失败|对象失败|unsafe|&amp; detail/);
   assert.equal((rendered.statuses.match(/class="spinner"/g) || []).length, 3);
   assert.match(rendered.statuses, /small-badge warn/); assert.doesNotMatch(rendered.statuses, /download-export/);
   assert.deepEqual((actions.statuses as unknown), [], 'Failed, pending and output-less rows cannot request a file action');
@@ -119,7 +119,7 @@ test('fallback display name stays local while download filenames remain server-o
 });
 test('project/error text stays React-escaped and a stored url never becomes the download address', () => {
   assert.match(rendered.escaped, /&lt;script&gt;/); assert.match(rendered.escaped, /&quot; &amp; 单引号&#x27;/);
-  assert.match(rendered.escaped, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.escaped, /onerror|src=x/); assert.doesNotMatch(rendered.escaped, /<script>|<img src=x/);
+  assert.match(rendered.escaped, /导出失败/); assert.doesNotMatch(rendered.escaped, /onerror|src=x/); assert.doesNotMatch(rendered.escaped, /<script>|<img src=x/);
   assert.equal(actions.escaped[0].downloadHref, media(ORIGINAL, 'escaped'));
   assert.match(fileActions.escaped[0], /data-testid="export-file-check"/);
   assert.ok(fileActions.escapedDownload[0].includes(`href="${media(ORIGINAL, 'escaped')}"`));

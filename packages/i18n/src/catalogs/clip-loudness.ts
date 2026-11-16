@@ -60,17 +60,11 @@ export const clipLoudnessMessages = {
     "en": "Analyze saved clip",
     "ja": "保存済みクリップを分析"
   },
-  "audio.loudness.clip.limitation": {
-    "zh-Hans": "独立测量已保存的裁剪、增益与淡入淡出，不包含其他片段或时间线前置空白。不是整片混音或已导出文件；不修改音量、不提供增益候选，也未实现逐段响度统一。估算真峰值不保证混音或 AAC 编码后的峰值；报告仅临时显示",
-    "zh-Hant": "獨立測量已儲存的裁剪、增益與淡入淡出，不包含其他片段或時間軸前置空白。不是整片混音或已導出檔案；不修改音量、不提供增益候選，也未實現逐段響度統一。估算真峰值不保證混音或 AAC 編碼後的峰值；報告僅暫時顯示",
-    "en": "Measures only the saved trim, gain and fades, without other clips or leading timeline silence. Not a full mix or exported file. Does not change volume, suggest gain or match loudness across clips. Estimated true peak does not guarantee mix or AAC-encoded peaks. This report is temporary",
-    "ja": "保存済みのトリム、ゲイン、フェードだけを独立して測定します。他のクリップやタイムライン先頭の無音は含みません。全体ミックスや書き出しファイルではありません。音量変更、ゲイン候補、クリップ間のラウドネス統一は行いません。推定トゥルーピークはミックスや AAC 符号化後のピークを保証しません。結果は一時表示のみです"
-  },
   "audio.loudness.clip.blocked": {
-    "zh-Hans": "请先保存或解决草稿与冲突，并等待时间线操作结束、连接恢复后分析",
-    "zh-Hant": "請先儲存或解決草稿與衝突，並等待時間軸操作結束、連線恢復後分析",
-    "en": "Save or resolve drafts and conflicts, wait for timeline operations to finish, and reconnect before analyzing",
-    "ja": "下書きや競合を保存・解決し、タイムライン操作の完了と接続の復旧を待ってから分析してください"
+    "zh-Hans": "草稿、冲突或连接问题阻止分析",
+    "zh-Hant": "草稿、衝突或連線問題阻止分析",
+    "en": "Analysis is blocked by a draft, conflict or connection issue",
+    "ja": "下書き、競合、または接続の問題で解析できません"
   },
   "audio.loudness.clip.inaudible": {
     "zh-Hans": "仅支持轨道未静音、已保存增益大于零的音频或视频片段。音轨由后端核验；不会解除静音或改测原始源",
@@ -217,12 +211,6 @@ export const clipLoudnessMessages = {
     "en": "Match dialogue loudness",
     "ja": "台詞のラウドネスを揃える"
   },
-  "audio.loudness.dialogue.help": {
-    "zh-Hans": "逐段测量标为“人声”的片段，按目标响度给出各自的建议增益。只调整增益，不做限幅或压缩。",
-    "zh-Hant": "逐段測量標為「人聲」的片段，按目標響度給出各自的建議增益。只調整增益，不做限幅或壓縮。",
-    "en": "Measures each clip marked Human voice and suggests its own gain for the target loudness. Only gain changes; nothing is limited or compressed.",
-    "ja": "「人の声」に分類したクリップを1件ずつ測定し、目標ラウドネスに合わせた個別のゲインを提案します。変わるのはゲインだけで、リミッターや圧縮はかけません。"
-  },
   "audio.loudness.dialogue.none": {
     "zh-Hans": "时间线上没有标为“人声”的片段。可以在片段属性的“音频分类”里设置。",
     "zh-Hant": "時間軸上沒有標為「人聲」的片段。可以在片段屬性的「音訊分類」裡設定。",
@@ -349,12 +337,6 @@ export const clipLoudnessMessages = {
     "en": "Apply to checked ({count})",
     "ja": "{count} 件に適用"
   },
-  "audio.loudness.dialogue.applyHint": {
-    "zh-Hans": "勾选的增益一次保存为一条历史，撤销一次即可全部复原",
-    "zh-Hant": "勾選的增益一次儲存為一筆歷史，復原一次即可全部還原",
-    "en": "Checked gains are saved as one history entry; one undo restores them all",
-    "ja": "チェックしたゲインは1件の履歴としてまとめて保存され、1回の取り消しですべて元に戻ります"
-  },
   "audio.loudness.dialogue.applying": {
     "zh-Hans": "正在保存增益…",
     "zh-Hant": "正在儲存增益…",
@@ -379,10 +361,4 @@ export const clipLoudnessMessages = {
     "en": "Measurement stopped",
     "ja": "測定を停止しました"
   },
-  "audio.loudness.dialogue.limitation": {
-    "zh-Hans": "只测量每段对白本身（含它的增益和淡入淡出），不含其他轨道，也不是导出后的结果；每段最长 {seconds} 秒。",
-    "zh-Hant": "只測量每段對白本身（含它的增益和淡入淡出），不含其他軌道，也不是匯出後的結果；每段最長 {seconds} 秒。",
-    "en": "Each dialogue clip is measured on its own, with its gain and fades but without other tracks, and not as exported. Each clip can be at most {seconds} s.",
-    "ja": "台詞クリップは1件ずつ、そのゲインとフェードを含めて単体で測定します。ほかのトラックや書き出し後の結果は含みません。1件の長さは最大 {seconds} 秒です。"
-  }
 } as const satisfies MessageCatalog;

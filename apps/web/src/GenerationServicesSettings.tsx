@@ -1,3 +1,4 @@
+import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import {measureSettingsRead} from './settings-diagnostics.ts';
 import React, {useCallback, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
@@ -143,14 +144,13 @@ export default function GenerationServicesSettings({active, page = 'models', ent
   </section>;
   const general = <div className="generation-services-general">
     {domains.current.map((domain, index) => domain.notice && <React.Fragment key={index}>{domain.notice}</React.Fragment>)}
-    <h3>{t('generation.services.availableTitle')}</h3><p>{t('generation.services.generalIntro')}</p>
+    <h3>{t('generation.services.availableTitle')}<WorkbenchTooltip content={t('generation.services.separateKeys')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></h3>
     <div className="generation-available-cards">{availableCard('video', videoServices)}{availableCard('image', imageServices)}</div>
-    <p className="generation-services-isolation"><Icon name="lock" size={14} />{t('generation.services.separateKeys')}</p>
   </div>;
   const footerState = saving ? 'saving' : result && result.state !== 'saved' ? result.state : navigation.blocked ? 'blocked' : !ready ? navigation.busy ? 'saving' : 'error' : navigation.dirty ? 'dirty' : 'saved';
   const footerMessage = footerState === 'saving' && !saving ? 'generation.services.reading'
     : footerState === 'dirty' ? 'settings.draftKey.footer' : `generation.services.${footerState}` as const;
-  return <SettingsServicesLayout title={t('redesign.settings.models')} description={t('redesign.settings.modelsHint')} className="generation-services" testId="generation-services-settings"
+  return <SettingsServicesLayout title={t('redesign.settings.models')} className="generation-services" testId="generation-services-settings"
     pageVisible={pageVisible} selectedKey={selected} onSelect={select} groups={groups}
     panels={[{key: 'general', content: general}, {key: 'image:custom', content: <div className="generation-services-custom-overview">{custom.notice}<p>{t('image.settings.services.choose')}</p>{imageServices.filter(service => service.custom).map(service => <Button key={service.key} type="button" variant="outline" onClick={() => select(service.key)}>{service.label}</Button>)}</div>},
       ...services.map(service => ({key: service.key, content: <div className="generation-service-detail" data-kind={service.kind}>

@@ -3106,10 +3106,10 @@ export const creationUiMessages = {
     "ja": "この確認待ちの送信を復元するパラメーターは、現在のブラウザーセッションに依存します。サーバーが受け付けた生成タスクや書き出し記録は別途永続保存されます。結果不明の送信を自動再試行することはありません"
   },
   "tasks.pending.duplicateLocalRecord": {
-    "zh-Hans": "本地数据库已有此原编号。旧会话记录尚未清除，请明确转存并核对；不会静默隐藏任一记录",
-    "zh-Hant": "本機資料庫已有此原編號。舊會話記錄尚未清除，請明確轉存並核對；不會默默隱藏任一記錄",
-    "en": "The local database already contains this original ID. The old session record remains. Explicitly transfer and verify it; neither record is hidden silently",
-    "ja": "ローカルデータベースに同じ元のIDが存在します。古いセッション記録はまだ残っています。明示的に移管して確認してください。どちらの記録も無断で非表示にしません"
+    "zh-Hans": "本机已有同一请求的记录。",
+    "zh-Hant": "本機已有同一請求的記錄。",
+    "en": "A local record of this request already exists.",
+    "ja": "同じリクエストの記録が本機にあります。"
   },
   "tasks.pending.adoptOriginal": {
     "zh-Hans": "转存原请求以便重启恢复",
@@ -3190,10 +3190,10 @@ export const creationUiMessages = {
     "ja": "リクエストID：{requestId}"
   },
   "tasks.center.legacyAdopted": {
-    "zh-Hans": "此请求由旧会话明确转存，保留原始完整参数",
-    "zh-Hant": "此請求由舊會話明確轉存，保留原始完整參數",
-    "en": "This request was explicitly transferred from an old session with all original parameters retained",
-    "ja": "このリクエストは古いセッションから明示的に移管され、元の完全なパラメーターを保持しています"
+    "zh-Hans": "已从旧会话转存",
+    "zh-Hant": "已從舊會話轉存",
+    "en": "Transferred from an earlier session",
+    "ja": "以前のセッションから移行済み"
   },
   "tasks.center.recoveryScope": {
     "zh-Hans": "恢复前先核对服务器中的同一任务；需要执行时使用保存的参数，不使用当前草稿",
@@ -3225,23 +3225,17 @@ export const creationUiMessages = {
     "en": "Local edit requests",
     "ja": "ローカル編集リクエスト"
   },
-  "tasks.center.durableStorage": {
-    "zh-Hans": "{length} 类时间线元数据（含输出规格）、首帧连接与主体编辑请求：本机明文 SQLite 保存，未经保险库加密；不会自动执行",
-    "zh-Hant": "{length} 類時間軸中繼資料（含輸出規格）、首影格連線與主體編輯請求：以本機明文 SQLite 儲存，未經保管庫加密；不會自動執行",
-    "en": "{length} types of timeline metadata (including output format), first-frame connection, and subject edit requests are stored locally in plaintext SQLite, without vault encryption. They do not execute automatically",
-    "ja": "タイムラインのメタデータ（出力形式を含む）、開始フレーム接続、被写体編集の{length}種類のリクエストは、ローカルの平文 SQLite に保存され、保管庫の暗号化は適用されません。自動実行はしません"
-  },
   "tasks.center.loadingRecoveryRecords": {
-    "zh-Hans": "正在核对全部恢复记录，此类编辑暂不可用",
-    "zh-Hant": "正在核對全部還原記錄，此類編輯暫時無法使用",
-    "en": "Checking all recovery records; these edits are temporarily unavailable",
-    "ja": "すべての復元記録を確認しています。この種類の編集は一時的に利用できません"
+    "zh-Hans": "正在读取恢复记录",
+    "zh-Hant": "正在讀取復原記錄",
+    "en": "Loading recovery records",
+    "ja": "復元記録を読み込み中"
   },
   "tasks.center.recoveryListUnavailable": {
-    "zh-Hans": "任务恢复列表暂不可用，此类编辑仍被阻止",
-    "zh-Hant": "工作還原清單暫時無法使用，此類編輯仍被阻止",
-    "en": "The task recovery list is unavailable; these edits remain blocked",
-    "ja": "タスクの復元一覧を利用できないため、この種類の編集は引き続き停止しています"
+    "zh-Hans": "无法读取恢复记录",
+    "zh-Hant": "無法讀取復原記錄",
+    "en": "Could not read recovery records",
+    "ja": "復元記録を読み込めません"
   },
   "tasks.center.reloadTasks": {
     "zh-Hans": "重新载入任务",
@@ -3292,10 +3286,10 @@ export const creationUiMessages = {
     "ja": "生成で問題が発生しました"
   },
   "tasks.center.unknownSubmissionWarning": {
-    "zh-Hans": "服务商可能已接受任务并计费。请在服务商核实，系统不会盲目重新提交",
-    "zh-Hant": "服務商可能已接受工作並計費。請向服務商核實，系統不會貿然重新提交",
-    "en": "The provider may have accepted the task and charged for it. Verify with the provider; the system will not blindly resubmit",
-    "ja": "プロバイダーがタスクを受け付け、課金している可能性があります。プロバイダー側で確認してください。システムが確認せずに再送信することはありません"
+    "zh-Hans": "服务商可能已接受任务并计费。",
+    "zh-Hant": "服務商可能已接受任務並計費。",
+    "en": "The provider may have accepted the task and charged you.",
+    "ja": "プロバイダーがタスクを受け付け、課金した可能性があります。"
   },
   "tasks.center.providerTaskId": {
     "zh-Hans": "已有服务商任务 ID",
@@ -3309,12 +3303,6 @@ export const creationUiMessages = {
     "en": "Optional",
     "ja": "任意"
   },
-  "tasks.center.knownIdRecovered": {
-    "zh-Hans": "已知 ID 会自动恢复，无需填写",
-    "zh-Hant": "已知 ID 會自動還原，無須填寫",
-    "en": "Known IDs are recovered automatically; no entry needed",
-    "ja": "既知のIDは自動で復元されるため、入力不要です"
-  },
   "tasks.center.reconcileExistingTask": {
     "zh-Hans": "核对并恢复已有任务",
     "zh-Hant": "核對並還原既有工作",
@@ -3322,10 +3310,10 @@ export const creationUiMessages = {
     "ja": "既存タスクを確認して復元"
   },
   "tasks.center.existingStatusChecked": {
-    "zh-Hans": "已核对已有任务状态，没有重新提交生成",
-    "zh-Hant": "已核對既有工作狀態，未重新提交生成",
-    "en": "Existing task status checked; generation was not resubmitted",
-    "ja": "既存タスクの状態を確認しました。生成は再送信していません"
+    "zh-Hans": "已核对已有任务",
+    "zh-Hant": "已核對既有任務",
+    "en": "Existing task checked",
+    "ja": "既存のタスクを確認済み"
   },
   "tasks.center.stopScope": {
     "zh-Hans": "停止范围：{value}",
@@ -3340,10 +3328,10 @@ export const creationUiMessages = {
     "ja": "リモートタスクのキャンセル確認済み"
   },
   "tasks.center.localWaitOnly": {
-    "zh-Hans": "仅停止本地等待，不代表服务商已取消或停止计费",
-    "zh-Hant": "僅停止本機等待，不代表服務商已取消或停止計費",
-    "en": "local waiting only; this does not mean the provider cancelled or stopped billing",
-    "ja": "ローカルの待機のみ。プロバイダー側のキャンセルや課金停止を意味しません"
+    "zh-Hans": "仅停止本地等待",
+    "zh-Hant": "僅停止本機等待",
+    "en": "Local wait stopped",
+    "ja": "ローカルの待機のみ停止"
   },
   "tasks.center.submissionCount": {
     "zh-Hans": "提交 {value} 次",
@@ -3388,28 +3376,22 @@ export const creationUiMessages = {
     "ja": "待機を停止"
   },
   "tasks.center.stopWaitConfirmation": {
-    "zh-Hans": "停止本地等待不一定能取消服务商任务，也不保证停止计费。继续？",
-    "zh-Hant": "停止本機等待不一定能取消服務商工作，也不保證停止計費。是否繼續？",
-    "en": "Stopping local waiting may not cancel the provider’s task and does not guarantee that billing stops. Continue?",
-    "ja": "ローカルでの待機を停止しても、プロバイダーのタスクがキャンセルされるとは限らず、課金が止まる保証もありません。続けますか？"
+    "zh-Hans": "停止本地等待后，服务商可能继续执行并计费。",
+    "zh-Hant": "停止本機等待後，服務商可能繼續執行並計費。",
+    "en": "The provider may keep running and charge you after you stop waiting locally.",
+    "ja": "ローカルで待機を停止した後も、プロバイダーが処理を続けて課金する場合があります。"
   },
   "tasks.center.stopRequested": {
-    "zh-Hans": "已请求停止。请查看任务记录中的实际取消范围",
-    "zh-Hant": "已請求停止。請查看工作記錄中的實際取消範圍",
-    "en": "Stop requested. Check the task record for the actual cancellation scope",
-    "ja": "停止を要求しました。実際のキャンセル範囲はタスク記録で確認してください"
+    "zh-Hans": "已请求停止",
+    "zh-Hant": "已請求停止",
+    "en": "Stop requested",
+    "ja": "停止をリクエスト済み"
   },
   "tasks.center.noGenerationTasks": {
-    "zh-Hans": "还没有生成任务",
-    "zh-Hant": "尚無生成工作",
-    "en": "No generation tasks yet",
-    "ja": "生成タスクはまだありません"
-  },
-  "tasks.center.generationEmptyHint": {
-    "zh-Hans": "选择镜头并点击生成，这里会显示实时进度和结果",
-    "zh-Hant": "選擇鏡頭並按下生成，即可在此查看即時進度與結果",
-    "en": "Select a shot and generate to see live progress and results here",
-    "ja": "ショットを選んで生成すると、ここに進捗と結果が表示されます"
+    "zh-Hans": "暂无任务",
+    "zh-Hant": "暫無任務",
+    "en": "No tasks yet",
+    "ja": "タスクはまだありません"
   },
   "tasks.workspace.heading": {
     "zh-Hans": "任务中心",
@@ -3423,22 +3405,10 @@ export const creationUiMessages = {
     "en": "{activeCount} tasks in progress",
     "ja": "{activeCount}件のタスクを処理中"
   },
-  "tasks.workspace.traceableSubmissions": {
-    "zh-Hans": "每次提交都有迹可循",
-    "zh-Hant": "每次提交都有跡可循",
-    "en": "Every submission is traceable",
-    "ja": "すべての送信を追跡できます"
-  },
   "tasks.workspace.recordsAria": {
     "zh-Hans": "任务记录",
     "zh-Hant": "工作記錄",
     "en": "Task records",
     "ja": "タスク記録"
   },
-  "tasks.workspace.durableState": {
-    "zh-Hans": "生成任务状态持久保存；刷新或重启不会重复提交",
-    "zh-Hant": "生成工作狀態會持久儲存；重新整理或重啟不會重複提交",
-    "en": "Generation task state is saved persistently. Refreshing or restarting does not resubmit",
-    "ja": "生成タスクの状態は永続保存されます。更新や再起動で再送信されることはありません"
-  }
 } as const satisfies MessageCatalog;

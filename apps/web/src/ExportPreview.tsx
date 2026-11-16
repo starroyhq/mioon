@@ -99,10 +99,8 @@ export default function ExportPreview({ result, visible, canSelect, canGenerate,
         </div>
         {preflightState && preflightState.phase !== 'idle' && <p role="status">{t('export.sample.checkState', { state: t(`export.preflight.phase.${preflightState.phase}`) })}</p>}
         {checkDetails}
-        <p className="export-preflight-note">{t('export.sample.help')}</p>
         {result.record && <><ExportRangeSummary input={result.record.snapshot} snapshot testId="export-preview-range" /><small className="export-frozen-settings">{t('export.sample.receipt', { id: result.record.id })}</small></>}
         {result.url && <Button variant="ghost" className="button" onClick={() => { if (actionCurrent()) setClosed(value => !value); }}>{t(closed ? 'export.sample.reopen' : 'export.sample.close')}</Button>}
-        <p className="export-preflight-note">{t('export.sample.retained')}</p>
       </details>
     </>}
   </section>;

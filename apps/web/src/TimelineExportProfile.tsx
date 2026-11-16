@@ -1,6 +1,8 @@
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React from 'react';
 import type { ComponentType, ReactNode } from 'react';
+import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { TIMELINE_EXPORT_FLOAT_PROFILE_ID } from '@mioon/contracts/timeline-export-float';
 import type { TimelineExportSettings } from '@mioon/contracts/timeline-export-float';
@@ -24,8 +26,6 @@ export default function TimelineExportProfile({ value, disabled, onChange, Selec
       <option value="mp4_h264_v1">{t('export.settings.v1')}</option>
       <option value={TIMELINE_EXPORT_FLOAT_PROFILE_ID}>{t('export.settings.v2')}</option>
     </Select>
-    <p className="export-preflight-note" data-testid="export-audio-profile-help">{value.profileId === TIMELINE_EXPORT_FLOAT_PROFILE_ID ?
-      t('export.settings.v2Help') :
-      t('export.settings.v1Help')}</p>
+    {value.profileId === TIMELINE_EXPORT_FLOAT_PROFILE_ID && <WorkbenchTooltip content={t('export.settings.v2Help')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('export.settings.v2Help')}>ⓘ</Button></WorkbenchTooltip>}
   </div>;
 }

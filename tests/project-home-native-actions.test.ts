@@ -484,7 +484,7 @@ test('known creation without live opening authority is closable and points to re
 
 test('12-22 confirmation and unknown/result controls render in four languages without inventing capabilities',async()=>{
  const f=fixture();await f.controller.prepareTrash(projectId);const confirm=f.controller.getState();f.setTrash(async()=>{throw new BrowserRpcError('NETWORK');});await f.controller.confirmTrash();const unknown=f.controller.getState();
- for(const locale of LOCALES){const html=view(confirm,locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.title',{name:RECENT_PROJECTS[0]!.name}))));assert.ok(html.includes(escapeHtml(RECENT_PROJECTS[0]!.projectFile)));assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.records'))));assert.ok(tagOf(html,'project-home-trash-confirm'));assert.equal(tagOf(html,'project-home-trash-help'),null);
+ for(const locale of LOCALES){const html=view(confirm,locale);assert.ok(html.includes(escapeHtml(translate(locale,'projectHomeNative.trash.title',{name:RECENT_PROJECTS[0]!.name}))));assert.ok(html.includes(escapeHtml(RECENT_PROJECTS[0]!.projectFile)));assert.ok(tagOf(html,'project-home-trash-path'));assert.ok(tagOf(html,'project-home-trash-confirm'));assert.equal(tagOf(html,'project-home-trash-help'),null);
   const waiting=view(unknown,locale);assert.equal(disabled(tagOf(waiting,'project-home-native-close')),true);assert.ok(tagOf(waiting,'project-home-native-recheck'));assert.equal(tagOf(waiting,'project-home-trash-confirm'),null);assert.ok(waiting.includes(escapeHtml(translate(locale,'projectHomeNative.trash.unknown'))));
  }
 });

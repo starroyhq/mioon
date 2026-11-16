@@ -34,9 +34,10 @@ function harness<File extends 'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'
     if (name === './project-file/format.ts') return fileFormat;
     if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
     if (name === './LocalRecordsPanel.tsx') return {__esModule:true,default:'LocalRecordsPanel'};
+    if (name === './icons.tsx') return {__esModule:true,default:'Icon'};
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name === './workspace-native-client.ts') return {workspaceNativeBridge: () => undefined};
-    if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
+    if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx' || name.endsWith('.css')) return primitive;
     assert.fail(`Unexpected setting dependency ${name}`);
   }, module, module.exports);
   return {
@@ -140,7 +141,7 @@ test('Mioon media tools card downloads through the native bridge, reports progre
   h.find('workspace-tools-download-cancel')!.props.onClick();
   finish({ ok: false, code: 'MEDIA_TOOLS_CHECKSUM_MISMATCH' }); status = { ...status, progress: { phase: 'failed', receivedBytes: 0, totalBytes: 31_457_280, code: 'MEDIA_TOOLS_CHECKSUM_MISMATCH' } };
   await flush(); h.render(); await flush(); h.render();
-  assert.match(text(h.find('workspace-tools-download-failure')), /没有通过校验/u);
+  assert.equal(text(h.find('workspace-tools-download-failure')), '下载的文件未通过校验。');
   assert.equal(busy.at(-1), false);
   h.find('workspace-tools-download-install')!.props.onClick(); h.render();
   finish({ ok: true, paths: installedPaths, diagnostics }); status = { ...status, installed: installedPaths, progress: { phase: 'completed', receivedBytes: 31_457_280, totalBytes: 31_457_280, code: null } };
@@ -169,7 +170,9 @@ test('workspace settings preserve directory, usage and cleanup information witho
   assert.deepEqual(calls,['info','settings']);
   assert.equal(nodes(h.tree).find(node=>node.type==='input')!.props.value,'/private/current-data');
   assert.doesNotMatch(text(h.tree),/部分文件未统计/);assert.match(text(h.tree),/2/);
-  assert.match(text(h.tree),/本机记录 3.*缓存 2/);assert.match(text(h.tree),/\/private\/external-cache/);assert.match(text(h.tree),/可能重叠/);
+  assert.match(text(h.tree),/本机记录 3.*缓存 2/);assert.match(text(h.tree),/\/private\/external-cache/);
+  const help = nodes(h.tree).find(node => node.type === 'WorkbenchTooltip' && typeof node.props.content === 'string' && node.props.content.includes('可能重叠'));
+  assert.ok(help);assert.doesNotMatch(text(h.tree),/可能重叠/u);
   const localPanel=nodes(h.tree).find(node=>node.type==='LocalRecordsPanel');assert.ok(localPanel);assert.equal(localPanel.props.active,true);assert.equal(localPanel.props.refreshRevision,0);
   assert.equal(h.find('workspace-backup-create'),undefined);assert.equal(h.find('workspace-auto-backup'),undefined);
   assert.match(text(nodes(h.tree).find(node=>node.type==='footer')),/更改立即保存在本机/);

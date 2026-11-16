@@ -197,7 +197,7 @@ test('actual hidden, collapsed, project-switched and closed settings clear key w
 });
 
 test('settings remains a natural dock with no modal, secret cache or arbitrary provider fields', () => {
-  assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(localizedSource(source), /basic_text/); assert.match(localizedSource(source), /最多|一次配置/);
+  assert.doesNotThrow(() => transformSync(source, { loader: 'tsx', format: 'esm' })); assert.doesNotMatch(source, /Dialog|localStorage|sessionStorage|console\.|dangerouslySetInnerHTML|value=\{(?:key|secret)/); assert.match(source, /type="password"/); assert.match(source, /hidden=\{!visible\} inert=\{!visible\}/); assert.match(localizedSource(source), /basic_text/); assert.match(source, /<WorkbenchTooltip content=\{t\('image\.settings\.keyHelp'\)\}/u);
 });
 
 test('private review client binds exact receipt and posts once only to authenticated approval route', async () => {

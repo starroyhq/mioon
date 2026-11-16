@@ -49,10 +49,10 @@ before(async () => {
     const result = await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html), () => process.exit(0));`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30000 })) as Record<string, string>;
 });
-test('classic TSX shared controls render compact measure-only default, optional collapsed targets and honest limits', () => {
+test('classic TSX shared controls render compact measure-only default, optional collapsed targets and no passive explanations', () => {
   assert.match(rendered.idle, /data-slot="button"/); assert.match(rendered.idle, /data-slot="input"/);
   assert.match(rendered.idle, /aria-label="测量已导出文件响度与真峰值"/); assert.match(rendered.idle, /role="status" aria-live="polite" aria-atomic="true"/);
-  assert.match(rendered.idle, /两项留空仅测量；不预设平台标准/); assert.match(rendered.idle, /不是标准认证、无削波证明或再次 AAC 编码的保证/); assert.match(rendered.idle, /建议不会修改音量/);
+  assert.doesNotMatch(rendered.idle, /两项留空仅测量|不是标准认证|建议不会修改音量/);
   assert.equal((rendered.idle.match(/value=""/g) || []).length, 2);
   assert.doesNotMatch(rendered.idle, /role="dialog"|aria-modal|<details[^>]* open|SHA-256|data-testid="export-loudness-advice"/);
 });
@@ -65,7 +65,7 @@ test('ready keeps exact file/range/revision/profile/hashes inside collapsed deta
 });
 test('custom target shows exact needed gain and peak-room conflict, never a clamped gain or application control', () => {
   assert.match(rendered.custom, /本次参考目标：-14 LUFS · 上限 -1 dBTP/); assert.match(rendered.custom, /所需增益（算术）：\+6.00 dB/); assert.match(rendered.custom, /可用余量（已预留0\.5 dB）：\+2.94 dB/);
-  assert.match(rendered.custom, /两个目标存在冲突/); assert.match(rendered.custom, /未验证当前时间线/); assert.match(rendered.custom, /须重新导出并测量/);
+  assert.match(rendered.custom, /两个目标存在冲突/); assert.doesNotMatch(rendered.custom, /未验证当前时间线|须重新导出并测量/);
   assert.match(rendered.custom, /0.5 dB 的应用参考预留，不保证编码安全/); assert.doesNotMatch(rendered.custom, />(应用|归一化|自动增益|确认达标)<|已达到|响度合格/);
   assert.match(rendered.noConflict, /所需增益（算术）：-4.00 dB/); assert.doesNotMatch(rendered.noConflict, /两个目标存在冲突/);
 });

@@ -26,12 +26,12 @@ export function MediaStatusBadge({ status, className }: { readonly status: Media
     {status.kind === 'checking' && <span className="wb-spinner" aria-hidden="true" />}{t(`projectFile.media.badge.${status.kind}`)}
   </WorkbenchBadge>;
 }
-/** One line under the media name saying what the badge means. */
+/** Explains why a missing file is unavailable. Other statuses use only their badge. */
 export function MediaStatusNote({ status }: { readonly status: MediaStatusUi }): ReactElement | null {
   const { t } = useI18n();
-  if (status.kind === 'online' || status.kind === 'pending') return null;
-  return <span className="pf-media-note" data-tone={TONES[status.kind]} data-media-status={status.kind}>
-    {status.kind === 'missing' ? t(`projectFile.media.note.missing.${status.reason}`) : t(`projectFile.media.note.${status.kind}`)}
+  if (status.kind !== 'missing') return null;
+  return <span className="pf-media-note" data-tone={TONES.missing} data-media-status={status.kind}>
+    {t(`projectFile.media.note.missing.${status.reason}`)}
   </span>;
 }
 

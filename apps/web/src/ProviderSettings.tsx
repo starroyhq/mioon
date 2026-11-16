@@ -75,7 +75,7 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
       {models.map(item => <option key={item.modelEntryId || item.id} value={item.modelEntryId || item.id}>{item.name || item.id}{provider?.connectionId ? ` · ${t('video.providers.unverified')}` : ''}</option>)}
       {model && !models.some(item => item.id === model) && <option value={model}>{model} · {t('generation.provider.unsupported')}</option>}
     </WorkbenchSelect>
-    {provider?.connectionId && model && <p className="helper muted" data-testid="video-model-unverified"><Badge className="small-badge neutral">{t('video.providers.unverified')}</Badge> {t('video.providers.unverifiedHint')}</p>}
+    {provider?.connectionId && model && <p className="helper muted" data-testid="video-model-unverified"><Badge className="small-badge neutral">{t('video.providers.unverified')}</Badge></p>}
     {compact ? <Collapsible key={`${generationProviderIdentity(provider)}:${status}`} defaultOpen={status !== 'available'} className="provider-compact-information"><CollapsibleTrigger render={<Button variant="ghost" size="sm" />}><Icon name="info" size={13} />{t('generation.provider.viewInstructions')}</CollapsibleTrigger><CollapsibleContent keepMounted>{details}</CollapsibleContent></Collapsible> : details}
   </section>;
 }

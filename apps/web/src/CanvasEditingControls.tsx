@@ -257,7 +257,6 @@ export function CanvasArchivePopover({scope, visible: requestedVisible, count, i
           title={!canRestoreAll && count > 0 && !readOnly && !error && !loading ? t('canvas.edit.error.countLimit') : undefined}
           onClick={() => admit(onRestoreAll)}><RotateCcw size={14} aria-hidden="true" />{t('canvas.edit.restoreAll')}</WorkbenchButton>
       </header>
-      <p className="canvas-archive-hint"><Info size={13} aria-hidden="true" />{t('canvas.edit.archiveHint')}</p>
       {error && <div className="canvas-archive-error" role="alert">{error}
         {onRetry && <WorkbenchButton variant="ghost" size="compact" disabled={loading || busy} onClick={() => admit(onRetry)}>{t('projectFile.common.retry')}</WorkbenchButton>}
       </div>}

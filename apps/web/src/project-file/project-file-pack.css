@@ -10,8 +10,6 @@
 .pf-pack-missing.wb-alert .wb-button { gap: 6px; }
 .pf-pack-progress { display: flex; flex-direction: column; gap: 6px; }
 .pf-pack-progress-text { display: flex; justify-content: space-between; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
-.pf-pack-note { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
-.pf-pack-note > svg { flex: none; margin-top: 3px; }
 .pf-pack-done { display: flex; align-items: center; gap: var(--wb-space-3); }
 .pf-pack-done-icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--wb-success-subtle); color: var(--wb-success); }
 .pf-pack-done-text { color: var(--wb-text); font-size: var(--wb-text-body); font-weight: 500; line-height: 1.5; }

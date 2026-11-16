@@ -81,8 +81,7 @@ export function RestoreVersionDialog(props: RestoreVersionDialogProps): ReactEle
         : preview.kind === 'error' ? <WorkbenchAlert tone="danger" data-testid="pf-restore-error" actions={preview.retryable ? <WorkbenchButton data-testid="pf-restore-retry" onClick={props.onRetry}>{t('projectFile.common.retry')}</WorkbenchButton> : undefined}>{t('projectHistory.error.read')}</WorkbenchAlert>
           : <><p className="pf-restore-body" data-testid="pf-restore-totals">{t('projectHistory.plan', {count: preview.value.totalChanges, kept: preview.value.keptCurrentCount})}</p>
             {preview.value.changes.length > 0 && <VersionDifferenceList changes={preview.value.changes}/>}
-            {preview.value.nextCursor && <WorkbenchButton data-testid="pf-restore-more" disabled={props.paging} onClick={props.onMore}>{t('projectHistory.more')}</WorkbenchButton>}
-            <p className="pf-help" data-testid="pf-restore-undo-note">{t('projectHistory.undo')}</p></>}
+            {preview.value.nextCursor && <WorkbenchButton data-testid="pf-restore-more" disabled={props.paging} onClick={props.onMore}>{t('projectHistory.more')}</WorkbenchButton>}</>}
       {props.pendingEdits && <WorkbenchAlert tone="warning">{t('projectHistory.pendingEdits')}</WorkbenchAlert>}
       {props.unknown ? <WorkbenchAlert tone="warning" data-testid="pf-restore-unknown">{t('projectHistory.unknown')}</WorkbenchAlert>
         : restore.kind === 'error' && <WorkbenchAlert tone="danger" data-testid="pf-restore-failed" actions={stale ? <WorkbenchButton data-testid="pf-restore-repreview" onClick={props.onRetry}>{t('projectHistory.refreshPreview')}</WorkbenchButton> : undefined}>{t(historyErrorKey(props.errorCode))}{props.errorCode && <code>{props.errorCode}</code>}</WorkbenchAlert>}

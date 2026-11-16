@@ -25,6 +25,8 @@ export async function runMutationCreateRecovery(h) {
  await h.fault('shot.create');await h.tab.playwright.getByTestId('add-shot').click();const lost=await h.waitFault();assert.equal(lost.status,200);assert.equal(lost.result.ok,true);
  await h.tab.playwright.getByTestId('pending-submission').waitFor({state:'visible',timeoutMs:10000});
  assert.equal((await h.mutations()).length,calls+1);const committed=await h.audit();assert.equal(committed.data.shots.length,before.data.shots.length+1);
+ await h.tab.playwright.getByTestId('resume-pending').press('Shift+Tab');
+ await h.tab.playwright.getByTestId('mutation-recovery-storage').waitFor({state:'visible',timeoutMs:5000});
  assert.match(await h.tab.playwright.getByTestId('mutation-recovery-storage').innerText(),/当前浏览器会话/);
  await h.capture('01-created-shot-lost-ack-retains-exact-request.jpg');
  await h.closeJobs();await h.tab.playwright.getByTestId('add-shot').click();await h.tab.playwright.getByTestId('pending-submission').waitFor({state:'visible',timeoutMs:10000});assert.equal((await h.mutations()).length,calls+1);

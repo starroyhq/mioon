@@ -40,13 +40,14 @@ function fixture() {
   Function('require', 'module', 'exports', transformSync(source, {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
     if (name === 'react') return {...react, __esModule: true, default: react};
     if (name === '@mioon/ui/components/button') return {Button: 'Button'};
+    if (name === './workspace-visibility.tsx') return {WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider'};
     if (name.endsWith('.css')) return {};
     assert.fail('Unexpected shell dependency: ' + name);
   }, module, module.exports);
   const first = React.createElement('input', {type: 'password', defaultValue: 'first-dom-draft'});
   const second = React.createElement('input', {type: 'password', defaultValue: 'second-dom-draft'});
   let props: SettingsServicesLayoutProps = {
-    title: 'Opaque settings page', description: 'The caller owns the data.', pageVisible: true, selectedKey: 'first',
+    title: 'Opaque settings page', pageVisible: true, selectedKey: 'first',
     groups: [{key: 'general', items: [{key: 'general', label: 'General'}]}, {key: 'services', title: 'Services', items: [
       {key: 'first', label: 'First', icon: 'I', badge: 'Configured'}, {key: 'disabled', label: 'Disabled', disabled: true}, {key: 'second', label: 'Second'},
     ], action: {label: 'Add', testId: 'add', onAction() { actions.push('add'); }}}],
@@ -93,7 +94,9 @@ test('switching detail or hiding the whole page retains the exact mounted passwo
       const panel = panels.find(item => item.props['data-service-panel'] === key); assert.ok(panel);
       assert.equal(panel.props.hidden, key !== selectedKey);
       assert.equal(panel.props.inert, key !== selectedKey || !pageVisible);
-      const provider = nodes(panel).find(item => item.type === 'PanelProvider'); assert.ok(provider);
+      const workspaceVisibility = nodes(panel).find(item => item.type === 'WorkspaceVisibilityProvider'); assert.ok(workspaceVisibility);
+      assert.equal(workspaceVisibility.props.visible, key === selectedKey && pageVisible);
+      const provider = nodes(workspaceVisibility).find(item => item.type === 'PanelProvider'); assert.ok(provider);
       assert.deepEqual(provider.props.value, {selected: key === selectedKey, pageVisible, active: key === selectedKey && pageVisible});
       assert.equal((provider.props.children as unknown[])[0], input);
     }

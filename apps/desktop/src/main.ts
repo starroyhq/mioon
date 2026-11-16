@@ -1011,7 +1011,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       }
       await closeDialog({ type: 'warning', title: nt('native.leaveBlockedTitle'),
         message: reason === 'blocked' ? nt('native.leaveBlocked') : reason === 'changed' ? nt('native.leaveChanged') : nt('native.leaveUnverified'),
-        detail: nt('native.leaveDetail'), buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 });
+        buttons: [nt('native.keepEditing')], defaultId: 0, cancelId: 0 });
     },
     onCancel: () => { if (ownsWindow(window, context)) {
       if (windowHost) finishNativePresentation(window, windowHost, owner.contextId);
@@ -1117,7 +1117,7 @@ async function initialWindowFailed(window: BrowserWindow, context: DesktopWindow
   const proof = initialWindowLoads.get(window)?.captureFailure();
   if (!proof) return rendererFailed(window, context, 'load-error');
   const response = await showOwnedDialog(window, context, { type: 'error', title: nt('native.emptyWindowTitle'),
-    message: nt('native.emptyWindowMessage'), detail: nt('native.emptyWindowDetail'),
+    message: nt('native.emptyWindowMessage'),
     buttons: [nt('native.retryLoad'), nt('native.closeEmpty'), nt('native.keepWindow')], defaultId: 0, cancelId: 2 });
   if (!ownsWindow(window, context) || !proof.isCurrent()) return;
   if (response === 0 && quitRouter.allowsWindows && !context.incident.failed) { try { await proof.retry(); } catch { if (ownsWindow(window, context)) await initialWindowFailed(window, context); } }
@@ -1381,7 +1381,6 @@ const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWind
     windowContext = null;
     const onUnconfirmed = () => smokeOutput ? undefined : dialog.showMessageBox({ type: 'error', title: nt('native.waitExitTitle'),
       message: nt('native.waitExitMessage'),
-      detail: nt('native.waitExitDetail'),
       buttons: [nt('native.acknowledge')] });
     // Abort validation before observing backend state so late validation cannot
     // create a utility. The two owned drains proceed together inside the budget.

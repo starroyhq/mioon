@@ -14,7 +14,6 @@
 .generation-services .image-settings-form .workbench-select, .generation-services .generation-video-detail input, .generation-services .generation-video-detail .workbench-select { font-size: var(--wb-text-label); }
 .generation-services .generation-image-enable { display: flex; align-items: flex-start; gap: 10px; padding-block: 12px; }
 .generation-services .generation-image-enable > [data-slot="switch"] { flex: none; margin-top: 2px; }
-.generation-services .generation-image-enable small { display: block; margin-top: 4px; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
 .generation-service-heading [data-slot="badge"] { font-size: 10px; }
 .generation-service-configured { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .generation-service-unsaved { color: var(--wb-warning); }
@@ -27,8 +26,6 @@
 .generation-available-card h3 { display: flex; justify-content: space-between; gap: 8px; }
 .generation-available-card small, .generation-available-card p { color: var(--wb-muted); font-size: var(--wb-text-caption); }
 .generation-available-card > [data-slot="button"] { width: 100%; padding: 2px 0; justify-content: flex-start; height: auto; min-height: 28px; white-space: normal; overflow-wrap: anywhere; text-align: left; font-size: var(--wb-text-label); }
-.generation-services-isolation { display: flex; gap: 8px; align-items: flex-start; margin-top: 16px !important; font-size: var(--wb-text-caption); }
-.generation-services-isolation svg { flex: none; margin-top: 3px; }
 .generation-services-environment { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; font-size: var(--wb-text-caption); color: var(--wb-muted); }
 .generation-services-environment code { overflow-wrap: anywhere; }
 .generation-services-custom-overview { display: flex; flex-wrap: wrap; gap: 8px; color: var(--wb-muted); font-size: var(--wb-text-label); }

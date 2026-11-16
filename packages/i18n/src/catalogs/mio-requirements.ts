@@ -2,7 +2,6 @@ import type {MessageCatalog} from '../types.ts';
 
 export const mioRequirementMessages = {
   "agent.requirements.group": {"zh-Hans":"要求","zh-Hant":"要求","en":"Requirements","ja":"要件"},
-  "agent.requirements.hint": {"zh-Hans":"Mio 根据你的话整理","zh-Hant":"Mio 根據你的話整理","en":"Set by Mio from your request","ja":"Mio がリクエストから整理"},
   "agent.requirements.status.passed": {"zh-Hans":"达成","zh-Hant":"達成","en":"Met","ja":"達成"},
   "agent.requirements.status.failed": {"zh-Hans":"未达成","zh-Hant":"未達成","en":"Not met","ja":"未達成"},
   "agent.requirements.status.pending": {"zh-Hans":"等待中","zh-Hant":"等待中","en":"Pending","ja":"待機中"},
@@ -10,9 +9,9 @@ export const mioRequirementMessages = {
   "agent.requirements.summary.allPassed": {"zh-Hans":"全部达成","zh-Hant":"全部達成","en":"All met","ja":"すべて達成"},
   "agent.requirements.summary.failed": {"zh-Hans":{"one":"{count} 项要求未达成","other":"{count} 项要求未达成"},"zh-Hant":{"one":"{count} 項要求未達成","other":"{count} 項要求未達成"},"en":{"one":"{count} requirement not met","other":"{count} requirements not met"},"ja":{"one":"{count} 件の要件が未達成","other":"{count} 件の要件が未達成"}},
   "agent.requirements.summary.repairing": {"zh-Hans":{"one":"{count} 项补做中","other":"{count} 项补做中"},"zh-Hant":{"one":"{count} 項補做中","other":"{count} 項補做中"},"en":{"one":"{count} requirement being repaired","other":"{count} requirements being repaired"},"ja":{"one":"{count} 件を補完中","other":"{count} 件を補完中"}},
-  "agent.requirements.note.once": {"zh-Hans":"每轮只自动补做一次。可以在输入框里继续告诉 Mio。","zh-Hant":"每輪只自動補做一次。可以在輸入框裡繼續告訴 Mio。","en":"Mio repairs automatically once per round. You can continue in the message box.","ja":"各ラウンドの自動補完は一度だけです。入力欄で Mio に続けて伝えられます。"},
-  "agent.requirements.note.waiting": {"zh-Hans":"等待后台结果，这一轮没有补做。","zh-Hant":"等待背景結果，這一輪沒有補做。","en":"Waiting for background results. No repair was made in this round.","ja":"バックグラウンドの結果を待っています。このラウンドでは補完しませんでした。"},
-  "agent.requirements.note.safety": {"zh-Hans":"达到安全上限时还有要求未满足，可以继续后再处理","zh-Hant":"達到安全上限時仍有要求未滿足，可以繼續後再處理","en":"Some requirements were still unmet at the safety limit. You can address them after continuing","ja":"安全上限に達した時点で未達成の要件があります。続行後に対応できます"},
+  "agent.requirements.note.once": {"zh-Hans":"每轮自动补做一次","zh-Hant":"每輪自動補做一次","en":"One automatic repair per round","ja":"自動補完は各ラウンドで1回"},
+  "agent.requirements.note.waiting": {"zh-Hans":"等待后台结果","zh-Hant":"等待背景結果","en":"Waiting for background results","ja":"バックグラウンド処理の結果待ち"},
+  "agent.requirements.note.safety": {"zh-Hans":"达到执行上限，仍有要求未达成","zh-Hant":"達到執行上限，仍有要求未達成","en":"Execution limit reached with requirements unmet","ja":"実行上限に達し、未達成の要件があります"},
   "agent.requirements.duration.exact": {"zh-Hans":"时长 {seconds} 秒","zh-Hant":"時長 {seconds} 秒","en":"Duration {seconds} s","ja":"長さ {seconds} 秒"},
   "agent.requirements.duration.tolerance": {"zh-Hans":"时长 {seconds} 秒（允许 ±{tolerance} 秒）","zh-Hant":"時長 {seconds} 秒（允許 ±{tolerance} 秒）","en":"Duration {seconds} s (±{tolerance} s)","ja":"長さ {seconds} 秒（許容 ±{tolerance} 秒）"},
   "agent.requirements.duration.min": {"zh-Hans":"时长至少 {seconds} 秒","zh-Hant":"時長至少 {seconds} 秒","en":"Duration at least {seconds} s","ja":"長さ {seconds} 秒以上"},

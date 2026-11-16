@@ -66,7 +66,6 @@ export default function StoryboardBatchInspector({ task, sourceName, shots, keyf
         </dl>
       </BoardInspectorGroup>
       <BoardInspectorGroup title={t('scene.batch.references')}>
-        <p className="storyboard-batch-hint">{t('scene.batch.referencesHint')}</p>
         <div className="storyboard-batch-keyframes">{keyframes.slice(0, thumbnails).map(keyframe => <span key={keyframe.assetId}>{keyframe.url && <ProjectMediaImage asset={{id: keyframe.assetId, projectId: task.projectId}} src={keyframe.url} alt="" draggable={false} />}</span>)}
           {keyframes.length > thumbnails && <b>{`+${keyframes.length - thumbnails}`}</b>}</div>
       </BoardInspectorGroup>

@@ -16,7 +16,6 @@ export default function TimelineLoudnessApply({ apply, observation, onOpenTasks 
     state.phase === 'submitting' ? t('audio.loudness.apply.submitting') : state.phase === 'unknown' ? t('audio.loudness.apply.unknown') :
     state.phase === 'applied' ? t('audio.loudness.apply.applied') : state.phase === 'stale' ? t('audio.loudness.apply.stale') : state.error ? timelineLoudnessApplyErrorMessage({ code: state.errorCode }, locale) : '';
   return <section data-testid="timeline-loudness-apply" aria-label={t('audio.loudness.apply.label')}>
-    <p className="export-sample-peak-limitation">{t('audio.loudness.apply.limitation')}</p>
     <Button type="button" variant="ghost" className="button quiet small" data-testid="timeline-loudness-apply-review" disabled={!canReview}
       onClick={() => { void controller.review(observation); }}>{t('audio.loudness.apply.review')}</Button>
     {message && <p role="status" aria-live="polite" data-testid="timeline-loudness-apply-status">{message}</p>}

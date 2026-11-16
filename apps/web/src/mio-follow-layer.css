@@ -43,26 +43,10 @@
   max-width: 240px;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
   font-family: var(--wb-font-sans);
 }
 .mio-follow-cursor[data-side="left"] .mio-follow-cursor-label { left: auto; right: 12px; align-items: flex-end; }
 .mio-follow-cursor[data-label="above"] .mio-follow-cursor-label { top: auto; bottom: 24px; }
-
-.mio-follow-name {
-  display: inline-flex;
-  height: 20px;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px 0 6px;
-  border-radius: 10px;
-  background: var(--mio-follow-color);
-  color: var(--wb-mio-follow-ink);
-  box-shadow: 0 2px 8px var(--wb-shadow-color);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
 
 .mio-follow-bubble {
   box-sizing: border-box;

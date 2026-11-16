@@ -25,6 +25,5 @@ export default function ClipAudioRoleControls({ kind, value, editable, blocked, 
       <option value="">{t('audio.role.unclassified')}</option>
       {AUDIO_ROLES.map(role => <option key={role} value={role}>{t(`audio.role.${role}`)}</option>)}
     </Select>
-    <p className="input-hint" id="clip-audio-role-hint">{t('audio.role.hint')}</p>
   </div>;
 }

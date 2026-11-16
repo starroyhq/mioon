@@ -19,7 +19,7 @@
 .pf-check { display: inline-flex; align-items: center; gap: var(--wb-space-2); width: max-content; max-width: 100%; color: var(--wb-text); font-size: var(--wb-text-label); line-height: 1.5; cursor: pointer; }
 .pf-check input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--wb-accent); }
 .pf-label-with-icon { display: inline-flex; align-items: center; gap: 6px; }
-.pf-info { display: inline-flex; color: var(--wb-muted); }
+.pf-info { display: inline-grid; width: 24px; height: 24px; place-items: center; vertical-align: middle; color: var(--wb-muted); }
 
 /* Loading, empty and error blocks inside panels and dialogs. */
 .pf-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--wb-space-2); min-height: 160px; padding: var(--wb-space-6); color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; text-align: center; }

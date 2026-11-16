@@ -20,7 +20,7 @@ export default function ClipTransitionControls({ clip, context, disabled, disabl
   const saved = savedTransition(clip), issue = transitionIssue(fields, context);
   const apply = (next: ClipTransition | null) => { if (!disabled) void onSetTransition?.(next); };
   const kindLabel = (kind: ClipTransitionKind) => t(`clip.transition.kind.${kind}`);
-  return <fieldset className="clip-transition" data-testid="clip-transition" aria-describedby={`${id}-hint`}>
+  return <fieldset className="clip-transition" data-testid="clip-transition">
     <legend>{t('clip.transition.title')}</legend>
     <p className="input-hint" data-testid="clip-transition-status">{saved ? t('clip.transition.current', { kind: kindLabel(saved.kind), frames: saved.durationFrames }) : null}
       {saved && context.hasCut && context.maxFrames >= 2 ? ' · ' : null}{context.hasCut && context.maxFrames >= 2 ? t('clip.transition.room', { frames: context.maxFrames }) : null}</p>
@@ -47,6 +47,5 @@ export default function ClipTransitionControls({ clip, context, disabled, disabl
         onClick={() => apply(null)}>{t('clip.transition.remove')}</Button>
     </div>
     {disabledReason && <p className="input-hint" role="status" data-testid="clip-transition-disabled">{disabledReason}</p>}
-    <p id={`${id}-hint`} className="input-hint">{t('clip.transition.hint')}</p>
   </fieldset>;
 }

@@ -216,7 +216,7 @@ function componentHarness(patch = {}) {
 test('inline component renders accessible choose/review/explicit approval and every pinned source field', () => {
   const h = componentHarness(); assert.equal(h.find('clip-source-replacement')!.props['aria-labelledby'], 'clip-replacement-title');
   h.review(); assert.equal(h.calls.length, 0);
-  for (const expected of [/旧来源/, /6\.00 秒/, /新来源/, /8\.00 秒/, /来源镜头 · V2/, /修订 7/, /30 帧/, /90 帧/, /12 → 102 帧/, /名称、位置、时长、入点/] as const) assert.match(h.text(), expected);
+  for (const expected of [/旧来源/, /6\.00 秒/, /新来源/, /8\.00 秒/, /来源镜头 · V2/, /修订 7/, /30 帧/, /90 帧/, /12 → 102 帧/ ] as const) assert.match(h.text(), expected);
   assert.ok(h.all().filter(node => node.type === 'Button').every(node => node.props.type === 'button'));
   assert.equal(h.all().some(node => node.type === 'form' || node.props.role === 'dialog'), false);
   h.setDirty(true); assert.equal(h.find('approve-clip-replacement')!.props.disabled, true); assert.match(h.text(), /保存或放弃/);

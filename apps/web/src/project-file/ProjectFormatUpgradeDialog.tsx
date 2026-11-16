@@ -33,11 +33,10 @@ export function ProjectFormatUpgradeDialog({busy, notice, recheck, blocked, onCh
             data-testid="pf-format-approve" onClick={() => onChoose('upgrade')}>{t('projectFile.upgrade.open')}</WorkbenchButton>
         </div>
         {notice === 'changed' && !recheck && <WorkbenchButton disabled={blocked} onClick={onClose}>{t('common.close')}</WorkbenchButton>}
-        <p className="pf-format-upgrade-note">{t('projectFile.upgrade.readOnlyHint')}</p>
       </>}>
       <div className="pf-format-upgrade-backup">
         <Layers size={15} aria-hidden="true" />
-        <div><strong>{t('projectFile.upgrade.backup')}</strong><span>{t('projectFile.upgrade.backupLocation')}</span></div>
+        <strong>{t('projectFile.upgrade.backup')}</strong>
       </div>
       {notice && <WorkbenchAlert tone="danger" data-testid="pf-format-upgrade-error">{t(`projectFile.upgrade.${notice}`)}</WorkbenchAlert>}
       {recheck && <WorkbenchAlert tone="warning" actions={<WorkbenchButton disabled={blocked} onClick={recheck}>{t('projectFile.create.recheck')}</WorkbenchButton>}>
