@@ -1,6 +1,8 @@
 import {flushSync} from 'react-dom';
 import {createRoot} from 'react-dom/client';
-import {benchmarkTitleParams, TitlePop} from './title-pop.tsx';
+import sampleTitle from './sample-title.json' with {type: 'json'};
+import {TitlePop} from './title-pop.tsx';
+import type {TitlePopParams} from './title-pop.tsx';
 
 const query = new URLSearchParams(location.search);
 const mode = query.get('mode');
@@ -18,7 +20,7 @@ const fps = positiveInteger('fps', 30, 120);
 const stage = document.getElementById('motion-stage')!;
 const overlay = document.getElementById('motion-overlay')!;
 const root = createRoot(overlay);
-const titleParams = {...benchmarkTitleParams, fontSize: benchmarkTitleParams.fontSize * width / 1080};
+const titleParams: TitlePopParams = {...sampleTitle, fontSize: sampleTitle.fontSize * width / 1080};
 const previewVideo = mode === 'preview' ? document.createElement('video') : undefined;
 let overlayOnly = !previewVideo;
 let videoCallback: number | undefined;

@@ -11,15 +11,6 @@ export interface TitlePopParams {
   readonly durationFrames: number;
 }
 
-export const benchmarkTitleParams: TitlePopParams = Object.freeze({
-  text: '你好 Mioon',
-  color: '#FFE599',
-  fontSize: 96,
-  enterFrames: 24,
-  exitFrames: 12,
-  durationFrames: 150,
-});
-
 const enterOpacity = cubicBezier(0.2, 0.65, 0.3, 1);
 
 export function TitlePop({frame, fps, width, height, params}: MotionFrameProps<TitlePopParams>) {
