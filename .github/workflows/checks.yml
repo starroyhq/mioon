@@ -290,7 +290,7 @@ jobs:
   portable:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.target == 'macos' && 30 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -362,7 +362,9 @@ jobs:
 
       - name: Measure export segments on macOS arm64
         if: matrix.target == 'macos' && github.event_name == 'pull_request'
-        timeout-minutes: 8
+        # The small runner selects one encoder. Both 120-second renders take
+        # about four minutes each, in addition to the short fixture and setup.
+        timeout-minutes: 12
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
