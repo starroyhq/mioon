@@ -40,18 +40,25 @@ export function createMioProjectMedia({store, privateDirectories, signal}: {
       fence();
       const imports = await readProjectUnpublishedMediaSnapshot(store, {signal: combined, beforeEffect: fence});
       const publications = await readProjectOutputUnpublishedSnapshot(store, {signal: combined, beforeEffect: fence});
-      const beforeEffect = (): void => {fence(); imports.assertCurrent(); publications.assertCurrent(); fence();};
-      beforeEffect();
+      const checkSnapshots = (includeReceiptBytes: boolean): void => {
+        fence();
+        if (includeReceiptBytes) imports.assertCurrent();
+        else imports.assertMetadataCurrent();
+        publications.assertCurrent(); fence();
+      };
+      // Check bytes across the listing without reopening every receipt for
+      // each file's intermediate metadata and read fences.
+      checkSnapshots(true);
       // Persisted S1 references have size/mtime but no registration-time dev/ino.
       // Without all three proofs they are ineligible for duration reuse; L1's
       // bounded metadata probe is used instead of guessing identity from a path.
       const result = await listProjectMediaPage({projectDir: directory, projectFile: file, mayReadOutside: () => false,
         isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)}, parsed.data.directory ?? '', {
-        projectId, ...parsed.data, signal: combined, beforeEffect,
+        projectId, ...parsed.data, signal: combined, beforeEffect: () => checkSnapshots(false),
         scopeVersion: JSON.stringify([imports.version, publications.version, scope.blockedRoots]),
         isExcluded: (file, stats) => isPrivate(file) || imports.isExcluded(file, stats) || publications.isExcluded(file, stats),
       });
-      beforeEffect();
+      checkSnapshots(true);
       return mioProjectMediaListingSchema.parse(result);
     },
   };
