@@ -308,6 +308,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.source_sha }}
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Setup pnpm
@@ -337,6 +338,26 @@ jobs:
       - name: Test CI and release helpers
         id: helpers
         run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-ffmpeg-toolchain.test.ts tests/actions-test-shards.test.ts
+
+      - name: Measure motion layer prototype on macOS
+        if: matrix.target == 'macos' && github.event_name == 'pull_request'
+        timeout-minutes: 8
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          changed="$(git diff --name-only "$PR_BASE_SHA" HEAD -- apps/desktop/src/motion-layer-prototype apps/web/src/motion-layer-prototype scripts/motion-layer-prototype.ts)"
+          if test -z "$changed"; then exit 0; fi
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            brew install ffmpeg
+          fi
+          results="$RUNNER_TEMP/mioon-motion-layer.json"
+          node scripts/motion-layer-prototype.ts --channel=development | tee "$results"
+          {
+            printf '\n### Motion layer prototype (macOS)\n\n```json\n'
+            cat "$results"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write safe diagnostics
         if: always()
