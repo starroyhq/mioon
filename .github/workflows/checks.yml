@@ -290,7 +290,7 @@ jobs:
   portable:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.target == 'macos' && 30 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -356,6 +356,31 @@ jobs:
           node scripts/motion-layer-prototype.ts --channel=development --compare-legacy | tee "$results"
           {
             printf '\n### Motion layer prototype (macOS)\n\n```json\n'
+            cat "$results"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Measure export segments on macOS arm64
+        if: matrix.target == 'macos' && github.event_name == 'pull_request'
+        # The small runner selects one encoder. Both 120-second renders take
+        # about four minutes each, in addition to the short fixture and setup.
+        timeout-minutes: 12
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # The benchmark opts in by changing its own fixture. Ordinary render
+          # fixes may intentionally change bytes and use their own acceptance.
+          changed="$(git diff --name-only --diff-filter=AM "$PR_BASE_SHA" HEAD -- scripts/benchmark-export-segments.ts)"
+          if test -z "$changed"; then exit 0; fi
+          test "$(uname -m)" = arm64
+          baseline="$(mktemp -d "$RUNNER_TEMP/mioon-export-base.XXXXXX")"
+          for module in timeline-media media-processes media-runtime; do
+            git show "${PR_BASE_SHA}:packages/business/src/${module}.ts" > "$baseline/${module}.ts"
+          done
+          results="$RUNNER_TEMP/mioon-export-benchmark.json"
+          node scripts/benchmark-export-segments.ts --baseline="$baseline" --runs=1 --download-release-tools | tee "$results"
+          {
+            printf '\n### Timeline export segments (macOS arm64)\n\n```json\n'
             cat "$results"
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"

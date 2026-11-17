@@ -7,7 +7,7 @@ import {renameSync,statSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {selectedRangeFixture} from './fixtures/selected-range-http-fixture.ts';
-import {registerExportActivity,exportStage} from '../packages/business/src/export-controls.ts';
+import {registerExportActivity,exportEncodingProgress,exportStage} from '../packages/business/src/export-controls.ts';
 import type { Store as WorkspaceStore } from '../packages/business/src/store-contract.ts';
 import type {OrdinaryServices} from '../packages/business/src/services.ts';
 import {exportActivitySchema,exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
@@ -38,7 +38,20 @@ test('running cancellation aborts only its owned operation and terminal publicat
   f.store.put('exports',{...one,status:'running'});f.store.put('exports',{...two,status:'running'});
   const a=registerExportActivity(f.store,String(one.id),()=>first++),b=registerExportActivity(f.store,String(two.id),()=>second++);t.after(()=>{a.close();b.close();});
   exportStage(f.store,String(one.id),'encoding');const input={projectId:f.project.id,exportId:one.id};
-  assert.equal(exportActivitySchema.parse(await f.services.call('export.activity.get',input)).stage,'encoding');await f.services.call('export.cancel',input);assert.equal(first,1);assert.equal(second,0);assert.equal(object(f.store.get('exports',String(two.id))).status,'running');
+  const activity=async(exportId=one.id)=>exportActivitySchema.parse(await f.services.call('export.activity.get',{...input,exportId}));
+  assert.equal((await activity()).stage,'encoding');
+  exportEncodingProgress(f.store,one.id,1,4);assert.equal((await activity()).progress,25);
+  exportEncodingProgress(f.store,one.id,4,4);assert.equal((await activity()).progress,99);
+  exportEncodingProgress(f.store,one.id,3,4);assert.equal((await activity()).progress,99);
+  exportStage(f.store,one.id,'finalizing');assert.equal((await activity()).progress,99);
+  assert.equal((await activity(two.id)).progress,null);
+  exportStage(f.store,two.id,'encoding');exportEncodingProgress(f.store,two.id,2,4);
+  assert.equal((await activity(two.id)).progress,50);
+  b.close();
+  const restarted=registerExportActivity(f.store,two.id,()=>second++);t.after(restarted.close);
+  assert.equal((await activity(two.id)).progress,null);
+  await f.services.call('export.cancel',input);assert.equal(first,1);assert.equal(second,0);assert.equal(object(f.store.get('exports',String(two.id))).status,'running');
+  assert.equal((await activity()).progress,null);
   const done={...two,status:'succeeded',assetId:randomUUID(),url:'/media/synthetic',error:null};f.store.put('exports',done);
   // A malformed terminal record must be rejected, never repaired by cancellation.
   await assert.rejects(f.services.call('export.cancel',{projectId:f.project.id,exportId:two.id}),{code:'INVALID_TIMELINE_SNAPSHOT'});assert.equal(second,0);
@@ -52,6 +65,7 @@ test('output location is bound to the accepted export and rejects changed bytes,
   const {relativePath,...locator}=published,asset={id:assetId,projectId:f.project.id,name:'Owned output.mp4',mimeType:'video/mp4',...locator,width:1080,height:1920,duration:10,hasVideo:true,hasAudio:true,provenance:'export',producer:{kind:'export',id:record.id},createdAt:new Date().toISOString(),url:`/media/${assetId}`};
   f.store.put('assets',asset);f.store.put('exports',{...record,status:'succeeded',assetId,url:asset.url,error:null});
   const identity={projectId:f.project.id,exportId:record.id},output=exportOutputSchema.parse(await f.services.call('export.output.get',identity));assert.equal(output.fileLocation,path.join(f.root,relativePath));assert.equal(output.sha256,asset.sha256);assert.equal(output.sizeBytes,bytes.length);const {relativePath:publishedPath,...proof}=asset.publication;assert.deepEqual(output.publication,{...proof,projectRelativePath:publishedPath});
+  assert.equal(exportActivitySchema.parse(await f.services.call('export.activity.get',identity)).progress,100);
   await assert.rejects(f.services.call('export.output.get',{...identity,path:'/tmp/foreign.mp4'}));await assert.rejects(f.services.call('export.output.get',{...identity,projectId:randomUUID()}),{code:'NOT_FOUND'});
   for(const patch of [{publication:undefined},{publication:{...asset.publication,owner:{...asset.publication.owner,id:randomUUID()}}},{reference:{...asset.reference,path:`../${path.basename(relativePath)}`}}]){
    f.store.put('assets',{...asset,...patch});await assert.rejects(f.services.call('export.output.get',identity),{code:'EXPORT_FILE_UNAVAILABLE'});

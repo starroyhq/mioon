@@ -140,6 +140,36 @@ test('timeout and abort reap owned children with one start/exit pair', async t =
   }
 });
 
+test('a timed-out runner signals its sibling before its own close is observed', async t => {
+  const root = await sandbox(t), marker = path.join(root, 'sibling-ready');
+  const sibling = new AbortController();
+  const siblingRun = run(process.execPath, [fixture, 'wait', marker], {signal: sibling.signal});
+  void siblingRun.catch(() => {});
+  try {
+    await ready(marker);
+    const order: string[] = [];
+    let timedPid: number | undefined;
+    const off = onMediaProcess(event => {
+      if (event.type === 'started') timedPid = event.pid;
+      if (event.type === 'exited' && event.pid === timedPid) order.push('timed child closed');
+    });
+    t.after(off);
+    await assert.rejects(run(process.execPath, [fixture, 'wait'], {
+      timeout: 100,
+      onStopping() {
+        sibling.abort();
+        order.push('sibling cancelled');
+      },
+    }), rejected('MEDIA_TIMEOUT'));
+    assert.deepEqual(order, ['sibling cancelled', 'timed child closed']);
+    await assert.rejects(siblingRun, rejected('MEDIA_CANCELLED'));
+    assert.deepEqual(await terminateMediaProcesses(), []);
+  } finally {
+    sibling.abort();
+    await siblingRun.catch(() => {});
+  }
+});
+
 test('scoped termination leaves other owners running and repeated stop is idempotent', async t => {
   const root = await sandbox(t), owner = new AbortController(), other = new AbortController();
   const a = spawnMedia(process.execPath, [fixture, 'wait', path.join(root, 'a')], { stdio: 'ignore' }, { kind: 'fixture-a', signal: owner.signal });
@@ -155,6 +185,24 @@ test('scoped termination leaves other owners running and repeated stop is idempo
   let attempted = false;
   assert.deepEqual(await terminateMediaProcess({ kill() { attempted = true; } } as unknown as ChildProcess), { status: 'unowned', forced: false });
   assert.equal(attempted, false);
+});
+
+test('worker shutdown still owns a runner using a separate segment cancellation signal', async t => {
+  const root = await sandbox(t), marker = path.join(root, 'owned-segment');
+  const worker = new AbortController(), segment = new AbortController();
+  const joined = assert.rejects(run(process.execPath, [fixture, 'wait', marker], {
+    signal: segment.signal, ownerSignal: worker.signal,
+  }), rejected('MEDIA_CANCELLED'));
+  try {
+    await ready(marker);
+    assert.deepEqual(await terminateMediaProcesses({signal: segment.signal}), []);
+    assert.deepEqual(await terminateMediaProcesses({signal: worker.signal}), [{status: 'exited', forced: false}]);
+    await joined;
+    assert.equal(segment.signal.aborted, false);
+  } finally {
+    segment.abort();
+    await joined;
+  }
 });
 
 test('an owned child that ignores TERM is hard-stopped within the bounded reap window', async t => {

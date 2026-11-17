@@ -5,7 +5,7 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {isCanvasArchived} from './canvas-active.ts';
 import {createProjectBackgroundState,pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from './background-task-state.ts';
-import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
+import {registerExportActivity,isCancelledExport,exportStage,exportEncodingProgress} from './export-controls.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
@@ -16,7 +16,7 @@ import {isTimelineExportSnapshot,isTimelineRenderRecord} from '@mioon/contracts'
 import {lstatSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
-import {terminateMediaProcesses,waitForMediaProcesses} from './media-processes.ts';
+import {hasUnconfirmedMediaProcesses,terminateMediaProcesses,waitForMediaProcesses} from './media-processes.ts';
 import {rename,link,unlink,lstat,open} from 'node:fs/promises';
 import path from 'node:path';
 import {fileInfo,probe,safePath,stitch,run} from './media.ts';
@@ -551,7 +551,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(currentOwnedExport(e)?.status!=='running')return;
     preparedAssets=assets as unknown as Map<string, unknown>;
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
-    const rendered=await (exportStage(store,e.id,'encoding'),renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
+    exportStage(store,e.id,'encoding');
+    const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
+     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
+     onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
+     ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
+    });checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
     // Every native await retains source ownership, including storyboard output
@@ -632,18 +637,18 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
+   terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed')||hasUnconfirmedMediaProcesses({signal}));
+   if(terminationUnconfirmed)failShutdown(error);
    if(publicationAccepted)return;
    if(isBackgroundTaskIndexUncertain(error))return;
    if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:e.id},error))return;
-   terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed'));
-   if(property(error,'terminationUnconfirmed'))failShutdown(error);
    const failExport=(): void=>{
     const latest=currentOwnedExport(e);
     const latestStatus=stringValue(property(latest,'status'));
     if(!latest||isCancelledExport(latest)||latestStatus==='cancelled'||(customExport(e)||writerOwner&&artifact&&latest.assetId===artifact.assetId)&&latestStatus==='succeeded')return;
     if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return;}
     const audioCheck=floatExport&&!signal.aborted?(floatMeasurement?bindFloatTimelineMeasurement(e as never,floatMeasurement,now()):bindFloatTimelineFailure(e as never,error,now())):undefined;
-    put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:property(error,'terminationUnconfirmed')?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
+    put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:terminationUnconfirmed?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
    };
    tx(failExport);
   } finally {
@@ -664,7 +669,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
    if(outputHandle)await outputHandle.close().catch(()=>{});
    };
-   if((floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
+   if(terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
   }
  }

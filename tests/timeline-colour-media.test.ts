@@ -13,8 +13,10 @@ import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/c
 import {createTimelineColourPlan} from '../packages/contracts/src/timeline-colour.ts';
 import {parseCube3D,sampleCube3D} from '../packages/business/src/cube-lut.ts';
 import {premixTimelineColourLut,prepareTimelineColourLuts,TIMELINE_COLOUR_OUTPUT_FILTER,timelineColourInputFilter} from '../packages/business/src/timeline-colour-lut.ts';
-import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {hasUnconfirmedMediaProcesses,onMediaProcess,terminateMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {freezeTimelineSnapshot} from '../packages/business/src/timeline-inputs.ts';
+import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
+import {TIMELINE_EXPORT_FLOAT_PROFILE_ID,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 import {LUT_RESOURCE_PROFILE} from '../packages/contracts/src/lut-resources.ts';
 import type { BinaryLike } from 'crypto';
 import type { ProbeOutput } from '@mioon/business/media-probe';
@@ -124,4 +126,145 @@ test('cancelled colour capability joins its child and removes only owned LUT and
  const root=await sandbox(t),asset=await source(root),data=content(cube(((nonlinear) as unknown as Parameters<typeof cube>[0]))),snapshot=frozen(asset,binding(data,.5)),controller=new AbortController(),before=(await readdir(root)).sort(),events: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],off=onMediaProcess(event=>{events.push(((event) as unknown as Parameters<typeof events.push>[0]));if(event.type==='started'&&event.kind==='ffmpeg')controller.abort();});
  try{await assert.rejects(renderTimeline(((snapshot) as unknown as Parameters<typeof renderTimeline>[0]),new Map([[asset.id,asset]]),path.join(root,'cancelled.mp4'),{signal:controller.signal,readLut:(_look?: unknown,read: unknown=true)=>read?data:undefined}),{code:'MEDIA_CANCELLED'});}finally{off();}
  assert.equal(events.filter(e=>e.type==='started').length,1);assert.equal(events.filter(e=>e.type==='exited').length,1);assert.deepEqual((await readdir(root)).sort(),before);assert.equal(sha(await readFile(asset.path)),asset.sha256);
+});
+
+function watchSegmentEncoders(mode: 'observe'|'reorder'|'cancel'|'fail', controller: AbortController) {
+ const started: number[] = [], closed: number[] = [], active = new Set<number>();
+ let launches = 0, peak = 0, observerFailure: unknown;
+ const off = onMediaProcess(({type, kind, pid}) => {
+  if (kind !== 'ffmpeg' || pid === undefined) return;
+  try {
+   if (type === 'started' && started.length < launches) {
+    active.add(pid);
+    started.push(pid);
+    peak = Math.max(peak, active.size);
+    if (mode === 'observe') return;
+    // Keep the first exact child alive even on a fast runner. Only the test's
+    // own segment children receive these signals.
+    if (started.length === 1) process.kill(pid, 'SIGSTOP');
+    if (started.length === 2) {
+     assert.equal(active.size, 2);
+     if (mode === 'cancel') controller.abort();
+     if (mode === 'fail') process.kill(pid, 'SIGKILL');
+    }
+   }
+   if (type === 'exited' && active.delete(pid)) {
+    closed.push(pid);
+    if (mode === 'reorder' && pid === started[1]) process.kill(started[0]!, 'SIGCONT');
+   }
+  } catch (error) {
+   observerFailure = error;
+   controller.abort();
+  }
+ });
+ return {
+  started, closed,
+  beforeStart() { launches++; },
+  assertJoined(count: number, concurrency: number) {
+   assert.ifError(observerFailure);
+   assert.equal(launches, count);
+   assert.equal(started.length, count);
+   assert.equal(peak, concurrency);
+   assert.deepEqual(new Set(closed), new Set(started));
+   assert.equal(active.size, 0);
+   assert.equal(hasUnconfirmedMediaProcesses(), false);
+  },
+  async dispose() {
+   // If the assertion fails, still reap the test's stopped child. These tests
+   // run sequentially in their own file process.
+   try { if (active.size) await terminateMediaProcesses(); }
+   finally { off(); }
+  },
+ };
+}
+
+test('bounded parallel segments preserve exact export bytes and join their children on interruption', {
+ timeout: 180_000, skip: process.platform === 'win32' && 'POSIX child-process signals',
+}, async t => {
+ const root = await sandbox(t), video = await source(root), soundFile = path.join(root, 'tone.wav');
+ await run('ffmpeg', ['-v','error','-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=1',
+  '-ac','2','-c:a','pcm_f32le',soundFile], {timeout: 30_000});
+ const sound = {id: randomUUID(), path: soundFile, mimeType: 'audio/wav',
+  sha256: sha(await readFile(soundFile)), relativePath: 'tone.wav', ...await probe(soundFile)};
+ const data = content(cube(((nonlinear) as unknown as Parameters<typeof cube>[0])));
+ const {timeline: base} = frozen(video, binding(data, .5));
+ const [track] = base.tracks, extraTrack = {...track, id: randomUUID(), orderIndex: 1};
+ const soundTrack = {...extraTrack, id: randomUUID(), kind: 'audio', orderIndex: 2};
+ const opening = {...base.clips[0]!, assetId: video.id, durationFrames: 10, sourceInFrame: 4};
+ const incoming = {...opening, id: randomUUID(), startFrame: 10, durationFrames: 13, sourceInFrame: 8,
+  colour: {...opening.colour, look: null},
+  transitionIn: {profileId: CLIP_TRANSITION_PROFILE, kind: 'dissolve', durationFrames: 8}};
+ // The second track cuts the dissolve at frame 12, inside its [6, 14) range.
+ const extra = {...opening, id: randomUUID(), trackId: extraTrack.id, startFrame: 12, durationFrames: 3,
+  rect: {x: 0, y: 0, width: 240, height: 240}};
+ const tone = {id: randomUUID(), assetId: sound.id, trackId: soundTrack.id, startFrame: 0,
+  durationFrames: 23, sourceInFrame: 0, gain: 1, rect: opening.rect};
+ const timeline = {...base, durationFrames: 23, tracks: [track, extraTrack, soundTrack],
+  clips: [opening, incoming, extra, tone], subtitles: {profileId: TIMELINE_SUBTITLE_PROFILE_ID,
+   cues: [{id: randomUUID(), text: 'Across the cut', startFrame: 5, durationFrames: 12}]}};
+ const assets = new Map<string, typeof video | typeof sound>([[video.id, video], [sound.id, sound]]);
+ const snapshot = freezeTimelineSnapshot(timeline, assets, {
+  profileId: TIMELINE_EXPORT_FLOAT_PROFILE_ID, resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'},
+ });
+ const readLut = (_look: unknown, includeBytes = true) => includeBytes ? data : undefined;
+
+ await t.test('final MP4 matches serial even when encoders close out of launch order', async subtest => {
+  const serial = path.join(root, 'serial.mp4'), parallel = path.join(root, 'parallel.mp4');
+  const before = await readdir(root);
+  const controller = new AbortController(), signal = AbortSignal.any([subtest.signal, controller.signal]);
+  const progress: [number, number][] = [];
+  const serialEncoders = watchSegmentEncoders('observe', controller);
+  let serialResult: FloatRenderResult;
+  try {
+   serialResult = await renderTimeline(snapshot, assets, serial, {
+    segmentConcurrency: 1, readLut, signal, beforeStart: serialEncoders.beforeStart,
+   }) as FloatRenderResult;
+   serialEncoders.assertJoined(6, 1);
+  } finally {
+   await serialEncoders.dispose();
+  }
+  assert.equal(serialResult.audioCheck.sampleFrames, timeline.durationFrames * 1600);
+  assert.ok(serialResult.audioCheck.peakLinear > .05 && serialResult.audioCheck.peakLinear < .2);
+  const parallelEncoders = watchSegmentEncoders('reorder', controller);
+  try {
+   const result = await renderTimeline(snapshot, assets, parallel, {
+    segmentConcurrency: 2, readLut, signal,
+    beforeStart: parallelEncoders.beforeStart,
+    onSegmentProgress(completed, total) { progress.push([completed, total]); },
+   }) as FloatRenderResult;
+   parallelEncoders.assertJoined(6, 2);
+   assert.deepEqual(result.audioCheck, serialResult.audioCheck);
+  } finally {
+   await parallelEncoders.dispose();
+  }
+  assert.equal(parallelEncoders.closed[0], parallelEncoders.started[1]);
+  const serialHash = sha(await readFile(serial));
+  assert.equal(sha(await readFile(parallel)), serialHash);
+  subtest.diagnostic(`N=1 and N=2 SHA-256 ${serialHash}`);
+  assert.deepEqual((await readdir(root)).sort(), [...before, 'serial.mp4', 'parallel.mp4'].sort());
+  const completedFrames = progress.map(([completed, total]) => {
+   assert.equal(total, timeline.durationFrames);
+   return completed;
+  });
+  assert.equal(completedFrames.at(-1), timeline.durationFrames);
+  const increments = completedFrames.map((frames, index) => frames - (completedFrames[index - 1] ?? 0));
+  assert.deepEqual(increments.sort((a,b) => a-b), [1,2,2,4,6,8]);
+ });
+
+ for (const [mode, code] of [['cancel','MEDIA_CANCELLED'], ['fail','MEDIA_EXIT_FAILED']] as const) {
+  await t.test(`${mode} reaps every started child before removing staging`, async subtest => {
+   const before = (await readdir(root)).sort(), controller = new AbortController();
+   const encoders = watchSegmentEncoders(mode, controller);
+   try {
+    await assert.rejects(renderTimeline(snapshot, assets, path.join(root, `${mode}.mp4`), {
+     segmentConcurrency: 2, readLut, beforeStart: encoders.beforeStart,
+     signal: AbortSignal.any([subtest.signal, controller.signal]),
+    }), {code});
+    encoders.assertJoined(2, 2);
+   } finally {
+    await encoders.dispose();
+   }
+   assert.deepEqual((await readdir(root)).sort(), before);
+  });
+ }
 });
