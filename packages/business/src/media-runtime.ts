@@ -20,6 +20,12 @@ export interface MediaRunOptions {
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
 }
+interface OwnedMediaRunOptions extends MediaRunOptions {
+  /** Worker shutdown keeps ownership even when a narrower signal stops the child. */
+  ownerSignal?: AbortSignal;
+  /** Stop dependent tools while this one is still being reaped. */
+  onStopping?: () => void;
+}
 export interface MediaStreamingRunOptions extends MediaRunOptions {
   onStdout?: (chunk: Buffer) => unknown;
 }
@@ -58,6 +64,8 @@ const byteLimit = (value: number, maximum: number): number => {
 interface RunMediaOptions {
   timeout: number;
   signal: AbortSignal | null | undefined;
+  ownerSignal?: AbortSignal;
+  onStopping?: () => void;
   beforeSpawn: MediaEffectFence | undefined;
   beforeEffect: MediaEffectFence | undefined;
   maxStdoutBytes: number;
@@ -65,9 +73,9 @@ interface RunMediaOptions {
 }
 
 /** Bounded, shell-free runner. Errors never contain child output, argv or paths. */
-export async function run(command: string, args: readonly string[], { timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal, beforeSpawn, beforeEffect,
-  maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes }: MediaRunOptions = {}): Promise<string> {
-  return runMedia(command, args, { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, undefined);
+export async function run(command: string, args: readonly string[], { timeout = MEDIA_RUNTIME_LIMITS.timeoutMs, signal, ownerSignal, onStopping, beforeSpawn, beforeEffect,
+  maxStdoutBytes = MEDIA_RUNTIME_LIMITS.stdoutBytes, maxStderrBytes = MEDIA_RUNTIME_LIMITS.stderrBytes }: OwnedMediaRunOptions = {}): Promise<string> {
+  return runMedia(command, args, { timeout, signal, ownerSignal, onStopping, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }, undefined);
 }
 
 /** Consume bounded binary stdout synchronously, without retaining its chunks.
@@ -92,7 +100,7 @@ export const runStreamingWithBackpressure = createStreamingMediaRuntime({
 
 function runMedia(command: string, args: readonly string[], { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }: RunMediaOptions, onStdout: undefined): Promise<string>;
 function runMedia(command: string, args: readonly string[], { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }: RunMediaOptions, onStdout: (chunk: Buffer) => unknown): Promise<MediaStreamingRunResult>;
-function runMedia(command: string, args: readonly string[], { timeout, signal, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }: RunMediaOptions, onStdout?: ((chunk: Buffer) => unknown) | undefined): Promise<string | MediaStreamingRunResult> {
+function runMedia(command: string, args: readonly string[], { timeout, signal, ownerSignal, onStopping, beforeSpawn, beforeEffect, maxStdoutBytes, maxStderrBytes }: RunMediaOptions, onStdout?: ((chunk: Buffer) => unknown) | undefined): Promise<string | MediaStreamingRunResult> {
   throwIfMediaAborted(signal);
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 2147483647 || !Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.includes('\0'))) throw mediaConfigurationError();
   const stdoutLimit = byteLimit(maxStdoutBytes, onStdout ? MEDIA_RUNTIME_LIMITS.streamingStdoutBytes : MEDIA_RUNTIME_LIMITS.stdoutBytes), stderrLimit = byteLimit(maxStderrBytes, MEDIA_RUNTIME_LIMITS.stderrBytes);
@@ -131,13 +139,14 @@ function runMedia(command: string, args: readonly string[], { timeout, signal, b
         activeChild.stdout?.destroy(); activeChild.stderr?.destroy();
         finish();
       });
+      try { onStopping?.(); } catch { /* A stop observer cannot interrupt reaping. */ }
     };
     const abort = (): void => stop(interruptedMediaError());
     // Keep callback failures outside spawn-error sanitization. There is no
     // await between these fences and the actual child creation.
     try { checkMediaEffect(beforeSpawn, signal); checkMediaEffect(beforeEffect, signal); }
     catch (error) { reject(error); return; }
-    try { child = spawnMedia(executable, args, { stdio: ['ignore', 'pipe', 'pipe'] }, { kind: command, signal }); }
+    try { child = spawnMedia(executable, args, { stdio: ['ignore', 'pipe', 'pipe'] }, { kind: command, signal, ownerSignal }); }
     catch (error) {
       const failure = isTerminationUnconfirmed(error) ? error : signal?.aborted ? interruptedMediaError() : mediaError('MEDIA_SPAWN_FAILED', 'Could not start the local media tool.');
       try { if (isMediaToolFailure(failure)) checkMediaEffect(beforeEffect, signal); }

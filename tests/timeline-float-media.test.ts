@@ -3,7 +3,7 @@ import type {FloatRenderResult,ProbeJson} from './helpers/strict-timeline-media-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,readdir,stat,mkdir} from 'node:fs/promises';
-import {readdirSync,readFileSync,statSync} from 'node:fs';
+import {existsSync,readdirSync,readFileSync,statSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
@@ -75,14 +75,15 @@ test('actual complete within-limit check survives a subsequent AAC spawn failure
 
 
 // Independent media evidence from the renderer's already-produced, owned
-// intermediates. Copies are test-only and read after observed direct-child close;
-// production staging ownership/cleanup is never changed or bypassed.
+// intermediates. The concat list is written after all segment children close.
+// Capturing earlier could copy a partially written sibling MOV.
 async function captureRenderedSegments(root: PathLike,label: string,operation: { (): Promise<unknown>; (): Promise<unknown>; (): Promise<unknown>; (): Promise<unknown>; (): unknown; }){
  const captured=new Map();
  const off=onMediaProcess(event=>{
-  if(event.type!=='exited'||event.kind!=='ffmpeg')return;
+  if(event.type!=='started'||event.kind!=='ffmpeg')return;
   for(const directory of readdirSync(root).filter(name=>name.startsWith('.timeline-render-'))){
    const work=path.join(((root) as unknown as Parameters<typeof path.join>[0]),directory);
+   if(!existsSync(path.join(work,'segments.txt')))continue;
    for(const leaf of readdirSync(work).filter(name=>/^segment-\d+\.mov$/.test(name))){
     if(captured.has(leaf))continue;const file=path.join(work,leaf);if(statSync(file).size)captured.set(leaf,readFileSync(file));
    }

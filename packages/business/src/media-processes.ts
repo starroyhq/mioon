@@ -44,17 +44,22 @@ export function interruptedMediaError(): MediaInterruptedError {
 }
 export function throwIfMediaAborted(signal?: AbortSignal | null): void { if (signal?.aborted) throw interruptedMediaError(); }
 
+interface MediaProcessOwner {
+  kind?: string;
+  signal?: AbortSignal | null;
+  ownerSignal?: AbortSignal | null;
+}
 /** Only trusted executable paths and generated argv arrays reach this module. */
-export function spawnMedia(command: string, args: readonly string[], options: SpawnOptions & { stdio: ['ignore', 'pipe', 'pipe'] }, owner?: { kind?: string; signal?: AbortSignal | null }): PipedMediaChild;
-export function spawnMedia(command: string, args: readonly string[], options?: SpawnOptions, owner?: { kind?: string; signal?: AbortSignal | null }): ManagedMediaChild;
-export function spawnMedia(command: string, args: readonly string[], options: SpawnOptions = {}, { kind, signal }: { kind?: string; signal?: AbortSignal | null } = {}): ManagedMediaChild {
+export function spawnMedia(command: string, args: readonly string[], options: SpawnOptions & { stdio: ['ignore', 'pipe', 'pipe'] }, owner?: MediaProcessOwner): PipedMediaChild;
+export function spawnMedia(command: string, args: readonly string[], options?: SpawnOptions, owner?: MediaProcessOwner): ManagedMediaChild;
+export function spawnMedia(command: string, args: readonly string[], options: SpawnOptions = {}, { kind, signal, ownerSignal = signal }: MediaProcessOwner = {}): ManagedMediaChild {
   throwIfMediaAborted(signal);
   if (hasUnconfirmedMediaProcesses()) throw Object.assign(new Error('A previous local media tool has not confirmed its close.'), { code: 'MEDIA_TERMINATION_UNCONFIRMED', terminationUnconfirmed: true });
   // Never accept an environment overlay. Even direct callers receive exactly
   // the same reduced environment as the shared runner.
   const { env: _env, signal: _signal, ...safeOptions } = options;
   const child = spawn(command, args, { ...safeOptions, env: mediaEnvironment(), shell: false, windowsHide: true, detached: false });
-  const record: MediaProcessRecord = { child, kind, signal, started: false, exited: false, closed: false, terminationUnconfirmed: false, stop: null, onClose: new Set(), onInterrupt: new Set() };
+  const record: MediaProcessRecord = { child, kind, signal: ownerSignal, started: false, exited: false, closed: false, terminationUnconfirmed: false, stop: null, onClose: new Set(), onInterrupt: new Set() };
   active.set(child, record); records.set(child, record);
   const closed = (): void => {
     if (record.closed) return;
