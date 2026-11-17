@@ -90,7 +90,8 @@ export function DesktopUpdateRoot({blocked, children}: {readonly blocked: boolea
     setView(next);
     if (!next.notice || next.notice.id <= seen.current.notice) return;
     seen.current.notice = next.notice.id;
-    if (next.notice.kind === 'launch' && next.state.kind === 'available' || next.notice.kind === 'manual' && next.state.kind !== 'disabled') {
+    const launchState = next.state.kind === 'available' || next.state.kind === 'failed' && next.state.stage === 'install';
+    if (next.notice.kind === 'launch' && launchState || next.notice.kind === 'manual' && next.state.kind !== 'disabled') {
       changeOpen(true);
     } else if (next.notice.kind === 'ready' && next.state.kind === 'ready' && !opened.current) {
       setReadyNotice(next.notice.id);
@@ -171,11 +172,15 @@ interface DialogProps {
 export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, download, cancel, install}: DialogProps) {
   const {t, formatDate} = useI18n();
   const safeFocus = useRef<HTMLButtonElement>(null);
+  const websiteFocus = useRef<HTMLAnchorElement>(null);
   const {state, activity} = view;
   let title: string;
   let description: string | undefined;
   let icon: ReactNode, body: ReactNode, buttons: ReactNode;
-  const website = <WorkbenchButton nativeButton={false} render={<a href={`${DESKTOP_UPDATE_RELEASES}/latest`} target="_blank" rel="noreferrer" />} data-testid="desktop-update-website">{t('desktopUpdate.website')}</WorkbenchButton>;
+  const websiteOnly = state.kind === 'failed' && state.stage === 'install' && !state.canRetry;
+  const website = <WorkbenchButton variant={websiteOnly ? 'primary' : 'secondary'} nativeButton={false}
+    render={<a ref={websiteFocus} href={`${DESKTOP_UPDATE_RELEASES}/latest`} target="_blank" rel="noreferrer" />}
+    data-testid="desktop-update-website">{t('desktopUpdate.website')}</WorkbenchButton>;
 
   switch (state.kind) {
     case 'available': {
@@ -186,9 +191,11 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
       description = [t('desktopUpdate.current', {version: view.currentVersion}), date && t('desktopUpdate.releaseDate', {date}),
         size && t('desktopUpdate.packageSize', {size})].filter(Boolean).join(' · ');
       icon = <Icon name="download" size={19} />;
-      body = <div className="desktop-update-details">
-        <strong>{t('desktopUpdate.notes')}</strong>
-        {offer.notes.length > 0 && <ul>{offer.notes.slice(0, 3).map((note, index) => <li key={index}>{note}</li>)}</ul>}
+      body = (offer.notes.length > 0 || url) && <div className="desktop-update-details">
+        {offer.notes.length > 0 && <>
+          <strong>{t('desktopUpdate.notes')}</strong>
+          <ul>{offer.notes.slice(0, 3).map((note, index) => <li key={index}>{note}</li>)}</ul>
+        </>}
         {url && <a href={url} target="_blank" rel="noreferrer" data-testid="desktop-update-full-notes">{t('desktopUpdate.fullNotes')} <ArrowUpRight size={13} aria-hidden="true" /></a>}
       </div>;
       buttons = <><WorkbenchButton ref={safeFocus} onClick={() => dismiss()}>{t('desktopUpdate.later')}</WorkbenchButton>
@@ -222,9 +229,15 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
         </WorkbenchButton></>;
       break;
     case 'failed':
+      icon = <CircleAlert size={18} aria-hidden="true" />;
+      if (state.stage === 'install') {
+        title = t('desktopUpdate.installVersionFailed', {version: state.version});
+        buttons = <>{website}{state.canRetry && <WorkbenchButton ref={safeFocus} variant="primary" loading={pending.has('download')}
+          onClick={() => download(state.version)}>{t('desktopUpdate.retry')}</WorkbenchButton>}</>;
+        break;
+      }
       title = t(state.stage === 'check' ? 'desktopUpdate.checkFailed' : 'desktopUpdate.downloadFailed');
       description = t(state.stage === 'check' ? 'desktopUpdate.checkFailedBody' : 'desktopUpdate.downloadFailedBody');
-      icon = <CircleAlert size={18} aria-hidden="true" />;
       buttons = <>{website}<WorkbenchButton ref={safeFocus} variant="primary" loading={pending.has(state.stage)}
         onClick={() => state.stage === 'check' ? check() : download(state.offer.version)}>{t('desktopUpdate.retry')}</WorkbenchButton></>;
       break;
@@ -246,7 +259,8 @@ export function DesktopUpdateDialog({view, feedback, pending, dismiss, check, do
     if (details.reason === 'escape-key') details.event.stopPropagation();
     if (!pending.has('install')) dismiss(details.reason);
   }}>
-    <WorkbenchDialogContent showCloseButton={false} initialFocus={safeFocus} className="desktop-update-dialog" data-update-state={state.kind}
+    <WorkbenchDialogContent showCloseButton={false} initialFocus={websiteOnly ? websiteFocus : safeFocus}
+      className="desktop-update-dialog" data-update-state={state.kind}
       title={<><span className="desktop-update-dialog-icon">{icon}</span>{title}</>} description={description}
       footer={buttons} data-testid="desktop-update-dialog">
       {body}{feedback && state.kind !== 'failed' && <WorkbenchAlert tone="danger">{t(`desktopUpdate.${feedback}`)}</WorkbenchAlert>}

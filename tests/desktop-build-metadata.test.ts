@@ -39,6 +39,7 @@ async function builderFixture(t: TestContext) {
   const rebind = [
     ["from '@mioon/business/project-example-resources'", '../packages/business/src/project-example-resources.ts'],
     ["from '../../.github/scripts/mac-update-feed.ts'", '../.github/scripts/mac-update-feed.ts'],
+    ["from './mac-update-package-permissions.ts'", '../apps/desktop/mac-update-package-permissions.ts'],
   ] as const;
   const rebounded = rebind.reduce((input, [specifier, target]) => {
     assert.equal(input.split(specifier).length, 2, 'each reviewed builder dependency is rebound once');
@@ -191,6 +192,12 @@ test('Mac packaging selects the fixed GitHub source or a candidate generic URL w
   assert.equal(builderConfig('development', 'https://example.org/candidate').mac.publish, null);
 });
 
+test('the development Mac ZIP hook does not read the blockmap sidecar as an archive', async t => {
+  const {builderConfig} = await builderFixture(t);
+  await builderConfig('development').artifactBuildCompleted({file: 'fixture.zip.blockmap', target: {name: 'zip'},
+    packager: {platform: {nodeName: 'darwin'}, appInfo: {productFilename: 'Fixture App'}}});
+});
+
 test('beforePack rejects stale same-channel versions and names for both channels using fixture manifests only', async t => {
   const { directory, builderConfig } = await builderFixture(t);
   const stage = path.join(directory, 'apps/desktop/build');
@@ -282,7 +289,7 @@ test('the pinned Mac signer skips only verified example data while retaining cod
   const resources = [...payloads, ...PROJECT_EXAMPLE_METADATA_FILES.map(name => path.join(example.directory, name))];
   const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
   const originals = await Promise.all(resources.map(async file => ({file, bytes: await readFile(file), mode: (await lstat(file)).mode & 0o777})));
-  if (process.platform !== 'win32') for (const original of originals) assert.equal(original.mode, 0o444);
+  if (process.platform !== 'win32') for (const original of originals) assert.equal(original.mode, 0o644);
 
   const codeFiles = [
     'MacOS/mioon',
@@ -355,7 +362,7 @@ test('beforePack and Mac afterPack reject same-size PNG and project changes with
     assert.equal((await lstat(file)).size, original.length);
     await assert.rejects(check(), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID', details: {reason: 'content-hash'}});
     assert.deepEqual(await readFile(file), changed, 'validation must report, not repair, changed data');
-    await writeFile(file, original); await chmod(file, 0o444);
+    await writeFile(file, original); await chmod(file, 0o644);
   };
   for (const relative of damagedPaths) await rejectChange(path.join(example.directory, relative), () => config.beforePack(beforeContext));
   await config.beforePack(beforeContext);
@@ -375,6 +382,10 @@ test('beforePack and Mac afterPack reject same-size PNG and project changes with
   await cp(path.join(stage, 'subtitles'), path.join(resources, 'subtitles'), {recursive: true});
   const [packaged] = await stageProjectExampleResources(path.join(stage, 'examples'), path.join(resources, 'examples'));
   for (const relative of damagedPaths) await rejectChange(path.join(packaged.directory, relative), () => config.afterPack(afterContext));
+  const notice = path.join(packaged.directory, 'LICENSE');
+  await chmod(notice, 0o444);
+  await assert.rejects(config.afterPack(afterContext), {code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents/Resources/examples/timeline-basics/LICENSE'});
+  await chmod(notice, 0o644);
   await config.afterPack(afterContext);
   assert.deepEqual(verifyProjectExampleResources(path.join(resources, 'examples'))[0].manifest, example.manifest);
 });

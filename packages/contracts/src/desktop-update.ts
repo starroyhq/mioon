@@ -26,6 +26,7 @@ export const desktopUpdateStateSchema = z.union([
   z.object({kind: z.literal('ready'), offer: desktopUpdateOfferSchema, installOnQuit: z.boolean()}).strict(),
   z.object({kind: z.literal('failed'), stage: z.literal('check')}).strict(),
   z.object({kind: z.literal('failed'), stage: z.literal('download'), offer: desktopUpdateOfferSchema}).strict(),
+  z.object({kind: z.literal('failed'), stage: z.literal('install'), version: desktopReleaseVersionSchema, canRetry: z.boolean()}).strict(),
 ]);
 export type DesktopUpdateState = z.infer<typeof desktopUpdateStateSchema>;
 export const desktopUpdateActivitySchema = z.object({exports: z.boolean(), generations: z.boolean()}).strict();
@@ -49,10 +50,21 @@ export const desktopUpdateRequestSchema = z.discriminatedUnion('kind', [
     acknowledgeExports: z.boolean().optional()}).strict(),
 ]);
 export type DesktopUpdateRequest = z.infer<typeof desktopUpdateRequestSchema>;
-export const desktopUpdateReopenSchema = z.object({
+const desktopUpdateReopenV1 = z.object({
   version: z.literal(1), installedVersion: desktopReleaseVersionSchema, requestedAt: z.number().int().nonnegative(),
   projectIds: z.array(projectIdSchema).max(128),
 }).strict();
+const desktopUpdateAttempt = z.object({
+  version: z.literal(2), sourceVersion: desktopReleaseVersionSchema, installedVersion: desktopReleaseVersionSchema,
+});
+export const desktopUpdateReopenSchema = z.union([
+  desktopUpdateReopenV1,
+  desktopUpdateAttempt.extend({
+    status: z.literal('pending'), failures: z.union([z.literal(0), z.literal(1)]),
+    requestedAt: z.number().int().nonnegative(), projectIds: z.array(projectIdSchema).max(128),
+  }).strict(),
+  desktopUpdateAttempt.extend({status: z.literal('failed'), failures: z.union([z.literal(1), z.literal(2)])}).strict(),
+]);
 export type DesktopUpdateReopen = z.infer<typeof desktopUpdateReopenSchema>;
 export const desktopUpdateErrorSchema = z.object({
   code: z.enum(['UPDATE_UNAVAILABLE', 'UPDATE_INVALID', 'UPDATE_VERSION_CHANGED', 'UPDATE_NOT_SAVED', 'UPDATE_EXPORT_ACTIVE']),

@@ -70,7 +70,7 @@ test('afterPack independently rejects a removed example manifest after retaining
   await assert.rejects(item.config.afterPack(item.context), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID', details: {reason: 'manifest'}});
   assert.deepEqual(await readFile(project), projectBefore);
   for (const file of NOTICE_FILES) assert.deepEqual(await readFile(path.join(item.packaged, 'Contents/Resources/licenses', file.output)), item.originals.get(file.output));
-  await writeFile(manifest, manifestBefore, {flag: 'wx', mode: 0o444});
+  await writeFile(manifest, manifestBefore, {flag: 'wx', mode: 0o644});
   await item.config.afterPack(item.context);
 });
 
@@ -136,7 +136,7 @@ test('the merged Mac bundle needs both verified architecture notices and recheck
     await rm(manifest);
     await assert.rejects(config.afterPack(context), {code: 'PROJECT_EXAMPLE_RESOURCES_INVALID'});
     await assertMissing(path.join(appOutDir, RUNTIME_NOTICE_PROVENANCE_FILE));
-    await writeFile(manifest, original, {flag: 'wx', mode: 0o444});
+    await writeFile(manifest, original, {flag: 'wx', mode: 0o644});
     await config.afterPack(context);
     const proof = await readMacRuntimeNoticeProvenance(context, config.electronVersion, readBuildMetadata().appVersion);
     assert.equal(proof.arch, 4);

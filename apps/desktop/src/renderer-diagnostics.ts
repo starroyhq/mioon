@@ -2,6 +2,7 @@ import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdi
   openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
+import { desktopReleaseVersionSchema } from '../../../packages/contracts/src/desktop-update.ts';
 import { appendWindowsDiagnostic } from './diagnostic-append-windows.ts';
 import { sanitizeSettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
 import type { SettingsDiagnosticRecord } from './settings-diagnostics-protocol.ts';
@@ -12,6 +13,7 @@ export const RENDERER_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileC
 export const RENDERER_DIAGNOSTIC_FILE = 'renderer-health.jsonl';
 export const SLOW_SETTINGS_DIAGNOSTIC_FILE = 'settings-open-slow.jsonl';
 const startupSignatureDiagnosticFile = 'startup-signature.log';
+const updateInstallDiagnosticFile = 'update-install.jsonl';
 const settingsBatch = {delayMs: 200, maxRows: 64, maxBytes: 16 * 1024};
 
 export function isSlowSettingsDiagnostic(event: SettingsDiagnosticRecord['event']): boolean {
@@ -43,6 +45,7 @@ export interface RendererDiagnostics {
   record(event: unknown, details?: unknown): boolean;
   recordSettings(value: SettingsDiagnosticRecord): boolean;
   recordStartupSignature(result: unknown): boolean;
+  recordUpdateInstallFailure(version: unknown): boolean;
   flushSettings(): void;
 }
 interface Metadata {
@@ -338,5 +341,13 @@ export function createRendererDiagnostics({ dataDir, modulePath, directoryPolicy
     try { return append(Buffer.from(`${result}\n`), startupSignatureDiagnosticFile); }
     catch { return false; }
   }
-  return {record, recordSettings, recordStartupSignature, flushSettings};
+  function recordUpdateInstallFailure(version: unknown): boolean {
+    const target = desktopReleaseVersionSchema.safeParse(version);
+    if (!target.success) return false;
+    try {
+      const record = {result: 'install-failed', targetVersion: target.data};
+      return append(Buffer.from(`${JSON.stringify(record)}\n`), updateInstallDiagnosticFile);
+    } catch { return false; }
+  }
+  return {record, recordSettings, recordStartupSignature, recordUpdateInstallFailure, flushSettings};
 }

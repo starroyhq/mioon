@@ -1,21 +1,96 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile} from 'node:fs/promises';
+import {chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {argumentsFor, cleanEnvironment, command, mediaCapabilities, mediaFailureReport, MediaCapabilityFailure, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
 import {boundedPoll, extractedTarFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
-import {runMacInspectionCheck, validateArchitecture, validateMacStapledArtifact, validateTarListing, verifyPackagedProjectNotices, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
+import {probeMacQuarantineRemoval, runMacInspectionCheck, validateArchitecture, validateMacStapledArtifact, validateTarListing, verifyPackagedProjectNotices, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
 import type {MacStaplerDiagnostic} from '../.github/scripts/inspect-desktop.ts';
 import {macDmgEvidence, uniqueMacApp} from '../.github/scripts/mac-dmg.ts';
 import {PROJECT_NOTICES} from '../apps/desktop/scripts/stage-project-notices.ts';
+import {verifyMacAppPermissions, verifyMacZipPermissions, withMacUpdateZip} from '../apps/desktop/mac-update-package-permissions.ts';
 
 test('desktop helper CLI rejects missing, duplicate, unknown and multiline options', () => {
   assert.deepEqual(argumentsFor(['--platform=linux', '--output=result.json'], ['platform', 'output']), {platform: 'linux', output: 'result.json'});
   for (const args of [[], ['--platform=linux'], ['--platform=linux', '--platform=darwin', '--output=x'], ['--platform=linux', '--output=x', '--secret=value'], ['--platform=linux', '--output=x\ny']]) assert.throws(() => argumentsFor(args, ['platform', 'output']));
   assert.equal(targetPlatform('darwin'), 'darwin'); assert.equal(targetArch('arm64'), 'arm64');
   assert.throws(() => targetPlatform('win32')); assert.throws(() => targetArch('universal'));
+});
+
+test('macOS update ZIP checks each archived file and directory owner bit, including names with spaces', () => {
+  const appName = 'Fixture App.app';
+  const listing = (mode: string, member = 'Fixture App.app/Contents/Some File') => [
+    'Archive:  fixture.zip', 'Zip file size: 900 bytes, number of entries: 3',
+    `drwxr-xr-x  3.0 unx        0 bx        0 stor 20261117.101222 ${appName}/`,
+    `${mode}  3.0 unx        4 tx        4 stor 20261117.101222 ${member}`,
+    `lrwxr-xr-x  3.0 unx        4 bx        4 stor 20261117.101222 ${appName}/Contents/Alias`,
+    '3 files, 8 bytes uncompressed, 8 bytes compressed:  0.0%',
+  ].join('\n');
+  verifyMacZipPermissions(listing('-rw-r--r--'), appName);
+  assert.throws(() => verifyMacZipPermissions(listing('-r--rw-r--'), appName), {
+    code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents/Some File',
+  });
+  assert.throws(() => verifyMacZipPermissions(listing('dr-xr-xr-x', `${appName}/Contents/`), appName), {
+    code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents',
+  });
+  assert.throws(() => verifyMacZipPermissions(listing('lr-xr-xr-x'), appName), {
+    code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents/Some File',
+  });
+  for (const bad of [listing('-rw-r--r--').replace('unx', 'fat'), listing('-rw-r--r--', '/absolute/member'), listing('-rw-r--r--').replace('entries: 3', 'entries: 4')]) {
+    assert.throws(() => verifyMacZipPermissions(bad, appName), {code: 'MAC_ZIP_PERMISSION_LIST_INVALID'});
+  }
+});
+
+test('macOS bundle permissions report relative unwritable entries and never follow framework aliases', {
+  skip: process.platform === 'win32',
+}, async t => {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-mac-package-test-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const bundle = path.join(root, 'Fixture App.app'), nested = path.join(bundle, 'Contents'), resource = path.join(nested, 'Some File');
+  await mkdir(nested, {recursive: true, mode: 0o755});
+  const outside = path.join(root, 'not in bundle');
+  await writeFile(outside, 'outside', {mode: 0o444});
+  await symlink(outside, path.join(nested, 'Alias'));
+  await writeFile(resource, 'inside', {mode: 0o644});
+  await verifyMacAppPermissions(bundle);
+  await chmod(resource, 0o464);
+  await assert.rejects(verifyMacAppPermissions(bundle), {code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents/Some File'});
+  await chmod(resource, 0o644);
+  await chmod(nested, 0o555);
+  try {await assert.rejects(verifyMacAppPermissions(bundle), {code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents'});}
+  finally {await chmod(nested, 0o755);}
+});
+
+test('macOS removes quarantine recursively from a ZIP-extracted app with real packaged examples', {
+  skip: process.platform !== 'darwin',
+}, async t => {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-mac-quarantine-test-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const appName = 'Fixture App.app', resources = path.join(root, appName, 'Contents/Resources');
+  await mkdir(resources, {recursive: true});
+  const {stageProjectExampleResources} = await import('../packages/business/src/project-example-resources.ts');
+  await stageProjectExampleResources(fileURLToPath(new URL('../examples/project-file-v1/', import.meta.url)), path.join(resources, 'examples'));
+  await symlink('examples', path.join(resources, 'Alias'));
+  const zip = path.join(root, 'fixture.zip');
+  await command('/usr/bin/zip', ['-qry', zip, appName], 'FIXTURE_ZIP_FAILED', {cwd: root});
+  await withMacUpdateZip(zip, appName, async bundle => {
+    await verifyMacAppPermissions(bundle);
+    await probeMacQuarantineRemoval(bundle);
+
+    const license = path.join(bundle, 'Contents/Resources/examples/timeline-basics/LICENSE');
+    const quarantine = 'com.apple.quarantine';
+    await command('/usr/bin/xattr', ['-sw', quarantine, '0081;00000000;MioonPackageProbe;', license], 'FIXTURE_QUARANTINE_SET_FAILED');
+    await chmod(license, 0o444);
+    await assert.rejects(command('/usr/bin/xattr', ['-rsd', quarantine, bundle], 'FIXTURE_QUARANTINE_REMOVE_FAILED'), {code: 'FIXTURE_QUARANTINE_REMOVE_FAILED'});
+    await chmod(license, 0o644);
+    await probeMacQuarantineRemoval(bundle);
+    const alias = path.join(bundle, 'Contents/Resources/Alias');
+    await command('/bin/chmod', ['-h', 'u-w', alias], 'FIXTURE_CHMOD_LINK_FAILED');
+    await assert.rejects(verifyMacAppPermissions(bundle), {code: 'MAC_PACKAGE_OWNER_WRITE_MISSING', entry: 'Contents/Resources/Alias'});
+  });
 });
 
 test('Linux and macOS media admission require every application filter and encoder', () => {
