@@ -597,10 +597,8 @@ The nested generation input retains its original 24-KiB bound.
 ### Private Images application routes
 
 Authenticated `GET`/`PUT /api/images/settings` manages the dedicated fixed preset
-and redacted secret metadata. It is not an RPC/CLI/MCP/model-tool setting. Web
-credentials are session-only for the backend lifetime; Electron persistent
-storage uses a narrow main-process OS codec, never renderer/preload decryption
-or plaintext fallback. Saving settings neither generates nor approves a request.
+and redacted secret metadata. It is not an RPC/CLI/MCP/model-tool setting. The desktop application saves keys through a narrow main-process OS codec. An
+ordinary browser with no secure-store backend has no credential-entry UI. Saving settings neither generates nor approves a request.
 The exact official secret-write/read contract is in
 [Images activation](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
 The separate authenticated `GET`/`PUT /api/images/custom-settings` manages the

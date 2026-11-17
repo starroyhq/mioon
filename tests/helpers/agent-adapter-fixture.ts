@@ -8,7 +8,7 @@ export const ADAPTER_CONFIGURATION:AgentProviderConfiguration={presetId:'custom'
 
 /** Fake HTTP transports need the same strict public collection as production;
  * these values perform no persistence, crypto, or inference. */
-export function adapterSettings(configuration:AgentProviderConfiguration|null=ADAPTER_CONFIGURATION,options:{revision?:number;secretStorage?:'none'|'session'|'persistent'}={}):AgentSettingsSnapshot{
+export function adapterSettings(configuration:AgentProviderConfiguration|null=ADAPTER_CONFIGURATION,options:{revision?:number;secretStorage?:'none'|'persistent'}={}):AgentSettingsSnapshot{
  const services:AgentServiceInput[]=AGENT_PRESETS.filter(p=>p.id!=='custom').map(preset=>{
   const platform=preset.platforms[0];if(!platform)throw Error('Missing fixture platform');
   return agentServiceInputSchema.parse({serviceKey:preset.id,presetId:preset.id,name:preset.label,platformId:platform.id,protocol:platform.defaultProtocol,
@@ -26,7 +26,7 @@ export function adapterSettings(configuration:AgentProviderConfiguration|null=AD
  return agentSettingsSnapshotSchema.parse({revision:options.revision??4,services:services.map(entry=>({...entry,revision:1,secret:entry.serviceKey===serviceKey?secret:{configured:false,storage:'none'}})),
   mioSelection:configuration?{serviceKey,modelId:configuration.model}:null,mioSelectionRevision:configuration?1:0,
   execution:configuration?{revision:options.revision??4,binding:{serviceKey,entryRevision:1,selectionRevision:1},configuration,secret}:null,
-  storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null},presets:structuredClone(AGENT_PRESETS),scope:'settings_only',verification:'not_tested',notices:[]});
+  storage:{persistentAvailable:true,reasonCode:null},presets:structuredClone(AGENT_PRESETS),scope:'settings_only',verification:'not_tested',notices:[]});
 }
 export function adapterMetadata(snapshot:AgentSettingsSnapshot=adapterSettings()){
  return {expectedRevision:snapshot.revision,services:snapshot.services.map(agentServiceInput),mioSelection:snapshot.mioSelection};

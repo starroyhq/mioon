@@ -9,7 +9,7 @@ import {createImageSettings, parseImageConfiguration, parseImageSettingsUpdate, 
 import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 import {errorView} from './helpers/test-error.ts';
 
-type SecretUpdate = {action: 'keep'} | {action: 'remove'} | {action: 'replace'; storage: 'session' | 'persistent'; value: string};
+type SecretUpdate = {action: 'keep'} | {action: 'remove'} | {action: 'replace'; storage: 'persistent'; value: string};
 type ConfigurationView = ReturnType<typeof configuration> & {options: Record<string, unknown> & {n?: number}};
 type SettingsEnvelope = Record<string, unknown> & {revision: number; configuration: ConfigurationView; secret: null | {configured?: boolean; storage?: string; encrypted?: string}};
 type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void; reject: (error?: unknown) => void};
@@ -17,8 +17,8 @@ type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void; 
 const configuration = (enabled = true) => ({...structuredClone(DEFAULT_IMAGE_CONFIGURATION), enabled});
 const input = (expectedRevision = 0, secret: SecretUpdate = {action: 'keep'}, config: Record<string, unknown> = configuration()) => ({expectedRevision, configuration: config, secret});
 const expected = (snapshot: {revision: number; configuration: unknown}) => ({expectedRevision: snapshot.revision, configuration: snapshot.configuration});
-const replace = (value = 'synthetic-image-key-only', storage: 'session' | 'persistent' = 'session'): SecretUpdate => ({action: 'replace', storage, value});
-const persistent = {persistentAvailable: true, sessionScope: 'server', reasonCode: null};
+const replace = (value = 'synthetic-image-key-only', storage: 'persistent' = 'persistent'): SecretUpdate => ({action: 'replace', storage, value});
+const persistent = {persistentAvailable: true, reasonCode: null};
 function memoryPersistence(initial: SettingsEnvelope | null = null) {
   let value = structuredClone(initial);
   return {load: async () => structuredClone(value), save: async (candidate: SettingsEnvelope | null) => { value = structuredClone(candidate); }, get value() { return structuredClone(value); }};
@@ -37,14 +37,14 @@ test('image settings are fixed, initially disabled and network-free with a separ
   const previousFetch = globalThis.fetch;
   globalThis.fetch = () => assert.fail('Settings must not perform a network request');
   t.after(() => { globalThis.fetch = previousFetch; });
-  const settings = await createImageSettings({persistence: memoryPersistence()});
+  const settings = await createImageSettings({persistence: memoryPersistence(), secretCodec: syntheticCodec(), storage: persistent});
   const initial = await settings.get();
   assert.equal(initial.revision, 0);
   assert.deepEqual(initial.configuration, DEFAULT_IMAGE_CONFIGURATION);
   assert.equal(initial.configuration.enabled, false);
   assert.equal(initial.configuration.baseUrl, IMAGE_SETTINGS_BASE_URL);
   assert.deepEqual(initial.secret, {configured: false, storage: 'none'});
-  assert.equal(initial.storage.reasonCode, 'WEB_SESSION_ONLY');
+  assert.equal(initial.storage.reasonCode, null);
   assert.ok(isImageSettingsResult(initial));
   assert.notEqual(IMAGE_CREDENTIAL_ACQUIRE, AGENT_CREDENTIAL_ACQUIRE);
   assert.equal((settings as unknown as Record<PropertyKey, unknown>)[AGENT_CREDENTIAL_ACQUIRE], undefined);
@@ -72,7 +72,7 @@ test('fixed contract rejects custom origin, redirects, other profile/model/optio
 });
 
 test('public allowlist never emits plaintext, ciphertext, fingerprints, hashes or hidden capabilities', async () => {
-  const settings = await createImageSettings({persistence: memoryPersistence()});
+  const settings = await createImageSettings({persistence: memoryPersistence(), secretCodec: syntheticCodec(), storage: persistent});
   const saved = await settings.put(input(0, replace('synthetic-private-sentinel')));
   const clean = sanitizeImageSettingsResult({...saved, apiKey: 'synthetic-private-sentinel', fingerprint: 'secret-derived-hash', encrypted: 'synthetic-cipher',
     secret: {...saved.secret, value: 'synthetic-private-sentinel', hash: 'secret-derived-hash'}, storage: {...saved.storage, key: 'synthetic-private-sentinel'}});
@@ -89,11 +89,11 @@ test('public allowlist never emits plaintext, ciphertext, fingerprints, hashes o
   await settings.close();
 });
 
-test('session keys never persist and vanish on backend restart; enable toggle keeps key while revising authorization', async () => {
-  const persistence = memoryPersistence(), settings = await createImageSettings({persistence});
+test('enable toggle keeps the encrypted key while revising authorization; legacy empty secret opens unconfigured', async () => {
+  const persistence = memoryPersistence(), settings = await createImageSettings({persistence, secretCodec: syntheticCodec(), storage: persistent});
   const saved = await settings.put(input(0, replace('synthetic-session-sentinel')));
-  assert.deepEqual(saved.secret, {configured: true, storage: 'session'});
-  assert.equal(persistence.value!.secret, null);
+  assert.deepEqual(saved.secret, {configured: true, storage: 'persistent'});
+  assert.ok(persistence.value!.secret?.encrypted);
   assert.equal(JSON.stringify(persistence.value!).includes('synthetic-session-sentinel'), false);
   const acquired = await settings[IMAGE_CREDENTIAL_ACQUIRE](expected(saved));
   assert.equal(acquired.namespace, IMAGE_SETTINGS_NAMESPACE);
@@ -109,7 +109,8 @@ test('session keys never persist and vanish on backend restart; enable toggle ke
   await settings.close();
   await assert.rejects(settings.get(), {code: 'IMAGE_SETTINGS_CLOSED'});
   assert.throws(() => settings[IMAGE_SETTINGS_READ_CURRENT](), {code: 'IMAGE_SETTINGS_CLOSED'});
-  const restarted = await createImageSettings({persistence});
+  const legacy = memoryPersistence({...persistence.value!, secret: null});
+  const restarted = await createImageSettings({persistence: legacy});
   const current = await restarted.get();
   assert.equal(current.revision, 3);
   assert.equal(current.configuration.enabled, true);
@@ -120,7 +121,7 @@ test('session keys never persist and vanish on backend restart; enable toggle ke
 });
 
 test('strict CAS serializes concurrent writes and caller mutation cannot alter an admitted update', async () => {
-  const settings = await createImageSettings({persistence: memoryPersistence()});
+  const settings = await createImageSettings({persistence: memoryPersistence(), secretCodec: syntheticCodec(), storage: persistent});
   const update = input(0, replace('synthetic-original'));
   const first = settings.put(update);
   update.configuration.enabled = false; (update.configuration.options as {n?: number}).n = 2; (update.secret as {value?: string}).value = 'synthetic-mutated';
@@ -135,7 +136,7 @@ test('strict CAS serializes concurrent writes and caller mutation cannot alter a
 });
 
 test('pending put invalidates sync read and final fence immediately, including failed writes', async () => {
-  const persistence = memoryPersistence(), settings = await createImageSettings({persistence});
+  const persistence = memoryPersistence(), settings = await createImageSettings({persistence, secretCodec: syntheticCodec(), storage: persistent});
   const saved = await settings.put(input(0, replace()));
   const waiting = deferred(), entered = deferred(), save = persistence.save;
   persistence.save = async candidate => { entered.resolve(); await waiting.promise; return save(candidate); };
@@ -153,7 +154,7 @@ test('pending put invalidates sync read and final fence immediately, including f
 });
 
 test('failed remove/replace preserves previous envelope and key; closed service never acquires', async () => {
-  const persistence = memoryPersistence(), settings = await createImageSettings({persistence});
+  const persistence = memoryPersistence(), settings = await createImageSettings({persistence, secretCodec: syntheticCodec(), storage: persistent});
   const saved = await settings.put(input(0, replace('synthetic-before-failure'))), original = persistence.value;
   persistence.save = async () => { throw new Error('synthetic-before-failure'); };
   for (const secret of [{action: 'remove'} as SecretUpdate, replace('synthetic-replacement')]) {
@@ -169,7 +170,7 @@ test('persistent keys are encrypted in one namespace-bound envelope and survive 
   const persistence = memoryPersistence(), secretCodec = syntheticCodec();
   const settings = await createImageSettings({persistence, secretCodec, storage: persistent});
   const saved = await settings.put(input(0, replace('synthetic-persistent-sentinel', 'persistent')));
-  assert.equal(saved.storage.sessionScope, 'server');
+  assert.deepEqual(saved.storage, persistent);
   assert.deepEqual(saved.secret, {configured: true, storage: 'persistent'});
   assert.equal(JSON.stringify(persistence.value!).includes('synthetic-persistent-sentinel'), false);
   assert.equal(JSON.stringify(saved).includes(persistence.value!.secret!.encrypted!), false);
@@ -194,13 +195,14 @@ test('no codec, unavailable vault and Linux basic_text never silently store a pe
     await assert.rejects(settings.put(input(0, replace('synthetic-do-not-fallback', 'persistent'))), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
     assert.equal(persistence.value, null);
     assert.equal((await settings.get()).revision, 0);
-    assert.equal((await settings.put(input(0, replace('synthetic-explicit-session')))).secret.storage, 'session');
-    assert.equal(JSON.stringify(persistence.value!).includes('synthetic-explicit-session'), false);
+    const removedMode = {...input(), secret: {action: 'replace', storage: 'session', value: 'synthetic-removed-mode'}};
+    await assert.rejects(settings.put(removedMode), {code: 'IMAGE_SETTINGS_VALIDATION'});
+    assert.equal(persistence.value, null);
     await settings.close();
   }
 });
 
-test('locked vault retains ciphertext and permits explicit session replacement or removal', async () => {
+test('locked vault retains ciphertext on failed replacement and permits explicit removal', async () => {
   const persistence = memoryPersistence(), secretCodec = syntheticCodec();
   let available = true;
   const storage = () => available ? persistent : {...persistent, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
@@ -212,9 +214,10 @@ test('locked vault retains ciphertext and permits explicit session replacement o
   assert.deepEqual(persistence.value!, original);
   await assert.rejects(settings[IMAGE_CREDENTIAL_ACQUIRE](expected(saved)), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.throws(() => settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected(saved)), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.equal((await settings.put(input(1, replace('synthetic-explicit')))).secret.storage, 'session');
+  await assert.rejects(settings.put(input(1, replace('synthetic-explicit'))), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  assert.deepEqual(persistence.value, original);
+  await settings.put(input(1, {action: 'remove'}));
   assert.equal(persistence.value!.secret, null);
-  await settings.put(input(2, {action: 'remove'}));
   assert.equal((await settings.get()).secret.configured, false);
   await settings.close();
 });
@@ -231,7 +234,7 @@ test('unreadable or foreign decrypted wrapper never leaks a key and can be expli
     await current.close();
   }
   const repaired = await createImageSettings({persistence, secretCodec: {...secretCodec, decrypt() { throw new Error('synthetic-unreadable'); }}, storage: persistent});
-  assert.equal((await repaired.put(input(1, replace('synthetic-new-session')))).secret.storage, 'session');
+  assert.equal((await repaired.put(input(1, replace('synthetic-new-persistent')))).secret.storage, 'persistent');
   await repaired.close();
 });
 
@@ -252,7 +255,7 @@ test('stored wrong origins/profiles, Agent envelope and namespace mismatches fai
 });
 
 test('acquisition validates full configuration/revision and refuses other namespaces or hidden fields', async () => {
-  const settings = await createImageSettings({persistence: memoryPersistence()});
+  const settings = await createImageSettings({persistence: memoryPersistence(), secretCodec: syntheticCodec(), storage: persistent});
   const saved = await settings.put(input(0, replace())), request = expected(saved);
   const credential = await settings[IMAGE_CREDENTIAL_ACQUIRE](request);
   assert.deepEqual(sanitizeImageCredentialResult(credential, request), credential);
@@ -287,7 +290,7 @@ test('aborted or closing acquisition rejects and a pending removal prevents fina
   await settings.close();
 });
 
-test('OS bridge capability refresh is optional, bounded and failure never prevents explicit session settings', async () => {
+test('OS bridge refresh failures block writes until the vault is available again', async () => {
   const codec = syntheticCodec(), persistence = memoryPersistence();
   let available = false, failRefresh = false, refreshes = 0;
   const secretCodec = {...codec, async refreshStorage() { refreshes++; if (failRefresh) throw new Error('synthetic-bridge-error'); }};
@@ -303,7 +306,11 @@ test('OS bridge capability refresh is optional, bounded and failure never preven
   failRefresh = true;
   assert.equal((await settings.get()).storage.persistentAvailable, false);
   await assert.rejects(settings[IMAGE_CREDENTIAL_ACQUIRE](expected(saved)), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.equal((await settings.put(input(1, replace('synthetic-session-after-bridge-failure')))).secret.storage, 'session');
+  const before = persistence.value;
+  await assert.rejects(settings.put(input(1, replace('synthetic-after-bridge-failure'))), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  assert.deepEqual(persistence.value, before);
+  failRefresh = false;
+  assert.equal((await settings.put(input(1, replace('synthetic-after-bridge-recovery')))).secret.storage, 'persistent');
   assert.equal(settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected(await settings.get())), true);
   await settings.close();
 });

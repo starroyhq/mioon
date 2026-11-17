@@ -1425,13 +1425,6 @@
     {
       "file": "apps/web/src/image-settings.ts",
       "category": "cjk-source",
-      "hash": "8577b5a3d3320e90c0d4710ef972c2cbafee9b8c5685391af66b9a85327745bb",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.error.storage."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
       "hash": "fd6a52b353591e05356a4ecaf7627bdfe2ad7aed6eb37b8ed5d705f685f6d74a",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.error.corrupt."
@@ -1484,48 +1477,6 @@
       "hash": "75d8fbc5a9ffa1ff91a09310bf4ec14fe7156fb46df92dfa36a463e4d26f22a8",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.issue.binding."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "5a2e20ce49559d917a914e31b16c275da0b4f953fa7b2a94e91dc3f02ccf1e4a",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values. Four-locale counterpart: image.settings.issue.storage."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "cb730dec09e77103d260e586e05f412f589561c0c0f0484539bc731251d20a9e",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "b422a927463c287fbc0ce9ce6acb244a6e6cbc737a701923254c0d4384f01deb",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "ed156af5192ad358f7f9ac514d1d22d8da0a64d4e071abfb134d2acd732fa43a",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "d124569a31c18a2c3cc65032454e0f2084f542b5a17b7cadc6bc3afa31019dcf",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values."
-    },
-    {
-      "file": "apps/web/src/image-settings.ts",
-      "category": "cjk-source",
-      "hash": "d480fc415f867e66800253c2c050026d14da0b84fdfa87d64494be2271231597",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. ImageSettings renders state.displayMessages and imageKeyIssueDescriptor; storage/secret operation notices are descriptor arrays, never translated stored values."
     },
     {
       "file": "apps/web/src/image-settings.ts",

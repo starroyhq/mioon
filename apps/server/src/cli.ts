@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 await initializeNodePrivateStorage();
 const distDir = path.resolve(process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'));
 const service = await startServer({
+  localDraftChannel: process.env.MIOON_DEVELOPMENT_PROVIDER_ENV === '1' ? 'development' : 'web',
   agentSecretCodecFactory:createHeadlessAgentSecretCodec,
   comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
   dataDir: process.env.MIOON_DATA_DIR || path.join(root, 'data'),

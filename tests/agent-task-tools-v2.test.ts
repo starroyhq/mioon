@@ -38,7 +38,7 @@ import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-setti
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import type {Provider} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings,createTestSecretCodec,testSecretStorage} from './helpers/secret-codec.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {sourceTaskModelToolLoadInputAllowed,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
@@ -304,7 +304,7 @@ test('only format-4 Mio exposes the three host canvas tools and allows loading t
 });
 test('default project HTTP runtime loads the three Mio canvas tools while the legacy read-only host offers no Mio runtime',async t=>{
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-canvas-http-'));
- let settings:Awaited<ReturnType<typeof createAgentSettings>>|undefined;
+ let settings:Awaited<ReturnType<typeof createTestAgentSettings>>|undefined;
  let server:Awaited<ReturnType<typeof startServer>>|undefined;
  t.after(async()=>{await server?.close();await settings?.close();await rm(root,{recursive:true,force:true});});
  const legacy=createServerProject(root,{name:'Legacy read-only canvas',projectFormat:PROJECT_FILE_SCHEMA_VERSION});
@@ -314,9 +314,9 @@ test('default project HTTP runtime loads the three Mio canvas tools while the le
  const legacyBefore=await readLegacyFiles();
 
  const protocol='chat_completions';
- settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),
-  secret:{action:'replace',storage:'session',value:'SYNTHETIC_CANVAS_HOST_KEY'}});
+  secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_CANVAS_HOST_KEY'}});
  const {configuration,revision}=testAgentExecution(await settings.get());
  const requests:{body:string}[]=[];
  const load={id:'load_canvas_tools',name:'mioon_tools_load',arguments:{names:mioCanvasNames}};
@@ -450,7 +450,7 @@ test('Mio canvas rejects edit owners and unresolved Mio steps before writing the
  }
 });
 test('every actual model tool catalog has self-contained schema references in both protocols',async t=>{
- const f=await fixture(t),tools=f.tools.list(),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
+ const f=await fixture(t),tools=f.tools.list(),settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
  for(const tool of tools)assertSchemaReferences(tool.parameters);
  const current=await settings.get();
  for(const protocol of ['chat_completions','responses'] as const){
@@ -549,7 +549,7 @@ test('schema projection resolves escaped local identities before removing host i
  assert.deepEqual(source.properties.assetId,{$ref:'#/properties/projectId'},'generation must not mutate the public schema');
 });
 test('real tool discovery projects only protocol-supported definition fields on the wire',async t=>{
- const f=await fixture(t),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());const current=await settings.get();
+ const f=await fixture(t),settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());const current=await settings.get();
  for(const protocol of ['chat_completions','responses'] as const){const value:unknown=JSON.parse(buildTaskModelRequest(defaultTestAgentConfiguration(protocol),[{role:'user',content:'Synthetic body only'}],f.tools.list(),4318));if(!record(value)||!Array.isArray(value.tools))throw Error('Invalid model request');
   for(const item of value.tools){if(!record(item))throw Error('Invalid tool');const definition=protocol==='responses'?item:item.function;if(!record(definition))throw Error('Invalid definition');assert.deepEqual(Object.keys(definition).filter(field=>!['type','name','description','parameters','strict'].includes(field)),[]);}
  }
@@ -816,7 +816,7 @@ test('existing image group accepts its own revision advance and single backgroun
  await until(()=>f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(acceptedSeed.id as string)?.state==='succeeded');seed=false;
  const group=await f.services.call('image.group.get',{projectId:f.projectId,groupId:acceptedSeed.groupId});if(!record(group)||typeof group.id!=='string'||typeof group.revision!=='number')throw Error('Invalid existing group');
  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_EXISTING_IMAGE_GROUP_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_EXISTING_IMAGE_GROUP_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const args={...input,prompt:'Same group second synthetic version',groupId:group.id,expectedRevision:group.revision};
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic image queued',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-existing-image-group-tools',name:'mioon_tools_load',arguments:{names:['mioon_image_generate']}}];else if(modelCalls===2)output.toolCalls=[{id:'existing-image-group-call',name:'mioon_image_generate',arguments:args}];output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
@@ -839,7 +839,7 @@ for(const action of ['handBack','deny'] as const)test(`a background image approv
  const f=await fixture(t,{imageOptions:{generate:async(snapshot,context)=>{enter();await barrier;return createMockImageAdapter().generate(snapshot,{...context,beforeDispatch:()=>{if(typeof context.beforeDispatch!=='function')throw Error('Missing host dispatch fence');context.beforeDispatch();posts++;}});}}});
  async function until(check:()=>boolean,describe:()=>unknown=()=>''):Promise<void>{const deadline=Date.now()+30_000;while(!check()){if(Date.now()>=deadline)assert.fail(`Synthetic background approval did not settle ${JSON.stringify(describe())}`);await delay(10);}}
  const shot=await f.shot('Foreground approval target'),prompt=()=>(f.store.get('shots',shot.id) as Record<string,unknown>).prompt,savedPrompt=prompt();f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic background requeue',toolCalls:[],providerOutput:[]};modelCalls++;
   if(modelCalls===1)output.toolCalls=[{id:'background-requeue-load',name:'mioon_tools_load',arguments:{names:['mioon_image_generate','mioon_shot_update']}}];
@@ -913,8 +913,8 @@ test('media observation rechecks task authority after an async boundary and befo
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM frame_tasks').get()!.n,0,'revoked source hashing cannot accept frame work');
 });
 test('trusted task approval bridges the existing image review and retains uncertain cost evidence without network',async t=>{
- const settings=await createImageSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
- await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:'SYNTHETIC_IMAGE_GATEWAY_ONLY'}});
+ const settings=await createImageSettings({persistence:{load:async()=>null,save:async()=>{}},secretCodec:createTestSecretCodec(),storage:testSecretStorage});t.after(()=>settings.close());
+ await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_IMAGE_GATEWAY_ONLY'}});
  let submitted=0;const f=await fixture(t,{imageOptions:{settings,liveGateway:{generate:async(_input,context={})=>{if(typeof context.beforeDispatch!=='function')throw Error('Missing dispatch fence');context.beforeDispatch();submitted++;throw Object.assign(Error('Synthetic lost response; no network transport exists'),{code:'IMAGE_OUTCOME_UNKNOWN'});}}}});
  await f.services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const remove=setAgentTaskEffectGate(f.store.db,()=>{});t.after(remove);
@@ -960,7 +960,7 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
  const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(_snapshot,context){enter();await barrier;context.beforeSubmit?.();posts++;return {providerJobId:'never-actually-sent'};},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No output requested');}};
  const providers=new Map([['mock',provider]]),f=await fixture(t,{},providers),shot=await f.shot('Real gate source');f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_GATE_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_TASK_GATE_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
  const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Queued synthetic task',toolCalls:[],providerOutput:[]};modelCalls++;if(modelCalls===1)output.toolCalls=[{id:'load-synthetic-generation-tools',name:'mioon_tools_load',arguments:{names:['mioon_generation_submit']}}];else if(modelCalls===2){const args={shotId:shot.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};output.toolCalls=[{id:'synthetic-generation-call',name:'mioon_generation_submit',arguments:args}];}output.providerOutput={role:'assistant',content:output.text,tool_calls:output.toolCalls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))};yield {type:'done',output};};
  const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});let worker:ReturnType<typeof startWorker>|undefined;
@@ -974,9 +974,9 @@ for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real r
  }finally{release();await worker?.stop();runtime.close();await runtime.drain();await settings.close();}
 });
 for(const action of ['send','revoke_task_authority','remove_connection_credential'] as const)test(`configured video v2 ${action} preserves the frozen connection credential and final dispatch gates`,async t=>{
- const directory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-video-settings-')),settings=await createVideoSettings({directory:path.join(directory,'settings'),privateRoot:directory});
+ const directory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-video-settings-')),settings=await createVideoSettings({directory:path.join(directory,'settings'),privateRoot:directory,secretCodec:createTestSecretCodec(),storage:testSecretStorage});
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'ark',name:'Synthetic configured v2 Ark',region:'cn-beijing',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('ark')};
- await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BOUND_VIDEO_KEY'}});
+ await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_BOUND_VIDEO_KEY'}});
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});
  const bound:VideoSettingsService={...settings,async acquire(binding,signal){const key=await settings.acquire(binding,signal);enter();await barrier;return key;}};
  let posts=0,authorization='';const f=await fixture(t,{videoSettings:bound,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(_input,init)=>{if(init?.method==='POST'){posts++;authorization=new Headers(init.headers).get('Authorization')??'';}return new Response(JSON.stringify({id:'synthetic-configured-v2-task',status:'running'}),{headers:{'content-type':'application/json'}});}});

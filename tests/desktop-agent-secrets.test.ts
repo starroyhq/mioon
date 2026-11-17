@@ -95,11 +95,11 @@ async function sampleSettings() {
 test('desktop capability preserves Linux strong keyrings and requires proved macOS async crypto', async () => {
   for (const vault of [undefined, fakeVault({ available: false }), { isEncryptionAvailable() { throw new Error(DUMMY_KEY); } }]) {
     assert.deepEqual(storageOf(vault, 'linux'), {
-      persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'
+      persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'
     });
   }
   assert.deepEqual(storageOf(fakeVault({ backend: 'basic_text' }), 'linux'), {
-    persistentAvailable: false, sessionScope: 'app', reasonCode: 'LINUX_BASIC_TEXT'
+    persistentAvailable: false, reasonCode: 'LINUX_BASIC_TEXT'
   });
   for (const backend of ['unknown', 'future-unknown', undefined]) {
     const vault = fakeVault(); vault.getSelectedStorageBackend = () => backend as unknown as string;
@@ -324,7 +324,7 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop settings pers
     const initial = await engine.get();
     const saved = await engine.put(replacement(initial));
     assert.deepEqual(execution(saved).secret, { configured: true, storage: 'persistent' });
-    assert.deepEqual(saved.storage, { persistentAvailable: true, sessionScope: 'app', reasonCode: null });
+    assert.deepEqual(saved.storage, { persistentAvailable: true, reasonCode: null });
     assertSanitized(saved);
     const directory = path.join(userData, 'agent-settings'), file = path.join(directory, 'settings.json');
     const stored = await readFile(file, 'utf8');
@@ -384,32 +384,24 @@ for (const platform of ['linux', 'darwin'] as const) test('desktop v3 legacy pro
   const payload=JSON.parse(wrapper.plaintext);assert.equal(payload.version,2);assert.equal(payload.serviceKey,'openai');assert.equal(payload.binding,fresh.binding);assert.equal(payload.value,DUMMY_KEY);assert.notEqual(payload.binding,binding);
 });
 
-test('unavailable Linux vault supports explicit session-only entry until app engine closes', async () => {
-  const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-session-'));
-  const safeStorage = fakeVault({ backend: 'basic_text' });
-  let engine: Awaited<ReturnType<typeof createDesktopAgentSettings>> | undefined;
+test('unavailable Linux vault refuses replacement without publishing settings to a restarted utility', async () => {
+  const userData = await mkdtemp(path.join(tmpdir(), 'mioon-agent-unavailable-'));
+  const safeStorage = fakeVault({backend: 'basic_text'});
+  const engine = await createDesktopAgentSettings({safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux'});
   try {
-    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
     const initial = await engine.get();
-    await assert.rejects(engine.put(replacement(initial)),{code:'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
-    const saved=await engine.put(replacement(initial,'session'));
-    assert.deepEqual(execution(saved).secret,{configured:true,storage:'session'});
-    assert.equal(saved.storage.sessionScope, 'app'); assert.equal(saved.storage.persistentAvailable, false);
-    // A new utility/client gets the same main-owned session, with no getter for
-    // its actual key. Closing that client does not close the app-owned engine.
+    await assert.rejects(engine.put(replacement(initial)), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+    await assert.rejects(engine.put(replacement(initial, 'session')), {code: 'AGENT_SETTINGS_VALIDATION'});
     for (let restart = 0; restart < 2; restart++) {
       const port = pairedPort();
-      const broker = createAgentSettingsBroker({ agentSettings: engine, send: (data: unknown) => port.emit('message', { data }) });
-      port.postMessage = data => { queueMicrotask(() => broker.handle(data)); };
-      const client = createAgentSettingsClient({ port } as unknown as Parameters<typeof createAgentSettingsClient>[0]) as unknown as {get(): Promise<AgentSettingsSnapshot>; close(): void};
-      assert.deepEqual((await client.get()).services,saved.services);assert.deepEqual((await client.get()).execution,saved.execution);
+      const broker = createAgentSettingsBroker({agentSettings: engine, send: data => port.emit('message', {data})});
+      port.postMessage = data => {queueMicrotask(() => broker.handle(data));};
+      const client = createAgentSettingsClient({port});
+      assert.deepEqual(await client.get(), initial);
       client.close(); broker.close();
     }
-    assert.equal((await readFile(path.join(userData, 'agent-settings/settings.json'), 'utf8')).includes(DUMMY_KEY), false);
-    await engine.close();
-    engine = await createDesktopAgentSettings({ safeStorage, userData, appId: 'app.starroy.mioon.dev', platform: 'linux' });
-    assert.deepEqual(execution(await engine.get()).secret,{configured:false,storage:'none'});
-  } finally { await engine?.close(); await rm(userData, { recursive: true, force: true }); }
+    await assert.rejects(readFile(path.join(userData, 'agent-settings/settings.json'), 'utf8'), {code: 'ENOENT'});
+  } finally {await engine.close(); await rm(userData, {recursive: true, force: true});}
 });
 
 for (const platform of ['linux', 'darwin'] as const) test('native encryption failure preserves the previously committed credential and hides native errors (' + platform + ')', async () => {
@@ -464,9 +456,9 @@ test('trusted broker credentials bind selection and per-entry revisions while ot
  port.postMessage=value=>{requests.push(value);queueMicrotask(()=>broker.handle(value));};const client=createAgentSettingsClient({port});
  t.after(async()=>{client.close();broker.close();await engine.close();await rm(userData,{recursive:true,force:true});});
  const initial=await engine.get(),a=randomUUID(),b=randomUUID(),model='synthetic-shared-model',entry={presetId:'custom' as const,name:'Synthetic',platformId:'custom',protocol:'chat_completions' as const,addressInput:'https://synthetic.example',manualModelIds:[model]},keyA=DUMMY_KEY+'-A',keyB=DUMMY_KEY+'-B';
- const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA},{serviceKey:b,action:'replace',storage:'session',value:keyB}]});
+ const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'persistent',value:keyA},{serviceKey:b,action:'replace',storage:'persistent',value:keyB}]});
  const frozen=execution(saved),expected={expectedRevision:frozen.revision,configuration:frozen.configuration,binding:frozen.binding};
- const other=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'session',value:keyB+'-new'}]});
+ const other=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'persistent',value:keyB+'-new'}]});
  assert.equal(other.revision,saved.revision+1);assert.deepEqual(other.execution,saved.execution);
  assert.deepEqual(await client[AGENT_CREDENTIAL_ACQUIRE](expected),{revision:frozen.revision,configuration:frozen.configuration,binding:frozen.binding,apiKey:keyA});
  const original=requests.find(value=>value!==null&&typeof value==='object'&&'operation' in value&&value.operation==='acquire');assert.ok(original);
@@ -478,7 +470,7 @@ test('trusted broker credentials bind selection and per-entry revisions while ot
  assert.deepEqual(back.mioSelection,saved.mioSelection);assert.notEqual(back.mioSelectionRevision,saved.mioSelectionRevision);
  await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](expected),{code:'AGENT_SETTINGS_CONFLICT'});
  const beforeKey=execution(back),oldKeyRequest={expectedRevision:beforeKey.revision,configuration:beforeKey.configuration,binding:beforeKey.binding};
- const rekeyed=await engine.put({...metadata(back),secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA+'-new'}]});
+ const rekeyed=await engine.put({...metadata(back),secretActions:[{serviceKey:a,action:'replace',storage:'persistent',value:keyA+'-new'}]});
  assert.deepEqual(rekeyed.mioSelection,back.mioSelection);assert.notEqual(execution(rekeyed).binding.entryRevision,beforeKey.binding.entryRevision);
  await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](oldKeyRequest),{code:'AGENT_SETTINGS_CONFLICT'});
  const current=execution(rekeyed);assert.deepEqual(await client[AGENT_CREDENTIAL_ACQUIRE]({expectedRevision:current.revision,configuration:current.configuration,binding:current.binding}),{revision:current.revision,configuration:current.configuration,binding:current.binding,apiKey:keyA+'-new'});
@@ -495,7 +487,7 @@ test('model-list purpose acquires only one saved service through the existing tr
  t.after(async()=>{client.close();broker.close();await engine.close();await rm(userData,{recursive:true,force:true});});
  const initial=await engine.get(),a=randomUUID(),b=randomUUID(),model='synthetic-model',keyA=DUMMY_KEY+'-list-A',keyB=DUMMY_KEY+'-list-B';
  const entry={presetId:'custom' as const,name:'Synthetic list',platformId:'custom',protocol:'chat_completions' as const,addressInput:'https://synthetic.example/v1',manualModelIds:[model]};
- const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'session',value:keyA},{serviceKey:b,action:'replace',storage:'session',value:keyB}]});
+ const saved=await engine.put({expectedRevision:initial.revision,services:[...initial.services.map(agentServiceInput),{...entry,serviceKey:a},{...entry,serviceKey:b}],mioSelection:{serviceKey:a,modelId:model},secretActions:[{serviceKey:a,action:'replace',storage:'persistent',value:keyA},{serviceKey:b,action:'replace',storage:'persistent',value:keyB}]});
  const chosen=saved.services.find(service=>service.serviceKey===b)!;
  const binding={serviceKey:b,entryRevision:chosen.revision,selectionRevision:saved.mioSelectionRevision};
  const configuration={presetId:'custom',platformId:'custom',baseUrl:entry.addressInput,model:'connection-validation',protocol:entry.protocol};
@@ -507,7 +499,7 @@ test('model-list purpose acquires only one saved service through the existing tr
  for(const invalid of [{...expected,binding:{...binding,serviceKey:a}}, {...expected,configuration:{...configuration,baseUrl:'https://evil.example/v1'}}, {...expected,expectedRevision:saved.revision+1}, {...expected,purpose:'inference'}, {...expected,rawUrl:'https://evil.example'}]) {
   await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](invalid),error=>{assert.equal(JSON.stringify(error).includes(keyB),false);return true;});
  }
- const changed=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'session',value:keyB+'-new'}]});
+ const changed=await engine.put({...metadata(saved),secretActions:[{serviceKey:b,action:'replace',storage:'persistent',value:keyB+'-new'}]});
  await assert.rejects(client[AGENT_CREDENTIAL_ACQUIRE](expected),{code:'AGENT_SETTINGS_CONFLICT'});
  assert.deepEqual(changed.execution,saved.execution,'saving the non-selected service still preserves the inference witness');
  const acquire=requests.find(value=>value!==null&&typeof value==='object'&&'operation'in value&&value.operation==='acquire');assert.ok(acquire);

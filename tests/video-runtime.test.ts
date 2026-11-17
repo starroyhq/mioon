@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -289,10 +290,10 @@ test('Veo authenticates only its fixed file route and strips the key on approved
 });
 
 for(const stage of ['task-response','redirect-response']as const)test(`credential removal during ${stage} stops the next download request on its original binding`,async t=>{
-  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-download-credential-'))),settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-download-credential-'))),settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   t.after(async()=>{await settings.close();await rm(root,{recursive:true,force:true});});
   const original=bindingFor(stage==='task-response'?'minimax':'veo'),configuration={id:original.connectionId,providerId:original.providerId,name:'Original video connection',region:original.region,workspaceId:original.workspaceId,enabled:true,archived:false,outputHosts:original.outputHosts,models:[original.model]};
-  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'ORIGINAL-SYNTHETIC-KEY'}});
+  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'persistent',value:'ORIGINAL-SYNTHETIC-KEY'}});
   const binding=settings.select(configuration.id,1,original.model.id),calls:Array<{url:string;init:RequestInit}>=[];
   const remove=()=>settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'remove'}});
   const fileUrl='https://generativelanguage.googleapis.com/v1beta/files/file-123:download';

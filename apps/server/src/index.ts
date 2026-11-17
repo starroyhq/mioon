@@ -81,7 +81,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 type LocalDraftChannel = WorkspaceInfo['channel'];
 type TaskFault = NonNullable<Parameters<typeof createEditTasks>[0]['fault']>;
 interface SecretOperationOptions {signal?: AbortSignal | undefined; isActive?: (() => boolean) | undefined}
-interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly sessionScope: 'server'; readonly reasonCode: 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
+interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly reasonCode: 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
 /** Trusted utility-only codec surface; never supplied from HTTP/environment. */
 interface ImageSecretCodecPort {
   storage(options?: SecretOperationOptions): ImageSecretStorageState;
@@ -328,7 +328,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       }});
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4, signal: shutdown.signal, providerList: () => createProviderCatalog({root, mockAllowed: channel !== 'production'}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: channel === 'development' ? process.env : {}, mockAllowed: channel !== 'production'}).list(),
       imageProfiles: input => listImageProfiles({...app.profileDependencies, mockAllowed: channel !== 'production'}, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);

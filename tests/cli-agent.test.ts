@@ -76,16 +76,19 @@ test('secret defaults to persistent, is write-only and exactly redacted even fro
  assert.equal(result.code,0);assert.equal(f.calls.length,2);assert.equal((result.body.data as typeof settings).execution?.secret.configured,true);assert.equal((result.body.data as typeof settings).execution?.configuration.model,'[redacted]');assert.equal(result.stdout.includes(key),false);assert.equal(result.stderr.includes(key),false);
 });
 
-test('persistent unavailability refuses before key input; only explicit session succeeds',async t=>{
- const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,{...settings,storage:{persistentAvailable:false,sessionScope:'server',reasonCode:'WEB_SESSION_ONLY'}});else{const action=input.secretActions[0];assert.ok(action?.action==='replace');reply(res,adapterSettings(configuration,{revision:5,secretStorage:action.storage}));}});const metadata=JSON.stringify(secretMetadata);
- const denied=await command(['agent','secret','set','--key-stdin','--input',metadata],{base:f.base,stdin:'SYNTHETIC_SESSION_KEY'}).result;assert.equal(denied.code,3);assert.equal(f.calls.length,1);
- const accepted=await command(['agent','secret','set','--key-stdin','--storage','session','--input',metadata],{base:f.base,stdin:'SYNTHETIC_SESSION_KEY'}).result;assert.equal(accepted.code,0);assert.deepEqual(f.calls.at(-1)!.body.secretActions,[{serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'session',value:'SYNTHETIC_SESSION_KEY'}]);
+test('secure storage unavailability refuses before reading a key and old storage flags fail before connecting',async t=>{
+ const f=await fixture(t,(req,res)=>{assert.equal(req.method,'GET');reply(res,{...settings,storage:{persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'}});});
+ const args=['agent','secret','set','--key-file','/synthetic/nonexistent-key','--input',JSON.stringify(secretMetadata)];
+ const removed=await command([...args,'--storage','session'],{base:f.base}).result;
+ assert.equal(removed.code,2);assert.equal(removed.body.error.code,'VALIDATION_ERROR');assert.match(removed.body.error.message,/Only system-encrypted secret storage is supported/u);assert.equal(f.calls.length,0);
+ const denied=await command(args,{base:f.base}).result;
+ assert.equal(denied.code,3);assert.equal(denied.body.error.code,'AGENT_SETTINGS_STORAGE_UNAVAILABLE');assert.equal(f.calls.length,1);
 });
 
 test('explicit key-file uses private regular-file policy, not permissive JSON input', {skip:process.platform==='win32'},async t=>{
  const dir=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-cli-agent-key-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=path.join(dir,'key');await writeFile(file,'SYNTHETIC_KEY_FILE_VALUE\n',{mode:0o600});const metadata=JSON.stringify(secretMetadata);
  const f=await fixture(t,(req,res,input)=>{if(req.method==='GET')reply(res,settings);else{const action=input.secretActions[0];assert.ok(action?.action==='replace');reply(res,adapterSettings(configuration,{revision:5,secretStorage:action.storage}));}});
- assert.equal((await command(['agent','secret','set','--key-file',file,'--input',metadata],{base:f.base}).result).code,0);assert.equal(f.calls.length,2);
+ assert.equal((await command(['agent','secret','set','--key-file',file,'--storage','persistent','--input',metadata],{base:f.base}).result).code,0);assert.equal(f.calls.length,2);
  await chmod(file,0o644);const denied=await command(['agent','secret','set','--key-file',file,'--input',metadata],{base:f.base}).result;assert.equal(denied.code,2);assert.equal(f.calls.length,3);assert.equal(denied.stdout.includes('SYNTHETIC_KEY_FILE_VALUE'),false);
 });
 

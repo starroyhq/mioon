@@ -188,7 +188,7 @@ test('a multi-service save sends one atomic collection and redacts every replace
  const keys=['SYNTHETIC_KEY_A','SYNTHETIC_KEY_B'],calls:FetchCapture[]=[];
  const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options} as FetchCapture);return new Response(JSON.stringify({ok:false,error:{code:`AGENT_SETTINGS_${keys.join('_')}`,message:keys.join(' ')}}),{status:409});}});
  await assert.rejects(client.settingsPut(adapterMetadata(batch),[
-  {serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'session',value:keys[0]},
+  {serviceKey:ADAPTER_CUSTOM_SERVICE_KEY,action:'replace',storage:'persistent',value:keys[0]},
   {serviceKey:secondKey,action:'replace',storage:'persistent',value:keys[1]},
  ]),error=>{
   for(const key of keys){assert.ok(!JSON.stringify(error).includes(key));assert.ok(!String(error).includes(key));}

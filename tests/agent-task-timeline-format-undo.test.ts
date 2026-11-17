@@ -12,7 +12,7 @@ import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-format.ts';
 import {canvasEditingResponses,createCanvasRequestId} from '../packages/contracts/src/canvas-editing.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer,type InspectProject} from './helpers/test-server.ts';
@@ -36,8 +36,8 @@ function output(calls:AgentTaskToolCall[]):TaskModelOutput{
 
 test('real Mio subtitle undo retains valid locked format history while unknown operations still fail closed',async t=>{
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-format-mio-undo-'));
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initialSettings=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:initialSettings.revision,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_FORMAT_MIO_UNDO_KEY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initialSettings=await settings.get();
+ await putTestAgentConfiguration(settings,{expectedRevision:initialSettings.revision,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_FORMAT_MIO_UNDO_KEY'}});
  let models=0,timelineRevision=0,inspect!:InspectProject;
  const gateway:TaskGateway=async function*(request){
   request.beforeSubmit?.();models++;
@@ -113,8 +113,8 @@ async function format4MioFixture(t: test.TestContext,localMode:'confirm'|'direct
  assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version,FORMAT4_PROJECT_SCHEMA_VERSION);
  const ports=createMioTestAppPorts(store),{services}=ports;
 
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
- await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_FRAME_TRANSACTION_KEY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_FRAME_TRANSACTION_KEY'}});
  const authorizations=ports.createAuthorizations(settings);
  await authorizeTestScope(authorizations,'project_agent');
  const policy={...mioTestPolicy,policy:()=>{const base=mioTestPolicy.policy();return {...base,modes:{...base.modes,local_reversible:localMode}};}};

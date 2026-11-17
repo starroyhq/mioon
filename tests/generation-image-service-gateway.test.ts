@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -28,10 +29,10 @@ async function responseBody() {
 }
 async function fixture(t: TestContext, save?: () => Promise<void>) {
   let stored: unknown = null;
-  const settings = await createCustomImageSettingsV2({persistence: {load: async () => stored, save: async value => {await save?.(); stored = structuredClone(value);}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => stored, save: async value => {await save?.(); stored = structuredClone(value);}}});
   t.after(() => settings.close());
   const a = randomUUID(), b = randomUUID();
-  await settings.batch({expectedRevision: 0, operations: [a, b].map((connectionId, index) => ({action: 'create', connectionId, name: index ? 'Service B' : 'Service A', configuration, secret: {action: 'replace', storage: 'session', value: index ? KEY_B : KEY_A}}))});
+  await settings.batch({expectedRevision: 0, operations: [a, b].map((connectionId, index) => ({action: 'create', connectionId, name: index ? 'Service B' : 'Service A', configuration, secret: {action: 'replace', storage: 'persistent', value: index ? KEY_B : KEY_A}}))});
   return {settings, a, b, read: () => stored};
 }
 function network(body: Buffer = Buffer.from('{}'), onPost?: () => void) {
@@ -123,7 +124,7 @@ for (const effect of ['edit', 'delete', 'close'] as const) test(`${effect} of se
   const f = await fixture(t), entered = deferred<void>(), release = deferred<typeof answers>(), net = network(); let fences = 0;
   const pending = generate(f.settings, {...net, lookup: (() => {entered.resolve(); return release.promise;}) as unknown as GatewayOptions['lookup']}, f.a, {beforeDispatch: () => {fences++;}});
   const rejected = assert.rejects(pending, {code: 'IMAGE_DISPATCH_BLOCKED', dispatched: false, outcomeUnknown: false}); await entered.promise;
-  if (effect === 'edit') await f.settings.put({expectedRevision: 1, connectionId: f.a, expectedConfigurationRevision: 1, name: 'A changed', configuration: {...configuration, baseUrl: 'https://changed.example/v1'}, secret: {action: 'replace', storage: 'session', value: 'synthetic-replacement-A'}});
+  if (effect === 'edit') await f.settings.put({expectedRevision: 1, connectionId: f.a, expectedConfigurationRevision: 1, name: 'A changed', configuration: {...configuration, baseUrl: 'https://changed.example/v1'}, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-replacement-A'}});
   if (effect === 'delete') await f.settings.remove({expectedRevision: 1, connectionId: f.a, expectedConfigurationRevision: 1});
   if (effect === 'close') await f.settings.close();
   release.resolve(answers); await rejected;

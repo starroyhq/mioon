@@ -13,6 +13,7 @@ import {agentOpenAiModelIsAdapted} from '../../../packages/contracts/src/agent-o
 import {createAgentModelListSession,testAgentDraftConnection} from './agent-model-list-session.ts';
 import type {AgentModelListView} from './agent-model-list-session.ts';
 import {agentModelListRows,agentModelRetirementMessage} from './agent-model-list-rows.ts';
+import {hasDesktopWindowBridge} from './desktop-window-client.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import AgentAuthorizations from './AgentAuthorizations.tsx';
 import AgentConnectionTest from './AgentConnectionTest.tsx';
@@ -21,6 +22,7 @@ import type {AgentTaskPolicyController,AgentTaskPolicyNavigation} from './AgentT
 import SettingsServicesLayout from './SettingsServicesLayout.tsx';
 import type {SettingsServicesFooter} from './SettingsServicesLayout.tsx';
 import ModelPickerDialog from './ModelPickerDialog.tsx';
+import {SettingsSecretStorageNotice} from './SettingsSecretStorageNotice.tsx';
 import {WorkbenchSelect, WorkbenchTooltip} from './WorkspaceControls.tsx';
 import Icon from './icons.tsx';
 import {useWorkspaceVisibility} from './workspace-visibility.tsx';
@@ -47,8 +49,6 @@ interface AgentSettingsProps {
  onNavigationStateChange?:Parameters<NavigationReporter['connect']>[0];projectId?:string|null;
 }
 const serviceOrder=['minimax','deepseek','openai','anthropic','qwen','zhipu','kimi','openrouter','ollama'];
-const storageReasons:Readonly<Record<string,Parameters<Translate>[0]>>={WEB_SESSION_ONLY:'connections.storage.webReason',LINUX_BASIC_TEXT:'connections.storage.basicReason',OS_SECRET_STORE_UNAVAILABLE:'connections.storage.unavailableReason'};
-const storageReason=(storage:AgentSettingsSnapshot['storage'],t:Translate):string=>t(storage.reasonCode&&storageReasons[storage.reasonCode]|| (storage.persistentAvailable?'connections.storage.availableReason':'connections.storage.fallbackReason'));
 const modelListFailureMessages={
  required:'agent.settings.models.waitingKey',
  rejected:'agent.settings.models.invalidKey',
@@ -144,7 +144,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   if(!usable(key))return null;const current=session.current!.getState(),entry=current.draft?.services.find(item=>item.serviceKey===key),saved=current.snapshot?.services.find(item=>item.serviceKey===key);
   if(!entry||!current.snapshot)return null;const value=keyInputs.current.get(key)?.current?.value??'';
   if(value)return {source:'input',value};
-  if(current.serviceIntents[key]?.action!=='remove'&&saved?.secret.configured&&(saved.secret.storage!=='persistent'||current.snapshot.storage.persistentAvailable)&&saved.protocol===entry.protocol&&
+  if(current.serviceIntents[key]?.action!=='remove'&&saved?.secret.configured&&current.snapshot.storage.persistentAvailable&&saved.protocol===entry.protocol&&
    !agentServiceBindingChanged(saved,entry,current.snapshot.presets))return {source:'saved'};
   // These known unavailable descriptors return before key acquisition. The
   // two public/local descriptors explicitly allow an unauthenticated list.
@@ -284,7 +284,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
  const services=draft?.services??[];
  const panels=[{key:'general',content:general},...services.map(entry=>{
   const key=entry.serviceKey,preset=snapshot!.presets.find(item=>item.id===entry.presetId)!,platform=preset.platforms.find(item=>item.id===entry.platformId)!,selected=state.selectedKey===key,enabled=editable&&selected;
-  const saved=snapshot!.services.find(item=>item.serviceKey===key),changedBinding=agentServiceBindingChanged(saved,entry,snapshot!.presets),intent=state.serviceIntents[key]??{action:'keep',storage:'session'},configured=Boolean(saved?.secret.configured&&!changedBinding),keyEntry=(!configured||saved?.protocol!==entry.protocol||replacing.has(key))&&intent.action!=='remove';
+  const saved=snapshot!.services.find(item=>item.serviceKey===key),changedBinding=agentServiceBindingChanged(saved,entry,snapshot!.presets),intent=state.serviceIntents[key]??{action:'keep'},configured=Boolean(saved?.secret.configured&&!changedBinding),keyWritable=snapshot!.storage.persistentAvailable,keyEntry=(!configured||saved?.protocol!==entry.protocol||replacing.has(key))&&intent.action!=='remove';
   const refs=inputRef(keyInputs.current,key),manualRef=inputRef(modelInputs.current,key),hints=entry.presetId==='custom'?[]:platform.supportedModelHints?.[entry.protocol]??[];
   const selectedModel=draft!.mioSelection?.serviceKey===key?draft!.mioSelection.modelId:null,savedModel=snapshot!.mioSelection?.serviceKey===key?snapshot!.mioSelection.modelId:null;
   let base='';try{base=agentServiceBase(entry,snapshot!.presets);}catch{/* Incomplete address is an editable draft. */}
@@ -306,8 +306,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
   const pickerStatus=!list||listBusy?'loading':!latestList?'error':pickerItems.length?'ready':'empty';
   const messagesV1=entry.presetId==='custom'&&entry.protocol==='anthropic_messages'&&/\/v1\/?$/u.test(entry.addressInput.trim());
   const ownTest=snapshot!.execution?.binding.serviceKey===key?snapshot!.execution:null;
-  const serviceDirty=!saved||!agentServiceEqual(saved,entry,snapshot!.presets)||hasKeys.has(key)||intent.action==='remove'||selectedModel!==savedModel||
-    Boolean(saved?.secret.configured&&intent.storage!==saved.secret.storage);
+  const serviceDirty=!saved||!agentServiceEqual(saved,entry,snapshot!.presets)||hasKeys.has(key)||intent.action==='remove'||selectedModel!==savedModel;
   const testTarget=selected?draftTestTarget(key):null;
   const draftTestForService=draftTest?.key===key&&draftTest.identity===testTarget?.identity?draftTest:null;
   const useDraftTest=serviceDirty||!ownTest;
@@ -321,7 +320,7 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
      <Input id={`agent-address-${key}`} data-testid={`agent-settings-base-url-${key}`} value={platform.addressMode==='fixed'?base:entry.addressInput} disabled={!enabled||platform.addressMode==='fixed'} readOnly={platform.addressMode==='fixed'} maxLength={2048} spellCheck={false} autoCapitalize="none" placeholder={platform.addressMode==='workspace'?'workspace-id':platform.addressMode==='local'?'http://127.0.0.1:11434':'https://api.example.com'} onBlur={()=>{if(usable(key)&&addressEditing.current.delete(key))setAddressEpoch(previous=>previous+1);}} onChange={(event:ChangeEvent<HTMLInputElement>)=>{if(!usable(key))return;addressEditing.current.add(key);bindingChange(key,()=>session.current?.editService(key,{addressInput:event.target.value}));}}/>
      {messagesV1&&<p className="agent-settings-binding-warning" data-testid={`agent-settings-messages-v1-${key}`}>{t('agent.settings.x6.messagesV1')} <WorkbenchButton type="button" variant="ghost" size="compact" disabled={!enabled} onClick={()=>bindingChange(key,()=>session.current?.editService(key,{addressInput:entry.addressInput.trim().replace(/\/v1\/?$/u,'')}))}>{t('agent.settings.x6.removeV1')}</WorkbenchButton></p>}
      {endpoint && <p className="agent-settings-help" data-text-selectable data-testid={`agent-settings-endpoint-${key}`}>{t('agent.settings.endpointPreview',{protocol:AGENT_PROTOCOLS[entry.protocol].label})} {endpoint}</p>}
-     {Boolean(platform.sources.length)&&<div className="agent-settings-sources">{platform.sources.map(source=>snapshot!.storage.sessionScope==='app'?<span className="agent-settings-source-reference" key={source.url}><span>{t('agent.settings.officialDocs')}</span><span>{source.url}</span></span>:<a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{t('agent.settings.officialDocs')}<Icon name="arrow" size={10}/></a>)}</div>}
+     {Boolean(platform.sources.length)&&<div className="agent-settings-sources">{platform.sources.map(source=>hasDesktopWindowBridge()?<span className="agent-settings-source-reference" key={source.url}><span>{t('agent.settings.officialDocs')}</span><span>{source.url}</span></span>:<a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{t('agent.settings.officialDocs')}<Icon name="arrow" size={10}/></a>)}</div>}
     </div></div>;
   return {key,content:<div className="mio-settings-service" data-testid={`agent-settings-service-${key}`}>
    <header className="mio-settings-service-head"><h2>{serviceName}<WorkbenchTooltip content={agentPresetNote(preset,platform,t)}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')} data-testid={`agent-settings-preset-note-${key}`}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></h2>{serviceDirty&&<WorkbenchBadge tone="warning" data-testid={`agent-settings-service-dirty-${key}`}>{t('settings.draftKey.unsaved')}</WorkbenchBadge>}{entry.presetId==='custom'&&<WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-settings-delete-${key}`} disabled={!enabled||!session.current?.canRemove(key)} title={!session.current?.canRemove(key)?t('agent.settings.x6.deleteInUse'):undefined} onClick={()=>{void deleteService(key);}}>{t('agent.settings.x6.deleteService')}</WorkbenchButton>}</header>
@@ -333,16 +332,13 @@ export default function AgentSettings({onNavigationStateChange,projectId=null}:A
     {entry.presetId==='custom'&&addressRow}
     <div className="mio-settings-row"><span className="mio-settings-label" id={`agent-secret-heading-${key}`}>{t('mio.settings.label.key')}<WorkbenchTooltip content={t('agent.settings.keyHelp')}><WorkbenchButton type="button" variant="icon" size="compact" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></WorkbenchButton></WorkbenchTooltip></span><div className="mio-settings-control" role="group" aria-labelledby={`agent-secret-heading-${key}`}>
      <div className="mio-settings-inline"><WorkbenchBadge tone={intent.action==='remove'?'warning':configured?'success':'neutral'} data-testid={`agent-settings-secret-status-${key}`} data-configured={configured} data-storage={saved?.secret.storage??'none'}>{t(intent.action==='remove'?'mio.settings.key.clearing':configured?'mio.settings.key.configured':'mio.settings.key.missing')}</WorkbenchBadge>
-      <WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-check-key-${key}`} disabled={!enabled||!base||listBusy} loading={listBusy} onClick={()=>fetchModels(key)}>{t('agent.settings.x6.checkModel')}</WorkbenchButton>
-      {configured&&intent.action!=='remove'&&!replacing.has(key)&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-replace-key-${key}`} disabled={!enabled} onClick={()=>{if(usable(key))setReplacing(previous=>new Set([...previous,key]));}}>{t('mio.settings.key.replace')}</WorkbenchButton>}
-      {replacing.has(key)&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-cancel-replace-${key}`} disabled={!enabled} onClick={()=>{if(usable(key))clearKeys(key);}}>{t('common.cancel')}</WorkbenchButton>}
+      {keyWritable&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-check-key-${key}`} disabled={!enabled||!base||listBusy} loading={listBusy} onClick={()=>fetchModels(key)}>{t('agent.settings.x6.checkModel')}</WorkbenchButton>}
+      {keyWritable&&configured&&intent.action!=='remove'&&!replacing.has(key)&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-replace-key-${key}`} disabled={!enabled} onClick={()=>{if(usable(key))setReplacing(previous=>new Set([...previous,key]));}}>{t('mio.settings.key.replace')}</WorkbenchButton>}
+      {keyWritable&&replacing.has(key)&&<WorkbenchButton type="button" variant="ghost" size="compact" data-testid={`agent-settings-cancel-replace-${key}`} disabled={!enabled} onClick={()=>{if(usable(key))clearKeys(key);}}>{t('common.cancel')}</WorkbenchButton>}
       {saved?.secret.configured&&<WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-settings-remove-key-${key}`} aria-pressed={intent.action==='remove'} disabled={!enabled} onClick={()=>{if(usable(key)){clearKeys(key);session.current?.removeKey(key,intent.action!=='remove');}}}>{t(intent.action==='remove'?'connections.undoRemove':'mio.settings.key.clear')}</WorkbenchButton>}
      </div>
-     {state.keychainWaitConfirmed&&snapshot!.storage.reasonCode==='OS_SECRET_STORE_PENDING'&&<p className="agent-settings-help" role="status" data-testid={`agent-settings-keychain-pending-${key}`}>{t('connections.storage.keychainPending')}</p>}
-     <div className="mio-settings-key-entry" hidden={!keyEntry} inert={!keyEntry}><Label className="sr-only" htmlFor={`agent-key-${key}`}>{t(configured?'agent.settings.replaceKey':'agent.settings.enterKey')}</Label><Input ref={refs} id={`agent-key-${key}`} data-testid={`agent-settings-key-${key}`} type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!enabled||!keyEntry} maxLength={8192} onChange={(event:ChangeEvent<HTMLInputElement>)=>{if(!usable(key)||!keyEntry)return;closePicker();cancelDraftTest(key);modelListsSession.current?.invalidate(key);setHasKeys(previous=>new Set([...previous].filter(item=>item!==key).concat(event.target.value?[key]:[])));setKeyCleared(previous=>new Set([...previous].filter(item=>item!==key)));report(session.current?.getState()||state);}}/>
-      <WorkbenchSelect id={`agent-storage-${key}`} data-testid={`agent-settings-storage-${key}`} aria-label={t('agent.settings.keyStorage')} value={intent.storage} disabled={!enabled} onChange={(event:{target:{value:string}})=>{if(usable(key))session.current?.setStorage(key,event.target.value);}}><option value="session">{t(snapshot!.storage.sessionScope==='app'?'connections.storage.appSession':'connections.storage.serverSession')}</option><option value="persistent" disabled={!snapshot!.storage.persistentAvailable}>{t(snapshot!.storage.persistentAvailable||snapshot!.storage.reasonCode==='OS_SECRET_STORE_PENDING'?'connections.storage.persistent':'connections.storage.persistentUnavailable')}</option></WorkbenchSelect>
-      {snapshot!.storage.reasonCode!=='OS_SECRET_STORE_PENDING'&&<p className="agent-settings-help">{storageReason(snapshot!.storage,t)} {!hasKeys.has(key)&&configured?t('agent.settings.reenterStorage'):''}</p>}
-     </div>
+     <SettingsSecretStorageNotice storage={snapshot!.storage} pendingConfirmed={state.keychainWaitConfirmed} disabled={!enabled} retry={()=>{if(usable(key))session.current?.retryStorage();}} testId={`agent-settings-keychain-pending-${key}`}/>
+     {keyWritable&&<div className="mio-settings-key-entry" hidden={!keyEntry} inert={!keyEntry}><Label className="sr-only" htmlFor={`agent-key-${key}`}>{t(configured?'agent.settings.replaceKey':'agent.settings.enterKey')}</Label><Input ref={refs} id={`agent-key-${key}`} data-testid={`agent-settings-key-${key}`} type="password" autoComplete="new-password" spellCheck={false} autoCapitalize="none" disabled={!enabled||!keyEntry} maxLength={8192} onChange={(event:ChangeEvent<HTMLInputElement>)=>{if(!usable(key)||!keyEntry)return;closePicker();cancelDraftTest(key);modelListsSession.current?.invalidate(key);setHasKeys(previous=>new Set([...previous].filter(item=>item!==key).concat(event.target.value?[key]:[])));setKeyCleared(previous=>new Set([...previous].filter(item=>item!==key)));report(session.current?.getState()||state);}}/></div>}
      {list&&!list.fromCache&&(list.result||['loading','waiting_key','error'].includes(list.phase))&&<p className="agent-settings-help" role="status" data-testid={`agent-settings-key-check-result-${key}`}>{t(listStatus)}</p>}
      {draftTestMessage&&<p className="agent-settings-help" role="status" data-testid={`agent-settings-draft-test-result-${key}`}>{draftTestMessage}</p>}
      {configured&&saved?.protocol!==entry.protocol&&!hasKeys.has(key)&&<p className="agent-settings-help">{t('agent.settings.x6.draftTestProtocolKey')}</p>}

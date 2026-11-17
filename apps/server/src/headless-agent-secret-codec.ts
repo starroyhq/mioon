@@ -52,7 +52,7 @@ export async function createHeadlessAgentSecretCodec({directory,channel,timeoutM
   const helper=injectedHelper??createHeadlessSecretHelperClient({timeoutMs});
   const lifetime=new AbortController();
   let available=false,sawCiphertext=false,tail:Promise<unknown>=Promise.resolve(),queued=0;
-  const storage=():PublicStorage=>({persistentAvailable:available&&!lifetime.signal.aborted,sessionScope:'server',reasonCode:available&&!lifetime.signal.aborted?null:'OS_SECRET_STORE_UNAVAILABLE'});
+  const storage=():PublicStorage=>({persistentAvailable:available&&!lifetime.signal.aborted,reasonCode:available&&!lifetime.signal.aborted?null:'OS_SECRET_STORE_UNAVAILABLE'});
   const checkpoint=(options:SettingsContextOptions)=>{if(lifetime.signal.aborted||options.signal?.aborted||options.isActive?.()===false)throw unavailable();};
   function diskState():{cipher:boolean;fence:boolean} {
     if(!validatePrivateDirectory(root,{allowMissing:true}))return {cipher:false,fence:false};

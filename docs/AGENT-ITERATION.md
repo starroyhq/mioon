@@ -107,8 +107,8 @@ Use a write-only authenticated settings API, an injected secret-store interface,
 - The settings password input necessarily holds a newly typed value transiently. Clear it after submission and on dismissal. There is no stored-secret getter or refill.
 - Return only safe configuration status and an opaque secret reference. Never store plaintext keys in project SQLite, localStorage, conversation transcripts, logs, screenshots or export bundles.
 - Desktop persistence uses `safeStorage` with a real OS secret store, channel/profile/origin binding and owner-restricted ciphertext files outside the project data directory.
-- If encryption is unavailable or Linux reports `basic_text`, fail closed for persistence and offer session-only storage. Do not call plaintext mode an encrypted vault.
-- Web-server mode initially supports backend-memory session-only entry. A persistent web vault requires a separately designed external key source; encrypting a file with a key beside it is not sufficient.
+- If encryption is unavailable or Linux reports `basic_text`, reject key saves.
+- A browser connected to a backend without OS secure storage offers no key entry.
 - Decryption is available only to the trusted backend for the selected profile, never arbitrary renderer requests. Preserve the app's no-preload/no-general-IPC policy.
 - Origin/region changes invalidate the old credential binding. Never silently forward the previous key to a new destination.
 - Protect against stale saves, restart races and failed replacement/deletion. OS-backed encryption protects storage at rest, not a compromised same-user process.
@@ -185,7 +185,7 @@ New focused suites should cover:
 - `agent-replay`: crash before/after commit, lost response, restart, concurrent duplicate request, changed reuse, cancellation between intent and commit, stable output IDs.
 - `agent-policy`: untrusted project text asking for credentials or other-project access, forged approval fields, paid retry bypass, unauthorized settings/network tools and repeated no-progress loops.
 - `agent-network`: redirects, URL credentials, private/metadata addresses, IPv6 forms, DNS rebinding, self-service localhost port and endpoint/key-binding changes.
-- `agent-secrets`: write-only API, no reads through MCP/CLI/model tools, fake-key redaction in every error path, unavailable vault/basic_text, failed save/delete, session-only restart and channel isolation.
+- `agent-secrets`: write-only API, no reads through MCP/CLI/model tools, fake-key redaction in every error path, unavailable vault/basic_text, failed save/delete, encrypted key recovery after restart and channel isolation.
 - `agent-lifecycle`: SSE reconnect and cursor bounds, out-of-order/stale UI events, backend stop, pending approval, project switch, close/hide/reopen, two windows and auth rotation.
 - Browser and native Electron acceptance: real tool-driven edits and existing panel/timeline/preferences regressions, not only component snapshots.
 

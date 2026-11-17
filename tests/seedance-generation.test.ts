@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {publicMediaFingerprint} from '../packages/contracts/src/asset-media.ts';
 import {resolveReferencePath} from '../packages/business/src/media-reference/paths.ts';
@@ -24,13 +25,13 @@ const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'Conten
 const TASK='seedance-task-1';
 async function fixture(t:TestContext,{models}:{models?:(defaults:VideoModelEntry[])=>VideoModelEntry[]}={}){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-seedance-generation-'))),store=openStore(root);
- const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+ const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
  const providers=createProviderRegistry({db:store.db,root,env:{}}),calls:Array<{url:string;init:RequestInit}>=[];
  let reply:(url:string,init:RequestInit)=>Response|Promise<Response>=(_url,init)=>json(init.method==='POST'?{id:TASK}:{id:TASK,status:'running'});
  const services=createServices(store,providers,{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,30),videoFetch:async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return reply(request.url,request.init);}});
  await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const defaults=defaultVideoModels('ark'),configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'ark',name:'Ark account',region:'cn-beijing',workspaceId:'',enabled:true,archived:false,outputHosts:['output.example'],models:models?models(defaults):defaults};
- await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',value:'synthetic-ark-key',storage:'session'}});
+ await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',value:'synthetic-ark-key',storage:'persistent'}});
  const project=await services.call('project.create',{name:'Seedance 2.5 generation'}) as ServiceRow;
  const shot=await services.call('shot.create',{projectId:project.id,title:'Seedance shot',prompt:'A synthetic paper boat drifts across a pond.',aspectRatio:'9:16',duration:4,referenceAssetIds:[]}) as ServiceRow;
  let worker:ReturnType<typeof startWorker>|null=null;

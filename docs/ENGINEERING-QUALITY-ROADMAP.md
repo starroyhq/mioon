@@ -166,7 +166,7 @@ The repository has a lockfile and license collection (`apps/desktop/scripts/buil
 
 ## Native-platform verification matrix
 
-Every result must record OS/version, architecture, app/channel, exact commit/package hash, media-tool versions and whether credentials were synthetic, session-only or OS-encrypted. `Configured`, `unit-tested`, `native-runtime-tested` and `release-verified` are distinct states.
+Every result must record OS/version, architecture, app/channel, exact commit/package hash, media-tool versions and whether credentials were synthetic or OS-encrypted. `Configured`, `unit-tested`, `native-runtime-tested` and `release-verified` are distinct states.
 
 | Area | Linux baseline / carry-forward | macOS required verification | Windows required verification |
 | --- | --- | --- | --- |

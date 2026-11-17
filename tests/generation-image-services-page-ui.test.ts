@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as logic from '../apps/web/src/generation-image-services-settings.ts';
@@ -46,7 +47,7 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
     react: {...react, __esModule: true, default: react}, './generation-image-services-settings.ts': logic,
     './ModelPickerDialog.tsx': {__esModule: true, default: 'ModelPickerDialog'},
     './i18n/I18nProvider.tsx': {useI18n: () => createI18nTestContext(locale)},
-    '../../../packages/i18n/src/index.ts': i18n, './comfy-image-settings.ts': comfy, './ImageSettings.tsx': {imageStorageReason: () => ''},
+    '../../../packages/i18n/src/index.ts': i18n, './comfy-image-settings.ts': comfy, './SettingsSecretStorageNotice.tsx': {SettingsSecretStorageNotice: 'SettingsSecretStorageNotice'},
     '../../../packages/contracts/src/image-compatible.ts': imageCompatible,
     './SettingsServicesLayout.tsx': {useSettingsServicesPanel: () => ({selected: panelKey === selected, pageVisible: visible, active: visible && panelKey === selected})},
     '@mioon/ui/components/button': {Button: 'Button'}, '@mioon/ui/components/input': {Input: 'Input'}, '@mioon/ui/components/label': {Label: 'Label'},
@@ -92,8 +93,8 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
 
 async function fixture() {
   let document: unknown = null, writes = 0;
-  const settings = await createCustomImageSettingsV2({persistence: {load: () => document, save: value => {document = structuredClone(value);}}});
-  for (const name of ['A', 'B']) await settings.create({expectedRevision: (await settings.get()).revision, connectionId: crypto.randomUUID(), name, configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example/v1', model: 'same-model'}, secret: {action: 'replace', storage: 'session', value: 'synthetic-saved-only'}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: () => document, save: value => {document = structuredClone(value);}}});
+  for (const name of ['A', 'B']) await settings.create({expectedRevision: (await settings.get()).revision, connectionId: crypto.randomUUID(), name, configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example/v1', model: 'same-model'}, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-saved-only'}});
   const client: GenerationImageServicesClient = {read: () => settings.get(), write: input => {writes++; assert.ok(input && typeof input === 'object' && 'action' in input); const {action: _action, ...body} = input; return settings.batch(body);}};
   return {settings, client, get writes() {return writes;}};
 }
@@ -147,13 +148,13 @@ test('effect setup-cleanup-setup creates a fresh owner and fences the first setu
   const client: GenerationImageServicesClient = {...f.client, read: async () => {reads++; return reads === 1 ? first : f.client.read();}};
   const ui = harness(client); t.after(async () => {ui.unmount(); await f.settings.close();});
   ui.render(); ui.replayOwnerEffects(); await flush(); const ready = ui.render(); assert.equal(ready.ready, true); assert.equal(ready.services.length, 2);
-  resolve({revision: 0, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null}); await flush(); assert.equal(ui.render().services.length, 2);
+  resolve({revision: 0, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null}); await flush(); assert.equal(ui.render().services.length, 2);
   const a = ui.domain().services[0]!; const id = a.key.slice(6); ui.select(a.key); ui.key(`${id}-key`, 'synthetic-replay-only'); const ticket = ui.domain().prepareSave()!;
   assert.equal(await ticket.run(), 'saved'); ticket.dispose(); assert.equal(f.writes, 1); assert.equal(reads, 2);
 });
 
 test('legacy reset notice is visible for an empty collection and can be dismissed once without consuming the server notice', async () => {
-  let reads = 0; const snapshot = {revision: 0, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: 'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET'};
+  let reads = 0; const snapshot = {revision: 0, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: 'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET'};
   const ui = harness({read: async () => {reads++; return snapshot;}, write: async () => assert.fail('Dismissing is local')});
   ui.render(); await flush(); const domain = ui.render(); assert.deepEqual(domain.services, []); assert.ok(domain.notice);
   const close = nodes(domain.notice).find(item => item.type === 'Button'); assert.ok(close); (close.props.onClick as () => void)();
@@ -250,10 +251,29 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   assert.equal(saved.find(item => item.connectionId === id)?.secret.configured, true);
 });
 
+test('official and custom image settings hide key controls when secure storage is unavailable', async () => {
+  const storage = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
+  for (const kind of ['official', 'custom'] as const) {
+    const snapshot = kind === 'official'
+      ? {revision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: false, storage: 'none'}, storage}
+      : {revision: 0, connections: [], storage, notice: null};
+    const ui = harness({read: async () => snapshot, write: async () => assert.fail('Opening a detail cannot save')}, undefined, kind);
+    try {
+      ui.render(); await flush(); ui.render();
+      const key = kind === 'official' ? 'image:official' : ui.domain().add?.();
+      assert.ok(key); ui.select(key);
+      const controls = ui.elements();
+      assert.ok(!controls.some(node => node.props.type === 'password'));
+      assert.ok(!controls.some(node => String(node.props['data-testid']).endsWith('-storage')));
+      assert.deepEqual(controls.find(node => node.type === 'SettingsSecretStorageNotice')?.props.storage, storage);
+    } finally {ui.unmount();}
+  }
+});
+
 function officialHarness(probe: NonNullable<GenerationImageServicesClient['probe']>) {
   return harness({
-    read: async () => ({revision: 1, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: true, storage: 'session'},
-      storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}),
+    read: async () => ({revision: 1, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: true, storage: 'persistent'},
+      storage: testSecretStorage()}),
     probe,
     write: async () => assert.fail('Checking the fixed model is read-only'),
   }, undefined, 'official');

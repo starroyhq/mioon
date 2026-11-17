@@ -22,7 +22,7 @@ test('separate custom setting slot accepts empty disabled defaults and requires 
  assert.ok(customImageConfigurationSchema.safeParse(DEFAULT_CUSTOM_IMAGE_CONFIGURATION).success);assert.ok(customImageConfigurationSchema.safeParse(config()).success);
  for(const patch of [{enabled:true,baseUrl:'',model:''},{baseUrl:''},{model:''},{connectionId:'another'},{profileId:'arbitrary'},{providerId:'openai'},{model:' '},{model:'a b'},{model:'a\nb'},{model:'x'.repeat(121)},{options:{...IMAGE_FIXED_OPTIONS,n:2}},{headers:{Authorization:'secret'}}])assert.equal(customImageConfigurationSchema.safeParse({...config(),...patch}).success,false,JSON.stringify(patch));
  assert.equal(imageConfigurationSchema.safeParse(config()).success,false);
- assert.ok(customImageSettingsUpdateSchema.safeParse({expectedRevision:0,configuration:config(),secret:{action:'replace',storage:'session',value:'synthetic-test'}}).success);
+ assert.ok(customImageSettingsUpdateSchema.safeParse({expectedRevision:0,configuration:config(),secret:{action:'replace',storage:'persistent',value:'synthetic-test'}}).success);
  assert.equal(customImageSettingsResultSchema.safeParse({revision:0,configuration:DEFAULT_CUSTOM_IMAGE_CONFIGURATION,secret:{configured:true,storage:'session'},storage:{persistentAvailable:false,sessionScope:'server',reasonCode:'WEB_SESSION_ONLY'}}).success,false);
 });
 

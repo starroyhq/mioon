@@ -38,8 +38,8 @@ export type VideoSettingsOperationV2 = z.infer<typeof videoSettingsOperationV2Sc
 export type VideoSettingsUpdateV2 = z.infer<typeof videoSettingsUpdateV2Schema>;
 
 export const videoStorageV2Schema = z.object({
-  persistentAvailable: z.boolean(), sessionScope: z.enum(['app', 'server']),
-  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable(),
+  persistentAvailable: z.boolean(),
+  reasonCode: z.enum(['OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable(),
 }).strict().superRefine((storage, context) => {
   if (storage.persistentAvailable !== (storage.reasonCode === null)) context.addIssue({code: 'custom', message: 'Storage availability and reason must agree.'});
 });
@@ -47,7 +47,7 @@ export type VideoStorageV2 = z.infer<typeof videoStorageV2Schema>;
 export const videoConnectionViewV2Schema = z.object({
   configuration: videoConnectionConfigurationV2Schema,
   revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict(),
+  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'persistent'])}).strict(),
 }).strict().superRefine((view, context) => {
   if (view.secret.configured !== (view.secret.storage !== 'none')) context.addIssue({code: 'custom', path: ['secret'], message: 'Secret availability and storage must agree.'});
 });

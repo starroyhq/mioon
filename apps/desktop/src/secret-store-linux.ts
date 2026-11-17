@@ -6,7 +6,7 @@ const LINUX_KEYRINGS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwall
 const MAX_PLAINTEXT_BYTES = 32 * 1024;
 const MAX_CIPHERTEXT_BYTES = 64 * 1024;
 const vaultError = (code = 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'): Error => agentSettingsError(code);
-const unavailable = (): SecretStorageState => ({ persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' });
+const unavailable = (): SecretStorageState => ({ persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' });
 
 /** The synchronous Electron module surface the Linux strong-keyring path uses. */
 export type LinuxSafeStorage = SyncSafeStorage;
@@ -23,7 +23,7 @@ export function linuxDesktopSecretStorage(safeStorage: LinuxSafeStorage): Secret
       else if (backend === undefined || !LINUX_KEYRINGS.has(backend)) reasonCode = 'OS_SECRET_STORE_UNAVAILABLE';
     }
   } catch { reasonCode = 'OS_SECRET_STORE_UNAVAILABLE'; }
-  return { persistentAvailable: reasonCode === null, sessionScope: 'app', reasonCode };
+  return { persistentAvailable: reasonCode === null, reasonCode };
 }
 
 export function createLinuxDesktopSecretCodec({ safeStorage, appId }: {

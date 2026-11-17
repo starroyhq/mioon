@@ -16,7 +16,7 @@ import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {exportControlSchemas,exportActivitySchema,exportOutputSchema} from '../../contracts/src/export-controls.ts';
 
 type Stage='preparing'|'encoding'|'finalizing';
-interface Activity {stage:Stage;started:number;abort():void}
+interface Activity {stage:Stage;started:number;progress:number|null;abort():void}
 const activities=new WeakMap<object,Map<string,Activity>>();
 const row=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export const isCancelledExport=(value:unknown):boolean=>row(value)&&value.status==='failed'&&row(value.error)&&value.error.code==='EXPORT_CANCELLED';
@@ -24,9 +24,13 @@ export const isCancelledExport=(value:unknown):boolean=>row(value)&&value.status
  * terminal cancellation uses the existing failed outcome, keeping historical
  * frozen export/backup contracts exact. */
 export function exportStage(store:object,id:string,stage:Stage):void {const activity=activities.get(store)?.get(id);if(activity)activity.stage=stage;}
+export function exportEncodingProgress(store:object,id:string,completedFrames:number,totalFrames:number):void {
+  const activity=activities.get(store)?.get(id);
+  if(activity?.stage==='encoding')activity.progress=Math.max(activity.progress??0,Math.min(99,Math.floor(100*completedFrames/totalFrames)));
+}
 export function registerExportActivity(store:object,id:string,abort:()=>void):{stage(value:Stage):void;close():void}{
   let owned=activities.get(store);if(!owned){owned=new Map();activities.set(store,owned);}
-  const activity:Activity={stage:'preparing',started:Date.now(),abort};owned.set(id,activity);
+  const activity:Activity={stage:'preparing',started:Date.now(),progress:null,abort};owned.set(id,activity);
   return {stage:value=>{if(owned.get(id)===activity)activity.stage=value;},close:()=>{if(owned.get(id)===activity)owned.delete(id);}};
 }
 export function createExportControlServices(store:Store,{signal}:{signal?:AbortSignal}={}){
@@ -60,7 +64,8 @@ export function createExportControlServices(store:Store,{signal}:{signal?:AbortS
     'export.activity.get':(raw:unknown)=>{
       const input=exportControlSchemas['export.activity.get'].parse(raw),record=read(input.projectId,input.exportId),activity=activities.get(store)?.get(input.exportId),cancelled=isCancelledExport(record);
       const stage=cancelled?'cancelled':record.status==='succeeded'?'complete':record.status==='failed'?'failed':activity?.stage??'queued';
-      return exportActivitySchema.parse({...input,status:record.status,stage,progress:record.status==='succeeded'?100:record.status==='queued'?0:null,elapsedSeconds:Math.max(0,((['succeeded','failed'].includes(String(record.status))?Date.parse(String(record.updatedAt)):Date.now())-(activity?.started??Date.parse(String(record.createdAt))))/1000)||0,cancelled});
+      const progress=record.status==='succeeded'?100:record.status==='queued'?0:record.status==='running'?activity?.progress??null:null;
+      return exportActivitySchema.parse({...input,status:record.status,stage,progress,elapsedSeconds:Math.max(0,((['succeeded','failed'].includes(String(record.status))?Date.parse(String(record.updatedAt)):Date.now())-(activity?.started??Date.parse(String(record.createdAt))))/1000)||0,cancelled});
     },
     'export.output.get':async(raw:unknown)=>{
       const input=exportControlSchemas['export.output.get'].parse(raw),record=read(input.projectId,input.exportId);

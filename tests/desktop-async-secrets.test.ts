@@ -240,7 +240,7 @@ test('audited imports and codec construction make no native calls; Images client
   const pair = imagePair(codec); t.after(() => pair.close());
   const encrypted = await pair.client.encrypt(imagePlaintexts[0]);
   assert.equal(await pair.client.decrypt(encrypted), imagePlaintexts[0]);
-  assert.deepEqual(pair.client.storage(), {persistentAvailable: true, sessionScope: 'server', reasonCode: null});
+  assert.deepEqual(pair.client.storage(), {persistentAvailable: true, reasonCode: null});
   assert.ok(['status', 'encrypt', 'decrypt'].every(method => f.calls.includes(method)));
 });
 
@@ -288,7 +288,7 @@ test('Images client directly arms its 2000ms default and times out a silent port
   const request = requests[0];
   assert.ok(requests.some(message => message.type === 'image-secret-codec-cancel' && message.requestId === request.requestId));
   port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request!.requestId,
-    ok: true, data: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}});
+    ok: true, data: {persistentAvailable: true, reasonCode: null}}});
   assert.equal(client.storage().persistentAvailable, false);
 });
 
@@ -343,7 +343,7 @@ for (const phase of ['status', 'encrypt', 'decrypt']) {
     const outcome = operation.then((value: unknown) => ({value}), (error: unknown) => ({code: (error as {code?: string}).code})).finally(() => { settled = true; });
     await entered.promise;
     assert.equal(entries, 1); assert.equal(nativeFinished, false); assert.equal(settled, false);
-    const pendingStatus = {value: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'}};
+    const pendingStatus = {value: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_PENDING'}};
     if (phase === 'status') assert.deepEqual(await outcome, pendingStatus);
     const target = requests.findLast((message: Record<string, unknown>) => message.type === 'image-secret-codec-request' && message.operation === phase);
     assert.ok(target);
@@ -473,7 +473,7 @@ test('a redacted pending status leaves the event loop responsive and observes la
   const pending = codec.refreshStorage(); await entered.promise;
   let pulse = false; await new Promise<void>(resolve => { setImmediate(() => { pulse = true; resolve(); }); });
   assert.equal(pulse, true); assert.deepEqual(f.calls, ['status']);
-  assert.deepEqual(await pending, {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_PENDING'});
+  assert.deepEqual(await pending, {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_PENDING'});
   const replacement = codecFor(f); t.after(() => replacement.close());
   codec.close();
   gate.resolve(); await turn();
@@ -512,7 +512,7 @@ test('replacing more than sixteen Images brokers coalesces redacted status on th
   t.after(() => { for (const pair of pairs) pair.close(); gate.resolve(); });
   const snapshots = await Promise.all(pairs.map(pair => pair.client.refreshStorage()));
   for (const snapshot of snapshots) assert.deepEqual(snapshot, {
-    persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'
+    persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_PENDING'
   });
   for (const pair of pairs) pair.close();
   assert.deepEqual(f.calls, ['status']);
@@ -565,7 +565,7 @@ test('a timed-out native credential request holds the single slot and its late f
 });
 
 test('broker releases canceled logical requests when a codec ignores options and returns late', async () => {
-  const gates: Array<Pending<unknown>> = [], messages: Array<Record<string, unknown>> = [], unavailable = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
+  const gates: Array<Pending<unknown>> = [], messages: Array<Record<string, unknown>> = [], unavailable = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
   const broker = imageBridge.createImageSecretBroker({imageSecretCodec: {
     storage() { const gate = deferred(); gates.push(gate); return gate.promise; }, encrypt() {}, decrypt() {},
   }, send: (value: Record<string, unknown>) => messages.push(value)});
@@ -648,7 +648,7 @@ test('Agent queued puts cancel before execution, while an already-started save r
   const engine = await agent.createAgentSettings({persistence, secretCodec: codec, storage: codec.storage});
   const pair = agentPair(engine);
   t.after(async () => { finish.resolve(); pair.close(); await engine.close(); });
-  const first = pair.client.put(update(0, 'session')).catch((error: unknown) => (error as {code?: string}).code);
+  const first = pair.client.put(update(0)).catch((error: unknown) => (error as {code?: string}).code);
   await started.promise;
   const calls = f.calls.length;
   const second = pair.client.put(update(1)).catch((error: unknown) => (error as {code?: string}).code);
@@ -723,13 +723,13 @@ test('Images client rejects a delayed status response before the timeout callbac
   try {
     Date.now = () => request!.deadline;
     port.emit('message', {data: {type: 'image-secret-codec-response', version: 1, namespace: 'images', requestId: request!.requestId,
-      ok: true, data: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}});
+      ok: true, data: {persistentAvailable: true, reasonCode: null}}});
     assert.equal(await pending, 'IMAGE_SECRET_CODEC_TIMEOUT');
     assert.equal(client.storage().persistentAvailable, false);
   } finally { Date.now = realNow; client.close(); }
 });
 
-test('initial async status is bounded and legacy keys are never decrypted, preserving old bytes and session-only choice', async t => {
+test('initial async status is bounded and legacy keys are never decrypted, preserving old bytes until explicit encrypted replacement', async t => {
   for (const operation of ['status', 'decrypt']) {
     const f = vault(), codec = codecFor(f, {timeout: 25}), gate = deferred();
     const configuration = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'chat_completions'}, binding = JSON.stringify([configuration.presetId, configuration.platformId, configuration.baseUrl]);
@@ -750,8 +750,9 @@ test('initial async status is bounded and legacy keys are never decrypted, prese
     gate.resolve(); await turn();
     assert.equal(codec.storage().persistentAvailable, true);
     assert.equal((await engine.get()).storage.persistentAvailable, true); assert.equal(oldDecrypts, 0);
-    const session = await engine.put(update(4, 'session'));
-    assert.equal(execution(session).secret.storage, 'session');
+    const saved = await engine.put(update(4));
+    assert.equal(execution(saved).secret.storage, 'persistent');
+    assert.equal(persistence.saves, 1);
   }
 });
 

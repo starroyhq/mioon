@@ -3,11 +3,10 @@ import {createDesktopSecretCodec} from './secret-store.ts';
 import type {DesktopSafeStorage, DesktopSecretCodec, SecretOperationOptions} from './secret-store.ts';
 import {videoSettingsError, validateVideoSecretPlaintext} from '../../../packages/business/src/video/settings.ts';
 
-/** Video-only session scope; video configuration/revision stay in the utility. */
+/** Video configuration and revision stay in the utility. */
 export type VideoSecretReasonCode = 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
 export interface VideoSecretStorage {
   readonly persistentAvailable: boolean;
-  readonly sessionScope: 'server';
   readonly reasonCode: VideoSecretReasonCode;
 }
 export interface VideoSecretCodec {
@@ -22,7 +21,7 @@ function errorCode(error: unknown): string | undefined {
 const validCiphertext = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= VIDEO_SECRET_LIMITS.ciphertextCharacters &&
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value) && Buffer.from(value, 'base64').toString('base64') === value;
 
-// Main owns only an OS codec. Video configuration, revision and session keys
+// Main owns only an OS codec. Video configuration and revision
 // belong to the utility's dedicated video settings engine, not to Agent main.
 export function createDesktopVideoSecretCodec({safeStorage, appId, platform = process.platform, timeout}: {
   safeStorage: DesktopSafeStorage; appId: string; platform?: NodeJS.Platform; timeout?: number;
@@ -34,7 +33,7 @@ export function createDesktopVideoSecretCodec({safeStorage, appId, platform = pr
   }
   catch { throw videoSettingsError('VIDEO_SETTINGS_STORAGE_UNAVAILABLE'); }
   const storage = async (options?: SecretOperationOptions): Promise<VideoSecretStorage> =>
-    ({...await codec.refreshStorage(options), sessionScope: 'server'});
+    codec.refreshStorage(options);
   return Object.freeze({
     storage,
     async encrypt(plaintext: string, options?: SecretOperationOptions): Promise<string> {

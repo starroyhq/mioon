@@ -69,7 +69,7 @@ X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停�
 
 `send` 和显式诊断输入中的 `locale` 只接受 `zh-Hans`、`zh-Hant`、`en`、`ja`。省略时沿用简体中文；它固定本轮 Mio 的回复及工具调用说明语言，继续或恢复时不随界面语言变化。同一 requestId 的不同语言会冲突，省略与显式 `zh-Hans` 等价；响应未知时仍只查询原请求。现有 `--locale` 只控制 CLI 呈现，不替代 JSON 中的本轮语言。旧执行记录没有语言标记时沿用简体中文。 本轮传给模型的托管附件说明也使用该语言；四种语言均保留同样的句柄范围限制。
 
-密钥默认使用 **persistent**。安全存储不可用会拒绝；只有明确传 `--storage session` 才存于后端本次生命周期，不自动降级。密钥不能放在 `--input`、argv、模型提示或输出中：
+密钥使用系统加密保存。支持省略 `--storage` 或传 `--storage persistent`，其他值会被拒绝。安全存储不可用时，请恢复系统密钥库后重试。密钥不能放在 `--input`、argv、模型提示或输出中：
 
 ```sh
 # metadata.json 只包含 expectedRevision 与 configuration，不包含密钥
@@ -77,7 +77,6 @@ mioon agent settings secret set --input-file ./metadata.json
 # 在真实终端隐藏输入；也可选择以下其中一种，不得混用
 mioon agent settings secret set --input-file ./metadata.json --key-stdin
 mioon agent settings secret set --input-file ./metadata.json --key-file /absolute/private/key-file
-mioon agent settings secret set --input-file ./metadata.json --key-stdin --storage session
 ```
 
 `--key-stdin` 消费原始密钥，不能与 `--input -` 共用 stdin。`--key-file` 必须是私有目录内的当前用户独占普通文件，遵循共享私有存储策略；不会自动修权限。Windows 独立 Node 入口需要显式构建并验证完整原生私有存储 helper，缺失时拒绝，不将 chmod 或环境开关当作 ACL 证明。持久密钥属于所选 headless/desktop 服务的独立配置，不读取或复制另一实例的密钥。

@@ -7,7 +7,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
-import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './secret-codec.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createMockImageAdapter} from '../../packages/business/src/images/adapter.ts';
@@ -27,8 +27,8 @@ store.tx=fn=>{const value=originalTx(fn);if(ready){
 const services=createServices(store,new Map(),{imageOptions:{generate:async(snapshot,context)=>{trace('image_dispatch');return createMockImageAdapter().generate(snapshot,context);}}});
 const project=await services.call('project.create',{name:'Owned SIGKILL fixture'}) as {id:string};
 const shot=await services.call('shot.create',{projectId:project.id,title:'Before'}) as {id:string;revision:number};
-const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
-await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
+const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
+await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_CRASH_ONLY'}});
 const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
 const base=createAgentTaskTools({store,services});
 const tools={...base,async execute(prepared:Parameters<typeof base.execute>[0],context:Parameters<typeof base.execute>[1]){

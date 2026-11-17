@@ -1,7 +1,8 @@
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {EventEmitter} from 'node:events';
 import {mkdtemp,realpath,rename,rm,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -34,11 +35,7 @@ import {projectOutputPublicationProofSchema} from '../packages/contracts/src/pro
 
 const json=(data:unknown)=>new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
 const frozenDate=()=>Date.UTC(2026,9,20);
-function codec(){
- const key=randomBytes(32);
- return {encrypt(value:string){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(value),cipher.final(),cipher.getAuthTag()]).toString('base64');},decrypt(value:string){const bytes=Buffer.from(value,'base64'),cipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));cipher.setAuthTag(bytes.subarray(-16));return Buffer.concat([cipher.update(bytes.subarray(12,-16)),cipher.final()]).toString();}};
-}
-function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
+function desktopVideoVault(secretCodec:ReturnType<typeof createTestSecretCodec>){
  const gates:Array<{entered:()=>void;released:Promise<void>}>=[];
  const openMain=(probeGate?: Promise<void>)=>createDesktopVideoSecretCodec({
    appId:desktopIdentity.identityForChannel('production').appId,platform:'darwin',timeout:150,
@@ -46,9 +43,9 @@ function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
     encryptString(){assert.fail('Desktop macOS used synchronous encryption');},
     decryptString(){assert.fail('Desktop macOS used synchronous decryption');},
     async isAsyncEncryptionAvailable(){await probeGate;return true;},
-    async encryptStringAsync(value){return Buffer.from(secretCodec.encrypt(value),'base64');},
+    async encryptStringAsync(value){return Buffer.from(await secretCodec.encrypt(value),'base64');},
     async decryptStringAsync(value){
-     const result=secretCodec.decrypt(value.toString('base64'));
+     const result=await secretCodec.decrypt(value.toString('base64'));
      const gate=result.startsWith('{')?gates.shift():undefined;
      if(gate){gate.entered();await gate.released;}
      return {result,shouldReEncrypt:false};
@@ -73,8 +70,8 @@ function desktopVideoVault(secretCodec:ReturnType<typeof codec>){
   return {entered:entered.promise,release:()=>released.resolve()};
  }};
 }
-async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfigurationV2['providerId'],modelId='',desktop=false}={}){
- const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-generation-'))),secretCodec=codec();
+async function fixture(t:TestContext,{providerId='minimax' as VideoConnectionConfigurationV2['providerId'],modelId='',desktop=false}={}){
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-generation-'))),secretCodec=createTestSecretCodec();
  const directory=path.join(root,'video-settings'),desktopVault=desktop?desktopVideoVault(secretCodec):undefined;
  let desktopConnection=desktopVault?.connect();
  const openSettings=async()=>{
@@ -83,7 +80,7 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
    try {await client.refreshStorage();} catch { /* Desktop startup continues without persistence availability. */ }
    return createVideoSettingsV2({directory,privateRoot:root,secretCodec:client,storage:()=>client.storage()});
   }
-  return createVideoSettingsV2({directory,privateRoot:root,...(persistent?{secretCodec,storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null}}:{})});
+  return createVideoSettingsV2({directory,privateRoot:root,secretCodec,storage:testSecretStorage});
  };
  let store=openStore(root),settings=await openSettings(),worker:ReturnType<typeof startWorker>|null=null;
  let acquireOverride: typeof settings.acquire | undefined;
@@ -95,7 +92,7 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  let providers=registry(),services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});
  const configuration:VideoConnectionConfigurationV2={id:randomUUID(),providerId,name:VIDEO_PROVIDER_NAMES[providerId],region:providerId==='ark'||providerId==='wan'?'cn-beijing':providerId==='compatible'?'custom':'global',workspaceId:'',enabled:true,outputHosts:['output.example'],models:defaultVideoModels(providerId),...(providerId==='compatible'?{baseUrl:'https://old.example/v1'}:{})};
  if(modelId)configuration.models[0]!.modelId=modelId;
- const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:persistent?'persistent' as const:'session' as const});
+ const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:'persistent' as const});
  await settings.put({action:'save',expectedRevision:0,configuration,secret:secret()});
  const project=await services.call('project.create',{name:'Configured video integration'}) as ServiceRow;
  const shot=await services.call('shot.create',{projectId:project.id,title:'Test shot',prompt:'Synthetic shapes move.',aspectRatio:'9:16',duration:providerId==='kling'?5:4,referenceAssetIds:[]}) as ServiceRow;
@@ -111,7 +108,20 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
    ...(subscribeVideoStorageAvailable?{subscribeVideoStorageAvailable}:{}),subscribeVideoConnectionChanges:settings.subscribeConnectionChanges,
   });await worker.tick();},
   async stop(){await worker?.stop();worker=null;},
-  async restart({reopenApp=false}={}){await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();if(reopenApp)desktopVault?.reopenMain();store=openStore(root);desktopConnection=desktopVault?.connect();settings=await openSettings();providers=registry();services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});},
+  async restart({reopenApp=false,legacyEmptyCredential}: {reopenApp?:boolean;legacyEmptyCredential?:string}={}){
+   await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();
+   if(legacyEmptyCredential){
+    // A legacy session key left its frozen reference and an empty ciphertext slot.
+    const file=path.join(directory,'settings.json'),envelope=JSON.parse(await readFile(file,'utf8'));
+    const credential=envelope.credentials.find((entry:{ref:string})=>entry.ref===legacyEmptyCredential);
+    assert.ok(credential?.encrypted);
+    credential.encrypted=null;
+    await writeFile(file,JSON.stringify(envelope));
+   }
+   if(reopenApp)desktopVault?.reopenMain();
+   store=openStore(root);desktopConnection=desktopVault?.connect();settings=await openSettings();providers=registry();
+   services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});
+  },
   ready(id:string){services.saveJob(f.job(id),{nextPollAt:0});},
  };
  t.after(async()=>{await f.stop();await services.drain();await settings.close();desktopConnection?.close();store.close();await rm(root,{recursive:true,force:true});});
@@ -138,7 +148,7 @@ async function historicalMinimaxJob(f:Awaited<ReturnType<typeof fixture>>,status
 }
 
 for(const modelId of ['MiniMax-H3','historical-custom-h3'])test(`historical 768P ${modelId} settings and paid tasks restart, query and publish unchanged through the SDK after a 2K account edit`,async t=>{
- const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'running',{resolution:'768P'},{modelId}),snapshot=structuredClone(job.snapshot),binding=job.snapshot.executionBinding as VideoExecutionBinding;
+ const f=await fixture(t),job=await historicalMinimaxJob(f,'running',{resolution:'768P'},{modelId}),snapshot=structuredClone(job.snapshot),binding=job.snapshot.executionBinding as VideoExecutionBinding;
  await f.restart();
  assert.deepEqual(f.settings.list()[0]!.configuration.models[0]!.durationResolutionMap,[{duration:[4,8],resolution:['768P']}]);
  assert.equal(await f.settings.acquire(binding),'original-synthetic-key');assert.deepEqual(f.job(job.id).snapshot,snapshot);
@@ -171,7 +181,7 @@ test('unsupported MiniMax custom models fail admission before creating a job or 
 });
 
 test('persisted MiniMax custom-model queued work fails visibly once instead of requeueing forever',async t=>{
- const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'queued',{resolution:'2K'},{modelId:'custom-h3-name',resolution:'2K'}),snapshot=structuredClone(job.snapshot);
+ const f=await fixture(t),job=await historicalMinimaxJob(f,'queued',{resolution:'2K'},{modelId:'custom-h3-name',resolution:'2K'}),snapshot=structuredClone(job.snapshot);
  await f.restart();await f.tick();await f.stop();
  const failed=structuredClone(f.job(job.id));
  assert.equal(failed.status,'failed');assert.equal((failed.error as ServiceRow).code,'UNSUPPORTED_MODEL');
@@ -182,7 +192,7 @@ test('persisted MiniMax custom-model queued work fails visibly once instead of r
 });
 
 for(const parameters of [{},{resolution:'768P'}])test(`historical ${Object.keys(parameters).length?'explicit':'implicit'} 768P queued work and retries cannot silently submit as 2K`,async t=>{
- const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'queued',parameters),snapshot=structuredClone(job.snapshot);
+ const f=await fixture(t),job=await historicalMinimaxJob(f,'queued',parameters),snapshot=structuredClone(job.snapshot);
  await f.restart();await f.tick();await f.stop();
  assert.equal(f.job(job.id).status,'failed');assert.equal((f.job(job.id).error as ServiceRow).code,'UNSUPPORTED_PARAMETERS');
  assert.equal(f.job(job.id).submissionCount,0);assert.equal(f.job(job.id).providerJobId,null);assert.equal(f.calls.length,0);assert.deepEqual(f.job(job.id).snapshot,snapshot);
@@ -191,7 +201,7 @@ for(const parameters of [{},{resolution:'768P'}])test(`historical ${Object.keys(
 });
 
 test('historical MiniMax uncertain submission never falls back or resubmits after restart',async t=>{
- const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'submission_unknown',{resolution:'768P'}),snapshot=structuredClone(job.snapshot);
+ const f=await fixture(t),job=await historicalMinimaxJob(f,'submission_unknown',{resolution:'768P'}),snapshot=structuredClone(job.snapshot);
  await f.restart();await f.tick();await f.stop();
  assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.job(job.id).submissionCount,1);assert.deepEqual(f.job(job.id).snapshot,snapshot);assert.equal(f.calls.length,0);
  await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});assert.equal(f.store.list('jobs').length,1);
@@ -297,9 +307,9 @@ test('queued jobs and explicit retries retain the old endpoint, model and creden
  assert.deepEqual(retry.snapshot,original);assert.equal(retry.retryOfJobId,job.id);assert.equal(f.calls.length,1);
 });
 
-for(const cause of ['explicit removal','session restart'])test(`missing credentials after ${cause} keep queued work frozen with zero POSTs even after re-entering the same key`,async t=>{
+for(const cause of ['explicit removal','legacy empty ciphertext'])test(`missing credentials after ${cause} keep queued work frozen with zero POSTs even after re-entering the same key`,async t=>{
  const f=await fixture(t),job=await f.submit(),snapshot=structuredClone(job.snapshot),binding=job.snapshot.executionBinding as VideoExecutionBinding;
- if(cause==='explicit removal')await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:{action:'remove'}});else await f.restart();
+ if(cause==='explicit removal')await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:{action:'remove'}});else await f.restart({legacyEmptyCredential:binding.credentialRef});
  const before=await f.settings.get(),current=before.connections[0]!;
  await f.tick();await f.stop();assert.equal(f.calls.length,0);assert.equal(f.job(job.id).status,'queued');assert.equal(f.job(job.id).phase,'connection_required');assert.equal(f.job(job.id).submissionCount,0);
  await assert.rejects(f.settings.put({action:'restoreCredential',expectedRevision:before.revision,connectionId:binding.connectionId,credentialRef:binding.credentialRef,secret:f.secret()}),{code:'VIDEO_SETTINGS_VALIDATION'});
@@ -310,7 +320,7 @@ for(const cause of ['explicit removal','session restart'])test(`missing credenti
 });
 
 test('uncertain accepted submissions survive restarts and config edits without another generation POST',async t=>{
- const f=await fixture(t,{persistent:true});f.reply(()=>{throw Error('synthetic response lost');});const job=await f.submit();await f.tick();
+ const f=await fixture(t);f.reply(()=>{throw Error('synthetic response lost');});const job=await f.submit();await f.tick();
  const unknown=f.job(job.id);
  assert.equal(unknown.status,'submission_unknown');assert.equal(unknown.submissionCount,1);assert.equal((unknown.error as ServiceRow).mutationOutcome,undefined);
  assert.equal(f.calls.length,1);await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});
@@ -319,7 +329,7 @@ test('uncertain accepted submissions survive restarts and config edits without a
 });
 
 test('known task recovery downloads and publishes one decoded immutable version using disabled settings',async t=>{
- const f=await fixture(t,{persistent:true}),video=path.join(f.root,'fixture.mp4');
+ const f=await fixture(t),video=path.join(f.root,'fixture.mp4');
  await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
  const bytes=await readFile(video),job=await f.submit();await f.tick();await f.stop();assert.equal(f.job(job.id).providerJobId,'original-task');
  const next=structuredClone(f.configuration);next.region='cn';await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:f.secret('new-synthetic-key')});
@@ -332,7 +342,7 @@ test('known task recovery downloads and publishes one decoded immutable version 
 });
 
 async function desktopPaidTask(t:TestContext,{mio=false}={}){
- const f=await fixture(t,{persistent:true,desktop:true});
+ const f=await fixture(t,{desktop:true});
  const video=path.join(f.root,'minimax-output.mp4');
  await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=180x320:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
  const bytes=await readFile(video);
@@ -485,7 +495,7 @@ test('Q17 MiniMax resumes the original query when macOS vault authorization comp
  assert.ok(Date.now()<Number(waiting.nextPollAt));
  assertPublished();
  const settings=await f.settings.get();
- assert.deepEqual(settings.storage,{persistentAvailable:true,reasonCode:null,sessionScope:'server'});
+ assert.deepEqual(settings.storage,{persistentAvailable:true,reasonCode:null});
  assert.equal(settings.connections[0]!.secret.storage,'persistent');
  assert.doesNotMatch(JSON.stringify(settings),/original-synthetic-key|credentialRef|encrypted/);
 });
@@ -524,7 +534,7 @@ test('Q17-B transient credential errors back off to five minutes and a manual ch
 for(const [cause,recovery] of [['VIDEO_CREDENTIAL_UNAVAILABLE','throw'],['VIDEO_CREDENTIAL_INVALID','return']] as const)
 test(`Q17-B ${recovery} from credential acquisition pauses queued work without a POST or background retry`,async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{persistent:true}),job=await f.submit(),snapshot=structuredClone(job.snapshot);
+ const f=await fixture(t),job=await f.submit(),snapshot=structuredClone(job.snapshot);
  let attempts=0;
  f.overrideAcquire(async()=>{
   attempts++;
@@ -610,7 +620,7 @@ test('Q17-C a replacement account that cannot find the paid task pauses until an
 
 test('Q17-C an original account task lookup 404 pauses without trying the replacement key',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{persistent:true}),job=await f.submit();
+ const f=await fixture(t),job=await f.submit();
  await f.tick();await f.stop();
  const submitted=f.job(job.id);
  await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
@@ -659,7 +669,7 @@ test('Q17-C explicitly rechecks the same key after a temporary 401 and publishes
 
 test('Q17-C a second rejection of the same original key pauses again after one real recheck',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{persistent:true}),job=await f.submit();
+ const f=await fixture(t),job=await f.submit();
  await f.tick();await f.stop();
  const submitted=f.job(job.id),binding=submitted.snapshot.executionBinding as VideoExecutionBinding;
  f.reply((_url,init)=>{
@@ -686,7 +696,7 @@ test('Q17-C a second rejection of the same original key pauses again after one r
 for(const wake of ['connection change','Keychain becomes available'])
 test(`Q17-C ${wake} wakes a paused original-key check once`,async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{persistent:true}),job=await f.submit();
+ const f=await fixture(t),job=await f.submit();
  await f.tick();await f.stop();
  let storageAvailable:()=>void=()=>assert.fail('missing storage subscription');
  const subscribe=(listener:()=>void)=>{storageAvailable=listener;return ()=>{};};
@@ -735,7 +745,7 @@ test(`Q17-C an original rejection with stale ${stale} cannot select the replacem
 
 for(const status of [401,403])test(`Q17-C replacement account HTTP ${status} pauses without automatic credential requests`,async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{persistent:true}),job=await f.submit();
+ const f=await fixture(t),job=await f.submit();
  await f.tick();await f.stop();
  const submitted=f.job(job.id);
  await f.settings.put({action:'save',expectedRevision:1,configuration:f.configuration,secret:f.secret('replacement-synthetic-key')});
@@ -881,10 +891,10 @@ test('Q17 MiniMax pauses after explicit removal without rebinding or resubmittin
  assert.equal(f.store.list('versions').length,0);
 });
 
-for(const retained of [true,false])test(`MiniMax CN rejected output ${retained?'keeps its persistent credential and downloads once':'can use a replacement key after losing its session credential without rebinding'}`,async t=>{
- const f=await fixture(t,{persistent:true}),configuration=structuredClone(f.configuration),video=path.join(f.root,'recovered-output.mp4');
+for(const retained of [true,false])test(`MiniMax CN rejected output ${retained?'keeps its persistent credential and downloads once':'can use a replacement key after reading a legacy empty ciphertext slot without rebinding'}`,async t=>{
+ const f=await fixture(t),configuration=structuredClone(f.configuration),video=path.join(f.root,'recovered-output.mp4');
  configuration.region='cn';
- await f.settings.put({action:'save',expectedRevision:1,configuration,secret:retained?f.secret():{...f.secret(),storage:'session'}});
+ await f.settings.put({action:'save',expectedRevision:1,configuration,secret:f.secret()});
  await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
  const bytes=await readFile(video),job=await f.submit({configurationRevision:2,parameters:{resolution:'2K'}}),snapshot=structuredClone(job.snapshot),binding=snapshot.executionBinding as VideoExecutionBinding;
  const unapprovedUrl='https://unverified.example/private-signed-path.mp4?token=synthetic-secret-token&signature=synthetic-secret-signature';
@@ -918,7 +928,7 @@ for(const retained of [true,false])test(`MiniMax CN rejected output ${retained?'
  assert.match(String(error.message),/unverified\.example/);
  assert.doesNotMatch(String(error.message),/private-signed-path|synthetic-secret-token|synthetic-secret-signature|\?token=/);
  assert.equal(f.calls.length,2);assert.equal(f.store.list('versions').length,0);assertIdentity();
- await f.live(false);await f.restart();
+ await f.live(false);await f.restart({legacyEmptyCredential:retained?undefined:binding.credentialRef});
  if(!retained){
   await assert.rejects(f.settings.acquire(binding),{code:'VIDEO_SETTINGS_NOT_CONFIGURED'});
   f.ready(job.id);await f.tick();await f.stop();assert.equal(f.job(job.id).phase,'connection_required');assert.equal(f.calls.length,2);assertIdentity();
@@ -952,7 +962,7 @@ test('Kling external task reconciliation binds the existing task without a repla
 
 test('Q17-C a fresh Kling receipt tolerates an empty task list within one minute',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()});
- const f=await fixture(t,{providerId:'kling',persistent:true}),job=await f.submit();
+ const f=await fixture(t,{providerId:'kling'}),job=await f.submit();
  f.reply((url,init)=>{
   if(init.method==='POST')return json({code:0,data:{id:'recent-kling-task',status:'submitted'}});
   assert.equal(init.method,'GET');

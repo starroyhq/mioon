@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -38,9 +39,9 @@ async function fixture(t: TestContext) {
   const store = createProjectStore({projectFile: path.join(root, 'Project.mioon'), locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'tmp')})});
   store.tx(() => store.put('projects', {id: store.projectId, name: 'Image service write guard', description: '', revision: 1, createdAt: '2026-11-04T00:00:00.000Z', updatedAt: '2026-11-04T00:00:00.000Z'}));
   let settingsReads = 0, settingsWrites = 0, settingsTouches = 0;
-  const settings = await createCustomImageSettingsV2({persistence: {load: async () => {settingsReads++; return null;}, save: async () => {settingsWrites++;}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => {settingsReads++; return null;}, save: async () => {settingsWrites++;}}});
   const connectionId = randomUUID(), configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'guard-model'};
-  await settings.create({expectedRevision: 0, connectionId, name: 'Guarded custom images', configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-guard-image-key'}});
+  await settings.create({expectedRevision: 0, connectionId, name: 'Guarded custom images', configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-guard-image-key'}});
   const observedSettings = new Proxy(settings, {get(target, property, receiver) {settingsTouches++; return Reflect.get(target, property, receiver);}});
   const applicationOwner = new AbortController(), serviceOwner = new AbortController(), ports = createProjectServiceApplication(library, applicationOwner.signal, {});
   const services = createServices(store, new Map(), {application: ports, signal: serviceOwner.signal, env: {}, imageOptions: {autoRun: false, customSettingsV2: observedSettings}, frameOptions: {autoRun: false}, sceneOptions: {autoRun: false}});

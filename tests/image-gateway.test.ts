@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -23,7 +24,7 @@ const key='synthetic-images-gateway-sentinel';
 const snapshot={providerId:'openai',model:IMAGE_MODELS.openai,prompt:'Original exact prompt: 蓝色 sky, no silent rewrite.',options:IMAGE_FIXED_OPTIONS};
 const answers=[{address:'8.8.8.8',family:4}];
 const deferred=(): Deferred=>{let resolve: Deferred['resolve']=()=>{};const promise=new Promise<unknown>(r=>{resolve=r;});return {promise,resolve};};
-async function settingsFixture(t: TestContext): Promise<GatewaySettingsFixture>{let stored: Envelope=null;const settings=await createImageSettings({persistence:{load:async()=>stored,save:async (v: Envelope)=>{stored=structuredClone(v);}}} as never);t.after(()=>settings.close());await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:key}});return {settings,read:()=>stored};}
+async function settingsFixture(t: TestContext): Promise<GatewaySettingsFixture>{let stored: Envelope=null;const settings=await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:{load:async()=>stored,save:async (v: Envelope)=>{stored=structuredClone(v);}}} as never);t.after(()=>settings.close());await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:key}});return {settings,read:()=>stored};}
 function fakeNetwork({body=Buffer.from('{}'),onEnd,onConnect}: FakeNetworkOptions = {}): GatewayNetworkState {const state={created:0,posts:0} as unknown as GatewayNetworkState;return Object.assign(state,{lookup:async()=>answers,httpsRequest(options: GatewayHttpsOptions,cb: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void){state.created++;state.options=options;const req = new EventEmitter() as EventEmitter & {destroy: () => void; end: (payload?: unknown) => void};req.destroy=()=>{};req.end=(payload?: unknown)=>{state.posts++;state.payload=payload;onEnd?.();const res=Readable.from([body]) as Readable & {statusCode: number; headers: Record<string, string>; complete: boolean};Object.assign(res,{statusCode:200,headers:{'content-type':'application/json'},complete:true});cb(res);};queueMicrotask(()=>{const socket=new EventEmitter();Object.assign(socket,{remoteAddress:'8.8.8.8',remotePort:443,authorized:true,destroy(){}});req.emit('socket',socket);onConnect?.();socket.emit('secureConnect');});return req;}});}
 
 test('gateway uses dedicated credential, exact visible request and synchronous settings→durable fence→POST ordering',async t=>{
@@ -43,8 +44,8 @@ test('settings changed during DNS wait are rejected at actual POST fence, with n
 
 test('pending settings persistence blocks dispatch before its revision is committed',async t=>{
  let value: Envelope=null,hold=false;const entered=deferred(),save=deferred(),dns=deferred(),lookupEntered=deferred();
- const settings=await createImageSettings({persistence:{load:async()=>value,save:async (v: Envelope)=>{if(hold){entered.resolve();await save.promise;}value=v;}} as never});t.after(()=>settings.close());
- await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:key}});
+ const settings=await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:{load:async()=>value,save:async (v: Envelope)=>{if(hold){entered.resolve();await save.promise;}value=v;}} as never});t.after(()=>settings.close());
+ await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:key}});
  const network=fakeNetwork();let fences=0;const pending=createLiveImageGateway({settings,...network,lookup:()=>{lookupEntered.resolve();return dns.promise;}} as never).generate(snapshot,{settingsRevision:1,beforeDispatch:()=>fences++});await lookupEntered.promise;
  hold=true;const write=settings.put({expectedRevision:1,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:false},secret:{action:'keep'}});await entered.promise;dns.resolve(answers);
  await assert.rejects(pending,{code:'IMAGE_DISPATCH_BLOCKED',dispatched:false});assert.equal(network.posts,0);assert.equal(fences,0);save.resolve();await write;

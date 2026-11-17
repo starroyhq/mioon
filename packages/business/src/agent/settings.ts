@@ -24,7 +24,7 @@ export function parseAgentCredentialRequest(value:unknown,options:{selfPort?:num
 }
 export function sanitizeAgentCredentialResult(value:unknown,expected:AgentCredentialRequest):AgentCredentialResult{
  if(!exactObject(value,['revision','configuration','binding','apiKey'])||value.revision!==expected.expectedRevision||JSON.stringify(value.configuration)!==JSON.stringify(expected.configuration)||JSON.stringify(value.binding)!==JSON.stringify(expected.binding))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
- if(value.apiKey!==null){const parsed=agentSecretActionSchema.safeParse({serviceKey:expected.binding.serviceKey,action:'replace',storage:'session',value:value.apiKey});if(!parsed.success)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
+ if(value.apiKey!==null){const parsed=agentSecretActionSchema.safeParse({serviceKey:expected.binding.serviceKey,action:'replace',storage:'persistent',value:value.apiKey});if(!parsed.success)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
  return {revision:expected.expectedRevision,configuration:{...expected.configuration},binding:{...expected.binding},apiKey:value.apiKey as string|null};
 }
 export function sanitizeAgentSettingsResult(value:unknown):AgentSettingsSnapshot{
@@ -56,19 +56,20 @@ export interface AgentSettingsService{
  put(input:unknown,options?:SettingsContextOptions):Promise<AgentSettingsSnapshot>;
  close():Promise<void>;
 }
-interface SessionSecret{binding:string;value:string}
 function nextRevision(value:number):number{if(value===Number.MAX_SAFE_INTEGER)throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');return value+1;}
 const equal=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
-function credentialState(entry:ServiceState,session:ReadonlyMap<string,SessionSecret>){return {configured:Boolean(entry.secret||session.has(entry.serviceKey)),storage:entry.secret?'persistent' as const:session.has(entry.serviceKey)?'session' as const:'none' as const};}
-function execution(state:SettingsEnvelope,session:ReadonlyMap<string,SessionSecret>):AgentExecutionSettings|null{
+// Older process-only keys already left a null secret in the v3 file.
+function credentialState(entry:ServiceState,hasVault:boolean){const configured=hasVault&&Boolean(entry.secret);return {configured,storage:configured?'persistent' as const:'none' as const};}
+function execution(state:SettingsEnvelope,hasVault:boolean):AgentExecutionSettings|null{
  const choice=state.mioSelection;if(!choice)return null;
  const entry=state.services.find(s=>s.serviceKey===choice.serviceKey);if(!entry)throw agentSettingsError('AGENT_SETTINGS_CORRUPT');
- return {revision:state.mioRevision,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:state.mioSelectionRevision},configuration:connectionFor(entry,choice.modelId),secret:credentialState(entry,session)};
+ return {revision:state.mioRevision,binding:{serviceKey:entry.serviceKey,entryRevision:entry.revision,selectionRevision:state.mioSelectionRevision},configuration:connectionFor(entry,choice.modelId),secret:credentialState(entry,hasVault)};
 }
 /** Independent credential owners; collection revision is only the save CAS.
  * A selected-entry/selection witness is frozen by each run, never re-signed. */
-export async function createAgentSettings({persistence,secretCodec,storage={persistentAvailable:false,sessionScope:'server',reasonCode:'WEB_SESSION_ONLY'},signal}:AgentSettingsDependencies):Promise<AgentSettingsService>{
- let state=emptyEnvelope(),session=new Map<string,SessionSecret>(),notices:SettingsNotice[]=[],fault:Error|null=null,tail:Promise<unknown>=Promise.resolve(),closing=false,refreshBlocked=false;
+export async function createAgentSettings({persistence,secretCodec,storage={persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'},signal}:AgentSettingsDependencies):Promise<AgentSettingsService>{
+ let state=emptyEnvelope(),notices:SettingsNotice[]=[],fault:Error|null=null,tail:Promise<unknown>=Promise.resolve(),closing=false,refreshBlocked=false;
+ const hasVault=typeof secretCodec?.encrypt==='function'&&typeof secretCodec.decrypt==='function';
  const lifetime=new AbortController();
  const controls=(options:SettingsContextOptions={}):SettingsContextOptions&{signal:AbortSignal}=>({...options,signal:options.signal?AbortSignal.any([lifetime.signal,options.signal]):lifetime.signal});
  const checkpoint=(options?:SettingsContextOptions):void=>{if(closing||options?.signal?.aborted||options?.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_CLOSED');};
@@ -76,11 +77,11 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
   if(typeof secretCodec?.refreshStorage!=='function')return;
   try{const refreshed=await boundedCredentialRead(()=>secretCodec.refreshStorage!(options),options.signal);const storage=publicStorage(refreshed);refreshBlocked=!storage.persistentAvailable&&storage.reasonCode!=='OS_SECRET_STORE_PENDING';}catch{refreshBlocked=true;}
  };
- const capabilities=():PublicStorage=>{const value=publicStorage(typeof storage==='function'?storage():storage);return refreshBlocked?{...value,persistentAvailable:false,reasonCode:value.reasonCode||'OS_SECRET_STORE_UNAVAILABLE'}:value;};
- const canUseVault=()=>{const value=capabilities();return !refreshBlocked&&(value.persistentAvailable||value.reasonCode==='OS_SECRET_STORE_PENDING');};
- function snapshot(candidate=state,keys:ReadonlyMap<string,SessionSecret>=session,messages:SettingsNotice[]=notices):AgentSettingsSnapshot{
+ const capabilities=():PublicStorage=>{const value=publicStorage(typeof storage==='function'?storage():storage);return refreshBlocked||value.persistentAvailable&&!hasVault?{...value,persistentAvailable:false,reasonCode:value.reasonCode||'OS_SECRET_STORE_UNAVAILABLE'}:value;};
+ const canUseVault=()=>{const value=capabilities();return hasVault&&!refreshBlocked&&(value.persistentAvailable||value.reasonCode==='OS_SECRET_STORE_PENDING');};
+ function snapshot(candidate=state,messages:SettingsNotice[]=notices):AgentSettingsSnapshot{
   const presets=AGENT_PRESETS.map(p=>({...p,supportedModelHints:agentAdaptedModelHints(p.id),platforms:p.platforms.map(platform=>({...platform,supportedModelHints:agentAdaptedModelHints(p.id)}))}));
-  return sanitizeAgentSettingsResult({revision:candidate.revision,services:candidate.services.map(entry=>({...agentServiceInput(entry),revision:entry.revision,secret:credentialState(entry,keys)})),mioSelection:candidate.mioSelection,mioSelectionRevision:candidate.mioSelectionRevision,execution:execution(candidate,keys),storage:capabilities(),presets,scope:'settings_only',verification:'not_tested',notices:messages});
+  return sanitizeAgentSettingsResult({revision:candidate.revision,services:candidate.services.map(entry=>({...agentServiceInput(entry),revision:entry.revision,secret:credentialState(entry,hasVault)})),mioSelection:candidate.mioSelection,mioSelectionRevision:candidate.mioSelectionRevision,execution:execution(candidate,hasVault),storage:capabilities(),presets,scope:'settings_only',verification:'not_tested',notices:messages});
  }
  const initialization=controls({signal});await refreshCapabilities(initialization);
  try{const loaded=loadSettingsEnvelope(await persistence.load());state=loaded.state;notices=loaded.notices;snapshot();}catch{fault=agentSettingsError('AGENT_SETTINGS_CORRUPT');}
@@ -98,7 +99,7 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
    if(!entry||state.revision!==expected.expectedRevision||entry.revision!==expected.binding.entryRevision||state.mioSelectionRevision!==expected.binding.selectionRevision||!equal(connectionFor(entry,model),expected.configuration))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
    return {entry,binding:serviceBinding(entry)};
   }
-  const active=execution(state,session);
+  const active=execution(state,hasVault);
   if(!active||active.revision!==expected.expectedRevision||!equal(active.binding,expected.binding)||!equal(active.configuration,expected.configuration))throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
   const entry=state.services.find(s=>s.serviceKey===expected.binding.serviceKey);if(!entry)throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
   return {entry,binding:serviceBinding(entry)};
@@ -116,7 +117,7 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
    const credentialCheckpoint=()=>{if(closing)throw agentSettingsError('AGENT_SETTINGS_CLOSED');if(context.signal.aborted||context.isActive?.()===false)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');};
    return schedule(async()=>{
     credentialCheckpoint();const {entry,binding}=match(expected);let apiKey:string|null=null;
-    if(entry.secret){
+    if(entry.secret&&hasVault){
      await refreshCapabilities(context);credentialCheckpoint();match(expected);
      if(!secretCodec?.decrypt||!canUseVault()||entry.secret.binding!==binding)throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
      try{
@@ -125,8 +126,6 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
       if(!exactObject(decoded,['version','serviceKey','binding','value'])||decoded.version!==2||decoded.serviceKey!==entry.serviceKey||decoded.binding!==binding)throw Error();
       const value=agentSecretActionSchema.parse({serviceKey:entry.serviceKey,action:'replace',storage:'persistent',value:decoded.value});if(value.action!=='replace')throw Error();apiKey=value.value;
      }catch{credentialCheckpoint();throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
-    }else{
-     const held=session.get(entry.serviceKey);if(held){if(held.binding!==binding)throw agentSettingsError('AGENT_SETTINGS_CONFLICT');apiKey=held.value;}
     }
     credentialCheckpoint();match(expected);
     return sanitizeAgentCredentialResult({revision:expected.purpose==='model_list'?state.revision:state.mioRevision,configuration:expected.configuration,binding:expected.binding,apiKey},expected);
@@ -138,23 +137,20 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
     checkpoint(context);if(update.expectedRevision!==state.revision)throw agentSettingsError('AGENT_SETTINGS_CONFLICT');
     const globalRevision=nextRevision(state.revision),ids=new Set(update.services.map(s=>s.serviceKey));
     if(state.mioSelection&&!ids.has(state.mioSelection.serviceKey))throw agentSettingsError('AGENT_SETTINGS_VALIDATION');
-    const actions=new Map(update.secretActions.map(action=>[action.serviceKey,action])),nextSession=new Map([...session].filter(([id])=>ids.has(id)));
+    const actions=new Map(update.secretActions.map(action=>[action.serviceKey,action]));
     const services:ServiceState[]=[];
     for(const inputEntry of update.services){
      const prior=state.services.find(s=>s.serviceKey===inputEntry.serviceKey),binding=serviceBinding(inputEntry),same=Boolean(prior&&serviceBinding(prior)===binding),action=actions.get(inputEntry.serviceKey);
      let secret:LoadedSecret|null=same&&prior?prior.secret:null;
-     if(!same)nextSession.delete(inputEntry.serviceKey);
-     let keyChanged=Boolean(prior&&!same&&(prior.secret||session.has(prior.serviceKey)));
-     if(action?.action==='remove'){keyChanged=keyChanged||Boolean(secret||nextSession.has(inputEntry.serviceKey));secret=null;nextSession.delete(inputEntry.serviceKey);}
+     let keyChanged=Boolean(prior&&!same&&prior.secret);
+     if(action?.action==='remove'){keyChanged=keyChanged||Boolean(secret);secret=null;}
      if(action?.action==='replace'){
-      keyChanged=true;secret=null;nextSession.delete(inputEntry.serviceKey);
-      if(action.storage==='persistent'){
-       await refreshCapabilities(context);checkpoint(context);
-       if(!secretCodec?.encrypt||!canUseVault())throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
-       let encrypted:unknown;
-       try{encrypted=await boundedCredentialRead(()=>secretCodec.encrypt!(JSON.stringify({version:2,serviceKey:inputEntry.serviceKey,binding,value:action.value}),context),context.signal);}catch{checkpoint(context);throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
-       checkpoint(context);if(typeof encrypted!=='string')throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');secret={binding,encrypted};
-      }else nextSession.set(inputEntry.serviceKey,{binding,value:action.value});
+      await refreshCapabilities(context);checkpoint(context);
+      if(!secretCodec?.encrypt||!canUseVault())throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+      let encrypted:unknown;
+      try{encrypted=await boundedCredentialRead(()=>secretCodec.encrypt!(JSON.stringify({version:2,serviceKey:inputEntry.serviceKey,binding,value:action.value}),context),context.signal);}catch{checkpoint(context);throw agentSettingsError('AGENT_SETTINGS_STORAGE_UNAVAILABLE');}
+      checkpoint(context);if(typeof encrypted!=='string')throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');
+      keyChanged=true;secret={binding,encrypted};
      }
      const changed=!prior||!equal(agentServiceInput(prior),inputEntry)||keyChanged;
      services.push({...inputEntry,revision:prior?(changed?nextRevision(prior.revision):prior.revision):1,secret});
@@ -163,13 +159,13 @@ export async function createAgentSettings({persistence,secretCodec,storage={pers
     const priorSelected=state.mioSelection?state.services.find(s=>s.serviceKey===state.mioSelection!.serviceKey):undefined;
     const activeChanged=selectionChanged||Boolean(selected&&priorSelected&&selected.revision!==priorSelected.revision);
     const candidate:SettingsEnvelope={version:3,revision:globalRevision,services,mioSelection:update.mioSelection,mioSelectionRevision:selectionChanged?nextRevision(state.mioSelectionRevision):state.mioSelectionRevision,mioRevision:activeChanged?nextRevision(state.mioRevision):state.mioRevision};
-    let committed:SettingsEnvelope;try{committed=parseCurrentEnvelope(candidate);snapshot(committed,nextSession,[]);}catch{throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');}
+    let committed:SettingsEnvelope;try{committed=parseCurrentEnvelope(candidate);snapshot(committed,[]);}catch{throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');}
     checkpoint(context);
     try{await persistence.save(committed);}catch{throw agentSettingsError('AGENT_SETTINGS_SAVE_FAILED');}
     // Once the atomic file save starts, always pair its durable commit with RAM.
-    state=committed;session=nextSession;notices=[];return snapshot();
+    state=committed;notices=[];return snapshot();
    });
   },
-  async close(){closing=true;lifetime.abort();secretCodec?.close?.();await tail;session.clear();},
+  async close(){closing=true;lifetime.abort();secretCodec?.close?.();await tail;},
  };
 }

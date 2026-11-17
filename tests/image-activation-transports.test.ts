@@ -13,7 +13,7 @@ import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
 import {Readable} from 'node:stream';
 import {spawn} from 'node:child_process';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -21,6 +21,7 @@ import {randomUUID, createHash} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
+import {createTestSecretCodec} from './helpers/secret-codec.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
@@ -106,7 +107,7 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-live-wire-')), network = fakeNetwork(body);
   // Each server that starts hands over its own connection.
   let inspect!: InspectProject;
-  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
+  const options = {dataDir: root, port: 0, token, imageSecretCodec: createTestSecretCodec(), imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
   let server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
   let proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, dropped: RpcEnvelope<FixtureImageTask>|null = null, proxyCalls = 0;
   const f = {root, png, network: network.state, get server() {return server;},
@@ -134,7 +135,7 @@ async function fixture(t: test.TestContext) {
     async prepare(input: unknown, settingsRevision = 1) {return f.client.rpc('image.review.prepare', {input, settingsRevision});},
     async saveKey(expectedRevision: number) {
       const response = await f.request('/api/images/settings', {method: 'PUT', input: {expectedRevision,
-        configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: syntheticKey}}});
+        configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'persistent', value: syntheticKey}}});
       assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body.data;
     },
     async settled(ack: { projectId: unknown; id: unknown; }, state = 'succeeded') {
@@ -151,7 +152,16 @@ async function fixture(t: test.TestContext) {
       return inspect(projectId, db => JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews'].map(name =>
         [name, db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()])));
     },
-    async restart() {await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0]));},
+    async restart({legacyEmptySecret = false} = {}) {
+      await server.close();
+      if (legacyEmptySecret) {
+        // A legacy in-memory key left the same durable configuration with no ciphertext.
+        const file = path.join(root, 'image-settings/settings.json');
+        const envelope = JSON.parse(await readFile(file, 'utf8'));
+        await writeFile(file, JSON.stringify({...envelope, secret: null}));
+      }
+      server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
+    },
     async loseApproval(review:Pick<FixtureImageReview,"projectId"|"id">) {
       proxy = http.createServer(async (request, response) => {
         try {
@@ -193,17 +203,17 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(f.network.posts, 0); assert.equal(f.network.lookups, 0);
   });
 
-  await t.test('session configuration is separate, contains no credential response, and direct live RPC stays denied', async () => {
+  await t.test('encrypted settings are separate, contains no credential response, and direct live RPC stays denied', async () => {
     const initial = (await f.request('/api/images/settings')).body.data;
     assert.equal(initial.revision, 0); assert.equal(initial.configuration.enabled, false); assert.equal(initial.secret.configured, false);
     const unconfigured = f.snapshot(project.id);
     await f.rpc('image.generate', inputFor(project.id), 'IMAGE_LIVE_DISABLED');
     assert.equal(f.snapshot(project.id), unconfigured);
     assert.equal(f.network.lookups, 0); assert.equal(f.network.posts, 0);
-    const saved = await f.saveKey(0); assert.equal(saved.revision, 1); assert.equal(saved.secret.storage, 'session');
-    assert.equal(saved.storage.sessionScope, 'server');
+    const saved = await f.saveKey(0); assert.equal(saved.revision, 1); assert.equal(saved.secret.storage, 'persistent');
+    assert.deepEqual(saved.storage, {persistentAvailable: true, reasonCode: null});
     const persisted = JSON.parse(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'));
-    assert.equal(persisted.secret, null); assert.equal(await filesContain(f.root, syntheticKey), false);
+    assert.equal(typeof persisted.secret.encrypted, 'string'); assert.equal(await filesContain(f.root, syntheticKey), false);
     const before = f.snapshot(project.id);
     await f.rpc('image.generate', inputFor(project.id), 'IMAGE_REVIEW_REQUIRED');
     await assert.rejects(f.client.rpc('image.generate', {...inputFor(project.id), approved: true}), {code: 'VALIDATION_ERROR'});
@@ -296,11 +306,11 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(f.network.posts, 2);
   });
 
-  await t.test('restart before POST stops queued work, loses backend-session key and never auto-approves pending intent', async () => {
+  await t.test('restart before POST stops queued work, reads the legacy empty secret and never auto-approves pending intent', async () => {
     f.network.holdConnect = true;
     const original = inputFor(project.id), prepared = await f.prepare(original), ack = await f.approve(prepared);
     await delay(30); assert.equal(f.network.posts, 2);
-    await f.restart(); f.network.holdConnect = false;
+    await f.restart({legacyEmptySecret: true}); f.network.holdConnect = false;
     const settings = (await f.request('/api/images/settings')).body.data;
     assert.equal(settings.revision, 1); assert.equal(settings.configuration.enabled, true); assert.equal(settings.secret.configured, false);
     const task = await f.client.rpc('image.task.get', {projectId: project.id, taskId: ack.id});
@@ -332,7 +342,7 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.deepEqual(await f.prepare(original, 2), retained);
     await f.client.rpc('image.profile.list'); await f.client.rpc('image.review.list', {projectId: project.id}); await delay(30);
     assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, posts); assert.equal(f.network.requests, requests);
-    assert.equal((await f.request('/api/images/settings')).body.data.secret.configured, false);
+    assert.equal((await f.request('/api/images/settings')).body.data.secret.configured, true);
     assert.equal(await filesContain(f.root, syntheticKey), false);
   });
 });

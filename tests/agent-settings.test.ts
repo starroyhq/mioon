@@ -30,7 +30,7 @@ function syntheticCodec() {
     decrypt(value: WithImplicitCoercion<string>) { const bytes = Buffer.from(value, 'base64'), cipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12)); cipher.setAuthTag(bytes.subarray(-16)); return Buffer.concat([cipher.update(bytes.subarray(12, -16)), cipher.final()]).toString(); },
   };
 }
-const persistent = {persistentAvailable: true, sessionScope: 'app', reasonCode: null} as const;
+const persistent = {persistentAvailable: true, reasonCode: null} as const;
 
 test('all researched preset families have explicit platform defaults and no executable network work', () => {
   assert.deepEqual(AGENT_PRESETS.map(item => item.id), ['openai', 'anthropic', 'deepseek', 'qwen', 'zhipu', 'kimi', 'minimax', 'openrouter', 'custom', 'ollama']);
@@ -63,7 +63,7 @@ test('only explicit local Ollama profile permits loopback /v1 and never current 
 
 test('strict mutation/configuration/key shapes and bounds reject unrecognized fields without reflecting values', async t => {
   const persistence = memoryPersistence(), settings = await createAgentSettings({persistence}); t.after(() => settings.close());
-  const valid = input(0, {action: 'replace', storage: 'session', value: 'synthetic-only'});
+  const valid = input(0, {action: 'replace', storage: 'persistent', value: 'synthetic-only'});
   const service = valid.services.find(item => item.serviceKey === 'openai'); assert.ok(service);
   const withService = (patch: Record<string,unknown>) => ({...valid, services: valid.services.map(item => item.serviceKey === 'openai' ? {...item, ...patch} : item)});
   const withSecret = (action: Record<string,unknown>) => ({...valid, secretActions: [{serviceKey:'openai', ...action}]});
@@ -71,8 +71,9 @@ test('strict mutation/configuration/key shapes and bounds reject unrecognized fi
     {expectedRevision:0, configuration:configuration(), secret:{action:'keep'}}, withService({apiKey:'synthetic-only'}), withService({presetId:'other'}), withService({platformId:'china'}),
     withService({manualModelIds:['x'.repeat(201)]}), withService({manualModelIds:['bad\nmodel']}), withService({revision:0}), withService({secret:{configured:false,storage:'none'}}),
     {...valid,mioSelection:{serviceKey:'openai',modelId:'x'.repeat(201)}}, {...valid,mioSelection:{serviceKey:'openai',modelId:'bad\nmodel'}},
-    withSecret({action:'keep',value:'synthetic-only'}), withSecret({action:'remove',storage:'session'}), withSecret({action:'replace',storage:'sqlite',value:'synthetic-only'})];
-  for (const value of ['', ' ', 'x'.repeat(8193), 'é'.repeat(4097), '\nsynthetic-only', 'synthetic\u0000only', 'x\u0085key'] as const) invalid.push(withSecret({action:'replace',storage:'session',value}));
+    withSecret({action:'keep',value:'synthetic-only'}), withSecret({action:'remove',storage:'persistent'}), withSecret({action:'replace',storage:'sqlite',value:'synthetic-only'}),
+    withSecret({action:'replace',storage:'session',value:'synthetic-only'})];
+  for (const value of ['', ' ', 'x'.repeat(8193), 'é'.repeat(4097), '\nsynthetic-only', 'synthetic\u0000only', 'x\u0085key'] as const) invalid.push(withSecret({action:'replace',storage:'persistent',value}));
   const safeValidation = (error: unknown) => (error as Failure).code === 'AGENT_SETTINGS_VALIDATION' && !(error as Failure).message.includes('synthetic-only');
   for (const value of invalid) {
     assert.throws(() => parseAgentSettingsUpdate(value), safeValidation);
@@ -80,21 +81,25 @@ test('strict mutation/configuration/key shapes and bounds reject unrecognized fi
   }
   assert.equal((await settings.get()).revision,0); assert.equal(persistence.value,null);
   for (const value of ['x'.repeat(8192), 'é'.repeat(4096)]) {
-    const parsed = parseAgentSettingsUpdate(withSecret({action:'replace',storage:'session',value})).secretActions[0]; assert.equal(parsed?.action,'replace');
+    const parsed = parseAgentSettingsUpdate(withSecret({action:'replace',storage:'persistent',value})).secretActions[0]; assert.equal(parsed?.action,'replace');
     assert.ok(parsed?.action==='replace'); assert.equal(Buffer.byteLength(parsed.value),8192);
   }
   for (const code of ['__proto__', 'constructor', 'toString', 'unknown', undefined] as const) assert.equal(safeAgentSettingsError({code, message: 'synthetic-only'}).code, 'AGENT_SETTINGS_SAVE_FAILED');
   assert.equal(agentSettingsError().code, 'AGENT_SETTINGS_VALIDATION');
 });
 
-test('session keys are write-only, never reach envelope, and vanish on fresh engine restart', async () => {
+test('settings without secure storage preserve metadata and refuse to save a credential', async () => {
   const persistence = memoryPersistence(), settings = await createAgentSettings({persistence});
   assert.equal((await settings.get()).revision, 0);
-  const saved = await settings.put(input(0, {action: 'replace', storage: 'session', value: 'synthetic-session-marker'}));
-  assert.deepEqual(testAgentExecution(saved).secret, {configured: true, storage: 'session'});
-  assert.equal(saved.storage.sessionScope, 'server'); assert.equal(saved.scope, 'settings_only'); assert.equal(saved.verification, 'not_tested');
-  assert.equal(JSON.stringify(saved).includes('synthetic-session-marker'), false);
-  assert.equal(JSON.stringify(persistence.value).includes('synthetic-session-marker'), false);
+  const saved = await settings.put(input());
+  assert.deepEqual(testAgentExecution(saved).secret, {configured: false, storage: 'none'});
+  assert.deepEqual(saved.storage, {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
+  assert.equal(saved.scope, 'settings_only'); assert.equal(saved.verification, 'not_tested');
+  await assert.rejects(settings.put(input(1, {action: 'replace', storage: 'persistent', value: 'synthetic-only'})), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  assert.deepEqual(await settings.get(), saved);
+  assert.equal((await settings[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(saved))).apiKey, null);
+  assert.equal(persistence.value?.revision, 1);
+  assert.equal(JSON.stringify(persistence.value).includes('synthetic-only'), false);
   assert.equal(persistedSecret(persistence.value), null);
   assert.deepEqual(Object.keys(settings).sort(), ['close', 'get', 'put']);
   await settings.close();
@@ -107,10 +112,10 @@ test('session keys are write-only, never reach envelope, and vanish on fresh eng
 
 test('credential binding covers exact normalized endpoint, preset and platform; model and protocol changes retain it', async () => {
   for (const field of ['baseUrl', 'presetId', 'platformId'] as const) {
-    const p = memoryPersistence(), settings = await createAgentSettings({persistence: p});
+    const p = memoryPersistence(), settings = await createAgentSettings({persistence: p, storage: persistent, secretCodec: syntheticCodec()});
     const start = field === 'platformId' ? {presetId: 'qwen', platformId: 'beijing', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', protocol: 'chat_completions' as const}
       : field === 'baseUrl' ? {...configuration(), presetId:'custom', platformId:'custom', baseUrl:'https://synthetic.example/v1'} : configuration();
-    await settings.put(input(0, {action: 'replace', storage: 'session', value: 'synthetic-binding-marker'}, start));
+    await settings.put(input(0, {action: 'replace', storage: 'persistent', value: 'synthetic-binding-marker'}, start));
     const changed = {...start};
     if (field === 'baseUrl') changed.baseUrl += '/other';
     if (field === 'presetId') {changed.presetId = 'deepseek'; changed.baseUrl = 'https://api.deepseek.com';}
@@ -118,8 +123,8 @@ test('credential binding covers exact normalized endpoint, preset and platform; 
     assert.equal(testAgentExecution(await settings.put(input(1, {action: 'keep'}, changed))).secret.configured, false, field);
     await settings.close();
   }
-  const settings = await createAgentSettings({persistence: memoryPersistence()});
-  await settings.put(input(0, {action: 'replace', storage: 'session', value: 'synthetic-model-marker'}));
+  const settings = await createAgentSettings({persistence: memoryPersistence(), storage: persistent, secretCodec: syntheticCodec()});
+  await settings.put(input(0, {action: 'replace', storage: 'persistent', value: 'synthetic-model-marker'}));
   assert.equal(testAgentExecution(await settings.put(input(1, {action: 'keep'}, parseAgentConfiguration({...configuration(), baseUrl: 'https://API.OPENAI.COM:443/v1/', model: 'user-model'})))).secret.configured, true);
   assert.equal(testAgentExecution(await settings.put(input(2, {action: 'keep'}, {...configuration(), protocol:'responses'}))).secret.configured, true);
   assert.equal(testAgentExecution(await settings.put(input(3, {action: 'remove'}, configuration()))).secret.configured, false);
@@ -127,8 +132,8 @@ test('credential binding covers exact normalized endpoint, preset and platform; 
 });
 
 test('CAS serializes concurrent saves, every successful save increments, stale writes cannot replace secrets', async () => {
-  const persistence = memoryPersistence(), settings = await createAgentSettings({persistence});
-  const results = await Promise.allSettled(Array.from({length: 12}, (_, i) => settings.put(input(0, {action: 'replace', storage: 'session', value: `synthetic-racer-${i}`}))));
+  const persistence = memoryPersistence(), settings = await createAgentSettings({persistence, storage: persistent, secretCodec: syntheticCodec()});
+  const results = await Promise.allSettled(Array.from({length: 12}, (_, i) => settings.put(input(0, {action: 'replace', storage: 'persistent', value: `synthetic-racer-${i}`}))));
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
   for (const failure of results.filter(r => r.status === 'rejected')) assert.equal(failure.reason.code, 'AGENT_SETTINGS_CONFLICT');
   assert.equal((await settings.get()).revision, 1);
@@ -138,18 +143,18 @@ test('CAS serializes concurrent saves, every successful save increments, stale w
 });
 
 test('failed replacements, removals and binding edits preserve prior atomic envelope and RAM state', async () => {
-  const persistence = memoryPersistence(), settings = await createAgentSettings({persistence});
-  const saved = await settings.put(input(0, {action: 'replace', storage: 'session', value: 'synthetic-original'}));
+  const persistence = memoryPersistence(), settings = await createAgentSettings({persistence, storage: persistent, secretCodec: syntheticCodec()});
+  const saved = await settings.put(input(0, {action: 'replace', storage: 'persistent', value: 'synthetic-original'}));
   const previous = persistence.value;
   persistence.save = async () => { throw new Error('synthetic-original native raw failure'); };
-  for (const update of [input(1, {action: 'remove'}), input(1, {action: 'replace', storage: 'session', value: 'synthetic-replacement'}), input(1, {action: 'keep'}, {...configuration(), presetId:'custom', platformId:'custom', baseUrl: 'https://changed.example.com/v1'})] as const) {
+  for (const update of [input(1, {action: 'remove'}), input(1, {action: 'replace', storage: 'persistent', value: 'synthetic-replacement'}), input(1, {action: 'keep'}, {...configuration(), presetId:'custom', platformId:'custom', baseUrl: 'https://changed.example.com/v1'})] as const) {
     await assert.rejects(settings.put(update), error => (error as Failure).code === 'AGENT_SETTINGS_SAVE_FAILED' && !(error as Failure).message.includes('synthetic'));
     assert.deepEqual(await settings.get(), saved);
     assert.deepEqual(persistence.value, previous);
   }
 });
 
-test('persistent encryption, restart validation, explicit fallback and deletion use one envelope', async () => {
+test('persistent encryption, restart validation, rejection and deletion use one envelope', async () => {
   const persistence = memoryPersistence(), secretCodec = syntheticCodec();
   let available = true;
   const storage = () => available ? persistent : {...persistent, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' as const};
@@ -166,14 +171,15 @@ test('persistent encryption, restart validation, explicit fallback and deletion 
   await restarted.close(); restarted = await createAgentSettings({persistence, secretCodec, storage});
   assert.equal(testAgentExecution(await restarted.get()).secret.configured, true, 'stored key is not silently deleted while OS vault is locked');
   await assert.rejects(restarted.put(input(1, {action: 'replace', storage: 'persistent', value: 'synthetic-failed'})), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
+  await assert.rejects(restarted.put(input(1, {action: 'replace', storage: 'session', value: 'synthetic-fallback'})), {code: 'AGENT_SETTINGS_VALIDATION'});
   assert.equal((await restarted.get()).revision, 1);
-  assert.equal(testAgentExecution(await restarted.put(input(1, {action: 'replace', storage: 'session', value: 'synthetic-explicit-fallback'}))).secret.storage, 'session');
+  assert.deepEqual(persistedSecret(persistence.value), ciphertext);
+  assert.equal(testAgentExecution(await restarted.put(input(1, {action: 'remove'}))).secret.configured, false);
   assert.equal(persistedSecret(persistence.value), null);
-  assert.equal(testAgentExecution(await restarted.put(input(2, {action: 'remove'}))).secret.configured, false);
   await restarted.close();
 });
 
-test('unreadable persistent ciphertext stays stored but fails closed and allows explicit new session key', async () => {
+test('unreadable ciphertext stays stored until the user replaces it with an encrypted key', async () => {
   const persistence = memoryPersistence(), secretCodec = syntheticCodec();
   const settings = await createAgentSettings({persistence, secretCodec, storage: persistent});
   await settings.put(input(0, {action: 'replace', storage: 'persistent', value: 'synthetic-old'}));
@@ -184,7 +190,10 @@ test('unreadable persistent ciphertext stays stored but fails closed and allows 
   const original = persistence.value;
   await assert.rejects(restart[AGENT_CREDENTIAL_ACQUIRE](testAgentCredential(status)), {code:'AGENT_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.deepEqual(persistence.value, original, 'failed trusted decryption never deletes the stored ciphertext');
-  assert.equal(testAgentExecution(await restart.put(input(1, {action: 'replace', storage: 'session', value: 'synthetic-new'}))).secret.storage, 'session');
+  assert.equal(testAgentExecution(await restart.put(input(1, {action: 'replace', storage: 'persistent', value: 'synthetic-new'}))).secret.storage, 'persistent');
+  const encrypted = persistedSecret(persistence.value)?.encrypted;
+  assert.ok(encrypted);
+  assert.equal(JSON.parse(secretCodec.decrypt(encrypted)).value, 'synthetic-new');
   await restart.close();
 });
 

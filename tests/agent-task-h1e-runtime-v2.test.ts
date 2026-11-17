@@ -16,7 +16,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {buildTaskModelRequest,taskResponseLanguageContext} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -44,8 +44,8 @@ function assertPublic(value:unknown):void {assert.doesNotMatch(JSON.stringify(va
 async function fixture(t:TestContext,protocol:AgentProtocol){
   const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1e-runtime-')),store=openStore(root),services=createServices(store,new Map());
   const project=object(await services.call('project.create',{name:'Usage fixture'})),projectId=String(project.id);
-  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
-  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-usage-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'session',value:randomUUID()}});
+  const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'custom',platformId:'custom',protocol,model:'synthetic-usage-model',baseUrl:'https://harness.example.com'},secret:{action:'replace',storage:'persistent',value:randomUUID()}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const tools=createAgentTaskTools({store,services}),requests:string[]=[];let index=0,script:Script=async function*(){yield {type:'done',output:output(protocol)};};
   const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();requests.push(request.body);yield*script(++index);};

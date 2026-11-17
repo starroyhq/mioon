@@ -15,7 +15,7 @@ import {timelineFormatResponseSchema} from '../packages/contracts/src/timeline-f
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings,createTestSecretCodec,testSecretStorage} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import type {TaskGateway,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -127,9 +127,9 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-parameter-feedback-'))),projectFile=path.join(root,'project.mioon');
   if(format4)createProjectFile(projectFile);
   const store=format4?openServerTestStore({projectFile,locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')}),format4:{approveUpgrade:()=>true}},path.join(root,'app')):openStore(root);
-  const videoSettings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+  const videoSettings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec:createTestSecretCodec(),storage:testSecretStorage});
   const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'minimax',name:'Synthetic MiniMax',region:'cn',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('minimax')};
-  await videoSettings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_VIDEO_KEY'}});
+  await videoSettings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_VIDEO_KEY'}});
   const posts:Array<{url:string;body:Record<string,unknown>}>=[];
   const services=createServices(store,new Map(),{videoSettings,profileNow:()=>Date.UTC(2026,9,24),videoFetch:async(url,init)=>{
     if(init?.method==='POST'){assert.ok(typeof init.body==='string');posts.push({url:String(url),body:JSON.parse(init.body) as Record<string,unknown>});return new Response(JSON.stringify({task_id:'one-original-video-task'}),{headers:{'content-type':'application/json'}});}
@@ -138,7 +138,7 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const project=await services.call('project.create',{name:'Correction fixture'});assert.ok(object(project)&&typeof project.id==='string');const projectId=project.id;
   const shot=await services.call('shot.create',{projectId,title:'Saved shot',prompt:'A synthetic blue cube rotates.',duration:4,aspectRatio:'9:16'});assert.ok(object(shot));
-  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CHAT_KEY'}});
+  const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_CHAT_KEY'}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const sourceTools=createAgentTaskTools({store,services}),requests:string[]=[];let script:TaskGateway=async function*(){throw Error('A synthetic model script is required');},executeFailure:unknown;
   const tools={...sourceTools,async execute(...args:Parameters<typeof sourceTools.execute>){if(executeFailure)throw executeFailure;return sourceTools.execute(...args);}};

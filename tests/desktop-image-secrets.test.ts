@@ -34,7 +34,7 @@ const configuration = structuredClone(DEFAULT_IMAGE_CONFIGURATION);
 const binding = JSON.stringify([IMAGE_SETTINGS_NAMESPACE, configuration.providerId, configuration.profileId,
   configuration.baseUrl, configuration.model, configuration.options]);
 const plaintext = JSON.stringify({version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, binding, value: SENTINEL});
-const storage = {persistentAvailable: true, sessionScope: 'server', reasonCode: null} as const;
+const storage = {persistentAvailable: true, reasonCode: null} as const;
 
 // Synthetic authenticated crypto only. No native Electron, provider, live key,
 // macOS keychain or network is involved in this fixture or this test file.
@@ -129,7 +129,7 @@ test('Images Linux codec rejects weak backends and sanitizes actual strong-keyri
   safeStorage.encryptString = () => { calls++; throw new Error(SENTINEL); };
   safeStorage.decryptString = () => { calls++; throw new Error(AGENT_SENTINEL); };
   safeStorage.getSelectedStorageBackend = () => 'basic_text';
-  assert.deepEqual(await codec.storage(), {persistentAvailable: false, sessionScope: 'server', reasonCode: 'LINUX_BASIC_TEXT'});
+  assert.deepEqual(await codec.storage(), {persistentAvailable: false, reasonCode: 'LINUX_BASIC_TEXT'});
   await assert.rejects(codec.encrypt(plaintext), assertSanitized);
   await assert.rejects(codec.decrypt(encrypted), assertSanitized);
   assert.equal(calls, 0);
@@ -199,7 +199,7 @@ test('Images broker sanitizes malformed outputs and fences queued work on close 
 
 for (const platform of ['linux', 'darwin'] as const) test('Images utility client refreshes redacted availability before every cryptographic operation (' + platform + ')', async t => {
   const safeStorage = fakeVault(), pair = connected(safeStorage, platform); t.after(() => pair.close());
-  assert.deepEqual(pair.client.storage(), {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
+  assert.deepEqual(pair.client.storage(), {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
   assert.deepEqual(await pair.client.refreshStorage(), storage);
   const encrypted = await pair.client.encrypt(plaintext);
   assert.equal(await pair.client.decrypt(encrypted), plaintext);
@@ -281,7 +281,7 @@ test('supervisor serves Images startup status and fences crypto across child rep
   t.after(() => supervisor.stop());
   const starting = supervisor.start({} as Parameters<typeof supervisor.start>[0]);
   first.emit('message', request()); await nextTurn(); await starting; await nextTurn();
-  assert.equal((first.sent.find(value => value.type === 'image-secret-codec-response')?.data as {sessionScope?: string} | undefined)?.sessionScope, 'server');
+  assert.deepEqual(first.sent.find(value => value.type === 'image-secret-codec-response')?.data, storage);
   const encrypted = await codec.encrypt(plaintext), before = first.sent.length;
   first.emit('message', request('decrypt', {input: encrypted})); first.emit('exit', 1);
   next = second; await supervisor.start({} as Parameters<typeof supervisor.start>[0]);
@@ -292,14 +292,14 @@ test('supervisor serves Images startup status and fences crypto across child rep
   assert.equal(second.sent.at(-1)?.ok, true); assert.equal(first.sent.length, before);
 });
 
-for (const platform of ['linux', 'darwin'] as const) test('utility engine persists only ciphertext and drops session Images credentials at utility close (' + platform + ')', async t => {
+for (const platform of ['linux', 'darwin'] as const) test('utility engine retains committed ciphertext when the native vault fails (' + platform + ')', async t => {
   let stored: Record<string, unknown> | null = null;
   const persistence = {async load() { return structuredClone(stored); }, async save(value: unknown) { stored = structuredClone(value) as Record<string, unknown>; }};
   const safeStorage = fakeVault(), pair = connected(safeStorage, platform); t.after(() => pair.close());
   let engine = await createImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage} as unknown as Parameters<typeof createImageSettings>[0]);
   t.after(() => engine.close());
   const initial = await engine.get();
-  assert.equal(initial.storage.sessionScope, 'server');
+  assert.deepEqual(initial.storage, storage);
   const saved = await engine.put({expectedRevision: initial.revision, configuration: {...configuration, enabled: true},
     secret: {action: 'replace', storage: 'persistent', value: SENTINEL}});
   assert.equal(saved.secret.storage, 'persistent'); assertSanitized(stored);
@@ -312,12 +312,16 @@ for (const platform of ['linux', 'darwin'] as const) test('utility engine persis
     await assert.rejects(pair.client.encrypt(plaintext), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   }
   const locked = await engine.get(); assert.equal(locked.storage.persistentAvailable, false);
-  const session = await engine.put({expectedRevision: locked.revision, configuration: locked.configuration,
-    secret: {action: 'replace', storage: 'session', value: SENTINEL}});
-  assert.equal(session.secret.storage, 'session'); assert.equal(stored!.secret, null); assertSanitized(stored);
+  const committed = structuredClone(stored);
+  const change = {expectedRevision: locked.revision, configuration: locked.configuration};
+  await assert.rejects(engine.put({...change, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}),
+    {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  await assert.rejects(engine.put({...change, secret: {action: 'replace', storage: 'session', value: SENTINEL}}),
+    {code: 'IMAGE_SETTINGS_VALIDATION'});
+  assert.deepEqual(stored, committed); assertSanitized(stored);
   await engine.close();
   engine = await createImageSettings({persistence, secretCodec: pair.client, storage: pair.client.storage} as unknown as Parameters<typeof createImageSettings>[0]);
-  assert.deepEqual((await engine.get()).secret, {configured: false, storage: 'none'});
+  assert.deepEqual((await engine.get()).secret, {configured: true, storage: 'persistent'});
 });
 
 test('desktop wiring keeps renderer secret capabilities private and settings ownership in the utility', async () => {

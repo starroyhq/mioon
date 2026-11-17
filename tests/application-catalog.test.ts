@@ -10,6 +10,7 @@ import {listImageProfiles} from '../packages/business/src/images.ts';
 import {createImageSettings, createCustomImageSettings} from '../packages/business/src/images/settings.ts';
 import {createLiveImageGateway, createCompatibleImageGateway} from '../packages/business/src/images/gateway.ts';
 import {startServer} from './helpers/test-server.ts';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
@@ -40,10 +41,11 @@ test('application catalog exposes independent metadata snapshots without executi
 
 test('image profile discovery reads settings metadata without opening a project or sending credentials',async()=>{
   const persistence={load:async()=>null,save:async()=>{}};
-  const settings=await createImageSettings({persistence}),customSettings=await createCustomImageSettings({persistence});
+  const settings=await createImageSettings({persistence,secretCodec:createTestSecretCodec(),storage:testSecretStorage});
+  const customSettings=await createCustomImageSettings({persistence,secretCodec:createTestSecretCodec(),storage:testSecretStorage});
   try {
-    const saved=await settings.put({expectedRevision:(await settings.get()).revision,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:'synthetic-catalog-key'}});
-    const custom=await customSettings.put({expectedRevision:(await customSettings.get()).revision,configuration:{...DEFAULT_CUSTOM_IMAGE_CONFIGURATION,enabled:true,baseUrl:'https://catalog.example.test/images',model:'catalog-model'},secret:{action:'replace',storage:'session',value:'synthetic-custom-key'}});
+    const saved=await settings.put({expectedRevision:(await settings.get()).revision,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:'synthetic-catalog-key'}});
+    const custom=await customSettings.put({expectedRevision:(await customSettings.get()).revision,configuration:{...DEFAULT_CUSTOM_IMAGE_CONFIGURATION,enabled:true,baseUrl:'https://catalog.example.test/images',model:'catalog-model'},secret:{action:'replace',storage:'persistent',value:'synthetic-custom-key'}});
     const dependencies={settings,customSettings,liveGateway:createLiveImageGateway({settings}),customGateway:createCompatibleImageGateway({settings:customSettings})};
     const legacy=listImageProfiles(dependencies),revisions=listImageProfiles(dependencies,{includeSettingsRevision:true});
     assert.equal(legacy.liveEnabled,true);assert.deepEqual(legacy.items.map(item=>item.providerId),['mock','openai','openai-compatible']);

@@ -10,7 +10,7 @@ import {startServer, type InspectApplication, type InspectProject, type ServerOp
 import {serverAppDirectories, projectLocation} from '../../apps/server/src/project-host/directories.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createProjectVersions} from '../../packages/business/src/project-versions/service.ts';
-import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './secret-codec.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {agentChatHttpError} from '../../packages/business/src/agent/chat-errors.ts';
@@ -62,9 +62,9 @@ export function fileTree(directory: string): unknown {
 
 export async function seedMio(store: ProjectStore, services: ReturnType<typeof createServices>, shotId: string,
   mode: 'completed' | 'awaiting_answer' | 'awaiting_approval', bury = false) {
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   await putTestAgentConfiguration(settings, {expectedRevision: 0, configuration: defaultTestAgentConfiguration('chat_completions'),
-    secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_TRASH_ACCEPTANCE_ONLY'}});
+    secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_TRASH_ACCEPTANCE_ONLY'}});
   const authorizations = createTestAuthorizations(store, settings); await authorizeTestScope(authorizations, 'project_agent');
   const queued: AgentTaskToolCall[][] = mode === 'awaiting_answer'
     ? [[{id: randomUUID(), name: 'mioon_ask', arguments: {question: 'Which opening?', options: [{label: 'Wide'}, {label: 'Close'}]}}]]

@@ -9,14 +9,14 @@ const REQUEST = 'video-secret-codec-request', RESPONSE = 'video-secret-codec-res
 const CANCEL = 'video-secret-codec-cancel';
 const NAMESPACE = 'video-providers', VERSION = 1, MAX_PENDING = 16, MAX_COMPLETED_IDS = 128;
 type CodecOperation = 'status' | 'encrypt' | 'decrypt';
-const unavailableStorage = (): VideoSecretStorage => ({persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
+const unavailableStorage = (): VideoSecretStorage => ({persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
 const messages: Readonly<Record<string, readonly [number, string]>> = Object.freeze({
   VIDEO_SECRET_CODEC_UNAVAILABLE: [503, 'Video secure storage is unavailable. Retry after restarting the local service.'],
   VIDEO_SECRET_CODEC_TIMEOUT: [503, 'Video secure storage did not respond in time.'],
   VIDEO_SECRET_CODEC_BUSY: [503, 'Video secure storage is busy. Retry shortly.'],
   VIDEO_SECRET_CODEC_VALIDATION: [400, 'Invalid Video secure storage request.'],
   VIDEO_SETTINGS_VALIDATION: [400, 'Invalid Video secure storage request.'],
-  VIDEO_SETTINGS_STORAGE_UNAVAILABLE: [409, 'Video OS secure storage is unavailable. Choose session-only storage explicitly.'],
+  VIDEO_SETTINGS_STORAGE_UNAVAILABLE: [409, 'Video OS secure storage is unavailable.'],
   VIDEO_SETTINGS_CORRUPT: [503, 'The Video credential could not be read safely.'],
 });
 interface CodecError extends Error { code: string; status: number }
@@ -62,10 +62,10 @@ function validCiphertext(value: unknown): value is string {
     Buffer.from(value, 'base64').toString('base64') === value;
 }
 function safeStorage(value: unknown): SafeStorage {
-  if (!exactObject(value, ['persistentAvailable', 'sessionScope', 'reasonCode']) || typeof value.persistentAvailable !== 'boolean' ||
-      value.sessionScope !== 'server' || ![null, 'OS_SECRET_STORE_PENDING', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
+  if (!exactObject(value, ['persistentAvailable', 'reasonCode']) || typeof value.persistentAvailable !== 'boolean' ||
+      ![null, 'OS_SECRET_STORE_PENDING', 'OS_SECRET_STORE_UNAVAILABLE', 'LINUX_BASIC_TEXT'].includes(value.reasonCode as string) ||
       value.persistentAvailable !== (value.reasonCode === null)) throw codecError();
-  return {persistentAvailable: value.persistentAvailable, sessionScope: 'server',
+  return {persistentAvailable: value.persistentAvailable,
     reasonCode: value.reasonCode as SafeStorage['reasonCode']};
 }
 function safeResult(operation: CodecOperation, value: unknown): unknown {
@@ -174,8 +174,7 @@ export function createVideoSecretBroker({videoSecretCodec, send, isActive = () =
   });
 }
 
-// Utility-only client. Its only cached value is redacted availability; Video
-// session credentials remain exclusively in the utility settings engine.
+// Utility-only client. Its only cached value is redacted availability.
 export function createVideoSecretClient({port, timeout = 2000}: {port: CodecPort; timeout?: number}) {
   if (!port || typeof port.on !== 'function' || typeof port.postMessage !== 'function' ||
       !Number.isInteger(timeout) || timeout < 1 || timeout > 60000) throw codecError();

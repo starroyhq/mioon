@@ -106,7 +106,7 @@ test('native denial is not missing and a proven pre-write failure may retry with
 test('uncertain creation, timeout and late results never authorize a replacement or publish ciphertext',async t=>{
   const dir=await directory(t),vault=syntheticVault(),codec=await createHeadlessAgentSecretCodec({directory:dir,channel:'development',helper:vault.helper,timeoutMs:25});t.after(()=>codec.close());
   vault.failure('after');await assert.rejects(encrypt(codec));vault.failure(null);await assert.rejects(encrypt(codec));assert.equal(vault.actions.filter(action=>action==='create').length,1);
-  let release:()=>void=()=>{};vault.hold(new Promise<void>(resolve=>{release=resolve;}));assert.deepEqual(await codec.secretCodec.refreshStorage!(),{persistentAvailable:false,sessionScope:'server',reasonCode:'OS_SECRET_STORE_UNAVAILABLE'});release();await delay(5);assert.equal(codec.storage().persistentAvailable,false);
+  let release:()=>void=()=>{};vault.hold(new Promise<void>(resolve=>{release=resolve;}));assert.deepEqual(await codec.secretCodec.refreshStorage!(),{persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'});release();await delay(5);assert.equal(codec.storage().persistentAvailable,false);
   vault.hold(null);const abort=new AbortController();abort.abort();await assert.rejects(encrypt(codec,plaintext(),{signal:abort.signal}));assert.equal(vault.entries.size,0);
 });
 test('atomic settings save failure retains the old key and ciphertext without a silent session fallback',async t=>{

@@ -22,7 +22,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {readProjectState,changeMarks} from './helpers/project-state.ts';
 
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 
@@ -50,8 +50,8 @@ async function fixture(t:TestContext){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-policy-answer-v2-')),store=createServerProject(root,{name:'Policy and answer test'}).store,services=createServices(store,new Map());
  const projectId=store.projectId;
  const shotId=String(record(await services.call('shot.create',{projectId,title:'Saved title'})).id);
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_POLICY_ANSWER_TEST_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_POLICY_ANSWER_TEST_ONLY'}});
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[],queue:AgentTaskToolCall[][]=[];
  const gateway:TaskGateway=async function*(request){

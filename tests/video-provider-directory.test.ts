@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
@@ -18,11 +19,11 @@ const asOf = '2026-10-20';
 
 test('a corrupt private video file degrades only its directory and a repaired service restores discovery', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-video-directory-')));
-  const options = {directory: path.join(root, 'video-settings'), privateRoot: root};
+  const options = {directory: path.join(root, 'video-settings'), privateRoot: root, secretCodec: createTestSecretCodec(), storage: testSecretStorage};
   let settings = await createVideoSettingsV2(options);
   t.after(async () => {await settings.close(); await rm(root, {recursive: true, force: true});});
   const configuration = newVideoConnection('minimax'); configuration.enabled = true;
-  await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-video-directory-key'}});
+  await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-video-directory-key'}});
   const original = await readFile(path.join(options.directory, 'settings.json'));
   const calls: string[] = [];
   const call = async (operation: string): Promise<unknown> => {

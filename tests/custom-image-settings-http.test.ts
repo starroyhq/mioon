@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
@@ -21,8 +22,8 @@ interface HttpBody {data?: {configuration?: Record<string, unknown>; connections
 interface FixtureResponse {headers: Record<string, unknown>; code: number|null; text: string|null; handled?: boolean; body: HttpBody|null}
 interface HttpRequestOptions {method?: string; input?: unknown; bytes?: Buffer; headers?: Record<string, string>}
 async function fixture(t: unknown, {probeFetch, directory}: {probeFetch?: typeof fetch; directory?: string} = {}) {
-  const settings = await createImageSettings({persistence: directory ? createImageSettingsFile({directory}) : memory()});
-  const customSettings = await createCustomImageSettingsV2({persistence: directory ? createCustomImageSettingsV2File({directory}) : memory()});
+  const settings = await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: directory ? createImageSettingsFile({directory}) : memory()});
+  const customSettings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: directory ? createCustomImageSettingsV2File({directory}) : memory()});
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await settings.close(); await customSettings.close(); });
   const route = createImageHttp({settings, customSettings, probeFetch, approve: () => assert.fail('Not an approval route'), reject: () => assert.fail('Not a rejection route')});
   return {settings, customSettings, async request(path = '/api/images/custom-settings', {method = 'GET', input, bytes, headers = {}}: HttpRequestOptions = {}): Promise<FixtureResponse> {
@@ -43,12 +44,12 @@ test('custom HTTP GET/PUT targets only its slot, strips all secrets, and leaves 
   const initial = await f.request(); assert.deepEqual(initial.body?.data?.connections, []);
   assert.equal(initial.headers['Cache-Control'], 'no-store');
   const connectionId=randomUUID();
-  const saved = await f.request(undefined, {method: 'PUT', input: {action:'create',expectedRevision: 0,connectionId,name:'Custom A',configuration, secret: {action: 'replace', storage: 'session', value: SENTINEL}}});
-  assert.equal(saved.code, 200); assert.equal(saved.body?.data?.connections?.[0].secret.storage, 'session'); assert.equal(saved.text?.includes(SENTINEL), false);
+  const saved = await f.request(undefined, {method: 'PUT', input: {action:'create',expectedRevision: 0,connectionId,name:'Custom A',configuration, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}});
+  assert.equal(saved.code, 200); assert.equal(saved.body?.data?.connections?.[0].secret.storage, 'persistent'); assert.equal(saved.text?.includes(SENTINEL), false);
   assert.deepEqual((await f.request('/api/images/settings')).body, officialBefore.body);
   const stale = await f.request(undefined, {method: 'PUT', input: {action:'put',expectedRevision: 0,connectionId,expectedConfigurationRevision:1,name:'Custom A',configuration, secret: {action: 'remove'}}});
   assert.equal(stale.code, 409); assert.equal(stale.body?.error?.code, 'IMAGE_SETTINGS_CONFLICT');
-  const cross = await f.request('/api/images/settings', {method: 'PUT', input: {expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: SENTINEL}}});
+  const cross = await f.request('/api/images/settings', {method: 'PUT', input: {expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}});
   assert.equal(cross.code, 400); assert.equal(cross.text?.includes(SENTINEL), false);
   assert.deepEqual((await f.request('/api/images/settings')).body, officialBefore.body);
   for(const input of [{expectedRevision:1,configuration,secret:{action:'keep'}},{action:'restoreCredential',expectedRevision:1,connectionId}])assert.equal((await f.request(undefined,{method:'PUT',input})).code,400);
@@ -95,8 +96,8 @@ test('official and custom settings probe the current field without saving and re
     return Response.json({data: [{id: 'model-a'}, {id: 'model-a'}, {id: auth?.slice(7)}, {id: 'model-b', name: proposed}]});
   }});
   const customId = randomUUID();
-  await f.settings.put({expectedRevision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {action: 'replace', storage: 'session', value: original}});
-  await f.customSettings.create({expectedRevision: 0, connectionId: customId, name: 'Custom', configuration, secret: {action: 'replace', storage: 'session', value: original}});
+  await f.settings.put({expectedRevision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {action: 'replace', storage: 'persistent', value: original}});
+  await f.customSettings.create({expectedRevision: 0, connectionId: customId, name: 'Custom', configuration, secret: {action: 'replace', storage: 'persistent', value: original}});
 
   for (const kind of ['official', 'custom'] as const) {
     const route = kind === 'official' ? '/api/images/settings' : '/api/images/custom-settings';

@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -43,7 +44,7 @@ const scenarios: Scenario[] = [
 
 async function fixture(t: TestContext, scenario: Scenario) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-wan-default-transports-')));
-  const store = openStore(root), settings = await createVideoSettings({directory:path.join(root, 'video-settings'), privateRoot:root});
+  const store = openStore(root), settings = await createVideoSettings({directory:path.join(root, 'video-settings'), privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   const registry = createProviderRegistry({db:store.db, root, env:{}});
   let providerCalls = 0;
   // No worker is started. Even if a regression dispatches during submission,
@@ -65,7 +66,7 @@ async function fixture(t: TestContext, scenario: Scenario) {
   if (scenario.narrow) {model.aspectRatios=['1:1']; model.durationResolutionMap=[{duration:[2,10], resolution:['480P']}];}
   const configuration: VideoConnectionConfiguration = {id:randomUUID(), providerId:'wan', name:'Offline Wan defaults', region:'cn-beijing',
     workspaceId:'test-workspace', enabled:true, archived:false, outputHosts:['output.example'], models:[model]};
-  await settings.put({action:'save', expectedRevision:0, configuration, secret:{action:'replace', value:'synthetic-wan-key', storage:'session'}});
+  await settings.put({action:'save', expectedRevision:0, configuration, secret:{action:'replace', value:'synthetic-wan-key', storage:'persistent'}});
   const project = await services.call('project.create', {name:'Wan defaults parity'}) as ServiceRow;
   const shot = await services.call('shot.create', {projectId:project.id, title:'Four second shot', prompt:'Synthetic offline generation.',
     duration:4, aspectRatio:'9:16', referenceAssetIds:[]}) as ServiceRow;

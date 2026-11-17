@@ -12,6 +12,7 @@ import type {AgentConfiguration} from '../packages/business/src/agent/config.ts'
 import {AGENT_CONNECTION_LIMITS} from '../packages/contracts/src/agent-connection-settings.ts';
 import {adapterSettings, adapterMetadata, ADAPTER_CUSTOM_SERVICE_KEY} from './helpers/agent-adapter-fixture.ts';
 import {testAgentExecution} from './helpers/agent-settings-fixture.ts';
+import {testServerSecretCodecs} from './helpers/secret-codec.ts';
 import type { PathLike } from 'fs';
 
 const token = 'synthetic-agent-settings-http-token';
@@ -19,13 +20,15 @@ const input = (expectedRevision = 0, secret: {action:string;storage?:string;valu
   ...adapterMetadata(adapterSettings(configuration,{revision:expectedRevision})),
   secretActions: [{serviceKey:configuration.presetId === 'custom' ? ADAPTER_CUSTOM_SERVICE_KEY : configuration.presetId,...secret}],
 });
-async function fixture(t: test.TestContext, {prepare, agentSettings}: {prepare?:(root:string)=>unknown;agentSettings?:NonNullable<Parameters<typeof startServer>[0]>['agentSettings']} = {}) {
+async function fixture(t: test.TestContext, {prepare, agentSettings, secureStorage = false}: {prepare?:(root:string)=>unknown;agentSettings?:NonNullable<Parameters<typeof startServer>[0]>['agentSettings'];secureStorage?:boolean} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-agent-http-'));
   if (prepare) await prepare(root);
-  let server = await startServer({dataDir: root, port: 0, token, agentSettings: (agentSettings as unknown as NonNullable<Parameters<typeof startServer>[0]>['agentSettings'])});
+  const codecOptions = secureStorage ? {agentSecretCodecFactory:testServerSecretCodecs().agentSecretCodecFactory} : {};
+  const start = () => startServer({dataDir: root, port: 0, token, agentSettings, ...codecOptions});
+  let server = await start();
   t.after(async () => { await server.close(); await rm(root, {recursive: true, force: true}); });
   return {root, get server() { return server; },
-    async restart() { await server.close(); server = await startServer({dataDir: root, port: 0, token, agentSettings: (agentSettings as unknown as NonNullable<Parameters<typeof startServer>[0]>['agentSettings'])}); },
+    async restart() { await server.close(); server = await start(); },
     async request(route = '/api/agent/settings', {method = 'GET', payload, raw, authenticated = true, headers = {}}: import('./helpers/strict-agent-workspace-types.ts').HttpFixtureRequest = {}) {
       const response = await fetch(server.url + route, {method, headers: {'content-type': 'application/json', ...(authenticated ? {authorization: `Bearer ${token}`} : {}), ...headers}, ...(payload !== undefined || raw !== undefined ? {body: raw ?? JSON.stringify(payload)} : {})});
       return {status: response.status, headers: response.headers, body: await response.json()};
@@ -62,27 +65,32 @@ test('settings HTTP keeps token/cookie auth, rejects hostile host/origin, disall
   assert.equal((await f.request()).body.data.revision, 2);
 });
 
-test('web settings store metadata only, survive restart, expire keys, preserve business content and stay absent from RPC', async t => {
+test('web settings without secure storage store metadata only and refuse keys', async t => {
   const f = await fixture(t), marker = 'SYNTHETIC_AGENT_HTTP_SECRET_DO_NOT_PERSIST';
   const project = (await f.request('/api/rpc', {method: 'POST', payload: {operation: 'project.create', input: {name: 'Synthetic existing project'}}})).body.data;
   const before = (await f.request(projectRpcPath(project.id), {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body;
   const initial = await f.request();
   assert.equal(initial.headers.get('cache-control'), 'no-store');
   assert.equal(initial.body.data.presets.length, 10);
-  const saved = await f.request(undefined, {method: 'PUT', payload: input(0, {action: 'replace', storage: 'session', value: marker})});
-  assert.equal(saved.status, 200); assert.equal(testAgentExecution(saved.body.data).secret.storage, 'session');
+  const saved = await f.request(undefined, {method: 'PUT', payload: input()});
+  assert.equal(saved.status, 200); assert.equal(testAgentExecution(saved.body.data).secret.storage, 'none');
   assert.equal(testAgentExecution(saved.body.data).configuration.protocol, 'responses');assert.equal(testAgentExecution(saved.body.data).configuration.model, 'gpt-6.1-terra');
   assert.equal(JSON.stringify(saved.body).includes(marker), false);
-  assert.equal((await fileContents(f.root)).some((content) => content.includes(marker)), false, 'no plaintext key in envelope, SQLite, WAL, or other workspace file');
   const file = path.join(f.root, 'agent-settings/settings.json');
-  const envelope = JSON.parse((await readFile(file, 'utf8') as string));
+  const bytes = await readFile(file, 'utf8'), envelope = JSON.parse(bytes);
   assert.ok(envelope.services.every((service: {secret: unknown}) => service.secret === null)); assert.equal(envelope.revision, 1); assert.equal(envelope.version, 3);
   assert.equal(envelope.services.find((service: {serviceKey: string}) => service.serviceKey === 'openai')?.protocol, 'responses');
   const noPersistent = await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'replace', storage: 'persistent', value: marker})});
   assert.equal(noPersistent.status, 409); assert.equal(noPersistent.body.error.code, 'AGENT_SETTINGS_STORAGE_UNAVAILABLE');
+  const oldClient = await f.request(undefined, {method: 'PUT', payload: input(1, {action: 'replace', storage: 'session', value: marker})});
+  assert.equal(oldClient.status, 400); assert.equal(oldClient.body.error.code, 'AGENT_SETTINGS_VALIDATION');
+  assert.equal(JSON.stringify([noPersistent.body, oldClient.body]).includes(marker), false);
+  assert.equal(await readFile(file, 'utf8'), bytes);
+  assert.equal((await fileContents(f.root)).some((content) => content.includes(marker)), false, 'no plaintext key in envelope, SQLite, WAL, or other workspace file');
   await f.restart();
   const restarted = (await f.request()).body.data;
-  assert.equal(restarted.revision, 1); assert.equal(testAgentExecution(restarted).secret.configured, false); assert.equal(restarted.storage.sessionScope, 'server');
+  assert.equal(restarted.revision, 1); assert.equal(testAgentExecution(restarted).secret.configured, false);
+  assert.deepEqual(restarted.storage, {persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'});
   assert.deepEqual((await f.request(projectRpcPath(project.id), {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body, before);
   for (const operation of ['agent.settings.get', 'agent.settings.put', 'agent.secret.get'] as const) {
     const response = await f.request('/api/rpc', {method: 'POST', payload: {operation, input: {}}});
@@ -91,8 +99,8 @@ test('web settings store metadata only, survive restart, expire keys, preserve b
 });
 
 test('real concurrent HTTP CAS accepts one save and rejects stale deletion or lost-response retry', async t => {
-  const f = await fixture(t);
-  const results = await Promise.all(Array.from({length: 8}, (_, i) => f.request(undefined, {method: 'PUT', payload: input(0, {action: 'replace', storage: 'session', value: `synthetic-${i}`})})));
+  const f = await fixture(t, {secureStorage:true});
+  const results = await Promise.all(Array.from({length: 8}, (_, i) => f.request(undefined, {method: 'PUT', payload: input(0, {action: 'replace', storage: 'persistent', value: `synthetic-${i}`})})));
   assert.equal(results.filter(r => r.status === 200).length, 1);
   assert.equal(results.filter(r => r.status === 409 && r.body.error.code === 'AGENT_SETTINGS_CONFLICT').length, 7);
   assert.equal((await f.request()).body.data.revision, 1);
@@ -101,15 +109,15 @@ test('real concurrent HTTP CAS accepts one save and rejects stale deletion or lo
 });
 
 test('MiniMax can save Messages directly while retaining its exact binding and restarting without protocol migration', async t => {
-  const f = await fixture(t), configuration = {presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/v1',model:'MiniMax-M3',protocol:'chat_completions' as const};
-  const first = await f.request(undefined,{method:'PUT',payload:input(0,{action:'replace',storage:'session',value:'synthetic-minimax-only'},configuration)});
+  const f = await fixture(t, {secureStorage:true}), configuration = {presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/v1',model:'MiniMax-M3',protocol:'chat_completions' as const};
+  const first = await f.request(undefined,{method:'PUT',payload:input(0,{action:'replace',storage:'persistent',value:'synthetic-minimax-only'},configuration)});
   assert.equal(first.status,200);assert.deepEqual(testAgentExecution(first.body.data).configuration,configuration);
   const selected = {...configuration,baseUrl:'https://api.minimax.cn/anthropic',protocol:'anthropic_messages' as const};
   const changed = await f.request(undefined,{method:'PUT',payload:input(1,{action:'keep'},selected)});
   assert.equal(changed.status,200);assert.deepEqual(testAgentExecution(changed.body.data).configuration,selected);assert.equal(testAgentExecution(changed.body.data).secret.configured,true);
   await f.restart();
   const restored = (await f.request()).body.data;
-  assert.equal(restored.revision,2);assert.deepEqual(testAgentExecution(restored).configuration,selected);assert.equal(testAgentExecution(restored).secret.configured,false);
+  assert.equal(restored.revision,2);assert.deepEqual(testAgentExecution(restored).configuration,selected);assert.deepEqual(testAgentExecution(restored).secret,{configured:true,storage:'persistent'});
 });
 
 test('setting a local endpoint performs no provider probe and self-service endpoint remains forbidden', async t => {
@@ -133,7 +141,7 @@ test('HTTP projects legacy metadata without rewriting and rejects old clients af
   const {protocol, ...legacy} = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini'};
   const oldCiphertext = Buffer.from('SYNTHETIC_LEGACY_UNUSED_CIPHERTEXT').toString('base64');
   const bytes = JSON.stringify({version: 1, revision: 9, configuration: legacy, secret: {binding:JSON.stringify([legacy.presetId,legacy.platformId,legacy.baseUrl]),encrypted:oldCiphertext}}, null, 2) + '\n';
-  const f = await fixture(t, {prepare: async (root: string) => {
+  const f = await fixture(t, {secureStorage:true, prepare: async (root: string) => {
     await mkdir(path.join(root, 'agent-settings'), {mode: 0o700});
     await writeFile(path.join(root, 'agent-settings/settings.json'), bytes, {mode: 0o600});
   }});
@@ -145,7 +153,7 @@ test('HTTP projects legacy metadata without rewriting and rejects old clients af
   assert.equal(JSON.stringify(initial.body).includes(oldCiphertext), false);
   assert.equal(await readFile(file, 'utf8'), bytes);
   const configuration = {...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'responses' as const};
-  const saved = await f.request(undefined, {method: 'PUT', payload: input(9, {action: 'replace', storage: 'session', value: 'SYNTHETIC_HTTP_MIGRATION_KEY'}, configuration)});
+  const saved = await f.request(undefined, {method: 'PUT', payload: input(9, {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_HTTP_MIGRATION_KEY'}, configuration)});
   assert.equal(saved.status, 200); assert.equal(saved.body.data.revision, 10);
   assert.equal(testAgentExecution(saved.body.data).configuration.protocol, 'responses');
   assert.equal(testAgentExecution(saved.body.data).secret.configured, true);
@@ -159,7 +167,7 @@ test('HTTP projects legacy metadata without rewriting and rejects old clients af
   assert.equal(await readFile(file, 'utf8'), committed);
   await f.restart();
   const restarted = (await f.request()).body.data;
-  assert.equal(restarted.revision, 10); assert.equal(testAgentExecution(restarted).configuration.protocol, 'responses'); assert.equal(testAgentExecution(restarted).secret.configured, false);
+  assert.equal(restarted.revision, 10); assert.equal(testAgentExecution(restarted).configuration.protocol, 'responses'); assert.deepEqual(testAgentExecution(restarted).secret, {configured:true,storage:'persistent'});
 });
 
 test('corrupt settings are isolated from server startup and unrelated project operations', async t => {

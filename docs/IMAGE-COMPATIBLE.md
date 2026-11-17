@@ -48,18 +48,17 @@ atomic-file protections and the reviewed generation lifecycle. Every custom
 service has its own key; the official service, video services and Mio do not
 share credentials with it. The page creates a UUID for each new draft and keeps
 that ID after saving. The backend rejects duplicate, uppercase and deleted IDs;
-deletion removes that service's configuration, ciphertext and session key, leaving
+deletion removes that service's configuration and ciphertext, leaving
 only a UUID tombstone. This is not a plugin loader.
 
-Web keys last for one backend process lifetime, not one tab. Electron persistence
-requires explicit selection and available OS-encrypted storage. The narrow
-Images-only main/utility codec accepts these two namespaces and exact bindings;
-there is no renderer/preload decrypt API, arbitrary vault access or plaintext
-fallback. Linux `basic_text` and unavailable secure storage fail closed. Key input
-remains in its own password DOM input, outside React state, and is cleared on
-submission/navigation; uncertain saves are followed
-by a redacted read, never automatic secret replay. Fresh replacement input is
-required after uncertainty.
+Saving keys requires the desktop app and available OS-encrypted storage. The
+narrow Images-only main/utility codec accepts these two namespaces and exact
+bindings. If the system store is unavailable or Linux uses `basic_text`, settings
+show the storage problem and a retry action. Legacy v2 entries without ciphertext
+open as unconfigured and retain their other settings. Key input remains in its own
+password DOM input, outside React state, and is cleared on submission and
+navigation. After an uncertain save the app reads redacted settings and requires
+fresh input for any replacement.
 
 A configured key is bound to the namespace, provider, service UUID, profile and
 complete canonical base URL, including its path. Model and options are not key
@@ -101,14 +100,13 @@ return the normal `{ok:true,data}` envelope with:
 {revision,
  connections:[{connectionId,name,configurationRevision,configuration,
                secret:{configured,storage}}],
- storage:{persistentAvailable,sessionScope,reasonCode},notice}
+ storage:{persistentAvailable,reasonCode},notice}
 ```
 
 `configuration` has exactly
 `{enabled,providerId,profileId,baseUrl,model,options}`. The UUID is the entry's
 top-level `connectionId`, not a provider/model identifier or configuration field.
-`secret.storage` is `none`, `session` or `persistent`; the implemented
-`sessionScope` is `server`. Storage reason codes are unchanged from
+`secret.storage` is `none` or `persistent`. Storage reason codes match
 [official settings](IMAGE-ACTIVATION.md#private-authenticated-http-settings-contract).
 
 PUT uses an explicit action. Creating a service takes
@@ -152,7 +150,7 @@ with at most twenty operations and ten resulting services. It does not split
 itself into separate writes. No cross-file transaction is implied.
 
 `secret` is exactly `{action:"keep"}`, `{action:"remove"}`, or
-`{action:"replace",storage:"session"|"persistent",value:<new key>}`. Enter keys
+`{action:"replace",storage:"persistent",value:<new key>}`. Enter keys
 only in the private Images settings UI; never put them in shell examples,
 prompts or tool arguments. The custom update limit is 128 KiB, key input 1–4096
 non-whitespace printable ASCII bytes, private collection envelope 640 KiB and each encrypted
@@ -173,7 +171,6 @@ GETs do not consume the notice. Corrupt, unsafe and unknown-version files are
 refused, and a file changed after loading cannot be overwritten by that owner.
 The old v1 file still has its own 64 KiB recognition limit; it is not accepted
 under the larger v2 budget. There is no reset or historical-key restoration API.
-The session-storage UI warns: “应用退出后，正在进行的生成没法继续查询结果。”
 
 ## Destination and wire profile
 

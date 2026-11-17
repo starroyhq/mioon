@@ -3,6 +3,7 @@ import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
 import {mkdtemp,writeFile,rm,open} from 'node:fs/promises';
 import {constants,mkdtempSync,openSync,fstatSync,lstatSync,closeSync,unlinkSync,rmdirSync} from 'node:fs';
+import {availableParallelism} from 'node:os';
 import path from 'node:path';
 import {run,probe} from './media.ts';
 import {validateTimeline} from './timeline-inputs.ts';
@@ -13,7 +14,7 @@ import {isTimelineExportSnapshot} from '@mioon/contracts';
 import {assertTimelineExportCapability,timelineExportVideoArgs} from './timeline-export-capabilities.ts';
 import {checkMediaEffect,runStreaming} from './media-runtime.ts';
 import {withProbePermit} from './media-probe.ts';
-import {waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
+import {hasUnconfirmedMediaProcesses,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
 import {createTimelineFloatAudioChecker,assertTimelineFloatAudioAllowed,rememberTimelineFloatAudioFailure} from './timeline-float-audio-check.ts';
 import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export-float';
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
@@ -38,7 +39,11 @@ interface TimelineSnapshotLike {
  colourPlan?: RenderColourPlan;delivery?: RenderDelivery;subtitleProfile?: unknown;
 }
 interface RenderAsset extends ManagedAssetRecord {path?: string;videoStreamIndex?: number|string|null;audioStreamIndex?: number|string|null;colourProbe?: unknown;colourImageEvidence?: unknown}
-interface RenderTimelineOptions {signal?: AbortSignal;beforeEncode?: ()=>void;beforeStart?:()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown}
+interface RenderTimelineOptions {
+ signal?: AbortSignal;beforeEncode?: ()=>void;beforeStart?:()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;
+ segmentConcurrency?: number;
+ onSegmentProgress?: (completedFrames: number,totalFrames: number)=>void;
+}
 interface InodeIdentity {dev: number|bigint;ino: number|bigint;size: number;mtimeMs: number;ctimeMs: number}
 interface ReservedEntry {fd: number;identity: Stats}
 interface OwnedTimelineWork {
@@ -49,7 +54,7 @@ interface OwnedTimelineWork {
  cleanup: ()=>void;
 }
 
-const FPS=30,SAMPLES_PER_FRAME=1600;
+const FPS=30,SAMPLES_PER_FRAME=1600,MAX_SEGMENT_CONCURRENCY=4;
 const checkFloatAudio=createTimelineFloatAudioChecker({run,runStreaming,withProbePermit,checkMediaEffect,terminationMs:MEDIA_TERMINATION_POLICY.graceMs+MEDIA_TERMINATION_POLICY.reapMs});
 const seconds=(frames: number): string=>(frames/FPS).toFixed(9);
 const sameInode=(a: InodeIdentity,b: InodeIdentity): boolean=>a.dev===b.dev&&a.ino===b.ino;
@@ -104,10 +109,14 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
  return {work,effect,reserve,openOwnedFile,writeOwnedFile,cleanup};
 }
 // Render both preview and export through this exact implementation. Segment at
-// clip edges so even a 100-clip / 10-minute composition only opens <=12 media
-// inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
+// clip edges so each encoder opens at most 12 media inputs even on long
+// compositions. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
-export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{signal,beforeEncode,beforeStart,beforeEffect,readLut}: RenderTimelineOptions={}): Promise<unknown>{
+export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
+ signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
+ segmentConcurrency=Math.min(MAX_SEGMENT_CONCURRENCY,Math.max(1,Math.floor((availableParallelism()-2)/2))),
+}: RenderTimelineOptions={}): Promise<unknown>{
+ if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_CONCURRENCY)throw new RangeError('Invalid timeline segment concurrency');
  // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
  getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);
@@ -135,8 +144,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
   :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
+ const segmentOwner=signal??new AbortController().signal;
  let effect=owned?.effect??beforeEffect;
- let unconfirmed=false,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined;
+ let unconfirmed=false,cleanupSignal=signal,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined;
  try{
   checkMediaEffect(effect,signal);
   if(colour){
@@ -157,9 +167,8 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    checkMediaEffect(effect,signal);colourStage!.verifyBytes();imageStage?.verifyBytes();beforeEncode?.();checkMediaEffect(effect,signal);
   }
   const subtitles=await prepareTimelineSubtitles(snapshot as never,work,{signal,beforeEffect:effect,...(owned?{openOwnedFile:owned.openOwnedFile,writeOwnedFile:owned.writeOwnedFile}:{})} as never);checkMediaEffect(effect,signal);
-  const entries: string[]=[],ownedSegments: {file: string;outputFrames: number}[]=[];
-  for(let segment=0;segment<plan.segments.length;segment++){
-   checkMediaEffect(effect,signal);
+  const encodeSegment=async(segment: number,segmentSignal: AbortSignal,onStopping: ()=>void)=>{
+   checkMediaEffect(effect,segmentSignal);
    const selected=plan.segments[segment],begin=selected.beginFrame,end=selected.endFrame,frames=end-begin,samples=frames*SAMPLES_PER_FRAME;
    const clips=timeline.clips.filter(c=>{const range=transitionPictureRange(c as never,transitions);return range.start<=begin&&range.end>=end;}).sort((a,b)=>tracks.get(a.trackId)!.orderIndex-tracks.get(b.trackId)!.orderIndex||a.id.localeCompare(b.id));
    // This independently fences the exact PNG inputs opened by this segment,
@@ -228,16 +237,42 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    filters.push(`[${visual}]${scale}trim=end_frame=${frames},${selected.videoOutputTrim}setpts=N/(${FPS}*TB),${colour?TIMELINE_COLOUR_OUTPUT_FILTER:'format=yuv420p'}[outv]`);
    const segmentFile=path.join(work,`segment-${String(segment).padStart(3,'0')}.mov`);
    const filterArgs=['-filter_complex',filters.join(';')];
-   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,signal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,signal);filterArgs.splice(0,2,'-/filter_complex',script);}
+   if(subtitles||colour){const script=path.join(work,`segment-${segment}.filter`);checkMediaEffect(effect,segmentSignal);await (owned?owned.writeOwnedFile(script,filters.join(';')):writeFile(script,filters.join(';'),{flag:'wx',mode:0o600}));checkMediaEffect(effect,segmentSignal);filterArgs.splice(0,2,'-/filter_complex',script);}
    const videoArgs=delivery?timelineExportVideoArgs(delivery as never):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
-   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal,beforeEffect:effect});
-   checkMediaEffect(effect,signal);
-   if(floatChecked)ownedSegments.push({file:segmentFile,outputFrames:selected.outputFrames});
-   entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(selected.outputFrames)}`);
-  }
+   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal:segmentSignal,ownerSignal:segmentOwner,onStopping,beforeEffect:effect});
+   checkMediaEffect(effect,segmentSignal);
+   return {file:segmentFile,outputFrames:selected.outputFrames};
+  };
+  const ownedSegments: Awaited<ReturnType<typeof encodeSegment>>[]=new Array(plan.segments.length);
+  const running=new Map<number,AbortController>();
+  let nextSegment=0,completedFrames=0,failedSegment: number|undefined,segmentFailure: unknown;
+  const stopSiblings=(segment: number): void=>{
+   if(failedSegment!==undefined)return;
+   failedSegment=segment;
+   for(const [index,controller] of running)if(index!==segment)controller.abort();
+  };
+  const encodeNext=async()=>{
+   while(failedSegment===undefined&&nextSegment<plan.segments.length){
+    const index=nextSegment++,controller=new AbortController();
+    running.set(index,controller);
+    try{
+     const result=await encodeSegment(index,AbortSignal.any([segmentOwner,controller.signal]),()=>stopSiblings(index));
+     ownedSegments[index]=result;
+     completedFrames+=result.outputFrames;
+     onSegmentProgress?.(completedFrames,plan.outputFrames);
+    }catch(error){
+     stopSiblings(index);
+     if(failedSegment===index)segmentFailure=error;
+    }finally{running.delete(index);}
+   }
+  };
+  // Join every worker before consuming or cleaning up any reserved output.
+  await Promise.all(Array.from({length:Math.min(segmentConcurrency,plan.segments.length)},encodeNext));
+  if(failedSegment!==undefined)throw segmentFailure;
   checkMediaEffect(effect,signal);
+  const entries=ownedSegments.map(({file,outputFrames})=>`file '${file.replaceAll("'","'\\''")}'\nduration ${seconds(outputFrames)}`);
   const list=path.join(work,'segments.txt');await (owned?owned.writeOwnedFile(list,entries.join('\n')+'\n'):writeFile(list,entries.join('\n')+'\n'));
   checkMediaEffect(effect,signal);
   if(floatChecked){audioCheck=await checkFloatAudio(list,plan.outputFrames,{signal,beforeEffect:effect as never,ownedSegments});checkMediaEffect(effect,signal);assertTimelineFloatAudioAllowed(audioCheck as never);}
@@ -259,9 +294,16 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    colourStage!.verifyBytes();imageStage?.verifyBytes();checkMediaEffect(effect,signal);
   }
   return floatChecked?{...result,audioCheck}:result;
- }catch(error){const failure=error as {terminationUnconfirmed?: boolean};primaryFailure=error;unconfirmed=Boolean((floatChecked||colour)&&failure.terminationUnconfirmed===true);if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck as never);throw error;}
+ }catch(error){
+  primaryFailure=error;
+  const ownedProcessUnconfirmed=hasUnconfirmedMediaProcesses({signal:segmentOwner});
+  unconfirmed=Boolean((error as {terminationUnconfirmed?: boolean}|null|undefined)?.terminationUnconfirmed||ownedProcessUnconfirmed);
+  if(ownedProcessUnconfirmed)cleanupSignal=segmentOwner;
+  if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck as never);
+  throw error;
+ }
  finally{
-  if(unconfirmed&&owned)void waitForMediaProcesses({signal}).then(()=>{imageStage?.cleanup();colourStage?.cleanup();owned.cleanup();});
+  if(unconfirmed)void waitForMediaProcesses({signal:cleanupSignal}).then(()=>{imageStage?.cleanup();colourStage?.cleanup();return owned?owned.cleanup():rm(work,{recursive:true,force:true});}).catch(()=>{});
   else if(owned){const imageCleaned=imageStage?.cleanup()??true,colourCleaned=colourStage?.cleanup()??true,cleaned=owned.cleanup();if((floatChecked||colour)&&(!cleaned||!colourCleaned||!imageCleaned)&&!primaryFailure){const failure=Object.assign(Error('The export staging cleanup could not be confirmed.'),{code:floatChecked?'EXPORT_AUDIO_STAGING_CHANGED':'TIMELINE_COLOUR_RESOURCE_CHANGED'});if(floatChecked&&!signal?.aborted)rememberTimelineFloatAudioFailure(failure,audioCheck??null);throw failure;}}
   else await rm(work,{recursive:true,force:true});
  }

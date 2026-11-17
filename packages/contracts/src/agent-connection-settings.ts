@@ -15,7 +15,7 @@ export const agentServiceKeySchema=z.union([z.enum(builtins),z.string().uuid().r
 export const agentConfigurationSchema=agentProviderConfigurationSchema;
 export const agentSettingsBindingSchema=z.object({serviceKey:agentServiceKeySchema,entryRevision:revision,selectionRevision:revision}).strict();
 export type AgentSettingsBinding=z.infer<typeof agentSettingsBindingSchema>;
-const secretStatus=z.object({configured:z.boolean(),storage:z.enum(['none','session','persistent'])}).strict().refine(value=>value.configured===(value.storage!=='none'));
+const secretStatus=z.object({configured:z.boolean(),storage:z.enum(['none','persistent'])}).strict().refine(value=>value.configured===(value.storage!=='none'));
 const serviceFields={serviceKey:agentServiceKeySchema,presetId:z.enum([...builtins,'custom']),name:safeText(100,1).refine(v=>v.trim()===v),platformId:z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u),protocol,addressInput:safeText(2048),manualModelIds:z.array(z.string().refine(isAgentModelIdentifier)).max(50).refine(v=>new Set(v).size===v.length)};
 export const agentServiceInputSchema=z.object(serviceFields).strict().superRefine((value,context)=>{
  if(value.presetId==='custom'?builtins.some(id=>id===value.serviceKey):value.serviceKey!==value.presetId)context.addIssue({code:'custom',message:'Invalid service identity'});
@@ -36,7 +36,7 @@ export type AgentSettingsMetadata=z.infer<typeof agentSettingsMetadataSchema>;
 export const agentSecretActionSchema=z.discriminatedUnion('action',[
  z.object({serviceKey:agentServiceKeySchema,action:z.literal('keep')}).strict(),
  z.object({serviceKey:agentServiceKeySchema,action:z.literal('remove')}).strict(),
- z.object({serviceKey:agentServiceKeySchema,action:z.literal('replace'),storage:z.enum(['session','persistent']),value:safeText(8192,1).refine(v=>Boolean(v.trim())&&utf8(v)<=8192)}).strict(),
+ z.object({serviceKey:agentServiceKeySchema,action:z.literal('replace'),storage:z.literal('persistent'),value:safeText(8192,1).refine(v=>Boolean(v.trim())&&utf8(v)<=8192)}).strict(),
 ]);
 export type AgentSecretAction=z.infer<typeof agentSecretActionSchema>;
 export const agentSettingsUpdateSchema=metadata.extend({secretActions:z.array(agentSecretActionSchema).max(19)}).superRefine((value,context)=>{
@@ -46,7 +46,7 @@ export const agentSettingsUpdateSchema=metadata.extend({secretActions:z.array(ag
 export type AgentSettingsUpdate=z.infer<typeof agentSettingsUpdateSchema>;
 export const agentExecutionSettingsSchema=z.object({revision,binding:agentSettingsBindingSchema,configuration:agentConfigurationSchema,secret:secretStatus}).strict();
 export type AgentExecutionSettings=z.infer<typeof agentExecutionSettingsSchema>;
-export const agentSettingsStorageSchema=z.object({persistentAvailable:z.boolean(),sessionScope:z.enum(['app','server']),reasonCode:z.enum(['WEB_SESSION_ONLY','OS_SECRET_STORE_UNAVAILABLE','OS_SECRET_STORE_PENDING','LINUX_BASIC_TEXT']).nullable()}).strict();
+export const agentSettingsStorageSchema=z.object({persistentAvailable:z.boolean(),reasonCode:z.enum(['OS_SECRET_STORE_UNAVAILABLE','OS_SECRET_STORE_PENDING','LINUX_BASIC_TEXT']).nullable()}).strict();
 export const agentSettingsSnapshotSchema=z.object({revision,services:z.array(agentServiceSnapshotSchema).min(9).max(19),mioSelection:agentMioSelectionSchema.nullable(),mioSelectionRevision:revision,execution:agentExecutionSettingsSchema.nullable(),storage:agentSettingsStorageSchema,presets:agentProviderCatalogSchema,scope:z.literal('settings_only'),verification:z.literal('not_tested'),notices:z.array(z.enum(AGENT_SETTINGS_NOTICES)).max(3)}).strict().superRefine((value,context)=>{
  collectionIssues(value,context);
  try{

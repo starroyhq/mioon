@@ -25,6 +25,10 @@ test('utility process inherits only required provider configuration and explicit
   assert.equal(env.MIOON_FFMPEG_PATH, '/tools/ffmpeg'); assert.equal(env.MIOON_FFPROBE_PATH, '/tools/ffprobe');
   assert.equal(env.HOME, '/home/u'); assert.equal(env.RUNWAYML_API_SECRET, 'provider-secret');
   for (const key of ['PATH', 'NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'UNRELATED_API_KEY']) assert.equal(env[key], undefined);
+  const production = utilityEnvironment({RUNWAYML_API_SECRET: 'provider-secret'},
+    {ffmpeg: '/tools/ffmpeg', ffprobe: '/tools/ffprobe'}, undefined, 'production');
+  assert.equal(production.RUNWAYML_API_SECRET, undefined);
+  assert.equal(production.MIOON_FFMPEG_PATH, '/tools/ffmpeg');
 });
 
 test('FFmpeg config contains paths only, explicit env wins, and relative binaries fail', async () => {

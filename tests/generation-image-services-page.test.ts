@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {createGenerationImageServicesOwner, createGenerationImageServicesClient} from '../apps/web/src/generation-image-services-settings.ts';
 import type {GenerationImageServicesClient, GenerationImageDomainState} from '../apps/web/src/generation-image-services-settings.ts';
 import {saveGenerationServiceDomains} from '../apps/web/src/generation-services-settings.ts';
 import {createCustomImageSettingsV2} from '../packages/business/src/images/custom-settings-v2.ts';
-import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION, imageSettingsUpdateSchema} from '../packages/contracts/src/image-settings.ts';
 import {DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 
 const flush = async () => {for (let n = 0; n < 30; n++) await Promise.resolve();};
@@ -13,7 +14,7 @@ const error = (code: string) => Object.assign(new Error('synthetic-error-must-no
 const configured = {enabled: true, baseUrl: 'https://images.example/v1', model: 'model-a'};
 async function customFixture() {
   let document: unknown = null, saves = 0, reads = 0, writes = 0;
-  const settings = await createCustomImageSettingsV2({persistence: {load: () => structuredClone(document), save: value => {saves++; document = structuredClone(value);}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: () => structuredClone(document), save: value => {saves++; document = structuredClone(value);}}});
   const states: GenerationImageDomainState[] = [];
   const client: GenerationImageServicesClient = {read: async () => {reads++; return settings.get();}, write: async input => {writes++;
     assert.ok(input && typeof input === 'object' && 'action' in input && input.action === 'batch');
@@ -21,7 +22,7 @@ async function customFixture() {
   }};
   const owner = createGenerationImageServicesOwner('custom', {client, onChange: state => states.push(state)}); await owner.load();
   const add = (name: string, value = '') => {
-    const id = owner.add(name); assert.ok(id); owner.edit(id, {storage: 'session'}, configured);
+    const id = owner.add(name); assert.ok(id); owner.edit(id, {}, configured);
     const field = {value}; owner.registerKey(id, field); if (value) owner.keyChanged(id);
     return {id, field};
   };
@@ -36,7 +37,7 @@ test('two custom drafts capture separate credentials before dispatch and commit 
   assert.equal(a.field.value, ''); assert.equal(b.field.value, ''); assert.equal(f.writes, 0);
   f.owner.clearKeys(); assert.equal(await ticket.run(), 'saved'); assert.equal(await ticket.run(), 'blocked'); ticket.dispose();
   assert.equal(f.saves, 1); assert.equal(f.writes, 1); const snapshot = await f.settings.get(); assert.equal(snapshot.revision, 1);
-  assert.deepEqual(snapshot.connections.map(item => [item.connectionId, item.configurationRevision, item.secret.storage]), [[a.id, 1, 'session'], [b.id, 1, 'session']]);
+  assert.deepEqual(snapshot.connections.map(item => [item.connectionId, item.configurationRevision, item.secret.storage]), [[a.id, 1, 'persistent'], [b.id, 1, 'persistent']]);
   assert.doesNotMatch(JSON.stringify(f.states), /synthetic-[ab]-only/); assert.equal(f.owner.navigation().dirty, false);
 });
 
@@ -75,7 +76,7 @@ test('page hiding invalidates unsent tickets and late accepted writes without an
 test('all fields clear before the first domain writes; partial save disposes skipped credential tickets and requires reentry', async t => {
   const f = await customFixture(); t.after(async () => {f.owner.dispose(); await f.settings.close();}); const item = f.add('A', 'synthetic-skipped-only');
   let writes = 0;
-  const saved = {revision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION}, secret: {configured: false, storage: 'none'}, storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}};
+  const saved = {revision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION}, secret: {configured: false, storage: 'none'}, storage: testSecretStorage()};
   const official = createGenerationImageServicesOwner('official', {client: {read: async () => saved, write: async () => {writes++; assert.equal(item.field.value, ''); throw error('IMAGE_SETTINGS_VALIDATION');}}});
   t.after(() => official.dispose()); await official.load(); official.edit('image:official', {}, {enabled: true});
   const result = await saveGenerationServiceDomains([{prepareSave: () => ({run: async () => 'saved', dispose() {}}), clearKeys() {}}, official, f.owner]);
@@ -118,12 +119,14 @@ test('invalid replacement clears every field and fails before any batch; failed 
   assert.equal(f.owner.getState().phase, 'blocked'); assert.doesNotMatch(JSON.stringify(f.owner.getState()) + JSON.stringify(f.states), /synthetic-echo|synthetic-valid|bad whitespace/);
 });
 
-test('official ticket requires explicit storage and writes its existing fixed profile only once', async () => {
-  let writes = 0; const initial = {revision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION}, secret: {configured: false, storage: 'none'}, storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}};
-  const owner = createGenerationImageServicesOwner('official', {client: {read: async () => initial, write: async input => {writes++; assert.ok(input && typeof input === 'object' && 'secret' in input && 'configuration' in input); assert.equal(field.value, ''); return {...initial, revision: 1, configuration: input.configuration, secret: {configured: true, storage: 'session'}};}}});
+test('official ticket requires secure storage and only writes the fixed profile once', async () => {
+  let writes = 0, storage: {persistentAvailable: boolean; reasonCode: string | null} = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'};
+  const initial = {revision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION}, secret: {configured: false, storage: 'none'}};
+  const owner = createGenerationImageServicesOwner('official', {client: {read: async () => ({...initial, storage}), write: async input => {writes++; const update = imageSettingsUpdateSchema.parse(input); assert.equal(field.value, ''); assert.equal(update.secret.action === 'replace' && update.secret.storage, 'persistent'); return {...initial, storage, revision: 1, configuration: update.configuration, secret: {configured: true, storage: 'persistent'}};}}});
   await owner.load(); const field = {value: 'synthetic-official-only'}; owner.registerKey('image:official', field); owner.keyChanged('image:official');
   assert.throws(() => owner.prepareSave()); assert.equal(writes, 0); assert.equal(field.value, '');
-  field.value = 'synthetic-official-only'; owner.keyChanged('image:official'); owner.edit('image:official', {storage: 'session'});
+  storage = testSecretStorage(); owner.retryStorage(); await flush();
+  field.value = 'synthetic-official-only'; owner.keyChanged('image:official');
   const ticket = owner.prepareSave()!; assert.equal(field.value, ''); assert.equal(await ticket.run(), 'saved'); ticket.dispose(); assert.equal(writes, 1); assert.equal(owner.navigation().dirty, false); owner.dispose();
 });
 
@@ -143,7 +146,7 @@ test('a well-formed but mismatched ACK is uncertain and performs exactly one str
 
 test('captured autofill without an input event retains a redacted replacement intent when its ticket is skipped', async t => {
   const f = await customFixture(); t.after(async () => {f.owner.dispose(); await f.settings.close();}); const a = f.add('A'); let ticket = f.owner.prepareSave()!; await ticket.run(); ticket.dispose();
-  assert.equal(f.owner.navigation().dirty, false); f.owner.edit(a.id, {storage: 'session'}); a.field.value = 'synthetic-autofill-only'; ticket = f.owner.prepareSave()!; assert.equal(a.field.value, ''); ticket.dispose();
+  assert.equal(f.owner.navigation().dirty, false); a.field.value = 'synthetic-autofill-only'; ticket = f.owner.prepareSave()!; assert.equal(a.field.value, ''); ticket.dispose();
   assert.equal(f.owner.navigation().dirty, true); assert.throws(() => f.owner.prepareSave()); assert.equal(f.writes, 1); assert.doesNotMatch(JSON.stringify(f.states), /synthetic-autofill-only/);
 });
 

@@ -14,7 +14,6 @@ type CustomSettingsResult = ReturnType<typeof customImageSettingsResultSchema.pa
 export type ImageSettingsResult = OfficialSettingsResult | CustomSettingsResult;
 export type ImageSettingsSecret = ImageSettingsUpdate['secret'];
 export type ImageSettingsSecretEnvelope = {binding: string; encrypted: string};
-export type ImageSettingsSession = {binding: string; value: string};
 export type ImageSettingsStorageView = OfficialSettingsResult['storage'];
 export interface ImageSettingsEnvelope {version: number; namespace: string; revision: number; configuration: ImageConfiguration; secret: ImageSettingsSecretEnvelope | null}
 export interface ImageSettingsError extends Error {code: string; status: number}
@@ -22,7 +21,7 @@ export interface AcquiredImageCredential {namespace: string; revision: number; c
 export interface ImageCredentialRequest {expectedRevision: number; configuration: ImageConfiguration}
 export interface ImageSettingsPersistence {load(): Promise<unknown> | unknown; save(value: unknown): Promise<unknown> | unknown}
 export interface ImageSettingsSecretCodec {refreshStorage?(): Promise<unknown> | unknown; encrypt?(plaintext: string): Promise<unknown> | unknown; decrypt?(ciphertext: string): Promise<unknown> | unknown}
-export interface ImageSettingsStorageCapability {persistentAvailable: boolean; sessionScope: string; reasonCode: string | null}
+export interface ImageSettingsStorageCapability {persistentAvailable: boolean; reasonCode: string | null}
 export interface ImageSettingsOptions {
   persistence?: ImageSettingsPersistence;
   secretCodec?: ImageSettingsSecretCodec;
@@ -38,7 +37,7 @@ const messages: Readonly<Record<string, readonly [number, string]>> = Object.fre
   IMAGE_SETTINGS_CONFLICT: [409, '图像设置已改变，请重新读取并确认当前请求。'],
   IMAGE_SETTINGS_DISABLED: [409, 'OpenAI 图像生成尚未启用。'],
   IMAGE_SETTINGS_NOT_CONFIGURED: [409, '请先配置独立的 OpenAI 图像密钥。'],
-  IMAGE_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用，请明确选择仅本次会话保存。'],
+  IMAGE_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用。'],
   IMAGE_SETTINGS_SAVE_FAILED: [503, '图像设置未能保存；请重新读取当前设置后再试。'],
   IMAGE_SETTINGS_CORRUPT: [503, '图像设置文件不可读取或不安全；现有设置未被覆盖。'],
   IMAGE_SETTINGS_CLOSED: [503, '图像设置服务已关闭，请重新打开应用。'],
@@ -114,7 +113,7 @@ function sanitizeCredentialResult(value: unknown, expectedInput: unknown, profil
   if (!exactObject(value, ['namespace', 'revision', 'configuration', 'apiKey']) || source!.namespace !== profile.namespace ||
       source!.revision !== expected.expectedRevision || !sameConfiguration(parseConfiguration(source!.configuration, profile), expected.configuration)) fail('IMAGE_SETTINGS_CONFLICT');
   if (source!.apiKey !== null) parseSettingsUpdate({expectedRevision: source!.revision, configuration: expected.configuration,
-    secret: {action: 'replace', storage: 'session', value: source!.apiKey}}, profile);
+    secret: {action: 'replace', storage: 'persistent', value: source!.apiKey}}, profile);
   return {namespace: profile.namespace, revision: source!.revision as number, configuration: structuredClone(expected.configuration) as ImageConfiguration, apiKey: source!.apiKey as string | null};
 }
 export const sanitizeImageCredentialResult = (value: unknown, expected: unknown): AcquiredImageCredential => sanitizeCredentialResult(value, expected, OFFICIAL_PROFILE);
@@ -124,7 +123,7 @@ function sanitizeSettingsResult(value: unknown, profile: ImageProfile): ImageSet
   const source = record(value), secret = record(source?.secret), storage = record(source?.storage);
   const result = {revision: source?.revision, configuration: parseConfiguration(source?.configuration, profile),
     secret: {configured: secret?.configured, storage: secret?.storage},
-    storage: {persistentAvailable: storage?.persistentAvailable, sessionScope: storage?.sessionScope, reasonCode: storage?.reasonCode}};
+    storage: {persistentAvailable: storage?.persistentAvailable, reasonCode: storage?.reasonCode}};
   if (profile.custom) {
     const parsed = customImageSettingsResultSchema.safeParse(result);
     if (!parsed.success || (result.secret.configured && !isCompleteCustomImageConfiguration(result.configuration as CustomConfiguration))) fail('IMAGE_SETTINGS_CORRUPT');
@@ -211,11 +210,12 @@ function decodeCredential(plaintext: unknown, binding: string, profile: ImagePro
  * intervening await. Cross-process callers need their own reservation protocol. */
 export const createImageSettings = (options: ImageSettingsOptions = {}) => createSettings(options, OFFICIAL_PROFILE);
 export const createCustomImageSettings = (options: ImageSettingsOptions = {}) => createSettings(options, CUSTOM_PROFILE);
-async function createSettings({persistence, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}: ImageSettingsOptions, profile: ImageProfile) {
+async function createSettings({persistence, secretCodec, storage = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}}: ImageSettingsOptions, profile: ImageProfile) {
   let state: ImageSettingsEnvelope = {version: 1, namespace: profile.namespace, revision: 0, configuration: structuredClone(profile.defaults) as ImageConfiguration, secret: null};
   let durableExists = false;
-  let session: ImageSettingsSession | null = null, fault: ImageSettingsError | null = null;
+  let fault: ImageSettingsError | null = null;
   let tail: Promise<unknown> = Promise.resolve(), closing = false, pendingPuts = 0, vaultReadBlocked = false, refreshBlocked = false;
+  const hasVault = typeof secretCodec?.encrypt === 'function' && typeof secretCodec.decrypt === 'function';
   async function refreshCapabilities(signal?: AbortSignal): Promise<void> {
     if (typeof secretCodec?.refreshStorage !== 'function') return;
     try { await boundedCodec(() => (secretCodec as ImageSettingsSecretCodec).refreshStorage!(), signal); refreshBlocked = false; }
@@ -228,14 +228,14 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
       const parsed = sanitizeSettingsResult({revision: 0, configuration: profile.defaults, secret: {configured: false, storage: 'none'}, storage: supplied}, profile);
       value = parsed.storage;
     } catch { fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
-    return refreshBlocked || (value.persistentAvailable && (!secretCodec || typeof secretCodec.encrypt !== 'function' || typeof secretCodec.decrypt !== 'function'))
+    return refreshBlocked || value.persistentAvailable && !hasVault
       ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
   }
   const capabilities = (): ImageSettingsStorageView => {
     const value = baseCapabilities();
     return vaultReadBlocked ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
   };
-  const canUseVault = (value: ImageSettingsStorageView) => Boolean(secretCodec?.encrypt && secretCodec.decrypt && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING'));
+  const canUseVault = (value: ImageSettingsStorageView) => hasVault && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING');
   try {
     if (!persistence || typeof persistence.load !== 'function' || typeof persistence.save !== 'function') fail('IMAGE_SETTINGS_CORRUPT');
     const loaded = await persistence.load();
@@ -243,8 +243,7 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
     await refreshCapabilities();
     if (state.secret) {
       const secret = state.secret;
-      if (!secretCodec) fail('IMAGE_SETTINGS_CORRUPT');
-      if (baseCapabilities().persistentAvailable) {
+      if (secretCodec && baseCapabilities().persistentAvailable) {
         try { decodeCredential(await boundedCodec(() => (secretCodec as ImageSettingsSecretCodec).decrypt!(secret.encrypted)), state.secret.binding, profile); }
         catch { vaultReadBlocked = true; }
       }
@@ -256,8 +255,11 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
     tail = result.catch(() => {});
     return result;
   }
-  const snapshot = (): ImageSettingsResult => sanitizeSettingsResult({revision: state.revision, configuration: state.configuration,
-    secret: {configured: Boolean(state.secret || session), storage: state.secret ? 'persistent' : session ? 'session' : 'none'}, storage: capabilities()}, profile);
+  const snapshot = (): ImageSettingsResult => {
+    const configured = hasVault && state.secret !== null;
+    return sanitizeSettingsResult({revision: state.revision, configuration: state.configuration,
+      secret: {configured, storage: configured ? 'persistent' : 'none'}, storage: capabilities()}, profile);
+  };
   function assertRevision(expected: ImageCredentialRequest): void {
     if (closing) fail('IMAGE_SETTINGS_CLOSED');
     if (fault) throw fault;
@@ -281,11 +283,10 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
       assertRevision(expected);
       if (pendingPuts) fail('IMAGE_SETTINGS_CONFLICT');
       if (!state.configuration.enabled) fail('IMAGE_SETTINGS_DISABLED');
-      if (!state.secret && !session) fail('IMAGE_SETTINGS_NOT_CONFIGURED');
-      if (state.secret && !canUseVault(capabilities())) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+      if (!state.secret || !hasVault) fail('IMAGE_SETTINGS_NOT_CONFIGURED');
+      if (!canUseVault(capabilities())) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
       const binding = credentialBinding(expected.configuration, profile);
-      const storedSecret = state.secret ?? session;
-      if (!storedSecret || storedSecret.binding !== binding) fail('IMAGE_SETTINGS_CONFLICT');
+      if (state.secret.binding !== binding) fail('IMAGE_SETTINGS_CONFLICT');
       return true;
     },
     [IMAGE_CREDENTIAL_ACQUIRE](input: unknown, options: {signal?: AbortSignal} = {}): Promise<AcquiredImageCredential> {
@@ -298,16 +299,13 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
         const binding = credentialBinding(expected.configuration, profile);
         let apiKey: string | null = null;
         const secret = state.secret;
-        if (secret) {
+        if (secret && hasVault) {
           await refreshCapabilities(signal);
           assertRevision(expected);
           if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
           if (!canUseVault(capabilities()) || secret.binding !== binding) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
           try { apiKey = decodeCredential(await boundedCodec(() => (secretCodec as ImageSettingsSecretCodec).decrypt!(secret.encrypted), signal), binding, profile); }
           catch { fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
-        } else if (session) {
-          if (session.binding !== binding) fail('IMAGE_SETTINGS_CONFLICT');
-          apiKey = session.value;
         }
         assertRevision(expected);
         if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
@@ -325,21 +323,15 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
         const binding = credentialBinding(update.configuration, profile), sameBinding = binding === credentialBinding(state.configuration, profile);
         // Changing the recipient or model cannot silently reuse or discard a
         // configured custom key. The user must explicitly remove or replace it.
-        if (profile.custom && !sameBinding && (state.secret || session) && update.secret.action === 'keep') fail('IMAGE_SETTINGS_CONFLICT');
-        let nextSecret: ImageSettingsSecretEnvelope | null = sameBinding ? state.secret : null, nextSession: ImageSettingsSession | null = sameBinding ? session : null;
-        if (update.secret.action === 'remove') { nextSecret = null; nextSession = null; }
+        if (profile.custom && !sameBinding && state.secret && update.secret.action === 'keep') fail('IMAGE_SETTINGS_CONFLICT');
+        let nextSecret = sameBinding && update.secret.action === 'keep' ? state.secret : null;
         if (update.secret.action === 'replace') {
           const replacement = update.secret, replacementValue = replacement.value;
-          nextSecret = null; nextSession = null;
-          if (replacement.storage === 'persistent') {
-            await refreshCapabilities();
-            if (closing) fail('IMAGE_SETTINGS_CLOSED');
-            if (!canUseVault(baseCapabilities())) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
-            let encrypted: string;
-            try { encrypted = await boundedCodec(() => (secretCodec as ImageSettingsSecretCodec).encrypt!(JSON.stringify({version: 1, namespace: profile.namespace, binding, value: replacementValue}))) as string; }
-            catch { fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
-            nextSecret = {binding, encrypted};
-          } else nextSession = {binding, value: replacementValue};
+          await refreshCapabilities();
+          if (closing) fail('IMAGE_SETTINGS_CLOSED');
+          if (!canUseVault(baseCapabilities())) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+          const encrypted = await boundedCodec(() => (secretCodec as ImageSettingsSecretCodec).encrypt!(JSON.stringify({version: 1, namespace: profile.namespace, binding, value: replacementValue}))) as string;
+          nextSecret = {binding, encrypted};
         }
         if (closing) fail('IMAGE_SETTINGS_CLOSED');
         const candidate: ImageSettingsEnvelope = {version: 1, namespace: profile.namespace, revision: state.revision + 1, configuration: update.configuration, secret: nextSecret};
@@ -353,18 +345,17 @@ async function createSettings({persistence, secretCodec, storage = {persistentAv
             try {
               const loaded = await boundedCodec(() => (persistence as ImageSettingsPersistence).load());
               if (durableExists ? loaded === null || !sameConfiguration(parseEnvelope(loaded, profile), state) : loaded !== null) throw Error();
-            } catch { fault = imageSettingsError('IMAGE_SETTINGS_SAVE_FAILED'); session = null; }
+            } catch { fault = imageSettingsError('IMAGE_SETTINGS_SAVE_FAILED'); }
           }
           fail('IMAGE_SETTINGS_SAVE_FAILED');
         }
-        // RAM changes only after atomic persistence commits. Even a simultaneous
-        // close must retain the durable revision; close then clears session RAM.
-        state = candidate; durableExists = true; session = nextSession;
+        // Retain the durable revision even when the atomic save races a close.
+        state = candidate; durableExists = true;
         if (update.secret.action !== 'keep' || !sameBinding) vaultReadBlocked = false;
         return snapshot();
       });
       return result.finally(() => { pendingPuts--; });
     },
-    async close(): Promise<void> { closing = true; await tail; session = null; },
+    async close(): Promise<void> { closing = true; await tail; },
   });
 }

@@ -3,6 +3,7 @@
 
 
 import test, {type TestContext} from 'node:test';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
@@ -146,12 +147,12 @@ test('project cleanup leaves borrowed settings owned and usable by the applicati
 });
 
 test('project cleanup keeps borrowed v2 custom image and video owners usable by the application',async t=>{
-  const f=fixture(t),customImage=await createCustomImageSettingsV2({persistence:{load:async()=>null,save:async()=>{}}}),
+  const f=fixture(t),customImage=await createCustomImageSettingsV2({secretCodec:createTestSecretCodec(),storage:testSecretStorage,persistence:{load:async()=>null,save:async()=>{}}}),
     video=await createVideoSettingsV2({directory:path.join(f.library!.dataDir,'video-settings'),privateRoot:f.library!.dataDir});
   let customCloses=0,videoCloses=0;
   try {
     const item=(await customImage.create({expectedRevision:0,connectionId:randomUUID(),name:'Borrowed',configuration:{...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,
-      enabled:true,baseUrl:'https://images.example.com/v1',model:'borrowed-image'},secret:{action:'replace',storage:'session',value:'synthetic-borrowed-key'}})).connections[0];
+      enabled:true,baseUrl:'https://images.example.com/v1',model:'borrowed-image'},secret:{action:'replace',storage:'persistent',value:'synthetic-borrowed-key'}})).connections[0];
     await f.compose({settings:{customImage:{...customImage,async close(){customCloses++;await customImage.close();}},video:{...video,async close(){videoCloses++;await video.close();}}}});
     await f.close();assert.equal(customCloses,0);assert.equal(videoCloses,0);
     assert.equal((await customImage.acquire({connectionId:item.connectionId,configurationRevision:item.configurationRevision,configuration:item.configuration})).apiKey,'synthetic-borrowed-key');
@@ -165,7 +166,7 @@ test('failed private kernel cleanup preserves both failures and cannot authorize
   const settings:NonNullable<ProjectRuntimeOptions['settings']>={get image():never{throw startupError;}};
   const failure:unknown=await composeProjectRuntime({...f.options,application:f.library!,serviceApplication:testApplication(f.library!),settings,
     agentSecretCodecFactory: async () => ({secretCodec: {close: () => { throw cleanupError; }},
-      storage: () => ({persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}), close() {}}),
+      storage: () => ({persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}), close() {}}),
   }).then(() => assert.fail('startup must fail'), error => error);
   assert.ok(failure instanceof ProjectRuntimeCleanupError);
   assert.equal(failure.cause, startupError);

@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
@@ -29,8 +29,8 @@ async function crashFixture(t:TestContext,protocol:string,boundary:string){
 }
 for(const protocol of ['chat_completions','responses'] as const)for(const boundary of ['model_intent','model_send','tool_before_commit','tool_after_commit','generation_accept','result_commit'])test(`${protocol}: SIGKILL ${boundary} preserves atomic progress and never resubmits`,{timeout:25000},async t=>{
  const f=await crashFixture(t,protocol,boundary),store=openStore(f.root),services=createServices(store,new Map());
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_CRASH_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_CRASH_ONLY'}});
  const tools=createAgentTaskTools({store,services});let modelRequests=0;
  const gateway:TaskGateway=async function*(){modelRequests++;yield {type:'done',output:{text:'Recovered without repeat',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'Recovered without repeat'}}};};
  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations:createTestAuthorizations(()=>({...store}),settings),tools,gateway,selfPort:()=>4318});

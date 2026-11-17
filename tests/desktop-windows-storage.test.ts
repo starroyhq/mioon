@@ -127,7 +127,7 @@ test('Windows diagnostics append, rotate and drop oversized slots through the st
 test('every desktop storage path dispatches to the Windows backend, never to POSIX descriptors or modes', () => {
   const main = read('apps/desktop/src/main.ts'), backend = read('apps/desktop/src/backend.ts'), build = read('apps/desktop/scripts/build.ts');
   assert.match(main, /try \{ initializeDesktopPrivateStorage\(privateStorageHelperFile\(app\)\); paths = prepareDesktopStorage\(/u, 'registration precedes the first storage access, in the same failure path');
-  assert.match(main, /utilityEnvironment\(process\.env, tools, process\.platform === 'win32' \? privateStorageHelperFile\(app\) : undefined\)/u);
+  assert.match(main, /utilityEnvironment\(process\.env, tools, process\.platform === 'win32' \? privateStorageHelperFile\(app\) : undefined, identity\.channel\)/u);
   assert.match(backend, /try \{\n\s+\/\/ Windows storage opens only through the helper main verified and named\.\n\s+initializeDesktopPrivateStorage\(process\.env\.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER \?\? ''\);/u);
   assert.match(build, /if\(process\.platform==='win32'\)\{[\s\S]*?Build the Windows private storage helper first[\s\S]*?cp\(helper,path\.join\(output,'native','mioon_private_storage\.node'\)\)/u);
   for (const [file, limits] of [['exit-diagnostics', 'EXIT_DIAGNOSTIC_LIMITS'], ['renderer-diagnostics', 'RENDERER_DIAGNOSTIC_LIMITS']] as const)
