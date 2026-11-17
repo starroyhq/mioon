@@ -253,7 +253,7 @@ test('App wires review marks apart from the "Mio 修改" marks and clears them o
   assert.doesNotMatch(locate, /fitView\(/, 'a fit started before the mounted canvas restores its viewport would be undone');
   assert.match(workspace, /shotNumber=\{shotNumber\} onReview=\{onTaskReview\} onReviewLocate=\{onTaskReviewLocate\} reviewReveal=\{reviewReveal\}/);
   // The report sits before the reply that followed it.
-  assert.match(panel, /\{reviewCards\(reportedBefore\)\}\n        \{latest && <p className="agent-task-text mio-reply"/);
+  assert.match(panel, /\{reviewCards\(reportedBefore\)\}\n        \{latest && <div className="agent-task-text mio-reply mio-markdown"/);
   assert.match(panel, /revealReviewIssue\(log\.current, reviewReveal\.owner\)/);
   assert.match(panel, /data-read=\{readIcon\(step\) \? 'true' : undefined\}/);
 });

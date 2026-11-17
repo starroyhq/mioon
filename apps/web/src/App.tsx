@@ -135,7 +135,7 @@ import type {SubjectState} from './subject-state.ts';
 import {createSubjectController} from './subject-state.ts';
 import type {TimelineLoudnessApplyController} from './timeline-loudness-apply-state.ts';
 import { schemas as productionSchemas, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
-import { ReactFlow, Background, BackgroundVariant, MiniMap, SelectionMode, applyNodeChanges, getViewportForBounds, useReactFlow, type Edge as FlowEdge, type Node as FlowNode, type NodeChange } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, MiniMap, SelectionMode, applyNodeChanges, getViewportForBounds, useNodesInitialized, useReactFlow, type Edge as FlowEdge, type Node as FlowNode, type NodeChange } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
 import { chooseCanvasPosition } from './canvas-position.ts';
 import { appendableShots, refreshSkipSentence, shotSyncErrorMessage, shotTimelineStatuses, sourceRefreshSkips, staleClipSources, videoLaneLabel } from './timeline-source-freshness.ts';
@@ -451,11 +451,30 @@ const emptyBusy: Readonly<Record<string, boolean>> = Object.freeze({});
 // These web logic modules are still inferred from untyped implementation
 // signatures; keep the call sites precise without changing their runtime shape.
 const flowFitPadding = (value: FitPadding): FitViewOptions['padding'] => value as unknown as FitViewOptions['padding'];
-// The canvas's own first fit. React Flow copies `fitViewOptions` into its store whenever the prop changes identity,
-// so an inline literal would replace, on the next render, the options of a fit still waiting for its nodes.
-const CANVAS_INITIAL_FIT: FitViewOptions = { padding: 0.16, minZoom: .65, maxZoom: 1 };
 // Canvas fits leave room for the docks, heading and storyboard that float over the full-bleed pane.
 const canvasFitPadding = (fallback: number): FitPadding => measuredFitPadding(document.querySelector('[data-testid="canvas-drop-zone"]'), fallback) as FitPadding;
+
+function InitialCanvasFit({ nodes, hasContent }: { nodes: readonly FlowNode[]; hasContent: boolean }) {
+  const flow = useReactFlow();
+  const measured = useNodesInitialized();
+  const fitted = useRef(!hasContent);
+  useLayoutEffect(() => {
+    if (fitted.current || !measured || !flow.viewportInitialized) return;
+    const current = flow.getNodes();
+    if (current.length !== nodes.length || current.some((node, index) => node.id !== nodes[index]?.id)) return;
+    const visible = current.filter(node => !node.hidden);
+    const pane = document.querySelector<HTMLElement>('[data-testid="canvas-drop-zone"] > .react-flow');
+    if (!visible.length || !pane?.offsetWidth || !pane.offsetHeight) return;
+    fitted.current = true;
+    // Leave the viewport alone if the user moved it before the nodes finished measuring.
+    const { x, y, zoom } = flow.getViewport();
+    if (x !== 0 || y !== 0 || zoom !== 1) return;
+    const bounds = flow.getNodesBounds(visible);
+    void flow.setViewport(getViewportForBounds(bounds, pane.offsetWidth, pane.offsetHeight, 0.2, 1, flowFitPadding(canvasFitPadding(.16)) ?? .16));
+  }, [flow, measured, nodes]);
+  return null;
+}
+
 function localizedError(displayMessage: AppMessage | null | undefined): Error & {displayMessage: AppMessage} {
   const message: AppMessage = displayMessage ?? '';
   return Object.assign(new Error(renderCoreMessage('zh-Hans', message)), { displayMessage: message });
@@ -3977,7 +3996,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       panOnDrag={canvasEditingEnabled ? [1, 2] : true} selectNodesOnDrag={canvasEditingEnabled ? false : undefined} onNodeDoubleClick={(_, node) => { const record = dataRef.current!.nodes.find(n => n.id === node.id); const shot = dataRef.current!.shots.find(s => s.id === node.id); const version = dataRef.current!.versions.find(v => v.id === shot?.selectedVersionId); const asset = dataRef.current!.assets.find(a => a.id === (record?.assetId || version?.assetId || shot?.referenceAssetIds?.[0])); if (asset) previewSource(asset); }} onNodeDragStart={(_, node, moved) => startCanvasDrag(node, moved)} onNodeDragStop={(event, node, moved) => { void stopCanvasDrag(event, node, moved); }}
       onConnect={connect} onEdgeClick={(_, edge) => { if (canvasEditingEnabled) void selectCanvasCards(new Set(), edge.id); else setSelectedEdgeId(edge.id); }}
       onPaneContextMenu={canvasEditingEnabled ? event => { void openCanvasMenu(event); } : undefined}
-      onPaneClick={() => { if (canvasEditingEnabled) void selectCanvasCards(new Set()); else { setSelectedEdgeId(null); setStoryboardBatch(null); } }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} onInit={instance => { const captured = context(), saved = viewRef.current!.canvas.viewport; requestAnimationFrame(() => { if (isCurrent(captured) && viewRef.current!.activeMode === 'canvas') { if (saved) instance.setViewport(saved); else instance.fitView({ padding: flowFitPadding(canvasFitPadding(.16)), minZoom: .65, maxZoom: 1 }); } }); }} fitView={!view.canvas.viewport} fitViewOptions={CANVAS_INITIAL_FIT} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen || canvasEditingEnabled ? null : ['Backspace', 'Delete']} disableKeyboardA11y={canvasEditingEnabled} colorMode={resolvedTheme}><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />
+      onPaneClick={() => { if (canvasEditingEnabled) void selectCanvasCards(new Set()); else { setSelectedEdgeId(null); setStoryboardBatch(null); } }} onEdgesDelete={deleted => { setSelectedEdgeId(null); deleted.filter(edge => !isReferenceEdge(dataRef.current!.edges.find(item => item.id === edge.id))).forEach(edge => run(`delete-edge:${edge.id}`, 'edge.delete', { edgeId: edge.id })); }} onBeforeDelete={beforeDeleteEdges} onMove={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))} onMoveEnd={(event, viewport) => { if (viewRef.current!.activeMode === 'canvas' && data.project?.id === currentProject.current) updateView('canvas', { viewport }, { passive: !event }); }} defaultViewport={view.canvas.viewport || { x: 0, y: 0, zoom: 1 }} minZoom={0.2} maxZoom={1.75} snapToGrid snapGrid={[12, 12]} defaultEdgeOptions={{ type: 'smoothstep' }} proOptions={{ hideAttribution: true }} deleteKeyCode={previsOpen || canvasEditingEnabled ? null : ['Backspace', 'Delete']} disableKeyboardA11y={canvasEditingEnabled} colorMode={resolvedTheme}>{!view.canvas.viewport && <InitialCanvasFit nodes={nodes} hasContent={data.shots.length + data.nodes.length > 0} />}<Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot)" />
       {canvasEditingEnabled && !boxSelection && canvasSelectedIds.size > 1 && <CanvasSelectionFrame ids={canvasSelectedIds} />}
       {storyboardSummary && storyboardTask && <StoryboardBatchFrame shotIds={storyboardSummary.shotIds} title={data.assets.find(asset => asset.id === storyboardTask.sourceAssetId)?.name ?? t('scene.task.unavailable')} detail={`· ${t('scene.batch.frame', { count: storyboardSummary.shotIds.length })} · ${sceneTime(storyboardSummary.seconds * 30)}`} time={renderMessage(sceneAgo(storyboardTask.updatedAt, Date.now()))} />}{miniMap && <MiniMap nodeColor={n => n.type === 'shot' ? 'var(--wb-video-edge)' : 'var(--wb-muted)'} maskColor="var(--wb-overlay)" pannable zoomable />}</ReactFlow>
       {selectedEdge && <div className="selected-edge-note" data-testid="selected-edge-note">{isReferenceEdge(selectedEdge) ? <><Icon name="link" size={13} /><span>{t('shell.referenceLink')}</span><Button variant="ghost" size="sm" onClick={() => inspect(selectedEdge.target)}>{t('shell.viewDisconnect')}</Button></> : <><span>{t('shell.visualLinkNoGeneration')}</span><span className="muted">{t('shell.deleteKey')}</span></>}</div>}
