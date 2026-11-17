@@ -57,13 +57,42 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function readReceiptBytes(file: string, before: BigIntStats, signal?: AbortSignal, expected?: Buffer): Buffer {
+  // Admission is checked before each open, including content rechecks.
+  const admitted = stat(file);
+  if (!admitted || version(admitted) !== version(before)) changed();
+  unheld(admitted);
+  const fd = io(() => openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK || 0)));
+  try {
+    const opened = io(() => fstatSync(fd, {bigint: true}));
+    if (!opened.isFile() || version(opened) !== version(before)) changed();
+    const read = (): Buffer => {
+      const buffer = Buffer.alloc(Number(before.size) + 1);
+      let size = 0;
+      for (;;) {
+        checkpoint(signal);
+        const n = io(() => readSync(fd, buffer, size, buffer.length - size, size));
+        if (!n) break;
+        size += n;
+        if (size > Number(before.size)) changed();
+      }
+      if (size !== Number(before.size)) changed();
+      return buffer.subarray(0, size);
+    };
+    const raw = read();
+    if (!raw.equals(expected ?? read()) || version(io(() => fstatSync(fd, {bigint: true}))) !== version(before) ||
+      version(stat(file)) !== version(before)) changed();
+    return raw;
+  } finally {io(() => closeSync(fd));}
+}
+
 /** A bounded, read-only view of S1's local publication receipts. Version 1 did
  * not persist inode identities, and overwrote its latest attempt pathname.
  * Consequently it cannot prove an exclusion: any surviving unregistered or
  * historical attempt blocks the whole listing rather than hiding by name.
  * No recovery, removal, import retry or receipt-format change occurs here. */
 export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
-  options: ProjectUnpublishedMediaOptions): Promise<ProjectUnpublishedMediaSnapshot> {
+  options: ProjectUnpublishedMediaOptions): Promise<ProjectUnpublishedMediaSnapshot & {assertMetadataCurrent(): void}> {
   if (!isProjectStore(store)) invalid();
   const fence = (): void => {
     checkpoint(options.signal); options.beforeEffect(); checkpoint(options.signal);
@@ -110,7 +139,7 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
     if (!parsed.success) invalid();
     return parsed.data;
   };
-  const assertCurrent = (): void => {
+  const assertMetadataCurrent = (): void => {
     fence();
     io(() => validatePrivateDirectory(store.tempDir));
     io(() => validatePrivateDirectory(receipts, {allowMissing: true}));
@@ -124,11 +153,15 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
     checkpoint(options.signal);
     if (!isProjectStore(store)) changed();
   };
-  const receiptHashes: string[] = [];
+  const admittedReceipts: {file: string; before: BigIntStats; raw: Buffer}[] = [];
+  const assertCurrent = (): void => {
+    assertMetadataCurrent();
+    for (const {file, before, raw} of admittedReceipts) readReceiptBytes(file, before, options.signal, raw);
+  };
   let count = 0, totalBytes = 0;
   // Yield before enumeration and between receipts so cancellation and host
   // revocation cannot be starved by the bounded synchronous file reads.
-  await yieldIO(); assertCurrent();
+  await yieldIO(); assertMetadataCurrent();
   if (receiptDirectory) {
     const directory = io(() => opendirSync(receipts));
     const names: string[] = [];
@@ -142,7 +175,7 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
         names.push(entry.name);
       }
     } finally {io(() => directory.closeSync());}
-    assertCurrent();
+    assertMetadataCurrent();
     for (const name of names.sort()) {
       fence();
       const file = path.join(receipts, name), before = watch(file);
@@ -154,30 +187,7 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
       if (++count > PROJECT_UNPUBLISHED_MEDIA_LIMITS.receipts || before.size > BigInt(PROJECT_UNPUBLISHED_MEDIA_LIMITS.receiptBytes)) invalid();
       totalBytes += Number(before.size);
       if (totalBytes > PROJECT_UNPUBLISHED_MEDIA_LIMITS.totalReceiptBytes) invalid();
-      // Recheck after all admission work, immediately before openSync.
-      const admitted = stat(file);
-      if (!admitted || version(admitted) !== version(before)) changed();
-      unheld(admitted);
-      const fd = io(() => openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK || 0)));
-      let raw: Buffer;
-      try {
-        const opened = io(() => fstatSync(fd, {bigint: true}));
-        if (!opened.isFile() || version(opened) !== version(before)) changed();
-        const read = (): Buffer => {
-          const buffer = Buffer.alloc(Number(before.size) + 1); let size = 0;
-          for (;;) {
-            checkpoint(options.signal);
-            const n = io(() => readSync(fd, buffer, size, buffer.length - size, size));
-            if (!n) break;
-            size += n;
-            if (size > Number(before.size)) changed();
-          }
-          if (size !== Number(before.size)) changed();
-          return buffer.subarray(0, size);
-        };
-        raw = read();
-        if (!raw.equals(read()) || version(io(() => fstatSync(fd, {bigint: true}))) !== version(before) || version(stat(file)) !== version(before)) changed();
-      } finally {io(() => closeSync(fd));}
+      const raw = readReceiptBytes(file, before, options.signal);
       let value: unknown;
       try {value = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(raw)) as unknown;} catch {invalid();}
       if (!object(value) || Object.keys(value).some(key => !['version', 'projectId', 'assetId', 'digest', 'attempt', 'phase', 'file', 'asset'].includes(key)) ||
@@ -227,13 +237,17 @@ export async function readProjectUnpublishedMediaSnapshot(store: ProjectStore,
           }
         }
       }
-      receiptHashes.push(createHash('sha256').update(raw).digest('hex'));
-      await yieldIO(); assertCurrent();
+      admittedReceipts.push({file, before, raw});
+      await yieldIO(); assertMetadataCurrent();
+      // An in-place, same-length rewrite can share a filesystem timestamp tick.
+      readReceiptBytes(file, before, options.signal, raw);
     }
   }
+  // Earlier receipts were also exposed to later yields. Recheck them once
+  // before returning; per-yield content reads remain bounded to one receipt.
   assertCurrent();
   const scopeVersion = createHash('sha256').update(JSON.stringify({projectId, projectRaw,
-    files: [...watched], assetRows: [...assetRows], receipts: receiptHashes})).digest('hex');
-  return Object.freeze({version: scopeVersion, assertCurrent,
-    isExcluded(_file: string, _stats: BigIntStats): boolean {assertCurrent(); return false;}});
+    files: [...watched], assetRows: [...assetRows], receipts: admittedReceipts.map(({raw}) => createHash('sha256').update(raw).digest('hex'))})).digest('hex');
+  return Object.freeze({version: scopeVersion, assertCurrent, assertMetadataCurrent,
+    isExcluded(_file: string, _stats: BigIntStats): boolean {assertMetadataCurrent(); return false;}});
 }

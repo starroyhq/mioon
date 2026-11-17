@@ -3,6 +3,8 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -344,14 +346,56 @@ test('a receipt changed before admission is read freshly, and later changes inva
   writeFileSync(file, JSON.stringify(value)); assert.throws(() => snapshot.assertCurrent(), changed);
 });
 
-test('a receipt changed after admission but before the next async fence invalidates the entire read', async t => {
-  const f = fixture(t), value = f.intent(), file = f.receipt(value); let armed = false, scheduled = false;
-  const pending = readProjectUnpublishedMediaSnapshot(f.store, {beforeEffect() {
-    if (armed && !scheduled) {scheduled = true; queueMicrotask(() => writeFileSync(file, JSON.stringify({...value, digest: 'd'.repeat(64)})));}
-  }});
-  queueMicrotask(() => {armed = true;});
-  await assert.rejects(pending, changed); assert.equal(scheduled, true);
-});
+for (const rewrite of ['before the next async fence', 'while admitting a later receipt', 'after returning the snapshot'] as const) {
+  test(`a receipt changed ${rewrite} with unchanged metadata invalidates the entire read`, async t => {
+    const f = fixture(t), value = f.intent(), file = f.receipt(value, 'a'.repeat(64) + '.json');
+    const triggerFile = rewrite === 'while admitting a later receipt' ? f.receipt(f.intent(), 'b'.repeat(64) + '.json') : file;
+    const replacement = JSON.stringify({...value, digest: 'd'.repeat(64)});
+    const originalMetadata = lstatSync(file, {bigint: true}), trigger = lstatSync(triggerFile, {bigint: true});
+    const originalLstat = fs.lstatSync, originalFstat = fs.fstatSync, originalClose = fs.closeSync;
+    assert.equal(BigInt(Buffer.byteLength(replacement)), originalMetadata.size, 'simulate a same-length rewrite');
+    let admittedFd: number | undefined, rewritten = false;
+    const changeReceipt = (): void => {
+      rewritten = true;
+      writeFileSync(file, replacement);
+    };
+
+    // A filesystem tick can expose identical timestamps for two distinct
+    // versions of the same inode. Keep both stat paths on that tick.
+    t.mock.method(fs, 'lstatSync', ((...args: Parameters<typeof fs.lstatSync>) => {
+      const info = originalLstat(...args);
+      return rewritten && args[0] === file && typeof info?.ino === 'bigint' ? originalMetadata : info;
+    }) as typeof fs.lstatSync);
+    t.mock.method(fs, 'fstatSync', ((...args: Parameters<typeof fs.fstatSync>) => {
+      const [fd] = args, info = originalFstat(...args);
+      if (typeof info.ino !== 'bigint') return info;
+      if (!rewritten && info.dev === trigger.dev && info.ino === trigger.ino) admittedFd = fd;
+      return rewritten && info.dev === originalMetadata.dev && info.ino === originalMetadata.ino ? originalMetadata : info;
+    }) as typeof fs.fstatSync);
+    t.mock.method(fs, 'closeSync', (fd: number) => {
+      originalClose(fd);
+      if (rewrite === 'after returning the snapshot' || rewritten || fd !== admittedFd) return;
+      // The admitted bytes have already been read twice and the descriptor
+      // is closed, but the snapshot has not crossed its next async fence.
+      changeReceipt();
+    });
+    syncBuiltinESMExports();
+    try {
+      const pending = readProjectUnpublishedMediaSnapshot(f.store, options);
+      if (rewrite === 'after returning the snapshot') {
+        const snapshot = await pending;
+        changeReceipt();
+        assert.throws(() => snapshot.assertCurrent(), changed);
+      } else {
+        await assert.rejects(pending, changed);
+      }
+      assert.equal(rewritten, true);
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    }
+  });
+}
 
 function childWrite(file: string): unknown {
   const source = `import {DatabaseSync} from 'node:sqlite'; let db; try { db=new DatabaseSync(process.argv[1],{timeout:0}); db.exec('BEGIN IMMEDIATE; ROLLBACK'); console.log(JSON.stringify({ok:true})); } catch(error) {console.log(JSON.stringify({ok:false,message:error.message,errcode:error.errcode}));} finally {db?.close();}`;
