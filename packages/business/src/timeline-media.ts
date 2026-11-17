@@ -113,7 +113,7 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // compositions. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{
- signal=new AbortController().signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
+ signal,beforeEncode,beforeStart,beforeEffect,readLut,onSegmentProgress,
  segmentConcurrency=Math.min(MAX_SEGMENT_CONCURRENCY,Math.max(1,Math.floor((availableParallelism()-2)/2))),
 }: RenderTimelineOptions={}): Promise<unknown>{
  if(!Number.isInteger(segmentConcurrency)||segmentConcurrency<1||segmentConcurrency>MAX_SEGMENT_CONCURRENCY)throw new RangeError('Invalid timeline segment concurrency');
@@ -144,8 +144,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  const owned=floatChecked||colour?createTimelineFloatStaging(destination as never,{signal,beforeEffect} as never,{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory} as never)
   :beforeEffect===undefined?null:ownedTimelineWork(destination,beforeEffect,signal);
  const work=owned?.work??await mkdtemp(path.join(path.dirname(destination),'.timeline-render-'));
+ const segmentOwner=signal??new AbortController().signal;
  let effect=owned?.effect??beforeEffect;
- let unconfirmed=false,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined;
+ let unconfirmed=false,cleanupSignal=signal,audioCheck: Awaited<ReturnType<typeof checkFloatAudio>>|undefined,primaryFailure: unknown,colourStage: Awaited<ReturnType<typeof prepareTimelineColourLuts>>|undefined,imageStage: Awaited<ReturnType<typeof prepareTimelineImageLayers>>|undefined;
  try{
   checkMediaEffect(effect,signal);
   if(colour){
@@ -240,7 +241,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    const videoArgs=delivery?timelineExportVideoArgs(delivery as never):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
-   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal:segmentSignal,ownerSignal:signal,onStopping,beforeEffect:effect});
+   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal:segmentSignal,ownerSignal:segmentOwner,onStopping,beforeEffect:effect});
    checkMediaEffect(effect,segmentSignal);
    return {file:segmentFile,outputFrames:selected.outputFrames};
   };
@@ -257,7 +258,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
     const index=nextSegment++,controller=new AbortController();
     running.set(index,controller);
     try{
-     const result=await encodeSegment(index,AbortSignal.any([signal,controller.signal]),()=>stopSiblings(index));
+     const result=await encodeSegment(index,AbortSignal.any([segmentOwner,controller.signal]),()=>stopSiblings(index));
      ownedSegments[index]=result;
      completedFrames+=result.outputFrames;
      onSegmentProgress?.(completedFrames,plan.outputFrames);
@@ -293,9 +294,16 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    colourStage!.verifyBytes();imageStage?.verifyBytes();checkMediaEffect(effect,signal);
   }
   return floatChecked?{...result,audioCheck}:result;
- }catch(error){const failure=error as {terminationUnconfirmed?: boolean}|null|undefined;primaryFailure=error;unconfirmed=Boolean(failure?.terminationUnconfirmed||hasUnconfirmedMediaProcesses({signal}));if(floatChecked&&audioCheck&&!signal.aborted)rememberTimelineFloatAudioFailure(error,audioCheck as never);throw error;}
+ }catch(error){
+  primaryFailure=error;
+  const ownedProcessUnconfirmed=hasUnconfirmedMediaProcesses({signal:segmentOwner});
+  unconfirmed=Boolean((error as {terminationUnconfirmed?: boolean}|null|undefined)?.terminationUnconfirmed||ownedProcessUnconfirmed);
+  if(ownedProcessUnconfirmed)cleanupSignal=segmentOwner;
+  if(floatChecked&&audioCheck&&!signal?.aborted)rememberTimelineFloatAudioFailure(error,audioCheck as never);
+  throw error;
+ }
  finally{
-  if(unconfirmed)void waitForMediaProcesses({signal}).then(()=>{imageStage?.cleanup();colourStage?.cleanup();return owned?owned.cleanup():rm(work,{recursive:true,force:true});}).catch(()=>{});
+  if(unconfirmed)void waitForMediaProcesses({signal:cleanupSignal}).then(()=>{imageStage?.cleanup();colourStage?.cleanup();return owned?owned.cleanup():rm(work,{recursive:true,force:true});}).catch(()=>{});
   else if(owned){const imageCleaned=imageStage?.cleanup()??true,colourCleaned=colourStage?.cleanup()??true,cleaned=owned.cleanup();if((floatChecked||colour)&&(!cleaned||!colourCleaned||!imageCleaned)&&!primaryFailure){const failure=Object.assign(Error('The export staging cleanup could not be confirmed.'),{code:floatChecked?'EXPORT_AUDIO_STAGING_CHANGED':'TIMELINE_COLOUR_RESOURCE_CHANGED'});if(floatChecked&&!signal?.aborted)rememberTimelineFloatAudioFailure(failure,audioCheck??null);throw failure;}}
   else await rm(work,{recursive:true,force:true});
  }

@@ -225,7 +225,8 @@ test('current and cold-reopened graphs and argv match pinned pre-seam renderer e
         const expected = activeRuntime.calls;
         assert.equal(expected.filter((call) => call.argv?.includes('-h')).length, Number(managed), 'only nonempty subtitles inspect drawtext once');
         activeRuntime = fakeRuntime(snapshot, root);
-        await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
+        // Keep the historical invocation order for the exact command trace.
+        await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}, segmentConcurrency:1});
         assert.deepEqual(activeRuntime.scriptOptions, managed ? ['-/filter:v', '-/filter_complex', '-/filter_complex', '-/filter_complex'] : [], 'current renderer always uses the supported file-option names');
         assert.deepEqual(activeRuntime.calls, expected, `schema${version} managed=${managed} selected=${Boolean(range)}: equivalent file options; all remaining argv, filter, script and concat bytes exact; raw current argv=${JSON.stringify(activeRuntime.rawArgv)}`);
         assert.equal(JSON.stringify(snapshot), frozenRaw, 'neither renderer mutates retained raw snapshot');
