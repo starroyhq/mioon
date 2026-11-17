@@ -11,7 +11,7 @@ import TimelineAudioPreview from './TimelineAudioPreview.tsx';
 import ClipTransformBox, { type PreviewTransformBox } from './ClipTransformBox.tsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
 import { Button } from '@mioon/ui/components/button';
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Icon from './icons.tsx';
 import {useProjectMediaReadGate} from './project-media-read-gate.tsx';
 import {MediaStatusBadge, MediaStatusNote} from './project-file/MediaStatus.tsx';
@@ -24,6 +24,7 @@ import { sourceFrameCount, sourcePositionFrame, sourceSeekMatchesTime, SOURCE_RA
 import type { AppAsset, AppTimeline, AppTimelineClip } from './App.tsx';
 import type { TimelineAudioPreviewView } from './use-timeline-audio-preview.ts';
 import type {MenuPlaybackControl} from './desktop-menu-client.ts';
+import type {TimelinePlaybackClock} from './timeline-playback-clock.ts';
 
 type Translate = ReturnType<typeof useI18n>['t'];
 export interface PreviewCaptureIntent {readonly sourceScope: string; readonly sourceAssetId: string; readonly sourceHash: string; readonly sourceFrame: number}
@@ -62,6 +63,8 @@ export interface PreviewProps {
   pendingJob?: PreviewRenderJobView | null;
   playhead: number;
   onSeek: (frame: number) => unknown;
+  playbackClock?: TimelinePlaybackClock;
+  onPlaybackCommit?: (frame: number) => void;
   sourceScope?: string | null;
   sourcePosition?: number;
   sourceSeek?: PreviewSeek | null;
@@ -112,22 +115,29 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
   return <div className="source-frame-capture"><Button type="button" variant="outline" size="sm" data-testid="source-frame-capture" disabled={captureBusy || submitting || ready?.key !== captureKey || !ready?.intent} onClick={capture}>{t('timeline.preview.capture')}</Button><span className="input-hint">{t('timeline.preview.captureHint')}</span></div>;
 }
 
-export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, onDetectScenes, sceneDetectIssue = null, transformBox = null, aspectFrame }: PreviewProps): React.ReactElement {
+function PlaybackPosition({ clock, fallback, render }: {
+  clock: TimelinePlaybackClock; fallback: number; render: (frame: number) => React.ReactElement;
+}): React.ReactElement {
+  const frame = useSyncExternalStore(clock.subscribe, clock.getSnapshot, clock.getSnapshot);
+  return render(frame ?? fallback);
+}
+
+export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, playbackClock, onPlaybackCommit, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, onDetectScenes, sceneDetectIssue = null, transformBox = null, aspectFrame }: PreviewProps): React.ReactElement {
   const { t, renderMessage } = useI18n();
   const {preferences} = useUiPreferences();
   const media = useRef<HTMLMediaElement | null>(null);
-  useLayoutEffect(() => { onRegisterMediaPause?.(() => media.current?.pause()); }, [onRegisterMediaPause]);
   const ancestorVisible = useWorkspaceVisibility();
   visible = visible && ancestorVisible;
   const visibleRef = useRef<boolean>(visible);
   const rendered = kind === 'timeline';
+  const timelineClock = rendered || clip ? playbackClock : undefined;
   const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
   const stale = Boolean(ready && !previewMatchesTimeline(job, timeline));
   const frozenTimeline = rendered && ready ? job?.snapshot?.timeline : null;
   const playbackDuration = frozenTimeline?.durationFrames ?? timeline?.durationFrames;
   const playbackFps = frozenTimeline?.fps || timeline?.fps || SOURCE_RANGE_FPS;
   const playbackFrame = (frame: number) => Math.max(0, Math.min(playbackDuration ?? frame, frame));
-  const renderedPosition = playbackFrame(playhead);
+
   const gate = useProjectMediaReadGate();
   const readIdentity = rendered ? {id: job?.assetId, projectId: job?.projectId} : asset;
   const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
@@ -142,8 +152,21 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const captureObserver = useRef<(() => void) | null>(null), captureContext = useRef<CaptureContext>({ key: '', visible, busy: captureBusy, scope: sourceScope });
   const captureKey = `${mediaKey}:${asset?.sha256 || ''}`;
   captureContext.current = { key: captureKey, visible, busy: captureBusy, scope: sourceScope };
-  const sourceSeconds = rendered ? renderedPosition / playbackFps : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, playhead - clip.startFrame))) / SOURCE_RANGE_FPS : null;
+  const timelineSeconds = (frame: number) => rendered ? playbackFrame(frame) / playbackFps
+    : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, frame - clip.startFrame))) / SOURCE_RANGE_FPS : null;
+  const sourceSeconds = timelineSeconds(playhead);
   const seekRequest = !rendered && !clip ? `${sourceScope || ''}:${sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek.id : 'initial'}` : sourceSeconds;
+  const pauseCurrent = useRef<() => void>(() => {});
+  pauseCurrent.current = () => {
+    const binding = activeMedia.current;
+    if (!binding || binding.element !== media.current) return;
+    binding.element.pause();
+    settlePlayback(binding);
+  };
+  useLayoutEffect(() => {
+    const unregister = onRegisterMediaPause?.(() => pauseCurrent.current());
+    if (typeof unregister === 'function') return () => { unregister(); };
+  }, [onRegisterMediaPause]);
   useLayoutEffect(() => {
     const element = media.current;
     if (!element) return;
@@ -154,12 +177,13 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     captureObserver.current?.();
     return () => {
       if (activeMedia.current === binding) activeMedia.current = null;
+      settlePlayback(binding);
       disposeMedia(element);
     };
-  }, [mediaKey]);
+  }, [mediaKey, timelineClock]);
   useLayoutEffect(() => {
     visibleRef.current = visible;
-    if (!visible) media.current?.pause();
+    if (!visible) pauseCurrent.current();
     captureObserver.current?.();
   }, [visible, mediaKey]);
   function isCurrentMedia(element: HTMLMediaElement | null): boolean {
@@ -187,21 +211,22 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   function updateCapture(event: React.SyntheticEvent<HTMLMediaElement>): void {
     if (isCurrentMedia(event.currentTarget)) captureObserver.current?.();
   }
-  function seekMedia(element: HTMLMediaElement | null, loadedMetadata = false): void {
+  function seekMedia(element: HTMLMediaElement | null, loadedMetadata = false, explicitFrame?: number): void {
     if (!isCurrentMedia(element) || !element) return;
     const standaloneSource = !rendered && !clip;
     if (standaloneSource && element.readyState < 1) return;
     const source = currentSource.current, request = source.request;
     const newSourceRequest = request && (appliedSourceSeek.current?.scope !== source.scope || appliedSourceSeek.current?.id !== request.id);
     const sourceFrame = newSourceRequest ? request!.frame : source.position;
-    const targetSeconds = standaloneSource ? sourceFrame / SOURCE_RANGE_FPS : sourceSeconds as number;
+    const targetSeconds = standaloneSource ? sourceFrame / SOURCE_RANGE_FPS
+      : (explicitFrame === undefined ? sourceSeconds : timelineSeconds(explicitFrame)) as number;
     if (!Number.isFinite(targetSeconds)) return;
     const binding = activeMedia.current;
     if (!binding) return;
-    const currentSeekRequest = standaloneSource ? `${source.scope || ''}:${request?.id ?? 'initial'}` : seekRequest;
+    const currentSeekRequest = standaloneSource ? `${source.scope || ''}:${request?.id ?? 'initial'}` : targetSeconds;
     // Reopening alone preserves native playback position. A changed playhead or
     // source while hidden still applies its deferred seek when shown again.
-    if (!loadedMetadata && binding.lastSeekRequest === currentSeekRequest) {
+    if (!loadedMetadata && explicitFrame === undefined && binding.lastSeekRequest === currentSeekRequest) {
       if (standaloneSource && binding.pendingSourceSeek) publishSourcePosition(element);
       return;
     }
@@ -214,19 +239,59 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     }
     const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : targetSeconds;
     const seconds = Math.max(0, Math.min(targetSeconds, max));
-    if (Math.abs(element.currentTime - seconds) > (!rendered && !clip ? 1e-7 : .02)) {
+    if (Math.abs(element.currentTime - seconds) > (standaloneSource || explicitFrame !== undefined ? 1e-7 : .02)) {
       activeMedia.current!.programmaticSeek = seconds;
       element.currentTime = seconds;
     } else if (!rendered && !clip) publishSourcePosition(element);
     captureObserver.current?.();
   }
   useEffect(() => { seekMedia(media.current); }, [playhead, mediaKey, visible, clip?.sourceInFrame, clip?.startFrame, clip?.durationFrames, seekRequest]);
+  const seekCurrent = useRef<(frame: number) => void>(() => {});
+  seekCurrent.current = frame => seekMedia(media.current, false, frame);
+  useLayoutEffect(() => {
+    if (!timelineClock) return;
+    let revision = timelineClock.getSeekRevision();
+    return timelineClock.subscribe(() => {
+      const next = timelineClock.getSeekRevision();
+      if (next === revision) return;
+      revision = next;
+      const frame = timelineClock.getSeekFrame();
+      if (frame !== null) seekCurrent.current(frame);
+    });
+  }, [mediaKey, timelineClock]);
+
+  function timelineFrame(element: HTMLMediaElement): number {
+    if (rendered) return playbackFrame(Math.round(element.currentTime * playbackFps));
+    const frame = Math.round(element.currentTime * SOURCE_RANGE_FPS);
+    const local = frame - (clip?.sourceInFrame || 0);
+    return clip ? clip.startFrame + Math.max(0, Math.min(clip.durationFrames, local)) : frame;
+  }
+  function commitNativeFrame(binding: MediaBinding, frame: number): void {
+    if (!Number.isSafeInteger(frame)) return;
+    binding.lastSeekRequest = timelineSeconds(frame);
+    (onPlaybackCommit ?? onSeek)(frame);
+  }
+  function settlePlayback(binding: MediaBinding): void {
+    if (!timelineClock?.stop(binding)) return;
+    // An explicit seek is already saved by its caller. While that assignment is
+    // being resolved, the media element may still report the previous frame.
+    if (!binding.element.seeking || binding.programmaticSeek === null) {
+      commitNativeFrame(binding, timelineFrame(binding.element));
+    }
+  }
+  function startTimelinePlayback(element: HTMLMediaElement): void {
+    if (timelineClock && !element.paused && !element.ended && element.readyState >= 1) {
+      timelineClock.start(activeMedia.current!, timelineFrame(element));
+    }
+  }
+
   function guardPlayback(event: React.SyntheticEvent<HTMLMediaElement>): void {
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { element.pause(); return; }
     onBeforePlay?.();
     audioPreview?.controller.revoke();
     if (!element.seeking) activeMedia.current!.programmaticSeek = null;
+    startTimelinePlayback(element);
     captureObserver.current?.();
   }
   function finishSeek(event: React.SyntheticEvent<HTMLMediaElement>): void {
@@ -238,7 +303,12 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     binding.programmaticSeek = null;
     // Restoring the source's clamped display position must not rewrite the
     // independently saved timeline playhead. Native paused scrubbing still can.
-    if (programmed !== null && Math.abs(element.currentTime - programmed) < .05) { if (!rendered && !clip) publishSourcePosition(element); captureObserver.current?.(); return; }
+    if (programmed !== null && Math.abs(element.currentTime - programmed) < .05) {
+      if (!rendered && !clip) publishSourcePosition(element);
+      else if (!element.paused) timelineClock?.tick(binding, timelineFrame(element));
+      captureObserver.current?.();
+      return;
+    }
     updateTime(event, true);
     captureObserver.current?.();
   }
@@ -259,21 +329,25 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   function pauseMedia(event: React.SyntheticEvent<HTMLMediaElement>): void {
     // Native pause may land between periodic timeupdate events. Mark controls
     // must see the paused source position, even when the last tick was older.
-    if (!rendered && !clip) publishSourcePosition(event.currentTarget);
+    const element = event.currentTarget;
+    if (!rendered && !clip) publishSourcePosition(element);
+    else if (isCurrentMedia(element) && (element.paused || element.ended)) settlePlayback(activeMedia.current!);
     updateCapture(event);
   }
   function updateTime(event: React.SyntheticEvent<HTMLMediaElement>, nativeSeek = false): void {
     const element = event.currentTarget;
     if (!isCurrentMedia(element)) { if (!visibleRef.current) element.pause(); return; }
     if (!nativeSeek && (element.paused || element.seeking || activeMedia.current!.programmaticSeek !== null)) return;
-    if (rendered) onSeek(playbackFrame(Math.round(element.currentTime * playbackFps)));
-    else if (clip) {
-      const frame = Math.round(element.currentTime * 30);
-      const sourceIn = clip.sourceInFrame || 0;
-      const local = Math.max(0, Math.min(clip.durationFrames, frame - sourceIn));
-      onSeek(clip.startFrame + local);
-      if (frame >= sourceIn + clip.durationFrames) element.pause();
-    } else publishSourcePosition(element);
+    if (!rendered && !clip) { publishSourcePosition(element); return; }
+    const binding = activeMedia.current!;
+    const frame = timelineFrame(element);
+    if (timelineClock) {
+      if (nativeSeek && element.paused) {
+        timelineClock.stop(binding);
+        commitNativeFrame(binding, frame);
+      } else timelineClock.tick(binding, frame);
+    } else onSeek(frame);
+    if (clip && !rendered && frame >= clip.startFrame + clip.durationFrames) pauseCurrent.current();
   }
   const deliveredArtifact = rendered && job?.purpose === 'export';
   const delivery = exportHistoryDelivery(job), frozenPicture = rendered && ready ? exportHistoryPicture(job) : null;
@@ -288,7 +362,32 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const previewMetadata = rendered ? ready ? [
     renderMessage(statusDescriptor(job!.status)), formatLabel, delivery && renderMessage(delivery.rateMessage),
   ].filter(Boolean).join(' · ') : t('timeline.preview.persistent') : clip ? t('timeline.preview.clipPosition',{start:clip.startFrame,source:clip.sourceInFrame??0,duration:clip.durationFrames}) : t('timeline.preview.independent');
-  function stepPreview(delta: number): void {stepPreviewMedia({delta,media:media.current,current:isCurrentMedia(media.current),timelineMode:rendered || Boolean(clip),timelineDuration:playbackDuration ?? 0,playhead:rendered ? renderedPosition : playhead,sourcePosition,sourceCount:sourceFrameCount(asset?.duration),sourceFps:SOURCE_RANGE_FPS,binding:activeMedia.current,onSeek,notify:()=>captureObserver.current?.()});}
+  function stepPreview(delta: number): void {
+    const element = media.current, binding = activeMedia.current;
+    const current = isCurrentMedia(element);
+    // A step starts at the current native frame when playback is in progress.
+    const position = timelineClock?.getSnapshot() != null && current && element
+      ? timelineFrame(element) : rendered ? playbackFrame(playhead) : playhead;
+    stepPreviewMedia({
+      delta, media: element, current, timelineMode: rendered || Boolean(clip), timelineDuration: playbackDuration ?? 0,
+      playhead: position, sourcePosition, sourceCount: sourceFrameCount(asset?.duration), sourceFps: SOURCE_RANGE_FPS,
+      binding, onSeek: frame => {
+        // The explicit position is authoritative over the queued native pause.
+        if (binding) timelineClock?.stop(binding);
+        onSeek(frame);
+      }, notify: () => captureObserver.current?.(),
+    });
+  }
+  const withPlaybackPosition = (render: (frame: number) => React.ReactElement) =>
+    timelineClock ? <PlaybackPosition clock={timelineClock} fallback={playhead} render={render} /> : render(playhead);
+  const getMedia = () => media.current;
+  const renderPlaybackControls = (frame: number) => <PreviewPlaybackControls
+    onRegisterMenuPlayback={onRegisterMenuPlayback} onMenuStateChange={onMenuStateChange}
+    bindingKey={`${mediaKey}:${visible}`} getMedia={getMedia} isCurrent={isCurrentMedia}
+    position={!rendered && !clip ? sourcePosition : rendered ? playbackFrame(frame) : frame}
+    duration={!rendered && !clip ? sourceFrameCount(asset?.duration) || 0 : playbackDuration ?? 0}
+    fps={playbackFps} format={preferences.timecodeFormat} standaloneSource={!rendered && !clip}
+    onStep={stepPreview} metadata={previewMetadata} />;
 
   return <Tabs value={kind} onValueChange={onKind} className={`central-preview edit-preview ${visible ? '' : 'workspace-hidden'}`} aria-label={t('timeline.preview.main')} data-testid="central-preview">
     <div className="preview-mode-bar">
@@ -304,12 +403,12 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     {rendered && stale && <div className="preview-notice stale" data-testid="preview-stale"><Icon name="info" size={15} /><span>{t('timeline.preview.stale', { rendered: job!.timelineRevision ?? 0, current: timeline?.revision ?? '—' })}</span><Button variant="ghost" disabled={busy || inProgress} onClick={() => onRender('preview')}>{t('timeline.preview.update')}</Button></div>}
     {rendered && inProgress && <PreviewRenderProgress revision={pendingJob?.timelineRevision ?? 0} previous={Boolean(ready)} progress={pendingJob?.progress} />}
     {rendered && pendingJob?.status === 'failed' && <div className="preview-notice stale" role={cancelledExport ? 'status' : 'alert'} data-testid={cancelledExport ? 'preview-export-cancelled' : 'preview-render-failed'}><span>{t(cancelledExport ? 'redesign.export.cancelled' : 'timeline.preview.failed')}{safeTaskErrorCode(pendingJob!.error) && <small>{t('timeline.frame.errorCode', { code: safeTaskErrorCode(pendingJob!.error)! })}</small>}</span><Button variant="ghost" disabled={busy} onClick={() => onRender('preview')}>{t('timeline.preview.rerender')}</Button></div>}
-    {rendered && audioPreview && <details className="edit-preview-audio"><summary><Headphones size={14}/><span>{t('audio.preview.title')}</span><ChevronDown size={12}/></summary><TimelineAudioPreview audioPreview={audioPreview} startFrame={playhead} /></details>}
+    {rendered && audioPreview && <details className="edit-preview-audio"><summary><Headphones size={14}/><span>{t('audio.preview.title')}</span><ChevronDown size={12}/></summary>{withPlaybackPosition(frame => <TimelineAudioPreview audioPreview={audioPreview} startFrame={frame} />)}</details>}
     {!rendered&&url&&<p className="preview-source-disclosure" data-testid="preview-source-unprocessed">{t('timeline.preview.sourceUnprocessed')}</p>}
     <TabsContent value={kind} className={`preview-stage ${type === 'audio' ? 'audio-stage' : ''}`}>
-      {blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : <video ref={media as unknown as React.Ref<HTMLVideoElement>} key={mediaKey} data-testid={rendered ? 'timeline-preview-video' : 'source-preview-video'} src={url} playsInline preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onTimeUpdate={updateTime} onSeeked={finishSeek} onLoadedData={updateCapture} onCanPlay={updateCapture} onSeeking={updateCapture} onEmptied={updateCapture} />}<span className="preview-stage-label" title={!rendered ? t('timeline.preview.sourceUnprocessed') : undefined}>{rendered ? t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') }) : clip ? t('timeline.preview.clipOriginal') : t('timeline.preview.original')}</span>{rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline && <ClipTransformBox key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`} box={transformBox} playhead={playhead} timeline={timeline} media={media} mediaKey={mediaKey} />}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
+      {blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onEnded={timelineClock ? pauseMedia : undefined} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : <video ref={media as unknown as React.Ref<HTMLVideoElement>} key={mediaKey} data-testid={rendered ? 'timeline-preview-video' : 'source-preview-video'} src={url} playsInline preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onEnded={timelineClock ? pauseMedia : undefined} onTimeUpdate={updateTime} onSeeked={finishSeek} onLoadedData={updateCapture} onCanPlay={updateCapture} onSeeking={updateCapture} onEmptied={updateCapture} />}<span className="preview-stage-label" title={!rendered ? t('timeline.preview.sourceUnprocessed') : undefined}>{rendered ? t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') }) : clip ? t('timeline.preview.clipOriginal') : t('timeline.preview.original')}</span>{rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline && withPlaybackPosition(frame => <ClipTransformBox key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`} box={transformBox} playhead={frame} timeline={timeline} media={media} mediaKey={mediaKey} />)}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
     </TabsContent>
     {aspectFrame && <AspectFrameSuggestion {...aspectFrame} />}
-    {kind === 'source' && !clip && type === 'video' && onCaptureFrame && <SourceFrameCaptureControl captureKey={captureKey} inspect={inspectCapture} subscribe={subscribeCapture} onCaptureFrame={onCaptureFrame} captureBusy={captureBusy || blocked} />}{kind === 'source' && !clip && type === 'video' && onDetectScenes && <div className="source-scene-detect"><Button type="button" variant="outline" size="sm" data-testid="source-detect-scenes" disabled={blocked || Boolean(sceneDetectIssue)} title={sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')} onClick={() => { if (!blocked) onDetectScenes(); }}><Icon name="scissors" size={13} />{t('scene.menu.detect')}</Button><span className="input-hint">{sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')}</span></div>}<PreviewPlaybackControls onRegisterMenuPlayback={onRegisterMenuPlayback} onMenuStateChange={onMenuStateChange} bindingKey={`${mediaKey}:${visible}`} getMedia={() => media.current} isCurrent={isCurrentMedia} position={!rendered && !clip ? sourcePosition : rendered ? renderedPosition : playhead} duration={!rendered && !clip ? sourceFrameCount(asset?.duration) || 0 : playbackDuration ?? 0} fps={playbackFps} format={preferences.timecodeFormat} standaloneSource={!rendered && !clip} onStep={stepPreview} metadata={previewMetadata} />
+    {kind === 'source' && !clip && type === 'video' && onCaptureFrame && <SourceFrameCaptureControl captureKey={captureKey} inspect={inspectCapture} subscribe={subscribeCapture} onCaptureFrame={onCaptureFrame} captureBusy={captureBusy || blocked} />}{kind === 'source' && !clip && type === 'video' && onDetectScenes && <div className="source-scene-detect"><Button type="button" variant="outline" size="sm" data-testid="source-detect-scenes" disabled={blocked || Boolean(sceneDetectIssue)} title={sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')} onClick={() => { if (!blocked) onDetectScenes(); }}><Icon name="scissors" size={13} />{t('scene.menu.detect')}</Button><span className="input-hint">{sceneDetectIssue ? renderMessage(sceneDetectIssue) : t('scene.menu.detectHint')}</span></div>}{withPlaybackPosition(renderPlaybackControls)}
   </Tabs>;
 }

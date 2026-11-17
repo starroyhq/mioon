@@ -10,13 +10,14 @@ import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
 import * as compactLayout from '../apps/web/src/timeline-compact-layout.ts';
 import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
 import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
+import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
 
 const nodes=(tree:TestTree):CollapsedNode[]=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree as CollapsedNode,...nodes(tree.props?.children)]:[];
 function harness(locale: unknown='zh-Hans'){
  const slots: unknown[]=[],layouts: (() => void)[]=[],calls: (unknown[] | string[])[]=[];let cursor=0,lastWaveform!: {active:boolean}|undefined,removal!:{disabled:boolean}|undefined;
  const layout=(callback: () => void|(()=>void),deps?: unknown[]|undefined)=>{const index=cursor++,prior=slots[index] as HookCell|undefined;if(!prior||deps===undefined||deps.some((v,i)=>v!==prior.deps?.[i])){slots[index]={deps};layouts.push(((()=>{prior?.cleanup?.();(slots[index] as HookCell).cleanup=callback();}) as unknown as Parameters<typeof layouts.push>[0]));}};
- const react={createElement:(type?: unknown,props?: Record<string,unknown>,...children: unknown[])=>({type,props:{...(props as Record<string, unknown>),children}}),useRef:(initial?: unknown)=>slots[cursor++]||=( {current:initial}),useState:(initial?: unknown)=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],(next: (arg0?: unknown) => unknown)=>{slots[index]=typeof next==='function'?next(slots[index]):next;}];},useLayoutEffect:layout,useEffect:()=>{cursor++;}};(react as unknown as {default:({ createElement: (type?: unknown, props?: unknown, ...children: unknown[]) => { type: unknown; props: { children: unknown[]; }; }; useRef: (initial?: unknown) => {}; useState: (initial: () => unknown) => unknown[]; useLayoutEffect: (callback: () => unknown, deps?: unknown[] | undefined) => void; useEffect: () => void; })}).default=(react as unknown as ({default:({ createElement: (type?: unknown, props?: unknown, ...children: unknown[]) => { type: unknown; props: { children: unknown[]; }; }; useRef: (initial?: unknown) => {}; useState: (initial: () => unknown) => unknown[]; useLayoutEffect: (callback: () => unknown, deps?: unknown[] | undefined) => void; useEffect: () => void; })})["default"]);
+ const react={createElement:(type?: unknown,props?: Record<string,unknown>,...children: unknown[])=>typeof type==='function' && type.name==='TimelineRuler' ? (type as TestComponent)({...props,children}) : ({type,props:{...(props as Record<string, unknown>),children}}),useRef:(initial?: unknown)=>slots[cursor++]||=( {current:initial}),useState:(initial?: unknown)=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],(next: (arg0?: unknown) => unknown)=>{slots[index]=typeof next==='function'?next(slots[index]):next;}];},useLayoutEffect:layout,useEffect:()=>{cursor++;}};(react as unknown as {default:({ createElement: (type?: unknown, props?: unknown, ...children: unknown[]) => { type: unknown; props: { children: unknown[]; }; }; useRef: (initial?: unknown) => {}; useState: (initial: () => unknown) => unknown[]; useLayoutEffect: (callback: () => unknown, deps?: unknown[] | undefined) => void; useEffect: () => void; })}).default=(react as unknown as ({default:({ createElement: (type?: unknown, props?: unknown, ...children: unknown[]) => { type: unknown; props: { children: unknown[]; }; }; useRef: (initial?: unknown) => {}; useState: (initial: () => unknown) => unknown[]; useLayoutEffect: (callback: () => unknown, deps?: unknown[] | undefined) => void; useEffect: () => void; })})["default"]);
  const mark=(name?: string)=>({__esModule:true,default:name}),module={exports:{}};
  Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)((name?: string|undefined)=>{
   if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if(name==='react')return react;
@@ -26,6 +27,7 @@ function harness(locale: unknown='zh-Hans'){
   if(name==='./timeline-compact-layout.ts')return compactLayout;
   if(name==='./timeline-removal.ts')return{displayTimelineFrame};
   if(name==='./timeline-keyboard.ts')return{rulerFrameForKey};
+  if(name==='./timeline-playhead.tsx')return{TimelineTrackPlayhead:'TimelineTrackPlayhead',useTimelinePlaybackFrame:(clock:TimelinePlaybackClock | undefined, fallback:number)=>clock?.getSnapshot() ?? fallback};
   if(name==='./timeline-snapping.ts')return{timelineDropPreview};
   if(name==='./timeline-source-freshness.ts')return{staleSourceSentence:()=>''};
   if(name==='./api.ts')return{assetUrl:(asset: { url: unknown; })=>asset?.url||''};
@@ -127,6 +129,48 @@ test('timeline saves native smooth scroll offsets without writing them back duri
   assert.equal(viewState.scrollLeft, 810, 'the final browser offset is saved for reopening');
   assert.equal(viewState.scrollTop, 30);
   assert.deepEqual(writes, [], 'the live viewport owns both axes of the scroll');
+});
+
+test('playback moves the ruler and feeds keyboard seeks from the current frame', t => {
+  const h = harness();
+  t.after(() => h.dispose());
+  let frame: number | null = 26;
+  const playbackClock = {getSnapshot: () => frame};
+  const view = h.render({playhead: 8, playbackClock});
+  const liveRuler = ruler(view);
+  assert.equal(liveRuler['aria-valuenow'], 26);
+
+  frame = 34;
+  liveRuler.onKeyDown(event());
+  assert.deepEqual(h.calls, [['onSeek', 35]], 'input acts on the newest frame even before a React commit');
+  frame = null;
+  const paused = ruler(h.render({playhead: 34, playbackClock}));
+  assert.equal(paused['aria-valuenow'], 34);
+});
+
+test('playback scroll stays transient until its smooth tail ends, then paused scrolling persists', t => {
+  const h = harness();
+  t.after(() => h.dispose());
+  let frame: number | null = 0;
+  const playbackClock = {getSnapshot: () => frame};
+  const scroller = h.render({playbackClock}).all.find(node => node.props['data-testid'] === 'timeline-scroll')!.props as CollapsedProps & {
+    onScroll(event: {currentTarget: {scrollLeft: number; scrollTop: number}}): void;
+    onScrollEnd(event: {currentTarget: {scrollLeft: number; scrollTop: number}}): void;
+  };
+  const element = {scrollLeft: 30, scrollTop: 0};
+  scroller.onScroll({currentTarget: element});
+  frame = 35;
+  element.scrollLeft = 120;
+  scroller.onScroll({currentTarget: element});
+  frame = null;
+  element.scrollLeft = 160;
+  scroller.onScroll({currentTarget: element});
+  scroller.onScrollEnd({currentTarget: element});
+  assert.deepEqual(h.calls, []);
+
+  element.scrollLeft = 180;
+  scroller.onScroll({currentTarget: element});
+  assert.deepEqual(h.calls, [['view', {scrollLeft: 180, scrollTop: 0}]]);
 });
 
 test('the current expanded body still previews and commits an actual drag to the displayed frame',async t=>{

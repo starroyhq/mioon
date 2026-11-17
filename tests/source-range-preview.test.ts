@@ -7,27 +7,32 @@ import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
 import { assetUrl, mediaUrl } from '../apps/web/src/api.ts';
+import {createTimelinePlaybackClock, type TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
+import {stepPreviewMedia} from '../apps/web/src/preview-playback.ts';
 
 
 interface PreviewAsset {id: string; projectId: string; name: string; url: string; duration: number; mimeType: string; width?: number; height?: number}
 interface PreviewProps {
  visible: boolean; kind: string; asset: PreviewAsset; playhead: number; onSeek(frame: number): unknown;
+ playbackClock?: TimelinePlaybackClock; onPlaybackCommit?(frame: number): void;
+ onRegisterMediaPause?(pause: () => void): (() => void) | void;
  sourceScope: string; sourcePosition: number; onSourcePosition(frame: number, scope: string): unknown;
  sourceSeek?: {scope: string; id: number; frame: number};
  timeline?: {revision: number; width?: number; height?: number; fps?: number; durationFrames?: number};
  clip?: {id: string; startFrame: number; sourceInFrame: number; durationFrames: number};
- job?: {id: string; status: string; url: string; timelineRevision: number; snapshot?: {timeline: {width: number; height: number; fps: number}}};
+ job?: {id: string; status: string; url: string; projectId?: string; assetId?: string; timelineRevision: number; snapshot?: {timeline: {width: number; height: number; fps: number}}};
 }
 interface PreviewMedia {
  src: string | null; _currentTime: number; currentTime: number; readyState: number; duration: number;
- paused: boolean; seeking: boolean; isConnected: boolean; loads: number; seeks: number;
+ paused: boolean; ended?: boolean; seeking: boolean; isConnected: boolean; loads: number; seeks: number;
  getAttribute(name: string): string | null; setAttribute(name: string, value: string): void; removeAttribute(name: string): void; pause(): void; load(): void;
 }
 type PreviewTree = PreviewNode | string | number | boolean | null | undefined | PreviewTree[];
-interface PreviewNode {type: string; props: {children: PreviewTree[]; className?: string; key?: string; src: string; autoPlay?: boolean; ref: {current: PreviewMedia};
+interface PreviewNode {type: string | ((props: PreviewNode['props']) => PreviewTree); props: {children: PreviewTree[]; className?: string; key?: string; src: string; autoPlay?: boolean; ref: {current: PreviewMedia};
  onPlay(event: {currentTarget: PreviewMedia}): void; onPlaying(event: {currentTarget: PreviewMedia}): void;
  onLoadedMetadata(event: {currentTarget: PreviewMedia}): void; onTimeUpdate(event: {currentTarget: PreviewMedia}): void;
- onSeeked(event: {currentTarget: PreviewMedia}): void; onPause(event: {currentTarget: PreviewMedia}): void}}
+ onSeeked(event: {currentTarget: PreviewMedia}): void; onPause(event: {currentTarget: PreviewMedia}): void;
+ onEnded(event: {currentTarget: PreviewMedia}): void; onStep(delta: number): void; position: number}}
 interface PreviewHook {current?: unknown; deps: readonly unknown[]; cleanup?: void | (() => void); fn(): void | (() => void)}
 interface PreviewHarness {
  visible: boolean; readyState: number; duration: number; quantizeTime?: (seconds: number) => number;
@@ -41,10 +46,10 @@ function harness() {
   const slots: PreviewHook[] = [], elements = new Map<string | undefined, PreviewMedia>(); let cursor = 0, effects: number[] = [], layouts: number[] = [], tree: PreviewTree;
   const h = { visible: true, readyState: 1, duration: 1200 } as PreviewHarness;
   const effect = (queue: number[], fn: PreviewHook['fn'], deps: readonly unknown[]) => { const i = cursor++, prior = slots[i]; if (prior && deps.every((v, j) => Object.is(v, prior.deps[j]))) return; slots[i] = { deps, cleanup: prior?.cleanup, fn }; queue.push(i); };
-  const react = { createElement: (type: string, props: Record<string, unknown>, ...children: PreviewTree[]) => ({ type, props: { ...props, children } }), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value } as PreviewHook; }, useEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(effects, fn, deps), useLayoutEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(layouts, fn, deps) };
+  const react = { createElement: (type: string, props: Record<string, unknown>, ...children: PreviewTree[]) => ({ type, props: { ...props, children } }), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value } as PreviewHook; }, useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(), useEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(effects, fn, deps), useLayoutEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(layouts, fn, deps) };
   (react as typeof react & {default: typeof react}).default = react;
   const module = { exports: {} as {default(props: PreviewProps): PreviewTree} };
-  const require = (id: string) => id === './project-media-read-gate.tsx' ? {useProjectMediaReadGate: () => null} : id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl, statusText: (value: unknown) => value, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = (id: string) => id === './project-media-read-gate.tsx' ? {useProjectMediaReadGate: () => null} : id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './preview-playback.ts' ? {stepPreviewMedia} : id === './api.ts' ? { assetUrl, statusText: (value: unknown) => value, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const flush = (queue: number[]) => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } };
   h.render = props => {
@@ -57,7 +62,7 @@ function harness() {
     }
     flush(layouts); flush(effects); return tree;
   };
-  h.media = () => nodes(tree).find((node: { type: string; }) => ['video', 'audio'].includes(node.type))!;
+  h.media = () => nodes(tree).find(node => node.type === 'video' || node.type === 'audio')!;
   h.all = () => nodes(tree);
   h.unmount = () => { for (const slot of slots) slot.cleanup?.(); for (const element of elements.values()) element.isConnected = false; };
   return h;
@@ -95,7 +100,7 @@ for (const kind of ['video', 'audio']) {
     element.paused = true; element.currentTime = 4.25; h.media().props.onSeeked({ currentTarget: element });
     assert.equal((positions.at(-1))![0], 127); assert.deepEqual((timeline as unknown), []);
     h.render({ ...p, sourcePosition: 127, playhead: 900 }); assert.equal(element.currentTime, 4.25);
-    assert.equal(h.all().filter((item: { type: string; }) => ['audio', 'video'].includes(item.type)).length, 1);
+    assert.equal(h.all().filter(item => item.type === 'audio' || item.type === 'video').length, 1);
     assert.equal(node.props.autoPlay, undefined);
   });
 }
@@ -381,3 +386,121 @@ for (const kind of ['video', 'audio']) {
     }
   });
 }
+
+const renderedProps = (patch: Partial<PreviewProps> = {}) => props({
+  kind: 'timeline',
+  timeline: {revision: 1, fps: 30, durationFrames: 300},
+  job: {id: 'render', projectId: sourceProjectId, assetId: sourceAssetId, status: 'succeeded', timelineRevision: 1, url: '/render'},
+  ...patch,
+});
+
+function timelineControls(h: PreviewHarness): PreviewNode['props'] {
+  const subscribed = h.all().find(node => typeof node.type === 'function' && node.type.name === 'PlaybackPosition');
+  assert.ok(subscribed && typeof subscribed.type === 'function');
+  const output = nodes(subscribed.type(subscribed.props))[0];
+  assert.ok(output);
+  return output.props;
+}
+
+test('timeline video updates the timecode without seeking or persisting until its exact native pause', () => {
+  const h = harness(), clock = createTimelinePlaybackClock(), commits: number[] = [], seeks: number[] = [];
+  const p = renderedProps({playbackClock: clock, playhead: 30, onPlaybackCommit: frame => { commits.push(frame); }, onSeek: frame => seeks.push(frame)});
+  h.render(p);
+  const node = h.media(), element = node.props.ref.current, event = {currentTarget: element};
+  node.props.onSeeked(event);
+  assert.equal(element.currentTime, 1);
+  const initialSeeks = element.seeks;
+  element.paused = false;
+  node.props.onPlay(event); node.props.onPlaying(event);
+  for (const seconds of [1.25, 2.1, 2.5]) {
+    element._currentTime = seconds;
+    node.props.onTimeUpdate(event);
+    assert.equal(clock.getSnapshot(), Math.round(seconds * 30));
+    assert.equal(timelineControls(h).position, Math.round(seconds * 30));
+  }
+  h.render(p);
+  assert.equal(element.seeks, initialSeeks);
+  assert.deepEqual(commits, []);
+  assert.deepEqual(seeks, []);
+
+  element._currentTime = 2.618;
+  element.paused = true;
+  node.props.onPause(event); node.props.onEnded(event);
+  assert.deepEqual(commits, [79]);
+  assert.equal(clock.getSnapshot(), null);
+  h.render({...p, playhead: 79});
+  assert.equal(element.seeks, initialSeeks);
+  assert.equal(element.currentTime, 2.618);
+  assert.equal(timelineControls(h).position, 79);
+  h.unmount();
+});
+
+test('explicit same-frame seeks and stepping use the clock without a late pause overwriting the step', () => {
+  const h = harness(), clock = createTimelinePlaybackClock(), commits: number[] = [], requested: number[] = [];
+  const p = renderedProps({playbackClock: clock, playhead: 30, onPlaybackCommit: frame => { commits.push(frame); }, onSeek: frame => {
+    requested.push(frame); clock.seek(frame);
+  }});
+  h.render(p);
+  const node = h.media(), element = node.props.ref.current, event = {currentTarget: element};
+  node.props.onSeeked(event);
+  element.paused = false; node.props.onPlay(event);
+  element._currentTime = 2; node.props.onTimeUpdate(event);
+  const priorSeeks = element.seeks;
+  clock.seek(30);
+  assert.equal(element.seeks, priorSeeks + 1);
+  assert.equal(element.currentTime, 1);
+  node.props.onSeeked(event);
+  assert.deepEqual(commits, []);
+  element._currentTime = 1.49;
+  timelineControls(h).onStep(1);
+  assert.deepEqual(requested, [46]);
+  assert.equal(element.currentTime, 46 / 30);
+  node.props.onPause(event); node.props.onSeeked(event);
+  assert.deepEqual(commits, []);
+  assert.equal(clock.getSnapshot(), null);
+  h.unmount();
+});
+
+test('selected-clip playback settles its exact mapped frame on native pause, hide, and media change', () => {
+  const h = harness(), clock = createTimelinePlaybackClock(), commits: [string, number][] = [];
+  let registeredPause: (() => void) | undefined;
+  const p = props({playbackClock: clock, playhead: 120, clip: {id: 'selected', startFrame: 120, durationFrames: 90, sourceInFrame: 30},
+    timeline: {revision: 1, durationFrames: 300}, onPlaybackCommit: frame => { commits.push(['old', frame]); },
+    onRegisterMediaPause: pause => { registeredPause = pause; return () => { registeredPause = undefined; }; }});
+  h.render(p);
+  const node = h.media(), element = node.props.ref.current, event = {currentTarget: element};
+  node.props.onSeeked(event);
+  element.paused = false; node.props.onPlay(event);
+  element._currentTime = 1.8; node.props.onTimeUpdate(event);
+  assert.equal(clock.getSnapshot(), 144);
+  element._currentTime = 1.902;
+  assert.ok(registeredPause);
+  registeredPause();
+  assert.deepEqual(commits, [['old', 147]], 'flush can observe the preview position immediately');
+  node.props.onPause(event);
+  assert.equal(commits.length, 1);
+
+  element.paused = false; node.props.onPlay(event);
+  element._currentTime = 2.02;
+  h.visible = false; h.render({...p, playhead: 147});
+  assert.deepEqual(commits, [['old', 147], ['old', 151]]);
+  assert.equal(clock.getSnapshot(), null);
+  h.visible = true; h.render({...p, playhead: 151});
+  const resumed = h.media();
+  element.paused = false; resumed.props.onPlay(event);
+  element._currentTime = 2.5;
+  h.render(renderedProps({playhead: 165, playbackClock: clock, onPlaybackCommit: frame => { commits.push(['new', frame]); }}));
+  assert.deepEqual(commits, [['old', 147], ['old', 151], ['old', 165]]);
+  const next = h.media(), current = next.props.ref.current;
+  next.props.onSeeked({currentTarget: current});
+  current.paused = false; next.props.onPlay({currentTarget: current});
+  assert.equal(clock.getSnapshot(), 165);
+  resumed.props.onTimeUpdate(event); resumed.props.onPause(event); resumed.props.onPlay(event);
+  assert.equal(clock.getSnapshot(), 165);
+  assert.equal(element.paused, true);
+  current._currentTime = 10; current.ended = true; current.paused = true;
+  next.props.onEnded({currentTarget: current}); next.props.onPause({currentTarget: current});
+  assert.deepEqual(commits, [['old', 147], ['old', 151], ['old', 165], ['new', 300]]);
+  h.unmount();
+  assert.equal(registeredPause, undefined);
+});

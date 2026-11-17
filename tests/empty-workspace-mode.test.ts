@@ -1,3 +1,4 @@
+import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -152,7 +153,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
   const calls: unknown[][] = [], view = defaultWorkspaceState(); view.activeMode = mode as never;
   let created=false;
   const identity=projectEntryOwnerFixture(()=>projectEntryFixture(created?[{id:A}]:registered??(projectId?[{id:projectId}]:[])),calls);
-  const env: EnvAccess = { canOfferBackupRecovery: ui.canOfferBackupRecovery, backupFailure: null, msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
+  const env: EnvAccess = { playbackClock: createTimelinePlaybackClock(), canOfferBackupRecovery: ui.canOfferBackupRecovery, backupFailure: null, msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     editorSession: {current: 'normal'}, workspaceRef: { current: {} }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
 
