@@ -22,10 +22,14 @@ test('the canvas stays outside the editing boundary keyed by the selection, so s
   assert.match(scale, /\.flow-wrap > \.react-flow \{ zoom: calc\(1 \/ var\(--mioon-ui-scale\)\); \}/);
 });
 
-test('the canvas fit options are one stable object, so a re-render never replaces the options of a waiting fit', () => {
-  assert.match(app, /^const CANVAS_INITIAL_FIT: FitViewOptions = \{ padding: 0\.16, minZoom: \.65, maxZoom: 1 \};$/m);
-  assert.match(app, /fitViewOptions=\{CANVAS_INITIAL_FIT\}/);
-  assert.doesNotMatch(app, /fitViewOptions=\{\{/);
+test('the initial fit waits for measured nodes and saved viewports bypass it', () => {
+  assert.match(app, /const measured = useNodesInitialized\(\)/);
+  assert.match(app, /if \(fitted.current \|\| !measured \|\| !flow.viewportInitialized\) return/);
+  assert.match(app, /flow.setViewport\(getViewportForBounds\(bounds, pane.offsetWidth, pane.offsetHeight, 0\.2, 1,/);
+  assert.match(app, /defaultViewport=\{view.canvas.viewport \|\| \{ x: 0, y: 0, zoom: 1 \}\}/);
+  assert.match(app, /const fitted = useRef\(!hasContent\)/);
+  assert.match(app, /\{!view.canvas.viewport && <InitialCanvasFit nodes=\{nodes\} hasContent=\{data.shots.length \+ data.nodes.length > 0\} \/>\}/);
+  assert.doesNotMatch(app, /fitViewOptions=|\bfitView=|\bonInit=\{instance/);
   // Selecting from the storyboard strip frames the shot with the strip's own options.
   assert.match(app, /onSelect=\{async shotId => \{ if \(!await inspect\(shotId\)\) return; flow\.fitView\(\{ nodes: \[\{ id: shotId \}\]/);
 });

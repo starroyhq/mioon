@@ -457,12 +457,6 @@ export const subjectsMessages = {
     "en": "Subject planning links",
     "ja": "サブジェクトの企画用関連付け"
   },
-  "subjects.binding.title": {
-    "zh-Hans": "主体与风格",
-    "zh-Hant": "主體與風格",
-    "en": "Subjects and styles",
-    "ja": "サブジェクトとスタイル"
-  },
   "subjects.binding.incomplete": {
     "zh-Hans": "关联尚未读完",
     "zh-Hant": "關聯尚未讀完",

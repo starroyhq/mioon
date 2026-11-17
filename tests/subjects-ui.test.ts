@@ -362,7 +362,8 @@ test('library composition retains both panes and never changes source/range sele
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
   // The subject's shot usage moved from the library list to the properties pane (C7b).
   const componentSources = ['SubjectInspector.tsx', 'ShotSubjectBindings.tsx', 'SubjectLibrary.tsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
-  for (const component of componentSources.slice(0, 2)) {
+  const shotInspector = readFileSync(new URL('../apps/web/src/Inspector.tsx', import.meta.url), 'utf8');
+  for (const component of [componentSources[0], shotInspector]) {
     assert.match(component, /subjects.library.planningNote/);
     assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '生成时需另选主体版本');
     assert.doesNotMatch(component, /尚不作为生成输入/);
