@@ -118,10 +118,14 @@ export default function VersionComparison(props: Props) {
     if (binding && binding.key === expectedKey && !live.current.props.busy) live.current.props.onAdd?.(binding);
   }
   function close() { if (live.current.closed) return; live.current.closed = true; pause(); live.current.props.onClose(); }
+  const comparisonStatus = !available ? 'comparison.unavailable'
+    : choices.some((choice, index) => choice && (choice.retired || !valid[index])) ? 'comparison.stale'
+    : options.length < 2 ? 'comparison.insufficient'
+    : !pairReady ? 'comparison.chooseBoth' : null;
   return <Dialog open onOpenChange={open => { if (!open) close(); }}><DialogContent className="modal wide version-comparison version-comparison-dialog" showCloseButton={false}>
     <header className="modal-header"><div><DialogTitle>{t('projects.comparison.title')}</DialogTitle><DialogDescription className="sr-only">{t('comparison.help')}</DialogDescription></div>
       <DialogClose render={<Button variant="ghost" aria-label={t('shell.closeDialog')} onClick={close} />}>×</DialogClose></header>
-    <p className="comparison-status" data-ready={pairReady || undefined} role="status" aria-live="polite">{t(!available ? 'comparison.unavailable' : choices.some(choice => choice?.retired) || choices.some((choice, index) => choice && !valid[index]) ? 'comparison.stale' : options.length < 2 ? 'comparison.insufficient' : pairReady ? synchronized ? 'redesign.comparison.synchronizedReady' : 'comparison.ready' : 'comparison.chooseBoth')}</p>
+    {comparisonStatus && <p className="comparison-status" role="status">{t(comparisonStatus)}</p>}
     {choices.some(Boolean) && <Button variant="ghost" className="button comparison-reset" onClick={() => { if (live.current.closed || live.current.props.getContext().scope !== renderedScope || choiceKey(live.current.choices) !== renderedChoices) return; pause(); live.current.choices = [null, null]; setChoices([null, null]); setErrors([null, null]); }}>{t('comparison.reset')}</Button>}
     <div className="comparison-content"><div className="comparison-grid">{(['A', 'B'] as const).map((label, index) => {
       const binding = bindings[index], metadata = binding?.metadata;
@@ -136,7 +140,7 @@ export default function VersionComparison(props: Props) {
         <div className="comparison-media">{url && binding ? <ComparisonVideo key={`${binding.key}:${synchronized ? 'shared' : 'independent'}`} binding={binding} controls={!synchronized} label={t('comparison.player', { label, number: binding.number })}
           register={element => { players.current[index] = element; }} onPlay={event => play(index, event)}
           onLoadedMetadata={sample} onTimeUpdate={sample} onPause={event => { if (live.current.synchronized && event.currentTarget.paused && current(index, event.currentTarget)) coordinator.current?.stop(); }} onEnded={event => { if (live.current.synchronized && event.currentTarget.ended && current(index, event.currentTarget)) pause(); }}
-          onError={event => { if (current(index, event.currentTarget)) { if (live.current.synchronized) pause(); setErrors(previous => previous.map((value, at) => at === index ? binding.key : value) as [string | null, string | null]); } }} /> : <p>{t('comparison.noPlayback')}</p>}</div>
+          onError={event => { if (current(index, event.currentTarget)) { if (live.current.synchronized) pause(); setErrors(previous => previous.map((value, at) => at === index ? binding.key : value) as [string | null, string | null]); } }} /> : null}</div>
         {binding && <><h3 className="sr-only">{t('projects.version', { number: binding.number })}{selected ? ` · ${t('projects.comparison.current')}` : ''}</h3>
           <div className="comparison-specs"><span>{metadata?.aspectRatio || t('comparison.unknown')}</span><span>{metadata?.duration == null ? t('comparison.unknown') : t('shell.durationSeconds', { seconds: formatNumber(metadata.duration) })}</span><span>{metadata?.model || t('comparison.unknown')}</span></div>
           <p>{metadata?.provider || t('comparison.unknown')}{metadata?.isMock ? ` · ${t('inspector.mock')}` : ''} · {metadata?.createdAt ? formatDate(metadata.createdAt) : t('comparison.unknown')}</p>

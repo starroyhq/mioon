@@ -55,7 +55,8 @@ test('the real generation selector labels a custom model unverified while preser
   const result=JSON.parse(execFileSync(process.execPath,['--input-type=module'],{env: testEnv(), input:script,encoding:'utf8',timeout:30000})) as {configured:string;environment:string;model:string;modelEntryId:string};
   const entry=descriptor().models[1]!.entry;
   assert.equal(result.model,entry.modelId);assert.equal(result.modelEntryId,entry.id);
-  assert.match(result.configured,/data-testid="model-select"[^>]*>[\s\S]*?Custom exact model · 尚未验证[\s\S]*?<\/button>/);
+  assert.match(result.configured,/data-testid="model-select"[^>]*>[\s\S]*?Custom exact model[\s\S]*?<\/button>/);
+  assert.equal((result.configured.match(/尚未验证/g) || []).length,1);
   assert.match(result.configured,/data-testid="video-model-unverified"/);
   assert.ok(result.configured.includes(catalogs['video.providers.unverified']['zh-Hans']));
   assert.doesNotMatch(result.environment,/data-testid="video-model-unverified"|尚未验证/);

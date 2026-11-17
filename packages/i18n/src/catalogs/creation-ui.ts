@@ -1827,71 +1827,11 @@ export const creationUiMessages = {
     "en": "items",
     "ja": "個"
   },
-  "generation.inputs.runwayRegionMeaning": {
-    "zh-Hans": "固定 Runway API 端点标签，不代表数据驻留保证",
-    "zh-Hant": "固定 Runway API 端點標籤，不代表資料駐留保證",
-    "en": "Fixed Runway API endpoint label; not a data residency guarantee",
-    "ja": "固定の Runway API エンドポイントのラベルです。データ保管地域を保証しません"
-  },
-  "generation.inputs.arkRegionMeaning": {
-    "zh-Hans": "固定中国大陆方舟 API 端点",
-    "zh-Hant": "固定中國大陸方舟 API 端點",
-    "en": "Fixed mainland China Ark API endpoint",
-    "ja": "中国本土の固定 Ark API エンドポイント"
-  },
-  "generation.inputs.veoRegionMeaning": {
-    "zh-Hans": "Gemini Developer API，不是 Vertex AI；不代表数据驻留保证",
-    "zh-Hant": "Gemini Developer API，並非 Vertex AI；不代表資料駐留保證",
-    "en": "Gemini Developer API, not Vertex AI; not a data residency guarantee",
-    "ja": "Vertex AI ではなく Gemini Developer API です。データ保管地域を保証しません"
-  },
-  "generation.inputs.configuredRegionMeaning": {
-    "zh-Hans": "由服务器明确配置，账号和密钥须与 API 区域匹配",
-    "zh-Hant": "由伺服器明確設定，帳戶與密鑰須符合 API 區域",
-    "en": "Explicitly configured by the server; account and key must match the API region",
-    "ja": "サーバーで明示的に設定されます。アカウントとキーは API の地域に対応している必要があります"
-  },
-  "generation.inputs.mockRegionMeaning": {
-    "zh-Hans": "本地模拟，不调用外部服务",
-    "zh-Hant": "本機模擬，不呼叫外部服務",
-    "en": "Local simulation; no external service calls",
-    "ja": "ローカルシミュレーション。外部サービスは呼び出しません"
-  },
-  "generation.inputs.unknownRegionMeaning": {
-    "zh-Hans": "API 配置标签，不代表数据驻留保证",
-    "zh-Hant": "API 設定標籤，不代表資料駐留保證",
-    "en": "API configuration label; not a data residency guarantee",
-    "ja": "API 設定のラベルです。データ保管地域を保証しません"
-  },
-  "generation.inputs.unconfirmedCount": {
-    "zh-Hans": "数量未确认",
-    "zh-Hant": "數量尚未確認",
-    "en": "Count unconfirmed",
-    "ja": "数量未確認"
-  },
-  "generation.inputs.roleLimitsUnavailable": {
-    "zh-Hans": "尚未取得此模型的角色限制，请刷新服务商信息后核对",
-    "zh-Hant": "尚未取得此模型的角色限制，請重新整理服務商資訊後核對",
-    "en": "Role limits for this model are not available yet. Refresh provider information and check again",
-    "ja": "このモデルの参照用途ごとの制限をまだ取得できていません。プロバイダー情報を更新して確認してください"
-  },
-  "generation.inputs.roleNotImplemented": {
-    "zh-Hans": "Mioon 当前适配器未接入此角色，尚无对应的生成输入映射",
-    "zh-Hant": "Mioon 目前的適配器尚未接入此角色，沒有對應的生成輸入映射",
-    "en": "The current Mioon adapter does not implement this role or a corresponding generation-input mapping",
-    "ja": "現在の Mioon アダプターはこの参照用途に未対応で、対応する生成入力のマッピングもありません"
-  },
   "generation.inputs.formats": {
     "zh-Hans": "格式：{value}",
     "zh-Hant": "格式：{value}",
     "en": "Formats: {value}",
     "ja": "形式：{value}"
-  },
-  "generation.inputs.undeclared": {
-    "zh-Hans": "未声明",
-    "zh-Hant": "未宣告",
-    "en": "Not declared",
-    "ja": "未定義"
   },
   "generation.inputs.singleFile": {
     "zh-Hans": "单张文件：{value}",
@@ -1904,12 +1844,6 @@ export const creationUiMessages = {
     "zh-Hant": "最多 {value}",
     "en": "Up to {value}",
     "ja": "最大 {value}"
-  },
-  "generation.inputs.sizeLimitUndeclared": {
-    "zh-Hans": "大小上限未声明",
-    "zh-Hant": "未宣告大小上限",
-    "en": "Size limit not declared",
-    "ja": "サイズ上限は未定義"
   },
   "generation.inputs.dataUriLimit": {
     "zh-Hans": "编码后 data URI：最多 {value}",
@@ -1959,53 +1893,17 @@ export const creationUiMessages = {
     "en": "Aspect ratio at most {maxAspectRatio}",
     "ja": "アスペクト比は{maxAspectRatio}以下"
   },
-  "generation.inputs.dimensionsUndeclared": {
-    "zh-Hans": "此适配配置未声明像素范围",
-    "zh-Hant": "此適配設定未宣告像素範圍",
-    "en": "This adapter profile does not declare pixel bounds",
-    "ja": "このアダプタープロファイルではピクセル範囲が定義されていません"
-  },
-  "generation.inputs.adapterScope": {
-    "zh-Hans": "Mioon 当前适配器的已接入范围；不代表服务商全部能力",
-    "zh-Hant": "Mioon 目前適配器已接入的範圍，不代表服務商的全部能力",
-    "en": "Scope implemented by the current Mioon adapter, not the provider’s full capabilities",
-    "ja": "現在の Mioon アダプターで実装されている範囲です。プロバイダーのすべての機能を示すものではありません"
-  },
   "generation.inputs.totalReferences": {
-    "zh-Hans": "总参考图：{minReferences}–{maxReferences} 张。{value}{value2}",
-    "zh-Hant": "參考圖總數：{minReferences}–{maxReferences} 張。{value}{value2}",
-    "en": "Total reference images: {minReferences}–{maxReferences}. {value} {value2}",
-    "ja": "参照画像の合計：{minReferences}–{maxReferences}枚。{value}{value2}"
-  },
-  "generation.inputs.firstLastCombination": {
-    "zh-Hans": "支持单张首帧，或一张首帧加一张尾帧；尾帧不能单独提交",
-    "zh-Hant": "支援單張首影格，或一張首影格加一張尾影格；尾影格不能單獨提交",
-    "en": "Supports one first frame, or one first frame plus one last frame. A last frame cannot be submitted alone",
-    "ja": "開始フレーム1枚、または開始フレーム1枚と終了フレーム1枚に対応します。終了フレームだけでは送信できません"
-  },
-  "generation.inputs.firstFrameOnly": {
-    "zh-Hans": "只接入单张首帧，不组合多个参考角色",
-    "zh-Hant": "僅接入單張首影格，不組合多個參考角色",
-    "en": "Only one first frame is implemented; multiple reference roles are not combined",
-    "ja": "開始フレーム1枚のみに対応し、複数の参照用途は組み合わせません"
-  },
-  "generation.inputs.fixedSubjectAlternative": {
-    "zh-Hans": "另支持单张固定主体图片；不能与首帧、尾帧或连线组合",
-    "zh-Hant": "另支援單張固定主體圖片；不能與首影格、尾影格或連線組合",
-    "en": "Also supports one fixed subject image, which cannot be combined with first frames, last frames, or connections",
-    "ja": "固定された被写体画像1枚にも対応します。開始フレーム、終了フレーム、接続との併用はできません"
+    "zh-Hans": "参考图总数：{minReferences}–{maxReferences} 张",
+    "zh-Hant": "參考圖總數：{minReferences}–{maxReferences} 張",
+    "en": "References: {minReferences}–{maxReferences} images",
+    "ja": "参照画像：{minReferences}～{maxReferences}枚"
   },
   "generation.inputs.roleLimitsAria": {
     "zh-Hans": "各参考角色的数量与限制",
     "zh-Hant": "各參考角色的數量與限制",
     "en": "Counts and limits for each reference role",
     "ja": "参照用途ごとの数量と制限"
-  },
-  "generation.inputs.planningNotGeneration": {
-    "zh-Hans": "主体与风格的策划关联不会自动作为生成输入。角色、产品或场景图片须在镜头属性中明确选择本次固定版本；此入口仅接入 Mock 与 Ark 的 doubao-seedance-2-5-260628。风格仍仅供策划。首帧仍由现有参考图选择或首帧连接提供。尾帧在镜头属性中单独保存；首尾帧组合仅接入 Ark 与 Mock，同一素材不可同时作为首尾帧（当前应用限制）",
-    "zh-Hant": "主體與風格的策劃關聯不會自動成為生成輸入。角色、產品或場景圖片須在鏡頭屬性中明確選擇此次的固定版本；此入口僅接入 Mock 與 Ark 的 doubao-seedance-2-5-260628。風格仍僅供策劃。首影格仍由現有參考圖選擇或首影格連線提供。尾影格在鏡頭屬性中另行儲存；首尾影格組合僅接入 Ark 與 Mock，同一素材不可同時作為首尾影格（目前應用程式的限制）",
-    "en": "Planning associations for subjects and styles do not automatically become generation inputs. Explicitly select the fixed version of a character, product, or scene image in shot properties for this request. This entry point supports only Mock and Ark’s doubao-seedance-2-5-260628. Styles remain planning-only. First frames still come from the existing reference-image selector or first-frame connections. Last frames are saved separately in shot properties. First/last combinations are implemented only for Ark and Mock; the same asset cannot serve as both (a current app limitation)",
-    "ja": "被写体やスタイルの企画上の関連付けは、自動で生成入力にはなりません。人物、製品、シーンの画像は、ショットのプロパティで今回使用する固定バージョンを明示的に選択してください。この入口は Mock と Ark の doubao-seedance-2-5-260628 のみに対応します。スタイルは引き続き企画専用です。開始フレームは既存の参照画像選択または開始フレーム接続で指定します。終了フレームはショットのプロパティで別途保存します。開始・終了フレームの組み合わせは Ark と Mock のみに対応し、同じ素材を両方に使用することはできません（現在のアプリの制限）"
   },
   "generation.inputs.adapterProfile": {
     "zh-Hans": "适配配置",
@@ -2019,35 +1917,23 @@ export const creationUiMessages = {
     "en": "Profile review",
     "ja": "設定の確認"
   },
-  "generation.inputs.reviewDateUnavailable": {
-    "zh-Hans": "未提供核查日期",
-    "zh-Hant": "未提供核查日期",
-    "en": "No review date provided",
-    "ja": "確認日が提供されていません"
-  },
   "generation.inputs.serverEvaluation": {
     "zh-Hans": "服务端评估",
     "zh-Hant": "伺服器評估",
     "en": "Server evaluation",
     "ja": "サーバー側の評価"
   },
-  "generation.inputs.notProvided": {
-    "zh-Hans": "尚未提供",
-    "zh-Hant": "尚未提供",
-    "en": "Not yet provided",
-    "ja": "未提供"
-  },
   "generation.inputs.apiRegion": {
-    "zh-Hans": "API 区域",
-    "zh-Hant": "API 區域",
-    "en": "API region",
-    "ja": "API の地域"
+    "zh-Hans": "API / 区域",
+    "zh-Hant": "API / 區域",
+    "en": "API / Region",
+    "ja": "API / 地域"
   },
   "generation.inputs.lifecycleDates": {
-    "zh-Hans": "生命周期核查：{checkedOn}；最早关闭日期：{earliestShutdownDate}。到期需重新核验该精确模型，不会自动替换模型",
-    "zh-Hant": "生命週期核查：{checkedOn}；最早關閉日期：{earliestShutdownDate}。到期須重新核驗該精確模型，不會自動替換模型",
-    "en": "Lifecycle reviewed: {checkedOn}; earliest shutdown: {earliestShutdownDate}. This exact model must be revalidated when due; it will not be replaced automatically",
-    "ja": "ライフサイクル確認日：{checkedOn}。最も早い終了日：{earliestShutdownDate}。期限にはこの正確なモデルの再検証が必要です。自動で別のモデルに変更することはありません"
+    "zh-Hans": "核查日 {checkedOn} · 最早关闭日 {earliestShutdownDate}",
+    "zh-Hant": "查核日 {checkedOn} · 最早關閉日 {earliestShutdownDate}",
+    "en": "Reviewed {checkedOn} · Earliest shutdown {earliestShutdownDate}",
+    "ja": "確認日 {checkedOn}・最も早い終了日 {earliestShutdownDate}"
   },
   "generation.inputs.providerLifecycleLink": {
     "zh-Hans": "查看服务商生命周期说明",
@@ -2056,52 +1942,16 @@ export const creationUiMessages = {
     "ja": "プロバイダーのライフサイクル情報を見る"
   },
   "generation.inputs.lifecycleBlocked": {
-    "zh-Hans": "服务端评估（{evaluatedAsOf}）：此 Veo 模型已到生命周期复核日期，已阻止新提交",
-    "zh-Hant": "伺服器評估（{evaluatedAsOf}）：此 Veo 模型已到生命週期複核日期，已阻止新的提交",
-    "en": "Server evaluation ({evaluatedAsOf}): this Veo model has reached its lifecycle review date; new submissions are blocked",
-    "ja": "サーバー評価（{evaluatedAsOf}）：この Veo モデルはライフサイクルの再確認日を迎えたため、新規送信を停止しています"
-  },
-  "generation.inputs.noModelSelected": {
-    "zh-Hans": "尚未选择模型",
-    "zh-Hant": "尚未選擇模型",
-    "en": "No model selected",
-    "ja": "モデル未選択"
-  },
-  "generation.inputs.routeSummary": {
-    "zh-Hans": "API：{value} · 区域：{value2}",
-    "zh-Hant": "API：{value} · 區域：{value2}",
-    "en": "API: {value} · Region: {value2}",
-    "ja": "API：{value} · 地域：{value2}"
-  },
-  "generation.inputs.unconfirmed": {
-    "zh-Hans": "尚未确认",
-    "zh-Hant": "尚未確認",
-    "en": "Unconfirmed",
-    "ja": "未確認"
-  },
-  "generation.inputs.referenceBrief": {
-    "zh-Hans": "Mioon 首帧 {value} · 尾帧 {value2} · 其他角色见限制",
-    "zh-Hant": "Mioon 首影格 {value} · 尾影格 {value2} · 其他角色請見限制",
-    "en": "Mioon first frame {value} · Last frame {value2} · See limits for other roles",
-    "ja": "Mioon 開始フレーム {value} · 終了フレーム {value2} · その他の参照用途は制限を確認してください"
-  },
-  "generation.inputs.notImplemented": {
-    "zh-Hans": "未接入",
-    "zh-Hant": "尚未接入",
-    "en": "Not implemented",
-    "ja": "未対応"
-  },
-  "generation.inputs.noAutomaticReplacement": {
-    "zh-Hans": "{lifecycleMessage} 不会自动替换模型",
-    "zh-Hant": "{lifecycleMessage} 不會自動替換模型",
-    "en": "{lifecycleMessage} The model will not be replaced automatically",
-    "ja": "{lifecycleMessage} 自動で別のモデルに変更することはありません"
+    "zh-Hans": "模型已到复核日期（{evaluatedAsOf}），已阻止新提交",
+    "zh-Hant": "模型已到複核日期（{evaluatedAsOf}），已阻止新送出",
+    "en": "Model review is due ({evaluatedAsOf}). New submissions are blocked",
+    "ja": "モデル再確認の期限（{evaluatedAsOf}）に達したため、新規送信を停止しています"
   },
   "generation.inputs.lifecycleWarning": {
-    "zh-Hans": "Veo 生命周期提示：最早 {earliestShutdownDate} 关闭；核查于 {checkedOn}，到期需重新核验",
-    "zh-Hant": "Veo 生命週期提示：最早於 {earliestShutdownDate} 關閉；核查日期 {checkedOn}，到期須重新核驗",
-    "en": "Veo lifecycle notice: may shut down as early as {earliestShutdownDate}; reviewed {checkedOn}. Revalidation is required when due",
-    "ja": "Veo ライフサイクルのお知らせ：最も早い終了日は{earliestShutdownDate}です。確認日は{checkedOn}で、期限には再検証が必要です"
+    "zh-Hans": "最早于 {earliestShutdownDate} 关闭 · 核查日 {checkedOn}",
+    "zh-Hant": "最早於 {earliestShutdownDate} 關閉 · 查核日 {checkedOn}",
+    "en": "Earliest shutdown {earliestShutdownDate} · Reviewed {checkedOn}",
+    "ja": "最も早い終了日 {earliestShutdownDate}・確認日 {checkedOn}"
   },
   "generation.inputs.viewLimits": {
     "zh-Hans": "查看输入限制",

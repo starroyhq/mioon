@@ -155,8 +155,8 @@ test('exact server v3 Ark and Mock accept square references independently of out
     assert.equal(settings.generationInputIssue(shot(), p, p.models[0], assets, 'subject', { subjectReference: reference() }), '');
   }
   const p = provider();
-  for (const providerId of ['runway', 'veo', 'minimax', 'vidu']) { const other = provider(providerId); assert.match(settings.subjectVideoProfileIssue(other, other.models[0]), /仅接入 Ark/); }
-  assert.match(settings.subjectVideoProfileIssue(p, `${p.models[0]}-other`), /不会自动切换/);
+  for (const providerId of ['runway', 'veo', 'minimax', 'vidu']) { const other = provider(providerId); assert.match(settings.subjectVideoProfileIssue(other, other.models[0]), /当前服务商或模型不支持主体图片输入/); }
+  assert.match(settings.subjectVideoProfileIssue(p, `${p.models[0]}-other`), /当前服务商或模型不支持主体图片输入/);
   assert.match(settings.subjectVideoProfileIssue({ ...p, inputProfiles: [] }, p.models[0]), /唯一输入配置/);
   assert.match(settings.generationInputIssue(shot(), p, p.models[0], assets, 'subject'), /明确选择/);
   assert.match(settings.generationInputIssue(shot(), p, p.models[0], [], 'subject', { subjectReference: reference() }), /已缺失/);
@@ -179,7 +179,8 @@ test('real selector requires a separate version action, uses paginated library, 
   assert.equal(props.changes[1].subjectReference.subjectVersionId, version().id);
   const pagers = h.nodes().filter((node: ElementNode) => node.type === 'SubjectPager');
   pagers[0].props.onPage('next'); pagers[1].props.onPage('previous'); assert.deepEqual(props.reads, ['next', 'previous']);
-  assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], 'Ark 不接受真实人脸图片');
+  assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], '人脸图片限制');
+  assert.ok(h.nodes().some(node => node.type === 'WorkbenchTooltip' && node.props.content === 'Ark 不接受真实人脸图片'));
   assert.doesNotMatch(h.text(), /Ark 不接受真实人脸图片|不进行人脸检测|仅保留在当前页面会话/);
   assert.doesNotMatch(h.text(), /保证检测所有|保证身份锁定/);
 });
@@ -201,17 +202,31 @@ test('selector hidden/returned and obsolete model, choice, project, shot callbac
 
 test('selector exposes unavailable reasons and never auto-clears saved first or tail choices', () => {
   const saved = shot({ referenceAssetIds: [asset().id], lastFrameAssetId: asset(2).id }), props = selectionProps(), h = harness('SubjectVideoSelection.tsx', { ...props, shot: saved, draft: shot() });
-  assert.equal(h.find('subject-video-enabled')!.props.disabled, true); assert.match(h.text(), /保存镜头/);
+  assert.equal(h.find('subject-video-enabled')!.props.disabled, true);
+  assert.equal(h.find('subject-video-unavailable'), undefined);
   h.find('subject-video-enabled')!.props.onCheckedChange(true); assert.deepEqual((props.changes as unknown), []);
-  h.render({ shot: shot(), draft: shot(), provider: provider('mock'), model: provider('mock').models[0] });
+  h.render({ options: { inputMode: 'subject' } });
+  assert.equal(text(h.find('subject-video-unavailable')), '主体图片不能与首帧或尾帧组合');
+  h.render({ shot: shot(), draft: shot(), provider: null, model: null });
+  assert.equal(h.find('subject-video-unavailable'), undefined, 'unselected provider is not an unsupported selection');
+  const unsupported = provider('minimax');
+  h.render({ provider: unsupported, model: unsupported.models[0], options: { inputMode: 'text' } });
+  assert.equal(h.find('subject-video-unavailable'), undefined, 'ordinary video mode does not show subject capability warnings');
+  h.render({ options: { inputMode: 'subject' } });
+  assert.equal(text(h.find('subject-video-unavailable')), '当前服务商或模型不支持主体图片输入');
+  assert.deepEqual((props.changes as unknown), []);
+  const mock = provider('mock');
+  h.render({ provider: mock, model: mock.models[0], options: { inputMode: 'text' } });
   h.find('subject-video-enabled')!.props.onCheckedChange(true); assert.deepEqual(props.changes, [{ inputMode: 'subject' }]);
-  assert.equal(h.find('subject-video-mock-warning')?.props['aria-label'], '模拟结果为测试图案');
+  h.render({ options: { inputMode: 'subject' } });
+  assert.equal(h.find('subject-video-mock-warning')?.props['aria-label'], '模拟生成说明');
+  assert.ok(h.nodes().some(node => node.type === 'WorkbenchTooltip' && node.props.content === '模拟结果为测试图案'));
   assert.doesNotMatch(h.text(), /模拟结果为测试图案|Mock 仅验证工作流/);
 });
 
 test('subject provenance summary shows human labels, pinned old/current versions and collapsed source identity', () => {
   const h = harness('SubjectVideoSummary.tsx', { reference: reference(), assets, latestSubject: subject(2) });
-  assert.match(h.text(), /方形产品.*固定 V1.*用户导入图片/); assert.match(h.text(), /本次仍固定 V1；主体库当前为 V2/);
+  assert.match(h.text(), /方形产品.*固定 V1.*用户导入图片/); assert.match(h.text(), /主体库已有 V2/);
   assert.equal(h.nodes().filter((node: ElementNode) => node.type === 'img').length, 1);
   const detail = h.nodes().find((node: ElementNode) => node.type === 'details'); assert.equal(detail!.props.open, undefined); assert.match(text(detail), new RegExp(version().id)); assert.match(text(detail), /1{64}/);
   h.render({ assets: [asset(1, { sha256: 'f'.repeat(64) })] }); assert.equal(h.nodes().filter((node: ElementNode) => node.type === 'img').length, 0); assert.match(h.text(), /原图暂不可用/);
@@ -356,7 +371,8 @@ test('subject selection and immutable provenance relabel live in all four locale
   for (const locale of i18n.LOCALES) {
     h.locale = locale; h.render(); summary.locale = locale; summary.render();
     assert.equal(h.find('subject-video-selection')!.props['aria-label'], i18n.translate(locale, 'subjects.video.sectionLabel'));
-    assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], i18n.renderMessage(locale, subjectVideo.ARK_SUBJECT_WARNING_MESSAGE));
+    assert.equal(h.find('subject-video-face-warning')?.props['aria-label'], i18n.translate(locale, 'subjects.video.faceInfo'));
+    assert.ok(h.nodes().some(node => node.type === 'WorkbenchTooltip' && node.props.content === i18n.renderMessage(locale, subjectVideo.ARK_SUBJECT_WARNING_MESSAGE)));
     assert.ok(summary.text().includes(i18n.translate(locale, 'subjects.source.import')));
     assert.equal(h.find('subject-video-version')!.props.value, selected!.subjectVersionId);
     assert.equal(JSON.stringify(selected), before);
@@ -369,14 +385,17 @@ test('subject selection and immutable provenance relabel live in all four locale
   assert.equal(props.changes[0].subjectReference.subjectVersionId, selected!.subjectVersionId);
 });
 
-test('subject warning tooltips are concise and reason descriptors preserve the legacy messages', () => {
+test('subject warning tooltips and blocked combinations preserve the localized reasons', () => {
   // Display catalogs intentionally omit paragraph-final periods; immutable
   // machine/legacy messages keep their internal and terminal punctuation.
   const displayLegacy = (value: string) => value.replace(/[。.]+$/u, '');
   const conflicts = [[shot(), {}], [shot(), { boundReference: true }], [shot({ referenceAssetIds: [asset().id] }), {}], [shot(), { savedShot: shot({ lastFrameAssetId: asset().id }) }]];
-  for (const [value, options] of conflicts) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoConflictDescriptor(value, (options as unknown as Parameters<typeof subjectVideo.subjectVideoConflictDescriptor>[1]))), displayLegacy(subjectVideo.subjectVideoConflictIssue(value, (options as unknown as Parameters<typeof subjectVideo.subjectVideoConflictIssue>[1]))));
+  const conflictCopy = ['', '首帧连线与主体图片不能同时使用', '主体图片不能与首帧或尾帧组合', '主体图片不能与首帧或尾帧组合'];
+  const conflictReasons = conflicts.map(([value, options]) => subjectVideo.subjectVideoConflictDescriptor(value, (options as unknown as Parameters<typeof subjectVideo.subjectVideoConflictDescriptor>[1])));
+  assert.deepEqual(conflictReasons.map(reason => i18n.renderMessage('zh-Hans', reason)), conflictCopy);
   const references:Parameters<typeof subjectVideo.subjectVideoReferenceDescriptor>[] = [[null, assets, projectId], [{}, assets, projectId], [reference(), assets, id(999)], [reference(), [], projectId], [reference(), [asset(1, { sha256: 'f'.repeat(64) })], projectId], [reference(), assets, projectId]];
-  for (const values of references) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), displayLegacy(subjectVideo.subjectVideoReferenceIssue(...values)));
+  assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...references[0]!)), '尚未选择主体图片版本');
+  for (const values of references.slice(1)) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoReferenceDescriptor(...values)), displayLegacy(subjectVideo.subjectVideoReferenceIssue(...values)));
   for (const provenance of [null, { kind: 'user-import' }, { kind: 'extracted-frame' }, { kind: 'synthetic-mock' }, { kind: 'generated', imageSource: {} }, { kind: 'generated' }, { kind: 'export' }, { kind: 'future-kind' }]) assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.subjectVideoSourceDescriptor(({ provenance } as unknown as Parameters<typeof subjectVideo.subjectVideoSourceDescriptor>[0]))), displayLegacy(subjectVideo.subjectVideoSourceLabel(({ provenance } as unknown as Parameters<typeof subjectVideo.subjectVideoSourceLabel>[0]))));
   assert.equal(i18n.renderMessage('zh-Hans', subjectVideo.ARK_SUBJECT_WARNING_MESSAGE), 'Ark 不接受真实人脸图片');
   assert.match(subjectVideo.ARK_SUBJECT_WARNING, /不进行人脸检测/);

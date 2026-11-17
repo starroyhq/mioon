@@ -336,7 +336,7 @@ test('format 4 regeneration submits the reviewed frame only if it survives cance
 test('a shot without a generation service offers settings and cannot generate', async () => {
   const opened: string[] = [];
   const h = harness({providers: [], generationOptions: {}, configureGeneration: () => {opened.push('models');}});
-  assert.match(text(h.find('video-generation-no-service')), /请先在设置里配置并启用/u);
+  assert.match(text(h.find('video-generation-no-service')), /^暂无可用的生成服务打开生成服务设置$/u);
   assert.equal(h.find('generate-shot')!.props.disabled, true);
   await h.click('generate-shot');
   assert.deepEqual(h.generated, []);
@@ -403,6 +403,33 @@ test('configured Inspector saves and paid reviews cannot submit stale connection
   }
 });
 
+test('only a failed connection directory announces an error and offers a guarded retry', () => {
+  const minimax = {...provider('minimax'), connectionId: id(22)};
+  const h = harness({ providers: [minimax], generationOptions: {} });
+  assert.equal(h.find('generation-issue'), undefined);
+  assert.equal(h.find('video-generation-directory-error'), undefined);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  let retries = 0;
+  h.render({ videoDirectoryUnavailable: true, onRetryVideoDirectory: () => { retries++; } });
+  assert.match(text(h.find('video-generation-directory-error')), /无法读取视频连接列表/);
+  assert.match(text(h.find('video-generation-directory-retry')), /重试/);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  const retry = h.find('video-generation-directory-retry')!.props.onClick;
+  retry(); assert.equal(retries, 1);
+  h.visible = false; h.render(); retry(); assert.equal(retries, 1);
+  h.visible = true; h.render({ videoDirectoryUnavailable: false });
+  assert.equal(h.find('video-generation-directory-error'), undefined);
+});
+
+test('active subject mode leaves its model capability reason in the subject controls', () => {
+  const minimax = provider('minimax');
+  const h = harness({ shot: shot({referenceAssetIds: []}), providers: [minimax], generationOptions: { providerId: minimax.id, model: minimax.models[0], inputMode: 'subject' } });
+  assert.ok(h.find('generation-issue'));
+  h.render({subjects: {state: null, controller: {}} as unknown as VideoProps['subjects']});
+  assert.equal(h.find('generation-issue'), undefined);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+});
+
 test('tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics', async () => {
   const legacy = harness(); legacy.edit('shot-prompt', 'Updated'); await legacy.click('save-shot');
   assert.equal(Object.hasOwn(legacy.saves[0].draft, 'lastFrameAssetId'), false);
@@ -457,9 +484,24 @@ test('tail-only and same-image drafts remain saveable but cannot submit; provide
   assert.match((h.find('generation-issue') && text(h.find('generation-issue')))!, /尾帧必须与一张首帧/);
   assert.equal(h.find('generate-shot')!.props.disabled, true); assert.equal(Boolean(h.find('save-shot')!.props.disabled), false);
   await h.click('save-shot'); assert.equal(h.saves[0].draft.lastFrameAssetId, tailId); assert.deepEqual((h.saves[0].draft.referenceAssetIds as unknown), []);
-  const pair = harness({ shot: shot({ lastFrameAssetId: firstId }) }); assert.match(text(pair.find('generation-issue')), /不同素材.*当前应用限制/);
+  const pair = harness({ shot: shot({ lastFrameAssetId: firstId }) }); assert.match(text(pair.find('generation-issue')), /首尾帧须使用不同素材/);
   const unsupported = provider('runway'); pair.render({ shot: shot({ lastFrameAssetId: tailId }), providers: [unsupported], generationOptions: { providerId: unsupported.id, model: unsupported.models[0], inputMode: 'text' } });
   assert.ok(pair.find('video-last-frame-controls')); assert.equal(pair.find('generate-shot')!.props.disabled, true);
+  const minimax = provider('minimax');
+  const minimaxOptions = { providerId: minimax.id, model: minimax.models[0] };
+  const supportedUse = harness({ providers: [minimax], generationOptions: minimaxOptions });
+  assert.equal(supportedUse.find('last-frame-issue'), undefined);
+  const invalidTail = harness({ shot: shot({lastFrameAssetId: tailId}), providers: [minimax], generationOptions: minimaxOptions });
+  assert.equal(text(invalidTail.find('last-frame-issue')), '所选模型不支持尾帧');
+  assert.equal(invalidTail.find('generation-issue'), undefined);
+  assert.equal(invalidTail.find('generate-shot')!.props.disabled, true);
+  assert.ok(invalidTail.find('clear-last-frame'));
+  assert.match(text(invalidTail.find('selected-last-frame-label')), /暮色尾帧/);
+  invalidTail.render({assets: assets.filter(asset => asset.id !== firstId)});
+  assert.match(text(invalidTail.find('generation-issue')), /参考素材缺失/);
+  invalidTail.render({providers: [{...minimax, status: 'disabled'}]});
+  assert.match(text(invalidTail.find('generation-issue')), /未启用/);
+
 });
 
 test('text mode explicitly confirms clearing both frames and never invents null for old first-only shots', async () => {

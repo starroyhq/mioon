@@ -11,13 +11,6 @@
     {
       "file": "apps/web/src/AssetLibrary.tsx",
       "category": "visible-jsx",
-      "hash": "3d58fa5abb4028f92a0f0ef0ba59673cf63947c91343bfb1f0cdbf340d77de40",
-      "owner": "shell",
-      "reason": "Recognized media file-format identifiers in supported-format help; these technical format names are unchanged across locales."
-    },
-    {
-      "file": "apps/web/src/AssetLibrary.tsx",
-      "category": "visible-jsx",
       "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
       "owner": "shell",
       "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."

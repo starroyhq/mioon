@@ -369,10 +369,15 @@ test('library composition retains both panes and never changes source/range sele
   }
   assert.match(componentSources[0], /subjects.binding.heading/);
   assert.equal(subjectsMessages['subjects.binding.heading']['zh-Hans'], '策划关联此主体的镜头');
-  assert.match(componentSources[0], /subjects.version.retained/);
-  assert.match(subjectsMessages['subjects.version.retained']['zh-Hans'], /策划关联的镜头需要逐个确认新版本/);
+  assert.doesNotMatch(componentSources[0], /subjects.version.retained/);
+  assert.match(componentSources[1], /subjects.binding.reviewSummary/);
   assert.match(componentSources[0], /subjects.binding.noneLoaded/);
-  assert.match(subjectsMessages['subjects.binding.noneLoaded']['zh-Hans'], /已读取的策划关联中没有镜头/);
+  assert.equal(subjectsMessages['subjects.binding.noneLoaded']['zh-Hans'], '暂无关联镜头');
+  const pager = harness('SubjectLibrary.tsx');
+  const renderPage = (history: (string | null)[], nextCursor: string | null) => pager.render({ entry: { items: [], history, nextCursor }, onPage: assert.fail }, 'SubjectPager');
+  assert.deepEqual(renderPage([], null), []);
+  assert.match(text(renderPage([], 'more').find(node => node.props.role === 'status')), /第 1 页/);
+  assert.match(text(renderPage([null], null).find(node => node.props.role === 'status')), /第 2 页/);
   assert.doesNotMatch(componentSources[0], /使用此主体的镜头|使用中的镜头/);
   const components = componentSources.join('\n');
   assert.doesNotMatch(components, /generation\.submit|asset\.import|<video|<Dialog|referenceAssetIds\s*=/);
@@ -520,7 +525,8 @@ test('the properties pane shows read-only basics, default and variant labels, an
   let tree = h.render(props());
   assert.ok(byId(tree, 'subject-inspector'));
   assert.equal(tree.some((node: ElementNode) => ['Input', 'WorkbenchSelect', 'Textarea'].includes(String(node.type))), false, 'name and type are read-only');
-  assert.match(text(tree), new RegExp(subjectsMessages['subjects.inspector.readOnly']['zh-Hans']));
+  assert.ok(tree.some(node => node.props.title === subjectsMessages['subjects.inspector.basics']['zh-Hans']));
+  assert.doesNotMatch(text(tree), /名称和类型创建后不能修改/);
   const label = (n: number) => text(tree.find((node: ElementNode) => node.props?.role === 'listitem' && node.props?.key === versionId(n)));
   assert.match(label(1), new RegExp(subjectsMessages['subjects.origin.import']['zh-Hans']), 'an ordinary version shows its origin, never an angle');
   assert.match(label(2), new RegExp(subjectsMessages['subjects.inspector.defaultVersion']['zh-Hans']));
@@ -540,7 +546,9 @@ test('the properties pane shows read-only basics, default and variant labels, an
   const use = byId(tree, `subject-use-${id(6)}`)!;
   assert.equal(text(use), '02Neon close-upV3 · 左前 · 广角');
   (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);
-  assert.ok(deep(tree).some(node => node.props?.['aria-label'] === subjectsMessages['subjects.library.planningNote']['zh-Hans']));
+  const planning = deep(tree).find(node => node.type === 'WorkbenchTooltip' && node.props.content === subjectsMessages['subjects.library.planningNote']['zh-Hans']);
+  assert.ok(planning);
+  assert.ok(nodes(planning).some(node => node.props['aria-label'] === i18nTestModule().useI18n().t('shell.details')));
   assert.doesNotMatch(text(tree), /生成时需另选主体版本/);
   // Hidden panes reject retained callbacks.
   h.visible = false; h.render(props()); (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);

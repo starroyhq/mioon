@@ -3010,10 +3010,10 @@ const shellCoreMessages = {
     "ja": "朝もやの中をゆっくり寄る"
   },
   "inspector.textSaveOrder": {
-    "zh-Hans": "请先保存标题和提示词或处理文字恢复记录，再保存其余参考图和生成参数。完整“保存修改”不会跳过文字修改",
-    "zh-Hant": "請先儲存標題與提示詞或處理文字還原記錄，再儲存其餘參考圖與生成參數。完整的「儲存修改」不會跳過文字修改",
-    "en": "Save the title and prompt or resolve text recovery records before saving other references and generation settings. Save changes does not bypass text edits",
-    "ja": "タイトルとプロンプトを保存するか、テキストの復元記録を処理してから、他の参照画像や生成設定を保存してください。「変更を保存」でテキストの変更を飛ばすことはできません"
+    "zh-Hans": "镜头文字保存待处理",
+    "zh-Hant": "鏡頭文字儲存待處理",
+    "en": "Shot text needs attention",
+    "ja": "ショットのテキスト保存が保留中です"
   },
   "inspector.generationMode": {
     "zh-Hans": "生成方式",
@@ -3028,10 +3028,10 @@ const shellCoreMessages = {
     "ja": "・非対応"
   },
   "inspector.referencePending": {
-    "zh-Hans": "首帧连接操作结果待确认。请在任务面板恢复同一请求，再保存或生成",
-    "zh-Hant": "首幀連線操作的結果待確認。請在工作面板還原同一請求，再儲存或生成",
-    "en": "The first-frame connection result awaits confirmation. Restore that same request in the task panel before saving or generating",
-    "ja": "開始フレーム接続の操作結果は確認待ちです。タスクパネルで同じリクエストを復元してから保存や生成を行ってください"
+    "zh-Hans": "首帧连接结果待确认",
+    "zh-Hant": "首幀連線結果待確認",
+    "en": "First-frame link is unconfirmed",
+    "ja": "先頭フレームのリンク結果は未確認です"
   },
   "inspector.openTasks": {
     "zh-Hans": "打开任务",
@@ -3062,12 +3062,6 @@ const shellCoreMessages = {
     "zh-Hant": "清除手動參考圖選擇",
     "en": "Clear manual reference selection",
     "ja": "手動の参照画像選択をクリア"
-  },
-  "inspector.boundReferenceHint": {
-    "zh-Hans": "首帧由连线指定",
-    "zh-Hant": "首幀由連線指定",
-    "en": "First frame is linked",
-    "ja": "先頭フレームはリンクで指定されています"
   },
   "inspector.firstFrameImage": {
     "zh-Hans": "首帧图片",
@@ -3172,10 +3166,10 @@ const shellCoreMessages = {
     "ja": "非対応のパラメーターをクリア"
   },
   "inspector.billingUnknown": {
-    "zh-Hans": "服务商可能已接受任务并计费。先核实状态，不要重复提交",
-    "zh-Hant": "服務商可能已接受工作並計費。請先核實狀態，不要重複提交",
-    "en": "The provider may have accepted and billed the task. Verify its status first; do not submit again",
-    "ja": "サービス提供元がタスクを受理し、課金済みの可能性があります。まず状態を確認し、重複送信しないでください"
+    "zh-Hans": "费用待确认",
+    "zh-Hant": "費用待確認",
+    "en": "Charges unconfirmed",
+    "ja": "料金は未確認です"
   },
   "inspector.saveTextFirst": {
     "zh-Hans": "先点上方“保存标题和提示词”，再生成镜头",
@@ -3297,18 +3291,6 @@ const shellCoreMessages = {
     "en": "Subjects",
     "ja": "被写体"
   },
-  "assets.inspectEditHint": {
-    "zh-Hans": "点击卡片查看源素材 · 拖到时间线编排",
-    "zh-Hant": "點選卡片檢視來源素材 · 拖曳至時間軸編排",
-    "en": "Click a card to inspect its source · Drag to the timeline to arrange",
-    "ja": "カードをクリックしてソースを確認・タイムラインにドラッグして構成"
-  },
-  "assets.inspectCanvasHint": {
-    "zh-Hans": "点击卡片快速预览 · 拖到画板构思",
-    "zh-Hant": "點選卡片快速預覽 · 拖曳至畫板構思",
-    "en": "Click a card to preview · Drag to the canvas to plan",
-    "ja": "カードをクリックしてプレビュー・キャンバスにドラッグして構想"
-  },
   "assets.importing": {
     "zh-Hans": "正在导入…",
     "zh-Hant": "正在匯入…",
@@ -3320,18 +3302,6 @@ const shellCoreMessages = {
     "zh-Hant": "匯入圖片／影片／音訊",
     "en": "Import images / video / audio",
     "ja": "画像・動画・音声を読み込む"
-  },
-  "assets.editHint": {
-    "zh-Hans": "点击查看源素材 · 拖到时间线编排",
-    "zh-Hant": "點選以檢視來源素材 · 拖曳至時間軸編排",
-    "en": "Click to inspect source · Drag to the timeline to arrange",
-    "ja": "クリックしてソースを確認・タイムラインにドラッグして構成"
-  },
-  "assets.canvasHint": {
-    "zh-Hans": "点击快速预览 · 拖到画板构思",
-    "zh-Hant": "點選以快速預覽 · 拖曳至畫板構思",
-    "en": "Click to preview · Drag to the canvas to plan",
-    "ja": "クリックしてプレビュー・キャンバスにドラッグして構想"
   },
   "assets.search": {
     "zh-Hans": "搜索素材",
@@ -3472,28 +3442,10 @@ const shellCoreMessages = {
     "ja": "一致する素材がありません"
   },
   "assets.emptyTitle": {
-    "zh-Hans": "故事，从素材开始",
-    "zh-Hant": "故事，從素材開始",
-    "en": "Stories start with assets",
-    "ja": "素材からストーリーを始める"
-  },
-  "assets.filterHint": {
-    "zh-Hans": "试试其他筛选，或重置全部筛选",
-    "zh-Hant": "試試其他篩選，或重設全部篩選",
-    "en": "Try different filters or reset them all",
-    "ja": "別の条件で絞り込むか、すべてのフィルターをリセットしてください"
-  },
-  "assets.emptyHint": {
-    "zh-Hans": "拖入本地素材，或点击上方导入",
-    "zh-Hant": "拖入本機素材，或點選上方匯入",
-    "en": "Drop local assets here or click Import above",
-    "ja": "ローカル素材をドラッグするか、上の読み込みボタンをクリックしてください"
-  },
-  "assets.localOnly": {
-    "zh-Hans": "导入仅保存在本地",
-    "zh-Hant": "匯入僅儲存在本機",
-    "en": "Imports are saved locally only",
-    "ja": "読み込んだ素材はローカルにのみ保存します"
+    "zh-Hans": "暂无素材",
+    "zh-Hant": "暫無素材",
+    "en": "No assets yet",
+    "ja": "素材はまだありません"
   },
   "assets.loadingSummary": {
     "zh-Hans": "已加载 {count} · 已读 {read}",

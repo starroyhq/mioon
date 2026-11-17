@@ -17,7 +17,7 @@ const roleLabel = (role: string, t: Translate): string => role === 'first_frame'
 export function VideoFrameSummary({ shot, assets = [], frozen = false, compact = false }: {shot?: GenerationShot; assets?: readonly GenerationAsset[]; frozen?: boolean; compact?: boolean}) {
   const { t } = useI18n();
   const references = generationReferencePreview(shot || {}, assets, { frozen });
-  if (!references.length) return <p className="input-hint" data-testid="video-frame-summary-empty">{t('timeline.references.none')}</p>;
+  if (!references.length) return null;
   return <div className={`video-frame-summary ${compact ? 'compact' : ''}`} data-testid="video-frame-summary" aria-label={t('timeline.references.all')}>
     {references.map((reference, index) => <div className="video-frame-summary-item" key={`${reference.role}:${reference.assetId}:${index}`} data-testid={`video-frame-summary-${reference.role}`}>
       {reference.asset ? <ProjectMediaImage asset={reference.asset} src={assetUrl(reference.asset)} alt={t('timeline.references.alt', { role: roleLabel(reference.role, t), name: reference.name || t('timeline.references.unnamedImage') })} /> : <span className="video-frame-thumbnail-missing">{t('timeline.references.unavailable')}</span>}
@@ -30,16 +30,16 @@ export function VideoFrameSummary({ shot, assets = [], frozen = false, compact =
 
 export interface VideoFrameDraft {lastFrameAssetId?: string | null; [key: string]: unknown}
 type FrameAssetWithId = GenerationAsset & {id: string; name: string};
-export default function VideoFrameControls({ draft, assets, disabled, onChoose, onClear }: {
-  draft: VideoFrameDraft; assets: readonly FrameAssetWithId[]; disabled?: boolean; onChoose: (assetId: string) => void; onClear: () => void;
+export default function VideoFrameControls({ draft, assets, disabled, issue, onChoose, onClear }: {
+  draft: VideoFrameDraft; assets: readonly FrameAssetWithId[]; disabled?: boolean; issue?: string | null; onChoose: (assetId: string) => void; onClear: () => void;
 }) {
   const { t } = useI18n();
+  if (!assets.length && !draft.lastFrameAssetId && !issue) return null;
   const selected = assets.find(asset => asset.id === draft.lastFrameAssetId);
   return <section className="video-last-frame" aria-label={t('timeline.references.last')} data-testid="video-last-frame-controls">
-    <div className="field-label"><span>{t('timeline.references.last')}</span><span className="optional">{t('timeline.references.optional', { count: draft.lastFrameAssetId ? 1 : 0 })}</span></div>
-    <p className="input-hint">{t('timeline.references.restriction')}</p>
-    <div className="reference-grid">{assets.map(asset => <Button variant="ghost" size="sm" key={asset.id} title={asset.name} className={`reference-choice ${draft.lastFrameAssetId === asset.id ? 'selected' : ''}`} data-testid={`last-frame-choice-${asset.id}`} aria-label={t('timeline.references.lastAria', { name: asset.name })} aria-pressed={draft.lastFrameAssetId === asset.id} disabled={disabled} onClick={() => onChoose(asset.id)}><ProjectMediaImage asset={asset} src={assetUrl(asset)} alt={asset.name} />{draft.lastFrameAssetId === asset.id && <span><Icon name="check" size={11} /></span>}</Button>)}</div>
-    {!assets.length && <p className="reference-empty">{t('timeline.references.import')}</p>}
+    <div className="field-label">{t('timeline.references.last')}</div>
+    {assets.length > 0 && <div className="reference-grid">{assets.map(asset => <Button variant="ghost" size="sm" key={asset.id} title={asset.name} className={`reference-choice ${draft.lastFrameAssetId === asset.id ? 'selected' : ''}`} data-testid={`last-frame-choice-${asset.id}`} aria-label={t('timeline.references.lastAria', { name: asset.name })} aria-pressed={draft.lastFrameAssetId === asset.id} disabled={disabled} onClick={() => onChoose(asset.id)}><ProjectMediaImage asset={asset} src={assetUrl(asset)} alt={asset.name} />{draft.lastFrameAssetId === asset.id && <span><Icon name="check" size={11} /></span>}</Button>)}</div>}
+    {issue && <p className="capability-issue" role="status" data-testid="last-frame-issue">{issue}</p>}
     {draft.lastFrameAssetId && <><p className="input-hint" data-testid="selected-last-frame-label">{t('timeline.references.selected', { name: selected?.name || t('timeline.references.missing') })}</p><Button variant="ghost" size="sm" className="text-button" data-testid="clear-last-frame" disabled={disabled} onClick={onClear}>{t('timeline.references.clear')}</Button></>}
   </section>;
 }

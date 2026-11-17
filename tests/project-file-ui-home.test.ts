@@ -232,7 +232,7 @@ test('12-02 new project: name checks, path preview, creating, exists and web', (
   const invalid = html('12-02-invalid-name');
   assert.equal(disabled(tagOf(invalid, 'pf-create-submit')), true);
   assert.ok(invalid.includes(text('projectFile.create.nameInvalid')));
-  assert.ok(html('12-02').includes(text('projectFile.create.willCreateInFolder', { path: '~/Movies/Mioon/未命名项目/未命名项目.mioon' })));
+  assert.ok(html('12-02').includes(text('projectFile.create.willCreate', { path: '~/Movies/Mioon/未命名项目/未命名项目.mioon' })));
   const flat = html('12-02-no-folder');
   assert.ok(flat.includes(text('projectFile.create.willCreate', { path: '~/Movies/Mioon/未命名项目.mioon' })));
   assert.doesNotMatch(flat, /未命名项目\/未命名项目\.mioon/u);
@@ -478,7 +478,11 @@ test('12-02b shows only supplied location facts, blocks network/unknown location
     for (const status of ['checking', 'unavailable']) {
       const page = controlled.render('create', {...newProjectProps, location: {...newProjectProps.location, status}}, locale);
       assert.ok(tagOf(page, `pf-create-location-${status}`)); assert.equal(disabled(tagOf(page, 'pf-create-submit')), true);
+      assert.equal(tagOf(page, 'pf-create-preview'), null);
     }
+    const unselected = controlled.render('create', {...newProjectProps, location: {display: '', status: 'unselected'}}, locale);
+    assert.equal(disabled(tagOf(unselected, 'pf-create-submit')), true);
+    assert.equal(tagOf(unselected, 'pf-create-preview'), null);
     const fixedFolder = controlled.render('create', {...newProjectProps, folderMode: 'always', values: {...newProjectProps.values, createFolder: false}}, locale);
     assert.equal(disabled(tagOf(fixedFolder, 'pf-create-folder')), true);
     assert.match(tagOf(fixedFolder, 'pf-create-folder')!, /checked=""/u);
@@ -495,6 +499,7 @@ test('format 4 native creation keeps the name and save location without a direct
   for (const locale of LOCALES) {
     const format3 = controlled.render('create', {...newProjectProps, newProjectFormatVersion: 3}, locale);
     assert.ok(tagOf(format3, 'pf-create-description'));
+    assert.match(tagOf(format3, 'pf-create-description') ?? '', new RegExp(`placeholder="${escapeHtml(translate(locale, 'projects.directionPlaceholder'))}"`, 'u'));
     for (const id of ['portrait_1080', 'landscape_1080', 'square_1080']) assert.ok(tagOf(format3, 'pf-create-preset-' + id));
     const format4 = controlled.render('create', {
       ...newProjectProps, newProjectFormatVersion: 4,
