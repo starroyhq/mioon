@@ -214,10 +214,14 @@ export async function installedTypeScript(root: string): Promise<{readonly versi
 export async function typecheckCommands(root: string, execPath: string = process.execPath): Promise<CommandSpec[]> {
   await verifySourceLanguages(root);
   const compiler = await installedTypeScript(root);
-  // The complete strict tests project exceeds Node's default heap on Linux.
-  // Keep the compiler budget fixed and local rather than accepting NODE_OPTIONS.
-  return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'].map(project => ({
-    command: execPath, args: ['--max-old-space-size=4096', compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
+  // The complete tests project reaches the 4 GiB heap boundary. Each compiler
+  // has a fixed local budget, independent of caller-provided NODE_OPTIONS.
+  return ([
+    ['tests/typecheck/tsconfig.foundation.json', 4096],
+    ['tests/typecheck/tsconfig.browser.json', 4096],
+    ['tests/tsconfig.tests.json', 5120],
+  ] as const).map(([project, heap]) => ({
+    command: execPath, args: [`--max-old-space-size=${heap}`, compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
   }));
 }
 

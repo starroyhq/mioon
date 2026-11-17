@@ -61,7 +61,7 @@ test('local TypeScript requires the exact declared metadata and reviewed JavaScr
   const {directory} = await fixture(t);
   assert.deepEqual(await installedTypeScript(directory), {version, entry: path.join(directory, 'node_modules/typescript/lib/tsc.js')});
   assert.deepEqual(await typecheckCommands(directory), projects.map(project => ({command: process.execPath,
-    args: ['--max-old-space-size=4096', path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
+    args: [`--max-old-space-size=${project === 'tests/tsconfig.tests.json' ? 5120 : 4096}`, path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
 });
 
 test('normal pnpm package links remain within the repository and use the canonical compiler entry', async t => {
@@ -216,9 +216,10 @@ test('actual compiler children use a fixed bounded heap without caller-provided 
   const rows = result.stdout.trim().split('\n').map(line => JSON.parse(line) as {project: string; execArgv: string[]; heap: number});
   assert.deepEqual(rows.map(row => row.project), projects);
   for (const row of rows) {
-    assert.deepEqual(row.execArgv, ['--max-old-space-size=4096']);
+    const budget = row.project === 'tests/tsconfig.tests.json' ? 5120 : 4096;
+    assert.deepEqual(row.execArgv, [`--max-old-space-size=${budget}`]);
     // V8 adds platform-dependent young-generation headroom to the old-space cap.
-    assert.ok(row.heap >= 4096 * 1024 * 1024 && row.heap <= 4608 * 1024 * 1024, `compiler heap: ${row.heap}`);
+    assert.ok(row.heap >= budget * 1024 * 1024 && row.heap <= (budget + 512) * 1024 * 1024, `compiler heap: ${row.heap}`);
   }
 });
 

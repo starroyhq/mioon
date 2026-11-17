@@ -8,6 +8,7 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 
 - 固定 Node **24.21.0**、pnpm **11.25.0**，执行 `pnpm install --frozen-lockfile`，缓存 pnpm store
 - 独立 Ubuntu 22.04 source job 执行一次 actionlint 和 development Web/桌面暂存构建；构建入口包含源码与 CI 辅助代码的严格 TypeScript 检查，保留桌面暂存替换前的内部类型检查
+- 类型检查子进程固定使用源码/浏览器各 4 GiB、完整测试项目 5 GiB 的堆预算，由受信工具入口指定
 - 一个独立 Ubuntu 22.04 准备 job 恢复精确构建缓存；未命中时从固定源码镜像构建 CI 专用 FFmpeg **7.1.5**。验证工具文件、版本、所需滤镜、编码器及命令参数后，才保存缓存并上传本轮 artifact
 - 八个独立 Ubuntu 22.04 测试 job 安装 GNU tar、DejaVu 字体及媒体运行依赖，从同一准备 job 的 artifact 读取 FFmpeg，核验构建身份及文件哈希、恢复可执行权限，重新检查实际媒体能力，再运行 Linux full 测试分片
 - macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道
