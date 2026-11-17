@@ -27,13 +27,13 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {projectAgentTaskChangeDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {VIDEO_PROVIDER_NAMES,defaultVideoModels,resolveVideoEndpoint,videoBindingCapabilities,videoInputProfile} from '../packages/contracts/src/video-providers.ts';
+import {VIDEO_PROVIDER_NAMES,defaultVideoModels,newVideoModelEntry,resolveVideoEndpoint,videoBindingCapabilities,videoInputProfile} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/generation-video-settings.ts';
 import {parse} from '../packages/contracts/src/index.ts';
 import {projectOutputPublicationProofSchema} from '../packages/contracts/src/project-output-publication.ts';
 
-const json=(data:unknown)=>new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
+const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
 const frozenDate=()=>Date.UTC(2026,9,20);
 function desktopVideoVault(secretCodec:ReturnType<typeof createTestSecretCodec>){
  const gates:Array<{entered:()=>void;released:Promise<void>}>=[];
@@ -90,7 +90,7 @@ async function fixture(t:TestContext,{providerId='minimax' as VideoConnectionCon
  const videoFetch:typeof fetch=async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return response(request.url,request.init);};
  const registry=()=>createProviderRegistry({db:store.db,root,env:{}});
  let providers=registry(),services=createServices(store,providers,{videoSettings:settingsPort(),videoFetch,profileNow:frozenDate});
- const configuration:VideoConnectionConfigurationV2={id:randomUUID(),providerId,name:VIDEO_PROVIDER_NAMES[providerId],region:providerId==='ark'||providerId==='wan'?'cn-beijing':providerId==='compatible'?'custom':'global',workspaceId:'',enabled:true,outputHosts:['output.example'],models:defaultVideoModels(providerId),...(providerId==='compatible'?{baseUrl:'https://old.example/v1'}:{})};
+ const configuration:VideoConnectionConfigurationV2={id:randomUUID(),providerId,name:VIDEO_PROVIDER_NAMES[providerId],region:providerId==='ark'||providerId==='wan'?'cn-beijing':providerId==='compatible'?'custom':'global',workspaceId:'',enabled:true,outputHosts:['output.example'],models:providerId==='compatible'?[newVideoModelEntry(providerId,'synthetic-video-model')]:defaultVideoModels(providerId),...(providerId==='compatible'?{baseUrl:'https://old.example/v1'}:{})};
  if(modelId)configuration.models[0]!.modelId=modelId;
  const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:'persistent' as const});
  await settings.put({action:'save',expectedRevision:0,configuration,secret:secret()});
@@ -1008,4 +1008,69 @@ test('restart preserves uncertain acceptance even when a stored connection bindi
  const services=createServices(f.store,new Map(),{videoSettings:f.settings}),worker=startWorker(f.store,services,new Map());
  try{await worker.tick();assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,0);assert.equal(f.store.list('versions').length,0);}
  finally{await worker.stop();await services.drain();}
+});
+
+for(const [httpStatus,code,message] of [
+ [401,'authentication','Invalid API key'],
+ [429,'quota_exceeded','Quota exceeded'],
+ [404,'model_not_found','Model not found'],
+] as const)test(`Google Omni HTTP ${httpStatus} saves redacted provider evidence through the real worker`,async t=>{
+ const f=await fixture(t,{providerId:'veo'});
+ f.reply((_url,init)=>{
+  assert.equal(init.method,'POST');
+  return json({error:{type:code,code,message:message+' original-synthetic-key https://private.example/source'}},httpStatus);
+ });
+ const job=await f.submit();
+ await f.tick();await f.stop();
+ const saved=f.job(job.id);
+ assert.equal(saved.status,'failed');assert.equal(saved.submissionCount,1);assert.equal(saved.providerJobId,null);
+ assert.deepEqual((saved.error as ServiceRow).providerFailure,{providerType:code,code,message,httpStatus});
+ const exposed=await f.services.call('job.get',{jobId:job.id}) as JobRecord;
+ assert.deepEqual(exposed.error,saved.error);
+ assert.doesNotMatch(JSON.stringify(saved.error),/original-synthetic-key|private\.example/);
+ assert.equal(f.calls.length,1);
+});
+
+test('Google Omni accepted content refusal keeps its interaction identity and provider evidence across reopening',async t=>{
+ const f=await fixture(t,{providerId:'veo'}),id='v1_synthetic_existing_omni';
+ f.reply((_url,init)=>json({object:'interaction',model:'gemini-omni-1.2-flash',id,
+  status:init.method==='POST'?'in_progress':'failed',
+  ...(init.method==='POST'?{}:{error:{type:'safety',code:'content_blocked',message:'Content blocked'}})}));
+ const job=await f.submit();await f.tick();await f.tick();await f.stop();
+ const saved=f.job(job.id);assert.equal(saved.status,'failed');assert.equal(saved.providerJobId,id);assert.equal(saved.submissionCount,1);
+ assert.deepEqual((saved.error as ServiceRow).providerFailure,{providerType:'safety',code:'content_blocked',message:'Content blocked'});
+ await f.restart();
+ assert.deepEqual(f.job(job.id).error,saved.error);
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+});
+
+test('Google Omni publishes inline output through the real worker and resumes the accepted task after reopening',async t=>{
+ const f=await fixture(t,{providerId:'veo'}),id='v1_existing_omni_output';
+ const bytes=await readFile(new URL('../examples/timeline-synthetic/scene-a.mp4',import.meta.url));
+ f.reply((_url,init)=>json({object:'interaction',model:'gemini-omni-1.2-flash',id,
+  status:init.method==='POST'?'in_progress':'completed',
+  ...(init.method==='POST'?{}:{steps:[{type:'model_output',content:[{type:'video',mime_type:'video/mp4',data:bytes.toString('base64')}]}]})}));
+ const job=await f.submit();await f.tick();await f.stop();
+ const accepted=structuredClone(f.job(job.id));assert.equal(accepted.providerJobId,id);
+ await f.restart();await f.tick();await f.stop();
+ const published=f.job(job.id);
+ assert.equal(published.status,'succeeded');assert.equal(published.providerJobId,id);assert.equal(published.submissionCount,1);
+ assert.deepEqual(published.snapshot,accepted.snapshot);
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ assert.equal(f.store.list('versions').length,1);
+ assert.ok(!JSON.stringify(published).includes(bytes.toString('base64')));
+});
+
+test('Google Omni query authentication keeps redacted vendor evidence alongside credential recovery',async t=>{
+ const f=await fixture(t,{providerId:'veo'}),id='v1_omni_query_auth';
+ f.reply((_url,init)=>init.method==='POST'
+  ? json({id,status:'in_progress'})
+  : json({error:{type:'authentication',code:'authentication',message:'Invalid API key original-synthetic-key'}},401));
+ const job=await f.submit();await f.tick();await f.tick();await f.stop();
+ const saved=f.job(job.id);
+ assert.equal(saved.phase,'connection_required');assert.equal(saved.providerJobId,id);assert.equal(saved.submissionCount,1);
+ assert.deepEqual((saved.error as ServiceRow).providerFailure,{providerType:'authentication',code:'authentication',message:'Invalid API key',httpStatus:401});
+ assert.equal(((saved.error as ServiceRow).diagnostic as ServiceRow).kind,'video_credential');
+ assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ assert.doesNotMatch(JSON.stringify(saved.error),/original-synthetic-key/);
 });

@@ -61,7 +61,7 @@ test('lifecycle display and shared preflight use server evaluation date, never b
   assert.equal(blocked.evaluation!.issues![0].code, 'MODEL_LIFECYCLE_REVALIDATION_REQUIRED');
   assert.equal(generationInputIssue(shot, before, model, [], 'text'), '');
   assert.equal(generationInputIssue(shot, after, model, [], 'text'), generationIssueMessage(getGenerationIssue({ ...shot, model, referenceAssets: [] }, after)));
-  assert.match(generationInputIssue(shot, after, model, [], 'text'), /服务器已阻止新提交/);
+  assert.match(generationInputIssue(shot, after, model, [], 'text'), /停止服务/);
   const helper = readFileSync(resolve(root, 'apps/web/src/generation-settings.ts'), 'utf8');
   const component = readFileSync(resolve(root, 'apps/web/src/GenerationInputSummary.tsx'), 'utf8');
   assert.doesNotMatch(helper + component, /Date\(|Date\.now|fetch\(|getCapabilityProfile\(/);
@@ -106,6 +106,8 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     import { renderToStaticMarkup } from 'react-dom/server.browser';
     import ProviderSettings from './ProviderSettings.tsx';
     import GenerationInputSummary, { GenerationInputDetails } from './GenerationInputSummary.tsx';
+    import { ModelEditor } from './VideoProviderSettings.tsx';
+    import { defaultVideoModels, newVideoModelEntry } from '../../../packages/contracts/src/video-providers.ts';
     import { generationProfileSelection, generationSelection } from './generation-settings.ts';
     import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
     const providers = ${JSON.stringify(providers)};
@@ -117,6 +119,8 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
         details: renderToStaticMarkup(<GenerationInputDetails selection={generationProfileSelection(provider, model)} />),
       }];
     }));
+    markup.omniEditor = renderToStaticMarkup(<ModelEditor model={defaultVideoModels('veo')[0]} providerId="veo" index={0} count={1} onChange={() => { throw Error('No side effects permitted'); }} onMove={() => { throw Error('No side effects permitted'); }} />);
+    markup.compatibleEditor = renderToStaticMarkup(<ModelEditor model={newVideoModelEntry('compatible')} providerId="compatible" index={0} count={1} onChange={() => { throw Error('No side effects permitted'); }} onMove={() => { throw Error('No side effects permitted'); }} />);
     markup.blocked = renderToStaticMarkup(<GenerationInputSummary provider={blocked} model={blocked.models[0]} />);
     markup.unknown = renderToStaticMarkup(<GenerationInputSummary provider={providers[0]} model="stale-selected-model" />);
     markup.missing = renderToStaticMarkup(<GenerationInputSummary provider={{ ...providers[0], inputProfiles: [] }} model={providers[0].models[0]} />);
@@ -146,11 +150,15 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     assert.ok(details.includes(profile!.inputs.roles.first_frame.maxBytes!.toLocaleString('en-US')));
     assert.match(details, /2026-10-10/);
   }
+  assert.match(markup.omniEditor, /gemini-omni-1\.2-flash/);
+  assert.doesNotMatch(markup.omniEditor, /veo-v1|首尾|主体|参考生视频/);
+  assert.doesNotMatch(markup.compatibleEditor, /sora-2/);
+  assert.match(markup.compatibleEditor, /data-testid="video-model-id"[^>]*value=""/);
   assert.match(markup.mock.summary, /aria-label="输出为测试图案"/);
   assert.match(markup.runway.details, /编码后 data URI.*5 MiB/);
   assert.match(markup.ark.details, /宽高均至少 300px · 宽高均不超过 6000px · 须与镜头画幅比例一致/);
   assert.match(markup.veo.summary, /2026-10-22.*2026-10-10/);
-  assert.match(markup.blocked, /已阻止新提交/);
+  assert.match(markup.blocked, /选择 Gemini Omni/);
   assert.doesNotMatch(markup.blocked, /不会自动替换模型/);
   assert.doesNotMatch(markup.unknown, /API：尚未确认|未识别所选精确模型/);
   assert.match(markup.unknown, /data-profile-state="unknown_model"/);

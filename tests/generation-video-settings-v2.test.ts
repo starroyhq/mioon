@@ -4,7 +4,7 @@ import {mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID, randomBytes, createCipheriv, createDecipheriv} from 'node:crypto';
-import {VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, VIDEO_SECRET_NAMESPACE, defaultVideoModels, parseVideoBinding} from '../packages/contracts/src/video-providers.ts';
+import {VIDEO_PROVIDER_NAMES, VIDEO_SETTINGS_LIMITS, VIDEO_SECRET_NAMESPACE, defaultVideoModels, newVideoModelEntry, parseVideoBinding} from '../packages/contracts/src/video-providers.ts';
 import {VIDEO_BUILTIN_PROVIDER_IDS, compatibleVideoCheckV2Schema, videoConnectionConfigurationV2Schema, videoSettingsSnapshotV2Schema, videoSettingsUpdateV2Schema} from '../packages/contracts/src/generation-video-settings.ts';
 import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/generation-video-settings.ts';
 import {createVideoSettingsV2, emptyVideoSettingsV2Envelope, sanitizeVideoSettingsV2Error, validateVideoSettingsV2Envelope} from '../packages/business/src/video/settings-v2.ts';
@@ -15,7 +15,7 @@ const KEY = 'synthetic-g1-video-key';
 const replace = (value = KEY, storage: 'session' | 'persistent' = 'persistent') => ({action: 'replace' as const, value, storage});
 const keep = {action: 'keep' as const};
 function configuration(providerId: VideoConnectionConfigurationV2['providerId'] = 'minimax'): VideoConnectionConfigurationV2 {
-  return {id: randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: providerId === 'compatible' ? 'custom' : providerId === 'ark' || providerId === 'wan' ? 'cn-beijing' : 'global', workspaceId: '', enabled: true, outputHosts: ['output.example.com'], models: defaultVideoModels(providerId), ...(providerId === 'compatible' ? {baseUrl: 'https://api.example.com/v1'} : {})};
+  return {id: randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: providerId === 'compatible' ? 'custom' : providerId === 'ark' || providerId === 'wan' ? 'cn-beijing' : 'global', workspaceId: '', enabled: true, outputHosts: ['output.example.com'], models: providerId === 'compatible' ? [newVideoModelEntry('compatible', 'synthetic-video-model')] : defaultVideoModels(providerId), ...(providerId === 'compatible' ? {baseUrl: 'https://api.example.com/v1'} : {})};
 }
 function codec() {
   const key = randomBytes(32); let encryptions = 0, decryptions = 0;
@@ -106,7 +106,7 @@ test('custom deletion removes every historical credential and catalog while leav
   const envelope = JSON.parse(await readFile(f.file, 'utf8'));
   assert.deepEqual(envelope.deletedConnectionIds, [custom.id]);
   for (const entries of [envelope.connections, envelope.history, envelope.credentials]) assert.ok(entries.every((entry: {configuration?: {id: string}; connectionId?: string}) => entry.configuration?.id !== custom.id && entry.connectionId !== custom.id));
-  assert.doesNotMatch(JSON.stringify(envelope), /api\.example\.com|moved\.example\.com|sora-2|synthetic-persistent-custom/);
+  assert.doesNotMatch(JSON.stringify(envelope), /api\.example\.com|moved\.example\.com|sora-2|synthetic-video-model|synthetic-persistent-custom/);
   for (const binding of [old, current]) {assert.throws(() => f.settings.assertBinding(binding), {code: 'VIDEO_SETTINGS_DELETED'}); await assert.rejects(f.settings.acquire(binding), {code: 'VIDEO_SETTINGS_DELETED'});}
   await assert.rejects(f.settings.acquireCompatible(custom.id, 2), {code: 'VIDEO_SETTINGS_DELETED'});
   assert.equal(secretCodec.decryptions, decryptions); assert.equal(await f.settings.acquire(otherBinding), KEY);

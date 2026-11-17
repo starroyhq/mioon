@@ -24,7 +24,7 @@ import {createVideoHttp} from '../apps/server/src/video-http.ts';
 import {startServer} from './helpers/test-server.ts';
 
 
-import {defaultVideoModels,VIDEO_SETTINGS_LIMITS,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
+import {defaultVideoModels,newVideoModelEntry,VIDEO_SETTINGS_LIMITS,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
 
 
 
@@ -43,7 +43,7 @@ const modelsRoute = '/api/video-providers/models/list';
 const draftKey = 'synthetic-draft-video-key';
 const originalBase = 'https://video-old.example/v1';
 const newBase = 'https://video-new.example/compatible/v1';
-const compatible = () => ({...configuration(), providerId: 'compatible', region: 'custom', name: 'Synthetic', baseUrl: originalBase, models: defaultVideoModels('compatible')});
+const compatible = () => ({...configuration(), providerId: 'compatible', region: 'custom', name: 'Synthetic', baseUrl: originalBase, models: [newVideoModelEntry('compatible','synthetic-video-model')]});
 
 test('video checks and model discovery use draft credentials once and save alone replaces the persisted binding', async t => {
   const observations: Array<{url: string; authorization: string | null}> = [];
@@ -120,7 +120,8 @@ test('video draft checks derive the selected provider recipient and expose only 
       : recipient.host === 'api-singapore.klingai.com' ? {code: 0, data: {code: 0, resource_pack_subscribe_infos: []}}
       : recipient.host.endsWith('maas.aliyuncs.com') ? {data: []}
       : recipient.host === 'generativelanguage.googleapis.com' ? {models: [
-        {name: 'models/veo-video-example', supportedGenerationMethods: ['predictLongRunning']},
+        {name: 'models/gemini-omni-1.2-flash', supportedGenerationMethods: []},
+        {name: 'models/veo-3.1-generate-preview', supportedGenerationMethods: ['predictLongRunning']},
         {name: 'models/gemini-text-example', supportedGenerationMethods: ['generateContent']},
       ]} : {data: [
         {id: 'doubao-seedance-example', modalities: {output_modalities: ['video']}},
@@ -135,7 +136,7 @@ test('video draft checks derive the selected provider recipient and expose only 
   assert.deepEqual((await probe('kling', 'global')).data.data, {result: 'ok'});
   assert.deepEqual((await probe('wan', 'cn-beijing', 'check', 'workspace-a')).data.data, {result: 'ok'});
   assert.deepEqual((await probe('ark', 'cn-beijing', 'models')).data.data, {result: 'ok', models: [{id: 'doubao-seedance-example'}]});
-  assert.deepEqual((await probe('veo', 'global', 'models')).data.data, {result: 'ok', models: [{id: 'veo-video-example'}]});
+  assert.deepEqual((await probe('veo', 'global', 'models')).data.data, {result: 'ok', models: [{id: 'gemini-omni-1.2-flash'}]});
   assert.deepEqual((await probe('minimax', 'global', 'models')).data.data, {result: 'unsupported'});
   assert.deepEqual(requests, [
     'https://api.minimax.io/v2/query/video_generation', 'https://api.vidu.com/ent/v2/credits',

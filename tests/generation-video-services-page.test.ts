@@ -77,7 +77,7 @@ test('selected listed video models are appended enabled without changing existin
 });
 
 test('listed video selections reject stale, unsupported, invalid and over-capacity batches without changing the draft', async t => {
-  const f = await fixture(t), key = 'video:veo';
+  const f = await fixture(t), key = 'video:ark';
   const before = f.session.getState();
   assert.equal(f.session.stageModels('video:kling', before.version, ['synthetic-kling']), false);
   assert.equal(f.session.stageModels(key, before.version, ['veo-synthetic', 'models/invalid']), false);
