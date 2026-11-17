@@ -86,8 +86,6 @@ body:has(.workbench-confirm[data-open]) [data-slot="dialog-overlay"]{z-index:110
 @media(prefers-reduced-motion:reduce){.workbench-v2 *,[data-slot="dialog-content"],[data-slot="select-content"]{scroll-behavior:auto!important}}
 
 /* Model-specific generation controls are session state, independent of timeline edits. */
-.generation-provider{margin:20px 0 15px;padding-top:16px;border-top:1px solid var(--wb-line-strong)}
-.generation-provider>.section-heading{margin:0 0 10px}
 .model-capabilities{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}
 .model-capabilities>span{font-size:10px;line-height:1.5;border:1px solid var(--wb-line-strong);border-radius:4px;padding:2px 5px;background:color-mix(in srgb, var(--wb-selected) 21.96%, transparent);color:var(--wb-text)}
 .provider-setup{padding:11px;border:1px solid var(--wb-line-strong);border-radius:7px;background:color-mix(in srgb, var(--wb-hover) 36.86%, transparent);margin-top:10px;font-size:10px;line-height:1.7;color:var(--wb-soft);overflow-wrap:anywhere}

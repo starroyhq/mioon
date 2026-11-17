@@ -3039,12 +3039,6 @@ const shellCoreMessages = {
     "en": "Open tasks",
     "ja": "タスクを開く"
   },
-  "inspector.textModeHint": {
-    "zh-Hans": "发送画面描述和生成参数",
-    "zh-Hant": "傳送畫面描述和生成參數",
-    "en": "Sends the shot description and generation settings",
-    "ja": "ショットの説明と生成設定を送信します"
-  },
   "inspector.firstFrame": {
     "zh-Hans": "首帧参考图",
     "zh-Hant": "首幀參考圖",

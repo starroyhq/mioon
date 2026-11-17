@@ -37,30 +37,39 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
   const canShowEnvironmentSetup = showEnvironmentSetup && provider && !provider.mock && !provider.connectionId &&
     providerStatus(provider) !== 'available' && (prefix || missing.length > 0);
 
-  return <section className="generation-provider" aria-label={t('generation.provider.settingsAria')} data-testid="provider-settings">
-    <Label className="field-label" htmlFor="provider">{t('generation.provider.provider')}</Label>
-    <WorkbenchSelect id="provider" data-testid="provider-select" value={generationProviderIdentity(provider)} renderOption={option => <span className="provider-brand-label"><ProviderBrandIcon providerId={available.find(item => generationProviderIdentity(item) === option.value)?.id} /><span>{option.label}</span></span>} onChange={e => { const next = available.find(item => generationProviderIdentity(item) === e.target.value); if (next) onChange({ providerId: next.id, connectionId: next.connectionId, modelEntryId: undefined, model: '', inputMode: undefined, parameters: undefined }); }}>
-      {!provider && <option value="" disabled>{t('connections.generation.providerMissing')}</option>}
-      {available.map(item => {
-        const source = item.mock ? '' : item.connectionId ? item.providerRegion : t('video.providers.environment');
-        return <option key={generationProviderIdentity(item)} value={generationProviderIdentity(item)}>{[providerDisplayName(item, t), renderMessage(providerStatusDescriptor(item)), source].filter(Boolean).join(' · ')}</option>;
-      })}
-    </WorkbenchSelect>
-    {provider && <><Label className="field-label" htmlFor="model">{t('generation.provider.model')}</Label>
-    <WorkbenchSelect id="model" data-testid="model-select" value={modelEntryId || model} disabled={!models.length} onChange={e => { const next = models.find(item => (item.modelEntryId || item.id) === e.target.value); if (next) onChange({ model: next.id, modelEntryId: next.modelEntryId, inputMode: undefined, parameters: undefined }); }}>
-      {models.map(item => <option key={item.modelEntryId || item.id} value={item.modelEntryId || item.id}>{item.name || item.id}</option>)}
-      {model && !models.some(item => item.id === model) && <option value={model}>{model} · {t('generation.provider.unsupported')}</option>}
-    </WorkbenchSelect>
-    {provider.connectionId && model && <Badge className="small-badge neutral" data-testid="video-model-unverified">{t('video.providers.unverified')}</Badge>}
-    {provider.mock && <WorkbenchTooltip content={t('generation.provider.simulationWarning')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('generation.provider.simulationWarning')}>ⓘ</Button></WorkbenchTooltip>}
-    <GenerationInputSummary provider={provider} model={model} />
-    {canShowEnvironmentSetup && <Collapsible key={generationProviderIdentity(provider)} className="provider-details">
-      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="provider-details-toggle" data-testid="provider-details-toggle"><span>{t('generation.provider.viewInstructions')}</span><Icon name="down" size={13} /></CollapsibleTrigger>
-      <CollapsibleContent className="provider-details-content" data-testid="provider-details-content">
-        {missing.length > 0 && <div className="provider-missing" data-testid="provider-missing" aria-label={t('generation.provider.missingAria')}>{missing.map(name => <span className="config-name" key={name}>{name}</span>)}</div>}
-        {prefix && <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider.id) && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}</ul>}
-      </CollapsibleContent>
-    </Collapsible>}
+  return <section aria-label={t('generation.provider.settingsAria')} data-testid="provider-settings">
+    <div className="shot-property-row">
+      <Label className="field-label" htmlFor="provider">{t('generation.provider.provider')}</Label>
+      <div className="shot-property-control">
+        <WorkbenchSelect id="provider" data-testid="provider-select" value={generationProviderIdentity(provider)} renderOption={option => <span className="provider-brand-label"><ProviderBrandIcon providerId={available.find(item => generationProviderIdentity(item) === option.value)?.id} /><span>{option.label}</span></span>} onChange={e => { const next = available.find(item => generationProviderIdentity(item) === e.target.value); if (next) onChange({ providerId: next.id, connectionId: next.connectionId, modelEntryId: undefined, model: '', inputMode: undefined, parameters: undefined }); }}>
+          {!provider && <option value="" disabled>{t('connections.generation.providerMissing')}</option>}
+          {available.map(item => {
+            const source = item.mock ? '' : item.connectionId ? item.providerRegion : t('video.providers.environment');
+            return <option key={generationProviderIdentity(item)} value={generationProviderIdentity(item)}>{[providerDisplayName(item, t), renderMessage(providerStatusDescriptor(item)), source].filter(Boolean).join(' · ')}</option>;
+          })}
+        </WorkbenchSelect>
+        {provider?.mock && <WorkbenchTooltip content={t('generation.provider.simulationWarning')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('generation.provider.simulationWarning')}>ⓘ</Button></WorkbenchTooltip>}
+      </div>
+    </div>
+    {provider && <>
+      <div className="shot-property-row">
+        <Label className="field-label" htmlFor="model">{t('generation.provider.model')}</Label>
+        <div className="shot-property-control">
+          <WorkbenchSelect id="model" data-testid="model-select" value={modelEntryId || model} disabled={!models.length} onChange={e => { const next = models.find(item => (item.modelEntryId || item.id) === e.target.value); if (next) onChange({ model: next.id, modelEntryId: next.modelEntryId, inputMode: undefined, parameters: undefined }); }}>
+            {models.map(item => <option key={item.modelEntryId || item.id} value={item.modelEntryId || item.id}>{item.name || item.id}</option>)}
+            {model && !models.some(item => item.id === model) && <option value={model}>{model} · {t('generation.provider.unsupported')}</option>}
+          </WorkbenchSelect>
+          {provider.connectionId && model && <Badge className="small-badge neutral" data-testid="video-model-unverified">{t('video.providers.unverified')}</Badge>}
+        </div>
+      </div>
+      <GenerationInputSummary provider={provider} model={model} />
+      {canShowEnvironmentSetup && <Collapsible key={generationProviderIdentity(provider)} className="provider-details">
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" />} className="provider-details-toggle" data-testid="provider-details-toggle"><span>{t('generation.provider.viewInstructions')}</span><Icon name="down" size={13} /></CollapsibleTrigger>
+        <CollapsibleContent className="provider-details-content" data-testid="provider-details-content">
+          {missing.length > 0 && <div className="provider-missing" data-testid="provider-missing" aria-label={t('generation.provider.missingAria')}>{missing.map(name => <span className="config-name" key={name}>{name}</span>)}</div>}
+          {prefix && <ul className="provider-requirements" data-testid="provider-requirements"><li>{t('generation.provider.assetsInstruction', { prefix })}</li>{['minimax', 'vidu'].includes(provider.id) && <li>{t('generation.provider.regionInstruction', { prefix })}</li>}{provider.id === 'vidu' && <li>{t('generation.provider.hostsInstruction')}</li>}</ul>}
+        </CollapsibleContent>
+      </Collapsible>}
     </>}
   </section>;
 }

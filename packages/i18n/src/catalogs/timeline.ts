@@ -4185,17 +4185,11 @@ const timelineCoreMessages = {
     "en": "Last-frame reference {name}",
     "ja": "最終フレームの参照画像 {name}"
   },
-  "timeline.references.selected": {
-    "zh-Hans": "已选尾帧：{name}",
-    "zh-Hant": "已選尾影格：{name}",
-    "en": "Selected last frame: {name}",
-    "ja": "選択中の最終フレーム：{name}"
-  },
   "timeline.references.missing": {
-    "zh-Hans": "素材不存在",
-    "zh-Hant": "素材不存在",
-    "en": "Asset missing",
-    "ja": "素材が見つかりません"
+    "zh-Hans": "尾帧素材不可用",
+    "zh-Hant": "尾影格素材無法使用",
+    "en": "Last-frame asset unavailable",
+    "ja": "最終フレームの素材を利用できません"
   },
   "timeline.references.clear": {
     "zh-Hans": "清除尾帧参考图",
