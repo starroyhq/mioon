@@ -24,6 +24,15 @@
 .mio-run-tag[data-status=awaiting_approval],.mio-run-tag[data-status=interrupted]{color:var(--wb-warning);background:var(--wb-warning-subtle)}
 .mio-panel .mio-user{align-self:flex-end;max-width:100%;padding:var(--wb-space-2) var(--wb-space-3);background:var(--wb-card);border-radius:var(--wb-radius-card);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--wb-text-body);line-height:1.5}
 .mio-panel .mio-reply{font-size:var(--wb-text-body);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.mio-markdown{min-width:0;overflow-wrap:anywhere}
+.mio-markdown>:where(p,ul,ol,pre){margin:0}
+.mio-markdown>*+*{margin-block-start:var(--wb-space-2)}
+.mio-markdown :is(ul,ol){padding-inline-start:var(--wb-space-5);list-style-position:outside}
+.mio-markdown ul{list-style-type:disc}
+.mio-markdown ol{list-style-type:decimal}
+.mio-markdown code{font-family:var(--wb-font-mono);font-size:.92em}
+.mio-markdown :not(pre)>code{background:var(--wb-card);border-radius:var(--wb-radius-control);padding-inline:var(--wb-space-1)}
+.mio-markdown pre{box-sizing:border-box;min-width:0;max-width:100%;overflow-x:auto;padding:var(--wb-space-2) var(--wb-space-3);background:var(--wb-card);border-radius:var(--wb-radius-card);white-space:pre;overflow-wrap:normal}
 .mio-steps>summary,.agent-task-history>summary,.mio-safe-details>summary{cursor:pointer;min-height:var(--wb-control-compact);color:var(--wb-soft);font-size:var(--wb-text-caption);line-height:var(--wb-control-compact)}
 .mio-panel .mio-step{padding:var(--wb-space-1) 0;border:0;background:transparent;min-width:0}
 .mio-panel .mio-step[data-mio-follow]{margin-inline:-3px;padding-inline:3px;border-radius:6px;background:color-mix(in srgb,var(--mio-follow-color) 12%,transparent);box-shadow:inset 0 0 0 1px var(--mio-follow-color)}

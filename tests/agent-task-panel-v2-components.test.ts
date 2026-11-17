@@ -66,6 +66,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
     if(id==='./mio-follow.ts')return mioFollow;
+    if(id==='./MioMarkdown.tsx')return {__esModule:true,default:'mio-markdown'};
     if(id==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({...followPreferences,setMioFollow:async(enabled:boolean)=>{followWrites.push(enabled);if(!await saveFollow(enabled))return false;followPreferences.preferences.mioFollow=enabled;return true;}})};
     if(id==='@mioon/ui/components/switch')return{Switch:'switch'};
     if(id==='./mio-usage-client.ts')return usageModule;if(id==='./mio-usage-state.ts')return usageState;if(id==='./MioUsage.tsx')return{MioUsageRow:'usage-row',MioUsageDetails:'usage-details'};
@@ -962,6 +963,28 @@ test('undo preview for an earlier round keeps the latest round selected and subm
   h.render();h.find('agent-task-undo-all')!.props.onClick({currentTarget:{focus(){}}});await new Promise(done=>setImmediate(done));h.render();assert.equal(h.state.snapshot!.run.id,'run');assert.equal(h.find('agent-task-undo-confirm')!.props.disabled,false);h.find('agent-task-undo-confirm')!.props.onClick();assert.deepEqual(h.calls,[['refreshRound','earlier-round'],['undo_all',{undoChangeIds:['old-change']},'earlier-round']]);
  }finally{h.unmount();}
 });
+test('live and restored model replies use Markdown while the user prompt stays literal',()=>{
+  const h=harness({status:'running'});
+  try {
+    const current=h.state.snapshot!;
+    current.run.text='**用户原文**';
+    current.steps=[{id:'prior-model',kind:'model',status:'completed',position:1,result:{text:'**历史回复**'}},
+      {id:'live-model',kind:'model',status:'intent',position:2,text:'**正在回复'}];
+    const live=h.render();
+    const user=live.find(node=>node.props.className==='agent-chat-message is-user mio-user');
+    assert.equal(renderedText(user),'**用户原文**');
+    assert.equal(nodes(user).some(node=>node.type==='mio-markdown'),false);
+    assert.equal(renderedText(nodes(h.find('agent-task-reply')).find(node=>node.type==='mio-markdown')),'**正在回复');
+    const previous=live.find(node=>node.props.className==='agent-task-text mio-previous-reply mio-markdown');
+    assert.equal(renderedText(nodes(previous).find(node=>node.type==='mio-markdown')),'**历史回复**');
+    h.state.snapshot={...current,run:{...current.run,status:'completed'},steps:[...current.steps.slice(0,1),
+      {id:'live-model',kind:'model',status:'completed',position:2,result:{text:'**正在回复**'}}]};
+    h.state.rounds=[h.state.snapshot];
+    h.render();
+    assert.equal(renderedText(nodes(h.find('agent-task-reply')).find(node=>node.type==='mio-markdown')),'**正在回复**');
+  } finally {h.unmount();}
+});
+
 const question={question:'Which opening should Mio use?',options:[{label:'Wide street'},{label:'Close-up'}]};
 const askStep=(status:string,result?:unknown):TaskPanelStep=>({id:stepId,kind:'tool',status,position:2,tier:'read_only',toolCall:{name:'mioon_ask',arguments:question},...(result!==undefined?{result}:{})});
 test('a waiting question shows its card, makes the composer its answer box and moves stop to the status row',async()=>{

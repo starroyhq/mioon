@@ -17,6 +17,7 @@ import { createAgentTaskCloseReporter } from './native-close-sources.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import { deriveAgentEndpoint } from './agent-settings.ts';
 import AgentConversationHistory from './AgentConversationHistory.tsx';
+import MioMarkdown from './MioMarkdown.tsx';
 import AgentRetainedEditing from './AgentRetainedEditing.tsx';
 import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
@@ -417,7 +418,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
         {noteMessages(beforeReply)}
         {askedBefore.map(item=><AgentTaskAnswerRow key={item.step.id} step={item.step} question={item.question} />)}
         {reviewCards(reportedBefore)}
-        {latest && <p className="agent-task-text mio-reply" data-testid="agent-task-reply">{modelText(latest)}</p>}
+        {latest && <div className="agent-task-text mio-reply mio-markdown" data-testid="agent-task-reply"><MioMarkdown>{modelText(latest)}</MioMarkdown></div>}
         {noteMessages(afterReply)}
         {reviewCards(reportedAfter)}
         {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => {
@@ -435,7 +436,7 @@ export default function AgentTaskPanel({ isAdmissionAllowed, projectId, workspac
           const startNewConversation = providerReason === 'context_length' && run.status === 'failed' && step === failedModel;
           return <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step" data-read={readIcon(step) ? 'true' : undefined} data-mio-follow={focused ? 'true' : undefined} style={focused ? { '--mio-follow-color': mioFollowColor(run.id) } as React.CSSProperties : undefined}>
           <div className="mio-step-line"><StepIcon step={step} read={readIcon(step)} /><span>{taskStepTitle(step, locale,firstRepairs)}{['awaiting_approval', 'unknown', 'awaiting_answer'].includes(step.status) && <> · {t(taskStepStatusKey(step.status))}</>}{step.status === 'completed' && step.toolCall?.name === 'mioon_ask' && <> · {t('agent.panel.question.answered')}</>}</span>{taskStepBadge(step,updatedGoals,firstRepairs)&&<span className="mio-step-badge" data-testid="agent-task-step-badge" data-badge={taskStepBadge(step,updatedGoals,firstRepairs)}>{t(taskStepBadge(step,updatedGoals,firstRepairs)==='repair'?'agent.panel.goal.repairBadge':'agent.panel.goal.updatedBadge')}</span>}<span className="mio-step-time">{['intent', 'dispatch_started'].includes(step.status) ? '…' : taskDurationSeconds(step.createdAt, step.updatedAt) !== undefined ? t('agent.panel.stepElapsed', { seconds: taskDurationSeconds(step.createdAt, step.updatedAt)! }) : ''}</span></div>
-          {step.kind === 'model' && step !== latest && modelText(step) && <p className="agent-task-text mio-previous-reply">{modelText(step)}</p>}
+          {step.kind === 'model' && step !== latest && modelText(step) && <div className="agent-task-text mio-previous-reply mio-markdown"><MioMarkdown>{modelText(step)}</MioMarkdown></div>}
           {(canvas || timeline) && <div className="mio-follow-links">{([['canvas', canvas], ['timeline', timeline]] as const).map(([mode, target]) => target && <Button key={mode} variant="ghost" size="compact" className="mio-follow-link" data-testid={`mio-follow-${mode}-${step.id}`} disabled={!visible} onClick={() => {
             if (visibility.current && canInteract() && mioFollowTargetExists?.(target) !== false) onMioFollowLocate?.(target);
           }}><Icon name="locate" size={12} />{t(`agent.follow.${mode}`)}<Icon name="arrow" size={12} /></Button>)}</div>}

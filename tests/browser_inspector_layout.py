@@ -72,6 +72,56 @@ def check_model_badge(inspector):
     assert badge_box['left'] >= model_box['right'] and delta < 2, 'Unverified badge is not beside the model control'
 
 
+def check_input_limits(inspector):
+    section = inspector.get_by_test_id('generation-input-summary')
+    toggle = section.get_by_test_id('generation-input-toggle')
+    details = section.get_by_test_id('generation-input-details')
+    expect(toggle).to_have_attribute('aria-expanded', 'false')
+    expect(details).to_be_hidden()
+    closed = section.bounding_box()
+    model = inspector.get_by_test_id('model-select').bounding_box()
+    resolution = inspector.get_by_test_id('generation-resolution').bounding_box()
+    assert abs(closed['height'] - model['height']) < 2, ('collapsed input limits vs model', closed, model)
+    assert abs(closed['height'] - resolution['height']) < 2, ('collapsed input limits vs resolution', closed, resolution)
+
+    toggle.click()
+    expect(toggle).to_have_attribute('aria-expanded', 'true')
+    expect(details).to_be_visible()
+    expanded = section.evaluate('''section => {
+        const details = section.querySelector('[data-testid="generation-input-details"]');
+        const trigger = section.querySelector('[data-testid="generation-input-toggle"]');
+        return {
+            section: section.getBoundingClientRect().height,
+            trigger: trigger.getBoundingClientRect().height,
+            details: details.getBoundingClientRect().height,
+            overflow: details.scrollHeight - details.clientHeight,
+        };
+    }''')
+    assert abs(expanded['trigger'] - closed['height']) < 2, expanded
+    assert abs(expanded['section'] - expanded['trigger'] - expanded['details']) < 2, expanded
+    assert expanded['details'] > 0 and expanded['overflow'] <= 1, expanded
+    toggle.click()
+    expect(details).to_be_hidden()
+    assert abs(section.bounding_box()['height'] - closed['height']) < 2
+    print(f"input limits: {closed['height']:.2f}px closed, {expanded['details']:.2f}px of additional content")
+
+
+def check_subject_heading(inspector):
+    group = inspector.get_by_test_id('shot-subject-and-style')
+    title = group.get_by_role('button', name='主体与风格', exact=True)
+    help_button = group.get_by_test_id('shot-subject-planning-help')
+    expect(group.get_by_text('主体与风格', exact=True)).to_have_count(1)
+    expect(help_button).to_have_accessible_name('生成时需另选主体版本')
+    title_box, help_box = title.bounding_box(), help_button.bounding_box()
+    delta = abs(title_box['y'] + title_box['height'] / 2 - help_box['y'] - help_box['height'] / 2)
+    assert delta < 2 and 0 <= help_box['x'] - title_box['x'] - title_box['width'] < 8, (title_box, help_box)
+    title.click()
+    expect(title).to_have_attribute('aria-expanded', 'false')
+    expect(help_button).to_be_visible()
+    title.click()
+    expect(title).to_have_attribute('aria-expanded', 'true')
+
+
 def run_browser(metadata, token, executable):
     origin = metadata['origin']
     with sync_playwright() as playwright, playwright.chromium.launch(executable_path=executable) as browser:
@@ -135,6 +185,8 @@ def run_browser(metadata, token, executable):
         check_layout(inspector, 'MiniMax', CONFIGURED)
         check_model_badge(inspector)
         expect(tid('shot-frame-references')).to_have_count(0)
+        check_input_limits(inspector)
+        check_subject_heading(inspector)
 
         open_shot(metadata['tailTitle'])
         choose_minimax()
