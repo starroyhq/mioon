@@ -89,9 +89,9 @@ export function SubjectVariantBatchRow({ batch, shots, submitting, issues, contr
       <Button variant="ghost" size="sm" data-testid={`subject-variant-undo-${batch.id}`} disabled={disabled || !batch.undo?.available} onClick={() => admit(undo)}>{t('subjects.variants.undo')}</Button>
     </div>
     {notes.map(note => <p key={note} className="subject-variant-item-note is-danger" role="alert">{note}</p>)}
-    {progress.unknown > 0 && <div className="subject-variant-unknown"><p className="subject-variant-item-note">{t('subjects.variants.item.unknownHint')}</p><div className="subject-actions">
+    {progress.unknown > 0 && <div className="subject-variant-unknown subject-actions">
       {onShowTasks && <Button variant="outline" size="sm" data-testid={`subject-variant-tasks-${batch.id}`} onClick={() => admit(() => onShowTasks())}>{t('subjects.variants.showTasks')}</Button>}
-      <Button variant="ghost" size="sm" data-testid={`subject-variant-reread-${batch.id}`} disabled={disabled} onClick={() => admit(() => controller.readBatch(batch.id))}>{t('subjects.variants.reconcile')}</Button></div></div>}
+      <Button variant="ghost" size="sm" data-testid={`subject-variant-reread-${batch.id}`} disabled={disabled} onClick={() => admit(() => controller.readBatch(batch.id))}>{t('subjects.variants.reconcile')}</Button></div>}
     {blockers.length > 0 && <div className="subject-variant-blocked" data-testid={`subject-variant-blocked-${batch.id}`}>
       <p><CircleAlert size={12} aria-hidden="true" />{t('subjects.variants.undoBlocked')}</p>
       {blockers.map((blocker, index) => { const BlockerIcon = blockerIcons[blocker.code]; return <p key={`${blocker.code}:${blocker.position}:${index}`}><BlockerIcon size={12} aria-hidden="true" />{reason(blocker)}</p>; })}

@@ -125,7 +125,6 @@ export const redesignBoardMessages={
   'redesign.comparison.play':{'zh-Hans':'播放两个版本','zh-Hant':'播放兩個版本',en:'Play both versions',ja:'両バージョンを再生'},
   'redesign.comparison.pause':{'zh-Hans':'暂停两个版本','zh-Hant':'暫停兩個版本',en:'Pause both versions',ja:'両バージョンを一時停止'},
   'redesign.comparison.seek':{'zh-Hans':'同步播放位置','zh-Hant':'同步播放位置',en:'Shared playback position',ja:'同期再生位置'},
-  'redesign.comparison.synchronizedReady':{'zh-Hans':'已固定所选版本。同步播放使用下方共同控制条，默认静音','zh-Hant':'已固定所選版本。同步播放使用下方共同控制列，預設靜音',en:'Selected versions are fixed. Use the shared controls for synchronized playback, initially muted',ja:'選択したバージョンは固定されています。下の共通コントロールで同期再生します。初期状態はミュートです'},
   'redesign.board.use':{'zh-Hans':'选用','zh-Hant':'選用',en:'Use',ja:'選択'},
   'redesign.board.addTimeline':{'zh-Hans':'加入时间线','zh-Hant':'加入時間線',en:'Add to timeline',ja:'タイムラインに追加'},
   'redesign.board.retry':{'zh-Hans':'重试','zh-Hant':'重試',en:'Retry',ja:'再試行'},

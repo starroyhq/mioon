@@ -1593,28 +1593,28 @@ export const connectionMessages = {
     "ja": "利用不可"
   },
   "connections.generation.providerMissing": {
-    "zh-Hans": "未找到生成服务商，请刷新工作台后重试",
-    "zh-Hant": "找不到生成服務商，請重新整理工作台後重試",
-    "en": "No generation provider was found. Refresh the workbench and retry",
-    "ja": "生成プロバイダーが見つかりません。ワークベンチを更新して再試行してください"
+    "zh-Hans": "选择生成服务商",
+    "zh-Hant": "選擇生成服務商",
+    "en": "Choose a generation provider",
+    "ja": "生成プロバイダーを選択"
   },
   "connections.generation.providerDisabled": {
-    "zh-Hans": "{provider}：未启用。请按下方服务器配置说明完成设置后重启服务",
-    "zh-Hant": "{provider}：未啟用。請依照下方伺服器設定說明完成設定後重新啟動服務",
-    "en": "{provider}: disabled. Follow the server configuration instructions below, then restart the service",
-    "ja": "{provider}：無効です。以下のサーバー設定手順に従って設定を完了し、サービスを再起動してください"
+    "zh-Hans": "{provider} 未启用",
+    "zh-Hant": "{provider} 未啟用",
+    "en": "{provider} is disabled",
+    "ja": "{provider} は無効です"
   },
   "connections.generation.providerIncomplete": {
-    "zh-Hans": "{provider}：配置未完成。请按下方服务器配置说明完成设置后重启服务",
-    "zh-Hant": "{provider}：設定未完成。請依照下方伺服器設定說明完成設定後重新啟動服務",
-    "en": "{provider}: configuration incomplete. Follow the server configuration instructions below, then restart the service",
-    "ja": "{provider}：設定未完了です。以下のサーバー設定手順に従って設定を完了し、サービスを再起動してください"
+    "zh-Hans": "{provider} 配置未完成",
+    "zh-Hant": "{provider} 設定未完成",
+    "en": "{provider} setup is incomplete",
+    "ja": "{provider} の設定が未完了です"
   },
   "connections.generation.providerUnavailable": {
-    "zh-Hans": "{provider}：不可用。请按下方服务器配置说明完成设置后重启服务",
-    "zh-Hant": "{provider}：無法使用。請依照下方伺服器設定說明完成設定後重新啟動服務",
-    "en": "{provider}: unavailable. Follow the server configuration instructions below, then restart the service",
-    "ja": "{provider}：利用できません。以下のサーバー設定手順に従って設定を完了し、サービスを再起動してください"
+    "zh-Hans": "{provider} 不可用",
+    "zh-Hant": "{provider} 無法使用",
+    "en": "{provider} is unavailable",
+    "ja": "{provider} は利用できません"
   },
   "connections.generation.textMode": {
     "zh-Hans": "文生视频",
@@ -1635,88 +1635,88 @@ export const connectionMessages = {
     "ja": "被写体画像から動画"
   },
   "connections.generation.profileUnloaded": {
-    "zh-Hans": "服务商信息未加载或不可用，输入限制尚未确认",
-    "zh-Hant": "服務商資訊尚未載入或無法使用，輸入限制尚未確認",
-    "en": "Provider information is unloaded or unavailable. Input limits are not confirmed",
-    "ja": "プロバイダー情報が未読み込みか利用不可のため、入力制限は未確認です"
+    "zh-Hans": "服务商信息不可用",
+    "zh-Hant": "服務商資訊無法使用",
+    "en": "Provider information unavailable",
+    "ja": "プロバイダー情報を利用できません"
   },
   "connections.generation.profileUnselected": {
-    "zh-Hans": "尚未选择模型，输入限制尚未确认",
-    "zh-Hant": "尚未選擇模型，輸入限制尚未確認",
-    "en": "No model is selected. Input limits are not confirmed",
-    "ja": "モデルが未選択のため、入力制限は未確認です"
+    "zh-Hans": "请选择模型",
+    "zh-Hant": "請選擇模型",
+    "en": "Select a model",
+    "ja": "モデルを選択してください"
   },
   "connections.generation.profileUnknownModel": {
-    "zh-Hans": "未识别所选精确模型，不能沿用其他模型的输入限制",
-    "zh-Hant": "無法識別所選的確切模型，不能沿用其他模型的輸入限制",
-    "en": "The exact selected model is not recognized. Input limits from other models cannot be reused",
-    "ja": "選択した正確なモデルを認識できません。他のモデルの入力制限は流用できません"
+    "zh-Hans": "无法识别所选模型",
+    "zh-Hant": "無法識別所選模型",
+    "en": "The selected model is unrecognized",
+    "ja": "選択したモデルを認識できません"
   },
   "connections.generation.profileRegion": {
-    "zh-Hans": "服务器未提供 API 区域，输入限制尚未确认",
-    "zh-Hant": "伺服器未提供 API 區域，輸入限制尚未確認",
-    "en": "The server did not provide an API region. Input limits are not confirmed",
-    "ja": "サーバーから API リージョンが提供されていないため、入力制限は未確認です"
+    "zh-Hans": "API 区域未知",
+    "zh-Hant": "API 區域未知",
+    "en": "Unknown API region",
+    "ja": "API の地域が不明です"
   },
   "connections.generation.profileVersion": {
-    "zh-Hans": "输入配置版本缺失或无法识别，请刷新工作台后核对",
-    "zh-Hant": "輸入設定版本缺失或無法識別，請重新整理工作台後核對",
-    "en": "The input profile version is missing or unrecognized. Refresh the workbench and review it",
-    "ja": "入力プロファイルのバージョンが欠けているか認識できません。ワークベンチを更新して確認してください"
+    "zh-Hans": "输入配置版本未知",
+    "zh-Hant": "輸入設定版本未知",
+    "en": "Unknown input profile version",
+    "ja": "入力プロファイルのバージョンが不明です"
   },
   "connections.generation.profileMissing": {
-    "zh-Hans": "未取得此模型与 API 区域的唯一输入配置，不能推断支持情况",
-    "zh-Hant": "未取得此模型與 API 區域唯一對應的輸入設定，無法推斷支援情況",
-    "en": "No unique input profile was obtained for this model and API region. Support cannot be inferred",
-    "ja": "このモデルと API リージョンに対応する一意の入力プロファイルを取得できませんでした。対応状況は推測できません"
+    "zh-Hans": "无法确认此模型在当前区域的输入配置",
+    "zh-Hant": "無法確認此模型在目前區域的輸入設定",
+    "en": "Input profile unavailable for this model and region",
+    "ja": "このモデルと地域の入力プロファイルを確認できません"
   },
   "connections.generation.profileIncomplete": {
-    "zh-Hans": "此模型的输入配置不完整，请刷新服务商信息后核对",
-    "zh-Hant": "此模型的輸入設定不完整，請重新整理服務商資訊後核對",
-    "en": "The model’s input profile is incomplete. Refresh provider information and review it",
-    "ja": "このモデルの入力プロファイルが不完全です。プロバイダー情報を更新して確認してください"
+    "zh-Hans": "此模型的输入配置不完整",
+    "zh-Hant": "此模型的輸入設定不完整",
+    "en": "The model’s input profile is incomplete",
+    "ja": "モデルの入力プロファイルが不完全です"
   },
   "connections.generation.profileEvaluation": {
-    "zh-Hans": "尚未取得服务器的输入配置评估，不能确认当前可提交；请刷新后核对",
-    "zh-Hant": "尚未取得伺服器的輸入設定評估，無法確認目前可提交；請重新整理後核對",
-    "en": "The server’s input profile evaluation is not available. Submission readiness cannot be confirmed. Refresh and review",
-    "ja": "サーバーの入力プロファイル評価を取得できていないため、現在送信できるか確認できません。更新して確認してください"
+    "zh-Hans": "输入配置评估不可用",
+    "zh-Hant": "輸入設定評估無法使用",
+    "en": "Input profile evaluation unavailable",
+    "ja": "入力プロファイルの評価を利用できません"
   },
   "connections.generation.subjectProvider": {
-    "zh-Hans": "主体图片视频仅接入 Ark 的 doubao-seedance-2-5-260628，不会自动切换其他模型或服务商",
-    "zh-Hant": "主體圖片影片僅接入 Ark 的 doubao-seedance-2-5-260628，不會自動切換至其他模型或服務商",
-    "en": "Subject-image video is integrated only with Ark’s doubao-seedance-2-5-260628. Models and providers will not switch automatically",
-    "ja": "被写体画像からの動画生成は、Ark の doubao-seedance-2-5-260628 にのみ対応しています。他のモデルやプロバイダーに自動で切り替えることはありません"
+    "zh-Hans": "当前服务商或模型不支持主体图片输入",
+    "zh-Hant": "目前的服務商或模型不支援主體圖片輸入",
+    "en": "The current provider or model does not support subject image input",
+    "ja": "現在のプロバイダーまたはモデルはサブジェクト画像入力に対応していません"
   },
   "connections.generation.subjectProfile": {
-    "zh-Hans": "主体输入配置尚未确认，请刷新服务商信息",
-    "zh-Hant": "主體輸入設定尚未確認，請重新整理服務商資訊",
-    "en": "The subject input profile is unconfirmed. Refresh provider information",
-    "ja": "被写体入力プロファイルは未確認です。プロバイダー情報を更新してください"
+    "zh-Hans": "主体图片输入能力尚未确认",
+    "zh-Hant": "主體圖片輸入能力尚未確認",
+    "en": "Subject image input support is unconfirmed",
+    "ja": "サブジェクト画像入力への対応は未確認です"
   },
   "connections.generation.subjectUnsupported": {
-    "zh-Hans": "当前精确模型与区域尚未开放单张主体图片输入，请核对服务器配置",
-    "zh-Hant": "目前的確切模型與區域尚未開放單張主體圖片輸入，請核對伺服器設定",
-    "en": "Single subject-image input is not enabled for this exact model and region. Review server configuration",
-    "ja": "この正確なモデルとリージョンでは、1 枚の被写体画像入力は有効になっていません。サーバー設定を確認してください"
+    "zh-Hans": "所选模型未在此区域开放主体图片输入",
+    "zh-Hant": "所選模型未在此區域開放主體圖片輸入",
+    "en": "Subject image input is unavailable for this model in the selected region",
+    "ja": "選択したリージョンではこのモデルのサブジェクト画像入力を利用できません"
   },
   "connections.generation.issue.metadata": {
-    "zh-Hans": "参考素材的文件大小元数据不可用，服务器核对后才能提交",
-    "zh-Hant": "參考素材的檔案大小中繼資料無法使用，須經伺服器核對後才能提交",
-    "en": "Reference asset file-size metadata is unavailable. The server must verify it before submission",
-    "ja": "参照素材のファイルサイズ情報を利用できません。送信にはサーバーによる確認が必要です"
+    "zh-Hans": "参考素材缺少文件大小",
+    "zh-Hant": "參考素材缺少檔案大小",
+    "en": "Reference file size is unavailable",
+    "ja": "参照素材のファイルサイズが不明です"
   },
   "connections.generation.issue.size": {
-    "zh-Hans": "参考素材的文件大小元数据无效，请重新读取或导入素材",
-    "zh-Hant": "參考素材的檔案大小中繼資料無效，請重新讀取或匯入素材",
-    "en": "Reference asset file-size metadata is invalid. Read or import the asset again",
-    "ja": "参照素材のファイルサイズ情報が無効です。素材を再読み込みするか、再度取り込んでください"
+    "zh-Hans": "参考素材的文件大小无效",
+    "zh-Hant": "參考素材的檔案大小無效",
+    "en": "Invalid reference file size",
+    "ja": "参照素材のファイルサイズが無効です"
   },
   "connections.generation.issue.hash": {
-    "zh-Hans": "参考素材缺少有效的 SHA-256 校验值，请重新读取或导入素材",
-    "zh-Hant": "參考素材缺少有效的 SHA-256 校驗值，請重新讀取或匯入素材",
-    "en": "The reference asset has no valid SHA-256 checksum. Read or import the asset again",
-    "ja": "参照素材に有効な SHA-256 チェックサムがありません。素材を再読み込みするか、再度取り込んでください"
+    "zh-Hans": "参考素材缺少有效的 SHA-256 校验值",
+    "zh-Hant": "參考素材缺少有效的 SHA-256 驗證值",
+    "en": "The reference is missing a valid SHA-256 checksum",
+    "ja": "参照素材に有効な SHA-256 チェックサムがありません"
   },
   "connections.generation.issue.tooLarge": {
     "zh-Hans": "参考图片超过当前 Mioon 适配器的文件大小限制",
@@ -1731,10 +1731,10 @@ export const connectionMessages = {
     "ja": "参照画像のエンコード済み data URI 全体が、現在のアダプターのサイズ上限を超えています"
   },
   "connections.generation.issue.requestTooLarge": {
-    "zh-Hans": "参考图片和音频编码后合计超过方舟请求上限，请减少素材或换用更小的文件",
-    "zh-Hant": "參考圖片和音訊編碼後合計超過方舟請求上限，請減少素材或換用更小的檔案",
-    "en": "The encoded reference images and audio together exceed Ark’s request limit. Remove some or use smaller files",
-    "ja": "参照画像と音声のエンコード後の合計が方舟のリクエスト上限を超えています。素材を減らすか、より小さいファイルを使用してください"
+    "zh-Hans": "参考图片和音频的编码总大小超过方舟上限",
+    "zh-Hant": "參考圖片和音訊的編碼總大小超過方舟上限",
+    "en": "Encoded reference images and audio exceed Ark’s request limit",
+    "ja": "参照画像と音声のエンコード後の合計が方舟の上限を超えています"
   },
   "connections.generation.issue.audioInvalid": {
     "zh-Hans": "参考音频须为 WAV 或 MP3，每段 2–30 秒、不超过 15 MB，合计不超过 30 秒",
@@ -1749,28 +1749,28 @@ export const connectionMessages = {
     "ja": "参照画像の寸法が欠けているか、現在の Mioon アダプターの対応範囲外です"
   },
   "connections.generation.issue.aspect": {
-    "zh-Hans": "参考图片必须与镜头画幅比例一致，不会自动裁剪",
-    "zh-Hant": "參考圖片必須與鏡頭畫幅比例一致，不會自動裁切",
-    "en": "The reference image must match the shot’s aspect ratio. It will not be cropped automatically",
-    "ja": "参照画像はショットのアスペクト比と一致する必要があります。自動でトリミングすることはありません"
+    "zh-Hans": "参考图片比例须与镜头画幅一致",
+    "zh-Hant": "參考圖片比例須與鏡頭畫幅一致",
+    "en": "Reference image aspect ratio must match the shot",
+    "ja": "参照画像の比率をショットと一致させてください"
   },
   "connections.generation.issue.roleUnsupported": {
-    "zh-Hans": "Mioon 当前适配器未接入此参考角色，请查看输入限制",
-    "zh-Hant": "Mioon 目前的配接器尚未接入此參考角色，請查看輸入限制",
-    "en": "The current Mioon adapter does not support this reference role. See the input limits",
-    "ja": "現在の Mioon アダプターはこの参照の役割に対応していません。入力制限を確認してください"
+    "zh-Hans": "此模型不支持所选参考角色",
+    "zh-Hant": "此模型不支援所選參考角色",
+    "en": "The selected reference role is unsupported by this model",
+    "ja": "このモデルは選択した参照の用途に対応していません"
   },
   "connections.generation.issue.roleUnknown": {
-    "zh-Hans": "未识别此参考角色，不能自动推断用途",
-    "zh-Hant": "無法識別此參考角色，不能自動推斷用途",
-    "en": "This reference role is unrecognized. Its purpose cannot be inferred automatically",
-    "ja": "この参照の役割を認識できません。用途を自動で推測することはできません"
+    "zh-Hans": "参考角色无法识别",
+    "zh-Hant": "無法識別參考角色",
+    "en": "Unrecognized reference role",
+    "ja": "参照の用途を認識できません"
   },
   "connections.generation.issue.combination": {
-    "zh-Hans": "当前 Mioon 适配器未接入此参考组合，不会自动丢弃素材",
-    "zh-Hant": "目前 Mioon 配接器尚未接入此參考組合，不會自動捨棄素材",
-    "en": "The current Mioon adapter does not support this reference combination. Assets will not be discarded automatically",
-    "ja": "現在の Mioon アダプターはこの参照の組み合わせに対応していません。素材を自動で除外することはありません"
+    "zh-Hans": "此模型不支持所选参考组合",
+    "zh-Hant": "此模型不支援所選參考組合",
+    "en": "The selected reference combination is unsupported by this model",
+    "ja": "このモデルは選択した参照の組み合わせに対応していません"
   },
   "connections.generation.issue.roleCount": {
     "zh-Hans": "所选参考角色的数量超过当前 Mioon 适配器限制",
@@ -1797,28 +1797,28 @@ export const connectionMessages = {
     "ja": "同じ参照素材を重複して送信することはできません"
   },
   "connections.generation.issue.lifecycle": {
-    "zh-Hans": "此模型已到生命周期复核日期，服务器已阻止新提交。请重新核验该精确模型；不会自动替换模型",
-    "zh-Hant": "此模型已到生命週期複核日期，伺服器已阻止新的提交。請重新核驗此確切模型；不會自動更換模型",
-    "en": "This model has reached its lifecycle review date, and the server has blocked new submissions. Reverify this exact model. It will not be replaced automatically",
-    "ja": "このモデルはライフサイクルの再確認日を迎えたため、サーバーは新規送信をブロックしています。この正確なモデルを再検証してください。自動で置き換えることはありません"
+    "zh-Hans": "模型已到复核日期，已阻止新提交",
+    "zh-Hant": "模型已到複核日期，已阻止新送出",
+    "en": "Model review is due. New submissions are blocked",
+    "ja": "モデル再確認の期限に達したため、新規送信を停止しています"
   },
   "connections.generation.issue.frozenInvalid": {
-    "zh-Hans": "冻结参考素材清单无效，不能自动修复或缩短",
-    "zh-Hant": "固定參考素材清單無效，不能自動修復或縮短",
-    "en": "The frozen reference manifest is invalid. It cannot be repaired or shortened automatically",
-    "ja": "固定された参照素材一覧が無効です。自動で修復したり短縮したりすることはできません"
+    "zh-Hans": "冻结的参考素材清单无效",
+    "zh-Hant": "固定的參考素材清單無效",
+    "en": "The frozen reference manifest is invalid",
+    "ja": "固定された参照素材一覧が無効です"
   },
   "connections.generation.issue.referencesMissing": {
-    "zh-Hans": "参考素材已不存在或冻结清单不完整，请重新核对原始素材",
-    "zh-Hant": "參考素材已不存在或固定清單不完整，請重新核對原始素材",
-    "en": "Reference assets no longer exist or the frozen manifest is incomplete. Review the original assets again",
-    "ja": "参照素材が存在しないか、固定された一覧が不完全です。元の素材を再確認してください"
+    "zh-Hans": "参考素材缺失或冻结清单不完整",
+    "zh-Hant": "參考素材缺失或固定清單不完整",
+    "en": "Reference assets are missing or the frozen manifest is incomplete",
+    "ja": "参照素材がないか、固定された一覧が不完全です"
   },
   "connections.generation.issue.referencesChanged": {
-    "zh-Hans": "参考素材与原任务的冻结内容不一致，不能替换后重试",
-    "zh-Hant": "參考素材與原工作的固定內容不一致，不能更換後重試",
-    "en": "Reference assets do not match the original task’s frozen content. They cannot be replaced for a retry",
-    "ja": "参照素材が元のタスクの固定内容と一致しません。置き換えて再試行することはできません"
+    "zh-Hans": "参考素材与原任务的冻结内容不一致",
+    "zh-Hant": "參考素材與原工作的固定內容不符",
+    "en": "Reference assets differ from the original task’s frozen inputs",
+    "ja": "参照素材が元のタスクで固定した内容と一致しません"
   },
   "connections.generation.issue.firstFrame": {
     "zh-Hans": "图生视频需要选择一张首帧参考图",
@@ -1827,16 +1827,16 @@ export const connectionMessages = {
     "ja": "画像から動画を生成するには、最初のフレーム用の参照画像を 1 枚選択する必要があります"
   },
   "connections.generation.issue.clearFrames": {
-    "zh-Hans": "切换文生视频前须明确清除首帧与尾帧选择，不会自动丢弃参考图",
-    "zh-Hant": "切換為文字生成影片前，須明確清除首尾影格選擇，不會自動捨棄參考圖",
-    "en": "Explicitly clear first- and last-frame selections before switching to text-to-video. Reference images will not be discarded automatically",
-    "ja": "テキストから動画に切り替える前に、最初と最後のフレームの選択を明示的に解除してください。参照画像を自動で除外することはありません"
+    "zh-Hans": "文生视频不能带首帧或尾帧",
+    "zh-Hant": "文字生成影片不能帶首影格或尾影格",
+    "en": "Text to video does not accept first or last frames",
+    "ja": "テキストから動画には先頭・最終フレームを使用できません"
   },
   "connections.generation.issue.unknown": {
-    "zh-Hans": "输入未通过核验。请核对输入限制与原始诊断代码：{code}",
-    "zh-Hant": "輸入未通過核驗。請核對輸入限制與原始診斷代碼：{code}",
-    "en": "Input verification did not pass. Review the input limits and original diagnostic code: {code}",
-    "ja": "入力の検証に合格しませんでした。入力制限と元の診断コードを確認してください：{code}"
+    "zh-Hans": "输入未通过核验（{code}）",
+    "zh-Hant": "輸入未通過核驗（{code}）",
+    "en": "Input validation failed ({code})",
+    "ja": "入力の検証に失敗しました（{code}）"
   },
   "connections.generation.issue.subjectBound": {
     "zh-Hans": "主体图片不能与首帧连线一起提交。请先明确断开首帧连线，再选择本次主体输入",
@@ -1881,88 +1881,88 @@ export const connectionMessages = {
     "ja": "被写体の固定バージョンの元画像の内容またはメタデータが変更されています。置き換えて送信することはできません。元画像を確認してください"
   },
   "connections.generation.issue.inputRecord": {
-    "zh-Hans": "生成输入格式无效，请核对原始请求",
-    "zh-Hant": "生成輸入格式無效，請核對原始請求",
-    "en": "The generation input format is invalid. Review the original request",
-    "ja": "生成入力の形式が無効です。元のリクエストを確認してください"
+    "zh-Hans": "生成输入格式无效",
+    "zh-Hant": "生成輸入格式無效",
+    "en": "Invalid generation input format",
+    "ja": "生成入力の形式が無効です"
   },
   "connections.generation.issue.modelUnsupported": {
-    "zh-Hans": "此服务商不支持所选精确模型，不会自动更换模型",
-    "zh-Hant": "此服務商不支援所選的確切模型，不會自動更換模型",
-    "en": "This provider does not support the exact selected model. It will not be changed automatically",
-    "ja": "このプロバイダーは選択した正確なモデルに対応していません。モデルを自動で変更することはありません"
+    "zh-Hans": "此服务商不支持所选模型",
+    "zh-Hant": "此服務商不支援所選模型",
+    "en": "The provider does not support the selected model",
+    "ja": "プロバイダーは選択したモデルに対応していません"
   },
   "connections.generation.issue.parametersUnsupported": {
-    "zh-Hans": "此模型不接受所选画幅或时长，请核对当前输入限制",
-    "zh-Hant": "此模型不接受所選畫幅或時長，請核對目前的輸入限制",
-    "en": "This model does not accept the selected aspect ratio or duration. Review the current input limits",
-    "ja": "このモデルは選択したアスペクト比または長さに対応していません。現在の入力制限を確認してください"
+    "zh-Hans": "此模型不支持所选画幅或时长",
+    "zh-Hant": "此模型不支援所選畫幅或時長",
+    "en": "This model does not support the selected aspect ratio or duration",
+    "ja": "このモデルは選択した比率または長さに対応していません"
   },
   "connections.generation.issue.inputUnsupported": {
-    "zh-Hans": "此模型不接受当前参考输入。请核对输入模式、素材数量、格式、尺寸和画幅比例；不会自动丢弃或裁剪素材",
-    "zh-Hant": "此模型不接受目前的參考輸入。請核對輸入模式、素材數量、格式、尺寸與畫幅比例；不會自動捨棄或裁切素材",
-    "en": "This model does not accept the current reference input. Review the input mode, asset count, format, dimensions, and aspect ratio. Assets will not be discarded or cropped automatically",
-    "ja": "このモデルは現在の参照入力を受け付けません。入力モード、素材の数、形式、寸法、アスペクト比を確認してください。素材を自動で除外したりトリミングしたりすることはありません"
+    "zh-Hans": "此模型不支持所选参考输入",
+    "zh-Hant": "此模型不支援所選參考輸入",
+    "en": "This model does not support the selected reference inputs",
+    "ja": "このモデルは選択した参照入力に対応していません"
   },
   "connections.generation.issue.promptInvalid": {
-    "zh-Hans": "画面描述无效，请按所选模型的长度限制填写描述",
-    "zh-Hant": "畫面描述無效，請依所選模型的長度限制填寫描述",
-    "en": "The visual prompt is invalid. Enter a prompt within the selected model’s length limits",
-    "ja": "画面説明が無効です。選択したモデルの文字数制限に従って入力してください"
+    "zh-Hans": "画面描述不符合模型限制",
+    "zh-Hant": "畫面描述不符合模型限制",
+    "en": "The description does not satisfy the model’s limits",
+    "ja": "画面の説明がモデルの制限を満たしていません"
   },
   "connections.generation.issue.parameterInvalid": {
-    "zh-Hans": "高级参数或随机种子不符合当前模型限制，请核对参数名称、类型与范围",
-    "zh-Hant": "進階參數或隨機種子不符合目前模型限制，請核對參數名稱、類型與範圍",
-    "en": "Advanced parameters or the seed do not meet the model’s limits. Check parameter names, types, and ranges",
-    "ja": "詳細パラメーターまたはシードが現在のモデルの制限を満たしていません。パラメーターの名前、型、範囲を確認してください"
+    "zh-Hans": "高级参数或随机种子不符合模型限制",
+    "zh-Hant": "進階參數或隨機種子不符合模型限制",
+    "en": "Advanced parameters or the seed do not satisfy the model’s limits",
+    "ja": "詳細パラメーターまたはシードがモデルの制限を満たしていません"
   },
   "connections.generation.issue.regionChanged": {
-    "zh-Hans": "当前服务商区域与原请求不一致，不能改用其他区域重试",
-    "zh-Hant": "目前服務商區域與原請求不一致，不能改用其他區域重試",
-    "en": "The current provider region differs from the original request. A different region cannot be used for a retry",
-    "ja": "現在のプロバイダーのリージョンが元のリクエストと異なります。別のリージョンに変えて再試行することはできません"
+    "zh-Hans": "服务商区域与原请求不一致",
+    "zh-Hant": "服務商區域與原請求不一致",
+    "en": "The provider region differs from the original request",
+    "ja": "プロバイダーの地域が元のリクエストと一致しません"
   },
   "connections.generation.issue.regionUnsupported": {
-    "zh-Hans": "当前精确模型的 API 区域不受支持或尚未明确选择，不会自动回退",
-    "zh-Hant": "目前確切模型的 API 區域不受支援或尚未明確選擇，不會自動回退",
-    "en": "The API region for this exact model is unsupported or not explicitly selected. There is no automatic fallback",
-    "ja": "この正確なモデルの API リージョンは未対応か、明示的に選択されていません。自動フォールバックは行いません"
+    "zh-Hans": "所选模型不支持当前 API 区域",
+    "zh-Hant": "所選模型不支援目前 API 區域",
+    "en": "The selected model does not support the current API region",
+    "ja": "選択したモデルは現在の API 地域に対応していません"
   },
   "connections.generation.issue.profileUnknown": {
-    "zh-Hans": "原请求的完整输入配置标识或版本无法核验，不能回退到当前配置",
-    "zh-Hant": "無法核驗原請求的完整輸入設定識別碼或版本，不能回退至目前設定",
-    "en": "The original request’s complete input profile identity or version cannot be verified. It cannot fall back to the current profile",
-    "ja": "元のリクエストの完全な入力プロファイル識別情報またはバージョンを検証できません。現在のプロファイルにフォールバックすることはできません"
+    "zh-Hans": "无法核验原请求的输入配置",
+    "zh-Hant": "無法核驗原請求的輸入設定",
+    "en": "The original request’s input profile cannot be verified",
+    "ja": "元のリクエストの入力プロファイルを検証できません"
   },
   "connections.generation.issue.referenceInvalid": {
-    "zh-Hans": "参考素材记录或清单无效，请核对完整原始素材；不会自动修复或缩短",
-    "zh-Hant": "參考素材記錄或清單無效，請核對完整原始素材；不會自動修復或縮短",
-    "en": "A reference asset record or manifest is invalid. Review the complete original assets. Records will not be repaired or shortened automatically",
-    "ja": "参照素材の記録または一覧が無効です。完全な元の素材を確認してください。記録を自動で修復したり短縮したりすることはありません"
+    "zh-Hans": "参考素材记录或清单无效",
+    "zh-Hant": "參考素材記錄或清單無效",
+    "en": "The reference asset record or manifest is invalid",
+    "ja": "参照素材の記録または一覧が無効です"
   },
   "connections.generation.issue.bindingMismatch": {
-    "zh-Hans": "参考素材与固定角色绑定不一致，请核对原始素材身份与顺序",
-    "zh-Hant": "參考素材與固定角色綁定不一致，請核對原始素材身分與順序",
-    "en": "Reference assets do not match the fixed role bindings. Review the original asset identities and order",
-    "ja": "参照素材が固定した役割の割り当てと一致しません。元の素材の識別情報と順序を確認してください"
+    "zh-Hans": "参考素材与固定角色绑定不符",
+    "zh-Hant": "參考素材與固定角色連結不符",
+    "en": "Reference assets do not match their bound roles",
+    "ja": "参照素材が固定された用途と一致しません"
   },
   "connections.generation.issue.metadataIncomplete": {
-    "zh-Hans": "参考素材元数据缺失或与完整选择不一致，服务器核对后才能提交",
-    "zh-Hant": "參考素材中繼資料缺失或與完整選擇不一致，須經伺服器核對後才能提交",
-    "en": "Reference metadata is missing or does not match the complete selection. The server must verify it before submission",
-    "ja": "参照素材のメタデータが欠けているか、選択全体と一致しません。送信にはサーバーによる確認が必要です"
+    "zh-Hans": "参考素材元数据缺失或与所选素材不符",
+    "zh-Hant": "參考素材中繼資料缺失或與所選素材不符",
+    "en": "Reference metadata is missing or does not match the selected assets",
+    "ja": "参照素材のメタデータが不足しているか、選択した素材と一致しません"
   },
   "connections.generation.issue.evaluationDate": {
-    "zh-Hans": "缺少有效的服务器评估日期，不能确认输入配置仍可使用。请刷新后核对",
-    "zh-Hant": "缺少有效的伺服器評估日期，無法確認輸入設定仍可使用。請重新整理後核對",
-    "en": "A valid server evaluation date is missing. Continued input-profile availability cannot be confirmed. Refresh and review",
-    "ja": "有効なサーバー評価日がないため、入力プロファイルを引き続き利用できるか確認できません。更新して確認してください"
+    "zh-Hans": "输入配置的评估日期无效",
+    "zh-Hant": "輸入設定的評估日期無效",
+    "en": "The input profile evaluation date is invalid",
+    "ja": "入力プロファイルの評価日が無効です"
   },
   "connections.generation.issue.schemaUnsupported": {
-    "zh-Hans": "输入包含不受支持的结构版本或字段，不会自动忽略。请核对原始请求",
-    "zh-Hant": "輸入包含不受支援的結構版本或欄位，不會自動忽略。請核對原始請求",
-    "en": "The input contains an unsupported schema version or field. It will not be silently ignored. Review the original request",
-    "ja": "入力に未対応のスキーマバージョンまたはフィールドが含まれています。自動で無視することはありません。元のリクエストを確認してください"
+    "zh-Hans": "输入包含不受支持的结构版本或字段",
+    "zh-Hant": "輸入包含不受支援的結構版本或欄位",
+    "en": "Input uses an unsupported schema version or field",
+    "ja": "入力に未対応の構造バージョンまたはフィールドが含まれています"
   },
   "connections.generation.referenceOwnerInvalid": {
     "zh-Hans": "参考素材归属无效。",
@@ -2048,7 +2048,7 @@ export const connectionMessages = {
   "generation.services.availableCount": {"zh-Hans":"{count} 家可用","zh-Hant":"{count} 家可用","en":"{count} available","ja":"{count} 件利用可能"},
   "generation.services.generalIntro": {"zh-Hans":"已填写密钥、启用且具有可用模型的本机服务。点击名称跳到详情；绿点不代表联网检查或生成已验证。","zh-Hant":"已填寫金鑰、啟用且具有可用模型的本機服務。點選名稱前往詳細資料；綠點不代表連線檢查或生成已驗證。","en":"Local services with an available key, enabled configuration and usable model. Select a name for details. A green dot does not verify connectivity or generation.","ja":"利用可能なキー、有効な設定、使用可能なモデルがあるローカルサービスです。名前を選ぶと詳細に移動します。緑の点は接続や生成の検証を意味しません。"},
   "generation.services.noneAvailable": {"zh-Hans":"暂没有可用的服务，请先配置并启用。","zh-Hant":"目前沒有可用的服務，請先設定並啟用。","en":"No services are available yet. Configure and enable a service first.","ja":"利用可能なサービスはまだありません。設定して有効にしてください。"},
-  "generation.services.configureFirst": {"zh-Hans":"暂没有可用的生成服务，请先在设置里配置并启用。","zh-Hant":"目前沒有可用的生成服務，請先在設定中設定並啟用。","en":"No generation services are available. Configure and enable one in Settings first.","ja":"利用可能な生成サービスがありません。先に設定でサービスを設定し、有効にしてください。"},
+  "generation.services.configureFirst": {"zh-Hans": "暂无可用的生成服务", "zh-Hant": "暫無可用的生成服務", "en": "No generation services available", "ja": "利用できる生成サービスがありません"},
   "generation.services.openSettings": {"zh-Hans":"打开生成服务设置","zh-Hant":"開啟生成服務設定","en":"Open generation service settings","ja":"生成サービス設定を開く"},
   "generation.services.unavailableCount": {"zh-Hans":"其他 {count} 家尚不可用","zh-Hant":"其他 {count} 家尚無法使用","en":"{count} other services are not yet available","ja":"他の {count} 件はまだ利用できません"},
   "generation.services.separateKeys": {"zh-Hans":"每家服务的密钥分开填写：同一家公司的视频和图片服务也要分别填，和 Mio 的密钥互不相通。","zh-Hant":"每家服務的金鑰分開填寫：同一家公司的影片和圖片服務也須分別填寫，與 Mio 的金鑰不互通。","en":"Enter a separate key for each service, including video and image services from the same company. Mio uses its own keys.","ja":"同じ会社の動画と画像サービスも含め、サービスごとにキーを入力してください。Mio のキーとも共有されません。"},

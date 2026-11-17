@@ -5,7 +5,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip } from './WorkspaceControls.tsx';
-import { Camera, Check, Lock, Sun, Upload } from '@mioon/ui/components/workbench-icons';
+import { Camera, Check, Sun, Upload } from '@mioon/ui/components/workbench-icons';
 import BoardInspectorGroup from './BoardInspectorGroup.tsx';
 import AgentEditingBoundary from './AgentEditingBoundary.tsx';
 import { ImageChoice, SubjectImage, SubjectNotice, SubjectPager } from './SubjectLibrary.tsx';
@@ -95,12 +95,11 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
   const variantEntry = variants ? (variantReason ? <WorkbenchTooltip content={variantReason}><span className="subject-variant-entry">{variantButton}<span id={variantEntryId} className="sr-only">{variantReason}</span></span></WorkbenchTooltip> : <span className="subject-variant-entry">{variantButton}</span>) : null;
   const dialogVersions = [...new Map([subject.headVersion, ...items].map(version => [version.id, version])).values()].sort((a, b) => a.number - b.number);
   return frame(<>
-    <header className="inspector-heading subject-inspector-heading"><span className="subject-kind-chip">{kind}</span><strong title={subject.name}>{t('subjects.inspector.title', { name: subject.name })}</strong>{complete && <span className="subject-inspector-count">{t('subjects.inspector.versionCount', { count: items.length })}</span>}</header>
+    <header className="inspector-heading subject-inspector-heading"><span className="subject-kind-chip">{kind}</span><strong title={subject.name}>{t('subjects.inspector.title', { name: subject.name })}</strong></header>
     <ScrollArea style={{ flex: 1, minHeight: 0 }}><div className="inspector-scroll subject-inspector-scroll">
       <SubjectNotice state={state} onShowTasks={onShowTasks} admit={admit} />
       <BoardInspectorGroup key={`basics:${subjectId}`} title={t('subjects.inspector.basics')}>
         <dl className="subject-basics"><dt>{t('subjects.create.name')}</dt><dd>{subject.name}</dd><dt>{t('subjects.create.kind')}</dt><dd>{kind}</dd></dl>
-        <p className="subject-readonly-hint"><Lock size={11} aria-hidden="true" />{t('subjects.inspector.readOnly')}</p>
       </BoardInspectorGroup>
       <BoardInspectorGroup key={`versions:${subjectId}`} title={t('subjects.inspector.versions')} meta={complete ? items.length : undefined}
         actions={<>{variantEntry}<WorkbenchTooltip content={t('subjects.version.addImage')}><Button variant="ghost" size="sm" className="icon-button" aria-label={t('subjects.version.addImage')} aria-expanded={formOpen} data-testid="subject-version-add-open" disabled={!interaction.visible} onClick={() => admit(() => setAdding(formOpen && !versionDraft?.assetId ? null : subjectId))}><Upload size={14} /></Button></WorkbenchTooltip></>}>
@@ -108,7 +107,7 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
         {variantList?.phase === 'error' && variantList.error && <div className="subject-variant-notice"><p role="alert" className="subject-warning">{renderMessage(variantList.error)}</p><div className="subject-actions"><Button variant="ghost" size="sm" data-testid="subject-variant-list-reread" disabled={!interaction.visible} onClick={() => admit(() => variantControl?.readSubject(subjectId))}>{t('subjects.variants.reconcile')}</Button></div></div>}
         {variantState && variantControl && batches.map(batch => <SubjectVariantBatchRow key={batch.id} batch={batch} shots={shots} submitting={submittingBatch === batch.id} issues={variantState.issues} controller={variantControl} mockAvailable={mockAvailable} versions={known} disabled={variantDisabled} admit={admit} onShowTasks={onShowTasks} />)}
         {formOpen && <AgentEditingBoundary disabled={false} projectId={view.projectId} targets={[{ kind: 'subject', id: subject.id, revision: subject.revision }]} canRelease={() => { const current = control.getState(); return !current.versionDrafts[subject.id]?.assetId && !current.saving && !current.uncertain; }} onDiscard={() => { const current = control.getState(); if (current.scope === scope && !current.saving && !current.uncertain) control.updateVersion(subject.id, '', scope); }}>
-          <div className="subject-form"><Label htmlFor="subject-version-image">{t('subjects.version.addImage')}</Label><ImageChoice id="subject-version-image" value={versionDraft?.assetId || ''} assets={images} disabled={disabled || view.list.phase !== 'ready'} onChange={assetId => admit(() => control.updateVersion(subject.id, assetId, scope))} />{versionDraft?.assetId && <SubjectImage version={{ assetId: versionDraft.assetId, projectId: view.projectId }} assets={assets} label={t('subjects.version.selectedImage')} />}{staleVersionDraft && <p className="subject-warning" role="alert">{t('subjects.version.staleDraft')}</p>}<div className="subject-actions"><Button size="sm" data-testid="subject-add-version" disabled={disabled || view.list.phase !== 'ready' || staleVersionDraft || !images.some(asset => asset.id === versionDraft?.assetId)} onClick={() => admit(() => control.addVersion(subject.id, scope))}>{t('subjects.version.add')}</Button>{versionDraft?.assetId && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => admit(() => control.updateVersion(subject.id, '', scope))}>{t('subjects.version.discard')}</Button>}</div><p className="subject-helper">{t('subjects.version.retained')}</p></div>
+          <div className="subject-form"><Label htmlFor="subject-version-image">{t('subjects.version.addImage')}</Label><ImageChoice id="subject-version-image" value={versionDraft?.assetId || ''} assets={images} disabled={disabled || view.list.phase !== 'ready'} onChange={assetId => admit(() => control.updateVersion(subject.id, assetId, scope))} />{versionDraft?.assetId && <SubjectImage version={{ assetId: versionDraft.assetId, projectId: view.projectId }} assets={assets} label={t('subjects.version.selectedImage')} />}{staleVersionDraft && <p className="subject-warning" role="alert">{t('subjects.version.staleDraft')}</p>}<div className="subject-actions"><Button size="sm" data-testid="subject-add-version" disabled={disabled || view.list.phase !== 'ready' || staleVersionDraft || !images.some(asset => asset.id === versionDraft?.assetId)} onClick={() => admit(() => control.addVersion(subject.id, scope))}>{t('subjects.version.add')}</Button>{versionDraft?.assetId && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => admit(() => control.updateVersion(subject.id, '', scope))}>{t('subjects.version.discard')}</Button>}</div></div>
         </AgentEditingBoundary>}
         {versions?.phase === 'loading' && <p role="status">{t('subjects.version.loading')}</p>}
         {versions?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(versions.error)}</p>}
@@ -125,10 +124,10 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
         </div>
       </BoardInspectorGroup>
       <BoardInspectorGroup key={`usage:${subjectId}`} title={t('subjects.inspector.usage')} meta={uses?.phase === 'ready' && !uses.nextCursor ? active.length : undefined}
-        actions={<WorkbenchTooltip content={t('subjects.library.planningNote')}><Button type="button" variant="ghost" size="sm" className="icon-button" aria-label={t('subjects.library.planningNote')}>ⓘ</Button></WorkbenchTooltip>}>
+        actions={<WorkbenchTooltip content={t('subjects.library.planningNote')}><Button type="button" variant="ghost" size="sm" className="icon-button" aria-label={t('shell.details')}>ⓘ</Button></WorkbenchTooltip>}>
         {uses?.phase === 'loading' && <p role="status">{t('subjects.binding.loading')}</p>}
         {uses?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(uses.error)}</p>}
-        {uses?.phase === 'ready' && !active.length && <p className="subject-helper">{t('subjects.binding.noneLoaded')}</p>}
+        {uses?.phase === 'ready' && !uses.nextCursor && !active.length && <p className="subject-helper">{t('subjects.binding.noneLoaded')}</p>}
         {active.length > 0 && <ul className="subject-usage" aria-label={t('subjects.binding.heading')}>{active.map(binding => {
           const shot = shots.find(item => item.id === binding.shotId), index = order.findIndex(item => item.id === binding.shotId);
           const pinned = binding.subjectVersionId ? known[binding.subjectVersionId] : undefined, pinnedTag = pinned ? tag(pinned) : null;

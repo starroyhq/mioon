@@ -4131,12 +4131,6 @@ const timelineCoreMessages = {
     "en": "Reference role: {role}",
     "ja": "参照の役割：{role}"
   },
-  "timeline.references.none": {
-    "zh-Hans": "未选择首帧或尾帧参考图",
-    "zh-Hant": "尚未選擇首影格或尾影格參考圖",
-    "en": "No first- or last-frame reference selected",
-    "ja": "先頭または最終フレームの参照画像は未選択です"
-  },
   "timeline.references.all": {
     "zh-Hans": "完整生成参考图",
     "zh-Hant": "完整生成參考圖",
@@ -4185,41 +4179,17 @@ const timelineCoreMessages = {
     "en": "No checksum provided",
     "ja": "チェックサムなし"
   },
-  "timeline.references.optional": {
-    "zh-Hans": "可选 · 已选 {count}",
-    "zh-Hant": "選填 · 已選 {count}",
-    "en": "Optional · {count} selected",
-    "ja": "任意 · {count} 件選択済み"
-  },
-  "timeline.references.restriction": {
-    "zh-Hans": "首尾帧组合仅接入 Ark 与 Mock。须同时有一张首帧；同一素材不能兼作首尾帧（当前应用限制）。更换服务商不会清除已保存的尾帧",
-    "zh-Hant": "首尾影格組合僅接入 Ark 與 Mock。須同時有一張首影格；相同素材不可同時作為首尾影格（目前應用程式限制）。更換服務商不會清除已儲存的尾影格",
-    "en": "First/last-frame pairs are supported only through Ark and Mock. A first frame is also required; the same asset cannot serve as both frames (current app restriction). Changing provider does not clear the saved last frame",
-    "ja": "先頭・最終フレームの組み合わせは Ark と Mock のみ対応しています。先頭フレームも 1 枚必要です。同じ素材を両方に使うことはできません（現在のアプリの制限）。プロバイダーを変更しても保存済みの最終フレームは消去されません"
-  },
   "timeline.references.lastAria": {
     "zh-Hans": "尾帧参考图 {name}",
     "zh-Hant": "尾影格參考圖 {name}",
     "en": "Last-frame reference {name}",
     "ja": "最終フレームの参照画像 {name}"
   },
-  "timeline.references.import": {
-    "zh-Hans": "先在左侧导入一张图片作为尾帧",
-    "zh-Hant": "請先在左側匯入一張圖片作為尾影格",
-    "en": "First import an image on the left to use as the last frame",
-    "ja": "まず左側で最終フレームに使う画像を読み込んでください"
-  },
-  "timeline.references.selected": {
-    "zh-Hans": "已选尾帧：{name}",
-    "zh-Hant": "已選尾影格：{name}",
-    "en": "Selected last frame: {name}",
-    "ja": "選択中の最終フレーム：{name}"
-  },
   "timeline.references.missing": {
-    "zh-Hans": "素材不存在，请重新选择",
-    "zh-Hant": "素材不存在，請重新選擇",
-    "en": "Asset missing; choose again",
-    "ja": "素材が見つかりません。選び直してください"
+    "zh-Hans": "尾帧素材不可用",
+    "zh-Hant": "尾影格素材無法使用",
+    "en": "Last-frame asset unavailable",
+    "ja": "最終フレームの素材を利用できません"
   },
   "timeline.references.clear": {
     "zh-Hans": "清除尾帧参考图",

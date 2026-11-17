@@ -51,6 +51,7 @@ export default function SubjectVideoSelection({ shot, draft, subjects, assets = 
   const conflict = subjectVideoConflictDescriptor(shot ?? {}, { savedShot: shot ?? {}, boundReference });
   const profileIssue = subjectVideoProfileDescriptor(provider, model);
   const libraryIssue = !state ? t('subjects.video.libraryLoading') : state.uncertain ? t('subjects.video.pending') : state.saving ? t('subjects.video.saving') : '';
+  const visibleIssue = active ? conflict || (provider && model && profileIssue) || libraryIssue : null;
   const locked = disabled || !interaction.visible || !state || Boolean(state?.saving || state?.uncertain);
   const chooseLocked = locked || Boolean(conflict || profileIssue);
   const choices = [...(state?.list.items || []), ...(subject && !state?.list.items.some(item => item.id === subject.id) ? [subject] : [])];
@@ -61,9 +62,9 @@ export default function SubjectVideoSelection({ shot, draft, subjects, assets = 
   const change = (patch: Record<string, unknown>): unknown => interaction.admit(() => { if (!locked) onChange(patch); });
   return <section className="subject-video-selection" data-testid="subject-video-selection" aria-label={t('subjects.video.sectionLabel')}>
     <Label className="subject-video-toggle" htmlFor="subject-video-enabled"><Switch id="subject-video-enabled" data-testid="subject-video-enabled" checked={active} disabled={locked || !active && Boolean(conflict || profileIssue)} onCheckedChange={checked => { if (active || !chooseLocked) change({ inputMode: checked ? 'subject' : 'text' }); }} /><span>{t('subjects.video.toggle')}</span></Label>
-    {(conflict || profileIssue || libraryIssue) && <p className="subject-warning" role="status" data-testid="subject-video-unavailable">{renderMessage(conflict || profileIssue || libraryIssue)}</p>}
-    {provider?.id === 'ark' && <WorkbenchTooltip content={renderMessage(ARK_SUBJECT_WARNING_MESSAGE)}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="subject-video-face-warning" aria-label={renderMessage(ARK_SUBJECT_WARNING_MESSAGE)}>ⓘ</Button></WorkbenchTooltip>}
-    {provider?.mock && <WorkbenchTooltip content={renderMessage(MOCK_SUBJECT_WARNING_MESSAGE)}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="subject-video-mock-warning" aria-label={renderMessage(MOCK_SUBJECT_WARNING_MESSAGE)}>ⓘ</Button></WorkbenchTooltip>}
+    {visibleIssue && <p className="subject-warning" role="status" data-testid="subject-video-unavailable">{renderMessage(visibleIssue)}</p>}
+    {active && provider?.id === 'ark' && <WorkbenchTooltip content={renderMessage(ARK_SUBJECT_WARNING_MESSAGE)}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="subject-video-face-warning" aria-label={t('subjects.video.faceInfo')}>ⓘ</Button></WorkbenchTooltip>}
+    {active && provider?.mock && <WorkbenchTooltip content={renderMessage(MOCK_SUBJECT_WARNING_MESSAGE)}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="subject-video-mock-warning" aria-label={t('subjects.video.mockInfo')}>ⓘ</Button></WorkbenchTooltip>}
     {active && <div className="subject-form">
       <Label htmlFor="subject-video-subject">{t('subjects.binding.chooseLabel')}</Label>
       <WorkbenchSelect id="subject-video-subject" data-testid="subject-video-subject" value={subjectId} disabled={chooseLocked || state?.list.phase !== 'ready'} onChange={event => change({ subjectId: event.target.value, subjectReference: null })}><option value="">{t('subjects.video.choose')}</option>{choices.map(item => <option key={item.id} value={item.id} disabled={!(SUBJECT_VIDEO_KINDS as readonly string[]).includes(item.kind)}>{item.name} · {renderMessage(subjectKindDescriptor(item.kind))}{item.kind === 'look' ? t('subjects.video.planningOnlySuffix') : ''}</option>)}</WorkbenchSelect>
@@ -76,7 +77,7 @@ export default function SubjectVideoSelection({ shot, draft, subjects, assets = 
         <Button variant="ghost" size="sm" disabled={locked || versions?.phase === 'loading'} onClick={() => interaction.admit(() => control.readVersions(subjectId, scope))}>{t('subjects.version.reload')}</Button>
       </>}
       <SubjectVideoSummary reference={reference} assets={assets as SubjectAssetView[]} latestSubject={subject} />
-      <WorkbenchTooltip content={t('subjects.video.constraints')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('subjects.video.constraints')}>ⓘ</Button></WorkbenchTooltip>
+      <WorkbenchTooltip content={t('subjects.video.constraints')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('subjects.video.inputInfo')}>ⓘ</Button></WorkbenchTooltip>
     </div>}
   </section>;
 }

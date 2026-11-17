@@ -70,6 +70,13 @@ test('online current media renders content; a different version/foreign project/
   for (const kind of ['version', 'foreign-comparison', 'unknown']) assert.doesNotMatch(ui.render(kind, true), /<(?:img|video|audio)\b[^>]*\bsrc=/u, kind);
 });
 
+test('the generation confirmation summary keeps exact asset identity in collapsed details', () => {
+  const markup = ui.render('summary', true, 'online');
+  assert.match(markup, /<details class="asset-identity-details" data-testid="asset-identity-details">/u);
+  assert.match(markup, /<dd>00000000-0000-4000-8000-000000000001<\/dd>/u);
+  assert.match(markup, /<dt>SHA-256<\/dt><dd>a{64}<\/dd>/u);
+});
+
 test('pending media has neither a reading label nor a source before the check is old enough to show', () => {
   for (const kind of ['image', 'video', 'audio', 'preview']) {
     const markup = ui.render(kind, false, 'pending');

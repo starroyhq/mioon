@@ -12,12 +12,11 @@
 .subject-card-title{display:flex;align-items:baseline;gap:6px;min-width:0}.subject-card-title strong{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Properties pane for one subject (09-10a-1). */
 .subject-inspector .subject-inspector-heading{gap:8px}.subject-inspector-heading strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.subject-kind-chip{flex:none;align-self:center;padding:0 6px;border-radius:4px;background:var(--wb-raised);color:var(--wb-soft);font-size:10px;line-height:18px}.subject-inspector-count{flex:none;color:var(--wb-muted);font-size:10px}
+.subject-kind-chip{flex:none;align-self:center;padding:0 6px;border-radius:4px;background:var(--wb-raised);color:var(--wb-soft);font-size:10px;line-height:18px}
 .subject-inspector-status{margin:var(--wb-space-3);font-size:11px;color:var(--wb-soft)}
 .board-inspector-group-header{display:flex;align-items:center;padding-right:var(--wb-space-2)}.board-inspector-group-header>.board-inspector-group-heading{flex:1;width:auto}.board-inspector-group-actions{display:flex;align-items:center;gap:4px}.board-inspector-group-actions .icon-button{width:26px;height:26px;padding:0}
 .board-inspector-group-meta{color:var(--wb-muted);font-size:10px;font-weight:400}
 .subject-basics{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px 10px;margin:0;font-size:11px}.subject-basics dt{color:var(--wb-soft)}.subject-basics dd{margin:0;color:var(--wb-text);overflow-wrap:anywhere}
-.subject-readonly-hint{display:flex;align-items:center;gap:5px;margin:10px 0 0;font-size:10px;color:var(--wb-muted)}
 .subject-inspector .subject-version-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .subject-version-tile{display:flex;flex-direction:column;gap:5px;min-width:0}
 .subject-version-thumb{position:relative;display:block!important;width:100%;height:auto!important;aspect-ratio:3/4;padding:0!important;overflow:hidden;border-radius:6px!important;border:1px solid var(--wb-line-subtle)!important;background:var(--wb-input)!important}.subject-version-thumb.selected{border:2px solid var(--wb-accent-line)!important}

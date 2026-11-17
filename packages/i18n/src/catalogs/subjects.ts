@@ -97,12 +97,6 @@ export const subjectsMessages = {
     "en": "The selected image is not loaded or is missing",
     "ja": "選択した画像が未読み込み、または見つかりません"
   },
-  "subjects.image.chooseAnother": {
-    "zh-Hans": "已选图片不可用，请明确选择另一张图片",
-    "zh-Hant": "所選圖片無法使用，請明確選擇另一張圖片",
-    "en": "The selected image is unavailable. Explicitly choose another image",
-    "ja": "選択した画像は利用できません。別の画像を明示的に選択してください"
-  },
   "subjects.library.label": {
     "zh-Hans": "本地主体库",
     "zh-Hant": "本機主體庫",
@@ -188,16 +182,10 @@ export const subjectsMessages = {
     "ja": "新しいサブジェクトに選択した画像"
   },
   "subjects.create.importFirst": {
-    "zh-Hans": "请先在素材页导入 PNG、JPEG 或 WebP 图片",
-    "zh-Hant": "請先在素材頁匯入 PNG、JPEG 或 WebP 圖片",
-    "en": "First import a PNG, JPEG, or WebP image on the assets page",
-    "ja": "まず素材ページで PNG、JPEG、WebP の画像を読み込んでください"
-  },
-  "subjects.create.retained": {
-    "zh-Hans": "名称和类型创建后保留。后续换图会追加版本",
-    "zh-Hant": "建立後會保留名稱和類型。之後換圖會追加版本",
-    "en": "The name and type are retained after creation. Changing the image later adds a version",
-    "ja": "作成後も名前と種類は保持されます。後で画像を変更するとバージョンが追加されます"
+    "zh-Hans": "暂无可用图片",
+    "zh-Hant": "暫無可用圖片",
+    "en": "No images available",
+    "ja": "利用可能な画像がありません"
   },
   "subjects.create.saving": {
     "zh-Hans": "正在创建…",
@@ -222,12 +210,6 @@ export const subjectsMessages = {
     "zh-Hant": "正在讀取主體，本頁狀態待核對…",
     "en": "Loading subjects. This page is awaiting verification…",
     "ja": "サブジェクトを読み込み中です。このページの状態は確認待ちです…"
-  },
-  "subjects.library.staleRead": {
-    "zh-Hans": "上次读取的项目仅供查看",
-    "zh-Hant": "上次讀取的項目僅供檢視",
-    "en": "Previously loaded items are for viewing only",
-    "ja": "前回読み込んだ項目は閲覧のみ可能です"
   },
   "subjects.library.noMatches": {
     "zh-Hans": "本页没有匹配的主体。可重置筛选或翻页",
@@ -272,10 +254,10 @@ export const subjectsMessages = {
     "ja": "追加バージョンに選択した画像"
   },
   "subjects.version.staleDraft": {
-    "zh-Hans": "主体已更新。草稿图片仍保留，请重新确认图片后追加",
-    "zh-Hant": "主體已更新。草稿圖片仍保留，請重新確認圖片後再追加",
-    "en": "The subject was updated. Your draft image is retained. Reconfirm the image before adding it",
-    "ja": "サブジェクトが更新されました。下書きの画像は保持されています。画像を再確認してから追加してください"
+    "zh-Hans": "主体版本已变更",
+    "zh-Hant": "主體版本已變更",
+    "en": "The subject version has changed",
+    "ja": "サブジェクトのバージョンが変更されました"
   },
   "subjects.version.add": {
     "zh-Hans": "追加新版本",
@@ -288,12 +270,6 @@ export const subjectsMessages = {
     "zh-Hant": "放棄換圖",
     "en": "Discard image change",
     "ja": "画像の変更を破棄"
-  },
-  "subjects.version.retained": {
-    "zh-Hans": "旧版本与镜头固定关联会保留。策划关联的镜头需要逐个确认新版本",
-    "zh-Hant": "舊版本與鏡頭的固定關聯會保留。規劃關聯的鏡頭須逐一確認新版本",
-    "en": "Older versions and pinned shot links are retained. Each planning-linked shot must confirm the new version separately",
-    "ja": "以前のバージョンとショットの固定関連付けは保持されます。企画用に関連付けたショットごとに新しいバージョンを確認する必要があります"
   },
   "subjects.version.heading": {
     "zh-Hans": "图片版本",
@@ -326,10 +302,10 @@ export const subjectsMessages = {
     "ja": "ショットの関連付けを読み込み中…"
   },
   "subjects.binding.noneLoaded": {
-    "zh-Hans": "已读取的策划关联中没有镜头",
-    "zh-Hant": "已讀取的規劃關聯中沒有鏡頭",
-    "en": "No shots in the planning links loaded so far",
-    "ja": "読み込み済みの企画用関連付けにショットはありません"
+    "zh-Hans": "暂无关联镜头",
+    "zh-Hant": "暫無關聯鏡頭",
+    "en": "No linked shots",
+    "ja": "関連付けられたショットはありません"
   },
   "subjects.binding.shotMissing": {
     "zh-Hans": "镜头未加载",
@@ -452,10 +428,10 @@ export const subjectsMessages = {
     "ja": "以前のバージョン"
   },
   "subjects.binding.reviewSummary": {
-    "zh-Hans": "主体已有{head}，此镜头仍固定{pinned}",
-    "zh-Hant": "主體已有{head}，此鏡頭仍固定{pinned}",
-    "en": "The subject has {head}. This shot remains pinned to {pinned}",
-    "ja": "サブジェクトには {head} があります。このショットは {pinned} に固定されたままです"
+    "zh-Hans": "主体有新版本待确认",
+    "zh-Hant": "主體有新版本待確認",
+    "en": "New subject version awaiting review",
+    "ja": "サブジェクトの新しいバージョンを確認してください"
   },
   "subjects.binding.useVersion": {
     "zh-Hans": "使用 {version}",
@@ -487,23 +463,11 @@ export const subjectsMessages = {
     "en": "Subjects and styles",
     "ja": "サブジェクトとスタイル"
   },
-  "subjects.binding.unverified": {
-    "zh-Hans": "关联待核对",
-    "zh-Hant": "關聯待核對",
-    "en": "Links awaiting verification",
-    "ja": "関連付けは確認待ち"
-  },
-  "subjects.binding.unknown": {
-    "zh-Hans": "当前关联状态未知，暂不能修改",
-    "zh-Hant": "目前關聯狀態未知，暫時無法修改",
-    "en": "The current link state is unknown. Changes are unavailable for now",
-    "ja": "現在の関連付けの状態が不明なため、まだ変更できません"
-  },
   "subjects.binding.incomplete": {
-    "zh-Hans": "关联尚未读取完整，请继续核对后编辑",
-    "zh-Hant": "關聯尚未讀取完整，請繼續核對後再編輯",
-    "en": "Not all links have loaded. Continue checking before editing",
-    "ja": "関連付けをすべて読み込めていません。引き続き確認してから編集してください"
+    "zh-Hans": "关联尚未读完",
+    "zh-Hant": "關聯尚未讀完",
+    "en": "Some links are still unloaded",
+    "ja": "関連付けに未読み込みのものがあります"
   },
   "subjects.binding.continue": {
     "zh-Hans": "继续读取关联",
@@ -512,22 +476,22 @@ export const subjectsMessages = {
     "ja": "関連付けの読み込みを続ける"
   },
   "subjects.binding.empty": {
-    "zh-Hans": "此镜头还没有本地主体关联",
-    "zh-Hant": "此鏡頭尚無本機主體關聯",
-    "en": "This shot has no local subject links yet",
-    "ja": "このショットにはローカルサブジェクトの関連付けがまだありません"
+    "zh-Hans": "暂无主体关联",
+    "zh-Hant": "暫無主體關聯",
+    "en": "No subjects linked",
+    "ja": "関連付けられたサブジェクトはありません"
   },
   "subjects.binding.chooseLabel": {
-    "zh-Hans": "选择主体（素材库当前页）",
-    "zh-Hant": "選擇主體（素材庫目前頁面）",
-    "en": "Choose subject (current library page)",
-    "ja": "サブジェクトを選択（ライブラリの現在のページ）"
+    "zh-Hans": "主体",
+    "zh-Hant": "主體",
+    "en": "Subject",
+    "ja": "サブジェクト"
   },
   "subjects.binding.choose": {
-    "zh-Hans": "选择角色、产品、场景或风格",
-    "zh-Hant": "選擇角色、產品、場景或風格",
-    "en": "Choose a character, product, location, or style",
-    "ja": "キャラクター、製品、シーン、スタイルを選択"
+    "zh-Hans": "选择主体",
+    "zh-Hant": "選擇主體",
+    "en": "Choose a subject",
+    "ja": "サブジェクトを選択"
   },
   "subjects.binding.fixedImage": {
     "zh-Hans": "固定图片版本",
@@ -548,10 +512,10 @@ export const subjectsMessages = {
     "ja": "選択した固定バージョンは読み込み待ち"
   },
   "subjects.binding.staleDraft": {
-    "zh-Hans": "主体或关联已变化，草稿仍保留。请重新确认主体和固定版本",
-    "zh-Hant": "主體或關聯已變更，草稿仍保留。請重新確認主體和固定版本",
-    "en": "The subject or link has changed. Your draft is retained. Reconfirm the subject and pinned version",
-    "ja": "サブジェクトまたは関連付けが変更されました。下書きは保持されています。サブジェクトと固定バージョンを再確認してください"
+    "zh-Hans": "主体或关联已变更",
+    "zh-Hant": "主體或關聯已變更",
+    "en": "The subject or link has changed",
+    "ja": "サブジェクトまたは関連付けが変更されました"
   },
   "subjects.binding.save": {
     "zh-Hans": "保存固定关联",
@@ -566,16 +530,16 @@ export const subjectsMessages = {
     "ja": "選択を破棄"
   },
   "subjects.binding.limit": {
-    "zh-Hans": "已达到 8 个有效关联；可修改已有版本或先解除一个关联",
-    "zh-Hant": "已達到 8 個有效關聯；可修改既有版本或先解除一個關聯",
-    "en": "The limit of 8 active links is reached. Change an existing version or unlink one first",
-    "ja": "有効な関連付けの上限 8 件に達しています。既存のバージョンを変更するか、先に 1 件解除してください"
+    "zh-Hans": "已达到 8 个有效关联的上限",
+    "zh-Hant": "已達到 8 個有效關聯的上限",
+    "en": "Limit of 8 active links reached",
+    "ja": "有効な関連付けの上限（8 件）に達しました"
   },
   "subjects.video.libraryLoading": {
-    "zh-Hans": "主体库尚未加载，请等待当前项目读取完成",
-    "zh-Hant": "主體庫尚未載入，請等待目前專案讀取完成",
-    "en": "The subject library has not loaded yet. Wait for this project to finish loading",
-    "ja": "サブジェクトライブラリはまだ読み込まれていません。現在のプロジェクトの読み込み完了をお待ちください"
+    "zh-Hans": "主体库尚未加载",
+    "zh-Hant": "主體庫尚未載入",
+    "en": "The subject library has not loaded",
+    "ja": "サブジェクトライブラリは未読み込みです"
   },
   "subjects.video.pending": {
     "zh-Hans": "有主体修改待确认，请先在任务中心核对",
@@ -643,11 +607,29 @@ export const subjectsMessages = {
     "en": " · Historical version",
     "ja": " · 過去のバージョン"
   },
+  "subjects.video.faceInfo": {
+    "zh-Hans": "人脸图片限制",
+    "zh-Hant": "人臉圖片限制",
+    "en": "Face image restrictions",
+    "ja": "顔画像の制限"
+  },
+  "subjects.video.mockInfo": {
+    "zh-Hans": "模拟生成说明",
+    "zh-Hant": "模擬生成說明",
+    "en": "About mock generation",
+    "ja": "モック生成について"
+  },
+  "subjects.video.inputInfo": {
+    "zh-Hans": "主体图片输入详情",
+    "zh-Hant": "主體圖片輸入詳細資料",
+    "en": "Subject image input details",
+    "ja": "サブジェクト画像入力の詳細"
+  },
   "subjects.video.constraints": {
-    "zh-Hans": "仅发送一个固定主体版本。PNG / JPEG 可使用方形图片，主体图片比例与输出画幅独立；具体大小与像素限制见模型输入限制。风格仅供策划，不参与生成",
-    "zh-Hant": "僅傳送一個固定主體版本。PNG / JPEG 可使用正方形圖片，主體圖片比例與輸出畫幅相互獨立；具體大小與像素限制請參閱模型輸入限制。風格僅供規劃，不參與生成",
-    "en": "Only one pinned subject version is sent. PNG / JPEG images may be square; the subject image ratio is independent of the output aspect ratio. See the model input limits for size and pixel restrictions. Styles are for planning only, not generation",
-    "ja": "送信するのは固定したサブジェクトの 1 バージョンのみです。PNG / JPEG は正方形でも使用でき、サブジェクト画像の比率は出力のアスペクト比とは独立しています。サイズと画素数の制限はモデルの入力制限を確認してください。スタイルは企画用のみで、生成には使用しません"
+    "zh-Hans": "发送一张 PNG 或 JPEG 主体图，支持方形图片。图片大小与像素限制由所选模型决定。",
+    "zh-Hant": "傳送一張 PNG 或 JPEG 主體圖，支援正方形圖片。圖片大小與像素限制由所選模型決定。",
+    "en": "One PNG or JPEG subject image is sent. Square images are supported. File size and pixel limits depend on the selected model.",
+    "ja": "PNG または JPEG のサブジェクト画像を 1 枚送信します。正方形にも対応しています。ファイルサイズと画素数の制限は選択したモデルによって異なります。"
   },
   "subjects.summary.label": {
     "zh-Hans": "本次生成的固定主体图片",
@@ -686,16 +668,16 @@ export const subjectsMessages = {
     "ja": "{kind} · 固定 V{number}"
   },
   "subjects.summary.newer": {
-    "zh-Hans": "本次仍固定 V{number}；主体库当前为 V{latest}。需要换图时请明确选择新版本",
-    "zh-Hant": "本次仍固定 V{number}；主體庫目前為 V{latest}。需要換圖時請明確選擇新版本",
-    "en": "This request remains pinned to V{number}; the library is now at V{latest}. Explicitly select a new version to change the image",
-    "ja": "今回は V{number} に固定されたままです。ライブラリの現在のバージョンは V{latest} です。画像を変更する場合は、新しいバージョンを明示的に選択してください"
+    "zh-Hans": "主体库已有 V{latest}",
+    "zh-Hant": "主體庫已有 V{latest}",
+    "en": "Library version: V{latest}",
+    "ja": "ライブラリには V{latest} があります"
   },
   "subjects.summary.details": {
-    "zh-Hans": "固定版本、素材与来源详情",
-    "zh-Hant": "固定版本、素材與來源詳細資料",
-    "en": "Pinned version, asset, and source details",
-    "ja": "固定バージョン、素材、ソースの詳細"
+    "zh-Hans": "详情",
+    "zh-Hant": "詳細資料",
+    "en": "Details",
+    "ja": "詳細"
   },
   "subjects.summary.versionId": {
     "zh-Hans": "主体版本 ID",
@@ -770,22 +752,22 @@ export const subjectsMessages = {
     "ja": "シミュレーション出力はテストパターンです"
   },
   "subjects.conflict.boundFrame": {
-    "zh-Hans": "主体图片不能与首帧连线一起提交。请先明确断开首帧连线，再选择本次主体输入",
-    "zh-Hant": "主體圖片不能與首幀連線一起提交。請先明確斷開首幀連線，再選擇本次主體輸入",
-    "en": "A subject image cannot be submitted with a first-frame connection. Explicitly disconnect the first frame before selecting a subject input for this request",
-    "ja": "サブジェクト画像は先頭フレームの接続と同時に送信できません。先頭フレームの接続を明示的に解除してから、今回のサブジェクト入力を選択してください"
+    "zh-Hans": "首帧连线与主体图片不能同时使用",
+    "zh-Hant": "首幀連線與主體圖片不能同時使用",
+    "en": "A first-frame connection and a subject image cannot be used together",
+    "ja": "先頭フレームの接続とサブジェクト画像は同時に使用できません"
   },
   "subjects.conflict.frames": {
-    "zh-Hans": "主体图片不能与首帧或尾帧组合。请手动清除首帧与尾帧选择，并保存镜头后再启用；不会自动清除素材",
-    "zh-Hant": "主體圖片不能與首幀或尾幀組合。請手動清除首幀與尾幀選擇，並儲存鏡頭後再啟用；不會自動清除素材",
-    "en": "A subject image cannot be combined with a first or last frame. Manually clear both frame selections and save the shot before enabling this. Assets will not be cleared automatically",
-    "ja": "サブジェクト画像は先頭または末尾フレームと組み合わせられません。両方のフレーム選択を手動で解除し、ショットを保存してから有効にしてください。素材が自動で消去されることはありません"
+    "zh-Hans": "主体图片不能与首帧或尾帧组合",
+    "zh-Hant": "主體圖片不能與首幀或尾幀組合",
+    "en": "Subject images cannot be combined with a first or last frame",
+    "ja": "サブジェクト画像は先頭または末尾フレームと組み合わせられません"
   },
   "subjects.reference.choose": {
-    "zh-Hans": "请明确选择一个主体及其固定图片版本，不会自动选用当前版本或策划关联",
-    "zh-Hant": "請明確選擇一個主體及其固定圖片版本，不會自動選用目前版本或規劃關聯",
-    "en": "Explicitly select a subject and its pinned image version. Neither the current version nor planning links are selected automatically",
-    "ja": "サブジェクトと固定する画像バージョンを明示的に選択してください。現在のバージョンや企画用の関連付けは自動では選択されません"
+    "zh-Hans": "尚未选择主体图片版本",
+    "zh-Hant": "尚未選擇主體圖片版本",
+    "en": "No subject image version selected",
+    "ja": "サブジェクト画像のバージョンは未選択です"
   },
   "subjects.reference.incomplete": {
     "zh-Hans": "主体固定版本记录不完整，请重新明确选择版本",
@@ -895,23 +877,11 @@ export const subjectsMessages = {
     "en": "This subject hasn't loaded or is no longer in this project",
     "ja": "このサブジェクトは未読み込みか、現在のプロジェクトにありません"
   },
-  "subjects.inspector.versionCount": {
-    "zh-Hans": "{count} 个版本",
-    "zh-Hant": "{count} 個版本",
-    "en": "Versions: {count}",
-    "ja": "バージョン {count} 件"
-  },
   "subjects.inspector.basics": {
     "zh-Hans": "基本信息",
     "zh-Hant": "基本資訊",
     "en": "Basics",
     "ja": "基本情報"
-  },
-  "subjects.inspector.readOnly": {
-    "zh-Hans": "名称和类型创建后不能修改",
-    "zh-Hant": "名稱和類型建立後不能修改",
-    "en": "The name and type can't be changed after creation",
-    "ja": "名前と種類は作成後に変更できません"
   },
   "subjects.inspector.versions": {
     "zh-Hans": "版本",
@@ -1237,12 +1207,6 @@ export const subjectsMessages = {
     "en": "Unknown result",
     "ja": "結果不明"
   },
-  "subjects.variants.item.unknownHint": {
-    "zh-Hans": "原请求结果未确认",
-    "zh-Hant": "原請求結果未確認",
-    "en": "Original request unconfirmed",
-    "ja": "元のリクエスト結果を確認できません"
-  },
   "subjects.variants.retry": {
     "zh-Hans": "重试",
     "zh-Hant": "重試",
@@ -1435,12 +1399,6 @@ export const subjectsMessages = {
     "en": "Can be edited",
     "ja": "画像編集に使えます"
   },
-  "subjects.variants.sourceUnusable": {
-    "zh-Hans": "不能用于图片编辑",
-    "zh-Hant": "不能用於圖片編輯",
-    "en": "Can't be edited",
-    "ja": "画像編集に使えません"
-  },
   "subjects.variants.sourceChecking": {
     "zh-Hans": "正在检查透明区域…",
     "zh-Hant": "正在檢查透明區域…",
@@ -1482,12 +1440,6 @@ export const subjectsMessages = {
     "zh-Hant": "有透明區域。圖片編輯只接受不透明的圖片。",
     "en": "It has transparent areas. Image editing accepts only opaque images.",
     "ja": "透明部分があります。画像編集には不透明な画像のみ使えます。"
-  },
-  "subjects.variants.sourceRequired": {
-    "zh-Hans": "源图不可用，换一张后才能生成",
-    "zh-Hant": "來源圖不可用，換一張後才能產生",
-    "en": "The source can't be used. Choose another to continue",
-    "ja": "元画像が使えません。別の画像を選んでください"
   },
   "subjects.variants.model": {
     "zh-Hans": "模型",
@@ -1742,10 +1694,10 @@ export const subjectsMessages = {
     "ja": "{name} のバージョンに {count} 枚追加します"
   },
   "subjects.variants.sizeLine": {
-    "zh-Hans": "每张 {size}，跟随源图比例 · 不会成为默认版本",
-    "zh-Hant": "每張 {size}，跟隨來源圖比例 · 不會成為預設版本",
-    "en": "Each {size}, following the source ratio · never the default version",
-    "ja": "各 {size}（元画像の比率）· 既定のバージョンにはなりません"
+    "zh-Hans": "每张 {size}",
+    "zh-Hant": "每張 {size}",
+    "en": "{size} each",
+    "ja": "各 {size}"
   },
   "subjects.variants.generate": {
     "zh-Hans": "生成 {count} 张",
@@ -1806,12 +1758,6 @@ export const subjectsMessages = {
     "zh-Hant": "本鏡頭使用此版本",
     "en": "This shot uses this version",
     "ja": "このショットはこのバージョンを使います"
-  },
-  "subjects.binding.onlyOne": {
-    "zh-Hans": "{angle}只有这一张。换角度请在上方筛选。",
-    "zh-Hant": "{angle}只有這一張。換角度請在上方篩選。",
-    "en": "This is the only {angle} version. Filter above to change the angle.",
-    "ja": "{angle} はこの1枚だけです。アングルを変えるには上で絞り込んでください。"
   },
   "subjects.binding.pickVersion": {
     "zh-Hans": "选用 V{number}",

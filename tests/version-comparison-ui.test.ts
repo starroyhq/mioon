@@ -40,14 +40,16 @@ function harness() {
   const videos = () => all(tree, node => node.type === module.exports.ComparisonVideo);
   function choose(side: string, n: number) { find(`comparison-select-${side}`).props.onChange({ target: { value: id(n) } }); render(); }
   function media(node: Element) { const element: ComparisonMedia = { isConnected: true, src: node.props.binding.url, pauses: 0, duration: 4, currentTime: 0, play() { return Promise.resolve(); }, pause() { this.pauses++; }, getAttribute() { return this.src; } }; node.props.register(element); return element; }
-  return { render, find, choose, videos, media, props, used, events, document, ownerCalls: () => ownerCalls, closes: () => closes, pause: () => registered?.(),
+  return { render, find, choose, videos, media, props, used, events, document, status: () => all(tree, node => node.props?.role === 'status'), ownerCalls: () => ownerCalls, closes: () => closes, pause: () => registered?.(),
     locale(value: Locale) { locale = value; render(); }, button(text: string) { return all(tree, (node: Element) => node.type === 'button' && node.children.includes(text))[0]; },
     unmount() { hooks.forEach(hook => hook!.cleanup?.()); }, module, react, pending, hooks, setCursor(value: number) { cursor = value; } };
 }
 test('actual dialog requires two explicit distinct choices and never defaults latest', () => {
   const h = harness(); h.render(); assert.equal(h.videos().length, 0); assert.equal(h.used.length, 0);
+  assert.deepEqual(h.status().map(node => node.children), [[translate('en', 'comparison.chooseBoth')]]);
   h.choose('A', 3); assert.equal(h.videos().length, 0); h.choose('B', 3); assert.equal(h.find('comparison-select-B').props.value, '');
   h.choose('B', 4); assert.equal(h.videos().length, 2); assert.equal(h.find('comparison-select-A').props.value, id(3));
+  assert.deepEqual(h.status(), [], 'a playable pair uses its player and selection controls');
   h.props.context.versions.reverse(); h.props.context.shot!.selectedVersionId = id(5); h.render(); assert.equal(h.find('comparison-select-A').props.value, id(3));
   h.locale('ja'); assert.equal(h.find('comparison-select-B').props.value, id(4)); assert.equal(h.videos().length, 2);
   h.unmount();

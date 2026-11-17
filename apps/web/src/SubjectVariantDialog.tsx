@@ -11,8 +11,8 @@ import { Label } from '@mioon/ui/components/label';
 import { Slider } from '@mioon/ui/components/slider';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { WorkbenchTabs } from '@mioon/ui/components/workbench-controls';
-import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Replace, RotateCcw, Sparkles, User, X } from '@mioon/ui/components/workbench-icons';
-import { WorkbenchSelect } from './WorkspaceControls.tsx';
+import { ArrowDown, ArrowUp, Check, CircleAlert, CircleCheck, Info, Replace, RotateCcw, Sparkles, User, X } from '@mioon/ui/components/workbench-icons';
+import { WorkbenchSelect, WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { assetUrl } from './api.ts';
 import { SubjectImage } from './SubjectLibrary.tsx';
 import type { SubjectAssetView } from './SubjectLibrary.tsx';
@@ -180,7 +180,7 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
           {picking ? <div className="subject-variant-source-picker" role="listbox" aria-label={t('subjects.variants.sourcePicker')}>{versions.map(version => <Button key={version.id} variant="ghost" role="option" aria-selected={version.id === source.id} className={`subject-variant-source-option${version.id === source.id ? ' selected' : ''}`} data-testid={`subject-variant-source-${version.id}`} onClick={() => { setSourceId(version.id); setPicking(false); }}><SubjectImage version={version} assets={assets} label={`${subject.name} V${version.number}`} /><span className="subject-version-number">V{version.number}</span></Button>)}</div>
             : <div className={`subject-variant-source-image${sourceIssue ? ' has-issue' : ''}`}><SubjectImage version={source} assets={assets} label={`${subject.name} V${source.number}`} /><span className="subject-version-number">V{source.number}</span></div>}
           <p className="subject-variant-source-title"><strong>{subject.name} · V{source.number}</strong>{sourceTag && <span className="subject-version-label is-tag">{sourceTag}</span>}</p>
-          {sourceIssue ? <div className="subject-variant-source-issue" role="alert" data-testid="subject-variant-source-issue"><p><CircleAlert size={12} aria-hidden="true" />{t('subjects.variants.sourceUnusable')}</p><p>{t(issueKeys[sourceIssue])}</p></div>
+          {sourceIssue ? <div className="subject-variant-source-issue" role="alert" data-testid="subject-variant-source-issue"><p><CircleAlert size={12} aria-hidden="true" />{t(issueKeys[sourceIssue])}</p></div>
             : <p className="subject-variant-source-check" data-testid="subject-variant-source-check">{checking ? t('subjects.variants.sourceChecking') : <><CircleCheck size={12} aria-hidden="true" />{formatLabel(source.mimeType)} · {source.width}×{source.height} · {t('subjects.variants.sourceUsable')}</>}</p>}
           <Label htmlFor="subject-variant-model">{t('subjects.variants.model')}</Label>
           <WorkbenchSelect id="subject-variant-model" data-testid="subject-variant-model" value={providerId} disabled={submitting} onChange={event => { const choice = choices.find(item => item.providerId === event.target.value && item.available); if (choice) setProviderChoice(choice.providerId); }}>
@@ -236,9 +236,8 @@ export default function SubjectVariantDialog({ subject, versions, initialSourceI
             <div className="subject-variant-light-row"><Label id="subject-variant-kelvin-label" className="subject-variant-caption">{t('subjects.variants.kelvin')}</Label><span className="subject-variant-kelvin"><small>{t('subjects.variants.warm')}</small><Slider className="subject-variant-kelvin-slider" aria-labelledby="subject-variant-kelvin-label" data-testid="subject-variant-kelvin" thumbAlignment="center" min={2000} max={10000} step={100} value={[light.kelvin]} disabled={submitting} onValueChange={value => updateLight({ kelvin: clamp(Math.round(typeof value === 'number' ? value : value[0] ?? light.kelvin), 2000, 10000) })} /><small>{t('subjects.variants.cool')}</small><output>{light.kelvin}K</output></span></div>
           </div>}
           <footer className="subject-variant-footer">
-            <div className="subject-variant-summary">{sourceIssue ? <span>{t('subjects.variants.sourceRequired')}</span> : <><span>{t('subjects.variants.summary', { count: specs.length, name: subject.name })}</span>{sizeLabel && <small>{t('subjects.variants.sizeLine', { size: sizeLabel })}</small>}</>}</div>
-            <div className="subject-variant-actions"><Button variant="ghost" size="sm" disabled={submitting} onClick={onClose}>{t('common.cancel')}</Button><Button size="sm" data-testid="subject-variant-generate" disabled={!ready} onClick={() => { void generate(); }}><Sparkles size={13} aria-hidden="true" />{tab === 'angle' ? t('subjects.variants.generate', { count: specs.length }) : t('subjects.variants.generateOne')}</Button></div>
-            {model.available && <p className="subject-variant-cost">{model.paid ? t('subjects.variants.costPaid') : t('subjects.variants.costMock')}</p>}
+            {!sourceIssue && <div className="subject-variant-summary"><span>{t('subjects.variants.summary', { count: specs.length, name: subject.name })}</span>{sizeLabel && <small>{t('subjects.variants.sizeLine', { size: sizeLabel })}</small>}</div>}
+            <div className="subject-variant-actions">{model.available && <WorkbenchTooltip content={t(model.paid ? 'subjects.variants.costPaid' : 'subjects.variants.costMock')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('shell.details')}><Info size={14} aria-hidden="true" /></Button></WorkbenchTooltip>}<Button variant="ghost" size="sm" disabled={submitting} onClick={onClose}>{t('common.cancel')}</Button><Button size="sm" data-testid="subject-variant-generate" disabled={!ready} onClick={() => { void generate(); }}><Sparkles size={13} aria-hidden="true" />{tab === 'angle' ? t('subjects.variants.generate', { count: specs.length }) : t('subjects.variants.generateOne')}</Button></div>
             {notice && <p className="subject-warning" role="alert">{renderMessage(notice)}</p>}
           </footer>
         </section>

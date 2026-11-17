@@ -336,7 +336,7 @@ test('format 4 regeneration submits the reviewed frame only if it survives cance
 test('a shot without a generation service offers settings and cannot generate', async () => {
   const opened: string[] = [];
   const h = harness({providers: [], generationOptions: {}, configureGeneration: () => {opened.push('models');}});
-  assert.match(text(h.find('video-generation-no-service')), /请先在设置里配置并启用/u);
+  assert.match(text(h.find('video-generation-no-service')), /^暂无可用的生成服务打开生成服务设置$/u);
   assert.equal(h.find('generate-shot')!.props.disabled, true);
   await h.click('generate-shot');
   assert.deepEqual(h.generated, []);
@@ -403,6 +403,33 @@ test('configured Inspector saves and paid reviews cannot submit stale connection
   }
 });
 
+test('only a failed connection directory announces an error and offers a guarded retry', () => {
+  const minimax = {...provider('minimax'), connectionId: id(22)};
+  const h = harness({ providers: [minimax], generationOptions: {} });
+  assert.equal(h.find('generation-issue'), undefined);
+  assert.equal(h.find('video-generation-directory-error'), undefined);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  let retries = 0;
+  h.render({ videoDirectoryUnavailable: true, onRetryVideoDirectory: () => { retries++; } });
+  assert.match(text(h.find('video-generation-directory-error')), /无法读取视频连接列表/);
+  assert.match(text(h.find('video-generation-directory-retry')), /重试/);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+  const retry = h.find('video-generation-directory-retry')!.props.onClick;
+  retry(); assert.equal(retries, 1);
+  h.visible = false; h.render(); retry(); assert.equal(retries, 1);
+  h.visible = true; h.render({ videoDirectoryUnavailable: false });
+  assert.equal(h.find('video-generation-directory-error'), undefined);
+});
+
+test('active subject mode leaves its model capability reason in the subject controls', () => {
+  const minimax = provider('minimax');
+  const h = harness({ shot: shot({referenceAssetIds: []}), providers: [minimax], generationOptions: { providerId: minimax.id, model: minimax.models[0], inputMode: 'subject' } });
+  assert.ok(h.find('generation-issue'));
+  h.render({subjects: {state: null, controller: {}} as unknown as VideoProps['subjects']});
+  assert.equal(h.find('generation-issue'), undefined);
+  assert.equal(h.find('generate-shot')!.props.disabled, true);
+});
+
 test('tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics', async () => {
   const legacy = harness(); legacy.edit('shot-prompt', 'Updated'); await legacy.click('save-shot');
   assert.equal(Object.hasOwn(legacy.saves[0].draft, 'lastFrameAssetId'), false);
@@ -413,11 +440,16 @@ test('tail omission stays omitted in legacy drafts/saves; explicit null and save
 });
 
 test('tail picker persists through normal save/reload, reset restores omission, clear writes only explicit null', async () => {
-  const h = harness(); h.click(`last-frame-choice-${tailId}`); h.render(); assert.match(h.text(), /暮色尾帧/);
+  const h = harness(); h.click(`last-frame-choice-${tailId}`); h.render(); assert.equal(h.find(`last-frame-choice-${tailId}`)?.props['aria-pressed'], true);
   h.reset(); assert.equal(h.find('clear-last-frame'), undefined);
   h.click(`last-frame-choice-${tailId}`); h.render(); await h.click('save-shot'); h.render();
   assert.equal(h.saves[0].draft.lastFrameAssetId, tailId); assert.deepEqual(h.saves[0].draft.referenceAssetIds, [firstId]);
-  const reopened = harness({ shot: h.props().shot }); assert.match(reopened.text(), /已选尾帧：暮色尾帧/);
+  const reopened = harness({ shot: h.props().shot });
+  const selected = reopened.find(`last-frame-choice-${tailId}`);
+  assert.equal(selected?.props['aria-pressed'], true);
+  assert.equal(selected?.props.title, '暮色尾帧');
+  assert.doesNotMatch(text(reopened.find('video-last-frame-controls')), /已选尾帧|暮色尾帧/);
+  assert.equal(reopened.find('last-frame-missing'), undefined);
   await reopened.click('clear-last-frame'); reopened.render(); await reopened.click('save-shot');
   assert.equal(reopened.saves[0].draft.lastFrameAssetId, null); assert.deepEqual(reopened.saves[0].draft.referenceAssetIds, [firstId]);
 });
@@ -436,7 +468,7 @@ test('Inspector keeps frozen frame history while saving a changed current tail s
   const historical = h.all().find((node: ElementNode) => node.props?.['data-testid'] === 'video-frame-summary');
   assert.match(text(historical), /晨光首帧/); assert.match(text(historical), /暮色尾帧/); assert.doesNotMatch(text(historical), /另一张图片/);
   assert.equal(nodes(historical).filter((node: ElementNode) => node.type === 'img').length, 2);
-  assert.match(text(h.find('selected-last-frame-label')), /另一张图片/); h.unmount();
+  assert.equal(h.find(`last-frame-choice-${otherId}`)?.props['aria-pressed'], true); h.unmount();
 });
 
 test('bound first frame does not lock tail; busy, pending and conflicting reference work block both', () => {
@@ -457,9 +489,36 @@ test('tail-only and same-image drafts remain saveable but cannot submit; provide
   assert.match((h.find('generation-issue') && text(h.find('generation-issue')))!, /尾帧必须与一张首帧/);
   assert.equal(h.find('generate-shot')!.props.disabled, true); assert.equal(Boolean(h.find('save-shot')!.props.disabled), false);
   await h.click('save-shot'); assert.equal(h.saves[0].draft.lastFrameAssetId, tailId); assert.deepEqual((h.saves[0].draft.referenceAssetIds as unknown), []);
-  const pair = harness({ shot: shot({ lastFrameAssetId: firstId }) }); assert.match(text(pair.find('generation-issue')), /不同素材.*当前应用限制/);
+  const pair = harness({ shot: shot({ lastFrameAssetId: firstId }) }); assert.match(text(pair.find('generation-issue')), /首尾帧须使用不同素材/);
   const unsupported = provider('runway'); pair.render({ shot: shot({ lastFrameAssetId: tailId }), providers: [unsupported], generationOptions: { providerId: unsupported.id, model: unsupported.models[0], inputMode: 'text' } });
   assert.ok(pair.find('video-last-frame-controls')); assert.equal(pair.find('generate-shot')!.props.disabled, true);
+  const minimax = provider('minimax');
+  const minimaxOptions = { providerId: minimax.id, model: minimax.models[0] };
+  const supportedUse = harness({ providers: [minimax], generationOptions: minimaxOptions });
+  assert.equal(supportedUse.find('last-frame-issue'), undefined);
+  const invalidTail = harness({ shot: shot({lastFrameAssetId: tailId}), providers: [minimax], generationOptions: minimaxOptions });
+  assert.equal(text(invalidTail.find('last-frame-issue')), '所选模型不支持尾帧');
+  assert.equal(invalidTail.find('generation-issue'), undefined);
+  assert.equal(invalidTail.find('generate-shot')!.props.disabled, true);
+  assert.ok(invalidTail.find('clear-last-frame'));
+  assert.equal(invalidTail.find(`last-frame-choice-${tailId}`)?.props['aria-pressed'], true);
+  invalidTail.render({assets: assets.filter(asset => asset.id !== firstId)});
+  assert.match(text(invalidTail.find('generation-issue')), /参考素材缺失/);
+  invalidTail.render({providers: [{...minimax, status: 'disabled'}]});
+  assert.match(text(invalidTail.find('generation-issue')), /未启用/);
+
+});
+
+test('a missing saved tail shows its cause and remains clearable', async () => {
+  const h = harness({ shot: shot({ lastFrameAssetId: tailId }), assets: assets.filter(asset => asset.id !== tailId) });
+  assert.equal(text(h.find('last-frame-missing')), '尾帧素材不可用');
+  assert.equal(h.find('last-frame-missing')?.props.role, 'status');
+  assert.equal(h.find(`last-frame-choice-${tailId}`), undefined);
+  assert.equal(h.find('generate-shot')?.props.disabled, true);
+  await h.click('clear-last-frame'); h.render();
+  assert.equal(h.find('last-frame-missing'), undefined);
+  await h.click('save-shot');
+  assert.equal(h.saves[0].draft.lastFrameAssetId, null);
 });
 
 test('text mode explicitly confirms clearing both frames and never invents null for old first-only shots', async () => {
@@ -531,7 +590,7 @@ test('late save acknowledges the saved draft but cannot generate after tab/provi
     if (change === 'unmount') h.unmount();
     wait.resolve(shot({ revision: 2, lastFrameAssetId: tailId })); await work;
     assert.equal(h.generated.length, 0, change);
-    if (change === 'edit') { h.render(); assert.match(text(h.find('selected-last-frame-label')), /另一张图片/); }
+    if (change === 'edit') { h.render(); assert.equal(h.find(`last-frame-choice-${otherId}`)?.props['aria-pressed'], true); }
   }
 });
 
@@ -550,21 +609,27 @@ test('preflight counts and validates complete role-aware pair and never appends 
   assert.match(settings.generationInputIssue(frozen, mock, mock.models[0], [{ ...assets[0], sha256: 'f'.repeat(64) }], 'image', { frozen: true }), /冻结内容不一致/);
 });
 
-test('history summary includes both frozen human labels/thumbnails with collapsed expandable IDs and hash', () => {
+test('shot properties keep frozen frame names and thumbnails and confine asset identity to asset details', () => {
   const frozen = { ...shot(), referenceAssetIds: [firstId, tailId], referenceAssets: assets.slice(0, 2), referenceBindings: [{ role: 'first_frame', assetId: firstId, sha256: assets[0].sha256 }, { role: 'last_frame', assetId: tailId, sha256: assets[1].sha256 }] };
   const h = harness({ shot: shot({ lastFrameAssetId: otherId }), versions: [{ id: id(8), shotId, number: 1, snapshot: frozen, createdAt: '2026-10-10T00:00:00Z' }] });
-  const summaries = h.all().filter((node: ElementNode) => node.props?.['data-testid'] === 'video-frame-summary'); assert.equal(summaries.length, 2);
+  const summaries = h.all().filter((node: ElementNode) => node.props?.['data-testid'] === 'video-frame-summary'); assert.equal(summaries.length, 1);
   const historical = summaries[0]; assert.match(text(historical), /晨光首帧/); assert.match(text(historical), /暮色尾帧/); assert.doesNotMatch(text(historical), /另一张图片/);
   assert.equal(nodes(historical).filter((node: ElementNode) => node.type === 'img').length, 2);
-  assert.equal(nodes(historical).filter((node: ElementNode) => node.type === 'details' && !node.props.open).length, 2);
-  assert.match(text(historical), new RegExp(tailId)); assert.match(text(historical), /b{64}/);
+  assert.equal(h.find('asset-identity-details'), undefined);
+  assert.doesNotMatch(text(historical), new RegExp(tailId)); assert.doesNotMatch(text(historical), /b{64}/);
+  h.render({ shot: null, annotationAsset: assets[1] });
+  const identity = h.find('asset-identity-details');
+  assert.ok(h.find('asset-inspector')); assert.ok(identity); assert.equal(identity.type, 'details'); assert.equal(identity.props.open, undefined);
+  assert.match(text(identity), new RegExp(tailId)); assert.match(text(identity), /b{64}/);
+  h.render({ annotationAsset: { ...assets[1], projectId: id(99) } });
+  assert.equal(h.find('asset-identity-details'), undefined);
 });
 
 test('App paid review wires complete frames and count, frozen retries, asset-use and tab scope without new submission fields', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /checkGeneration\(shot, provider, job.model, inputMode, true\)/);
   assert.match(app, /generationReferences\(realConfirm.shot, \{ frozen: Boolean\(realConfirm.retryJobId\), subjectReference: realConfirm.subjectReference \}\).references.length/);
-  assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\}/);
+  assert.match(app, /VideoFrameSummary shot=\{realConfirm.shot\} assets=\{realConfirm.referenceAssets\} frozen=\{Boolean\(realConfirm.retryJobId\)\} \/>/);
   assert.match(app, /shots.flatMap\(shot => generationReferences\(shot\).references.map/);
   const inspectorStart = app.indexOf('<Inspector '), inspectorEnd = app.indexOf('/>', inspectorStart);
   assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart);
@@ -666,7 +731,7 @@ test('actual save runner keeps malformed tail ACK pending and preserves draft; e
       runner.state.result = acknowledged;
       await runner.run(key, 'shot.update', original!.input, undefined, { replay: true });
       h.render(); assert.equal(submissions.readPending(projectId, key), null);
-      assert.match(text(h.find('selected-last-frame-label')), /另一张图片/, 'Historical recovery never installs the old saved tail into the current draft');
+      assert.equal(h.find(`last-frame-choice-${otherId}`)?.props['aria-pressed'], true, 'Historical recovery never installs the old saved tail into the current draft');
       assert.ok(h.find('save-shot')); assert.equal(runner.state.calls.length, 2);
       assert.deepEqual(runner.state.calls[1].input, original!.input, 'Recovery sends the original exact key and patch');
     });
@@ -905,4 +970,29 @@ test('Seedance 2.5 audio advisories follow the clip limits, the 30-second total 
   assert.notEqual(settings.generationInputIssue(clips([audioAsset(7, '缺失.wav', 'audio/wav', 5)]), p, model, library, 'reference'), '', 'A clip that is not loaded is not guessed');
   const savedModes = seedanceProvider({ inputModes: ['text', 'image', 'frames', 'subject'] });
   assert.notEqual(settings.generationInputIssue(clips([voice]), savedModes, String(settings.providerModels(savedModes)[0]!.id), library, 'reference'), '');
+});
+
+test('text generation omits the frame reference group while keeping pending reference work and Wan prompt editing', () => {
+  const mock = provider();
+  const plain = harness({ shot: shot({ referenceAssetIds: [] }), generationOptions: { providerId: mock.id, model: mock.models[0], inputMode: 'text' } });
+  plain.render();
+  assert.equal(plain.find('shot-frame-references'), undefined);
+  assert.ok(plain.find('shot-prompt'));
+  plain.render({ referencePending: true });
+  assert.ok(plain.find('shot-frame-references'));
+  assert.ok(plain.find('reference-pending'));
+  plain.unmount();
+
+  const wan = wanProvider('wan3.0-video-prime');
+  const structured = harness({ shot: shot({ referenceAssetIds: [] }), providers: [wan], generationOptions: { connectionId: wan.connectionId, modelEntryId: wan.modelCapabilities![0].modelEntryId } });
+  structured.render();
+  assert.equal(structured.find('shot-frame-references'), undefined);
+  assert.ok(nodes(structured.find('shot-generation-settings')).includes(structured.find('wan-video-prompt')!));
+  structured.edit('wan-video-prompt', 'A new video prompt');
+  assert.equal(structured.props().generationOptions.videoInput?.prompt, 'A new video prompt');
+  structured.edit('input-mode-select', 'frames');
+  structured.render();
+  assert.ok(structured.find('shot-frame-references'));
+  assert.ok(structured.find(`wan-image-choice-${firstId}`));
+  structured.unmount();
 });

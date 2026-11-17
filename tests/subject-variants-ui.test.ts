@@ -466,7 +466,8 @@ test('the dialog builds one camera batch from the chosen source and confirms it 
   const props = {subject: subjectOf('character', 2), versions, initialSourceId: versionId(1), assets: [imageInfo(1), imageInfo(2)], controller: fake.controller, mockAvailable: true, blocked: false, notice: null, onClose: () => { closed++; }};
   let tree = render(props);
   assert.equal(text(byId(tree, 'subject-variant-source-check')), `JPEG · 1024×1536 · ${zh('subjects.variants.sourceUsable')}`);
-  assert.match(text(tree), /每张 1024×1536，跟随源图比例 · 不会成为默认版本/);
+  assert.match(text(tree), /每张 1024×1536/);
+  assert.doesNotMatch(text(deep(tree).find(node => node.props.className === 'subject-variant-summary')), /不会成为默认版本/);
   assert.equal(byId(tree, 'subject-variant-generate')!.props.disabled, true, 'nothing is chosen yet');
   assert.match(text(byId(tree, 'subject-variant-position-left')), /已有/);
   click(byId(tree, 'subject-variant-position-left'));
@@ -474,7 +475,8 @@ test('the dialog builds one camera batch from the chosen source and confirms it 
   tree = render(props);
   assert.match(text(tree), /左 · 广角/, 'a position already shot at standard takes the wide lens');
   assert.equal(text(byId(tree, 'subject-variant-generate')), '生成 2 张');
-  assert.match(text(tree), /会产生费用|模拟服务不产生费用/);
+  assert.doesNotMatch(text(tree), /会产生费用|模拟服务不产生费用/);
+  assert.ok(deep(tree).some(node => node.type === 'WorkbenchTooltip' && node.props.content === zh('subjects.variants.costMock')));
   click(byId(tree, 'subject-variant-generate')); await flush();
   assert.deepEqual(h.confirmations, [i18nIndex.message('subjects.variants.confirmMock', {count: 2, name: '林夏'})]);
   assert.deepEqual(fake.named('create').map(call => call[1]), [{subjectId, sourceVersionId: versionId(1), kind: 'angle', items: [angle('left', 'wide'), angle('front-right')], providerId: 'mock', model: contracts.IMAGE_MODELS.mock}]);
@@ -492,11 +494,11 @@ test('the dialog explains an unusable source and makes lighting one image', asyn
   const fake = fakeVariants(), exported = versionOf(1, {provenance: {kind: 'export', versionId: null, shotId: null, jobId: null}});
   const props = {subject: subjectOf('product', 1), versions: [exported], initialSourceId: versionId(1), assets: [imageInfo(1)], controller: fake.controller, mockAvailable: true, blocked: false, onClose: () => {}};
   let tree = render(props);
-  assert.match(text(byId(tree, 'subject-variant-source-issue')), /不能用于图片编辑.*视频生成结果和导出素材不能用于图片编辑/);
+  assert.equal(text(byId(tree, 'subject-variant-source-issue')), '视频生成结果和导出素材不能用于图片编辑。');
   click(byId(tree, 'subject-variant-position-back'));
   tree = render(props);
   assert.equal(byId(tree, 'subject-variant-generate')!.props.disabled, true);
-  assert.match(text(tree), /源图不可用，换一张后才能生成/);
+  assert.doesNotMatch(text(tree), /源图不可用，换一张后才能生成/);
   const usable = harness('SubjectVariantDialog.tsx'), light = {...props, versions: [versionOf(1)]};
   tree = usable.render(light);
   const tabs = deep(tree).find(node => node.props?.label === zh('subjects.variants.tabs'))!;
@@ -565,7 +567,7 @@ test('a batch row shows progress and every reason it cannot be undone yet', () =
   assert.deepEqual(nodes(byId(tree, `subject-variant-blocked-${batch.id}`)!).filter(node => node.type === 'p').map(text), ['暂时不能撤销本批', '右 · 广角 还在生成，完成后再撤销', '俯拍 的结果未知，先到任务中心核对',
     'V2 已被镜头 02 霓虹特写 选用，先在镜头里换成别的版本', 'V2 已被镜头选用，先在镜头里换成别的版本', 'V2 已用于生成视频，不能撤销这批', 'V2 是另一批的源图，先撤销那一批']);
   assert.match(text(tree), /图片队列已满，这张没有提交/);
-  assert.match(text(tree), /原请求结果未确认/);
+  assert.doesNotMatch(text(tree), /原请求结果未确认/);
   click(byId(tree, `subject-variant-tasks-${batch.id}`)); assert.equal(tasks, 1);
   click(byId(tree, `subject-variant-reread-${batch.id}`)); assert.deepEqual(fake.named('readBatch'), [['readBatch', batch.id]]);
   assert.equal(byId(tree, `subject-variant-continue-${batch.id}`), undefined, 'nothing is waiting to be submitted');
@@ -656,7 +658,7 @@ test('a shot chooses a version by angle, starting from the angle it uses', async
   const picks = (value: ElementTree): ElementNode[] => deep(value).filter(node => String(node.props?.['data-testid']).startsWith(`shot-subject-pick-${row.id}-`));
   assert.deepEqual(picks(tree).map(node => node.props['aria-label']), ['选用 V3']);
   assert.ok(byId(tree, `shot-subject-uses-${row.id}`), 'the version the shot uses is marked');
-  assert.match(text(tree), /右只有这一张。换角度请在上方筛选。/);
+  assert.doesNotMatch(text(tree), /换角度请在上方筛选/);
   click(byId(tree, `shot-subject-angle-${row.id}-all`));
   tree = render(props(), 'BoundSubject');
   assert.deepEqual(picks(tree).map(node => node.props['aria-label']), [1, 2, 3, 4, 5].map(number => `选用 V${number}`));

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('provider readiness uses compact, safe, collapsed Base UI controls for every status', () => {
+test('provider settings show real selection and only disclose legacy setup on the web', () => {
   const fixture = `
     import * as React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
@@ -17,10 +17,16 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
       missing: ['EXAMPLE_API_KEY', 'EXAMPLE_OUTPUT_HOSTS', 'EXAMPLE_API_KEY', ' EXAMPLE_OUTPUT_HOSTS '],
       requirements: ['Long server-only setup instructions', 'Long server-only setup instructions'],
     } };
-    export const markup = Object.fromEntries(['not_configured', 'disabled', 'available', 'mock'].map(status => {
-      const provider = { ...base, status: status === 'mock' ? 'available' : status, mock: status === 'mock' };
-      return [status, renderToStaticMarkup(<ProviderSettings providers={[provider]} provider={provider} model={capabilities.id} capabilities={capabilities} onChange={() => {}} />)];
-    }));
+    const render = (provider, showEnvironmentSetup) => renderToStaticMarkup(<ProviderSettings providers={[base]} provider={provider} model={provider ? capabilities.id : ''} showEnvironmentSetup={showEnvironmentSetup} onChange={() => {}} />);
+    export const markup = {
+      unselected: render(null, true),
+      desktopIncomplete: render({...base, status: 'not_configured'}, false),
+      webIncomplete: render({...base, status: 'not_configured'}, true),
+      webDisabled: render({...base, status: 'disabled'}, true),
+      webReady: render({...base, status: 'available'}, true),
+      mock: render({...base, status: 'available', mock: true}, true),
+      connection: render({...base, status: 'not_configured', connectionId: 'configured'}, true),
+    };
   `;
   const script = `
     import { build } from 'esbuild';
@@ -34,25 +40,21 @@ test('provider readiness uses compact, safe, collapsed Base UI controls for ever
     process.exit(0);
   `;
   const markup = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
-  for (const status of ['not_configured', 'disabled', 'available']) {
-    const html = markup[status];
-    assert.match(html, /data-slot="collapsible"/);
-    assert.match(html, /aria-expanded="false"/);
-    assert.match(html, /查看配置说明/);
-    assert.doesNotMatch(html, /Long server-only setup instructions/);
-    assert.match(html, /API 密钥仅在服务器配置；勿填入提示词或浏览器/);
-    assert.equal((html.match(/class="config-name"/g) || []).length, 2);
+  for (const html of Object.values(markup) as string[]) {
     assert.match(html, /data-testid="provider-select"/);
-    assert.match(html, /data-testid="model-select"/);
-    assert.match(html, /data-testid="model-capabilities"/);
-    assert.doesNotMatch(html, /type="password"/);
-    assert.doesNotMatch(html, /MIOON_ENABLE_LIVE_PROVIDER|MAX_GENERATIONS|生成次数上限/);
+    assert.doesNotMatch(html, /Long server-only setup instructions|EXAMPLE_API_KEY|API 密钥仅在服务器配置|服务器管理员|生成可能产生费用|type="password"/);
   }
-  assert.match(markup.not_configured, /还需配置 2 项，完成后重启服务/);
-  assert.match(markup.disabled, /此服务未启用/);
-  assert.match(markup.available, /使用此服务生成可能产生费用/);
-  assert.match(markup.mock, /不调用付费 AI 服务/);
-  assert.match(markup.mock, /输出为测试图案，不会呈现参考图片或提示词描述的内容/);
+  assert.match(markup.unselected, /选择生成服务商/);
+  assert.doesNotMatch(markup.unselected, /data-testid="model-select"|generation-input-summary|provider-details-toggle|配置未完成/);
+  for (const html of [markup.webIncomplete, markup.webDisabled]) {
+    assert.match(html, /data-testid="provider-details-toggle"/);
+    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /查看环境变量/);
+  }
+  for (const html of [markup.webReady, markup.desktopIncomplete, markup.connection, markup.mock]) {
+    assert.match(html, /data-testid="model-select"/);
+    assert.doesNotMatch(html, /provider-details-toggle|查看环境变量/);
+  }
+  assert.match(markup.mock, /aria-label="输出为测试图案"/);
   assert.match(markup.mock, /data-testid="generation-input-summary"/);
-  assert.doesNotMatch(markup.mock, /查看配置说明|EXAMPLE_API_KEY/);
 });

@@ -1,13 +1,31 @@
 import type { MessageCatalog } from '../types.ts';
 export const comparisonMessages = {
   'comparison.help': { 'zh-Hans': '明确选择两个已保存的视频版本，独立检查原始素材。不会生成新内容', 'zh-Hant': '明確選擇兩個已儲存的影片版本，獨立檢查原始素材。不會產生新內容', en: 'Choose two saved video versions to inspect their original media. No new content is generated', ja: '保存済みの動画を2つ選び、元の素材を比較します。新しいコンテンツは生成しません' },
-  'comparison.insufficient': { 'zh-Hans': '此镜头少于两个可用的本地 MP4 版本。不会自动生成或获取素材', 'zh-Hant': '此鏡頭少於兩個可用的本機 MP4 版本。不會自動產生或取得素材', en: 'This shot has fewer than two available local MP4 versions. No media will be generated or retrieved automatically', ja: 'このショットには比較できるローカルMP4バージョンが2つありません。素材を自動生成・取得することはありません' },
-  'comparison.chooseBoth': { 'zh-Hans': '请选择两个不同版本。选择完成后才能播放', 'zh-Hant': '請選擇兩個不同版本。選擇完成後才能播放', en: 'Choose two different versions before playback', ja: '再生する前に、異なる2つのバージョンを選んでください' },
+  "comparison.insufficient": {
+    "zh-Hans": "可用的本地 MP4 版本不足两个",
+    "zh-Hant": "可用的本機 MP4 版本不足兩個",
+    "en": "Fewer than two local MP4 versions are available",
+    "ja": "利用可能なローカル MP4 バージョンが 2 つ未満です"
+  },
+  "comparison.chooseBoth": {
+    "zh-Hans": "请选择两个不同版本",
+    "zh-Hant": "請選擇兩個不同版本",
+    "en": "Choose two different versions",
+    "ja": "異なる 2 つのバージョンを選択"
+  },
   'comparison.choose': { 'zh-Hans': '选择版本', 'zh-Hant': '選擇版本', en: 'Choose a version', ja: 'バージョンを選択' },
-  'comparison.ready': { 'zh-Hans': '已固定所选版本。一次只播放一侧，默认静音', 'zh-Hant': '已固定所選版本。一次只播放一側，預設靜音', en: 'Selected versions are fixed. One side plays at a time, initially muted', ja: '選択したバージョンは固定されています。一度に片側のみ再生し、初期状態はミュートです' },
-  'comparison.unavailable': { 'zh-Hans': '当前连接或工作区不允许此对比。已停止播放', 'zh-Hant': '目前的連線或工作區不允許此比較。已停止播放', en: 'Comparison is unavailable in the current connection or workspace. Playback has stopped', ja: '現在の接続またはワークスペースでは比較できません。再生を停止しました' },
-  'comparison.stale': { 'zh-Hans': '所选版本的来源已无法确认。请清空并重新选择，不会自动替换版本', 'zh-Hant': '所選版本的來源已無法確認。請清空並重新選擇，不會自動替換版本', en: 'The selected source can no longer be confirmed. Clear and choose again; versions are never replaced automatically', ja: '選択した素材の参照を確認できなくなりました。選択をクリアして選び直してください。自動置換はしません' },
-  'comparison.noPlayback': { 'zh-Hans': '等待两个有效版本', 'zh-Hant': '等待兩個有效版本', en: 'Waiting for two valid versions', ja: '有効な2つのバージョンを選択してください' },
+  "comparison.unavailable": {
+    "zh-Hans": "当前连接或工作区无法进行版本对比",
+    "zh-Hant": "目前的連線或工作區無法進行版本比較",
+    "en": "Comparison is unavailable in the current connection or workspace",
+    "ja": "現在の接続またはワークスペースでは比較できません"
+  },
+  "comparison.stale": {
+    "zh-Hans": "所选版本的来源已无法确认",
+    "zh-Hant": "所選版本的來源已無法確認",
+    "en": "The source of the selected version can no longer be confirmed",
+    "ja": "選択したバージョンのソースを確認できなくなりました"
+  },
   'comparison.reset': { 'zh-Hans': '清空对比选择', 'zh-Hant': '清空比較選擇', en: 'Clear comparison choices', ja: '比較の選択をクリア' },
   'comparison.unknown': { 'zh-Hans': '未记录', 'zh-Hant': '未記錄', en: 'Not recorded', ja: '記録なし' },
   'comparison.identity': { 'zh-Hans': '固定版本身份', 'zh-Hant': '固定版本識別資訊', en: 'Fixed version identity', ja: '固定バージョンの識別情報' },

@@ -112,9 +112,8 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     const blocked = ${JSON.stringify(blocked)};
     export const markup = Object.fromEntries(providers.map(provider => {
       const model = provider.models[0];
-      const { capabilities } = generationSelection([provider], { model }, ${JSON.stringify(shot)});
       return [provider.id, {
-        summary: renderToStaticMarkup(<ProviderSettings providers={providers} provider={provider} model={model} capabilities={capabilities} onChange={() => { throw Error('No side effects permitted'); }} />),
+        summary: renderToStaticMarkup(<ProviderSettings providers={providers} provider={provider} model={model} onChange={() => { throw Error('No side effects permitted'); }} />),
         details: renderToStaticMarkup(<GenerationInputDetails selection={generationProfileSelection(provider, model)} />),
       }];
     }));
@@ -136,29 +135,28 @@ test('wired ProviderSettings renders accessible compact summaries and all role d
     assert.match(summary, /aria-label="Mioon 模型输入限制"/);
     assert.match(summary, /data-profile-state="ready"/);
     assert.match(summary, /aria-expanded="false"/);
-    assert.ok(summary.includes(profile!.model)); assert.ok(summary.includes(profile!.apiFamily)); assert.ok(summary.includes(provider.providerRegion));
-    assert.doesNotMatch(summary, /generation-role-subject_reference|各参考角色的数量与限制/);
-    assert.match(details, /不代表服务商全部能力/);
-    for (const role of ['first_frame', 'last_frame', 'subject_reference', 'style_reference', 'motion_reference']) assert.ok(details.includes(`data-testid="generation-role-${role}"`));
-    assert.equal((details.match(/尚无对应的生成输入映射/g) || []).length, profile!.inputs.roles.subject_reference.implemented ? 2 : profile!.inputs.roles.last_frame.implemented ? 3 : 4);
-    if (profile!.inputs.roles.last_frame.implemented) { assert.match(details, /一张首帧加一张尾帧/); assert.match(summary, /尾帧 0–1 张/); }
-    assert.match(details, /主体与风格的策划关联不会自动作为生成输入/);
-    assert.doesNotMatch(details, /主体库与风格关联仅用于本地策划|尚不作为生成输入/);
-    assert.match(details, /首帧仍由现有参考图选择或首帧连接提供/);
+    assert.match(summary, /data-testid="model-select"/);
+    assert.doesNotMatch(summary, /generation-role-|API：尚未确认|generation-input-route|generation-input-brief/);
+    assert.ok(details.includes(String(profile!.apiFamily))); assert.ok(details.includes(provider.providerRegion));
+    assert.match(details, /参考图总数/);
+    for (const [role, rule] of Object.entries(profile!.inputs.roles)) {
+      assert.equal(details.includes(`data-testid="generation-role-${role}"`), rule.implemented, role);
+    }
+    assert.doesNotMatch(details, /不代表服务商全部能力|尚无对应的生成输入映射|主体与风格的策划关联|首帧仍由现有参考图选择或首帧连接提供/);
     assert.ok(details.includes(profile!.inputs.roles.first_frame.maxBytes!.toLocaleString('en-US')));
     assert.match(details, /2026-10-10/);
   }
-  assert.match(markup.mock.summary, /输出为测试图案，不会呈现参考图片或提示词描述的内容/);
+  assert.match(markup.mock.summary, /aria-label="输出为测试图案"/);
   assert.match(markup.runway.details, /编码后 data URI.*5 MiB/);
-  assert.match(markup.ark.details, /宽高均至少 300px；宽高均不超过 6000px；须与镜头画幅比例一致/);
+  assert.match(markup.ark.details, /宽高均至少 300px · 宽高均不超过 6000px · 须与镜头画幅比例一致/);
   assert.match(markup.veo.summary, /2026-10-22.*2026-10-10/);
   assert.match(markup.blocked, /已阻止新提交/);
-  assert.match(markup.blocked, /不会自动替换模型/);
-  assert.match(markup.unknown, /stale-selected-model/);
+  assert.doesNotMatch(markup.blocked, /不会自动替换模型/);
+  assert.doesNotMatch(markup.unknown, /API：尚未确认|未识别所选精确模型/);
   assert.match(markup.unknown, /data-profile-state="unknown_model"/);
   assert.match(markup.missing, /data-profile-state="missing_profile"/);
   assert.doesNotMatch(markup.missing + markup.unknown + markup.loading, /Mioon 首帧 0–1|Mioon 首帧 1/);
-  assert.match(markup.loading, /未加载或不可用/);
+  assert.equal(markup.loading, '');
   assert.match(markup.hidden, /disabled=""/);
   assert.match(markup.hidden, /aria-expanded="false"/);
 });

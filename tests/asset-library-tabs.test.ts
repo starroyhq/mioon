@@ -5,14 +5,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
+import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 const nodes=(value: ElementTree): ElementNode[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
-function fixture(){
+function fixture(locale: (typeof LOCALES)[number] = 'zh-Hans'){
   const slots: unknown[]=[],calls: unknown[]=[];let cursor=0,visible=true;
   let mediaGate: unknown = null;
   const react={createElement:(type: unknown,props: Record<string, unknown> | null,...children: ElementTree[])=>({type,props:{...props,children}}),useState(initial: unknown){const index=cursor++;if(!(index in slots))slots[index]=initial;return[slots[index],(value: (arg0: unknown) => unknown)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];}};(react as typeof react & {default: unknown}).default=react;
   const module=({exports:{}} as ElementModule);
   Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/AssetLibrary.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)((name: string)=>{
-    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => mediaGate, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();if(name.endsWith('.css'))return{};
+    if (name === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => mediaGate, ProjectMediaImage: 'img'}; if (name === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote', MediaAttentionBanner: 'MediaAttentionBanner'}; if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule(locale);if(name.endsWith('.css'))return{};
     if(name==='./AssetDispositionControls.tsx')return{default:'AssetDispositionControls',useDispositionInteraction:()=>({visible,admit:(action: () => void)=>{if(visible)action();}})};
     if(name==='./asset-disposition-state.ts')return{dispositionCounts:()=>({}),dispositionFilters:[],filterLibraryAssets:(assets: unknown)=>assets};
     if(name==='./asset-annotation-state.ts')return{annotationTags:()=>[],annotationMatches:()=>true,annotationRow:()=>null};
@@ -77,5 +78,26 @@ test('both library modes wait for the first media banner and count only verified
     assert.equal(banner({kind: 'ready', value: {known: {referenceRevision: 1, status: 'online', readable: true}}}, false), undefined);
     assert.deepEqual(banner({kind: 'ready', value: {known: {referenceRevision: 1, status: 'missing', readable: false}}}, false)?.props.state,
       {kind: 'ready', value: 1});
+  }
+});
+
+test('empty and filtered libraries show one line and keep import available in every locale', () => {
+  for (const locale of LOCALES) {
+    const library = fixture(locale);
+    for (const mode of ['canvas', 'editing'] as const) for (const [filter, key] of [['all', 'assets.emptyTitle'], ['image', 'assets.noMatches']] as const) {
+      const onImport = () => {};
+      const tree = nodes(library.render({mode, filter, onImport}));
+      const empty = tree.find(node => node.props.className === 'asset-empty');
+      assert.ok(empty);
+      const children = nodes(empty.props.children);
+      const heading = children.find(node => node.type === 'h4');
+      assert.deepEqual(heading?.props.children, [translate(locale, key)]);
+      assert.ok(children.every(node => node.type !== 'p' && node.type !== 'span'));
+      assert.ok(tree.every(node => node.props.className !== 'asset-bottom' && node.props.className !== 'asset-drag-help'));
+      const button = tree.find(node => node.props['data-testid'] === 'import-button');
+      assert.equal(button?.props.disabled, false);
+      assert.equal(button?.props.title, undefined);
+      assert.equal(button?.props.onClick, onImport);
+    }
   }
 });

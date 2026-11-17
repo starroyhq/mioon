@@ -105,7 +105,7 @@ test('first/last-frame validation retains specific guidance from stable issue co
   const missing = generationInputIssueDescriptor({ referenceAssetIds: [], lastFrameAssetId: tail }, provider, '', [], 'image');
   const same = generationInputIssueDescriptor({ referenceAssetIds: [first], lastFrameAssetId: first }, provider, '', [], 'image');
   assert.equal((missing as {key: string}).key, 'generation.frame.tailNeedsFirst'); assert.equal((same as {key: string}).key, 'generation.frame.distinctFrames');
-  assert.match(renderMessage('zh-Hans', missing), /尾帧必须与一张首帧/); assert.match(renderMessage('zh-Hans', same), /不同素材.*当前应用限制/);
+  assert.match(renderMessage('zh-Hans', missing), /尾帧必须与一张首帧/); assert.match(renderMessage('zh-Hans', same), /首尾帧须使用不同素材/);
   for (const locale of LOCALES) { assert.ok(renderMessage(locale, missing)); assert.ok(renderMessage(locale, same)); }
 });
 
@@ -127,7 +127,7 @@ test('actual provider renders creation details in all four locales', async () =>
         const store = createLanguageStore({ systemLanguages: [locale] });
         await store.setPreference(locale);
         result[locale] = renderToStaticMarkup(<I18nProvider store={store}>
-          <ProviderSettings providers={[provider]} provider={provider} model="fixed-model-id" capabilities={{inputModes:['text'], durations:[4], aspectRatios:['16:9']}} onChange={() => { throw Error('Render must not select a provider'); }} />
+          <ProviderSettings providers={[provider]} provider={provider} model="fixed-model-id" onChange={() => { throw Error('Render must not select a provider'); }} />
           <ComfyImageTaskDetails task={{model:'fixed-model-id'}} review={null} remoteState={{remote:{state:'submission_unknown'},observation:{state:'interrupted'}}} />
           <TaskWorkspace activeCount={1}><p>request-id-unchanged</p></TaskWorkspace>
         </I18nProvider>);
@@ -148,7 +148,7 @@ test('actual provider renders creation details in all four locales', async () =>
   const rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { env: testEnv(), cwd: root, input: script, encoding: 'utf8', timeout: 30_000 }));
   for (const locale of LOCALES) {
     const html = rendered[locale];
-    for (const key of ['generation.provider.heading', 'generation.provider.simulationWarning', 'image.comfy.details.observationScope', 'tasks.workspace.heading']) assert.ok(html.includes(translate(locale, key as never)), `${locale}/${key}`);
+    for (const key of ['generation.provider.provider', 'generation.provider.simulationWarning', 'image.comfy.details.observationScope', 'tasks.workspace.heading']) assert.ok(html.includes(translate(locale, key as never)), `${locale}/${key}`);
     assert.ok(html.includes('request-id-unchanged')); assert.ok(html.includes('fixed-model-id'));
     assert.doesNotMatch(html, /<script|UNTRUSTED BACKEND LABEL/);
   }

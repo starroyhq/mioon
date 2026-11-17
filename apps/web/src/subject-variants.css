@@ -41,8 +41,8 @@
 .subject-variant-kelvin output{min-width:58px;padding:3px 8px;border:1px solid var(--wb-line);border-radius:6px;font-family:var(--wb-font-mono);font-size:11px;text-align:center}
 .subject-variant-footer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;margin:var(--wb-space-4) calc(var(--wb-space-5)*-1) 0;padding:12px var(--wb-space-5);border-top:1px solid var(--wb-line-subtle);position:sticky;bottom:0;background:var(--wb-card)}
 .subject-variant-summary{display:flex;flex-direction:column;gap:2px;font-size:12px}.subject-variant-summary small{font-size:11px;color:var(--wb-muted)}
-.subject-variant-actions{display:flex;gap:8px}
-.subject-variant-cost{grid-column:2;margin:0;font-size:10px;color:var(--wb-muted);text-align:right}.subject-variant-footer .subject-warning{grid-column:1/-1}
+.subject-variant-actions{grid-column:2;display:flex;gap:8px}
+.subject-variant-footer .subject-warning{grid-column:1/-1}
 @media(max-width:760px){.subject-variant-body{grid-template-columns:1fr}.subject-variant-source{border-right:0;border-bottom:1px solid var(--wb-line-subtle)}.subject-variant-camera,.subject-variant-light-direction{grid-template-columns:1fr}}
 /* Batch rows and pending images in the version grid (09-10c-1, 09-10c supplements). */
 .subject-variant-batch{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
@@ -61,7 +61,7 @@
 .subject-version-new{position:absolute;right:4px;top:4px;padding:0 4px;border-radius:3px;background:var(--wb-media-text);color:var(--wb-bg);font-size:10px;line-height:15px;font-weight:600}
 .subject-variant-item-note{margin:0;font-size:10px;color:var(--wb-muted);line-height:1.4}.subject-variant-item-note.is-danger{color:var(--wb-danger)}
 .subject-variant-batch>.subject-variant-item-note{padding:0 9px;font-size:11px}
-.subject-variant-unknown{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:6px;background:var(--wb-warning-subtle)}.subject-variant-unknown .subject-variant-item-note{font-size:11px;color:var(--wb-text)}.subject-variant-unknown .subject-actions{margin:0}.subject-variant-unknown button{height:24px!important;padding:0 8px!important;font-size:11px!important}
+.subject-variant-unknown.subject-actions{gap:6px;margin:0;padding:8px 10px;border-radius:6px;background:var(--wb-warning-subtle)}.subject-variant-unknown button{height:24px!important;padding:0 8px!important;font-size:11px!important}
 .subject-variant-entry{display:inline-flex}.subject-variant-entry button{height:26px!important;padding:0 8px!important;gap:4px!important;font-size:11px!important;border:1px solid var(--wb-line)!important}
 .subject-variant-notice{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}.subject-variant-notice .subject-actions{margin:0}
 /* Choosing a shot's version by angle (09-10c-2). */

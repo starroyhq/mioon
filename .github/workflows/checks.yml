@@ -61,6 +61,14 @@ jobs:
         # The build entrypoint includes strict source and CI helper type checks.
         run: node scripts/tooling.ts build --channel=development
 
+      - name: Check Shot Inspector layout in headless Chrome
+        timeout-minutes: 3
+        run: |
+          qa_venv="$RUNNER_TEMP/mioon-browser-qa"
+          python3 -m venv "$qa_venv"
+          "$qa_venv/bin/python" -m pip install --disable-pip-version-check playwright==1.57.0
+          "$qa_venv/bin/python" -B tests/browser_inspector_layout.py --browser "$(command -v google-chrome)"
+
       - name: Write safe diagnostics
         if: always()
         env:
