@@ -163,6 +163,7 @@ test('the shipped format 3 example produces a format 4 candidate without changin
       assertProjectFile: createApplicationFileGuard(directories), signal: new AbortController().signal});
     const copy = await copies.instantiateTemplate({templateId: entry.manifest.templateId, templateVersion: entry.manifest.version,
       parentDir: targets, name: 'Format 4 example', requestId: randomUUID()});
+    if (process.platform !== 'win32') assert.ok(lstatSync(copy.project.projectFile).mode & 0o200);
     const target = openProjectStore({projectFile: copy.project.projectFile, locate: id => projectLocation(directories, id), format4: {}});
     try {
       assert.equal(target.db.prepare('SELECT version FROM project.schema_version').get()?.version, FORMAT4_PROJECT_SCHEMA_VERSION);
@@ -177,6 +178,7 @@ test('the shipped format 3 example produces a format 4 candidate without changin
         assert.equal(sha(readFileSync(file)), item.sha256);
         assert.equal(lstatSync(file).nlink, 1);
         assert.notEqual(lstatSync(file).ino, lstatSync(path.join(entry.directory, item.path)).ino);
+        if (process.platform !== 'win32') assert.ok(lstatSync(file).mode & 0o200, item.path);
       }
     } finally {target.close();}
     await copies.drain();

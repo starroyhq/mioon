@@ -11,7 +11,7 @@ export interface UpdateDocument {
 }
 interface UpdateEngine {
   state(): DesktopUpdateState;
-  start(): Promise<DesktopUpdateState>;
+  start(options?: {checkImmediately?: boolean}): Promise<DesktopUpdateState>;
   check(): Promise<DesktopUpdateState>;
   download(version: string): Promise<DesktopUpdateState>;
   cancel(): boolean;
@@ -20,6 +20,7 @@ interface UpdateEngine {
 interface UpdateHostOptions {
   readonly engine: UpdateEngine;
   readonly currentVersion: string;
+  readonly showInstallFailureOnLaunch?: boolean | undefined;
   documents(): readonly UpdateDocument[];
   focused(): UpdateDocument | null;
   activity(): Promise<DesktopUpdateActivity>;
@@ -28,15 +29,16 @@ interface UpdateHostOptions {
 const inactive = Object.freeze({exports: false, generations: false});
 const refuse = (code: DesktopUpdateError['code'], status: DesktopUpdateError['status']): DesktopUpdateReply =>
   ({ok: false, error: {code, status}});
+const presentsOnLaunch = (state: DesktopUpdateState) => state.kind === 'available' || state.kind === 'failed' && state.stage === 'install';
 
-export function createDesktopUpdateHost({engine, currentVersion, documents, focused, activity, install}: UpdateHostOptions) {
+export function createDesktopUpdateHost({engine, currentVersion, showInstallFailureOnLaunch = false, documents, focused, activity, install}: UpdateHostOptions) {
   let activityState: DesktopUpdateActivity = inactive;
   let activityRead: Promise<DesktopUpdateActivity> | undefined;
   let activityTimer: ReturnType<typeof setInterval> | undefined;
   let revision = 0;
   let noticeId = 0;
   let started = false;
-  let launchPending = false;
+  let launchPending = showInstallFailureOnLaunch;
   let previousKind = engine.state().kind;
   const notices = new Map<string, DesktopUpdateNotice>();
   const view = (owner: UpdateDocument): DesktopUpdateView => ({
@@ -64,8 +66,8 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
     return next;
   }
   function changed(): void {
-    const {kind} = engine.state();
-    if (kind !== 'available') launchPending = false;
+    const state = engine.state(), {kind} = state;
+    if (!presentsOnLaunch(state)) launchPending = false;
     if (kind === 'ready' && previousKind !== 'ready') {
       notice(focused(), 'ready');
       void refreshActivity().catch(() => {});
@@ -82,7 +84,7 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
     publish();
   }
   function presentLaunch(first: UpdateDocument): void {
-    if (!launchPending || engine.state().kind !== 'available') return;
+    if (!launchPending || !presentsOnLaunch(engine.state())) return;
     const owner = first.isCurrent() && first.isVisible() ? first : focused();
     if (!owner?.isCurrent() || !owner.isVisible()) return;
     launchPending = false;
@@ -94,7 +96,9 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
     if (!first.isCurrent() || !first.isVisible()) return;
     if (started) {presentLaunch(first); return;}
     started = true;
-    void engine.start().then(result => {
+    presentLaunch(first);
+    // A new install failure is presented before any release-feed response.
+    void engine.start({checkImmediately: !showInstallFailureOnLaunch}).then(result => {
       if (result.kind !== 'available' || engine.state().kind !== 'available') return;
       launchPending = true;
       presentLaunch(first);
@@ -120,11 +124,13 @@ export function createDesktopUpdateHost({engine, currentVersion, documents, focu
     try {
       switch (request.kind) {
         case 'check': await check(owner); break;
-        case 'download':
-          if ((status.kind !== 'available' && !(status.kind === 'failed' && status.stage === 'download')) ||
-            status.offer.version !== request.expectedVersion) return refuse('UPDATE_VERSION_CHANGED', 409);
+        case 'download': {
+          const version = status.kind === 'available' || status.kind === 'failed' && status.stage === 'download' ? status.offer.version
+            : status.kind === 'failed' && status.stage === 'install' && status.canRetry ? status.version : null;
+          if (version !== request.expectedVersion) return refuse('UPDATE_VERSION_CHANGED', 409);
           await engine.download(request.expectedVersion);
           break;
+        }
         case 'cancel': engine.cancel(); break;
         case 'install': {
           if (status.kind !== 'ready' || status.offer.version !== request.expectedVersion) return refuse('UPDATE_VERSION_CHANGED', 409);

@@ -61,7 +61,7 @@
   overflow-wrap: anywhere;
 }
 
-.desktop-update-details > strong { color: var(--wb-text); }
+.desktop-update-details > strong { display: block; color: var(--wb-text); }
 .desktop-update-details > ul { padding-inline-start: 1.2em; margin: 6px 0 8px; list-style: disc; }
 .desktop-update-details > ul > li + li { margin-top: 5px; }
 .desktop-update-details > a { display: inline-flex; align-items: center; gap: 3px; color: var(--wb-text); }

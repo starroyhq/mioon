@@ -130,6 +130,21 @@ test('startup signature diagnostic write failure leaves the existing storage ent
   assert.equal(await readFile(f.logDirectory, 'utf8'), original);
 });
 
+test('install failure diagnostics persist only the outcome and a validated target version', async t => {
+  const f = await fixture(t);
+  const diagnostics = f.create();
+  const file = path.join(f.logDirectory, 'update-install.jsonl');
+  for (const invalid of [null, f.dataDir, {targetVersion: '0.2.1', path: f.dataDir},
+    '0.2.1\ninstall-failed', '0.2.1-dev.1', '01.2.1']) {
+    assert.equal(diagnostics.recordUpdateInstallFailure(invalid), false);
+  }
+  await assert.rejects(readFile(file), {code: 'ENOENT'});
+  assert.equal(diagnostics.recordUpdateInstallFailure('0.2.1'), true);
+  assert.equal(diagnostics.recordUpdateInstallFailure(f.dataDir), false);
+  assert.equal(await readFile(file, 'utf8'), '{"result":"install-failed","targetVersion":"0.2.1"}\n');
+  await assert.rejects(readFile(f.file), {code: 'ENOENT'});
+});
+
 test('capacity and rotation stay bounded to fileCount files and maxBytes per file', { timeout: 120_000 }, async t => {
   const f = await fixture(t);
   const diagnostics = f.create();

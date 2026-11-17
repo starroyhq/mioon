@@ -49,17 +49,23 @@ test('fixed built-in catalog verifies ordinary current project, strict manifest,
   assert.equal(fs.existsSync(path.join(f.directory, 'history.db')), false);
 });
 
-test('web and desktop staging preserve the same artifact bytes while creating independent read-only resources', async t => {
+test('web and desktop staging preserve artifact bytes in independent, owner-writable resources', async t => {
   const f = fixture(t), web = path.join(f.root, 'web'); fs.mkdirSync(web);
   const webExamples = path.join(web, 'project-examples'); await stageProjectExampleResources(f.source, webExamples);
-  const installed = await stageProjectExampleResources(webExamples, f.destination);
+  const mask = process.platform === 'win32' ? undefined : process.umask(0o077);
+  let installed: Awaited<ReturnType<typeof stageProjectExampleResources>>;
+  try {installed = await stageProjectExampleResources(webExamples, f.destination);}
+  finally {if (mask !== undefined) process.umask(mask);}
   assert.deepEqual(installed, [{directory: path.join(f.destination, 'timeline-basics'), manifest: f.manifest}]);
   for (const name of files(f.source)) {
     assert.deepEqual(fs.readFileSync(path.join(webExamples, name)), fs.readFileSync(path.join(f.source, name)));
     assert.deepEqual(fs.readFileSync(path.join(f.destination, name)), fs.readFileSync(path.join(f.source, name)));
     assert.notEqual(fs.lstatSync(path.join(f.destination, name)).ino, fs.lstatSync(path.join(webExamples, name)).ino);
     assert.equal(fs.lstatSync(path.join(f.destination, name)).nlink, 1);
-    if (process.platform !== 'win32') assert.equal(fs.lstatSync(path.join(f.destination, name)).mode & 0o222, 0);
+    if (process.platform !== 'win32') assert.equal(fs.lstatSync(path.join(f.destination, name)).mode & 0o777, 0o644);
+  }
+  if (process.platform !== 'win32') for (const directory of [f.destination, installed[0]!.directory, path.join(installed[0]!.directory, 'media')]) {
+    assert.equal(fs.lstatSync(directory).mode & 0o777, 0o755);
   }
 });
 

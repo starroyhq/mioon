@@ -44,7 +44,7 @@ test('available renders actual version, metadata, bounded escaped notes and the 
   const html = render(view({kind: 'available', offer}));
   assert.match(html, /Mioon 0\.2\.1 可以更新了/);
   assert.match(html, /data-slot="dialog-description"[^>]*>当前 0\.2\.0 · 11月20日发布 · 约 240 MB<\/p>/);
-  assert.match(html, /修复画布整理/);
+  assert.match(html, /<strong>更新内容<\/strong><ul><li>修复画布整理<\/li>.+<\/ul><a\b/);
   assert.ok(html.includes(escapeHtml(offer.notes[1]!)));
   assert.doesNotMatch(html, /<b>|第四条仅/);
   assert.match(html, /稍后.+下载并安装/);
@@ -52,6 +52,13 @@ test('available renders actual version, metadata, bounded escaped notes and the 
   assert.ok(link?.includes(`href="${DESKTOP_UPDATE_RELEASES}/tag/v0.2.1"`) && link.includes('target="_blank"') && link.includes('rel="noreferrer"'));
   const invalid = render(view({kind: 'available', offer: {...offer, version: '0.2.1?unsafe'}}));
   assert.equal(tagOf(invalid, 'desktop-update-full-notes'), null);
+});
+
+test('available with no summary notes only shows the full release link', () => {
+  const html = render(view({kind: 'available', offer: {...offer, notes: []}}));
+  assert.doesNotMatch(html, /更新内容|<ul>/);
+  assert.match(html, /查看完整说明/);
+  assert.ok(tagOf(html, 'desktop-update-full-notes')?.includes(`href="${DESKTOP_UPDATE_RELEASES}/tag/v0.2.1"`));
 });
 
 test('downloading renders exact progress, remaining time, cancel and continue in background', () => {
@@ -108,6 +115,19 @@ test('download failure renders a concise reason, retry and the fixed website', (
   assert.match(html, /去网站下载.+重试/);
   assert.ok(tagOf(html, 'desktop-update-website')?.includes(`href="${DESKTOP_UPDATE_RELEASES}/latest"`));
   assert.equal(tagOf(html, 'desktop-update-full-notes'), null);
+});
+
+test('install failure names the uninstalled version and only offers retry when allowed', () => {
+  for (const canRetry of [true, false]) {
+    const html = render(view({kind: 'failed', stage: 'install', version: offer.version, canRetry}));
+    assert.match(html, /0\.2\.1 没有装上/);
+    assert.doesNotMatch(html, /data-slot="dialog-description"|下载没有完成|下载并安装/);
+    assert.match(html, /<div class="wb-dialog-content"><\/div>/);
+    const website = tagOf(html, 'desktop-update-website');
+    assert.ok(website?.includes(`href="${DESKTOP_UPDATE_RELEASES}/latest"`));
+    assert.ok(website?.includes(`data-variant="${canRetry ? 'secondary' : 'primary'}"`));
+    assert.deepEqual([...html.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)].map(match => match[1]), canRetry ? ['重试'] : []);
+  }
 });
 
 test('disabled update capability renders no modal', () => {

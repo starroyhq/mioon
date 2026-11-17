@@ -10,6 +10,7 @@ import {verifySubtitleResources} from '../../apps/desktop/subtitle-resources.ts'
 import {verifyPackagedTrayResources} from '../../apps/desktop/tray-resources.ts';
 import {readBuildMetadata} from '../../apps/desktop/build-metadata.ts';
 import {readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles} from '../../apps/desktop/runtime-notices.ts';
+import {MacUpdatePackageFailure, verifyMacAppPermissions, withMacUpdateZip} from '../../apps/desktop/mac-update-package-permissions.ts';
 import {PROJECT_NOTICES} from '../../apps/desktop/scripts/stage-project-notices.ts';
 import {argumentsFor, CheckFailure, command, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {TargetArch, TargetPlatform} from './media-environment.ts';
@@ -27,10 +28,10 @@ interface MacAppEvidence {
   scope: MacScope; lipo: MacBinaryEvidence[]; codesign: true; stapled: true; gatekeeper: true;
   verificationOutput: {codesign: string[]; spctl: string[]};
 }
-interface Inspection {ok: boolean; platform: TargetPlatform; arch: PackageArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; package?: MacDmgEvidence; mountPoint?: string; extractRoot?: string; error?: string; cleanupError?: string; appleStaplerDiagnostics?: MacStaplerDiagnostic[]; macApps?: MacAppEvidence[]}
+interface Inspection {ok: boolean; platform: TargetPlatform; arch: PackageArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; package?: MacDmgEvidence; mountPoint?: string; extractRoot?: string; error?: string; unwritableEntry?: string; cleanupError?: string; appleStaplerDiagnostics?: MacStaplerDiagnostic[]; macApps?: MacAppEvidence[]}
 const MAC_CHECK_ERRORS = {
   'bundle-executable': 'MAC_BUNDLE_EXECUTABLE_FAILED', 'bundle-architecture': 'MAC_BUNDLE_ARCHITECTURE_FAILED',
-  'bundle-identity': 'MAC_BUNDLE_IDENTITY_FAILED', 'asar-content': 'ASAR_STAGING_MISMATCH',
+  'bundle-identity': 'MAC_BUNDLE_IDENTITY_FAILED', 'bundle-permissions': 'MAC_BUNDLE_PERMISSIONS_FAILED', 'asar-content': 'ASAR_STAGING_MISMATCH',
   'asar-metadata': 'ASAR_METADATA_MISMATCH', 'asar-required-files': 'ASAR_REQUIRED_FILES_MISSING',
   'tray-resources': 'TRAY_RESOURCES_INVALID', 'subtitle-resources': 'SUBTITLE_RESOURCES_INVALID',
   fuses: 'FUSE_INSPECTION_FAILED', 'runtime-notice-source': 'RUNTIME_NOTICE_PROVENANCE_INVALID',
@@ -46,7 +47,7 @@ type MacCheckRunner = <T>(name: MacCheck, action: () => Promise<T>) => Promise<T
 export async function runMacInspectionCheck<T>(scope: MacScope, name: MacCheck, action: () => Promise<T>, onPhase?: (phase: MacPhase) => void): Promise<T> {
   onPhase?.(`${scope}:${name}`);
   try { return await action(); }
-  catch (error) { if (error instanceof CheckFailure) throw error; fail(MAC_CHECK_ERRORS[name]); }
+  catch (error) { if (error instanceof CheckFailure || error instanceof MacUpdatePackageFailure) throw error; fail(MAC_CHECK_ERRORS[name]); }
 }
 /** Keep ticket validation mandatory while retaining only bounded, safe attempt
  * evidence. Raw tool output, artifact paths and signing inputs never enter the
@@ -185,6 +186,7 @@ async function inspectUniversalArchitecture(app: string, binary: string): Promis
 }
 async function macApp(app: string, appOutDir: string, scope: MacScope, onPhase: (phase: MacPhase) => void, onAppleDiagnostic: (diagnostic: MacStaplerDiagnostic) => void): Promise<{binary: string; evidence: MacAppEvidence}> {
   const run: MacCheckRunner = (name, action) => runMacInspectionCheck(scope, name, action, onPhase);
+  await run('bundle-permissions', () => verifyMacAppPermissions(app));
   const binary = await run('bundle-executable', () => macBundleExecutable(app));
   const plist = path.join(app, 'Contents/Info.plist');
   const lipo = await run('bundle-architecture', () => inspectUniversalArchitecture(app, binary));
@@ -211,6 +213,15 @@ async function macApp(app: string, appOutDir: string, scope: MacScope, onPhase: 
     spctl: ['accepted', 'source=Notarized Developer ID'].filter(value => spctl.split(/\r?\n/).some(line => line === value || line.endsWith(`: ${value}`))),
   };
   return {binary, evidence: {scope, lipo, codesign: true, stapled: true, gatekeeper: true, verificationOutput}};
+}
+/** Probe a disposable extracted copy, using recursive no-follow removal as
+ * ShipIt does. Neither the signed ZIP nor the staged app is modified. */
+export async function probeMacQuarantineRemoval(bundle: string): Promise<void> {
+  const attribute = 'com.apple.quarantine';
+  await command('/usr/bin/xattr', ['-rsw', attribute, '0081;00000000;MioonPackageProbe;', bundle], 'MAC_QUARANTINE_SET_FAILED');
+  await command('/usr/bin/xattr', ['-rsd', attribute, bundle], 'MAC_QUARANTINE_REMOVE_FAILED');
+  const remaining = await command('/usr/bin/xattr', ['-rs', bundle], 'MAC_QUARANTINE_LIST_FAILED');
+  if (remaining.split('\n').some(line => line.endsWith(`: ${attribute}`))) fail('MAC_QUARANTINE_REMAINS');
 }
 export async function inspectDesktop(platform: TargetPlatform, arch: PackageArch, packageDir: string): Promise<Inspection> {
   if (process.platform !== platform) fail('INSPECTION_HOST_MISMATCH');
@@ -279,16 +290,17 @@ export async function inspectDesktop(platform: TargetPlatform, arch: PackageArch
       result.phase = 'signed-zip';
       const zip = path.join(expected, `${artifactBase}.zip`), info = await lstat(zip);
       if (!info.isFile() || info.size <= 0) fail('INVALID_MAC_ZIP');
-      const zipRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-zip-'));
-      try {
-        await command('ditto', ['-x', '-k', zip, zipRoot], 'MAC_ZIP_EXTRACT_FAILED', {timeout: 180000});
-        const zipped = await uniqueMacApp(zipRoot);
+      await withMacUpdateZip(zip, path.basename(app), async zipped => {
         await inspectMacApp(zipped, 'extracted-zip-app');
         result.phase = 'signed-zip';
         const descriptor = 'Contents/Resources/app-update.yml';
         if (!(await readFile(path.join(zipped, descriptor))).equals(await readFile(path.join(delivered, descriptor)))) fail('DMG_ZIP_UPDATE_DESCRIPTOR_MISMATCH');
         check('zip-app-signature-notarization-gatekeeper-architecture-and-update-descriptor');
-      } finally { await rm(zipRoot, {recursive: true, force: true}); }
+        result.phase = 'zip-app-quarantine-removal';
+        await probeMacQuarantineRemoval(zipped);
+        check('zip-entries-and-extracted-app-are-owner-writable');
+        check('zip-app-recursive-quarantine-removal');
+      });
       result.phase = 'signed-dmg';
       const after = await macDmgEvidence(dmg);
       if (before.sha256 !== after.sha256) fail('DMG_CHANGED_DURING_VERIFICATION');
@@ -301,7 +313,11 @@ export async function inspectDesktop(platform: TargetPlatform, arch: PackageArch
   }
   result.ok = true; result.phase = 'complete'; return result;
   } catch (error) {
-    result.error = safeFailure(error);
+    result.error = error instanceof MacUpdatePackageFailure ? error.code : safeFailure(error);
+    // An earlier DMG check may have populated a mounted app path before the
+    // ZIP failed. Only completed inspections publish an executable path.
+    delete result.executable;
+    if (error instanceof MacUpdatePackageFailure && error.entry) result.unwritableEntry = error.entry;
     result.checks.push({name: result.phase, ok: false});
     if (error instanceof MountedInspectionFailure) result.mountPoint = error.mountPoint;
     if (result.extractRoot) {
@@ -318,6 +334,7 @@ if (isMain(import.meta.url)) {
     await report(output, await inspectDesktop(targetPlatform(args.platform), args.arch === 'universal' ? 'universal' : targetArch(args.arch), args['package-dir']));
   } catch (error) {
     if (output) await report(output, error instanceof DesktopInspectionFailure ? error.inspection : {ok: false, error: safeFailure(error)});
-    console.error(safeFailure(error)); process.exitCode = 1;
+    const entry = error instanceof DesktopInspectionFailure ? error.inspection.unwritableEntry : undefined;
+    console.error(entry ? `${safeFailure(error)}: ${JSON.stringify(entry)}` : safeFailure(error)); process.exitCode = 1;
   }
 }

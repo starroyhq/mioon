@@ -1175,9 +1175,15 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
       installDesktopUpdateNetworkPolicy(updater, process.resourcesPath);
     } catch {updater = null;}
   }
-  const handoff = createDesktopUpdateReopen(paths.dataDir);
+  const handoff = createDesktopUpdateReopen(paths.dataDir, currentVersion);
+  let startupUpdate: ReturnType<typeof handoff.consume> | undefined;
+  if (enabled) {
+    try { startupUpdate = handoff.consume(); }
+    catch { /* Unavailable private storage does not prevent startup. */ }
+  }
+  if (startupUpdate?.newFailure && startupUpdate.failure) rendererDiagnostics?.recordUpdateInstallFailure(startupUpdate.failure.version);
   const engine = desktopUpdate = createDesktopUpdate({
-    updater, enabled: updater !== null, currentVersion,
+    updater, enabled: updater !== null, currentVersion, installFailure: startupUpdate?.failure,
     // Inspect and remove the downloaded bundle as physical files, including its ASAR archives.
     verifyDownload: createMacDesktopUpdateVerifier({applicationPath: path.resolve(process.resourcesPath ?? '.', '../..'),
       temporaryDirectory: paths.dataDir, downloadCacheRoot: updater?.cacheRoot, fileSystem: updateFileSystem}),
@@ -1202,7 +1208,7 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
     },
   });
   updateHost = createDesktopUpdateHost({
-    engine, currentVersion,
+    engine, currentVersion, showInstallFailureOnLaunch: startupUpdate?.newFailure,
     documents: () => (windowHost?.windows() ?? []).flatMap(window => updateDocument(window) ?? []),
     focused: focusedUpdateDocument,
     async activity() {
@@ -1214,11 +1220,7 @@ function initializeDesktopUpdates(): readonly RestartProject[] | undefined {
     },
     install: (version, beforeClose) => updateQuit!.request(version, true, undefined, beforeClose),
   });
-  if (!enabled) return undefined;
-  try {
-    const projects = handoff.consume(currentVersion);
-    return projects.length ? projects.map(projectId => ({projectId, name: nt('native.menuProjectWindow')})) : undefined;
-  } catch {return undefined;}
+  return startupUpdate?.projectIds.length ? startupUpdate.projectIds.map(projectId => ({projectId, name: nt('native.menuProjectWindow')})) : undefined;
 }
 
 async function checkUpdateFromMenu(): Promise<void> {

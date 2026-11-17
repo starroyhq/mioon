@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -112,7 +112,8 @@ export function verifyProjectExampleResources(root: string): readonly ProjectExa
 }
 
 /** Copy only already verified files into a new staging directory. Media are
- * independent byte copies, and installation files remain read-only. */
+ * independent byte copies. The installer needs owner write access to clear
+ * quarantine from the packaged copies. */
 export async function stageProjectExampleResources(sourceRoot: string, destinationRoot: string): Promise<readonly ProjectExampleResourceEntry[]> {
   const entries = verifyProjectExampleResources(sourceRoot);
   if (!path.isAbsolute(destinationRoot) || path.normalize(destinationRoot) !== destinationRoot || destinationRoot.includes('\0')) throw invalid('destination-path');
@@ -120,13 +121,28 @@ export async function stageProjectExampleResources(sourceRoot: string, destinati
   mkdirSync(destinationRoot, {mode: 0o755});
   const owned = lstatSync(destinationRoot, {bigint: true});
   try {
+    // Artifact modes are independent of the packaging process's umask.
+    if (process.platform !== 'win32') chmodSync(destinationRoot, 0o755);
+    const makeDirectory = (directory: string): void => {
+      mkdirSync(directory, {mode: 0o755});
+      if (process.platform !== 'win32') chmodSync(directory, 0o755);
+    };
     for (const entry of entries) {
-      const name = path.basename(entry.directory), directory = path.join(destinationRoot, name); mkdirSync(directory, {mode: 0o755});
+      const name = path.basename(entry.directory), directory = path.join(destinationRoot, name);
+      makeDirectory(directory);
+      const directories = new Set([directory]);
       for (const relative of resourceNames(entry.manifest)) {
-        const file = path.join(directory, ...relative.split('/'));
-        mkdirSync(path.dirname(file), {recursive: true, mode: 0o755});
-        const bytes = readStableFile(path.join(entry.directory, ...relative.split('/')), PROJECT_EXAMPLE_MAX_BYTES);
-        writeFileSync(file, bytes, {flag: 'wx', mode: 0o444});
+        const parts = relative.split('/'), file = path.join(directory, ...parts);
+        let parent = directory;
+        for (const part of parts.slice(0, -1)) {
+          parent = path.join(parent, part);
+          if (directories.has(parent)) continue;
+          makeDirectory(parent);
+          directories.add(parent);
+        }
+        const bytes = readStableFile(path.join(entry.directory, ...parts), PROJECT_EXAMPLE_MAX_BYTES);
+        writeFileSync(file, bytes, {flag: 'wx', mode: 0o644});
+        if (process.platform !== 'win32') chmodSync(file, 0o644);
       }
     }
     return verifyProjectExampleResources(destinationRoot);
