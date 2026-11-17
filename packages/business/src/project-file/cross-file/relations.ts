@@ -87,6 +87,13 @@ export const FORMAT4_CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object
     parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false,
   })),
 ]);
+export const FORMAT5_CROSS_FILE_RELATIONS: readonly CrossFileRelation[] = Object.freeze([
+  ...FORMAT4_CROSS_FILE_RELATIONS,
+  ...['editor_history_entries', 'editor_history_state', 'editor_requests'].map((table, offset): CrossFileRelation => ({
+    index: 79 + offset, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]},
+    parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false,
+  })),
+]);
 export const DROPPED_CONTENT_KEYS: readonly DroppedContentKey[] = Object.freeze([
   {child: {table: "image_groups", columns: ["activeTaskId","id","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: true},
   {child: {table: "image_versions", columns: ["taskId","groupId","projectId"]}, parent: {table: "image_tasks", columns: ["id","groupId","projectId"]}, originallyDeferred: false},

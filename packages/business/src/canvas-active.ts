@@ -2,12 +2,14 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import type {CanvasArchiveTable} from './project-file/schema/domains/canvas.ts';
 
 /** The held kernel has already validated the matching on-disk manifest. */
 export function hasCanvasArchives(db: DatabaseSync): boolean {
-  return isProjectDatabase(db) && db.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT4_PROJECT_SCHEMA_VERSION;
+  if (!isProjectDatabase(db)) return false;
+  const version = db.prepare('PRAGMA project.user_version').get()?.user_version;
+  return version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION;
 }
 
 /** Supply only the fixed alias from the calling SQL statement. Legacy
@@ -46,7 +48,7 @@ export function isCanvasEdgeHidden(db: DatabaseSync, edge: {id?: unknown; source
   return [edge.source, edge.target].some(id => typeof id === 'string' && endpoint.get(id, id) !== undefined);
 }
 
-/** Keep legacy materialization intact. On format 4 the SQL projection also
+/** Keep legacy materialization intact. Archive-aware formats also
  * prevents inactive JSON from crossing into an active consumer. */
 export function listActiveCanvasRecords<T>(db: DatabaseSync, table: CanvasArchiveTable, projectId: string, legacy: () => T[]): T[] {
   const predicate = table === 'edges' ? canvasActiveEdgeCondition(db, 'record') : canvasActiveCondition(db, 'record');

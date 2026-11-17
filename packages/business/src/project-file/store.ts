@@ -7,6 +7,9 @@ import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConn
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
+import {assertFormat5ProjectContent} from './format5-content.ts';
+import {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 import {markBackgroundTaskChanged, flushBackgroundTaskChanges, discardBackgroundTaskChanges, closeBackgroundTaskEvents,
   validateBackgroundTaskAdmission, validateBackgroundTaskChanges} from '../background-task-events.ts';
@@ -168,6 +171,9 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
   };
   const put = <T extends object>(t: string, value: T): T => {
     table(t);
+    if (!database.isTransaction && database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION) {
+      return tx(() => put(t, value));
+    }
     if (connection.historyState === 'diverged') throw new AppError('PROJECT_HISTORY_DIVERGED','项目内容与本机记录不一致，请先确认处置。',409,{projectId:connection.projectId});
     const columns = t === 'projects' ? ['id', 'data'] : t === 'versions' ? ['id', 'projectId', 'jobId', 'data'] : ['id', 'projectId', 'data'];
     const record = value as Readonly<Record<string, unknown>>;
@@ -203,6 +209,9 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     database.exec('BEGIN');
     let result!: T;
     try {
+      const formatBefore = database.prepare('PRAGMA project.user_version').get()?.user_version;
+      const format5Content = formatBefore === FORMAT5_PROJECT_SCHEMA_VERSION ? readProjectContentStamp(database) : undefined;
+      const schemaBefore = format5Content ? database.prepare('PRAGMA project.schema_version').get()?.schema_version : undefined;
       for (const fence of transactionFences.get(database) ?? []) fence();
       result = callback();
       if (isThenable(result)) {
@@ -210,6 +219,9 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
         throw new TypeError('Transactions require a synchronous result');
       }
       for (const observer of transactionObservers.get(database) ?? []) observer(result);
+      if (database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION &&
+          (!format5Content || !sameContentStamp(format5Content, readProjectContentStamp(database)) ||
+           schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) assertFormat5ProjectContent(database, 'project');
       // A pure quota check prevents a committed task from exceeding the
       // discovery bound. It never writes a prepared app-library record.
       validateBackgroundTaskChanges(database);
@@ -244,6 +256,6 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
 
 /** Creates the project file (never replacing one), then opens it. */
 export function createProjectStore(options: OpenProjectConnectionOptions & CreateProjectFileOptions): ProjectStore {
-  createProjectFile(options.projectFile, {projectId: options.projectId, contentToken: options.contentToken, format4: options.format4});
+  createProjectFile(options.projectFile, {projectId: options.projectId, contentToken: options.contentToken, format4: options.format4, format5: options.format5});
   return openProjectStore(options);
 }
