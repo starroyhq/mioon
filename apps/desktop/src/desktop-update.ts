@@ -2,6 +2,7 @@ import electronUpdater from 'electron-updater';
 import type {AppUpdater, CancellationToken, ProgressInfo, UpdateInfo} from 'electron-updater';
 import {DESKTOP_UPDATE_RELEASES, desktopReleaseVersionSchema} from '../../../packages/contracts/src/desktop-update.ts';
 import type {DesktopUpdateOffer, DesktopUpdateState} from '../../../packages/contracts/src/desktop-update.ts';
+import type {DesktopUpdateInstallFailure} from './desktop-update-reopen.ts';
 
 export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const DESKTOP_UPDATE_LATEST_URL = DESKTOP_UPDATE_RELEASES + '/latest';
@@ -72,6 +73,7 @@ interface DesktopUpdateOptions {
   readonly updater: DesktopUpdatePort | null;
   readonly enabled: boolean;
   readonly currentVersion: string;
+  readonly installFailure?: DesktopUpdateInstallFailure | undefined;
   readonly verifyDownload: DesktopUpdateVerifier;
   readonly changed?: (state: DesktopUpdateState) => void;
   readonly installFailed?: () => void;
@@ -111,10 +113,13 @@ function readOffer(info: UpdateInfo, currentVersion: string): PendingUpdate | nu
   };
 }
 
-export function createDesktopUpdate({updater, enabled, currentVersion, verifyDownload, changed, installFailed,
+export function createDesktopUpdate({updater, enabled, currentVersion, installFailure, verifyDownload, changed, installFailed,
   intervalMs = DESKTOP_UPDATE_CHECK_INTERVAL_MS, makeCancellationToken = () => new electronUpdater.CancellationToken()}: DesktopUpdateOptions) {
   const active = enabled && validDesktopUpdateVersion(currentVersion) ? updater : null;
-  let snapshot: DesktopUpdateState = active ? idle : disabled;
+  let lastInstallFailure: Extract<DesktopUpdateState, {stage: 'install'}> | undefined = installFailure && Object.freeze({
+    kind: 'failed', stage: 'install', version: installFailure.version, canRetry: installFailure.failures < 2,
+  });
+  let snapshot: DesktopUpdateState = active ? lastInstallFailure ?? idle : disabled;
   let pending: PendingUpdate | null = null;
   let checking: Promise<DesktopUpdateState> | undefined;
   let download: DownloadAttempt | null = null;
@@ -149,7 +154,9 @@ export function createDesktopUpdate({updater, enabled, currentVersion, verifyDow
     if (!installing || !pending) return;
     installing = false;
     pendingUpdateVersion = null;
-    publish({kind: 'failed', stage: 'download', offer: pending.offer});
+    const version = pending.offer.version;
+    lastInstallFailure = {kind: 'failed', stage: 'install', version, canRetry: lastInstallFailure?.version !== version};
+    publish(lastInstallFailure);
     void discard().finally(() => installFailed?.()).catch(() => {});
   }
 
@@ -169,33 +176,49 @@ export function createDesktopUpdate({updater, enabled, currentVersion, verifyDow
     if (!active || disposed || download || installing || snapshot.kind === 'ready') return Promise.resolve(snapshot);
     checking = Promise.resolve().then(async () => {
       if (disposed) return snapshot;
-      publish({kind: 'checking'});
+      const retainFailure = snapshot.kind === 'failed' && snapshot.stage === 'install';
+      if (!retainFailure) publish({kind: 'checking'});
       try {
         const result = await active.checkForUpdates();
         if (disposed) return snapshot;
+        pending = result?.isUpdateAvailable ? readOffer(result.updateInfo, currentVersion) : null;
+        if (lastInstallFailure && pending?.offer.version === lastInstallFailure.version) {
+          return snapshot === lastInstallFailure ? snapshot : publish(lastInstallFailure);
+        }
+        if (!pending && retainFailure) return snapshot;
         if (!result) return publish({kind: 'failed', stage: 'check'});
-        pending = result.isUpdateAvailable ? readOffer(result.updateInfo, currentVersion) : null;
         return publish(pending ? {kind: 'available', offer: pending.offer} : idle);
       } catch {
         pending = null;
-        return publish({kind: 'failed', stage: 'check'});
+        return retainFailure ? snapshot : publish({kind: 'failed', stage: 'check'});
       }
     }).finally(() => { checking = undefined; });
     return checking;
   }
 
-  function start(): Promise<DesktopUpdateState> {
+  function start({checkImmediately = true}: {checkImmediately?: boolean} = {}): Promise<DesktopUpdateState> {
     if (!active || disposed) return Promise.resolve(snapshot);
     if (interval) return checking ?? Promise.resolve(snapshot);
     interval = setInterval(() => { void check(); }, intervalMs);
     interval.unref();
-    return check();
+    return checkImmediately ? check() : Promise.resolve(snapshot);
   }
 
   function downloadUpdate(expectedVersion: string): Promise<DesktopUpdateState> {
+    if (snapshot.kind === 'failed' && snapshot.stage === 'install') {
+      if (!snapshot.canRetry || snapshot.version !== expectedVersion) return Promise.resolve(snapshot);
+      // A restart failure carries no trusted download manifest. Recheck and
+      // admit only an exact match before reusing the normal verification path.
+      return check().then(() => beginDownload(expectedVersion));
+    }
+    return beginDownload(expectedVersion);
+  }
+
+  function beginDownload(expectedVersion: string): Promise<DesktopUpdateState> {
     if (!active || disposed || installing || checking || pending?.offer.version !== expectedVersion) return Promise.resolve(snapshot);
     if (download) return download.promise ?? Promise.resolve(snapshot);
-    if (snapshot.kind !== 'available' && !(snapshot.kind === 'failed' && snapshot.stage === 'download')) return Promise.resolve(snapshot);
+    if (snapshot.kind !== 'available' && !(snapshot.kind === 'failed' && (snapshot.stage === 'download' ||
+      snapshot.stage === 'install' && snapshot.canRetry && snapshot.version === expectedVersion))) return Promise.resolve(snapshot);
     const attempt: DownloadAttempt = {pending, token: makeCancellationToken(), controller: new AbortController()};
     download = attempt;
     attempt.promise = Promise.resolve().then(async () => {

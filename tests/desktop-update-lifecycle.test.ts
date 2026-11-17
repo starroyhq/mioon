@@ -1,3 +1,4 @@
+import {writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import assert from 'node:assert/strict';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -96,6 +97,32 @@ test('a launch result targets the first visible project rather than a launcher h
   assert.equal(projectWindow.received.at(-1)?.notice?.kind, 'launch');
 });
 
+test('a newly detected install failure reaches one visible window without starting a feed request', async t => {
+  const first = owner('first'), later = owner('later');
+  let state: DesktopUpdateState = {kind: 'failed', stage: 'install', version, canRetry: true};
+  const downloads: string[] = [];
+  const host = createDesktopUpdateHost({
+    engine: {state: () => state, start: async options => {assert.deepEqual(options, {checkImmediately: false}); return state;}, check: async () => state,
+      download: async expected => {downloads.push(expected); return state;}, cancel: () => false, setInstallOnQuit: () => false},
+    currentVersion: offer.currentVersion, showInstallFailureOnLaunch: true,
+    documents: () => [first.document, later.document], focused: () => later.document,
+    activity: async () => ({exports: false, generations: false}), install: async () => false,
+  });
+  t.after(() => host.dispose());
+  host.start(first.document);
+  host.start(later.document);
+  assert.deepEqual(first.received.at(-1)?.notice, {kind: 'launch', id: 1});
+  assert.deepEqual(first.received.at(-1)?.state, state);
+  assert.equal(later.received.at(-1)?.notice, null);
+  await setImmediate();
+  assert.equal((await host.dispatch(first.document, {kind: 'download', expectedVersion: version})).ok, true);
+  state = {...state, canRetry: false};
+  host.changed();
+  assert.deepEqual(await host.dispatch(later.document, {kind: 'download', expectedVersion: version}),
+    {ok: false, error: {code: 'UPDATE_VERSION_CHANGED', status: 409}});
+  assert.deepEqual(downloads, [version]);
+});
+
 test('an export started while windows report saved requires a new confirmation at the close boundary', async t => {
   const window = owner('current');
   const state: DesktopUpdateState = {kind: 'ready', offer, installOnQuit: false};
@@ -129,7 +156,7 @@ test('an unsaved or changed window blocks update before close and only completed
     },
     projects: () => [project], canStart: input => input === version,
     async quit() {log.push('quit'); if (quitAllowed) assert.equal(finish(), true); return quitAllowed;},
-    handoff: {stage: target => log.push('stage:' + target), discard: () => log.push('discard')},
+    handoff: {stage(target, projects) {assert.deepEqual(projects, [project]); log.push('stage:' + target);}},
     install: (_expected, relaunch) => {log.push(relaunch ? 'install-and-relaunch' : 'install-on-exit'); return true;},
     installFailed: () => log.push('failure'),
   });
@@ -145,21 +172,64 @@ test('an unsaved or changed window blocks update before close and only completed
   assert.equal(await coordinator.request(version, false), true);
   assert.deepEqual(log, ['quit', 'quit', 'stage:0.2.1', 'install-on-exit']);
   coordinator.failed(); coordinator.failed();
-  assert.deepEqual(log, ['quit', 'quit', 'stage:0.2.1', 'install-on-exit', 'discard', 'failure']);
+  assert.deepEqual(log, ['quit', 'quit', 'stage:0.2.1', 'install-on-exit', 'failure']);
 });
 
 test('the update handoff contains unique registered IDs and is consumed once by only the intended version', t => {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-update-handoff-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   let time = 1000;
-  const handoff = createDesktopUpdateReopen(root, () => time);
+  const handoff = createDesktopUpdateReopen(root, offer.currentVersion, () => time);
+  const destination = createDesktopUpdateReopen(root, version, () => time);
   handoff.stage(version, [project, project]);
-  assert.deepEqual(handoff.consume(version), [project]);
-  assert.deepEqual(handoff.consume(version), []);
-  handoff.stage(version, [project]);
-  assert.deepEqual(handoff.consume('0.2.0'), []);
-  assert.deepEqual(handoff.consume(version), []);
+  assert.deepEqual(destination.consume(), {projectIds: [project]});
+  assert.deepEqual(destination.consume(), {projectIds: []});
+  writePrivateFileAtomic(path.join(root, 'update-reopen.json'), JSON.stringify({
+    version: 1, installedVersion: version, requestedAt: time, projectIds: [project],
+  }), {root});
+  assert.deepEqual(destination.consume(), {projectIds: [project]});
+  assert.deepEqual(destination.consume(), {projectIds: []});
   handoff.stage(version, [project]);
   time += 24 * 60 * 60 * 1000 + 1;
-  assert.deepEqual(handoff.consume(version), []);
+  assert.deepEqual(destination.consume(), {projectIds: []});
+});
+
+test('launcher-only install failures are counted once per attempt and consecutive retries stop at two', async t => {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-update-handoff-'));
+  t.after(() => rmSync(root, {recursive: true, force: true}));
+  let time = 1000;
+  const startup = () => createDesktopUpdateReopen(root, offer.currentVersion, () => time);
+  const handoff = startup();
+  const calls: string[] = [];
+  let finish: () => boolean = () => false;
+  const coordinator = createDesktopUpdateQuit({
+    windows: () => ['launcher'], saved: async () => true, projects: () => [], canStart: () => true,
+    async quit() {calls.push('drained'); return finish();},
+    handoff,
+    install() {calls.push('install'); return false;},
+    installFailed: () => calls.push('failed'),
+  });
+  finish = coordinator.finish;
+  assert.equal(await coordinator.request(version, true), true);
+  coordinator.failed();
+  assert.deepEqual(calls, ['drained', 'install', 'failed']);
+
+  // A user can reopen long after the project-reopen lifetime on install-on-quit.
+  time += 48 * 60 * 60 * 1000;
+  const first = {projectIds: [], failure: {version, failures: 1}};
+  assert.deepEqual(startup().consume(), {...first, newFailure: true});
+  assert.deepEqual(startup().consume(), first);
+  startup().stage(version, []);
+  const second = {projectIds: [], failure: {version, failures: 2}};
+  assert.deepEqual(startup().consume(), {...second, newFailure: true});
+  assert.deepEqual(startup().consume(), second);
+  assert.throws(() => startup().stage(version, []), {message: 'UPDATE_INSTALL_NOT_ADMITTED'});
+
+  // A later target starts a fresh count. An externally installed version
+  // does not inherit another source version's pending attempt or project IDs.
+  startup().stage('0.2.2', []);
+  assert.deepEqual(startup().consume(), {projectIds: [], failure: {version: '0.2.2', failures: 1}, newFailure: true});
+  startup().stage('0.2.2', [project]);
+  assert.deepEqual(createDesktopUpdateReopen(root, '0.3.0').consume(), {projectIds: []});
+  assert.deepEqual(startup().consume(), {projectIds: []});
 });

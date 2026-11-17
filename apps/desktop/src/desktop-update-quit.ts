@@ -4,7 +4,7 @@ interface UpdateQuitOptions<W> {
   readonly projects: () => readonly string[];
   readonly canStart: (version: string) => boolean;
   readonly quit: (source?: W) => Promise<boolean>;
-  readonly handoff: {stage(version: string, projects: readonly string[]): void; discard(): void};
+  readonly handoff: {stage(version: string, projects: readonly string[]): void};
   readonly install: (version: string, relaunch: boolean) => boolean;
   readonly installFailed: () => void;
 }
@@ -46,7 +46,7 @@ export function createDesktopUpdateQuit<W>({windows, saved, projects, canStart, 
   function failed(): void {
     if (attempt?.phase !== 'installing') return;
     attempt = undefined;
-    try {handoff.discard();} catch { /* Startup will ignore a mismatched target version. */ }
+    // Startup also accounts for native failures reported just before exit.
     installFailed();
   }
   function finish(): boolean {
@@ -54,7 +54,7 @@ export function createDesktopUpdateQuit<W>({windows, saved, projects, canStart, 
     if (!current || current.phase !== 'closing') return false;
     current.phase = 'installing';
     try {
-      if (current.projects.length) handoff.stage(current.version, current.projects);
+      handoff.stage(current.version, current.projects);
       if (install(current.version, current.relaunch)) return true;
     } catch { /* Avoid reporting paths, signed asset URLs or provider errors. */ }
     failed();

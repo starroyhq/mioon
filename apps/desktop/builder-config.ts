@@ -12,10 +12,16 @@ import {MAC_UNIVERSAL_ARCH,mergedMacRuntimeNotices,preserveMacRuntimeNotices,ins
 import type {RuntimeNoticeContext,RuntimeNoticeManifest} from './runtime-notices.ts';
 import {verifyProjectExampleResources} from '@mioon/business/project-example-resources';
 import {candidateUpdateFeedUrl} from '../../.github/scripts/mac-update-feed.ts';
+import {verifyMacAppPermissions, withMacUpdateZip} from './mac-update-package-permissions.ts';
 
 /** The electron-builder beforePack context fields this module consumes. */
 export interface BuilderPackContext {
   readonly packager: {readonly info: {readonly appDir: string}};
+}
+interface BuilderArtifactContext {
+  readonly file?: string;
+  readonly target: {readonly name: string} | null;
+  readonly packager: {readonly platform: {readonly nodeName: string}; readonly appInfo: {readonly productFilename: string}};
 }
 type MacPublishConfig = {provider: 'github'; owner: 'starroyhq'; repo: 'mioon'; releaseType: 'release'}
   | {provider: 'generic'; url: string};
@@ -35,6 +41,7 @@ export interface BuilderConfig {
   beforePack(context: BuilderPackContext): Promise<void>;
   afterExtract(context: RuntimeNoticeContext): Promise<void>;
   afterPack(context: RuntimeNoticeContext): Promise<void>;
+  artifactBuildCompleted(context: BuilderArtifactContext): Promise<void>;
   fileAssociations: Array<{ext: string; name: string; description: string; mimeType: string; role: 'Editor'}>;
   electronFuses: Record<string, boolean>;
   linux: {
@@ -114,11 +121,21 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
       const subtitles = packagedSubtitleDirectory(context);
       await verifySubtitleResources(subtitles);
       verifyProjectExampleResources(path.join(path.dirname(subtitles), 'examples'));
+      if (context.electronPlatformName === 'darwin' || context.electronPlatformName === 'mas') {
+        await verifyMacAppPermissions(path.resolve(subtitles, '../../..'));
+      }
       await writeMacRuntimeNoticeProvenance(context, electronVersion, appVersion, manifest);
       if (appOutDir !== null) {
         runtimeNotices.delete(appOutDir);
         if (manifest && !universal) packedMacNotices.set(appOutDir, manifest);
       }
+    },
+    artifactBuildCompleted: async ({file, target, packager}: BuilderArtifactContext): Promise<void> => {
+      if (identity.channel !== 'development' || packager.platform.nodeName !== 'darwin' || target?.name !== 'zip') return;
+      if (!file) throw Error('Mac ZIP artifact path is missing');
+      // electron-builder also emits this target's .zip.blockmap sidecar.
+      if (path.extname(file) !== '.zip') return;
+      await withMacUpdateZip(file, `${packager.appInfo.productFilename}.app`, verifyMacAppPermissions);
     },
     // OS file intents open the original project path through the trusted host.
     fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
@@ -150,9 +167,9 @@ export function builderConfig(channel: string, updateFeedUrl = process.env.MIOON
       hardenedRuntime: true,
       gatekeeperAssess: false,
       identity: null,
-      // The signer treats ordinary binary data as signing candidates. Keep
-      // these manifest-verified files read-only; the outer app seals them as
-      // resources. No executable, framework or other resource is excluded.
+      // The signer treats ordinary binary data as signing candidates. The
+      // outer app seals these manifest-verified files as resources. No
+      // executable, framework or other resource is excluded.
       signIgnore: [String.raw`[/\\]Contents[/\\]Resources[/\\]examples[/\\]timeline-basics[/\\](?:manifest\.json|README\.md|SOURCE\.md|LICENSE|timeline-basics\.mioon|media[/\\](?:overlay-star\.png|scene-[ab]\.mp4|sound-bed\.wav))$`],
       extendInfo: {
         NSDesktopFolderUsageDescription: 'Mioon opens and saves the projects and media you choose on your Desktop.',

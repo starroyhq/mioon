@@ -217,10 +217,55 @@ test('check, network and Squirrel errors are projected without source URLs or lo
   assert.equal(engine.install(version), true);
   updater.emit('error', new Error('synthetic Squirrel failure'));
   await installFailed.promise;
-  assert.deepEqual(engine.state(), {kind: 'failed', stage: 'download', offer: {version, currentVersion, notes: ['One', 'Two'],
-    releaseDate: info.releaseDate, sizeBytes: 200}});
+  assert.deepEqual(engine.state(), {kind: 'failed', stage: 'install', version, canRetry: true});
   assert.equal(engine.install(version), false);
   assert.equal(updater.discarded, 2);
+});
+
+test('a restart failure stays visible and an exact retry shares one freshly verified download', async t => {
+  const {updater, engine, states, checks} = fixture({installFailure: {version, failures: 1}});
+  t.after(engine.dispose);
+  const failure = {kind: 'failed', stage: 'install', version, canRetry: true};
+  assert.deepEqual(engine.state(), failure);
+  updater.outcome = Promise.resolve(null);
+  assert.deepEqual(await engine.start(), failure);
+  assert.deepEqual(await engine.download('0.2.2'), failure);
+  assert.equal(updater.checks, 1);
+
+  updater.outcome = Promise.resolve({isUpdateAvailable: true, versionInfo: info, updateInfo: info});
+  const [first, second] = await Promise.all([engine.download(version), engine.download(version)]);
+  assert.equal(updater.checks, 2);
+  assert.equal(updater.tokens.length, 1);
+  assert.equal(first.kind, 'ready');
+  assert.deepEqual(second, first);
+  assert.equal(checks[0]?.digest, digest);
+  assert.deepEqual(states.map(state => state.kind), ['downloading', 'ready']);
+});
+
+test('a replacement offer is never downloaded by a stale retry and checks cannot reopen a capped target', async t => {
+  const newer = '0.2.2';
+  const newerInfo = {...info, version: newer, files: [{url: `mioon-${newer}-mac.zip`, sha512: digest}]};
+  const replacement = {isUpdateAvailable: true, versionInfo: newerInfo, updateInfo: newerInfo};
+  const retry = fixture({installFailure: {version, failures: 1}});
+  t.after(retry.engine.dispose);
+  retry.updater.outcome = Promise.resolve(replacement);
+  const offered = await retry.engine.download(version);
+  assert.equal(offered.kind, 'available');
+  assert.equal(offered.offer.version, newer);
+  assert.equal(retry.updater.tokens.length, 0);
+
+  const capped = fixture({installFailure: {version, failures: 2}});
+  t.after(capped.engine.dispose);
+  const failure = {kind: 'failed', stage: 'install', version, canRetry: false};
+  assert.deepEqual(await capped.engine.start(), failure);
+  assert.deepEqual(await capped.engine.download(version), failure);
+  assert.equal(capped.updater.checks, 1);
+  capped.updater.outcome = Promise.resolve(replacement);
+  assert.equal((await capped.engine.check()).kind, 'available');
+  capped.updater.outcome = Promise.resolve({isUpdateAvailable: true, versionInfo: info, updateInfo: info});
+  assert.deepEqual(await capped.engine.check(), failure);
+  assert.deepEqual(await capped.engine.download(version), failure);
+  assert.equal(capped.updater.tokens.length, 0);
 });
 
 test('native Squirrel staging starts only on an explicit, exact installation and precedes quit', async t => {
