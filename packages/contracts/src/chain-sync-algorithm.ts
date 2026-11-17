@@ -1,7 +1,9 @@
-import { compareChainIds, compareSequenceEdges, deriveFilmChains, planBoardSequenceEdit } from './board-sequence.ts';
+import {
+  boardSequenceIssuesForComponent, compareChainIds, compareSequenceEdges, deriveFilmChains, planBoardSequenceEdit,
+} from './board-sequence.ts';
 import type { BoardSequenceEdit, BoardSequenceIssue, ChainBoard, ChainNode, SequenceEdge } from './board-sequence.ts';
 import {
-  compareSyncClip, followChainSyncVersion, indexChainSyncTrack, packChainSyncTrack,
+  compareSyncClip, followChainSyncGroup, indexChainSyncTrack, packChainSyncTrack,
   planChainMainTrack, validChainClipFrames, validChainMedia,
 } from './chain-main-track.ts';
 import type { ChainSyncClip, ChainSyncMedia, ChainSyncVersion, ChainSyncWarning, MainTrackFailure } from './chain-main-track.ts';
@@ -44,7 +46,8 @@ export interface ChainSyncChanges {
 }
 type SyncFailure = { readonly ok: false; readonly code:
   | 'FILM_NOT_FOUND' | 'ACTIVE_FILM_REMOVED' | 'FILM_SCOPE_MISMATCH' | 'CHAIN_TRACK_MISMATCH'
-  | 'CLIP_NOT_FOUND' | 'INVALID_SPLIT' | 'NODE_ALREADY_LINKED' | 'COPY_NODE_EXISTS' | 'INVALID_ANCHOR' | 'INVALID_TRACK_TARGET'; readonly id: string };
+  | 'CLIP_NOT_FOUND' | 'INVALID_SPLIT' | 'INSERT_BETWEEN_SPLIT_PARTS' | 'NODE_ALREADY_LINKED'
+  | 'COPY_NODE_EXISTS' | 'INVALID_ANCHOR' | 'INVALID_TRACK_TARGET'; readonly id: string };
 type GraphFailure = { readonly ok: false; readonly code: BoardSequenceIssue['code']; readonly issues: readonly BoardSequenceIssue[] };
 type CopyRequired = { readonly ok: false; readonly code: 'COPY_NODE_REQUIRED'; readonly nodeId: string; readonly clipId: string };
 export interface ChainSyncTransfer { readonly trackId: string; readonly clip: ChainSyncClip }
@@ -54,12 +57,18 @@ interface PlannedTrackDetails {
   readonly copiedNode?: ChainSyncNodeCopy;
 }
 export type ChainSyncPlan =
-  | ({ readonly ok: true; readonly after: ChainSyncState; readonly changes: ChainSyncChanges; readonly warnings: readonly ChainSyncWarning[] } & PlannedTrackDetails)
+  | ({
+    readonly ok: true; readonly after: ChainSyncState; readonly changes: ChainSyncChanges;
+    readonly warnings: readonly ChainSyncWarning[]; readonly issues: readonly BoardSequenceIssue[];
+  } & PlannedTrackDetails)
   | SyncFailure | MainTrackFailure | GraphFailure | CopyRequired;
 
 const byId = <T extends { readonly id: string }>(a: T, b: T) => compareChainIds(a.id, b.id);
 const byMedia = (a: ChainSyncMedia, b: ChainSyncMedia) => compareChainIds(a.nodeId, b.nodeId);
-const edgeKey = ({fromId, toId}: SequenceEdge) => JSON.stringify([fromId, toId]);
+const byMediaValue = (a: ChainSyncMedia, b: ChainSyncMedia) => byMedia(a, b)
+  || a.durationFrames - b.durationFrames || compareChainIds(a.selectedVersion?.id ?? '', b.selectedVersion?.id ?? '')
+  || (a.selectedVersion?.sourceFrames ?? -1) - (b.selectedVersion?.sourceFrames ?? -1);
+const byNode = (a: ChainNode, b: ChainNode) => byId(a, b) || compareChainIds(a.kind, b.kind);
 const sameOrder = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((id, index) => id === b[index]);
 const naturalFrame = (value: number) => Number.isSafeInteger(value) && value >= 0;
@@ -82,28 +91,54 @@ function changes<T>(before: readonly T[], after: readonly T[], key: (item: T) =>
   return result;
 }
 
+/** A repair can remove repeated rows. Pair equal occurrences in sorted order. */
+function changesByValue<T>(before: readonly T[], after: readonly T[], compare: (a: T, b: T) => number): ChainSyncChange<T>[] {
+  const previous = [...before].sort(compare);
+  const result: ChainSyncChange<T>[] = [];
+  let oldIndex = 0;
+  let newIndex = 0;
+  while (oldIndex < previous.length && newIndex < after.length) {
+    const old = previous[oldIndex]!;
+    const added = after[newIndex]!;
+    const order = compare(old, added);
+    if (order < 0) result.push({before: old, after: null});
+    if (order > 0) result.push({before: null, after: added});
+    if (order <= 0) oldIndex++;
+    if (order >= 0) newIndex++;
+  }
+  for (; oldIndex < previous.length; oldIndex++) result.push({before: previous[oldIndex]!, after: null});
+  for (; newIndex < after.length; newIndex++) result.push({before: null, after: after[newIndex]!});
+  return result;
+}
+
 function makePlan(
   before: ChainSyncState, board: ChainBoard, media: readonly ChainSyncMedia[], clips: readonly ChainSyncClip[],
-  anchored: readonly TrackAnchoredItem[], warnings: readonly ChainSyncWarning[], details: PlannedTrackDetails = {},
+  anchored: readonly TrackAnchoredItem[], warnings: readonly ChainSyncWarning[], issues: readonly BoardSequenceIssue[],
+  details: PlannedTrackDetails = {},
 ): ChainSyncPlan {
-  const invalidAnchor = [...anchored].sort(byId).find(item => !naturalFrame(item.startFrame));
-  if (invalidAnchor) return {ok: false, code: 'INVALID_ANCHOR', id: invalidAnchor.id};
-  const anchoredIds = new Set(anchored.map(item => item.id));
-  const duplicate = clips.find(clip => anchoredIds.has(clip.id));
-  if (duplicate) return {ok: false, code: 'DUPLICATE_CLIP', id: duplicate.id};
-  const after = {board: {nodes: [...board.nodes].sort(byId), edges: [...board.edges].sort(compareSequenceEdges)},
-    filmId: before.filmId, media: [...media].sort(byMedia), clips: [...clips].sort(compareSyncClip), anchored: [...anchored].sort(byId)};
-  return {ok: true, after, ...details, warnings: [...warnings].sort((a, b) => compareChainIds(a.clipId, b.clipId)),
+  const boardOnly = clips === before.clips && anchored === before.anchored;
+  if (!boardOnly) {
+    const invalidAnchor = [...anchored].sort(byId).find(item => !naturalFrame(item.startFrame));
+    if (invalidAnchor) return {ok: false, code: 'INVALID_ANCHOR', id: invalidAnchor.id};
+    const anchoredIds = new Set(anchored.map(item => item.id));
+    const duplicate = clips.find(clip => anchoredIds.has(clip.id));
+    if (duplicate) return {ok: false, code: 'DUPLICATE_CLIP', id: duplicate.id};
+  }
+  const after = {board: {nodes: [...board.nodes].sort(byNode), edges: [...board.edges].sort(compareSequenceEdges)},
+    filmId: before.filmId, media: [...media].sort(byMediaValue), clips: [...clips].sort(compareSyncClip), anchored: [...anchored].sort(byId)};
+  const mediaChanges = boardOnly ? changesByValue(before.media, after.media, byMediaValue)
+    : changes(before.media, after.media, item => item.nodeId, (a, b) =>
+      a.durationFrames === b.durationFrames && versionEqual(a.selectedVersion, b.selectedVersion));
+  return {ok: true, after, ...details, issues, warnings: [...warnings].sort((a, b) => compareChainIds(a.clipId, b.clipId)),
     changes: {
-      nodes: changes(before.board.nodes, after.board.nodes, node => node.id, (a, b) => a.kind === b.kind),
-      edges: changes(before.board.edges, after.board.edges, edgeKey, () => true),
-      media: changes(before.media, after.media, item => item.nodeId, (a, b) =>
-        a.durationFrames === b.durationFrames && versionEqual(a.selectedVersion, b.selectedVersion)),
-      clips: changes(before.clips, after.clips, clip => clip.id, (a, b) =>
+      nodes: changesByValue(before.board.nodes, after.board.nodes, byNode),
+      edges: changesByValue(before.board.edges, after.board.edges, compareSequenceEdges),
+      media: mediaChanges,
+      clips: boardOnly ? [] : changes(before.clips, after.clips, clip => clip.id, (a, b) =>
         a.nodeId === b.nodeId && a.versionId === b.versionId && a.versionLocked === b.versionLocked
         && a.startFrame === b.startFrame && a.durationFrames === b.durationFrames
         && a.sourceInFrame === b.sourceInFrame && a.splitGroupId === b.splitGroupId),
-      anchored: changes(before.anchored, after.anchored, item => item.id, (a, b) =>
+      anchored: boardOnly ? [] : changes(before.anchored, after.anchored, item => item.id, (a, b) =>
         a.startFrame === b.startFrame && a.anchorClipId === b.anchorClipId),
     }};
 }
@@ -112,7 +147,39 @@ function makePlan(
  * can apply them together and reverse them by exchanging before and after. */
 export function planChainSync(state: ChainSyncState, operation: ChainSyncOperation): ChainSyncPlan {
   const graph = deriveFilmChains(state.board);
-  if (graph.issues.length) return {ok: false, code: graph.issues[0]!.code, issues: graph.issues};
+  const activeIssues = boardSequenceIssuesForComponent(state.board, graph.issues, [state.filmId]);
+  let board = state.board;
+  let issues = graph.issues;
+  let editedChain: readonly string[] | undefined;
+  if (operation.kind === 'board') {
+    const edit = planBoardSequenceEdit(board, operation.edit);
+    if (!edit.ok) return edit;
+    board = edit.board;
+    issues = edit.issues;
+    const editedFilms = new Map(deriveFilmChains(board).chains.map(item => [item.filmId, item.nodeIds]));
+    for (const other of graph.chains) {
+      if (other.filmId === state.filmId) continue;
+      const edited = editedFilms.get(other.filmId);
+      if ((!edited || !sameOrder(other.nodeIds, edited))
+        && !boardSequenceIssuesForComponent(state.board, graph.issues, [other.filmId]).length) {
+        return {ok: false, code: 'FILM_SCOPE_MISMATCH', id: other.filmId};
+      }
+    }
+    editedChain = editedFilms.get(state.filmId);
+    const boardEdit = operation.edit;
+    if (boardEdit.kind === 'delete' && boardEdit.nodeId === state.filmId
+      && state.board.nodes.some(node => node.id === state.filmId && node.kind === 'film')) {
+      return {ok: false, code: 'ACTIVE_FILM_REMOVED', id: state.filmId};
+    }
+    if (activeIssues.length) {
+      // A partial derivation of a broken chain is unsafe as a track input, even
+      // when this edit removes the final issue. A clean chain can be synced next.
+      const media = boardEdit.kind === 'delete' ? state.media.filter(item => item.nodeId !== boardEdit.nodeId) : state.media;
+      return makePlan(state, board, media, state.clips, state.anchored, [], issues);
+    }
+  } else if (activeIssues.length) {
+    return {ok: false, code: activeIssues[0]!.code, issues: activeIssues};
+  }
   const film = graph.chains.find(item => item.filmId === state.filmId);
   if (!film) return {ok: false, code: 'FILM_NOT_FOUND', id: state.filmId};
   const track = indexChainSyncTrack(state.clips);
@@ -134,27 +201,18 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
   const inSync = sameOrder(oldIds, previousChain);
   if (operation.kind === 'track') {
     if (!inSync) return {ok: false, code: 'CHAIN_TRACK_MISMATCH', id: state.filmId};
-    return planTrackEdit(state, operation.edit, track.clips, oldIds, nodes, media);
+    return planTrackEdit(state, operation.edit, track.clips, oldIds, nodes, media, issues);
   }
 
-  let board = state.board;
   let chain = previousChain;
   if (operation.kind === 'board') {
-    const edit = planBoardSequenceEdit(board, operation.edit);
-    if (!edit.ok) return edit;
-    board = edit.board;
-    const editedFilms = new Map(deriveFilmChains(board).chains.map(item => [item.filmId, item.nodeIds]));
-    for (const other of graph.chains) {
-      if (other.filmId === state.filmId) continue;
-      const edited = editedFilms.get(other.filmId);
-      if (!edited || !sameOrder(other.nodeIds, edited)) return {ok: false, code: 'FILM_SCOPE_MISMATCH', id: other.filmId};
-    }
-    const editedFilm = editedFilms.get(state.filmId);
-    if (!editedFilm) return {ok: false, code: 'ACTIVE_FILM_REMOVED', id: state.filmId};
-    chain = editedFilm;
+    if (!editedChain) return {ok: false, code: 'ACTIVE_FILM_REMOVED', id: state.filmId};
+    chain = editedChain;
     if (operation.edit.kind === 'delete') media.delete(operation.edit.nodeId);
-    if (sameOrder(previousChain, chain)) return makePlan(state, board, [...media.values()], track.clips, state.anchored, []);
+    if (sameOrder(previousChain, chain)) return makePlan(state, board, [...media.values()], track.clips, state.anchored, [], issues);
   } else if (operation.kind === 'board-version') {
+    const touchedIssues = boardSequenceIssuesForComponent(board, issues, [operation.nodeId]);
+    if (touchedIssues.length) return {ok: false, code: touchedIssues[0]!.code, issues: touchedIssues};
     const item = media.get(operation.nodeId);
     if (!item) return {ok: false, code: 'MISSING_MEDIA', id: operation.nodeId};
     const candidate = {...item, selectedVersion: operation.version};
@@ -163,19 +221,27 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
     media.set(operation.nodeId, candidate);
     const other = graph.chains.find(item => item.filmId !== state.filmId && item.nodeIds.includes(operation.nodeId));
     if (other) return {ok: false, code: 'FILM_SCOPE_MISMATCH', id: other.filmId};
-    if (!chain.includes(operation.nodeId)) return makePlan(state, board, [...media.values()], track.clips, state.anchored, []);
+    if (!chain.includes(operation.nodeId)) return makePlan(state, board, [...media.values()], track.clips, state.anchored, [], issues);
     if (!inSync) return {ok: false, code: 'CHAIN_TRACK_MISMATCH', id: state.filmId};
     const warnings: ChainSyncWarning[] = [];
-    const clips = track.clips.map(clip => clip.nodeId === operation.nodeId && !clip.versionLocked
-      ? followChainSyncVersion(clip, operation.version, warnings) : clip);
-    return makePlan(state, board, [...media.values()], clips, state.anchored, warnings);
+    const old = track.groups.get(operation.nodeId)!;
+    const updated = followChainSyncGroup(old, operation.version, warnings, item.durationFrames, clip => !clip.versionLocked);
+    const first = track.clips.indexOf(old[0]!);
+    const clips = [...track.clips.slice(0, first), ...updated, ...track.clips.slice(first + old.length)];
+    if (old.length === updated.length && old.every((clip, index) => clip.durationFrames === updated[index]!.durationFrames)) {
+      return makePlan(state, board, [...media.values()], clips, state.anchored, warnings, issues);
+    }
+    const packed = packChainSyncTrack(clips);
+    if (!packed.ok) return packed;
+    return makePlan(state, board, [...media.values()], packed.clips,
+      planTrackAnchors(track.clips, packed.clips, state.anchored), warnings, issues);
   }
   if (operation.kind !== 'sync-board' && !inSync) return {ok: false, code: 'CHAIN_TRACK_MISMATCH', id: state.filmId};
   const items = [...media.values()];
   const next = planChainMainTrack(chain.map(id => nodes.get(id)!), items, track.clips, operation.newClipIds,
     {followVersions: operation.kind === 'sync-board'});
   if (!next.ok) return next;
-  return makePlan(state, board, items, next.clips, planTrackAnchors(track.clips, next.clips, state.anchored), next.warnings);
+  return makePlan(state, board, items, next.clips, planTrackAnchors(track.clips, next.clips, state.anchored), next.warnings, issues);
 }
 
 function replaceFilmEdges(board: ChainBoard, filmId: string, previous: readonly string[], next: readonly string[]): SequenceEdge[] {
@@ -191,10 +257,13 @@ function replaceFilmEdges(board: ChainBoard, filmId: string, previous: readonly 
 
 function copySplitPiece(
   clip: ChainSyncClip, nodeId: string | undefined,
-  nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>,
+  board: ChainBoard, nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>,
 ): ChainSyncClip | SyncFailure | MainTrackFailure | CopyRequired {
   if (!nodeId) return {ok: false, code: 'COPY_NODE_REQUIRED', nodeId: clip.nodeId, clipId: clip.id};
   if (nodes.has(nodeId) || media.has(nodeId)) return {ok: false, code: 'COPY_NODE_EXISTS', id: nodeId};
+  // A dangling edge still reserves its endpoints until the board is repaired.
+  if (board.edges.some(edge => edge.fromId === nodeId || edge.toId === nodeId))
+    return {ok: false, code: 'NODE_ALREADY_LINKED', id: nodeId};
   const source = media.get(clip.nodeId);
   if (!source) return {ok: false, code: 'MISSING_MEDIA', id: clip.nodeId};
   nodes.set(nodeId, {id: nodeId, kind: nodes.get(clip.nodeId)!.kind});
@@ -209,22 +278,34 @@ function exceedsKnownSource(clip: ChainSyncClip, media: ChainSyncMedia | undefin
     && version.sourceFrames < clip.sourceInFrame + clip.durationFrames;
 }
 
+function betweenSplitParts(clips: readonly ChainSyncClip[], at: number, nodeId: string): boolean {
+  const left = clips[at - 1];
+  const right = clips[at];
+  return left !== undefined && right !== undefined && left.nodeId !== nodeId
+    && left.nodeId === right.nodeId && left.splitGroupId !== undefined && left.splitGroupId === right.splitGroupId;
+}
+
 function planTrackEdit(
   state: ChainSyncState, edit: TrackSyncEdit, previous: readonly ChainSyncClip[], oldIds: readonly string[],
-  nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>,
+  nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>, issues: readonly BoardSequenceIssue[],
 ): ChainSyncPlan {
   const next = [...previous];
   const splits: TrackAnchorSplit[] = [];
   const warnings: ChainSyncWarning[] = [];
   let transfer: ChainSyncTransfer | undefined;
   let copiedNode: ChainSyncNodeCopy | undefined;
+  let addedNode: ChainNode | undefined;
   if (edit.kind === 'add') {
     const {clip} = edit;
     if (next.some(item => item.id === clip.id)) return {ok: false, code: 'DUPLICATE_CLIP', id: clip.id};
     if (state.board.edges.some(edge => edge.fromId === clip.nodeId || edge.toId === clip.nodeId)) return {ok: false, code: 'NODE_ALREADY_LINKED', id: clip.nodeId};
     const at = edit.beforeClipId === null ? next.length : next.findIndex(item => item.id === edit.beforeClipId);
     if (at < 0) return {ok: false, code: 'CLIP_NOT_FOUND', id: edit.beforeClipId!};
-    const node = nodes.get(clip.nodeId) ?? {id: clip.nodeId, kind: edit.nodeKind ?? 'shot'};
+    if (betweenSplitParts(next, at, clip.nodeId)) return {ok: false, code: 'INSERT_BETWEEN_SPLIT_PARTS', id: clip.id};
+    const touchedIssues = boardSequenceIssuesForComponent(state.board, issues, [clip.nodeId]);
+    if (touchedIssues.length) return {ok: false, code: touchedIssues[0]!.code, issues: touchedIssues};
+    if (!nodes.has(clip.nodeId)) addedNode = {id: clip.nodeId, kind: edit.nodeKind ?? 'shot'};
+    const node = addedNode ?? nodes.get(clip.nodeId)!;
     const source = edit.media ?? media.get(clip.nodeId);
     if (!source) return {ok: false, code: 'MISSING_MEDIA', id: clip.nodeId};
     if (!playable(node) || source.nodeId !== clip.nodeId || !validChainMedia(source, node.kind))
@@ -249,13 +330,14 @@ function planTrackEdit(
         next.splice(at, 1);
         const to = edit.beforeClipId === null ? next.length : next.findIndex(item => item.id === edit.beforeClipId);
         if (to < 0) return {ok: false, code: 'CLIP_NOT_FOUND', id: edit.beforeClipId!};
+        if (betweenSplitParts(next, to, clip.nodeId)) return {ok: false, code: 'INSERT_BETWEEN_SPLIT_PARTS', id: clip.id};
         const splitOff = clip.splitGroupId !== undefined && next.some(item => item.nodeId === clip.nodeId)
           && next[to - 1]?.nodeId !== clip.nodeId && next[to]?.nodeId !== clip.nodeId;
         if (!splitOff) {
           next.splice(to, 0, clip);
           break;
         }
-        const copy = copySplitPiece(clip, edit.copyNodeId, nodes, media);
+        const copy = copySplitPiece(clip, edit.copyNodeId, state.board, nodes, media);
         if ('ok' in copy) return copy;
         copiedNode = {fromNodeId: clip.nodeId, toNodeId: copy.nodeId};
         next.splice(to, 0, copy);
@@ -264,7 +346,7 @@ function planTrackEdit(
       case 'move-off-track': {
         if (!edit.trackId || !naturalFrame(edit.startFrame)) return {ok: false, code: 'INVALID_TRACK_TARGET', id: edit.trackId};
         next.splice(at, 1);
-        const piece = next.some(item => item.nodeId === clip.nodeId) ? copySplitPiece(clip, edit.copyNodeId, nodes, media) : clip;
+        const piece = next.some(item => item.nodeId === clip.nodeId) ? copySplitPiece(clip, edit.copyNodeId, state.board, nodes, media) : clip;
         if ('ok' in piece) return piece;
         if (piece.nodeId !== clip.nodeId) copiedNode = {fromNodeId: clip.nodeId, toNodeId: piece.nodeId};
         const moved = {...piece, startFrame: edit.startFrame};
@@ -300,15 +382,16 @@ function planTrackEdit(
         const updated = {...source, selectedVersion: edit.version};
         if (!validChainMedia(updated, nodes.get(clip.nodeId)!.kind) || edit.locked && edit.version === null)
           return {ok: false, code: 'INVALID_MEDIA', id: clip.nodeId};
-        if (edit.locked) {
-          next[at] = followChainSyncVersion(clip, edit.version, warnings, true);
+        if (!edit.locked) media.set(clip.nodeId, updated);
+        if (edit.version === null) {
+          if (clip.versionLocked) next[at] = {...clip, versionLocked: false};
         } else {
-          media.set(clip.nodeId, updated);
-          for (const [index, item] of next.entries()) {
-            if (item.nodeId === clip.nodeId && (!item.versionLocked || index === at))
-              next[index] = edit.version === null && item.versionLocked
-                ? {...item, versionLocked: false} : followChainSyncVersion(item, edit.version, warnings, false);
-          }
+          const first = next.findIndex(item => item.nodeId === clip.nodeId);
+          let end = first + 1;
+          while (next[end]?.nodeId === clip.nodeId) end++;
+          const followed = followChainSyncGroup(next.slice(first, end), edit.version, warnings,
+            source.durationFrames, item => item === clip || !edit.locked && !item.versionLocked, edit.locked);
+          next.splice(first, end - first, ...followed);
         }
         break;
       }
@@ -320,12 +403,16 @@ function planTrackEdit(
   if (!packed.ok) return packed;
   const index = indexChainSyncTrack(packed.clips);
   if (!index.ok) return index;
-  const board = {nodes: [...nodes.values()], edges: replaceFilmEdges(state.board, state.filmId, oldIds, [...index.groups.keys()])};
+  const appended = copiedNode ? nodes.get(copiedNode.toNodeId)! : addedNode;
+  const board = {
+    nodes: appended ? [...state.board.nodes, appended] : state.board.nodes,
+    edges: replaceFilmEdges(state.board, state.filmId, oldIds, [...index.groups.keys()]),
+  };
   const anchored = planTrackAnchors(previous, packed.clips, state.anchored, splits);
   if (transfer) {
     const item = {id: transfer.clip.id, startFrame: transfer.clip.startFrame};
     const [attached] = planTrackAnchors(packed.clips, packed.clips, [item]);
     anchored.push(attached?.anchorClipId === undefined ? {...item, anchorClipId: null} : attached);
   }
-  return makePlan(state, board, [...media.values()], packed.clips, anchored, warnings, {...(transfer ? {transfer} : {}), ...(copiedNode ? {copiedNode} : {})});
+  return makePlan(state, board, [...media.values()], packed.clips, anchored, warnings, issues, {...(transfer ? {transfer} : {}), ...(copiedNode ? {copiedNode} : {})});
 }

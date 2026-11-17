@@ -229,6 +229,31 @@ export function deriveFilmChains(board: ChainBoard): FilmChainDerivation {
   return {chains, detachedNodeIds, issues: graph.issues};
 }
 
+/** Scope diagnostics to the sequence components touched by the supplied nodes, including malformed edges. */
+export function boardSequenceIssuesForComponent(
+  board: ChainBoard, issues: readonly BoardSequenceIssue[], nodeIds: readonly string[],
+): BoardSequenceIssue[] {
+  if (!issues.length || !nodeIds.length) return [];
+  const incident = new Map<string, SequenceEdge[]>();
+  for (const edge of board.edges) {
+    addEdge(incident, edge.fromId, edge);
+    addEdge(incident, edge.toId, edge);
+  }
+  const touched = new Set(nodeIds);
+  const queue = [...touched];
+  for (let index = 0; index < queue.length; index++) {
+    const id = queue[index]!;
+    for (const edge of incident.get(id) ?? []) {
+      const neighbor = id === edge.fromId ? edge.toId : edge.fromId;
+      if (touched.has(neighbor)) continue;
+      touched.add(neighbor);
+      queue.push(neighbor);
+    }
+  }
+  return issues.filter(item => item.nodeIds.some(id => touched.has(id))
+    || item.edges.some(edge => touched.has(edge.fromId) || touched.has(edge.toId)));
+}
+
 export type BoardSequenceEdit =
   | ({ readonly kind: 'connect' } & SequenceEdge)
   | ({ readonly kind: 'disconnect' } & SequenceEdge)
@@ -236,7 +261,10 @@ export type BoardSequenceEdit =
   | { readonly kind: 'delete'; readonly nodeId: string };
 
 export type BoardSequenceEditPlan =
-  | { readonly ok: true; readonly board: ChainBoard; readonly addedEdges: readonly SequenceEdge[]; readonly removedEdges: readonly SequenceEdge[] }
+  | {
+    readonly ok: true; readonly board: ChainBoard; readonly addedEdges: readonly SequenceEdge[];
+    readonly removedEdges: readonly SequenceEdge[]; readonly issues: readonly BoardSequenceIssue[];
+  }
   | { readonly ok: false; readonly code: BoardSequenceErrorCode; readonly issues: readonly BoardSequenceIssue[] };
 
 function rejected(first: BoardSequenceIssue, issues: readonly BoardSequenceIssue[] = [first]): BoardSequenceEditPlan {
@@ -246,7 +274,16 @@ function rejected(first: BoardSequenceIssue, issues: readonly BoardSequenceIssue
 /** Plan a sequence-only edit. Insertion can reorder a node inside its own chain. */
 export function planBoardSequenceEdit(board: ChainBoard, operation: BoardSequenceEdit): BoardSequenceEditPlan {
   const graph = inspectBoard(board);
-  if (graph.issues.length) return rejected(graph.issues[0]!, graph.issues);
+
+  if (operation.kind === 'insert' && (operation.nodeId === operation.fromId || operation.nodeId === operation.toId)) {
+    return rejected(issue('NODE_ALREADY_LINKED', [operation.nodeId]));
+  }
+  if (operation.kind === 'connect' || operation.kind === 'insert') {
+    const touched = [operation.fromId, operation.toId];
+    if (operation.kind === 'insert') touched.push(operation.nodeId);
+    const issues = boardSequenceIssuesForComponent(board, graph.issues, touched);
+    if (issues.length) return rejected(issues[0]!, issues);
+  }
 
   const addedEdges: SequenceEdge[] = [];
   const removedEdges: SequenceEdge[] = [];
@@ -282,48 +319,59 @@ export function planBoardSequenceEdit(board: ChainBoard, operation: BoardSequenc
     addedEdges.push(edge);
   } else if (operation.kind === 'delete') {
     removedNodeId = operation.nodeId;
-    if (!graph.nodes.has(removedNodeId)) return rejected(issue('MISSING_NODE', [removedNodeId]));
-    const predecessor = graph.incoming.get(removedNodeId)?.[0];
-    const successor = graph.outgoing.get(removedNodeId)?.[0];
-    if (predecessor) removedEdges.push(predecessor);
-    if (successor) removedEdges.push(successor);
-    if (predecessor && successor) addedEdges.push({fromId: predecessor.fromId, toId: successor.toId});
+    if (!board.nodes.some(node => node.id === removedNodeId)) return rejected(issue('MISSING_NODE', [removedNodeId]));
+    for (const edge of graph.edges) {
+      if (edge.fromId === removedNodeId || edge.toId === removedNodeId) removedEdges.push(edge);
+    }
+    // Only splice a known linear path; a broken component has no reliable order to preserve.
+    if (!boardSequenceIssuesForComponent(board, graph.issues, [removedNodeId]).length) {
+      const predecessor = graph.incoming.get(removedNodeId)?.[0];
+      const successor = graph.outgoing.get(removedNodeId)?.[0];
+      if (predecessor && successor) addedEdges.push({fromId: predecessor.fromId, toId: successor.toId});
+    }
+  } else if (operation.kind === 'disconnect') {
+    for (const edge of graph.edges) {
+      if (compareSequenceEdges(edge, operation) === 0) removedEdges.push(edge);
+    }
+    if (!removedEdges.length) {
+      return rejected(issue('MISSING_EDGE', [operation.fromId, operation.toId], [{fromId: operation.fromId, toId: operation.toId}]));
+    }
   } else {
     const edge = existing(operation);
     if (!edge) return rejected(issue('MISSING_EDGE', [operation.fromId, operation.toId], [{fromId: operation.fromId, toId: operation.toId}]));
-    if (operation.kind === 'disconnect') removedEdges.push(edge);
-    else if (operation.nodeId !== edge.fromId && operation.nodeId !== edge.toId) {
-      const {nodeId} = operation;
-      const predecessor = graph.incoming.get(nodeId)?.[0];
-      const successor = graph.outgoing.get(nodeId)?.[0];
-      const chainHead = (start: string): string => {
-        let current = start;
-        for (let prior = graph.incoming.get(current)?.[0]; prior; prior = graph.incoming.get(current)?.[0]) {
-          current = prior.fromId;
-        }
-        return current;
-      };
-      if ((predecessor || successor) && chainHead(nodeId) !== chainHead(edge.fromId))
-        return rejected(issue('NODE_ALREADY_LINKED', [nodeId]));
-      const before = {fromId: edge.fromId, toId: nodeId};
-      const after = {fromId: nodeId, toId: edge.toId};
-      const invalid = validateEdge(before) ?? validateEdge(after);
-      if (invalid) return rejected(invalid);
-      removedEdges.push(edge);
-      if (predecessor) removedEdges.push(predecessor);
-      if (successor) removedEdges.push(successor);
-      if (predecessor && successor) addedEdges.push({fromId: predecessor.fromId, toId: successor.toId});
-      addedEdges.push(before, after);
-    }
+    const {nodeId} = operation;
+    const predecessor = graph.incoming.get(nodeId)?.[0];
+    const successor = graph.outgoing.get(nodeId)?.[0];
+    const chainHead = (start: string): string => {
+      let current = start;
+      for (let prior = graph.incoming.get(current)?.[0]; prior; prior = graph.incoming.get(current)?.[0]) {
+        current = prior.fromId;
+      }
+      return current;
+    };
+    if ((predecessor || successor) && chainHead(nodeId) !== chainHead(edge.fromId))
+      return rejected(issue('NODE_ALREADY_LINKED', [nodeId]));
+    const before = {fromId: edge.fromId, toId: nodeId};
+    const after = {fromId: nodeId, toId: edge.toId};
+    const invalid = validateEdge(before) ?? validateEdge(after);
+    if (invalid) return rejected(invalid);
+    removedEdges.push(edge);
+    if (predecessor) removedEdges.push(predecessor);
+    if (successor) removedEdges.push(successor);
+    if (predecessor && successor) addedEdges.push({fromId: predecessor.fromId, toId: successor.toId});
+    addedEdges.push(before, after);
   }
 
   const removed = new Set(removedEdges);
-  const nodes = graph.orderedIds.filter(id => id !== removedNodeId).map(id => graph.nodes.get(id)!);
+  const nodes = board.nodes.filter(node => node.id !== removedNodeId)
+    .sort((left, right) => compareChainIds(left.id, right.id) || compareChainIds(left.kind, right.kind));
   const edges = [...graph.edges.filter(edge => !removed.has(edge)), ...addedEdges].sort(compareSequenceEdges);
+  const edited = {nodes, edges};
   return {
     ok: true,
-    board: {nodes, edges},
+    board: edited,
     addedEdges: addedEdges.sort(compareSequenceEdges),
     removedEdges: removedEdges.sort(compareSequenceEdges),
+    issues: graph.issues.length ? inspectBoard(edited).issues : [],
   };
 }

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  classifyChainConnection, compareChainIds, compareSequenceEdges, deriveFilmChains, planBoardSequenceEdit,
+  boardSequenceIssuesForComponent, classifyChainConnection, compareChainIds, compareSequenceEdges, deriveFilmChains,
+  planBoardSequenceEdit,
 } from '../packages/contracts/src/board-sequence.ts';
 import type { BoardSequenceEdit, ChainBoard, ChainNodeKind, SequenceEdge } from '../packages/contracts/src/board-sequence.ts';
 
@@ -10,7 +11,7 @@ const node = (id: string, kind: ChainNodeKind = 'shot') => ({id, kind});
 
 function canonical(board: ChainBoard): ChainBoard {
   return {
-    nodes: [...board.nodes].sort((left, right) => compareChainIds(left.id, right.id)),
+    nodes: [...board.nodes].sort((left, right) => compareChainIds(left.id, right.id) || compareChainIds(left.kind, right.kind)),
     edges: [...board.edges].sort(compareSequenceEdges),
   };
 }
@@ -82,8 +83,8 @@ test('derivation reports duplicates, missing endpoints, wrong types, branch degr
   ]);
   assert.deepEqual(derived.issues[0]?.edges, [edge('a', 'b'), edge('b', 'a')]);
   assert.deepEqual(derived.issues[1]?.edges, [edge('d', 'e'), edge('e', 'd')]);
-  const failed = planBoardSequenceEdit(board, {kind: 'disconnect', fromId: 'film', toId: 'a'});
-  assert.deepEqual(failed, {ok: false, code: 'CYCLE', issues: derived.issues});
+  const local = boardSequenceIssuesForComponent(board, derived.issues, ['film']);
+  assert.deepEqual(local, derived.issues.filter(item => !['solo', 'self'].some(id => item.nodeIds.includes(id))));
 });
 
 const story = canonical({
@@ -101,6 +102,7 @@ function checkEdit(
   assert.equal(JSON.stringify(planBoardSequenceEdit(unordered(before), edit)), JSON.stringify(result));
   assert.deepEqual(result.addedEdges, [...expectedAdded].sort(compareSequenceEdges));
   assert.deepEqual(result.removedEdges, [...expectedRemoved].sort(compareSequenceEdges));
+  assert.deepEqual(result.issues, deriveFilmChains(result.board).issues);
 
   const without = (edges: readonly SequenceEdge[], removed: readonly SequenceEdge[]) =>
     edges.filter(item => !removed.some(candidate => compareSequenceEdges(item, candidate) === 0));
@@ -151,8 +153,8 @@ test('inserting a linked card only splices within its own sequence and never dup
   assert.deepEqual(later, earlier);
 
   for (const nodeId of ['a', 'middle']) {
-    const same = checkEdit(story, {kind: 'insert', fromId: 'a', toId: 'middle', nodeId}, [], []);
-    assert.deepEqual(same, story);
+    const same = planBoardSequenceEdit(story, {kind: 'insert', fromId: 'a', toId: 'middle', nodeId});
+    assert.deepEqual(same, {ok: false, code: 'NODE_ALREADY_LINKED', issues: [{code: 'NODE_ALREADY_LINKED', nodeIds: [nodeId], edges: []}]});
   }
 
   const detached = checkEdit(story, {kind: 'disconnect', fromId: 'film', toId: 'a'}, [], [edge('film', 'a')]);
@@ -165,7 +167,7 @@ test('inserting a linked card only splices within its own sequence and never dup
 
 test('connections and inserts reject occupied ports, cycles, mismatched node types and missing IDs', () => {
   const board = {...story, nodes: [...story.nodes, node('actor', 'subject'), node('unconnected'), node('standalone', 'film')], edges: [...story.edges, edge('unconnected', 'actor')]};
-  const invalidBoard = planBoardSequenceEdit(board, {kind: 'connect', fromId: 'z', toId: 'inserted'});
+  const invalidBoard = planBoardSequenceEdit(board, {kind: 'connect', fromId: 'z', toId: 'unconnected'});
   assert.equal(invalidBoard.ok ? undefined : invalidBoard.code, 'INVALID_SEQUENCE_TYPES');
 
   const clean = {...board, edges: story.edges};
@@ -194,4 +196,70 @@ test('connections and inserts reject occupied ports, cycles, mismatched node typ
   assert.deepEqual(ring, {
     ok: false, code: 'CYCLE', issues: [{code: 'CYCLE', nodeIds: ['a', 'z'], edges: [edge('a', 'z'), edge('z', 'a')]}],
   });
+});
+
+test('disconnect heals cycles and removes duplicate, missing-node and rejected-type lines from the raw board', () => {
+  const independent = canonical({
+    nodes: [node('self'), node('reused'), node('reused', 'video')],
+    edges: [edge('self', 'self')],
+  });
+  const board = canonical({
+    nodes: [...independent.nodes, node('film', 'film'), node('a'), node('b'), node('actor', 'subject')],
+    edges: [...independent.edges, edge('film', 'a'), edge('a', 'b'), edge('b', 'a'),
+      edge('a', 'gone'), edge('a', 'gone'), edge('a', 'actor')],
+  });
+  const acyclic = checkEdit(board, {kind: 'disconnect', fromId: 'b', toId: 'a'}, [], [edge('b', 'a')]);
+  assert.deepEqual(deriveFilmChains(acyclic).chains, [{filmId: 'film', nodeIds: ['a', 'b']}]);
+  const noMissing = checkEdit(acyclic, {kind: 'disconnect', fromId: 'a', toId: 'gone'}, [], [edge('a', 'gone'), edge('a', 'gone')]);
+  const repaired = checkEdit(noMissing, {kind: 'disconnect', fromId: 'a', toId: 'actor'}, [], [edge('a', 'actor')]);
+  assert.deepEqual(deriveFilmChains(repaired).issues, deriveFilmChains(independent).issues);
+});
+
+test('delete removes all representations of a broken card and leaves unrelated records intact', () => {
+  const independent = canonical({
+    nodes: [node('self'), node('reused'), node('reused', 'video')],
+    edges: [edge('self', 'self'), edge('reused', 'self'), edge('reused', 'self')],
+  });
+  const incident = [edge('film', 'a'), edge('a', 'b'), edge('other', 'a'), edge('a', 'a'), edge('a', 'gone'), edge('a', 'b')];
+  const board = canonical({
+    nodes: [...independent.nodes, node('film', 'film'), node('a'), node('a', 'image'), node('b'), node('other')],
+    edges: [...independent.edges, ...incident],
+  });
+  const repaired = checkEdit(board, {kind: 'delete', nodeId: 'a'}, [], incident);
+  assert.deepEqual(repaired.nodes.filter(item => item.id === 'reused'), independent.nodes.filter(item => item.id === 'reused'));
+  assert.deepEqual(repaired.edges, independent.edges);
+  assert.deepEqual(deriveFilmChains(repaired).issues, deriveFilmChains(independent).issues);
+
+  const cyclic = canonical({
+    nodes: [node('film', 'film'), node('a'), node('b'), node('c')],
+    edges: [edge('film', 'a'), edge('a', 'b'), edge('b', 'c'), edge('c', 'a')],
+  });
+  assert.deepEqual(checkEdit(cyclic, {kind: 'delete', nodeId: 'b'}, [], [edge('a', 'b'), edge('b', 'c')]).edges,
+    [edge('c', 'a'), edge('film', 'a')]);
+});
+
+test('connect, insert and healthy delete work beside unrelated corruption but edits cannot extend a broken chain', () => {
+  const board = canonical({
+    nodes: [...story.nodes, node('cycle'), node('broken'), node('victim')],
+    edges: [...story.edges, edge('cycle', 'cycle'), edge('broken', 'victim'), edge('broken', 'gone')],
+  });
+  const connected = checkEdit(board, {kind: 'connect', fromId: 'z', toId: 'inserted'}, [edge('z', 'inserted')], []);
+  assert.deepEqual(deriveFilmChains(connected).chains[0]?.nodeIds, ['a', 'middle', 'z', 'inserted']);
+  const inserted = checkEdit(board, {kind: 'insert', fromId: 'film', toId: 'a', nodeId: 'inserted'},
+    [edge('film', 'inserted'), edge('inserted', 'a')], [edge('film', 'a')]);
+  assert.deepEqual(deriveFilmChains(inserted).chains[0]?.nodeIds, ['inserted', 'a', 'middle', 'z']);
+  const spliced = checkEdit(board, {kind: 'delete', nodeId: 'middle'},
+    [edge('a', 'z')], [edge('a', 'middle'), edge('middle', 'z')]);
+  assert.deepEqual(deriveFilmChains(spliced).chains[0]?.nodeIds, ['a', 'z']);
+
+  for (const operation of [
+    {kind: 'connect', fromId: 'victim', toId: 'inserted'},
+    {kind: 'insert', fromId: 'film', toId: 'a', nodeId: 'victim'},
+    {kind: 'insert', fromId: 'broken', toId: 'victim', nodeId: 'inserted'},
+  ] as const) {
+    const rejected = planBoardSequenceEdit(board, operation);
+    assert.deepEqual(rejected, {
+      ok: false, code: 'MISSING_NODE', issues: [{code: 'MISSING_NODE', nodeIds: ['gone'], edges: [edge('broken', 'gone')]}],
+    });
+  }
 });

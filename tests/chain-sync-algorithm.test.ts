@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {isDeepStrictEqual} from 'node:util';
 import {classifyChainConnection, deriveFilmChains, planBoardSequenceEdit} from '../packages/contracts/src/board-sequence.ts';
 import type {ChainNode, SequenceEdge} from '../packages/contracts/src/board-sequence.ts';
 import {compareChainSync, planTrackAnchors} from '../packages/contracts/src/chain-sync-analysis.ts';
@@ -14,7 +15,6 @@ const duration = 40;
 const shot = (index: number): string => `shot-${String(index).padStart(3, '0')}`;
 const clip = (index: number): string => `clip-${String(index).padStart(3, '0')}`;
 const compareId = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
-const edgeKey = (edge: SequenceEdge): string => JSON.stringify([edge.fromId, edge.toId]);
 const byId = <T extends {id: string}>(a: T, b: T): number => compareId(a.id, b.id);
 const edge = (fromId: string, toId: string): SequenceEdge => ({fromId, toId});
 const selected = {id: 'v1', sourceFrames: 100};
@@ -63,16 +63,30 @@ function applyChanges<T>(rows: readonly T[], changes: readonly Change<T>[], key:
   return [...byKey.values()];
 }
 
+function patchBoardRows<T>(rows: readonly T[], changes: readonly Change<T>[], undo: boolean): T[] {
+  const patched = [...rows];
+  for (const change of changes) {
+    const [before, after] = undo ? [change.after, change.before] : [change.before, change.after];
+    if (before !== null) {
+      const at = patched.findIndex(row => isDeepStrictEqual(row, before));
+      assert.ok(at >= 0, 'each occurrence needs a matching earlier board row');
+      patched.splice(at, 1);
+    }
+    if (after !== null) patched.push(after);
+  }
+  return patched;
+}
+
 function patchState(state: ChainSyncState, changes: Success['changes'], undo: boolean): ChainSyncState {
   const update = <T>(rows: readonly T[], delta: readonly Change<T>[], key: (row: T) => string): T[] =>
     applyChanges(rows, undo ? delta.map(({before, after}) => ({before: after, after: before})) : delta, key);
   return {
     board: {
-      nodes: update(state.board.nodes, changes.nodes, row => row.id),
-      edges: update(state.board.edges, changes.edges, edgeKey),
+      nodes: patchBoardRows(state.board.nodes, changes.nodes, undo),
+      edges: patchBoardRows(state.board.edges, changes.edges, undo),
     },
     filmId: state.filmId,
-    media: update(state.media, changes.media, row => row.nodeId),
+    media: patchBoardRows(state.media, changes.media, undo),
     clips: update(state.clips, changes.clips, row => row.id),
     anchored: update(state.anchored, changes.anchored, row => row.id),
   };
@@ -88,13 +102,22 @@ function orderedLike(state: ChainSyncState, reference: ChainSyncState): ChainSyn
       return current;
     });
   };
+  const boardOrder = <T>(rows: readonly T[], wanted: readonly T[]): T[] => {
+    assert.equal(rows.length, wanted.length);
+    const remaining = [...rows];
+    return wanted.map(row => {
+      const at = remaining.findIndex(candidate => isDeepStrictEqual(candidate, row));
+      assert.ok(at >= 0, 'undo reconstructs each original board row, including duplicates');
+      return remaining.splice(at, 1)[0]!;
+    });
+  };
   return {
     board: {
-      nodes: order(state.board.nodes, reference.board.nodes, row => row.id),
-      edges: order(state.board.edges, reference.board.edges, edgeKey),
+      nodes: boardOrder(state.board.nodes, reference.board.nodes),
+      edges: boardOrder(state.board.edges, reference.board.edges),
     },
     filmId: state.filmId,
-    media: order(state.media, reference.media, row => row.nodeId),
+    media: boardOrder(state.media, reference.media),
     clips: order(state.clips, reference.clips, row => row.id),
     anchored: order(state.anchored, reference.anchored, row => row.id),
   };
@@ -345,6 +368,153 @@ test('track selects a shared version and locks a per-clip version without rewrit
   assert.deepEqual([locked.clips[0]?.versionId, locked.clips[0]?.versionLocked], ['v3', true]);
 });
 
+function withPlaceholder(state: ChainSyncState, nodeId: string): ChainSyncState {
+  return {...state,
+    media: state.media.map(row => row.nodeId === nodeId ? {...row, selectedVersion: null} : row),
+    clips: state.clips.map(row => row.nodeId === nodeId ? {...row, versionId: null, sourceInFrame: 0} : row),
+  };
+}
+
+for (const sourceFrames of [duration - 1, duration, duration + 30]) {
+  test(`a first source of ${sourceFrames} frames replaces the estimate and can be undone exactly`, () => {
+    const state = withPlaceholder(fixture(3), shot(1));
+    const version = {id: 'first-video', sourceFrames};
+    const result = planAndRoundTrip(state, {kind: 'board-version', nodeId: shot(1), version});
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(result.after.media.find(row => row.nodeId === shot(1))?.selectedVersion, version);
+    assert.deepEqual(result.after.clips, [
+      state.clips[0],
+      {...state.clips[1], versionId: version.id, sourceInFrame: 0, durationFrames: sourceFrames},
+      {...state.clips[2], startFrame: duration + sourceFrames},
+    ]);
+    assert.deepEqual(result.after.anchored.find(row => row.id === 'overlay-2-1'),
+      {id: 'overlay-2-1', startFrame: duration + sourceFrames + 22, anchorClipId: clip(2)});
+    assert.equal(result.after.anchored.find(row => row.id === 'overlay-1-0')?.startFrame, duration + 3);
+  });
+}
+
+test('sync-board and both track version modes fill a placeholder and ripple from the real length', () => {
+  const state = withPlaceholder(fixture(2), shot(0));
+  const version = {id: 'first-video', sourceFrames: 25};
+  const selectedOnBoard = {...state,
+    media: state.media.map(row => row.nodeId === shot(0) ? {...row, selectedVersion: version} : row),
+  };
+  const synced = planAndRoundTrip(selectedOnBoard, {kind: 'sync-board'});
+  assert.deepEqual(synced.changes.media, []);
+  const shared = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'version', clipId: clip(0), version, locked: false}});
+  const locked = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'version', clipId: clip(0), version, locked: true}});
+  assert.deepEqual(locked.changes.media, []);
+  assert.deepEqual(shared.after, synced.after);
+  for (const [result, versionLocked] of [[synced, false], [shared, false], [locked, true]] as const) {
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(result.after.clips[0],
+      {...state.clips[0], durationFrames: 25, versionId: version.id, versionLocked});
+    assert.equal(result.after.clips[1]?.startFrame, 25);
+    assert.equal(result.after.anchored.find(row => row.id === 'overlay-1-0')?.startFrame, 28);
+  }
+});
+
+test('untimed images use the display duration and a split placeholder uses the full source once', () => {
+  const state = withPlaceholder(fixture(2), shot(0));
+  const image = {...state,
+    board: {...state.board, nodes: state.board.nodes.map(node =>
+      node.id === shot(0) ? {...node, kind: 'image' as const} : node)},
+    media: state.media.map(row => row.nodeId === shot(0) ? {...row, durationFrames: 31} : row),
+  };
+  const still = planAndRoundTrip(image, {kind: 'board-version', nodeId: shot(0), version: {id: 'still', sourceFrames: null}});
+  assert.deepEqual(still.after.clips[0], {...state.clips[0], versionId: 'still', durationFrames: 31});
+  assert.equal(still.after.clips[1]?.startFrame, 31);
+
+  const cut = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'split', clipId: clip(0), offsetFrames: 16, rightClipId: 'right'}});
+  const version = {id: 'first-video', sourceFrames: 60};
+  const shared = planAndRoundTrip(cut.after, {kind: 'board-version', nodeId: shot(0), version});
+  assert.deepEqual(shared.after.clips.map(row => [row.id, row.versionId, row.startFrame, row.durationFrames, row.sourceInFrame]),
+    [[clip(0), version.id, 0, 16, 0], ['right', version.id, 16, 44, 16], [clip(1), selected.id, 60, 40, 5]]);
+  assert.equal(shared.after.anchored.find(row => row.id === 'overlay-1-0')?.startFrame, 63);
+
+  const short = {id: 'short-video', sourceFrames: 15};
+  const shortened = planAndRoundTrip(cut.after, {kind: 'track', edit: {kind: 'version', clipId: clip(0), version: short, locked: false}});
+  assert.deepEqual(shortened.warnings, []);
+  assert.deepEqual(shortened.after.clips.map(row => [row.id, row.versionId, row.startFrame, row.durationFrames]),
+    [[clip(0), short.id, 0, 15], [clip(1), selected.id, 15, 40]]);
+  assert.deepEqual(shortened.after.anchored.find(row => row.id === 'overlay-0-1'),
+    {id: 'overlay-0-1', startFrame: 22, anchorClipId: null});
+});
+
+test('repairing the active board removes raw duplicate edges and leaves the track for explicit reconciliation', () => {
+  const base = fixture(3);
+  const extra = edge(shot(0), 'loose');
+  const broken = {...base, board: {...base.board, edges: [...base.board.edges, extra, extra, edge('loose', shot(2))]}};
+  const blocked = planChainSync(broken, {kind: 'sync-board'});
+  assert.ok(!blocked.ok && 'issues' in blocked);
+  assert.deepEqual(blocked.issues.map(row => row.code), ['DUPLICATE_EDGE', 'MULTIPLE_PREDECESSORS', 'MULTIPLE_SUCCESSORS']);
+  const disconnect = planAndRoundTrip(broken, {kind: 'board', edit: {kind: 'disconnect', ...extra}});
+  assert.deepEqual(disconnect.issues.map(row => row.code), ['MULTIPLE_PREDECESSORS']);
+  assert.deepEqual(disconnect.changes.edges, [{before: extra, after: null}, {before: extra, after: null}]);
+  assert.deepEqual(disconnect.changes.clips, []);
+  assert.deepEqual(disconnect.changes.anchored, []);
+  const repaired = planAndRoundTrip(disconnect.after, {kind: 'board', edit: {kind: 'disconnect', fromId: 'loose', toId: shot(2)}});
+  assert.deepEqual(repaired.issues, []);
+  assert.deepEqual(repaired.changes.clips, []);
+  const synced = planAndRoundTrip(repaired.after, {kind: 'sync-board'});
+  assert.deepEqual(synced.after.clips, base.clips);
+  assert.deepEqual(synced.after.anchored, base.anchored);
+});
+
+test('a partial repair returns remaining errors and healthy components can still be edited', () => {
+  const base = fixture(3);
+  const wrongKind = {id: 'bad', kind: 'text' as const};
+  const duplicateMedia = [media('bad'), {...media('bad'), durationFrames: 23}];
+  const broken = {...base, media: [...base.media, ...duplicateMedia], board: {
+    nodes: [...base.board.nodes, {id: 'bad', kind: 'shot' as const}, wrongKind],
+    edges: [...base.board.edges, edge(shot(0), 'missing'), edge(shot(1), 'bad')],
+  }};
+  const deletion = planAndRoundTrip(broken, {kind: 'board', edit: {kind: 'delete', nodeId: 'bad'}});
+  assert.deepEqual(deletion.issues.map(row => row.code), ['MISSING_NODE']);
+  assert.equal(deletion.changes.nodes.length, 2);
+  assert.deepEqual(deletion.changes.media.map(row => row.before), [...duplicateMedia].reverse());
+  assert.deepEqual(deletion.changes.clips, []);
+  const refused = planChainSync(deletion.after, {kind: 'sync-board'});
+  assert.ok(!refused.ok && 'issues' in refused);
+  assert.equal(refused.code, 'MISSING_NODE');
+
+  const detached = {...base, board: {
+    nodes: [...base.board.nodes, {id: 'bad', kind: 'shot' as const}, wrongKind], edges: base.board.edges,
+  }};
+  const connected = planAndRoundTrip(detached, {kind: 'board',
+    edit: {kind: 'connect', fromId: shot(2), toId: 'loose'}, newClipIds: {loose: 'new'}});
+  assert.deepEqual(connected.issues.map(row => row.code), ['DUPLICATE_NODE']);
+  const moved = planAndRoundTrip(connected.after, {kind: 'track', edit: {kind: 'move', clipId: clip(2), beforeClipId: null}});
+  assert.deepEqual(moved.issues, connected.issues);
+  assert.deepEqual(moved.changes.nodes, []);
+  assert.equal(moved.after.board.nodes.filter(row => row.id === 'bad').length, 2);
+});
+
+test('split copies cannot reuse an ID reserved by a dangling edge', () => {
+  const base = fixture(3);
+  const state = {...base, board: {...base.board, edges: [...base.board.edges, edge('loose', 'missing')]}};
+  const split = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'split', clipId: clip(1), offsetFrames: 20, rightClipId: 'right'}});
+  for (const edit of [
+    {kind: 'move', beforeClipId: null}, {kind: 'move-off-track', trackId: 'overlay', startFrame: 4},
+  ] as const) {
+    assert.deepEqual(planChainSync(split.after, {kind: 'track', edit: {...edit, clipId: 'right', copyNodeId: 'missing'}}),
+      {ok: false, code: 'NODE_ALREADY_LINKED', id: 'missing'});
+  }
+});
+
+test('dropping on an endpoint or moving a whole node inside another split is an explicit refusal', () => {
+  const state = fixture(3);
+  const endpoint = planChainSync(state, {kind: 'board', edit: {kind: 'insert', nodeId: shot(0), fromId: shot(0), toId: shot(1)}});
+  assert.ok(!endpoint.ok);
+  assert.equal(endpoint.code, 'NODE_ALREADY_LINKED');
+
+  const split = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'split', clipId: clip(1), offsetFrames: 20, rightClipId: 'right'}});
+  const original = JSON.stringify(split.after);
+  assert.deepEqual(planChainSync(split.after, {kind: 'track', edit: {kind: 'move', clipId: clip(2), beforeClipId: 'right'}}),
+    {ok: false, code: 'INSERT_BETWEEN_SPLIT_PARTS', id: clip(2)});
+  assert.equal(JSON.stringify(split.after), original);
+});
+
 test('changing a board version includes the selected source and followed clip in one reversible plan', () => {
   const state = fixture(2);
   const version = {id: 'v2', sourceFrames: 90};
@@ -481,11 +651,18 @@ test('SA planning and analysis timings for a 500-shot, 500-clip, 1000-overlay wo
   }))};
   timePlan('board_refresh_versions', refreshed, {kind: 'sync-board'});
   timePlan('board_select_version', state, {kind: 'board-version', nodeId: middle, version: {id: 'v2', sourceFrames: 80}});
+  timePlan('board_materialize_placeholder', withPlaceholder(state, middle),
+    {kind: 'board-version', nodeId: middle, version: {id: 'first-video', sourceFrames: 79}});
+  const badEdge = edge(middle, 'loose');
+  const damaged = {...state, board: {...state.board, edges: [...state.board.edges, badEdge, badEdge]}};
+  timePlan('board_repair_duplicate_edge', damaged, {kind: 'board', edit: {kind: 'disconnect', ...badEdge}});
   timePlan('track_move', state, {kind: 'track', edit: {kind: 'move', clipId: clip(400), beforeClipId: clip(20)}});
   timePlan('track_remove', state, {kind: 'track', edit: {kind: 'remove', clipId: clip(250)}});
   const added = {...mainClip('extra', 'loose', 0), versionId: null, sourceInFrame: 0};
   timePlan('track_add', state, {kind: 'track', edit: {kind: 'add', clip: added, beforeClipId: clip(250)}});
   timePlan('track_split', state, {kind: 'track', edit: {kind: 'split', clipId: clip(250), offsetFrames: 20, rightClipId: 'right'}});
+  timePlan('track_insert_between_split_parts_refused', split.after,
+    {kind: 'track', edit: {kind: 'move', clipId: clip(400), beforeClipId: 'right'}}, false);
   timePlan('track_split_move_requires_copy', split.after, {kind: 'track', edit: {kind: 'move', clipId: 'right', beforeClipId: null}}, false);
   timePlan('track_split_copy_move', split.after, {kind: 'track', edit: {kind: 'move', clipId: 'right', beforeClipId: null, copyNodeId: 'copy-shot'}});
   timePlan('track_move_off_main', state, {kind: 'track', edit: {kind: 'move-off-track', clipId: clip(250), trackId: 'overlay-track', startFrame: 4}});

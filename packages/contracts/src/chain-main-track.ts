@@ -112,11 +112,9 @@ export function packChainSyncTrack(clips: readonly ChainSyncClip[]): MainTrackPl
   return {ok: true, clips: packed, warnings: []};
 }
 
-/** Match the existing source replacement rule, including untimed stills. */
-export function followChainSyncVersion(
-  clip: ChainSyncClip, version: ChainSyncVersion | null, warnings: ChainSyncWarning[], locked = clip.versionLocked,
+function followChainSyncVersion(
+  clip: ChainSyncClip, version: ChainSyncVersion, warnings: ChainSyncWarning[], locked: boolean,
 ): ChainSyncClip {
-  if (!version) return clip;
   const needed = clip.sourceInFrame + clip.durationFrames;
   if (clip.versionId !== version.id && version.sourceFrames !== null && version.sourceFrames < needed) {
     warnings.push({code: 'SOURCE_TOO_SHORT', clipId: clip.id, nodeId: clip.nodeId, versionId: version.id, shortByFrames: needed - version.sourceFrames});
@@ -124,6 +122,35 @@ export function followChainSyncVersion(
   }
   return clip.versionId === version.id && clip.versionLocked === locked
     ? clip : {...clip, versionId: version.id, versionLocked: locked};
+}
+
+/** Fit the full first source to the placeholder parts, keeping cuts that
+ * still fall within the source. Real parts retain their individual windows. */
+export function followChainSyncGroup(
+  clips: readonly ChainSyncClip[], version: ChainSyncVersion | null, warnings: ChainSyncWarning[],
+  defaultDurationFrames: number, shouldFollow: (clip: ChainSyncClip) => boolean, locked = false,
+): readonly ChainSyncClip[] {
+  if (!version) return clips;
+  const fullDuration = version.sourceFrames ?? defaultDurationFrames;
+  let placeholders = clips.filter(clip => clip.versionId === null && shouldFollow(clip)).length;
+  let sourceOffset = 0;
+  const updated: ChainSyncClip[] = [];
+  for (const clip of clips) {
+    if (!shouldFollow(clip)) {
+      updated.push(clip);
+    } else if (clip.versionId !== null) {
+      updated.push(followChainSyncVersion(clip, version, warnings, locked));
+    } else {
+      placeholders--;
+      const remaining = fullDuration - sourceOffset;
+      if (remaining <= 0) continue;
+      const durationFrames = placeholders === 0 ? remaining : Math.min(clip.durationFrames, remaining);
+      updated.push({...clip, versionId: version.id, versionLocked: locked, durationFrames,
+        sourceInFrame: version.sourceFrames === null ? 0 : sourceOffset});
+      sourceOffset += durationFrames;
+    }
+  }
+  return updated;
 }
 
 /** Reconcile an ordered chain against the mapped main track. Clip IDs for newly
@@ -152,7 +179,9 @@ export function planChainMainTrack(
     if (!['shot', 'video', 'image'].includes(node.kind) || !validChainMedia(item, node.kind)) return {ok: false, code: 'INVALID_MEDIA', id: node.id};
     const old = index.groups.get(node.id);
     if (old) {
-      for (const clip of old) planned.push(clip.versionLocked || !followVersions ? clip : followChainSyncVersion(clip, item.selectedVersion, warnings));
+      const followed = followVersions
+        ? followChainSyncGroup(old, item.selectedVersion, warnings, item.durationFrames, clip => !clip.versionLocked) : old;
+      for (const clip of followed) planned.push(clip);
       continue;
     }
     const id = newClipIds && Object.hasOwn(newClipIds, node.id) ? newClipIds[node.id] : undefined;
