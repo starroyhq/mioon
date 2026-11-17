@@ -10,7 +10,7 @@ import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
 import {Readable} from 'node:stream';
 import {spawn} from 'node:child_process';
-import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -19,6 +19,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
+import {createTestSecretCodec} from './helpers/secret-codec.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
@@ -150,7 +151,7 @@ async function fixture(t: test.TestContext) {
   assert.equal(typeof network.dependencies.lookup, 'function'); assert.equal(typeof network.dependencies.httpsRequest, 'function');
   // Every start hands over the server's own connection; while the server runs, the database is read only through it.
   let inspect: InspectProject|undefined;
-  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
+  const options = {dataDir: root, port: 0, token, imageSecretCodec: createTestSecretCodec(), imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
   let server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
   const use = <T>(projectId: string, fn: (db: DatabaseSync) => T): T => inspect!(projectId, fn);
   // Task ID to project ID.
@@ -239,7 +240,20 @@ async function fixture(t: test.TestContext) {
       assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
       assert.equal(createHash('sha256').update(bytes).digest('hex'), version.sha256); return {version, bytes};
     },
-    async restart() {await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0]));},
+    async restart({legacyEmptySecrets = false} = {}) {
+      await server.close();
+      if (legacyEmptySecrets) {
+        // Older backends saved the configuration while leaving in-memory keys out of both files.
+        const officialFile = path.join(root, 'image-settings/settings.json');
+        const customFile = path.join(root, 'image-settings/custom-settings.json');
+        const official = JSON.parse(await readFile(officialFile, 'utf8'));
+        const custom = JSON.parse(await readFile(customFile, 'utf8'));
+        const connections = custom.connections.map((connection: Record<string, unknown>) => ({...connection, secret: null}));
+        await writeFile(officialFile, JSON.stringify({...official, secret: null}));
+        await writeFile(customFile, JSON.stringify({...custom, connections}));
+      }
+      server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
+    },
     async loseApproval(review: FixtureImageReview) {
       let calls = 0, dropped: {ok:boolean;data:FixtureImageTask}|undefined;
       const proxy = await localServer(async (request: http.IncomingMessage, response: http.ServerResponse) => {
@@ -295,8 +309,8 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     mockRows = f.retained(mockAck); mockAsset = await f.asset(mockAck); assert.equal(mockAsset.version.isMock, true);
     const emptyCustom = (await f.request('/api/images/custom-settings')).body.data;
     assert.deepEqual(emptyCustom.connections, []); assert.equal(emptyCustom.revision, 0);assert.equal(emptyCustom.notice,null);
-    const official = await f.settings({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, 0, {action: 'replace', storage: 'session', value: officialKey});
-    assert.equal(official.revision, 1); assert.equal(official.secret.storage, 'session'); assert.deepEqual(f.counts(), [0, 0, 0]);
+    const official = await f.settings({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, 0, {action: 'replace', storage: 'persistent', value: officialKey});
+    assert.equal(official.revision, 1); assert.equal(official.secret.storage, 'persistent'); assert.deepEqual(f.counts(), [0, 0, 0]);
     officialFile = await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8');
     assert.equal(JSON.parse(officialFile).namespace, IMAGE_SETTINGS_NAMESPACE);
     officialInput = inputFor(project.id, DEFAULT_IMAGE_CONFIGURATION); officialReview = await f.prepare(officialInput);
@@ -309,14 +323,14 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
 
   await t.test('custom GET/save makes no DNS or provider POST and cannot consume or alter the official slot', async () => {
     const counts = f.counts(), official = (await f.request('/api/images/settings')).body.data;
-    const saved = await f.settings(customConfiguration, 0, {action: 'replace', storage: 'session', value: customKey});
-    assert.equal(saved.revision, 1); assert.deepEqual(saved.connections[0].configuration, customConfiguration); assert.equal(saved.connections[0].secret.storage, 'session');
+    const saved = await f.settings(customConfiguration, 0, {action: 'replace', storage: 'persistent', value: customKey});
+    assert.equal(saved.revision, 1); assert.deepEqual(saved.connections[0].configuration, customConfiguration); assert.equal(saved.connections[0].secret.storage, 'persistent');
     assert.equal(saved.connections[0].connectionId,customConnectionId);assert.equal(saved.connections[0].configurationRevision,1);
     assert.deepEqual((await f.request('/api/images/custom-settings')).body.data, saved);
     assert.deepEqual((await f.request('/api/images/settings')).body.data, official);
     assert.equal(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'), officialFile);
     const persisted = JSON.parse(await readFile(path.join(f.root, 'image-settings/custom-settings.json'), 'utf8'));
-    assert.equal(persisted.version,2);assert.equal(persisted.namespace,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE);assert.equal(persisted.connections[0].secret,null);
+    assert.equal(persisted.version,2);assert.equal(persisted.namespace,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE);assert.equal(typeof persisted.connections[0].secret.encrypted,'string');
     assert.equal(persisted.connections[0].connectionId,customConnectionId);assert.deepEqual(persisted.deletedConnectionIds,[]);
     const profiles = await f.client.rpc('image.profile.list');
     assert.deepEqual(profiles.items.map(value => value.providerId).sort(), ['mock', 'openai', 'openai-compatible']);
@@ -413,12 +427,12 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     const counts = f.counts();
     const cleared=await f.settings(changedUrlConfiguration,1,{action:'keep'});
     assert.equal(cleared.revision,2);assert.deepEqual(cleared.connections[0].secret,{configured:false,storage:'none'});
-    const changed = await f.settings(changedUrlConfiguration, 2, {action: 'replace', storage: 'session', value: rotatedKey});
+    const changed = await f.settings(changedUrlConfiguration, 2, {action: 'replace', storage: 'persistent', value: rotatedKey});
     assert.equal(changed.revision, 3); await f.approve(stale, 'IMAGE_REVIEW_SETTINGS_CHANGED');
     assert.deepEqual(await f.prepare(stale.input, 1), stale);
     const pending = await f.prepare(inputFor(project.id, changedUrlConfiguration), 3);
     const updated = await f.settings(changedModelConfiguration, 3, {action:'keep'});
-    assert.equal(updated.revision, 4);assert.equal(updated.connections[0].secret.configured,true);assert.equal(updated.connections[0].secret.storage,'session');
+    assert.equal(updated.revision, 4);assert.equal(updated.connections[0].secret.configured,true);assert.equal(updated.connections[0].secret.storage,'persistent');
     assert.deepEqual((await f.request('/api/images/custom-settings')).body.data,updated);await f.approve(pending, 'IMAGE_REVIEW_SETTINGS_CHANGED');
     assert.deepEqual(await f.prepare(pending.input, 3), pending);
     assert.equal(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'), officialFile);
@@ -469,13 +483,13 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.deepEqual(f.counts(), counts);
   });
 
-  await t.test('restart drops both session keys and retains pending and unknown custom work without re-POST or implicit approval', async () => {
+  await t.test('restart reads both legacy empty secrets and retains pending and unknown custom work without re-POST or implicit approval', async () => {
     const pendingInput = inputFor(project.id, changedModelConfiguration), pending = await f.prepare(pendingInput, 4);
     const input = inputFor(project.id, changedModelConfiguration), review = await f.prepare(input, 4), counts = f.counts();
     f.network.holdResponse = true; const ack = await f.approve(review); await f.settled(ack, 'dispatching');
     assert.deepEqual(f.counts(), counts.map(value => value + 1));
     assert.deepEqual(f.network.posts.at(-1), {hostname: 'other-images.example.test', path: '/tenant-b/v2/images/generations', key: rotatedKey, body: wireBody(input)});
-    await f.restart(); f.network.holdResponse = false;
+    await f.restart({legacyEmptySecrets: true}); f.network.holdResponse = false;
     for (const route of ['/api/images/settings', '/api/images/custom-settings']) {
       const settings = (await f.request(route)).body.data,secret=route==='/api/images/custom-settings'?settings.connections[0].secret:settings.secret;assert.equal(secret.configured,false);assert.equal(secret.storage,'none');
     }

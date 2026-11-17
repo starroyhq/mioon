@@ -16,7 +16,8 @@ import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {startServer} from './helpers/test-server.ts';
-import {AGENT_CREDENTIAL_ACQUIRE,createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -76,8 +77,8 @@ async function cliSnapshot(url:string,token:string,projectId:string,runId:string
 }
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas'],beforeCredential?:(count:number)=>Promise<void>){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'session',value:'SYNTHETIC_TASK_HTTP_KEY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
+ await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_TASK_HTTP_KEY'}});
  if(beforeCredential){
   const acquire=settings[AGENT_CREDENTIAL_ACQUIRE];
   let credentials=0;

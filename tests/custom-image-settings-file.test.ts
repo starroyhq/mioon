@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -23,16 +24,16 @@ test('custom default read is inert, own private atomic file is separate, old off
   const old = {version: 1, namespace: IMAGE_SETTINGS_NAMESPACE, revision: 17, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: null};
   const bytes = JSON.stringify(old, null, 2) + '\n\n'; await writeFile(f.official, bytes, {mode: 0o600});
   const official = await createImageSettings({persistence: createImageSettingsFile({directory: f.directory, privateRoot: f.root})});
-  const custom = await createCustomImageSettings({persistence: f.persistence});
+  const custom = await createCustomImageSettings({persistence: f.persistence, secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await custom.close(); await official.close(); });
   assert.equal((await official.get()).revision, 17); assert.equal((await custom.get()).revision, 0);
   assert.equal(await readFile(f.official, 'utf8'), bytes);
-  await custom.put({expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-private-custom'}});
+  await custom.put({expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-private-custom'}});
   assert.equal(await readFile(f.official, 'utf8'), bytes);
   assert.deepEqual((await readdir(f.directory)).sort(), ['custom-settings.json', 'settings.json']);
   assert.equal((await stat(f.file)).mode & 0o777, 0o600); assert.equal((await stat(f.directory)).mode & 0o777, 0o700);
   assert.equal((await readFile(f.file, 'utf8')).includes('synthetic-private-custom'), false);
-  assert.equal((await f.persistence.load() as SettingsEnvelope|null)?.secret, null);
+  assert.ok((await f.persistence.load() as {secret: {encrypted: string}} | null)?.secret.encrypted);
 });
 
 test('custom file cannot select the official filename, persist update DTOs or read foreign/plaintext envelopes', async t => {

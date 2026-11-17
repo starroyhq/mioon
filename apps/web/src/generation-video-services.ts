@@ -6,7 +6,7 @@ import type {MessageKey} from '../../../packages/i18n/src/index.ts';
 import {createVideoSettingsClient, newVideoConnection, safeVideoSettings} from './video-settings.ts';
 import type {VideoSettingsClient} from './video-settings.ts';
 import type {GenerationSaveTicket} from './generation-services-settings.ts';
-import {watchPendingSecretStorage} from './settings-secret-storage.ts';
+import {unavailableSecretStorage, watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -18,7 +18,6 @@ export interface GenerationVideoDraft {
   configuration: VideoConnectionConfigurationV2;
   baseline: VideoConnectionConfigurationV2 | null;
   touched: boolean;
-  storage: '' | 'session' | 'persistent';
   secretAction: 'keep' | 'remove' | 'replace';
   hasKey: boolean;
 }
@@ -36,12 +35,12 @@ export interface GenerationVideoState {
 export const generationVideoBusy = (state: GenerationVideoState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const generationVideoDraftDirty = (draft: GenerationVideoDraft): boolean => draft.secretAction !== 'keep' || draft.touched && !same(draft.configuration, draft.baseline);
 export const generationVideoDirty = (state: GenerationVideoState): boolean => state.deletedIds.length > 0 || state.drafts.some(generationVideoDraftDirty);
-export const initialGenerationVideoState = (): GenerationVideoState => ({phase: 'loading', snapshot: null, keychainWaitConfirmed: false, drafts: VIDEO_BUILTIN_PROVIDER_IDS.map(id => {const configuration = newVideoConnection(id); return {key: videoServiceKey(configuration), configuration, baseline: null, touched: false, storage: '', secretAction: 'keep', hasKey: false};}), deletedIds: [], recovery: null, notice: null, version: 0, editorEpoch: 0});
+export const initialGenerationVideoState = (): GenerationVideoState => ({phase: 'loading', snapshot: null, keychainWaitConfirmed: false, drafts: VIDEO_BUILTIN_PROVIDER_IDS.map(id => {const configuration = newVideoConnection(id); return {key: videoServiceKey(configuration), configuration, baseline: null, touched: false, secretAction: 'keep', hasKey: false};}), deletedIds: [], recovery: null, notice: null, version: 0, editorEpoch: 0});
 /** Uses only saved, redacted facts and the existing local capability validator. */
 export function generationVideoAvailable(snapshot: VideoSettingsSnapshotV2 | null, configuration: VideoConnectionConfigurationV2): boolean | null {
   if (!snapshot) return null;
   const saved = snapshot.connections.find(view => view.configuration.id === configuration.id);
-  if (!saved || !saved.secret.configured || !saved.configuration.enabled || saved.secret.storage === 'persistent' && !snapshot.storage.persistentAvailable) return false;
+  if (!saved || !saved.secret.configured || !saved.configuration.enabled || !snapshot.storage.persistentAvailable) return false;
   return saved.configuration.models.some(model => {
     if (!model.enabled || model.archived) return false;
     try {
@@ -54,14 +53,15 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
   let state = initialGenerationVideoState();
   let live = true, visible = true, epoch = 0, pending: AbortController | null = null;
   const tickets = new Set<() => void>();
-  const watchStorage = watchPendingSecretStorage(async signal => {
+  const refreshStorage = async (signal?: AbortSignal) => {
     const before = state.snapshot;
     if (!before) return;
     const {storage} = safeVideoSettings(await client.read(signal, 'keychain-poll'));
-    if (signal.aborted || state.snapshot !== before) return;
+    if (!live || !visible || signal?.aborted || state.snapshot !== before) return;
     if (storage.reasonCode !== 'OS_SECRET_STORE_PENDING') emit({snapshot: {...before, storage}});
-    else if (!state.keychainWaitConfirmed) emit({keychainWaitConfirmed: true});
-  });
+    else if (before.storage.reasonCode !== 'OS_SECRET_STORE_PENDING' || !state.keychainWaitConfirmed) emit({snapshot: {...before, storage}, keychainWaitConfirmed: true});
+  };
+  const watchStorage = watchPendingSecretStorage(refreshStorage);
   const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
   const emit = (patch: Partial<GenerationVideoState>) => {if (live) {
     state = {...state, ...patch, version: state.version + 1};
@@ -72,7 +72,7 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
   const editable = () => live && visible && !generationVideoBusy(state) && !state.recovery;
   const fromSnapshot = (snapshot: VideoSettingsSnapshotV2): GenerationVideoDraft[] => {
     const configurations = [...VIDEO_BUILTIN_PROVIDER_IDS.map(id => snapshot.connections.find(view => view.configuration.providerId === id)?.configuration ?? newVideoConnection(id)), ...snapshot.connections.filter(view => view.configuration.providerId === 'compatible').map(view => view.configuration)];
-    return configurations.map(configuration => {const saved = snapshot.connections.find(view => view.configuration.id === configuration.id); return {key: videoServiceKey(configuration), configuration: clone(configuration), baseline: saved ? clone(configuration) : null, touched: false, storage: saved?.secret.storage === 'none' || !saved ? '' : saved.secret.storage, secretAction: 'keep', hasKey: false};});
+    return configurations.map(configuration => {const saved = snapshot.connections.find(view => view.configuration.id === configuration.id); return {key: videoServiceKey(configuration), configuration: clone(configuration), baseline: saved ? clone(configuration) : null, touched: false, secretAction: 'keep', hasKey: false};});
   };
   async function load(recover = false): Promise<boolean> {
     if (!live || !visible || generationVideoBusy(state) && state.phase !== 'loading') return false;
@@ -92,8 +92,9 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
         if (!generationVideoDraftDirty(draft) && !value) continue;
         const configuration = clone(draft.configuration);
         if (configuration.providerId === 'compatible') {try {configuration.baseUrl = normalizeCompatibleVideoBaseUrl(configuration.baseUrl);} catch {emit({phase: 'error', notice: 'video.providers.baseUrlInvalid'}); throw safeError();}}
-        if (draft.secretAction === 'replace' && !value || value && !draft.storage || value && draft.storage === 'persistent' && !state.snapshot.storage.persistentAvailable) {emit({phase: 'error', notice: 'video.providers.invalid'}); throw safeError();}
-        operations.push({action: 'save', configuration, secret: value ? {action: 'replace', value, storage: draft.storage === 'persistent' ? 'persistent' : 'session'} : {action: draft.secretAction === 'remove' ? 'remove' : 'keep'}});
+        if (value && !state.snapshot.storage.persistentAvailable) throw safeError();
+        if (draft.secretAction === 'replace' && !value) {emit({phase: 'error', notice: 'video.providers.invalid'}); throw safeError();}
+        operations.push({action: 'save', configuration, secret: value ? {action: 'replace', value, storage: 'persistent'} : {action: draft.secretAction === 'remove' ? 'remove' : 'keep'}});
       }
       // Remove first inside the same atomic batch so replacing a service at
       // capacity does not briefly exceed the unchanged connection budget.
@@ -128,7 +129,8 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
         } catch (error) {
           if (!owned(token)) return 'blocked';
           const code = errorCode(error);
-          if (['VIDEO_SETTINGS_VALIDATION', 'UNAUTHORIZED', 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', 'VIDEO_SETTINGS_CAPACITY'].includes(code)) {finished = true; emit({phase: 'error', notice: code === 'VIDEO_SETTINGS_CAPACITY' ? 'video.providers.capacity' : 'video.providers.invalid'}); return 'error';}
+          if (code === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' && state.snapshot) {finished = true; emit({snapshot: {...state.snapshot, storage: unavailableSecretStorage}, phase: 'error', notice: null}); return 'error';}
+          if (['VIDEO_SETTINGS_VALIDATION', 'UNAUTHORIZED', 'VIDEO_SETTINGS_CAPACITY'].includes(code)) {finished = true; emit({phase: 'error', notice: code === 'VIDEO_SETTINGS_CAPACITY' ? 'video.providers.capacity' : 'video.providers.invalid'}); return 'error';}
           const recovery = ['VIDEO_SETTINGS_CONFLICT', 'VIDEO_SETTINGS_DELETED'].includes(code) ? 'conflict' : 'unknown';
           emit({phase: 'reconciling', recovery, notice: recovery === 'conflict' ? 'video.providers.conflict' : 'video.providers.unknown'});
           try {const snapshot = safeVideoSettings(await client.read(controller.signal)); if (owned(token)) emit({snapshot, phase: 'review'});} catch {if (owned(token)) emit({phase: 'blocked'});}
@@ -176,12 +178,12 @@ export function createGenerationVideoServicesSession({client = createVideoSettin
     },
     keyEdited(key: string, hasKey: boolean) {if (!editable()) return false; emit({drafts: state.drafts.map(draft => draft.key === key ? {...draft, hasKey, secretAction: hasKey ? 'replace' : 'keep'} : draft), phase: 'ready', notice: null}); return true;},
     keysCleared(key?: string) {if (state.drafts.some(draft => draft.hasKey && (!key || key === draft.key))) emit({drafts: state.drafts.map(draft => !key || key === draft.key ? {...draft, hasKey: false} : draft)});},
-    setStorage(key: string, storage: GenerationVideoDraft['storage']) {if (!editable() || storage === 'persistent' && !state.snapshot?.storage.persistentAvailable) return false; emit({drafts: state.drafts.map(draft => draft.key === key ? {...draft, storage} : draft)}); return true;},
+    retryStorage() {if (editable()) void refreshStorage().catch(() => {});},
     removeKey(key: string, remove: boolean) {if (!editable()) return false; emit({drafts: state.drafts.map(draft => draft.key === key ? {...draft, hasKey: false, secretAction: remove ? 'remove' : 'keep'} : draft)}); return true;},
     add(): string | null {
       if (!editable() || !state.snapshot || state.drafts.filter(draft => draft.configuration.providerId === 'compatible').length >= 26) return null;
       const configuration = newVideoConnection('compatible'), key = videoServiceKey(configuration);
-      emit({drafts: [...state.drafts, {key, configuration, baseline: null, touched: true, storage: '', secretAction: 'keep', hasKey: false}], phase: 'ready', notice: null}); return key;
+      emit({drafts: [...state.drafts, {key, configuration, baseline: null, touched: true, secretAction: 'keep', hasKey: false}], phase: 'ready', notice: null}); return key;
     },
     stageDelete(key: string) {if (!editable()) return false; const found = state.drafts.find(draft => draft.key === key); if (found?.configuration.providerId !== 'compatible') return false; emit({drafts: state.drafts.filter(draft => draft.key !== key), deletedIds: found.baseline ? [...state.deletedIds, found.configuration.id] : state.deletedIds, phase: 'ready', notice: null}); return true;},
     discard() {if (!editable() || !state.snapshot) return false; const defaults = state.drafts; emit({drafts: fromSnapshot(state.snapshot).map(next => !next.baseline ? {...next, configuration: {...next.configuration, id: defaults.find(draft => draft.key === next.key)?.configuration.id ?? next.configuration.id}} : next), deletedIds: [], phase: 'ready', notice: null, editorEpoch: state.editorEpoch + 1}); return true;},

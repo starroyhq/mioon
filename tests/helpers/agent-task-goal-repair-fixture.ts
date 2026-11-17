@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
-import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './secret-codec.ts';
 import {createAgentSettingsFile} from '../../packages/business/src/agent/settings-file.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
@@ -34,15 +34,14 @@ export async function openGoalRepairFixture(root:string,protocol:GoalProtocol,ex
  const project=existingProjectId?{id:existingProjectId}:await services.call('project.create',{name:'Goal repair fixture'}) as {id:string};
  if(!existingProjectId)await services.call('shot.create',{projectId:project.id,title:'Original shot'});
  const configuration={presetId:'custom',platformId:'custom',protocol,model:'synthetic-goal-model',baseUrl:'https://goal.example.com/v1'};
- const settings=await createAgentSettings({persistence:createAgentSettingsFile({directory:join(root,'agent-settings')})});
+ const settings=await createTestAgentSettings({persistence:createAgentSettingsFile({directory:join(root,'agent-settings')})});
  if(existingProjectId===undefined){
-  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_GOAL_REPAIR_TEST_ONLY'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_GOAL_REPAIR_TEST_ONLY'}});
  }else{
-  // Recovery reads the saved service identity and revision witness. Replacing
-  // the expired session key here would change the entry and invalidate the run.
+  // Recovery must preserve the saved service identity and revision witness.
   const restored=testAgentExecution(await settings.get());
   assert.deepEqual(restored.configuration,configuration);
-  assert.deepEqual(restored.secret,{configured:false,storage:'none'});
+  assert.deepEqual(restored.secret,{configured:true,storage:'persistent'});
  }
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[];

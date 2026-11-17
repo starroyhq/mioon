@@ -108,10 +108,10 @@ test('all settings forms can edit committed configuration while one native Keych
   }
   const service = agentPage.addCustom('Editable Agent draft');
   assert.ok(service);
-  assert.equal(agentPage.setStorage(service, 'persistent'), false);
+
   const videoDraft = videoPage.getState().drafts[0]!;
   assert.equal(videoPage.update(videoDraft.key, {enabled: true}), true);
-  assert.equal(videoPage.setStorage(videoDraft.key, 'persistent'), false);
+
   assert.equal(official.edit('image:official', {}, {enabled: true}), true);
   const customId = custom.add('Editable custom image draft');
   assert.ok(customId);
@@ -158,7 +158,7 @@ test('all settings forms can edit committed configuration while one native Keych
     assert.deepEqual(during.services, before.services);
     for (const snapshot of [during, videoDuring, imageDuring, customDuring]) {
       assert.ok(snapshot && typeof snapshot === 'object' && 'storage' in snapshot);
-      assert.deepEqual(snapshot.storage, {persistentAvailable: true, sessionScope: snapshot === during ? 'app' : 'server', reasonCode: null});
+      assert.deepEqual(snapshot.storage, {persistentAvailable: true, reasonCode: null});
     }
   } finally {writeRelease.resolve();}
   const committed = await writing;

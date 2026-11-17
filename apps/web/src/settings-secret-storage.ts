@@ -1,3 +1,5 @@
+export const unavailableSecretStorage = Object.freeze({persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' as const});
+
 /** Observe only redacted capability while a native Keychain request is pending.
  * Stop with the owning settings view and never restart its draft or write. */
 export function watchPendingSecretStorage(refresh: (signal: AbortSignal) => Promise<void>) {

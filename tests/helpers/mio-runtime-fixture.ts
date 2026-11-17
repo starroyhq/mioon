@@ -3,7 +3,7 @@ import {createMioAssembly} from '../../packages/business/src/agent/mio-assembly.
 import {createMioJournal} from '../../packages/business/src/agent/mio-journal.ts';
 import {createMioRecords} from '../../packages/business/src/agent/mio-records.ts';
 import {createMioRuntime} from '../../packages/business/src/agent/mio-runtime.ts';
-import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './secret-codec.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import type {AgentTaskJournal} from '../../packages/business/src/agent/task-journal-v2.ts';
 import type {TaskGateway} from '../../packages/business/src/agent/task-gateway-v2.ts';
@@ -25,7 +25,7 @@ export async function createMioTestFixture(root: string, gateway: TaskGateway, w
   const store = openStore(root);
   if (!store.get('projects', store.projectId)) store.put('projects', {id: store.projectId, name: 'Mio synthetic runtime project', description: '', revision: 1, createdAt: '2026-11-02T00:00:00.000Z', updatedAt: '2026-11-02T00:00:00.000Z'});
   const ports = createMioTestAppPorts(store), {services} = ports;
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`}, secret: {action: 'remove'}});
   const authorizations = ports.createAuthorizations(settings);
   await authorizeTestScope(authorizations, 'project_agent');

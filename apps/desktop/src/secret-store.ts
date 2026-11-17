@@ -17,7 +17,6 @@ const VAULT_TIMEOUT = 1500;
 export type SecretReasonCode = 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
 export interface SecretStorageState {
   readonly persistentAvailable: boolean;
-  readonly sessionScope: 'app' | 'server';
   readonly reasonCode: SecretReasonCode;
 }
 /** Cancellation is a caller-scoped deadline; it never releases an unsettled native slot. */
@@ -129,7 +128,7 @@ function initializeVault(state: VaultState, safeStorage: DesktopSafeStorage) {
 }
 
 const unavailableStorage = (): SecretStorageState =>
-  ({persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
+  ({persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
 
 // A redacted snapshot only: it never calls a synchronous native vault method.
 export function desktopSecretStorage(safeStorage: DesktopSafeStorage, platform: NodeJS.Platform = process.platform): SecretStorageState {
@@ -137,10 +136,10 @@ export function desktopSecretStorage(safeStorage: DesktopSafeStorage, platform: 
   if (platform !== 'darwin') return unavailableStorage();
   const state = vaultState(safeStorage);
   if (state?.phase === 'probing') {
-    return {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_PENDING'};
+    return {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_PENDING'};
   }
   return state?.phase === 'ready'
-    ? {persistentAvailable: true, sessionScope: 'app', reasonCode: null}
+    ? {persistentAvailable: true, reasonCode: null}
     : unavailableStorage();
 }
 

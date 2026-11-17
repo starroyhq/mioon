@@ -31,7 +31,7 @@ import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '../packages/contracts/src/images
 import {defaultVideoModels,VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfigurationV2} from '../packages/contracts/src/generation-video-settings.ts';
 import {AppError} from '../packages/contracts/src/app-error.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings,createTestSecretCodec,testSecretStorage} from './helpers/secret-codec.ts';
 import type {AgentSettingsService} from '../packages/business/src/agent/settings.ts';
 import {createAgentSettingsBroker,createAgentSettingsClient} from '../apps/desktop/src/secret-broker.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -84,11 +84,11 @@ function syntheticDeniedTransport(address:string,statusCode=401,errorBody='',rea
 }
 async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='responses',providers:ReadonlyMap<string,Provider>=new Map(),{desktopBridge=false,withVideoSettings=false,safetyStepLimit,mockAllowed=true,imageOptions}:{desktopBridge?:boolean;withVideoSettings?:boolean;safetyStepLimit?:number;mockAllowed?:boolean;imageOptions?:NonNullable<Parameters<typeof createServices>[2]>['imageOptions']}={}){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-runtime-v2-')),store=openStore(root);
- const videoSettings=withVideoSettings?await createVideoSettingsV2({directory:join(root,'video-settings'),privateRoot:root}):undefined;
+ const videoSettings=withVideoSettings?await createVideoSettingsV2({directory:join(root,'video-settings'),privateRoot:root,secretCodec:createTestSecretCodec(),storage:testSecretStorage}):undefined;
  const services=createServices(store,providers,{mockAllowed,imageOptions,...(videoSettings?{videoSettings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async()=>assert.fail('Offline runtime fixture unexpectedly contacted a video provider')}:{})});
  const project=object(await services.call('project.create',{name:'Runtime project'})),projectId=String(project.id);
  const first=shot(await services.call('shot.create',{projectId,title:'First',prompt:'saved first'})),other=shot(await services.call('shot.create',{projectId,title:'Other',prompt:'saved other'}));
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
  const bridge=desktopBridge?desktopSettingsBridge(settings,4318):null,runtimeSettings=bridge?.settings??settings;
  const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const requests:TaskModelRequest[]=[],scriptRequestIndexes:number[]=[],effects=new Map<string,string>(),baseTools=createAgentTaskTools({store,services});let beforeTool:((prepared:PreparedAgentTaskTool)=>Promise<void>)|undefined,script:Script=async function*(){yield {type:'done',output:output(protocol)};},loadGroups:readonly AgentTaskLoadableToolGroupId[]=[],loadingRequests=0;
@@ -815,7 +815,7 @@ for(const paid of ['direct','confirm'] as const)test(`${paid}: unavailable video
  assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM idempotency WHERE scope='generation'").get()?.n,0);
  assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM mio_job_origins WHERE operation='generation.submit'").get()?.n,0);
 
- await f.videoSettings!.put({action:'save',expectedRevision:0,configuration:connection,secret:{action:'replace',value:'synthetic-video-key',storage:'session'}});
+ await f.videoSettings!.put({action:'save',expectedRevision:0,configuration:connection,secret:{action:'replace',value:'synthetic-video-key',storage:'persistent'}});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===3?[call('mioon_generation_submit',input,'user-retry-video')]:[])};},{loadGroups:['video']});
  await f.action(failed,'retry',{stepId:attempts[3]!.id});
  if(paid==='confirm'){
@@ -865,8 +865,8 @@ test('stable Mio tools and provider discovery omit Mock and return a no-cost rec
 });
 
 test('Mio requires one paid confirmation for each available image request and submits only the approved one',async t=>{
- const settings=await createImageSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
- await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:'SYNTHETIC_IMAGE_GATEWAY_ONLY'}});
+ const settings=await createImageSettings({persistence:{load:async()=>null,save:async()=>{}},secretCodec:createTestSecretCodec(),storage:testSecretStorage});t.after(()=>settings.close());
+ await settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_IMAGE_GATEWAY_ONLY'}});
  const f=await fixture(t,'responses',new Map(),{mockAllowed:false,imageOptions:{settings,autoRun:false,liveGateway:{generate:async()=>assert.fail('This test observes approval before provider dispatch')}}});
  const image={prompt:'Do not call the provider',providerId:'openai',model:IMAGE_MODELS.openai,options:{...IMAGE_FIXED_OPTIONS}};
  assert.equal(f.runtime.policy().modes.paid,'confirm');
@@ -889,9 +889,9 @@ test('Mio requires one paid confirmation for each available image request and su
 });
 
 test('Mio tells the user to select from multiple custom image services before creating a paid review',async t=>{
- const settings=await createCustomImageSettingsV2({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
+ const settings=await createCustomImageSettingsV2({persistence:{load:async()=>null,save:async()=>{}},secretCodec:createTestSecretCodec(),storage:testSecretStorage});t.after(()=>settings.close());
  const configuration={...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,enabled:true,baseUrl:'https://images.example.com/v1',model:'synthetic-image'};
- await settings.batch({expectedRevision:0,operations:['A','B'].map(name=>({action:'create',connectionId:randomUUID(),name,configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_CUSTOM_IMAGE_KEY'}}))});
+ await settings.batch({expectedRevision:0,operations:['A','B'].map(name=>({action:'create',connectionId:randomUUID(),name,configuration,secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_CUSTOM_IMAGE_KEY'}}))});
  const f=await fixture(t,'responses',new Map(),{mockAllowed:false,imageOptions:{customSettingsV2:settings,autoRun:false,customGateway:{generate:async()=>assert.fail('An ambiguous request cannot contact a provider')}}});
  const image={name:'Synthetic image',prompt:'Never sent',providerId:'openai-compatible',model:configuration.model,options:{...IMAGE_FIXED_OPTIONS}};
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_image_generate',image,'ambiguous-image')]:[])};},{loadGroups:['images']});
@@ -1762,7 +1762,7 @@ for(const changed of ['other','active-key','selection-aba'] as const)test(`conne
  if(changed==='selection-aba'){
   await f.settings.put({expectedRevision:old.revision,services,mioSelection:{serviceKey:'ollama',modelId:'qwen3:8b'},secretActions:[]});
   await f.settings.put({expectedRevision:(await f.settings.get()).revision,services,mioSelection:old.mioSelection,secretActions:[]});
- }else await f.settings.put({expectedRevision:old.revision,services,mioSelection:old.mioSelection,secretActions:[{serviceKey:changed==='other'?'deepseek':'openai',action:'replace',storage:'session',value:'SYNTHETIC_UPDATED_ENTRY_KEY'}]});
+ }else await f.settings.put({expectedRevision:old.revision,services,mioSelection:old.mioSelection,secretActions:[{serviceKey:changed==='other'?'deepseek':'openai',action:'replace',storage:'persistent',value:'SYNTHETIC_UPDATED_ENTRY_KEY'}]});
  release.resolve();const done=await f.settle(sent.run.id);
  if(changed==='other'){assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.ok(f.requests.every(request=>request.apiKey==='SYNTHETIC_LOCAL_TEST_ONLY'));}
  else{assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_SETTINGS_CONFLICT');assert.equal(f.requests.length,1);}

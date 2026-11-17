@@ -129,11 +129,11 @@ async function bounded<T>(operation: () => T | Promise<T>, signal?: AbortSignal,
 }
 
 /** Production settings owner; execution bindings retain their original format. */
-export async function createVideoSettingsV2({directory, privateRoot = directory, secretCodec, storage = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, signal, persistence = createVideoSettingsV2File({directory, privateRoot})}: VideoSettingsV2Options): Promise<VideoSettingsV2Service> {
+export async function createVideoSettingsV2({directory, privateRoot = directory, secretCodec, storage = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, signal, persistence = createVideoSettingsV2File({directory, privateRoot})}: VideoSettingsV2Options): Promise<VideoSettingsV2Service> {
   const lifetime = new AbortController(), activeSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
   const operationSignal = (request?: AbortSignal) => request ? AbortSignal.any([activeSignal, request]) : activeSignal;
   let state = emptyVideoSettingsV2Envelope(), notice: VideoSettingsSnapshotV2['notice'] = null;
-  let sessions = new Map<string, string>(), fault: VideoSettingsError | null = null, closing = false, pendingPuts = 0, storageBlocked = false, tail: Promise<unknown> = Promise.resolve();
+  let fault: VideoSettingsError | null = null, closing = false, pendingPuts = 0, storageBlocked = false, tail: Promise<unknown> = Promise.resolve();
   const connectionChangeListeners = new Set<(connectionIds: readonly string[]) => void>();
   const committedConnectionChanges = new Set<string>();
   try {const loaded = await persistence.load(); if (loaded) {state = validateVideoSettingsV2Envelope(loaded.envelope); if (loaded.notice !== null && loaded.notice !== VIDEO_SETTINGS_V1_RESET_NOTICE) throw Error(); notice = loaded.notice;}} catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_CORRUPT');}
@@ -147,7 +147,9 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     tail = next.catch(() => {}); return next;
   };
   const ensureStable = () => {check(); if (pendingPuts) fail('VIDEO_SETTINGS_CONFLICT');};
-  const material = (ref: string | null): VideoConnectionViewV2['secret']['storage'] => !ref ? 'none' : state.credentials.find(credential => credential.ref === ref)?.encrypted ? 'persistent' : sessions.has(ref) ? 'session' : 'none';
+  // An old in-memory key left an empty ciphertext slot. Preserve that ref for
+  // frozen jobs and treat it exactly like a removed credential.
+  const material = (ref: string | null): VideoConnectionViewV2['secret']['storage'] => secretCodec && state.credentials.find(credential => credential.ref === ref)?.encrypted ? 'persistent' : 'none';
   const view = (entry: RevisionV2): VideoConnectionViewV2 => {const selected = material(entry.credentialRef); return {configuration: copy(entry.configuration), revision: entry.revision, secret: {configured: selected !== 'none', storage: selected}};};
   const snapshot = (): VideoSettingsSnapshotV2 => ({revision: state.revision, connections: state.connections.map(view), storage: capabilities(), notice});
   const binding = (entry: RevisionV2, modelEntryId: string): VideoExecutionBinding => {
@@ -183,7 +185,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       ? {credentialRef:current.credentialRef, connectionRevision:current.revision} : null;
   };
   async function secretOf(credential: Credential, request?: AbortSignal): Promise<string | undefined> {
-    if (!credential.encrypted) return sessions.get(credential.ref);
+    if (!credential.encrypted || !secretCodec) return undefined;
     await refresh(request); check();
     if (!canUseVault() || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     const plaintext = validateVideoSecretPlaintext(await bounded(() => secretCodec.decrypt(credential.encrypted!), operationSignal(request), {preserveCorruption: true}));
@@ -191,8 +193,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (plaintext.credentialRef !== credential.ref || !same(credentialRecipient(credential), [plaintext.connectionId, plaintext.providerId, plaintext.region, plaintext.workspaceId, plaintext.endpoint])) return fail('VIDEO_SETTINGS_CORRUPT');
     return plaintext.value;
   }
-  async function storeSecret(nextSessions: Map<string, string>, credential: Credential, secret: Extract<VideoSecretUpdate, {action: 'replace'}>) {
-    if (secret.storage === 'session') {nextSessions.set(credential.ref, secret.value); return;}
+  async function storeSecret(credential: Credential, secret: Extract<VideoSecretUpdate, {action: 'replace'}>) {
     await refresh(); check();
     if (!canUseVault() || !secretCodec) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     const plaintext = JSON.stringify({version: 1, namespace: VIDEO_SECRET_NAMESPACE, credentialRef: credential.ref, connectionId: credential.connectionId, providerId: credential.providerId, region: credential.region, workspaceId: credential.workspaceId, endpoint: credential.endpoint, value: secret.value});
@@ -201,13 +202,12 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (!validCiphertext(encrypted)) return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
     credential.encrypted = encrypted;
   }
-  async function apply(candidate: VideoSettingsEnvelopeV2, nextSessions: Map<string, string>, operation: VideoSettingsOperationV2): Promise<string | null> {
+  async function apply(candidate: VideoSettingsEnvelopeV2, operation: VideoSettingsOperationV2): Promise<string | null> {
     const id = operation.action === 'save' ? operation.configuration.id : operation.connectionId;
     if (candidate.deletedConnectionIds.includes(id)) return fail('VIDEO_SETTINGS_DELETED');
     const current = candidate.connections.find(entry => entry.configuration.id === id);
     if (operation.action === 'delete') {
       if (!current || current.configuration.providerId !== 'compatible') return fail('VIDEO_SETTINGS_VALIDATION');
-      for (const credential of candidate.credentials) if (credential.connectionId === id) nextSessions.delete(credential.ref);
       candidate.connections = candidate.connections.filter(entry => entry.configuration.id !== id);
       candidate.history = candidate.history.filter(entry => entry.configuration.id !== id);
       candidate.credentials = candidate.credentials.filter(credential => credential.connectionId !== id);
@@ -219,8 +219,8 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     let ref = current?.credentialRef ?? null;
     const sameRecipient = !current || same(recipient(current.configuration), recipient(configuration));
     const currentCredential = ref ? candidate.credentials.find(credential => credential.ref === ref) : undefined;
-    let secretChanged = secret.action === 'remove' ? Boolean(currentCredential?.encrypted || ref && nextSessions.has(ref)) : secret.action === 'replace';
-    if (secret.action === 'replace' && sameRecipient && currentCredential && material(ref) === secret.storage) {
+    let secretChanged = secret.action === 'remove' ? Boolean(currentCredential?.encrypted) : secret.action === 'replace';
+    if (secret.action === 'replace' && sameRecipient && currentCredential?.encrypted) {
       let existing: string | undefined;
       try {existing = await secretOf(currentCredential);}
       catch (error) {
@@ -232,7 +232,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     }
     if (current && same(current.configuration, configuration) && !secretChanged) return null;
     if (secret.action === 'remove' && ref && secretChanged) {
-      candidate.credentials.find(credential => credential.ref === ref)!.encrypted = null; nextSessions.delete(ref);
+      currentCredential!.encrypted = null;
     }
     // A regional/origin change detaches only this current key. Its old recipient
     // remains usable by frozen tasks, unlike an explicit key removal or deletion.
@@ -240,7 +240,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     if (secret.action === 'replace' && secretChanged) {
       if (candidate.credentials.length >= VIDEO_SETTINGS_LIMITS.credentials) return fail('VIDEO_SETTINGS_CAPACITY');
       const credential: Credential = {ref: randomUUID(), connectionId: id, providerId: configuration.providerId, region: configuration.region, workspaceId: configuration.workspaceId, endpoint: videoConnectionEndpoint(configuration), encrypted: null};
-      candidate.credentials.push(credential); ref = credential.ref; await storeSecret(nextSessions, credential, secret);
+      candidate.credentials.push(credential); ref = credential.ref; await storeSecret(credential, secret);
     }
     if (current?.revision === Number.MAX_SAFE_INTEGER) return fail('VIDEO_SETTINGS_CAPACITY');
     const entry: RevisionV2 = {configuration: copy(configuration), revision: (current?.revision ?? 0) + 1, credentialRef: ref};
@@ -330,9 +330,9 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
       pendingPuts++;
       return schedule(async () => {
         if (update.expectedRevision !== state.revision) return fail('VIDEO_SETTINGS_CONFLICT');
-        const candidate = copy(state), nextSessions = new Map(sessions), changedIds: string[] = [];
+        const candidate = copy(state), changedIds: string[] = [];
         for (const operation of update.action === 'batch' ? update.operations : [update]) {
-          const changedId = await apply(candidate, nextSessions, operation);
+          const changedId = await apply(candidate, operation);
           if (changedId) changedIds.push(changedId);
         }
         check();
@@ -342,7 +342,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
           try {
             const actual = await bounded(() => persistence.load(), activeSignal);
             if (!same(actual?.envelope ?? emptyVideoSettingsV2Envelope(), state)) throw Error();
-          } catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED'); sessions.clear(); return fail('VIDEO_SETTINGS_SAVE_FAILED');}
+          } catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED'); return fail('VIDEO_SETTINGS_SAVE_FAILED');}
           check(); return snapshot();
         }
         if (state.revision === Number.MAX_SAFE_INTEGER) return fail('VIDEO_SETTINGS_CAPACITY');
@@ -351,10 +351,10 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
           try {
             const actual = await bounded(() => persistence.load(), activeSignal);
             if (!same(actual?.envelope ?? emptyVideoSettingsV2Envelope(), state)) throw Error();
-          } catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED'); sessions.clear();}
+          } catch {fault = videoSettingsV2Error('VIDEO_SETTINGS_SAVE_FAILED');}
           return fail('VIDEO_SETTINGS_SAVE_FAILED');
         }
-        check(); state = candidate; sessions = nextSessions; notice = null;
+        check(); state = candidate; notice = null;
         const saved = snapshot();
         for (const id of changedIds) committedConnectionChanges.add(id);
         return saved;
@@ -371,7 +371,7 @@ export async function createVideoSettingsV2({directory, privateRoot = directory,
     },
     async close() {
       closing = true; connectionChangeListeners.clear(); committedConnectionChanges.clear();
-      lifetime.abort(); await tail; sessions.clear();
+      lifetime.abort(); await tail;
     },
   };
   return Object.freeze(service);

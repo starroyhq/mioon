@@ -13,9 +13,9 @@ const config = (changes: Record<string, unknown> = {}): Record<string, unknown> 
   baseUrl: 'https://images.example.com/vendor/v1', model: 'custom-image-v1', ...changes});
 interface UpdateRecord {expectedRevision: number; configuration: Record<string, unknown>; secret: Record<string, unknown>}
 const update = (revision = 0, secret: Record<string, unknown> = {action: 'keep'}, configuration: Record<string, unknown> = config()): UpdateRecord => ({expectedRevision: revision, configuration, secret});
-const replace = (value = SENTINEL, storage = 'session'): {action: string; storage: string; value: string} => ({action: 'replace', storage, value});
+const replace = (value = SENTINEL, storage = 'persistent'): {action: string; storage: string; value: string} => ({action: 'replace', storage, value});
 const expected = (snapshot: Record<string, unknown>): {expectedRevision: unknown; configuration: unknown} => ({expectedRevision: snapshot.revision, configuration: snapshot.configuration});
-const available = {persistentAvailable: true, sessionScope: 'server', reasonCode: null};
+const available = {persistentAvailable: true, reasonCode: null};
 interface MemoryPersistence {load(): Promise<unknown>; save(value: unknown): Promise<void>; readonly value: unknown}
 function memory(initial: unknown = null): MemoryPersistence {
   let stored: unknown = structuredClone(initial);
@@ -36,13 +36,13 @@ test('custom slot starts empty, disabled, network-free and cannot bind a credent
   const previous = globalThis.fetch;
   globalThis.fetch = () => assert.fail('Saving settings must never probe a provider');
   (t as {after(callback: ()=>void): void}).after(() => { globalThis.fetch = previous; });
-  const persistence = memory(), settings = await createCustomImageSettings({persistence: persistence as never}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
+  const persistence = memory(), settings = await createCustomImageSettings({persistence}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
   const initial = await settings.get();
   assert.deepEqual(initial.configuration, DEFAULT_CUSTOM_IMAGE_CONFIGURATION);
   assert.ok(isCustomImageSettingsResult(initial));
   assert.deepEqual(initial.secret, {configured: false, storage: 'none'});
   assert.equal(persistence.value, null);
-  for (const secret of [replace(), replace(SENTINEL, 'persistent')]) {
+  for (const secret of [replace(), replace(SENTINEL, 'session')]) {
     await assert.rejects(settings.put(update(0, secret, DEFAULT_CUSTOM_IMAGE_CONFIGURATION)), {code: 'IMAGE_SETTINGS_VALIDATION'});
   }
   for (const changed of [{baseUrl: '', model: 'model'}, {baseUrl: 'https://images.example.com', model: ''},
@@ -59,9 +59,10 @@ test('custom slot starts empty, disabled, network-free and cannot bind a credent
   assert.equal((await settings.put(update())).secret.configured, false);
 });
 
-test('official and custom engines have independent configuration, revisions and session credentials', async t => {
+test('official and custom engines have independent configuration, revisions and encrypted credentials', async t => {
   const officialFile = memory(), customFile = memory();
-  const official = await createImageSettings({persistence: officialFile as never}), custom = await createCustomImageSettings({persistence: customFile as never});
+  const official = await createImageSettings({persistence: officialFile, secretCodec: cipher(), storage: available}),
+    custom = await createCustomImageSettings({persistence: customFile, secretCodec: cipher(), storage: available});
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await official.close(); await custom.close(); });
   const a = await official.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: replace('synthetic-official-only')});
   const old = officialFile.value, b = await custom.put(update(0, replace()));
@@ -76,14 +77,14 @@ test('official and custom engines have independent configuration, revisions and 
   await assert.rejects(official[IMAGE_CREDENTIAL_ACQUIRE](expected(b)), {code: 'IMAGE_SETTINGS_VALIDATION'});
   assert.throws(() => validateImageSettingsEnvelope(customFile.value), {code: 'IMAGE_SETTINGS_CORRUPT'});
   assert.throws(() => validateCustomImageSettingsEnvelope(officialFile.value), {code: 'IMAGE_SETTINGS_CORRUPT'});
-  assert.equal((customFile.value as {secret: unknown}).secret, null); redacted(customFile.value); redacted(b);
+  assert.ok((customFile.value as {secret: {encrypted: string}}).secret.encrypted); redacted(customFile.value); redacted(b);
   const clean = sanitizeCustomImageSettingsResult({...b, apiKey: SENTINEL, ciphertext: 'hidden', secret: {...b.secret, value: SENTINEL, hash: 'hidden'}});
   assert.deepEqual(clean, b); redacted(clean);
 });
 
 test('custom recipient or model changes require explicit replacement or removal and never reuse the old binding', async t => {
   for (const change of [{baseUrl: 'https://different.example.com/v2'}, {baseUrl: 'https://images.example.com/other'}, {model: 'next-image'}]) {
-    const persistence = memory(), settings = await createCustomImageSettings({persistence: persistence as never}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
+    const persistence = memory(), settings = await createCustomImageSettings({persistence, secretCodec: cipher(), storage: available}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
     const old = await settings.put(update(0, replace())), before = persistence.value;
     await assert.rejects(settings.put(update(1, {action: 'keep'}, config(change))), {code: 'IMAGE_SETTINGS_CONFLICT'});
     assert.deepEqual(await settings.get(), old); assert.deepEqual(persistence.value, before);
@@ -97,8 +98,10 @@ test('custom recipient or model changes require explicit replacement or removal 
   }
 });
 
-test('enable toggles retain a custom key, every save fences old revisions, backend close drops session secrets', async () => {
-  const persistence = memory(); let settings = await createCustomImageSettings({persistence});
+test('enable toggles retain a custom key, every save fences old revisions, and ciphertext survives restart', async () => {
+  const persistence = memory(), secretCodec = cipher();
+  const options = {persistence, secretCodec, storage: available};
+  let settings = await createCustomImageSettings(options);
   const old = await settings.put(update(0, replace()));
   const disabled = await settings.put(update(1, {action: 'keep'}, config({enabled: false})));
   assert.equal((await settings[IMAGE_CREDENTIAL_ACQUIRE](expected(disabled))).apiKey, SENTINEL);
@@ -106,14 +109,14 @@ test('enable toggles retain a custom key, every save fences old revisions, backe
   assert.throws(() => settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected(old)), {code: 'IMAGE_SETTINGS_CONFLICT'});
   await settings.close();
   await assert.rejects(settings[IMAGE_CREDENTIAL_ACQUIRE](expected(disabled)), {code: 'IMAGE_SETTINGS_CLOSED'});
-  settings = await createCustomImageSettings({persistence});
-  assert.deepEqual((await settings.get()).secret, {configured: false, storage: 'none'});
-  assert.equal((await settings[IMAGE_CREDENTIAL_ACQUIRE](expected(disabled))).apiKey, null);
+  settings = await createCustomImageSettings(options);
+  assert.deepEqual((await settings.get()).secret, {configured: true, storage: 'persistent'});
+  assert.equal((await settings[IMAGE_CREDENTIAL_ACQUIRE](expected(disabled))).apiKey, SENTINEL);
   await settings.close();
 });
 
 test('custom CAS and admitted mutation fences match official lifecycle, including known failed saves', async t => {
-  const persistence = memory(), settings = await createCustomImageSettings({persistence: persistence as never}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
+  const persistence = memory(), settings = await createCustomImageSettings({persistence, secretCodec: cipher(), storage: available}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
   const incoming = update(0, replace()), first = settings.put(incoming);
   incoming.configuration.model = 'mutated'; incoming.secret.value = 'mutated';
   const results = await Promise.allSettled([first, settings.put(update(0, replace('racer')))]);
@@ -132,7 +135,7 @@ test('custom CAS and admitted mutation fences match official lifecycle, includin
 
 test('custom unknown-save outcomes remain fenced during read-back and latch closed unless old durable state is proven', async t => {
   for (const outcome of ['candidate', 'foreign', 'unreadable']) {
-    const persistence = memory(), settings = await createCustomImageSettings({persistence: persistence as never}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
+    const persistence = memory(), settings = await createCustomImageSettings({persistence, secretCodec: cipher(), storage: available}); (t as {after(callback: ()=>void): void}).after(() => settings.close());
     const old = await settings.put(update(0, replace())), save = persistence.save;
     const gate = deferred(), read = deferred();
     persistence.save = async candidate => {
@@ -168,21 +171,24 @@ test('custom persistent secrets bind namespace, connection, profile, origin, mod
   await settings.close();
 });
 
-test('custom vault unavailable/locked never silently falls back and explicit session or removal is possible', async t => {
+test('custom vault unavailable/locked rejects replacement; explicit removal still works', async t => {
   for (const options of [{}, {storage: available}, {secretCodec: cipher(), storage: {...available, persistentAvailable: false, reasonCode: 'LINUX_BASIC_TEXT'}}]) {
     const persistence = memory(), settings = await createCustomImageSettings({persistence: persistence as never, ...options} as never); (t as {after(callback: ()=>void): void}).after(() => settings.close());
     await assert.rejects(settings.put(update(0, replace(SENTINEL, 'persistent'))), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
     assert.equal(persistence.value, null); assert.equal((await settings.get()).secret.configured, false);
-    assert.equal((await settings.put(update(0, replace()))).secret.storage, 'session');
+    await assert.rejects(settings.put(update(0, replace(SENTINEL, 'session'))), {code: 'IMAGE_SETTINGS_VALIDATION'});
+    assert.equal(persistence.value, null);
   }
   const persistence = memory(), secretCodec = cipher();
   const original = await createCustomImageSettings({persistence, secretCodec, storage: available});
   const saved = await original.put(update(0, replace(SENTINEL, 'persistent'))); await original.close();
-  const locked = await createCustomImageSettings({persistence, secretCodec: {...secretCodec, decrypt() { throw Error(SENTINEL); }}, storage: available});
+  const locked = await createCustomImageSettings({persistence, secretCodec: {...secretCodec, decrypt() { throw Error(SENTINEL); }, encrypt() {throw Error(SENTINEL);}}, storage: available});
   (t as {after(callback: ()=>void): void}).after(() => locked.close());
   assert.equal((await locked.get()).secret.configured, true); assert.equal((await locked.get()).storage.persistentAvailable, false);
   await assert.rejects(locked[IMAGE_CREDENTIAL_ACQUIRE](expected(saved)), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.equal((await locked.put(update(1, replace()))).secret.storage, 'session');
+  await assert.rejects(locked.put(update(1, replace())), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
+  assert.ok((persistence.value as {secret: {encrypted: string}}).secret.encrypted);
+  await locked.put(update(1, {action: 'remove'}));
   assert.equal((persistence.value as {secret: unknown}).secret, null); redacted(persistence.value);
 });
 

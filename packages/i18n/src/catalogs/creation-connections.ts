@@ -2,36 +2,6 @@ import type { MessageCatalog } from '../types.ts';
 
 /** Connection UI text; never persisted in provider configuration or receipts. */
 export const connectionMessages = {
-  "connections.storage.none": {
-    "zh-Hans": "未保存密钥",
-    "zh-Hant": "未儲存密鑰",
-    "en": "No key saved",
-    "ja": "キー未保存"
-  },
-  "connections.storage.session": {
-    "zh-Hans": "仅本次运行",
-    "zh-Hant": "僅本次執行",
-    "en": "This session only",
-    "ja": "今回の実行のみ"
-  },
-  "connections.storage.persistent": {
-    "zh-Hans": "系统加密保存",
-    "zh-Hant": "系統加密儲存",
-    "en": "System-encrypted storage",
-    "ja": "システムで暗号化して保存"
-  },
-  "connections.storage.webReason": {
-    "zh-Hans": "当前为服务器模式，密钥仅保存在服务器内存；服务器退出后清除",
-    "zh-Hant": "目前為伺服器模式，密鑰僅儲存在伺服器記憶體中；伺服器結束後即清除",
-    "en": "In server mode, keys are kept only in server memory and cleared when the server exits",
-    "ja": "サーバーモードでは、キーはサーバーのメモリ内だけに保持され、サーバー終了時に消去されます"
-  },
-  "connections.storage.basicReason": {
-    "zh-Hans": "系统仅提供 basic_text，不能安全持久保存；密钥仅在本次应用运行中保留",
-    "zh-Hant": "系統僅提供 basic_text，無法安全地持久儲存；密鑰僅在本次應用程式執行期間保留",
-    "en": "The system provides only basic_text, which cannot securely persist keys. Keys remain only for this app session",
-    "ja": "システムでは basic_text のみ利用でき、安全に永続保存できません。キーは今回のアプリ実行中のみ保持されます"
-  },
   "connections.storage.keychainPending": {
     "zh-Hans": "正在等待钥匙串。如果 macOS 弹出授权窗口，请允许 Mioon 访问钥匙串。",
     "zh-Hant": "正在等待鑰匙圈。如果 macOS 顯示授權視窗，請允許 Mioon 存取鑰匙圈。",
@@ -39,22 +9,16 @@ export const connectionMessages = {
     "ja": "キーチェーンへのアクセスを待っています。macOSで確認が表示されたら、Mioonによるキーチェーンへのアクセスを許可してください。"
   },
   "connections.storage.unavailableReason": {
-    "zh-Hans": "系统安全存储不可用，不能持久保存；可选择仅本次运行",
-    "zh-Hant": "系統安全儲存無法使用，不能持久儲存；可選擇僅本次執行",
-    "en": "System secure storage is unavailable. Choose session-only storage instead of persistent storage",
-    "ja": "システムの安全なストレージを利用できません。永続保存ではなく、今回の実行のみの保存を選べます"
+    "zh-Hans": "系统安全存储不可用，无法保存密钥。",
+    "zh-Hant": "系統安全儲存無法使用，無法儲存金鑰。",
+    "en": "Keys can’t be saved because system secure storage is unavailable.",
+    "ja": "システムの安全なストレージを利用できないため、キーを保存できません。"
   },
-  "connections.storage.availableReason": {
-    "zh-Hans": "系统安全存储可用；持久密钥经系统加密保存在项目数据之外",
-    "zh-Hant": "系統安全儲存可用；持久儲存的密鑰會由系統加密，並與專案資料分開儲存",
-    "en": "System secure storage is available. Persistent keys are system-encrypted and stored outside project data",
-    "ja": "システムの安全なストレージを利用できます。永続保存するキーはシステムで暗号化され、プロジェクトデータとは別に保存されます"
-  },
-  "connections.storage.fallbackReason": {
-    "zh-Hans": "当前无法持久保存密钥；仅本次运行可用",
-    "zh-Hant": "目前無法持久儲存密鑰；僅本次執行可用",
-    "en": "Persistent key storage is currently unavailable. Session-only storage is available",
-    "ja": "現在、キーを永続保存できません。今回の実行中のみ保持できます"
+  "connections.storage.desktopRequired": {
+    "zh-Hans": "请在桌面应用里配置密钥。",
+    "zh-Hant": "請在桌面應用程式中設定金鑰。",
+    "en": "Set up keys in the desktop app.",
+    "ja": "デスクトップアプリでキーを設定してください。"
   },
   "agent.settings.keyHidden": {
     "zh-Hans": "隐藏设置时已清空新输入的密钥；连接草稿仍保留。需要替换密钥时请重新输入",
@@ -278,12 +242,6 @@ export const connectionMessages = {
     "en": "The provider, region, or endpoint changed. Saving will clear the original key. Confirm the destination, then enter a new key",
     "ja": "プロバイダー、リージョン、または接続先が変更されています。保存時に元のキーを消去します。送信先を確認し、新しいキーを入力してください"
   },
-  "agent.settings.keyStorage": {
-    "zh-Hans": "新密钥的保存方式",
-    "zh-Hant": "新密鑰的儲存方式",
-    "en": "Storage for the new key",
-    "ja": "新しいキーの保存方法"
-  },
   "agent.settings.undoRemoveHint": {
     "zh-Hans": "撤销尚未提交的移除操作",
     "zh-Hant": "撤銷尚未提交的移除操作",
@@ -308,23 +266,11 @@ export const connectionMessages = {
     "en": "Remove key",
     "ja": "キーを削除"
   },
-  "agent.settings.reenterStorage": {
-    "zh-Hans": "更改保存方式需重新输入密钥",
-    "zh-Hant": "變更儲存方式須重新輸入密鑰",
-    "en": "Enter the key again to change its storage method",
-    "ja": "保存方法を変えるには、キーを再入力してください"
-  },
   "connections.intentRemove": {
     "zh-Hans": "此次保存：移除已有密钥",
     "zh-Hant": "此次儲存：移除現有密鑰",
     "en": "On save: remove the existing key",
     "ja": "今回の保存：既存のキーを削除"
-  },
-  "connections.intentKeep": {
-    "zh-Hans": "此次保存：保留已有密钥",
-    "zh-Hant": "此次儲存：保留現有密鑰",
-    "en": "On save: keep the existing key",
-    "ja": "今回の保存：既存のキーを保持"
   },
   "agent.settings.intentOllama": {
     "zh-Hans": "此次保存：仅连接参数；本地 Ollama 通常无需密钥",
@@ -397,48 +343,6 @@ export const connectionMessages = {
     "zh-Hant": "儲存設定",
     "en": "Save settings",
     "ja": "設定を保存"
-  },
-  "image.settings.storageNone": {
-    "zh-Hans": "未保存",
-    "zh-Hant": "未儲存",
-    "en": "Not saved",
-    "ja": "未保存"
-  },
-  "image.settings.storageSession": {
-    "zh-Hans": "仅本次后端运行",
-    "zh-Hant": "僅本次後端執行",
-    "en": "This backend session only",
-    "ja": "今回のバックエンド実行のみ"
-  },
-  "image.settings.storageChoose": {
-    "zh-Hans": "请选择保存方式",
-    "zh-Hant": "請選擇儲存方式",
-    "en": "Choose a storage method",
-    "ja": "保存方法を選択"
-  },
-  "image.settings.storageWeb": {
-    "zh-Hans": "当前服务器不提供系统安全存储。仅本次后端运行可用，后端退出后密钥清除",
-    "zh-Hant": "目前伺服器不提供系統安全儲存。密鑰僅於本次後端執行期間可用，後端結束後即清除",
-    "en": "This server does not provide system secure storage. Keys are available only for this backend session and cleared when it exits",
-    "ja": "このサーバーではシステムの安全なストレージを提供していません。キーは今回のバックエンド実行中のみ利用でき、終了時に消去されます"
-  },
-  "image.settings.storageBasic": {
-    "zh-Hans": "系统仅提供 basic_text，不支持安全持久保存。可明确选择仅本次后端运行",
-    "zh-Hant": "系統僅提供 basic_text，不支援安全持久儲存。可明確選擇僅本次後端執行",
-    "en": "The system provides only basic_text, which cannot securely persist keys. You can explicitly choose backend-session-only storage",
-    "ja": "システムでは basic_text のみ利用でき、安全な永続保存には対応していません。今回のバックエンド実行のみの保存を明示的に選択できます"
-  },
-  "image.settings.storageUnavailable": {
-    "zh-Hans": "系统安全存储不可用。可明确选择仅本次后端运行",
-    "zh-Hant": "系統安全儲存無法使用。可明確選擇僅本次後端執行",
-    "en": "System secure storage is unavailable. You can explicitly choose backend-session-only storage",
-    "ja": "システムの安全なストレージを利用できません。今回のバックエンド実行のみの保存を明示的に選択できます"
-  },
-  "image.settings.storageAvailable": {
-    "zh-Hans": "系统安全存储可用。持久保存需要你的明确选择；不会退回明文文件",
-    "zh-Hant": "系統安全儲存可用。持久儲存須由你明確選擇；不會改用明文檔案",
-    "en": "System secure storage is available. Persistent storage requires your explicit choice. It will not fall back to plain-text files",
-    "ja": "システムの安全なストレージを利用できます。永続保存は明示的に選択する必要があり、平文ファイルへの保存には切り替えません"
   },
   "image.settings.keyHidden": {
     "zh-Hans": "隐藏设置或切换项目时已清空新输入的密钥；非秘密草稿仍保留。需要替换密钥时请重新输入",
@@ -656,18 +560,6 @@ export const connectionMessages = {
     "en": "Saved keys are never displayed or placed in projects, chat, browser storage, or logs. Leaving, hiding, or switching projects clears unsubmitted keys",
     "ja": "保存したキーは再表示せず、プロジェクト、チャット、ブラウザーのストレージ、ログにも含めません。画面を離れる、非表示にする、プロジェクトを切り替える操作で未送信のキーを消去します"
   },
-  "image.settings.keyStorage": {
-    "zh-Hans": "密钥保存方式",
-    "zh-Hant": "密鑰儲存方式",
-    "en": "Key storage method",
-    "ja": "キーの保存方法"
-  },
-  "image.settings.reenterStorage": {
-    "zh-Hans": " 更改已有密钥的保存方式需重新输入密钥",
-    "zh-Hant": " 變更現有密鑰的儲存方式須重新輸入密鑰",
-    "en": " Enter the key again to change how the saved key is stored",
-    "ja": " 保存済みキーの保存方法を変えるには、キーを再入力してください"
-  },
   "connections.enabled": {
     "zh-Hans": "已启用",
     "zh-Hant": "已啟用",
@@ -697,12 +589,6 @@ export const connectionMessages = {
     "zh-Hant": "移除圖像密鑰",
     "en": "Remove image key",
     "ja": "画像用キーを削除"
-  },
-  "image.settings.intentNone": {
-    "zh-Hans": "仅保存连接设置，尚无密钥",
-    "zh-Hant": "僅儲存連線設定，尚無密鑰",
-    "en": "Save connection settings only; no key configured",
-    "ja": "接続設定のみ保存、キーは未設定"
   },
   "image.settings.recovery": {
     "zh-Hans": "保存结果待核对，不会自动重试",
@@ -908,42 +794,6 @@ export const connectionMessages = {
     "en": "Key saved · {storage}",
     "ja": "キー保存済み · {storage}"
   },
-  "connections.storage.appSession": {
-    "zh-Hans": "仅本次运行（应用退出后清除）",
-    "zh-Hant": "僅本次執行（應用程式結束後清除）",
-    "en": "This session only (cleared when the app exits)",
-    "ja": "今回の実行のみ（アプリ終了時に消去）"
-  },
-  "connections.storage.serverSession": {
-    "zh-Hans": "仅本次运行（服务器退出后清除）",
-    "zh-Hant": "僅本次執行（伺服器結束後清除）",
-    "en": "This session only (cleared when the server exits)",
-    "ja": "今回の実行のみ（サーバー終了時に消去）"
-  },
-  "connections.storage.persistentUnavailable": {
-    "zh-Hans": "系统加密保存（不可用）",
-    "zh-Hant": "系統加密儲存（無法使用）",
-    "en": "System-encrypted storage (unavailable)",
-    "ja": "システムで暗号化して保存（利用不可）"
-  },
-  "image.settings.persistentUnavailable": {
-    "zh-Hans": "系统加密保存（当前不可用）",
-    "zh-Hant": "系統加密儲存（目前無法使用）",
-    "en": "System-encrypted storage (currently unavailable)",
-    "ja": "システムで暗号化して保存（現在利用不可）"
-  },
-  "connections.intentReplace": {
-    "zh-Hans": "此次保存：替换密钥 · {storage}",
-    "zh-Hant": "此次儲存：更換密鑰 · {storage}",
-    "en": "On save: replace key · {storage}",
-    "ja": "今回の保存：キーを置き換え · {storage}"
-  },
-  "connections.intentWrite": {
-    "zh-Hans": "此次保存：写入密钥 · {storage}",
-    "zh-Hant": "此次儲存：寫入密鑰 · {storage}",
-    "en": "On save: store key · {storage}",
-    "ja": "今回の保存：キーを書き込み · {storage}"
-  },
   "agent.settings.leaveSaving": {
     "zh-Hans": "{action}不会撤回已提交的保存",
     "zh-Hant": "{action}不會撤回已提交的儲存",
@@ -957,22 +807,16 @@ export const connectionMessages = {
     "ja": "現在のサーバー設定：{state}"
   },
   "image.settings.currentKey": {
-    "zh-Hans": "密钥：{storage}",
-    "zh-Hant": "密鑰：{storage}",
-    "en": "Key: {storage}",
-    "ja": "キー：{storage}"
+    "zh-Hans": "密钥：{state}",
+    "zh-Hant": "密鑰：{state}",
+    "en": "Key: {state}",
+    "ja": "キー：{state}"
   },
   "image.settings.revision": {
     "zh-Hans": "配置版本 r{revision}",
     "zh-Hant": "設定版本 r{revision}",
     "en": "Configuration revision r{revision}",
     "ja": "設定リビジョン r{revision}"
-  },
-  "image.settings.intentNoneFull": {
-    "zh-Hans": "此次保存：仅保存连接设置，尚无密钥",
-    "zh-Hant": "此次儲存：僅儲存連線設定，尚無密鑰",
-    "en": "On save: connection settings only; no key configured",
-    "ja": "今回の保存：接続設定のみ。キーは未設定です"
   },
   "connections.comfy.savedModel": {
     "zh-Hans": "{model}（当前未核验）",
@@ -1052,12 +896,6 @@ export const connectionMessages = {
     "en": "Settings failed validation. Check the platform, endpoint, model, and key format. Private network endpoints are unsupported; use the dedicated preset for local Ollama",
     "ja": "設定の検証に失敗しました。プラットフォーム、接続先、モデル、キーの形式を確認してください。内部ネットワークの接続先には対応していません。ローカルの Ollama には専用プリセットを使用してください"
   },
-  "agent.settings.error.storage": {
-    "zh-Hans": "加密持久保存当前不可用。请查看最新存储状态，选择仅本次运行并重新输入密钥",
-    "zh-Hant": "加密持久儲存目前無法使用。請查看最新儲存狀態，選擇僅本次執行並重新輸入密鑰",
-    "en": "Encrypted persistent storage is currently unavailable. Review the latest storage status, select session-only storage, and enter the key again",
-    "ja": "暗号化した永続保存は現在利用できません。最新の保存状態を確認し、今回の実行のみの保存を選択してキーを再入力してください"
-  },
   "agent.settings.error.corrupt": {
     "zh-Hans": "无法读取安全设置。请检查本机安全存储后重试，不会覆盖已有设置",
     "zh-Hant": "無法讀取安全設定。請檢查本機安全儲存後重試，不會覆寫現有設定",
@@ -1124,24 +962,6 @@ export const connectionMessages = {
     "en": "Saving connection settings…",
     "ja": "接続設定を保存中…"
   },
-  "agent.settings.notice.savedNone": {
-    "zh-Hans": "连接设置已保存；未保存 API 密钥。尚未验证连接",
-    "zh-Hant": "連線設定已儲存；未儲存 API 密鑰。尚未驗證連線",
-    "en": "Connection settings saved without an API key. The connection is not verified",
-    "ja": "API キーなしで接続設定を保存しました。接続は未検証です"
-  },
-  "agent.settings.notice.savedPersistent": {
-    "zh-Hans": "连接设置已保存；密钥由系统加密保存。尚未验证连接",
-    "zh-Hant": "連線設定已儲存；密鑰由系統加密儲存。尚未驗證連線",
-    "en": "Connection settings saved. The key is system-encrypted. The connection is not verified",
-    "ja": "接続設定を保存しました。キーはシステムで暗号化して保存されています。接続は未検証です"
-  },
-  "agent.settings.notice.savedSession": {
-    "zh-Hans": "连接设置已保存；密钥仅在本次运行保留。尚未验证连接",
-    "zh-Hant": "連線設定已儲存；密鑰僅於本次執行期間保留。尚未驗證連線",
-    "en": "Connection settings saved. The key remains for this session only. The connection is not verified",
-    "ja": "接続設定を保存しました。キーは今回の実行中のみ保持されます。接続は未検証です"
-  },
   "agent.settings.notice.keyCleared": {
     "zh-Hans": "新输入的密钥已清空，如需替换请重新输入",
     "zh-Hant": "新輸入的密鑰已清除，如需更換請重新輸入",
@@ -1183,12 +1003,6 @@ export const connectionMessages = {
     "zh-Hant": "設定未通過驗證，請檢查位址、模型與密鑰格式",
     "en": "Settings failed validation. Check the endpoint, model, and key format",
     "ja": "設定の検証に失敗しました。接続先、モデル、キーの形式を確認してください"
-  },
-  "image.settings.error.storage": {
-    "zh-Hans": "系统安全存储当前不可用。请明确选择仅本次运行，并重新输入密钥",
-    "zh-Hant": "系統安全儲存目前無法使用。請明確選擇僅本次執行，並重新輸入密鑰",
-    "en": "System secure storage is currently unavailable. Explicitly select session-only storage and enter the key again",
-    "ja": "システムの安全なストレージは現在利用できません。今回の実行のみの保存を明示的に選択し、キーを再入力してください"
   },
   "image.settings.error.corrupt": {
     "zh-Hans": "无法读取安全设置，不会覆盖已有设置",
@@ -1232,23 +1046,11 @@ export const connectionMessages = {
     "en": "The endpoint or model changed. Enter a new key for this connection, or explicitly remove the original key before saving. The original key will not be carried to the new endpoint",
     "ja": "接続先またはモデルが変更されています。この接続の新しいキーを入力するか、元のキーを明示的に削除してから保存してください。元のキーが新しい接続先に引き継がれることはありません"
   },
-  "image.settings.issue.storage": {
-    "zh-Hans": "请选择密钥的保存方式",
-    "zh-Hant": "請選擇密鑰的儲存方式",
-    "en": "Choose how to store the key",
-    "ja": "キーの保存方法を選択してください"
-  },
   "image.settings.notice.savedPersistent": {
     "zh-Hans": "图像设置已保存。密钥由系统加密保存。保存不会发送图像请求；真实调用尚未验证",
     "zh-Hant": "圖像設定已儲存。密鑰由系統加密儲存。儲存不會傳送圖像請求；實際呼叫尚未驗證",
     "en": "Image settings saved. The key is system-encrypted. Saving does not send image requests; live requests are unverified",
     "ja": "画像設定を保存しました。キーはシステムで暗号化されています。保存では画像リクエストを送信しません。実際のリクエストは未検証です"
-  },
-  "image.settings.notice.savedSession": {
-    "zh-Hans": "图像设置已保存。密钥仅在本次后端运行中保留。保存不会发送图像请求；真实调用尚未验证",
-    "zh-Hant": "圖像設定已儲存。密鑰僅於本次後端執行期間保留。儲存不會傳送圖像請求；實際呼叫尚未驗證",
-    "en": "Image settings saved. The key remains for this backend session only. Saving does not send image requests; live requests are unverified",
-    "ja": "画像設定を保存しました。キーは今回のバックエンド実行中のみ保持されます。保存では画像リクエストを送信しません。実際のリクエストは未検証です"
   },
   "image.settings.notice.savedNone": {
     "zh-Hans": "图像设置已保存。尚未配置密钥。保存不会发送图像请求；真实调用尚未验证",
@@ -1982,7 +1784,6 @@ export const connectionMessages = {
     "en": "Reference media is missing, changed, or unconfirmed. Resolve it before continuing.",
     "ja": "参照素材が見つからないか、変更されたか、未確認です。先に素材を確認してください。"
   },
-  "connections.sessionLoss": {"zh-Hans": "应用退出后，正在进行的生成没法继续查询结果。", "zh-Hant": "應用程式結束後，進行中的生成將無法繼續查詢結果。", "en": "After the app exits, you cannot continue checking results for generation already in progress.", "ja": "アプリを終了すると、進行中の生成結果を引き続き照会できなくなります。"},
   "image.settings.services.title": {"zh-Hans": "自定义图片服务", "zh-Hant": "自訂圖片服務", "en": "Custom image services", "ja": "カスタム画像サービス"},
   "image.settings.services.name": {"zh-Hans": "服务名称", "zh-Hant": "服務名稱", "en": "Service name", "ja": "サービス名"},
   "image.settings.services.add": {"zh-Hans": "添加自定义图片服务", "zh-Hant": "新增自訂圖片服務", "en": "Add custom image service", "ja": "カスタム画像サービスを追加"},

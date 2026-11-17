@@ -59,7 +59,7 @@ test('service navigation never selects Mio or changes metadata; manual/custom li
 });
 
 test('single CAS save reads every DOM source once, clears before dispatch, and supports independent key actions',async()=>{
- const f=settingsUiFixture();await f.session.load();f.session.removeKey(custom);f.session.setStorage('openai','persistent');let cleared=false;const reads:string[]=[];
+ const f=settingsUiFixture();await f.session.load();f.session.removeKey(custom);let cleared=false;const reads:string[]=[];
  const originalWrite=f.client.write;f.client.write=input=>{assert.equal(cleared,true);return originalWrite(input);};
  assert.equal(await f.session.save({read:key=>{reads.push(key);return key==='openai'?'synthetic-secret-openai':key==='deepseek'?'synthetic-secret-deepseek':'';},clear:()=>{cleared=true;}}),true);
  assert.equal(f.calls.length,1);assert.equal(new Set(reads).size,reads.length);assert.equal(reads.length,f.saved().services.length);
@@ -68,10 +68,10 @@ test('single CAS save reads every DOM source once, clears before dispatch, and s
 });
 
 test('validation clears all submitted DOM inputs without dispatch; unavailable persistent storage never silently downgrades',async()=>{
- const initial=uiSettings();initial.storage={persistentAvailable:false,sessionScope:'app',reasonCode:'OS_SECRET_STORE_UNAVAILABLE'};initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};
- const f=settingsUiFixture({initial});await f.session.load();assert.equal(f.session.getState().serviceIntents[custom]!.storage,'persistent');let clears=0;
- assert.equal(await f.session.save({read:key=>key===custom?'synthetic-secret':'',clear:()=>{clears++;}}),false);assert.equal(clears,1);assert.equal(f.calls.length,0);assert.equal(f.session.getState().serviceIntents[custom]!.storage,'persistent');assertNoSecrets(f.emitted);
- f.session.setStorage(custom,'session');assert.equal(await f.session.save({read:key=>key===custom?'synthetic-secret':'',clear:()=>{clears++;}}),true);assert.equal(f.saved().execution?.secret.storage,'session');
+ const initial=uiSettings();initial.storage={persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'};initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};
+ const f=settingsUiFixture({initial});await f.session.load();let clears=0;
+ assert.equal(await f.session.save({read:key=>key===custom?'synthetic-secret':'',clear:()=>{clears++;}}),false);assert.equal(clears,1);assert.equal(f.calls.length,0);assertNoSecrets(f.emitted);
+ assert.equal(f.session.getState().snapshot?.execution?.secret.storage,'persistent');
 });
 
 test('CAS conflict and unknown result perform one readback, preserve drafts, and require review with no key replay',async()=>{
@@ -129,6 +129,8 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
   if(id==='./SettingsServicesLayout.tsx')return {__esModule:true,default:'ServicesLayout'};
   if(id==='@mioon/ui/components/workbench-confirm')return {useConfirmation:()=>async()=>true};
   if(id==='./AgentTaskPolicy.tsx'||id==='./AgentAuthorizations.tsx'||id==='./AgentConnectionTest.tsx'||id==='./icons.tsx')return {__esModule:true,default:id};
+  if(id==='./desktop-window-client.ts')return {hasDesktopWindowBridge:()=>false};
+  if(id==='./SettingsSecretStorageNotice.tsx')return {SettingsSecretStorageNotice:'SettingsSecretStorageNotice'};
   if(id.startsWith('@mioon/ui/')||id==='./WorkspaceControls.tsx')return new Proxy({},{get:(_target,key)=>String(key)});throw Error(id);
  },module,module.exports,document);
  const h={render(){cursor=0;pending=[];tree=module.exports.default!({onClose:()=>{},onNavigationStateChange:(next:navigation.SettingsNavigationState)=>reports.push(next)});for(const node of nodes(tree)){const ref=node.props.ref;if(ref&&typeof ref==='object'&&'current'in ref){const id=String(node.props.id);if(!dom.has(id))dom.set(id,{value:''});ref.current=dom.get(id);}}for(const effect of pending)effect();return tree;},
@@ -147,6 +149,16 @@ function uiHarness(client:logic.AgentSettingsClient,discovery:AgentModelListClie
 }
 const ready=async(h:ReturnType<typeof uiHarness>)=>{h.render();await flush();h.render();};
 
+test('Mio does not offer a key field or storage selector when secure storage is unavailable',async()=>{
+ const initial=uiSettings();initial.storage={persistentAvailable:false,reasonCode:'OS_SECRET_STORE_UNAVAILABLE'};
+ const f=settingsUiFixture({initial}),h=uiHarness(f.client);
+ await ready(h);h.view('openai');const controls=nodes(h.render());
+ assert.ok(!controls.some(node=>node.props.type==='password'));
+ assert.ok(!controls.some(node=>String(node.props['data-testid']).startsWith('agent-settings-storage')));
+ assert.deepEqual(controls.find(node=>node.props.testId==='agent-settings-keychain-pending-openai')?.props.storage,initial.storage);
+ assert.equal(f.calls.length,0);h.unmount();
+});
+
 test('the Mio execution policy has confirmation controls without a step-limit field',()=>{
  const policySource=readFileSync(new URL('../apps/web/src/AgentTaskPolicy.tsx',import.meta.url),'utf8');
  assert.match(policySource,/agent-policy-preset/u);
@@ -164,7 +176,7 @@ function renderedWorkbenchButton(node:Element):Element{
 
 test('actual model fetch and key check show the real button spinner while pending and clear it on completion or cancellation',async()=>{
  for(const action of ['fetch','check-key'])for(const finish of ['complete','hide']){
-  const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};
+  const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'persistent'};
   const pending=deferred(),signals:AbortSignal[]=[],f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result:listed(['old-model'])}),modelsList:async(_input,options)=>{signals.push(options.signal);return pending.promise;}});
   try{
    await ready(h);h.view('openai');await flush();h.render();
@@ -187,7 +199,7 @@ test('actual model fetch and key check show the real button spinner while pendin
 });
 
 test('model list failures explain the next step in all four locales and keep the last observation',async()=>{
- const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};
+ const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'persistent'};
  initial.services.find(entry=>entry.serviceKey==='openai')!.manualModelIds=['last-fetched-model'];
  const previous=listed(['last-fetched-model']);
  let next:AgentModelListResult=previous;
@@ -281,7 +293,7 @@ test('actual detail opens only its cache, keeps manually added rows, and does no
 
 test('actual picker locks added and active models, stages only selected IDs, and persists them only in the ordinary settings save',async()=>{
  const initial=uiSettings(),service=initial.services.find(item=>item.serviceKey===custom)!,active=initial.mioSelection!.modelId;
- service.manualModelIds=['manual-before'];service.secret={configured:true,storage:'session'};initial.execution!.secret=service.secret;
+ service.manualModelIds=['manual-before'];service.secret={configured:true,storage:'persistent'};initial.execution!.secret=service.secret;
  const result=listed(['manual-before',active,'selected-one','skipped','selected-two']);
  const f=settingsUiFixture({initial}),h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
  const fetch=async()=>{h.click(`agent-settings-fetch-${custom}`);await flush();h.render();};
@@ -301,7 +313,7 @@ test('Mio picker locks catalog suggestions already shown in settings without con
  const initial=adaptedUiSettings(),entry=initial.services.find(item=>item.serviceKey==='openai')!;
  const platform=initial.presets.find(item=>item.id==='openai')!.platforms.find(item=>item.id===entry.platformId)!;
  const suggestion=platform.supportedModelHints?.[entry.protocol]?.[0];assert.ok(suggestion);
- entry.secret={configured:true,storage:'session'};
+ entry.secret={configured:true,storage:'persistent'};
  const result=listed([suggestion,'provider-only']),f=settingsUiFixture({initial});
  const h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
  try{
@@ -321,7 +333,7 @@ test('Mio picker locks catalog suggestions already shown in settings without con
 
 test('discarding the Mio settings draft removes all picker additions and retains the original list',async()=>{
  const initial=uiSettings(),entry=initial.services.find(item=>item.serviceKey===custom)!,active=initial.mioSelection!.modelId;
- entry.manualModelIds=['manual-before'];entry.secret={configured:true,storage:'session'};initial.execution!.secret=entry.secret;
+ entry.manualModelIds=['manual-before'];entry.secret={configured:true,storage:'persistent'};initial.execution!.secret=entry.secret;
  const result=listed(['manual-before',active,'first-addition','second-addition']),f=settingsUiFixture({initial});
  const h=uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
  const fetchModels=async()=>{h.click(`agent-settings-fetch-${custom}`);await flush();h.render();};
@@ -403,7 +415,7 @@ test('Kimi retirement follows the announced month in both regions without changi
  } as const;
  for (const [platformId, baseUrl] of [['china','https://api.moonshot.cn/v1'],['international','https://api.moonshot.ai/v1']] as const) {
   t.mock.timers.setTime(before.getTime());
-  const initial = adapterSettings({presetId:'kimi',platformId,baseUrl,protocol:'chat_completions',model:oldModel},{revision:0,secretStorage:'session'});
+  const initial = adapterSettings({presetId:'kimi',platformId,baseUrl,protocol:'chat_completions',model:oldModel},{revision:0,secretStorage:'persistent'});
   initial.services.find(item=>item.serviceKey==='openai')!.manualModelIds=[oldModel];
   const result = listed([oldModel,currentModel]), f = settingsUiFixture({initial});
   const h = uiHarness(f.client,{modelsCache:async()=>({status:'hit',result}),modelsList:async()=>result});
@@ -502,7 +514,7 @@ test('a test of the current Mio draft uses its typed key and model, and clears i
 });
 
 test('actual selected detail can list with its own saved key before it becomes the saved Mio selection',async()=>{
- const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'session'};const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
+ const initial=uiSettings();initial.services.find(entry=>entry.serviceKey==='openai')!.secret={configured:true,storage:'persistent'};const f=settingsUiFixture({initial}),calls:Parameters<AgentModelListClient['modelsList']>[0][]=[],discovery:AgentModelListClient={modelsCache:async()=>({status:'miss'}),modelsList:async input=>{calls.push(input);return listed(['new-model']);}};
  const h=uiHarness(f.client,discovery);await ready(h);h.view('openai');await flush();h.render();assert.equal(calls.length,0);h.click('agent-settings-fetch-openai');await flush();h.render();assert.equal(calls.length,1);assert.equal(h.picker()?.props.usesDraftKey,false);assert.equal(calls[0]!.serviceKey,'openai');assert.deepEqual(calls[0]!.credential,{source:'saved'});assert.equal(f.saved().mioSelection?.serviceKey,custom);assert.equal(f.calls.length,0);assert.equal(f.saved().verification,'not_tested');assert.equal(h.find('agent-settings-save').props.disabled,true);h.unmount();
 });
 
@@ -515,7 +527,7 @@ test('actual complete missing warning retains the Mio row; partial and failed re
 
 test('actual missing warning applies only to the saved connection and remains valid through manual-model-only edits',async()=>{
  for(const edit of ['protocol','address','platform','manual']){
-  const initial=edit==='platform'?adapterSettings({presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/v1',model:'MiniMax-M3',protocol:'chat_completions'},{revision:0,secretStorage:'session'}):adapterSettings(undefined,{revision:0,secretStorage:'session'});
+  const initial=edit==='platform'?adapterSettings({presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/v1',model:'MiniMax-M3',protocol:'chat_completions'},{revision:0,secretStorage:'persistent'}):adapterSettings(undefined,{revision:0,secretStorage:'persistent'});
   const f=settingsUiFixture({initial}),key=initial.mioSelection!.serviceKey,model=initial.mioSelection!.modelId,discovery:AgentModelListClient={modelsCache:async()=>({status:'hit',result:listed()}),modelsList:async()=>listed()};
   const h=uiHarness(f.client,discovery);await ready(h);h.view(key);await flush();h.render();assert.ok(h.find(`agent-settings-model-missing-${key}`));
   if(edit==='protocol')h.change(`agent-settings-protocol-${key}`,'responses');
@@ -579,33 +591,33 @@ test('client never reflects raw messages, details, unknown codes or thrown crede
  const held=deferred();let calls=0,aborts=0;const client=logic.createAgentSettingsClient({timeoutMs:2,fetchImpl:(_url,options)=>{calls++;options?.signal?.addEventListener('abort',()=>{aborts++;});return held.promise as Promise<Response>;}});await assert.rejects(client.write({}));held.resolve(Response.json({ok:true,data:uiSettings()}));await flush();assert.equal(calls,1);assert.equal(aborts,1);
 });
 
-test('non-secret save does not invent a configured key; changing storage without input never migrates a saved key',async()=>{
+test('non-secret save keeps the current credential state',async()=>{
  const f=settingsUiFixture();await f.session.load();f.session.selectMio(custom,'new-model');assert.equal(await f.session.save(),true);assert.equal(f.saved().execution?.secret.configured,false);assert.equal(f.calls[0]!.secretActions.find(action=>action.serviceKey===custom)?.action,'keep');
- const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'session'};initial.execution!.secret={configured:true,storage:'session'};
- const g=settingsUiFixture({initial});await g.session.load();g.session.setStorage(custom,'persistent');assert.equal(logic.agentSettingsDirty(g.session.getState()),false);g.session.selectMio(custom,'new-model');await g.session.save();assert.equal(g.calls[0]!.secretActions.find(action=>action.serviceKey===custom)?.action,'keep');assert.equal(g.saved().execution?.secret.storage,'session');
+ const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};
+ const g=settingsUiFixture({initial});await g.session.load();assert.equal(logic.agentSettingsDirty(g.session.getState()),false);g.session.selectMio(custom,'new-model');await g.session.save();assert.equal(g.calls[0]!.secretActions.find(action=>action.serviceKey===custom)?.action,'keep');assert.equal(g.saved().execution?.secret.storage,'persistent');
 });
 
 test('changed destination removes its saved key unless explicitly replaced; model/protocol-only edits keep same receiver key',async()=>{
  for(const replacement of [false,true]){
-  const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'session'};initial.execution!.secret={configured:true,storage:'session'};
+  const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};
   const f=settingsUiFixture({initial});await f.session.load();f.session.selectMio(custom,'changed-model');f.session.selectProtocol(custom,'responses');await f.session.save();assert.equal(f.calls[0]!.secretActions.find(action=>action.serviceKey===custom)?.action,'keep');assert.equal(f.saved().execution?.configuration.model,'changed-model');assert.equal(f.saved().execution?.configuration.protocol,'responses');
   f.session.editService(custom,{addressInput:'https://other.example'});await f.session.save({read:key=>replacement&&key===custom?'synthetic-secret':'',clear:()=>{}});assert.equal(f.calls[1]!.secretActions.find(action=>action.serviceKey===custom)?.action,replacement?'replace':'remove');assert.equal(f.saved().execution?.secret.configured,replacement);
  }
 });
 
 test('remove is reversible before save and confirmed status changes only after its real acknowledgement',async()=>{
- const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'session'};initial.execution!.secret={configured:true,storage:'session'};
+ const initial=uiSettings();initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};
  const held=deferred(),f=settingsUiFixture({initial,write:()=>held.promise});await f.session.load();f.session.removeKey(custom);assert.equal(f.session.getState().snapshot?.execution?.secret.configured,true);f.session.removeKey(custom,false);assert.equal(f.session.getState().serviceIntents[custom]!.action,'keep');f.session.removeKey(custom);const pending=f.session.save();assert.equal(f.session.getState().snapshot?.execution?.secret.configured,true);held.resolve(f.saved());assert.equal(await pending,true);assert.equal(f.session.getState().snapshot?.execution?.secret.configured,false);
 });
 
 test('outstanding write rejects double save and metadata/platform/protocol/key changes while still allowing view navigation',async()=>{
- const held=deferred(),f=settingsUiFixture({write:()=>held.promise});await f.session.load();const pending=f.session.save({read:key=>key==='openai'?'synthetic-secret':'',clear:()=>{}});assert.equal(f.session.getState().phase,'saving');assert.equal(await f.session.save(),false);assert.equal(f.session.editService(custom,{name:'late'}),false);assert.equal(f.session.selectPlatform('minimax','international'),false);assert.equal(f.session.selectProtocol(custom,'responses'),false);assert.equal(f.session.removeKey(custom),false);assert.equal(f.session.setStorage(custom,'session'),false);assert.equal(f.session.view('deepseek'),true);assert.equal(f.calls.length,1);held.resolve(f.saved());assert.equal(await pending,true);
+ const held=deferred(),f=settingsUiFixture({write:()=>held.promise});await f.session.load();const pending=f.session.save({read:key=>key==='openai'?'synthetic-secret':'',clear:()=>{}});assert.equal(f.session.getState().phase,'saving');assert.equal(await f.session.save(),false);assert.equal(f.session.editService(custom,{name:'late'}),false);assert.equal(f.session.selectPlatform('minimax','international'),false);assert.equal(f.session.selectProtocol(custom,'responses'),false);assert.equal(f.session.removeKey(custom),false);assert.equal(f.session.view('deepseek'),true);assert.equal(f.calls.length,1);held.resolve(f.saved());assert.equal(await pending,true);
 });
 
 test('wrong successful secret/protocol acknowledgements reconcile once without claiming success or retry',async()=>{
  for(const cause of ['replace','remove','keep','protocol']){
-  const initial=uiSettings();if(cause!=='replace'){initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'session'};initial.execution!.secret={configured:true,storage:'session'};}
-  const f=settingsUiFixture({initial,write:(_input,saved)=>{const wrong=structuredClone(saved),entry=wrong.services.find(item=>item.serviceKey===custom)!;if(cause==='protocol'){entry.protocol='chat_completions';wrong.execution!.configuration.protocol='chat_completions';}else {entry.secret=cause==='replace'?{configured:false,storage:'none'}:cause==='remove'?{configured:true,storage:'session'}:{configured:true,storage:'persistent'};wrong.execution!.secret=entry.secret;}return wrong;}});await f.session.load();if(cause==='remove')f.session.removeKey(custom);if(cause==='protocol')f.session.selectProtocol(custom,'responses');assert.equal(await f.session.save({read:key=>cause==='replace'&&key===custom?'synthetic-secret':'',clear:()=>{}}),false);assert.equal(f.session.getState().phase,'review');assert.equal(f.reads,2);assert.equal(f.calls.length,1);assert.equal(await f.session.save(),false);assertNoSecrets(f.emitted);
+  const initial=uiSettings();if(cause!=='replace'){initial.services.find(item=>item.serviceKey===custom)!.secret={configured:true,storage:'persistent'};initial.execution!.secret={configured:true,storage:'persistent'};}
+  const f=settingsUiFixture({initial,write:(_input,saved)=>{const wrong=structuredClone(saved),entry=wrong.services.find(item=>item.serviceKey===custom)!;if(cause==='protocol'){entry.protocol='chat_completions';wrong.execution!.configuration.protocol='chat_completions';}else {entry.secret=cause==='replace'?{configured:false,storage:'none'}:cause==='remove'?{configured:true,storage:'persistent'}:{configured:false,storage:'none'};wrong.execution!.secret=entry.secret;}return wrong;}});await f.session.load();if(cause==='remove')f.session.removeKey(custom);if(cause==='protocol')f.session.selectProtocol(custom,'responses');assert.equal(await f.session.save({read:key=>cause==='replace'&&key===custom?'synthetic-secret':'',clear:()=>{}}),false);assert.equal(f.session.getState().phase,'review');assert.equal(f.reads,2);assert.equal(f.calls.length,1);assert.equal(await f.session.save(),false);assertNoSecrets(f.emitted);
  }
 });
 

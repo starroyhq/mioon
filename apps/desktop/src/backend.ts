@@ -129,7 +129,7 @@ process.parentPort.on('message', ({ data, ports }) => {
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
-      try { await videoSecretCodec.refreshStorage(); } catch { /* Session-only remains available. */ }
+      try { await videoSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
       initializeSubtitleResources(data.subtitleResourcesDir);
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.

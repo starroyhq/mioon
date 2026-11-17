@@ -12,7 +12,7 @@ import {testProjectAppLibrary} from '../packages/business/src/project-service-ap
 import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import type {TaskGateway, TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -37,9 +37,9 @@ async function fixture(t: TestContext, protocol: AgentProtocol = 'chat_completio
   const root = mkdtempSync(path.join(tmpdir(), 'mio-rules-runtime-'));
   let store = openStore(root), services = createServices(store, new Map()), application = testProjectAppLibrary(store)!;
   const project = object(await services.call('project.create', {name: 'Frozen rules project'})), projectId = String(project.id);
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {presetId: 'custom', platformId: 'custom', protocol,
-    model: 'synthetic-rules', baseUrl: 'https://harness.example.com'}, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_LOCAL_TEST_ONLY'}});
+    model: 'synthetic-rules', baseUrl: 'https://harness.example.com'}, secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_LOCAL_TEST_ONLY'}});
   const authorizations = createTestAuthorizations(() => ({...store}), settings); await authorizeTestScope(authorizations, 'project_agent');
   let rules = createMioProjectRules({store, application, ...rulesOptions}), captureCount = 0;
   let tools = createAgentTaskTools({store, services, rules});

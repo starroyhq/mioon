@@ -22,7 +22,7 @@ const messages: Readonly<Record<string, readonly [number, string]>> = Object.fre
   IMAGE_SETTINGS_DISABLED: [409, '此自定义图片服务尚未启用。'],
   IMAGE_SETTINGS_NOT_CONFIGURED: [409, '请先配置此自定义图片服务及其独立密钥。'],
   IMAGE_SETTINGS_CAPACITY: [409, '自定义图片服务设置已达到容量限制。'],
-  IMAGE_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用，请明确选择仅本次运行。'],
+  IMAGE_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用。'],
   IMAGE_SETTINGS_SAVE_FAILED: [503, '自定义图片服务设置未能保存，请重新读取后再试。'],
   IMAGE_SETTINGS_CORRUPT: [503, '自定义图片服务设置不可读取或不安全，现有文件未被覆盖。'],
   IMAGE_SETTINGS_CLOSED: [503, '自定义图片服务设置已关闭，请重新打开应用。'],
@@ -56,7 +56,6 @@ const same = (left: unknown, right: unknown): boolean => canonicalImageInput(lef
 export type CustomImageSettingsV2Envelope = ReturnType<typeof customImageSettingsV2EnvelopeSchema.parse>;
 type StoredConnection = ReturnType<typeof customImageStoredConnectionV2Schema.parse>;
 type SecretUpdate = ReturnType<typeof customImageSecretUpdateV2Schema.parse>;
-type Session = {binding: string; value: string};
 type Storage = ReturnType<typeof customImageStorageV2Schema.parse>;
 export interface CustomImageSettingsV2Options {
   persistence: ImageSettingsPersistence;
@@ -115,12 +114,13 @@ function boundedOperation<T>(operation: () => T | Promise<T>, signal?: AbortSign
  * revoke A. An acquired key is only a snapshot: assertCurrent must run at the
  * final dispatch boundary synchronously, without an intervening await. */
 export async function createCustomImageSettingsV2({persistence, secretCodec, storage = {
-  persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}: CustomImageSettingsV2Options) {
+  persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}}: CustomImageSettingsV2Options) {
   let state: CustomImageSettingsV2Envelope = {version: 2, namespace, revision: 0, connections: [], deletedConnectionIds: []};
   let baseline: string | null = null, notice: typeof CUSTOM_IMAGE_SETTINGS_V2_NOTICE | null = null;
   let fault: string | null = null, closed = false, refreshBlocked = false;
   let tail: Promise<unknown> = Promise.resolve();
-  const sessions = new Map<string, Session>(), pending = new Map<string, number>();
+  const pending = new Map<string, number>();
+  const hasVault = typeof secretCodec?.encrypt === 'function' && typeof secretCodec.decrypt === 'function';
   try {
     if (!persistence || typeof persistence.load !== 'function' || typeof persistence.save !== 'function') fail('IMAGE_SETTINGS_CORRUPT');
     const loaded = await persistence.load();
@@ -141,17 +141,17 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
     let value: Storage;
     try {value = parse(customImageStorageV2Schema, typeof storage === 'function' ? storage() : storage,
       'IMAGE_SETTINGS_STORAGE_UNAVAILABLE');} catch {fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');}
-    return refreshBlocked || value.persistentAvailable && (!secretCodec?.encrypt || !secretCodec.decrypt)
+    return refreshBlocked || value.persistentAvailable && !hasVault
       ? {...value, persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} : value;
   }
   function canUseVault() {
     const value = capabilities();
-    return Boolean(secretCodec?.encrypt && secretCodec.decrypt && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING'));
+    return hasVault && (value.persistentAvailable || value.reasonCode === 'OS_SECRET_STORE_PENDING');
   }
   function view(item: StoredConnection): CustomImageConnectionV2 {
+    const configured = hasVault && item.secret !== null;
     return {connectionId: item.connectionId, name: item.name, configurationRevision: item.configurationRevision,
-      configuration: structuredClone(item.configuration), secret: {configured: Boolean(item.secret || sessions.has(item.connectionId)),
-        storage: item.secret ? 'persistent' : sessions.has(item.connectionId) ? 'session' : 'none'}};
+      configuration: structuredClone(item.configuration), secret: {configured, storage: configured ? 'persistent' : 'none'}};
   }
   const snapshot = (): CustomImageSettingsV2Result => parse(customImageSettingsV2ResultSchema, {
     revision: state.revision, connections: state.connections.map(view), storage: capabilities(), notice}, 'IMAGE_SETTINGS_CORRUPT');
@@ -172,34 +172,32 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
   function assertCurrent(raw: unknown): true {
     const expected = parse(customImageCredentialRequestV2Schema, raw), item = checkExpected(expected);
     if (!item.configuration.enabled) fail('IMAGE_SETTINGS_DISABLED');
-    if (!isCompleteCustomImageConfigurationV2(item.configuration) || !item.secret && !sessions.has(item.connectionId)) fail('IMAGE_SETTINGS_NOT_CONFIGURED');
-    if (item.secret && !canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
-    const secret = item.secret ?? sessions.get(item.connectionId);
-    if (secret?.binding !== customImageCredentialBindingV2(item.connectionId, item.configuration)) fail('IMAGE_SETTINGS_CONFLICT');
+    if (!isCompleteCustomImageConfigurationV2(item.configuration) || !item.secret || !hasVault) fail('IMAGE_SETTINGS_NOT_CONFIGURED');
+    if (!canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
+    if (item.secret.binding !== customImageCredentialBindingV2(item.connectionId, item.configuration)) fail('IMAGE_SETTINGS_CONFLICT');
     return true;
   }
   function parseWrite<T>(schema: Schema<T>, raw: unknown): T {
     const update = parse(schema, raw); if (!bounded(update, limits.updateBytes)) fail('IMAGE_SETTINGS_VALIDATION'); return update;
   }
   async function replacement(id: string, configuration: CustomImageConfigurationV2, secret: SecretUpdate,
-    previous?: StoredConnection): Promise<{secret: StoredConnection['secret']; session: Session | undefined}> {
+    previous?: StoredConnection): Promise<StoredConnection['secret']> {
     const binding = customImageCredentialBindingV2(id, configuration), sameBinding = previous && binding === customImageCredentialBindingV2(id, previous.configuration);
     // A new recipient must never inherit this connection's old credential.
     // Keeping after an address change saves the configuration with no key.
     if (secret.action === 'replace') {
       if (!isCompleteCustomImageConfigurationV2(configuration)) fail('IMAGE_SETTINGS_VALIDATION');
-      if (secret.storage === 'session') return {secret: null, session: {binding, value: secret.value}};
       await refresh(); available();
       if (!canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
       const encrypted = await boundedOperation(() => secretCodec!.encrypt!(JSON.stringify({version: 2, namespace, connectionId: id, binding, value: secret.value})));
       available();
       const ciphertext = parse(customImageEncryptedV2Schema, encrypted, 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
       if (Buffer.from(ciphertext, 'base64').toString('base64') !== ciphertext) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
-      return {secret: {binding, encrypted: ciphertext}, session: undefined};
+      return {binding, encrypted: ciphertext};
     }
-    return secret.action === 'keep' && sameBinding ? {secret: previous!.secret, session: sessions.get(id)} : {secret: null, session: undefined};
+    return secret.action === 'keep' && sameBinding ? previous!.secret : null;
   }
-  async function commit(candidate: CustomImageSettingsV2Envelope, applySession: () => void): Promise<CustomImageSettingsV2Result> {
+  async function commit(candidate: CustomImageSettingsV2Envelope): Promise<CustomImageSettingsV2Result> {
     available();
     if (!bounded(candidate, limits.envelopeBytes - 1)) fail('IMAGE_SETTINGS_CAPACITY');
     validateCustomImageSettingsV2Envelope(candidate);
@@ -211,13 +209,10 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
         const loaded = await boundedOperation(() => persistence.load());
         const current = loaded === null ? null : canonicalImageInput(validateCustomImageSettingsV2Stored(loaded));
         if (current !== baseline) throw Error();
-      } catch {fault = 'IMAGE_SETTINGS_SAVE_FAILED'; sessions.clear();}
+      } catch {fault = 'IMAGE_SETTINGS_SAVE_FAILED';}
       fail('IMAGE_SETTINGS_SAVE_FAILED');
     }
     state = candidate; baseline = canonicalImageInput(candidate); notice = null;
-    // A save that was already in flight may commit while closing. Retain its
-    // durable revision, but never revive session credentials in a closed owner.
-    if (!closed) applySession();
     return snapshot();
   }
   function admit<T>(ids: string[], operation: () => Promise<T>): Promise<T> {
@@ -232,35 +227,33 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
       const ids = input.operations.map(item => item.connectionId);
       return admit(ids, async () => {
         assertCollection(input.expectedRevision);
-        const candidate = structuredClone(state), nextSessions = new Map(sessions);
+        const candidate = structuredClone(state);
         candidate.revision = nextRevision();
         for (const operation of input.operations) {
           if (operation.action === 'create') {
             const id = operation.connectionId;
             if (candidate.deletedConnectionIds.includes(id) || candidate.connections.some(item => item.connectionId === id)) fail('IMAGE_SETTINGS_CONFLICT');
             if (candidate.connections.length + candidate.deletedConnectionIds.length >= limits.connectionIds) fail('IMAGE_SETTINGS_CAPACITY');
-            const credentials = await replacement(id, operation.configuration, operation.secret); available();
+            const secret = await replacement(id, operation.configuration, operation.secret); available();
             candidate.connections.push({connectionId: id, name: operation.name, configurationRevision: 1,
-              configuration: operation.configuration, secret: credentials.secret});
-            if (credentials.session) nextSessions.set(id, credentials.session);
+              configuration: operation.configuration, secret});
           } else {
             const previous = connection(operation.connectionId);
             if (previous.configurationRevision !== operation.expectedConfigurationRevision) fail('IMAGE_SETTINGS_CONFLICT');
             if (operation.action === 'remove') {
               candidate.connections = candidate.connections.filter(item => item.connectionId !== operation.connectionId);
-              candidate.deletedConnectionIds.push(operation.connectionId); nextSessions.delete(operation.connectionId);
+              candidate.deletedConnectionIds.push(operation.connectionId);
             } else {
               if (previous.configurationRevision === Number.MAX_SAFE_INTEGER) fail('IMAGE_SETTINGS_CAPACITY');
-              const credentials = await replacement(operation.connectionId, operation.configuration, operation.secret, previous); available();
+              const secret = await replacement(operation.connectionId, operation.configuration, operation.secret, previous); available();
               const item: StoredConnection = {connectionId: operation.connectionId, name: operation.name,
-                configurationRevision: previous.configurationRevision + 1, configuration: operation.configuration, secret: credentials.secret};
+                configurationRevision: previous.configurationRevision + 1, configuration: operation.configuration, secret};
               candidate.connections = candidate.connections.map(value => value.connectionId === operation.connectionId ? item : value);
-              nextSessions.delete(operation.connectionId); if (credentials.session) nextSessions.set(operation.connectionId, credentials.session);
             }
           }
         }
         if (candidate.connections.length > limits.connections) fail('IMAGE_SETTINGS_CAPACITY');
-        return commit(candidate, () => {sessions.clear(); for (const [id, value] of nextSessions) sessions.set(id, value);});
+        return commit(candidate);
       });
     } catch (error) {return Promise.reject(error);}
   }
@@ -287,7 +280,7 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
       return schedule(async () => {
         const item = checkExpected(expected); if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
         let apiKey: string | null = null;
-        if (item.secret) {
+        if (item.secret && hasVault) {
           await refresh(signal); checkExpected(expected); if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
           if (!canUseVault()) fail('IMAGE_SETTINGS_STORAGE_UNAVAILABLE');
           const plaintext = await boundedOperation(() => secretCodec!.decrypt!(item.secret!.encrypted), signal);
@@ -295,7 +288,7 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
           const decoded = validateCustomImageSecretPlaintextV2(plaintext);
           if (decoded.connectionId !== item.connectionId || decoded.binding !== item.secret.binding) fail('IMAGE_SETTINGS_CORRUPT');
           apiKey = decoded.value;
-        } else apiKey = sessions.get(item.connectionId)?.value ?? null;
+        }
         checkExpected(expected); if (signal?.aborted) fail('IMAGE_SETTINGS_CLOSED');
         return {...structuredClone(expected), namespace, apiKey};
       });
@@ -318,6 +311,6 @@ export async function createCustomImageSettingsV2({persistence, secretCodec, sto
         return batch({expectedRevision, operations: [{...operation, action: 'remove'}]});
       } catch (error) {return Promise.reject(error);}
     },
-    async close(): Promise<void> {closed = true; sessions.clear(); await tail; sessions.clear();},
+    async close(): Promise<void> {closed = true; await tail;},
   });
 }

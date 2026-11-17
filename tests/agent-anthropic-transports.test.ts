@@ -12,6 +12,7 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
+import {testServerSecretCodecs} from './helpers/secret-codec.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
 import {agentAuthorizationListSchema} from '../packages/contracts/src/agent-authorization.ts';
@@ -35,7 +36,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-anthropic-transports-'));
   const token = 'synthetic-anthropic-transport-token';
   let chatCalls = 0, taskCalls = 0, attemptedGrant: Record<string, AgentTaskJson> = {};
-  const server = await startServer({dataDir: root, port: 0, token,
+  const server = await startServer({dataDir: root, port: 0, token, ...testServerSecretCodecs(),
     chatGateway: async function* () {chatCalls++; yield {type: 'done', finishReason: 'stop'};},
     taskGatewayV2: async function* (request) {
       taskCalls++; assert.equal(request.configuration.protocol, 'anthropic_messages');
@@ -102,7 +103,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
 
   const native: AgentConfiguration = {protocol: 'anthropic_messages', presetId: 'anthropic', platformId: 'global', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5'};
   const saved = await http('/api/agent/settings', 'PUT', {...await settingsMetadata(native),
-    secretActions: [{serviceKey: 'anthropic', action: 'replace', storage: 'session', value: 'synthetic-offline-native-key'}]});
+    secretActions: [{serviceKey: 'anthropic', action: 'replace', storage: 'persistent', value: 'synthetic-offline-native-key'}]});
   assert.equal(saved.status, 200); assert.deepEqual((await execution()).configuration, native);
   const fromCli = await cli('agent.settings.get'); assert.equal(fromCli.code, 0, JSON.stringify(fromCli.body));
   assert.deepEqual(data(fromCli.body), await settings());

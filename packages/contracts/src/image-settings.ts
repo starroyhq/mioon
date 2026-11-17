@@ -17,15 +17,15 @@ const revision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const secret = z.discriminatedUnion('action', [
   z.object({action: z.literal('keep')}).strict(),
   z.object({action: z.literal('remove')}).strict(),
-  z.object({action: z.literal('replace'), storage: z.enum(['session', 'persistent']),
+  z.object({action: z.literal('replace'), storage: z.literal('persistent'),
     value: z.string().min(1).max(IMAGE_SETTINGS_LIMITS.secretBytes).regex(/^[\x21-\x7e]+$/, 'Invalid credential input')}).strict(),
 ]);
 export const imageSettingsUpdateSchema = z.object({expectedRevision: revision, configuration: imageConfigurationSchema, secret}).strict();
-const storageSchema = z.object({persistentAvailable: z.boolean(), sessionScope: z.enum(['app', 'server']),
-  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable()}).strict()
+const storageSchema = z.object({persistentAvailable: z.boolean(),
+  reasonCode: z.enum(['OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable()}).strict()
   .refine(value => value.persistentAvailable === (value.reasonCode === null), 'Inconsistent storage capabilities');
 export const imageSettingsResultSchema = z.object({revision, configuration: imageConfigurationSchema,
-  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
+  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'persistent'])}).strict()
     .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict();
 export type ImageSettingsResult = z.infer<typeof imageSettingsResultSchema>;
 export function isImageSettingsResult(value: unknown): value is ImageSettingsResult { return imageSettingsResultSchema.safeParse(value).success; }
@@ -51,7 +51,7 @@ export function isCompleteCustomImageConfiguration(value: unknown): boolean {
 }
 export const customImageSettingsUpdateSchema = z.object({expectedRevision: revision, configuration: customImageConfigurationSchema, secret}).strict();
 export const customImageSettingsResultSchema = z.object({revision, configuration: customImageConfigurationSchema,
-  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
+  secret: z.object({configured: z.boolean(), storage: z.enum(['none', 'persistent'])}).strict()
     .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state'), storage: storageSchema}).strict()
   .refine(value => !value.secret.configured || isCompleteCustomImageConfiguration(value.configuration), 'Incomplete custom slot cannot own a credential');
 export type CustomImageSettingsResult = z.infer<typeof customImageSettingsResultSchema>;

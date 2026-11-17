@@ -228,7 +228,7 @@ async function realSettingsFixture(t: test.TestContext) {
     decrypt() {counters.decrypts++; throw Error('Discovery must not decrypt');},
     refreshStorage() {counters.refreshes++;}};
   const settingsOptions = () => ({persistence: memoryPersistence(counters), secretCodec,
-    storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}});
+    storage: {persistentAvailable: true, reasonCode: null}});
   const engines:[Awaited<ReturnType<typeof createImageSettings>>,Awaited<ReturnType<typeof createCustomImageSettings>>,Awaited<ReturnType<typeof createComfySettings>>] = [await createImageSettings(settingsOptions()), await createCustomImageSettings(settingsOptions()),
     await createComfySettings({persistence: memoryPersistence(counters), reservedPorts: () => [4318]})];
   const deny = () => {counters.calls++; throw Error('No provider I/O');};
@@ -272,7 +272,7 @@ test('discovered revision follows configuration changes while stale preparation,
   f.engines[2].recordCheck({ok: true, baseUrl: comfyConfiguration.baseUrl, comfyVersion: comfyConfiguration.comfyVersion,
     checkpoints: [comfyConfiguration.model], selectedCheckpointAvailable: true, nodeClasses}, check);
   for (let i = 0; i < 3; i++) await f.engines[i].put({expectedRevision: 0, configuration: configurations[i],
-    ...(i === 2 ? {} : {secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_PROFILE_SECRET'}})});
+    ...(i === 2 ? {} : {secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_PROFILE_SECRET'}})});
   const discovered = await f.call(optIn), reviews: {input: Record<string, unknown>; review: FixtureImageReview}[] = [];
   for (const item of discovered.items.slice(1)) {
     const input = {projectId: project.id, requestId: randomUUID(), name: 'Revision binding', providerId: item.providerId,
@@ -376,7 +376,7 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
   const deny = (key:keyof typeof calls) => () => {calls[key]++; throw Error('Discovery cannot access a provider');};
   server = await startServer(({dataDir: root, port: 0, token, inspectProject: (received: InspectProject) => {inspect = received;},
     imageNetwork: {lookup: deny('dns'), httpsRequest: deny('https')}, comfyNetwork: {httpRequest: deny('comfy')},
-    imageSecretCodec: {storage: () => ({persistentAvailable: true, sessionScope: 'server', reasonCode: null}),
+    imageSecretCodec: {storage: () => ({persistentAvailable: true, reasonCode: null}),
       refreshStorage() {calls.refresh++;}, encrypt() {calls.encrypt++; return Buffer.from('SYNTHETIC_PROFILE_CIPHERTEXT').toString('base64');}, decrypt: deny('decrypt')}} as unknown as Parameters<typeof startServer>[0]));
   const env = {MIOON_BASE_URL: server.url, MIOON_TOKEN: token}, client = (createClient({env}) as TypedClient);
   async function request(route: string, input: unknown) {

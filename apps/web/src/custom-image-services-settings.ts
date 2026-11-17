@@ -3,6 +3,7 @@ import type {CustomImageConfigurationV2, CustomImageSettingsV2Result} from '../.
 import {normalizeCustomImageBaseUrl, getCustomImageDestination} from '../../../packages/contracts/src/image-compatible.ts';
 import {canonicalImageInput} from '../../../packages/contracts/src/images.ts';
 import type {MessageKey} from '../../../packages/i18n/src/index.ts';
+import {unavailableSecretStorage, watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 export type CustomImageServicesSnapshot = CustomImageSettingsV2Result;
 export interface CustomImageServiceDraft {connectionId: string; name: string; configuration: CustomImageConfigurationV2}
@@ -47,9 +48,9 @@ export function createCustomImageServicesClient({fetchImpl = globalThis.fetch, t
 export interface CustomImageServicesState {
   phase: 'loading' | 'ready' | 'saved' | 'saving' | 'reconciling' | 'review' | 'blocked' | 'load_error' | 'error';
   snapshot: CustomImageServicesSnapshot | null; draft: CustomImageServiceDraft | null; baseline: CustomImageServiceDraft | null;
-  storage: '' | 'session' | 'persistent'; secretAction: 'keep' | 'remove'; recovery: 'conflict' | 'unknown' | null; notice: MessageKey | null;
+  keychainWaitConfirmed: boolean; secretAction: 'keep' | 'remove'; recovery: 'conflict' | 'unknown' | null; notice: MessageKey | null;
 }
-export const initialCustomImageServicesState = (): CustomImageServicesState => ({phase: 'loading', snapshot: null, draft: null, baseline: null, storage: '', secretAction: 'keep', recovery: null, notice: null});
+export const initialCustomImageServicesState = (): CustomImageServicesState => ({phase: 'loading', snapshot: null, draft: null, baseline: null, keychainWaitConfirmed: false, secretAction: 'keep', recovery: null, notice: null});
 export const customImageServicesBusy = (state: CustomImageServicesState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const customImageServicesDirty = (state: CustomImageServicesState): boolean => Boolean(state.draft && (canonicalImageInput(state.draft) !== canonicalImageInput(state.baseline) || state.secretAction !== 'keep'));
 export const customImageServicesCanSave = (state: CustomImageServicesState): boolean => Boolean(state.draft && state.snapshot && !customImageServicesBusy(state) && !state.recovery && state.phase !== 'blocked');
@@ -58,13 +59,23 @@ export function customImageServiceDestination(draft: CustomImageServiceDraft | n
 }
 export function createCustomImageServicesSession({client = createCustomImageServicesClient(), onChange = () => {}}: {client?: CustomImageServicesClient; onChange?: (state: CustomImageServicesState) => void} = {}) {
   let state = initialCustomImageServicesState(), live = true, visible = true, epoch = 0, pending: AbortController | null = null;
-  const publish = (patch: Partial<CustomImageServicesState>) => {if (live) {state = {...state, ...patch}; onChange(copy(state));}};
+  const refreshStorage = async (signal?: AbortSignal) => {
+    const before = state.snapshot; if (!before) return;
+    const {storage} = safeCustomImageServices(await client.read(signal));
+    if (!live || !visible || signal?.aborted || state.snapshot !== before) return;
+    publish({snapshot: {...before, storage}, keychainWaitConfirmed: storage.reasonCode === 'OS_SECRET_STORE_PENDING'});
+  };
+  const watchStorage = watchPendingSecretStorage(refreshStorage);
+  const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const publish = (patch: Partial<CustomImageServicesState>) => {if (live) {
+    state = {...state, ...patch};
+    if (state.snapshot?.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') state.keychainWaitConfirmed = false;
+    observeStorage(); onChange(copy(state));
+  }};
   const current = (token: number) => live && token === epoch;
   const editable = () => live && visible && !customImageServicesBusy(state);
   const choose = (draft: CustomImageServiceDraft | null) => {
-    const saved = state.snapshot?.connections.find(item => item.connectionId === draft?.connectionId);
-    const storage = saved?.secret.storage;
-    ++epoch; publish({draft: copy(draft), baseline: copy(draft), storage: storage === 'session' || storage === 'persistent' ? storage : '', secretAction: 'keep', recovery: null, phase: 'ready', notice: null});
+    ++epoch; publish({draft: copy(draft), baseline: copy(draft), secretAction: 'keep', recovery: null, phase: 'ready', notice: null});
   };
   const fromSaved = (id: string) => {const item = state.snapshot?.connections.find(item => item.connectionId === id); return item ? {connectionId: item.connectionId, name: item.name, configuration: copy(item.configuration)} : null;};
   async function read(recover = false): Promise<boolean> {
@@ -93,7 +104,8 @@ export function createCustomImageServicesSession({client = createCustomImageServ
     } catch (error) {
       if (!current(token)) return false;
       const code = errorCode(error);
-      if (['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE', 'IMAGE_SETTINGS_CAPACITY'].includes(code)) {publish({phase: 'error', notice: code === 'IMAGE_SETTINGS_CAPACITY' ? 'image.settings.services.capacity' : 'image.settings.error.validation'}); return false;}
+      if (code === 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE' && state.snapshot) {publish({snapshot: {...state.snapshot, storage: unavailableSecretStorage}, phase: 'error', notice: null}); return false;}
+      if (['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'IMAGE_SETTINGS_CAPACITY'].includes(code)) {publish({phase: 'error', notice: code === 'IMAGE_SETTINGS_CAPACITY' ? 'image.settings.services.capacity' : 'image.settings.error.validation'}); return false;}
       publish({phase: 'reconciling', recovery: code === 'IMAGE_SETTINGS_CONFLICT' ? 'conflict' : 'unknown', notice: 'image.settings.notice.review'});
       try {const snapshot = safeCustomImageServices(await client.read(pending!.signal)); if (current(token)) publish({snapshot, phase: 'review'});} catch {if (current(token)) publish({phase: 'blocked'});}
       return false;
@@ -107,15 +119,16 @@ export function createCustomImageServicesSession({client = createCustomImageServ
       choose({connectionId: crypto.randomUUID().toLowerCase(), name, configuration: copy(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2) as CustomImageConfigurationV2}); publish({baseline: null}); return true;
     },
     edit(patch: Partial<Pick<CustomImageServiceDraft, 'name'>>, configuration: Partial<CustomImageConfigurationV2> = {}) {if (!editable() || state.recovery || !state.draft) return false; ++epoch; publish({draft: {...state.draft, ...copy(patch), configuration: {...state.draft.configuration, ...copy(configuration)}}}); return true;},
-    setStorage(storage: CustomImageServicesState['storage']) {if (!editable() || state.recovery || storage === 'persistent' && !state.snapshot?.storage.persistentAvailable) return false; publish({storage}); return true;},
+    retryStorage() {if (editable()) void refreshStorage().catch(() => {});},
     removeKey(remove: boolean) {if (!editable() || state.recovery) return false; publish({secretAction: remove ? 'remove' : 'keep'}); return true;},
     async save(value = '') {
       if (!editable() || !customImageServicesCanSave(state)) return false;
+      if (value && !state.snapshot!.storage.persistentAvailable) return false;
       const draft = copy(state.draft!), previous = state.snapshot!.connections.find(item => item.connectionId === draft.connectionId);
       try {if (draft.configuration.baseUrl) draft.configuration.baseUrl = normalizeCustomImageBaseUrl(draft.configuration.baseUrl);} catch {publish({phase: 'error', notice: 'image.settings.error.validation'}); return false;}
-      const common = {...draft, expectedRevision: state.snapshot!.revision, secret: value ? {action: 'replace', storage: state.storage, value} : {action: state.secretAction}};
+      const common = {...draft, expectedRevision: state.snapshot!.revision, secret: value ? {action: 'replace', storage: 'persistent', value} : {action: state.secretAction}};
       const parsed = previous ? customImagePutV2Schema.safeParse({...common, expectedConfigurationRevision: previous.configurationRevision}) : customImageCreateV2Schema.safeParse(common);
-      if (!parsed.success || value && state.storage === 'persistent' && !state.snapshot!.storage.persistentAvailable) {publish({phase: 'error', notice: 'image.settings.error.validation'}); return false;}
+      if (!parsed.success) {publish({phase: 'error', notice: 'image.settings.error.validation'}); return false;}
       return write({...parsed.data, action: previous ? 'put' : 'create'} as CustomImageServicesWrite, draft.connectionId);
     },
     async remove() {
@@ -127,8 +140,8 @@ export function createCustomImageServicesSession({client = createCustomImageServ
     discard() {if (!editable() || state.recovery) return false; choose(state.baseline); return true;},
     useLatest() {if (!editable() || !state.snapshot || state.phase === 'blocked') return false; choose(state.draft ? fromSaved(state.draft.connectionId) : null); return true;},
     acknowledge() {if (!editable() || state.phase !== 'review') return false; ++epoch; publish({phase: 'ready', recovery: null, notice: null}); return true;},
-    setVisible(value: boolean) {visible = value;},
-    dispose() {live = false; ++epoch; pending?.abort(); state = initialCustomImageServicesState();},
+    setVisible(value: boolean) {visible = value; observeStorage(); if (!visible && state.keychainWaitConfirmed) publish({keychainWaitConfirmed: false});},
+    dispose() {live = false; watchStorage(false); ++epoch; pending?.abort(); state = initialCustomImageServicesState();},
   };
 }
 export type CustomImageServicesSession = ReturnType<typeof createCustomImageServicesSession>;

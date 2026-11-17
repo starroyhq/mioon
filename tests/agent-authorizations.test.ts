@@ -8,16 +8,16 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {AGENT_AUTHORIZATION_FILENAME} from '../packages/business/src/agent/authorizations.ts';
 import {AGENT_AUTHORIZATION_SCOPES,agentAuthorizationSchemas} from '../packages/contracts/src/agent-authorization.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
 
 async function fixture(t: TestContext){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-authorizations-'));let store=openStore(root);
-  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+  const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
   const initial=await settings.get();
-  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'session',value:'synthetic-authorization-secret'}});
+  await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:DEFAULT_AGENT_CONFIGURATION,secret:{action:'replace',storage:'persistent',value:'synthetic-authorization-secret'}});
   const authorizations=createTestAuthorizations((()=>store) as never,settings);
   t.after(async()=>{store.close();await settings.close();await rm(root,{recursive:true,force:true});});
   return {root,settings,authorizations,get store(){return store;},file:path.join(testProjectAppLibrary(store)!.dataDir,AGENT_AUTHORIZATION_FILENAME),

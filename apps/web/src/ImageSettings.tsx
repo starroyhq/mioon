@@ -1,13 +1,14 @@
 import { useI18n } from './i18n/I18nProvider.tsx';
-import { message, translate } from '../../../packages/i18n/src/index.ts';
-import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
+import { message } from '../../../packages/i18n/src/index.ts';
+import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
-import { WorkbenchSelect, WorkbenchTooltip } from './WorkspaceControls.tsx';
+import { WorkbenchTooltip } from './WorkspaceControls.tsx';
+import { SettingsSecretStorageNotice } from './SettingsSecretStorageNotice.tsx';
 import { useWorkspaceVisibility, WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { closeSettingsAfterPermission, createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import { IMAGE_SETTINGS_LIMITS, CUSTOM_IMAGE_ENDPOINT_LIMIT, imageSettingsBindingChanged, imageSettingsDestination, createImageSettingsSession, imageSettingsCanSave, imageSettingsDirty, imageSettingsEditable, initialImageSettingsState } from './image-settings.ts';
@@ -15,18 +16,9 @@ import type { ImageSettingsClient, ImageSettingsSession, ImageSettingsState } fr
 import Icon from './icons.tsx';
 import './image-settings.css';
 
-type TranslateFn = (key: MessageKey) => string;
 type NavigationReporter = ReturnType<typeof createSettingsNavigationReporter>;
 type NavigationInput = Parameters<NavigationReporter['update']>[0];
-type ImageStorageState = {reasonCode?: string | null; persistentAvailable?: boolean} | null | undefined;
 const noop = () => {};
-const storageLabels: Readonly<Record<string, string>> = { none: 'image.settings.storageNone', session: 'image.settings.storageSession', persistent: 'connections.storage.persistent' };
-const storageLabel = (value: string, t: TranslateFn): string => t((storageLabels[value] ?? 'image.settings.storageChoose') as MessageKey);
-const storageReasons: Readonly<Record<string, string>> = { WEB_SESSION_ONLY: 'image.settings.storageWeb', OS_SECRET_STORE_PENDING: 'connections.storage.keychainPending', LINUX_BASIC_TEXT: 'image.settings.storageBasic', OS_SECRET_STORE_UNAVAILABLE: 'image.settings.storageUnavailable' };
-export const imageStorageReason = (storage: ImageStorageState, t: TranslateFn = (key) => translate('zh-Hans', key)): string => {
-  const key = typeof storage?.reasonCode === 'string' ? storageReasons[storage.reasonCode] : undefined;
-  return t((key ?? 'image.settings.storageAvailable') as MessageKey);
-};
 export interface ImageSettingsProps {
   active?: boolean;
   contextKey?: unknown;
@@ -88,7 +80,6 @@ export default function ImageSettings({ active = false, contextKey, client, slot
   };
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!usable() || !imageSettingsCanSave(session.current?.getState() || state)) return; const value = keyInput.current?.value || ''; clearKey(); void session.current?.save(value); }
   const { snapshot, draft } = state, editable = visible && imageSettingsEditable(state), destination = imageSettingsDestination(draft), bindingChanged = imageSettingsBindingChanged(state);
-  const storagePending = snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING';
   const selectSlot = (next: string) => { if (!usable() || next === slot) return; if (onRequestSelectSlot) { onRequestSelectSlot(next); return; } if (keyInput.current?.value) setKeyNotice(message('image.settings.keySwitched')); clearKey(); interactionRef.current = null; session.current?.setVisible(false); onSelectSlot(next); };
   const statusMessage = state.displayMessages?.map(descriptor => renderMessage(descriptor)).join(' ') || '';
   return <WorkspaceVisibilityProvider visible={visible}><section className="image-settings-page" data-testid={`${prefix}-page`} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label={t('image.settings.aria')}>
@@ -105,16 +96,14 @@ export default function ImageSettings({ active = false, contextKey, client, slot
           {bindingChanged && snapshot.secret.configured && <p className="image-generation-notice" role="alert" data-testid={`${prefix}-binding-warning`}>{t('image.settings.bindingWarning')}</p>}
         </>}
         <div className="image-settings-fixed" data-testid={`${prefix}-fixed`}><strong>{custom ? t('image.settings.customFormat') : 'OpenAI · Images'}</strong>{destination && <span data-testid={`${prefix}-destination`}>{destination}</span>}<span>{draft.model || t('image.settings.modelEmpty')}</span><span>{t('image.settings.fixedOutput')}</span><Badge className="small-badge neutral">{t('image.settings.unverified')}</Badge></div>
-        <div className="settings-with-help"><Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><WorkbenchTooltip content={t('image.settings.keyHelp')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>
-        <Input ref={keyInput} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={IMAGE_SETTINGS_LIMITS.secretBytes} disabled={!editable || state.secretAction === 'remove'} onChange={(event: ChangeEvent<HTMLInputElement>) => { if (usable()) { setHasKey(Boolean(event.target.value)); reportNavigation(session.current?.getState() || state); setKeyNotice(''); } else if (keyInput.current) keyInput.current.value = ''; }} />
-        <div className="settings-with-help"><Label htmlFor={`${prefix}-storage`}>{t('image.settings.keyStorage')}</Label><WorkbenchTooltip content={t('connections.sessionLoss')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.keyStorage')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>
-        <WorkbenchSelect id={`${prefix}-storage`} data-testid={`${prefix}-storage`} value={state.storage} disabled={!editable || state.secretAction === 'remove'} onChange={(event: {target: {value: string}}) => { if (usable()) session.current?.setStorage(event.target.value); }}><option value="" disabled>{t('image.settings.storageChoose')}</option><option value="session">{t('image.settings.storageSession')}</option><option value="persistent" disabled={!snapshot.storage.persistentAvailable}>{t(snapshot.storage.persistentAvailable ? 'connections.storage.persistent' : 'image.settings.persistentUnavailable')}</option></WorkbenchSelect>
-        {(!storagePending || state.keychainWaitConfirmed || snapshot.secret.configured && !hasKey) && <p className="image-settings-help" role={storagePending && state.keychainWaitConfirmed ? 'status' : undefined} data-testid={`${prefix}-storage-status`}>{(!storagePending || state.keychainWaitConfirmed) && imageStorageReason(snapshot.storage, t)}{snapshot.secret.configured && !hasKey ? t('image.settings.reenterStorage') : ''}</p>}
-        <div className="image-settings-current" data-testid={`${prefix}-current`}><span>{t('image.settings.currentState', { state: t(snapshot.configuration.enabled ? 'connections.enabled' : 'connections.disabled') })}</span><span>{t('image.settings.currentKey', { storage: snapshot.secret.configured ? storageLabel(snapshot.secret.storage, t) : t('connections.notConfigured') })}</span><span>{t('image.settings.revision', { revision: snapshot.revision })}</span></div>
+        {snapshot.storage.persistentAvailable && <><div className="settings-with-help"><Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><WorkbenchTooltip content={t('image.settings.keyHelp')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>
+        <Input ref={keyInput} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={IMAGE_SETTINGS_LIMITS.secretBytes} disabled={!editable || state.secretAction === 'remove'} onChange={(event: ChangeEvent<HTMLInputElement>) => { if (usable()) { setHasKey(Boolean(event.target.value)); reportNavigation(session.current?.getState() || state); setKeyNotice(''); } else if (keyInput.current) keyInput.current.value = ''; }} /></>}
+        <SettingsSecretStorageNotice storage={snapshot.storage} pendingConfirmed={state.keychainWaitConfirmed} disabled={!editable} retry={() => {if (usable()) session.current?.retryStorage();}} testId={`${prefix}-storage-status`} />
+        <div className="image-settings-current" data-testid={`${prefix}-current`}><span>{t('image.settings.currentState', { state: t(snapshot.configuration.enabled ? 'connections.enabled' : 'connections.disabled') })}</span><span>{t('image.settings.currentKey', { state: t(snapshot.secret.configured ? 'mio.settings.key.configured' : 'connections.notConfigured') })}</span><span>{t('image.settings.revision', { revision: snapshot.revision })}</span></div>
         {snapshot.secret.configured && <Button type="button" variant="ghost" className="button" data-testid={`${prefix}-remove-key`} aria-pressed={state.secretAction === 'remove'} disabled={!editable} onClick={() => { if (usable()) { clearKey(); session.current?.removeKey(state.secretAction !== 'remove'); } }}>{state.secretAction === 'remove' ? t('image.settings.undoRemove') : t('image.settings.removeKey')}</Button>}
-        <p className="image-settings-help" data-testid={`${prefix}-intent`}>{hasKey ? t(snapshot.secret.configured ? 'connections.intentReplace' : 'connections.intentWrite', { storage: storageLabel(state.storage, t) }) : t(state.secretAction === 'remove' ? 'connections.intentRemove' : snapshot.secret.configured ? 'connections.intentKeep' : 'image.settings.intentNoneFull')}</p>
+        {state.secretAction === 'remove' && <p className="image-settings-help" data-testid={`${prefix}-intent`}>{t('connections.intentRemove')}</p>}
         {state.recovery && <div className="image-generation-notice" data-testid={`${prefix}-recovery`}><p>{t('image.settings.recovery')}</p><div className="image-generation-actions"><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-reload`} disabled={!editable} onClick={() => { if (usable()) { clearKey(); void session.current?.reload(); } }}>{t('connections.reload')}</Button><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-use-latest`} disabled={!editable || state.phase === 'blocked'} onClick={() => { if (usable()) { clearKey(); session.current?.useLatest(); } }}>{t('connections.useSaved')}</Button><Button type="button" variant="ghost" className="button" data-testid={`${prefix}-keep-draft`} disabled={!editable || state.phase !== 'review'} onClick={() => { if (usable()) { clearKey(); session.current?.acknowledge(); } }}>{t('connections.keepDraft')}</Button></div></div>}
-        <Button type="submit" variant="ghost" className="button primary" data-testid={`${prefix}-save`} disabled={!visible || !imageSettingsCanSave(state) || hasKey && !state.storage || bindingChanged && snapshot.secret.configured && !hasKey && state.secretAction !== 'remove'}>{state.phase === 'saving' ? t('connections.saving') : t('image.settings.save')}</Button>
+        <Button type="submit" variant="ghost" className="button primary" data-testid={`${prefix}-save`} disabled={!visible || !imageSettingsCanSave(state) || bindingChanged && snapshot.secret.configured && !hasKey && state.secretAction !== 'remove'}>{state.phase === 'saving' ? t('connections.saving') : t('image.settings.save')}</Button>
       </>}
       {keyNotice && <p className="image-generation-notice" role="status" data-testid={`${prefix}-key-notice`}>{renderMessage(keyNotice)}</p>}
       {snapshot && state.message && <p className="image-generation-notice" role="status" data-testid={`${prefix}-message`}>{statusMessage}</p>}

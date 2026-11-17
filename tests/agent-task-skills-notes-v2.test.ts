@@ -11,7 +11,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
@@ -45,8 +45,8 @@ async function fixture(t:TestContext){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-skills-notes-v2-')),store=openStore(root),services=createServices(store,new Map());
  const projectId=String(record(await services.call('project.create',{name:'Skills and notes test'})).id);
  const shotId=String(record(await services.call('shot.create',{projectId,title:'03 雨夜街口'})).id);
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'session',value:'SYNTHETIC_SKILLS_NOTES_TEST_ONLY'}});
+ const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration('chat_completions'),secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_SKILLS_NOTES_TEST_ONLY'}});
  const authorizations=createTestAuthorizations(()=>store,settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),bodies:string[]=[],queue:AgentTaskToolCall[][]=[];
  const gateway:TaskGateway=async function*(request){

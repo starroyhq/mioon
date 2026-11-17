@@ -149,7 +149,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
   try {
     // Electron supplies its compiled channel through the trusted server options.
     const mockAllowed = localDraftChannel !== 'production';
-    const providers = createProviderRegistry({db: store.db, root});
+    const providers = createProviderRegistry({db: store.db, root, env: localDraftChannel === 'development' ? process.env : {}});
     let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
     {
     if(suppliedAgentSettings)agentSettings=suppliedAgentSettings;

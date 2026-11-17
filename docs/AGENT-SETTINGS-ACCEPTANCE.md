@@ -8,7 +8,7 @@
 
 整页只有一个 CAS 和一次原子文件保存，全局 revision 每次成功加一。每条内容或密钥实际改变才递增自己的 revision；Mio 二元选择改变递增选择修订。执行投影的 revision 是只随当前连接变化的单调 token，配合 `{serviceKey, entryRevision, selectionRevision}` 及完整五字段配置冻结到 run_context；不是整页 revision。每次模型派发前通过可信 acquire 精确核对：改 B 不影响使用 A，改 A（包括仅换密钥）、A→B→A 或配置改后还原拒绝旧见证。恢复旧记录不得从今天的快照补签见证。
 
-先校验全体，暂存加密结果和 session Map，最终完整公私投影均通过后只写一次 envelope，成功才发布 RAM。任何项校验/加密/文件保存失败整批不提交；丢 ACK 仍为 unknown，只读核对，不重发。`settings_only`/`not_tested` 表示保存本身没有做网络验证。
+先校验全体，暂存加密结果，最终完整公私投影均通过后只写一次 envelope，成功才发布新状态。任何项校验/加密/文件保存失败整批不提交；丢 ACK 仍为 unknown，只读核对，不重发。`settings_only`/`not_tested` 表示保存本身没有做网络验证。
 
 ## 地址与密钥
 
@@ -16,7 +16,7 @@
 
 密钥先按 serviceKey 隔离，再绑定固定平台、workspace ID、本机 origin 或自定义完整 base。工作空间同 ID、本机同 origin 切协议可保留密钥；换区域、ID、origin、自定义路径只清本条。两个相同 URL 的自定义项也不共用密钥。目的地授权仍按最终推理 URL 和模型确认。
 
-v1/v2 只适用于发布前开发数据：只在内存投影合法元信息，旧密钥全部作废且从不解密；GET 保持原文件逐字节不变，首次显式保存才写 v3。不安全、损坏或未知版本保持原件并拒绝设置操作。持久密文使用 v3 的命名空间、serviceKey、接收者绑定包装，可信取钥时再解密并校验；不可用的系统密钥库不降级明文。
+v1/v2 只适用于发布前开发数据：只在内存投影合法元信息，旧密钥全部作废且从不解密；GET 保持原文件逐字节不变，首次显式保存才写 v3。不安全、损坏或未知版本保持原件并拒绝设置操作。持久密文使用 v3 的命名空间、serviceKey、接收者绑定包装，可信取钥时再解密并校验。系统密钥库不可用时拒绝保存密钥。旧设置中没有密文的条目显示为未配置，保留其余元信息。
 
 设置请求、公开回包（含 IPC 包装）、最终加密文件均独立检查完整 UTF-8 序列化大小，保持 64 KiB。DTO 预算 62 KiB 给包装留余量；单 key 8192 字节、每家手填型号最多50个且每个200字符、最多19个条目，维度上限不能同时填满。broker 仍32 pending、7秒；不新增 renderer 取钥能力、CLI/MCP 模型工具或任意 headers。
 
@@ -169,7 +169,7 @@ All images are original runtime JPEG captures, not generated or composited image
 - Automated tests: `tests/{agent-settings,agent-settings-file,agent-settings-http,agent-settings-ui,desktop-agent-secrets}.test.mjs`.
 - Runtime helpers: `tests/agent-settings-qa-{runtime,client,native,native-report}.mjs`, `tests/browser_agent_settings.mjs`. They only operate on disposable local fixture copies; browser actions use supported CUA, native actions use supported screenshots/mouse/keys.
 
-For the current checkout, run `node --test --test-concurrency=2 tests/*.test.ts` when browser/native QA is idle. The established concurrency bound avoids unrelated CLI helper timeouts; existing test deadlines/security are unchanged. Run `pnpm build` and `pnpm desktop:build` for final bundles. Start fixture helpers from the same desktop namespace as the browser/Electron; this environment's shell and graphical sessions have separate process/network namespaces and share `/workspace/shared`, not `/tmp`.
+The runtime helpers above reproduce the original single-connection UI at `66a0193`. Use the focused `.test.ts` suites to exercise the current settings.
 
 No dependencies, schemas, installers, OAuth flows, provider manifests, CLI/MCP tool catalog or video-provider configuration changed.
 

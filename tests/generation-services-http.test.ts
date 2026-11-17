@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {IncomingMessage,ServerResponse} from 'node:http';
@@ -12,7 +12,10 @@ import {parseProjectApiPath,projectApiPath} from '../packages/contracts/src/proj
 import {IMAGE_FIXED_OPTIONS} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_LIMITS} from '../packages/contracts/src/image-reviews.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2} from '../packages/contracts/src/generation-image-settings.ts';
+import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
+import {defaultVideoModels, VIDEO_PROVIDER_NAMES} from '../packages/contracts/src/video-providers.ts';
 import {startServer} from './helpers/test-server.ts';
+import {createTestSecretCodec} from './helpers/secret-codec.ts';
 import {customImageSettingsV2Error} from '../packages/business/src/images/custom-settings-v2.ts';
 import {OUTPUT_LOCALE_HEADER} from '../packages/contracts/src/output-locale.ts';
 import type {OutputLocale} from '../packages/contracts/src/output-locale.ts';
@@ -92,7 +95,7 @@ test('approval keeps fixed v2 removed/selection/capacity errors instead of relab
 
 test('actual project HTTP serves explicit service lists behind authentication while new preparation operations remain outside RPC',async t=>{
   const root=await mkdtemp(path.join(tmpdir(),'g1-image-service-http-'));let providerCalls=0;
-  const server=await startServer({dataDir:root,port:0,comfyModule:'skip',imageNetwork:{lookup:async()=>{providerCalls++;throw Error('No provider lookup');},
+  const server=await startServer({dataDir:root,port:0,comfyModule:'skip',imageSecretCodec:createTestSecretCodec(),imageNetwork:{lookup:async()=>{providerCalls++;throw Error('No provider lookup');},
     httpsRequest:()=>{providerCalls++;throw Error('No provider request');}}});
   t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
   const send=async(route:string,input:unknown,method='POST',headers:Record<string,string>={})=>fetch(server.url+route,{method,
@@ -105,7 +108,7 @@ test('actual project HTTP serves explicit service lists behind authentication wh
   for(let i=0;i<ids.length;i++) {
     const configured=await send('/api/images/custom-settings',{action:'create',expectedRevision:i,connectionId:ids[i],name:`Service ${i}`,
       configuration:{...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,enabled:true,baseUrl:`https://service-${i}.example.com/v1`,model:'same-model'},
-      secret:{action:'replace',storage:'session',value:`synthetic-service-key-${i}`}},'PUT');assert.equal(configured.status,200);
+      secret:{action:'replace',storage:'persistent',value:`synthetic-service-key-${i}`}},'PUT');assert.equal(configured.status,200);
   }
   const response=await send(route,list);assert.equal(response.status,200);
   const data=await response.json() as {data:{projectId:string;items:Array<{connectionId:string;configuration:{model:string}}>} };
@@ -117,4 +120,42 @@ test('actual project HTTP serves explicit service lists behind authentication wh
     const rpc=await send('/api/rpc',{operation,input:{projectId:project.id}});assert.equal((await rpc.json() as {error:{code:string}}).error.code,'UNKNOWN_OPERATION');
   }
   assert.equal(providerCalls,0);
+});
+
+test('web-only media settings refuse keys without system encryption and leave settings files untouched', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'media-settings-no-codec-'));
+  const server = await startServer({dataDir: root, port: 0, comfyModule: 'skip'});
+  t.after(async () => {await server.close(); await rm(root, {recursive: true, force: true});});
+  const routes = [
+    {route: '/api/images/settings', file: 'image-settings/settings.json', prefix: 'IMAGE_SETTINGS',
+      input: {expectedRevision: 0, configuration: DEFAULT_IMAGE_CONFIGURATION}},
+    {route: '/api/images/custom-settings', file: 'image-settings/custom-settings.json', prefix: 'IMAGE_SETTINGS',
+      input: {action: 'create', expectedRevision: 0, connectionId, name: 'Synthetic',
+        configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'synthetic'}}},
+    {route: '/api/video-providers/settings', file: 'video-settings/settings.json', prefix: 'VIDEO_SETTINGS',
+      input: {action: 'save', expectedRevision: 0, configuration: {id: randomUUID(), providerId: 'minimax', name: VIDEO_PROVIDER_NAMES.minimax,
+        region: 'global', workspaceId: '', enabled: true, outputHosts: [], models: defaultVideoModels('minimax')}}},
+  ];
+  const value = 'synthetic-key-with-no-store';
+  for (const {route, file, prefix, input} of routes) {
+    const headers = {Authorization: `Bearer ${server.token}`, 'content-type': 'application/json'};
+    const before = await fetch(server.url + route, {headers});
+    assert.equal(before.status, 200);
+    const initial = await before.json();
+    assert.deepEqual(initial.data.storage, {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'});
+    for (const {storage, status, code} of [
+      {storage: 'session', status: 400, code: 'VALIDATION'},
+      {storage: 'persistent', status: 409, code: 'STORAGE_UNAVAILABLE'},
+    ]) {
+      const refused = await fetch(server.url + route, {method: 'PUT', headers,
+        body: JSON.stringify({...input, secret: {action: 'replace', storage, value}})});
+      const body = await refused.text();
+      assert.equal(refused.status, status, route);
+      assert.equal(JSON.parse(body).error.code, `${prefix}_${code}`);
+      assert.equal(body.includes(value), false);
+    }
+    const after = await fetch(server.url + route, {headers});
+    assert.deepEqual(await after.json(), initial);
+    await assert.rejects(readFile(path.join(root, file)), {code: 'ENOENT'});
+  }
 });

@@ -11,7 +11,7 @@ import {agentSettingsSnapshotSchema, agentServiceInput} from '../packages/contra
 import {AGENT_MODEL_LIST_LIMITS, agentModelListResultSchema, agentModelListCacheResultSchema} from '../packages/contracts/src/agent-model-list.ts';
 import type {AgentModelListSuccess} from '../packages/contracts/src/agent-model-list.ts';
 import {createAgentSettingsClient, createAgentSettingsBroker} from '../apps/desktop/src/secret-broker.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings, testServerSecretCodecs} from './helpers/secret-codec.ts';
 import {createAgentModelListService} from '../packages/business/src/agent/model-list-service.ts';
 import {connectionFor} from '../packages/business/src/agent/settings-envelope.ts';
 
@@ -26,7 +26,7 @@ async function fixture(t: test.TestContext, handler: http.RequestListener = (_re
   const port = (trap.address() as {port: number}).port;
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-model-list-http-'));
   let changes: (() => number) | undefined;
-  const start = () => startServer({dataDir: root, port: 0, token,
+  const start = () => startServer({dataDir: root, port: 0, token, ...testServerSecretCodecs(),
     inspectApplication: inspect => {changes = () => inspect(db => Number((db.prepare('SELECT total_changes() AS count').get() as {count: number}).count));}});
   let server = await start();
   t.after(async () => {
@@ -144,7 +144,7 @@ test('draft test authenticates exactly one fixed message and leaves settings, ca
     const current = await settings();
     const response = await f.request('/api/agent/settings',{method:'PUT',payload:{expectedRevision:current.revision,
       services:current.services.map(agentServiceInput),mioSelection:current.mioSelection,
-      secretActions:[{serviceKey:'ollama',action:'replace',storage:'session',value}]}});
+      secretActions:[{serviceKey:'ollama',action:'replace',storage:'persistent',value}]}});
     assert.equal(response.status,200);
     return agentSettingsSnapshotSchema.parse(response.body.data);
   };
@@ -246,10 +246,10 @@ test('the application-entry deadline cancels pending discovery and returns a saf
 
 test('desktop model-list route traverses the real settings client and broker for input, saved keys and cache', async t => {
   const selfPort = 4318, savedKey = 'SYNTHETIC_SAVED_LIST', inputKey = 'SYNTHETIC_INPUT_LIST';
-  const owner = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const owner = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const initial = await owner.get();
   const snapshot = await owner.put({expectedRevision: initial.revision, services: initial.services.map(agentServiceInput), mioSelection: null,
-    secretActions: [{serviceKey: 'openai', action: 'replace', storage: 'session', value: savedKey}]});
+    secretActions: [{serviceKey: 'openai', action: 'replace', storage: 'persistent', value: savedKey}]});
   let posts = 0, providerCalls = 0;
   const providerKeys: (string | null)[] = [], entries = new Map<string, AgentModelListSuccess>();
   // Electron's message transport is the only desktop boundary replaced here.

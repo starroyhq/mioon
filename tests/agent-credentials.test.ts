@@ -15,12 +15,13 @@ function codec() {
   return {encrypt(text: string): string { const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv); return Buffer.concat([iv, cipher.update(text), cipher.final(), cipher.getAuthTag()]).toString('base64'); },
     decrypt(text: string): string { const bytes = Buffer.from(text, 'base64'), cipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12)); cipher.setAuthTag(bytes.subarray(-16)); return Buffer.concat([cipher.update(bytes.subarray(12, -16)), cipher.final()]).toString(); }};
 }
-async function engine(t: TestContext, extra: Record<string, unknown> = {}, storage = 'session') {
+async function engine(t: TestContext, extra: Record<string, unknown> = {}) {
   let persisted: unknown;
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async (value: unknown) => { persisted = value; }}, ...extra} as never);
+  const settings = await createAgentSettings({persistence: {load: async () => null, save: async (value: unknown) => { persisted = value; }},
+    secretCodec:codec(),storage:{persistentAvailable:true,reasonCode:null},...extra} as never);
   t.after(() => settings.close());
   const initial = await settings.get();
-  const saved = await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION,protocol:"chat_completions",model:"gpt-5.4-mini",presetId:"custom",platformId:"custom"}, secret: {action: 'replace', storage, value: SECRET}});
+  const saved = await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration: {...DEFAULT_AGENT_CONFIGURATION,protocol:"chat_completions",model:"gpt-5.4-mini",presetId:"custom",platformId:"custom"}, secret: {action: 'replace', storage:'persistent', value: SECRET}});
   return {settings, expected: testAgentCredential(saved), get persisted() { return persisted; }};
 }
 const safe = (value: unknown): true => { assert.equal(JSON.stringify(value).includes(SECRET), false); return true; };
@@ -52,7 +53,7 @@ test('persistent credentials recheck OS vault and binding at each acquire withou
   let available = true, reads = 0;
   const vault = codec(), original = vault.decrypt;
   vault.decrypt = text => { reads++; return original(text); };
-  const f = await engine(t, {secretCodec: vault, storage: () => ({persistentAvailable: available, sessionScope: 'app', reasonCode: available ? null : 'OS_SECRET_STORE_UNAVAILABLE'})}, 'persistent');
+  const f = await engine(t, {secretCodec: vault, storage: () => ({persistentAvailable: available, reasonCode: available ? null : 'OS_SECRET_STORE_UNAVAILABLE'})});
   assert.equal(((await f.settings[AGENT_CREDENTIAL_ACQUIRE](f.expected)) as {apiKey: string | null}).apiKey, SECRET);
   assert.equal(((await f.settings[AGENT_CREDENTIAL_ACQUIRE](f.expected)) as {apiKey: string | null}).apiKey, SECRET); assert.equal(reads, 2);
   available = false; await assert.rejects(f.settings[AGENT_CREDENTIAL_ACQUIRE](f.expected), {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'}); assert.equal(reads, 2);
@@ -64,7 +65,7 @@ test('persistent credentials recheck OS vault and binding at each acquire withou
 test('aborting queued/decrypting acquisition prevents key delivery and bounded tail still permits safe reads', async (t: TestContext) => {
   let release: (value: string) => void = () => undefined;
   const vault = codec(); vault.decrypt = (() => new Promise<string>(resolve => { release = resolve; })) as never;
-  const f = await engine(t, {secretCodec: vault, storage: {persistentAvailable: true, sessionScope: 'app', reasonCode: null}}, 'persistent');
+  const f = await engine(t, {secretCodec: vault});
   const controller = new AbortController(), pending = f.settings[AGENT_CREDENTIAL_ACQUIRE](f.expected, {signal: controller.signal});
   const rejected = assert.rejects(pending, {code: 'AGENT_SETTINGS_STORAGE_UNAVAILABLE'}); await turn(); controller.abort(); await rejected;
   release(JSON.stringify({version: 1, binding: 'wrong', value: SECRET})); await turn(); safe(await f.settings.get());

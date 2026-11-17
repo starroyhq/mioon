@@ -13,7 +13,7 @@ export const MAX_AGENT_SECRET_BYTES = 8192;
 const messages = {
   AGENT_SETTINGS_VALIDATION: [400, 'Agent 设置格式无效，请检查地址、模型和密钥输入。'],
   AGENT_SETTINGS_CONFLICT: [409, 'Agent 设置已被另一个窗口更新，请重新读取后确认。'],
-  AGENT_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用，请明确选择仅本次会话保存。'],
+  AGENT_SETTINGS_STORAGE_UNAVAILABLE: [409, '系统安全存储不可用，请重试。'],
   AGENT_SETTINGS_SAVE_FAILED: [503, 'Agent 设置未能保存；请重新读取当前设置后再试。'],
   AGENT_SETTINGS_CORRUPT: [503, 'Agent 设置文件不可读取或不安全；为保护现有设置，已停止保存。'],
   AGENT_SETTINGS_CLOSED: [503, 'Agent 设置服务已关闭，请重新打开应用。'],

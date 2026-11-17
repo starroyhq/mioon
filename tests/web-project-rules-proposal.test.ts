@@ -16,7 +16,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import {createMioProjectRules} from '../packages/business/src/agent/mio-rules.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -93,8 +93,8 @@ test('pending, unavailable and local-receipt blocked dialogs cannot show an enab
 async function runtimeFixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'web-rules-approval-')), store = openStore(root), services = createServices(store, new Map()), application = testProjectAppLibrary(store); assert.ok(application);
   await services.call('project.create', {name: 'Real rules approval'});
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
-  await putTestAgentConfiguration(settings, {expectedRevision: 0, configuration: {presetId: 'custom', platformId: 'custom', protocol: 'chat_completions', model: 'synthetic-rules', baseUrl: 'https://harness.example.com'}, secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_RULES_UI_ONLY'}});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  await putTestAgentConfiguration(settings, {expectedRevision: 0, configuration: {presetId: 'custom', platformId: 'custom', protocol: 'chat_completions', model: 'synthetic-rules', baseUrl: 'https://harness.example.com'}, secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_RULES_UI_ONLY'}});
   const authorizations = createTestAuthorizations(() => store, settings); await authorizeTestScope(authorizations, 'project_agent');
   const rules = createMioProjectRules({store, application}), before = 'Before\r\nkeep', after = 'After\r\nkeep'; rules.save({requestId: randomUUID(), expectedHash: null, text: before});
   const tools = createAgentTaskTools({store, services, rules}); let requests = 0;

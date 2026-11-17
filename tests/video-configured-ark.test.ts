@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,10 +37,10 @@ async function foreignProject(t:TestContext,name='Foreign project'){
 }
 async function fixture(t:TestContext,inputModes?:VideoInputMode[]){
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-configured-ark-'))),store=openStore(root);
-  const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root}),providers=createProviderRegistry({db:store.db,root,env:{}});
+  const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage}),providers=createProviderRegistry({db:store.db,root,env:{}});
   const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'ark',name:'Ark UI only',region:'cn-beijing',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('ark')};
   if(inputModes)configuration.models[0]!.inputModes=inputModes;
-  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'synthetic-ark-ui-key'}});
+  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'persistent',value:'synthetic-ark-ui-key'}});
   const calls:Array<{url:string;init:RequestInit}> = [];let count=0,worker:ReturnType<typeof startWorker>|null=null;
   const services=createServices(store,providers,{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(input,init)=>{calls.push({url:String(input),init:init??{}});if(init?.method==='POST')return json({id:`configured-ark-task-${++count}`});return json({id:new URL(String(input)).pathname.split('/').at(-1),status:'running'});}});
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});

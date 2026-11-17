@@ -29,7 +29,7 @@ type TaskFixture = Parameters<ReturnType<typeof createImageGenerationSession>['a
 const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), requestId = id(4), versionId = id(5), assetId = id(6);
 const at = '2026-10-10T10:00:00.000Z';
-const settings = (patch: Obj = {}): SettingsFixture => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch } as unknown as SettingsFixture);
+const settings = (patch: Obj = {}): SettingsFixture => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'persistent' }, storage: { persistentAvailable: true, reasonCode: null }, ...patch } as unknown as SettingsFixture);
 const paidInput = (patch: Obj = {}): imageLogic.ImageMutationInput => ({ projectId, name: '原始图像', prompt: '  原始描述\n不要改写。  ', providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: id(60), ...patch });
 const review = (input: Obj = paidInput(), patch: Obj = {}): ReviewFixture => ({ id: id(70), projectId: input.projectId, requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input as never)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch } as unknown as ReviewFixture);
 const task = (patch: Obj = {}): TaskFixture => ({ id: taskId, projectId, groupId, requestId, name: '测试图像', prompt: '清晨的山间小屋', providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch } as unknown as TaskFixture);
@@ -882,7 +882,7 @@ import type {CustomImageConnectionV2} from '../packages/contracts/src/generation
 import type {GenerationImageServicesClient} from '../apps/web/src/generation-image-services.ts';
 import {imageReviewIdentity} from '../apps/web/src/image-review.ts';
 const serviceConfig = () => {const {connectionId: _legacy, ...configuration} = customConfig(); return configuration;};
-const servicesFixture = (): CustomImageConnectionV2[] => [201,202].map(n => ({connectionId: id(n), name: 'Same name', configurationRevision: 1, configuration: serviceConfig(), secret: {configured: true, storage: 'session'}}));
+const servicesFixture = (): CustomImageConnectionV2[] => [201,202].map(n => ({connectionId: id(n), name: 'Same name', configurationRevision: 1, configuration: serviceConfig(), secret: {configured: true, storage: 'persistent'}}));
 
 test('multiple custom services require explicit identity and use only the dedicated preparation endpoint', async () => {
   const services = servicesFixture(), requests: unknown[] = [];

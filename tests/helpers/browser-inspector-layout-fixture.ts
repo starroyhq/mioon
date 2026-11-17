@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage, testServerSecretCodecs} from './secret-codec.ts';
 import {randomUUID} from 'node:crypto';
 import {writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -47,17 +48,17 @@ try {
   await closeQaProject(fixture);
 }
 
-const settings = await createVideoSettingsV2({directory: path.join(dataDir, 'fixture-video-directory'), privateRoot: dataDir});
+const settings = await createVideoSettingsV2({secretCodec:createTestSecretCodec(),storage:testSecretStorage,directory: path.join(dataDir, 'fixture-video-directory'), privateRoot: dataDir});
 let connections: Awaited<ReturnType<typeof listVideoConnections>>;
 try {
   const configuration = newVideoConnection('minimax');
   configuration.enabled = true;
-  await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-only'}});
+  await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-only'}});
   connections = await listVideoConnections(settings, '2026-11-17');
 } finally {
   await settings.close();
 }
 
-const server = await startServer({dataDir, port: 0, distDir, token});
+const server = await startServer({dataDir, port: 0, distDir, token, ...testServerSecretCodecs()});
 process.once('SIGTERM', () => { void server.close(); });
 await writeFile(path.join(dataDir, 'ready.json'), JSON.stringify({origin: server.url, name, plainTitle, tailTitle, tailId, connections}), {mode: 0o600, flag: 'wx'});

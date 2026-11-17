@@ -12,7 +12,7 @@ import type {VideoSettingsV2Options} from '../packages/business/src/video/settin
 import {createVideoSettingsV2File} from '../packages/business/src/video/settings-v2-file.ts';
 
 const KEY = 'synthetic-g1-video-key';
-const replace = (value = KEY, storage: 'session' | 'persistent' = 'session') => ({action: 'replace' as const, value, storage});
+const replace = (value = KEY, storage: 'session' | 'persistent' = 'persistent') => ({action: 'replace' as const, value, storage});
 const keep = {action: 'keep' as const};
 function configuration(providerId: VideoConnectionConfigurationV2['providerId'] = 'minimax'): VideoConnectionConfigurationV2 {
   return {id: randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: providerId === 'compatible' ? 'custom' : providerId === 'ark' || providerId === 'wan' ? 'cn-beijing' : 'global', workspaceId: '', enabled: true, outputHosts: ['output.example.com'], models: defaultVideoModels(providerId), ...(providerId === 'compatible' ? {baseUrl: 'https://api.example.com/v1'} : {})};
@@ -27,7 +27,7 @@ function codec() {
 }
 async function fixture(t: {after(fn: () => unknown): void}, extra: Partial<VideoSettingsV2Options> = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-g1-video-v2-')));
-  const options = {directory: path.join(root, 'video-settings'), privateRoot: root, ...extra};
+  const options = {directory: path.join(root, 'video-settings'), privateRoot: root, secretCodec: codec(), storage: {persistentAvailable: true, reasonCode: null}, ...extra};
   const settings = await createVideoSettingsV2(options);
   t.after(async () => {await settings.close(); await rm(root, {recursive: true, force: true});});
   return {root, options, settings, file: path.join(options.directory, 'settings.json')};
@@ -95,7 +95,7 @@ test('compatible saved checks are revision fenced and an address edit cannot reu
 });
 
 test('custom deletion removes every historical credential and catalog while leaving only a non-reusable UUID tombstone', async t => {
-  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}});
+  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}});
   const custom = configuration('compatible'), other = configuration();
   await f.settings.put({action: 'batch', expectedRevision: 0, operations: [{action: 'save', configuration: custom, secret: replace()}, {action: 'save', configuration: other, secret: replace()}]});
   const old = f.settings.select(custom.id, 1, custom.models[0]!.id), otherBinding = f.settings.select(other.id, 1, other.models[0]!.id);
@@ -117,7 +117,7 @@ test('custom deletion removes every historical credential and catalog while leav
 });
 
 test('persistent keys keep the v1 codec envelope and historical tasks survive disable and restart without decrypting on get', async t => {
-  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}}), current = configuration();
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
   const old = f.settings.select(current.id, 1, current.models[0]!.id);
   await f.settings.put({action: 'save', expectedRevision: 1, configuration: {...current, enabled: false}, secret: keep});
@@ -131,11 +131,19 @@ test('persistent keys keep the v1 codec envelope and historical tasks survive di
   assert.equal(secretCodec.decryptions, decryptions); assert.equal(await reopened.acquire(old), KEY);
 });
 
-test('session restart and explicit key removal never heal a frozen reference using a newly saved key', async t => {
+test('legacy empty ciphertext and key removal never heal a frozen reference using a newly saved key', async t => {
   const f = await fixture(t), current = configuration();
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace()});
   const old = f.settings.select(current.id, 1, current.models[0]!.id);
-  await f.settings.close(); const reopened = await createVideoSettingsV2(f.options); t.after(() => reopened.close());
+  await f.settings.close();
+  const legacy = JSON.parse(await readFile(f.file, 'utf8'));
+  legacy.credentials[0].encrypted = null;
+  const legacyBytes = JSON.stringify(legacy);
+  await writeFile(f.file, legacyBytes, {mode: 0o600});
+  const reopened = await createVideoSettingsV2(f.options); t.after(() => reopened.close());
+  const view = await reopened.get();
+  assert.deepEqual(view.connections[0], {configuration: current, revision: 1, secret: {configured: false, storage: 'none'}});
+  assert.equal(await readFile(f.file, 'utf8'), legacyBytes);
   await assert.rejects(reopened.acquire(old), {code: 'VIDEO_SETTINGS_NOT_CONFIGURED'});
   await reopened.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace()});
   const next = reopened.select(current.id, 2, current.models[0]!.id);
@@ -177,15 +185,16 @@ test('unchanged saves preserve file identity, historical bindings and both revis
   assert.equal(await readFile(f.file, 'utf8'), removed); assert.equal(saves, 2);
 });
 
-test('persistent-key deduplication proves equality without rotating a frozen ref, while storage changes remain explicit', async t => {
-  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+test('persistent-key deduplication proves equality without rotating a frozen ref, and rejects a removed storage mode', async t => {
+  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}}), current = configuration();
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
   const original = f.settings.select(current.id, 1, current.models[0]!.id), before = await readFile(f.file, 'utf8');
   const unchanged = await f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace(KEY, 'persistent')});
   assert.equal(unchanged.revision, 1); assert.equal(secretCodec.encryptions, 1); assert.equal(secretCodec.decryptions, 1); assert.equal(await readFile(f.file, 'utf8'), before);
-  await f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace(KEY, 'session')});
-  const next = f.settings.select(current.id, 2, current.models[0]!.id); assert.notEqual(next.credentialRef, original.credentialRef);
-  assert.equal(await f.settings.acquire(original), KEY); assert.equal(await f.settings.acquire(next), KEY);
+  await assert.rejects(f.settings.put({action: 'save', expectedRevision: 1, configuration: current, secret: replace(KEY, 'session')}), {code: 'VIDEO_SETTINGS_VALIDATION'});
+  assert.equal(await readFile(f.file, 'utf8'), before);
+  assert.deepEqual(f.settings.select(current.id, 1, current.models[0]!.id), original);
+  assert.equal(await f.settings.acquire(original), KEY);
 });
 
 test('a mixed batch increments only changed connections and an all-noop batch never persists', async t => {
@@ -228,7 +237,7 @@ test('connection change listeners see only committed IDs after the write fence r
   ]);
 });
 
-test('a successful batch persists exactly once and a rejected later operation cannot publish its earlier session key', async t => {
+test('a successful batch persists exactly once and a rejected later operation cannot publish its earlier encrypted key', async t => {
   const f = await fixture(t), real = createVideoSettingsV2File(f.options); let saves = 0;
   const persistence = {load: real.load, async save(value: Parameters<typeof real.save>[0], signal?: AbortSignal) {saves++; await real.save(value, signal);}};
   const settings = await createVideoSettingsV2({...f.options, persistence}); t.after(() => settings.close());
@@ -243,7 +252,7 @@ test('a queued deletion fences late decryption for both frozen acquisition and s
   for (const check of [false, true]) {
     const base = codec(), started = deferred<void>(), delayed = deferred<string>(); let delay = false;
     const secretCodec = {encrypt: base.encrypt, decrypt: (value: string) => {if (!delay) return base.decrypt(value); started.resolve(); return delayed.promise;}};
-    const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), custom = configuration('compatible');
+    const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}}), custom = configuration('compatible');
     await f.settings.put({action: 'save', expectedRevision: 0, configuration: custom, secret: replace(KEY, 'persistent')});
     const binding = f.settings.select(custom.id, 1, custom.models[0]!.id), disk = JSON.parse(await readFile(f.file, 'utf8')), plaintext = base.decrypt(disk.credentials[0].encrypted); delay = true;
     const acquired = check ? f.settings.acquireCompatible(custom.id, 1) : f.settings.acquire(binding);
@@ -253,11 +262,11 @@ test('a queued deletion fences late decryption for both frozen acquisition and s
   }
 });
 
-test('closed and aborted engines reject late encryption without publishing session or durable changes', async t => {
+test('closed and aborted engines reject late encryption without committing ciphertext or configuration', async t => {
   for (const stop of ['close', 'abort'] as const) {
     const started = deferred<void>(), delayed = deferred<string>(), controller = new AbortController();
     const secretCodec = {encrypt: () => {started.resolve(); return delayed.promise;}, decrypt: () => ''};
-    const f = await fixture(t, {secretCodec, signal: controller.signal, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+    const f = await fixture(t, {secretCodec, signal: controller.signal, storage: {persistentAvailable: true, reasonCode: null}}), current = configuration();
     const write = f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
     const rejected = assert.rejects(write, {code: 'VIDEO_SETTINGS_CLOSED'}); await started.promise;
     if (stop === 'close') await f.settings.close(); else controller.abort();
@@ -270,7 +279,7 @@ test('closed and aborted engines reject late encryption without publishing sessi
 test('closing a pending decryption rejects late plaintext while preserving the durable key', async t => {
   const base = codec(), started = deferred<void>(), delayed = deferred<string>(); let delay = false;
   const secretCodec = {encrypt: base.encrypt, decrypt: (value: string) => {if (!delay) return base.decrypt(value); started.resolve(); return delayed.promise;}};
-  const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+  const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}}), current = configuration();
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
   const binding = f.settings.select(current.id, 1, current.models[0]!.id), before = await readFile(f.file, 'utf8'); delay = true;
   const acquired = f.settings.acquire(binding), rejected = assert.rejects(acquired, {code: 'VIDEO_SETTINGS_CLOSED'}); await started.promise;
@@ -301,7 +310,7 @@ test('video v2 keeps update, model, connection, credential and envelope budgets 
 });
 
 test('copied encrypted credentials cannot be replayed under another frozen reference', async t => {
-  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}}), current = configuration();
+  const secretCodec = codec(), f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}}), current = configuration();
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
   const binding = f.settings.select(current.id, 1, current.models[0]!.id), envelope = JSON.parse(await readFile(f.file, 'utf8')); await f.settings.close();
   const plaintext = JSON.parse(secretCodec.decrypt(envelope.credentials[0].encrypted)); plaintext.credentialRef = randomUUID();
@@ -336,7 +345,7 @@ test('every v2 UUID boundary rejects uppercase without changing the legacy froze
 
 test('strict public snapshots reject secret echoes, impossible status combinations and duplicate built-ins', () => {
   const savedConfiguration = configuration();
-  const valid = {revision: 1, connections: [{configuration: savedConfiguration, revision: 1, secret: {configured: false, storage: 'none'}}], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
+  const valid = {revision: 1, connections: [{configuration: savedConfiguration, revision: 1, secret: {configured: false, storage: 'none'}}], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null};
   assert.equal(videoSettingsSnapshotV2Schema.safeParse(valid).success, true);
   for (const value of [{...valid, apiKey: KEY}, {...valid, notice: 'untrusted text'}, {...valid, storage: {...valid.storage, reasonCode: null}}, {...valid, connections: [{...valid.connections[0], credentialRef: randomUUID()}]}, {...valid, connections: [{...valid.connections[0], secret: {configured: false, storage: 'session'}}]}, {...valid, connections: [...valid.connections, {...valid.connections[0], configuration: {...savedConfiguration, id: randomUUID()}}]}]) assert.equal(videoSettingsSnapshotV2Schema.safeParse(value).success, false);
   for (const code of ['VIDEO_SETTINGS_CAPACITY', 'VIDEO_SETTINGS_DELETED', 'UNTRUSTED_CODE']) {
@@ -386,7 +395,7 @@ test('a proven corrupt ciphertext is distinguished from temporary secure storage
     if (failure) throw Object.assign(Error('synthetic private native detail'), {code: failure});
     return vault.decrypt(value);
   }};
-  const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, sessionScope: 'server', reasonCode: null}});
+  const f = await fixture(t, {secretCodec, storage: {persistentAvailable: true, reasonCode: null}});
   await f.settings.put({action: 'save', expectedRevision: 0, configuration: current, secret: replace(KEY, 'persistent')});
   const binding = f.settings.select(current.id, 1, current.models[0]!.id);
   failure = 'VIDEO_SETTINGS_CORRUPT';

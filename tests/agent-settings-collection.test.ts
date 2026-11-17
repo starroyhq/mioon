@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {AGENT_CREDENTIAL_ACQUIRE,createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import type {AgentSettingsService,PublicStorage,SecretCodec} from '../packages/business/src/agent/settings.ts';
 import {createAgentSettingsFile} from '../packages/business/src/agent/settings-file.ts';
@@ -11,11 +12,11 @@ import type {AgentMioSelection,AgentSecretAction,AgentServiceInput,AgentSettings
 import {agentSettingsEnvelopeSchema} from '../packages/contracts/src/agent-connection-private.ts';
 import {testAgentCredential,testAgentExecution} from './helpers/agent-settings-fixture.ts';
 
-const persistent:PublicStorage={persistentAvailable:true,sessionScope:'app',reasonCode:null};
+const persistent:PublicStorage={persistentAvailable:true,reasonCode:null};
 const selected:AgentMioSelection={serviceKey:'openai',modelId:'gpt-4.1-mini'};
 const customKey=(index:number)=>`00000000-0000-4000-8000-${String(index).padStart(12,'0')}`;
 const custom=(index:number,base='https://gateway.example.com/team/v1'):AgentServiceInput=>({serviceKey:customKey(index),presetId:'custom',name:`Custom ${index}`,platformId:'custom',protocol:'chat_completions',addressInput:base,manualModelIds:[]});
-const replace=(serviceKey:string,value:string,storage:'session'|'persistent'='session'):AgentSecretAction=>({serviceKey,action:'replace',storage,value});
+const replace=(serviceKey:string,value:string):AgentSecretAction=>({serviceKey,action:'replace',storage:'persistent',value});
 function memoryPersistence(initial:unknown=null){
  let value=structuredClone(initial),writes=0;
  return {load:async()=>structuredClone(value),save:async(candidate:unknown)=>{value=structuredClone(candidate);writes++;},get value(){return structuredClone(value);},get writes(){return writes;}};
@@ -36,7 +37,7 @@ const acquire=(settings:AgentSettingsService,snapshot:AgentSettingsSnapshot)=>se
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
 
 test('saving B and its key changes only collection CAS while A keeps its execution witness and credential',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const a=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_A')]}));
  const frozen=testAgentCredential(a),before=testAgentExecution(a);
  const b=await settings.put(update(a,{services:edit(a,'deepseek',{manualModelIds:['synthetic-b-model']}),actions:[replace('deepseek','SYNTHETIC_B')]}));
@@ -49,7 +50,7 @@ test('saving B and its key changes only collection CAS while A keeps its executi
 });
 
 test('selected entry metadata, key-only replacement and model/service ABA each reject the old execution witness',async t=>{
- const settings=await createAgentSettings({persistence:memoryPersistence()});t.after(()=>settings.close());
+ const settings=await createAgentSettings({persistence:memoryPersistence(),storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  let snapshot=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_A')]}));
  const original=testAgentCredential(snapshot);
  const changes:[string,(value:AgentSettingsSnapshot)=>AgentSettingsUpdate][]=[
@@ -69,8 +70,8 @@ test('selected entry metadata, key-only replacement and model/service ABA each r
  assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_REPLACED');
 });
 
-test('two custom services at the same complete URL never share session keys, including rename and deletion',async t=>{
- const settings=await createAgentSettings({persistence:memoryPersistence()});t.after(()=>settings.close());
+test('two custom services at the same complete URL never share encrypted keys, including rename and deletion',async t=>{
+ const settings=await createAgentSettings({persistence:memoryPersistence(),storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const initial=await settings.get();
  let snapshot=await settings.put(update(initial,{services:[...initial.services.map(agentServiceInput),custom(1),custom(2)],selection:{serviceKey:customKey(1),modelId:'same-model'},actions:[replace(customKey(1),'SYNTHETIC_CUSTOM_A'),replace(customKey(2),'SYNTHETIC_CUSTOM_B')]}));
  assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_CUSTOM_A');
@@ -83,12 +84,12 @@ test('two custom services at the same complete URL never share session keys, inc
  snapshot=await settings.put(update(snapshot,{services:snapshot.services.filter(s=>s.serviceKey!==customKey(1)).map(agentServiceInput)}));
  assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_CUSTOM_B');
  snapshot=await settings.put(update(snapshot,{services:[...snapshot.services.map(agentServiceInput),custom(1)],selection:{serviceKey:customKey(1),modelId:'same-model'}}));
- assert.equal((await acquire(settings,snapshot)).apiKey,null,'recreated UUID does not resurrect its removed session key');
+ assert.equal((await acquire(settings,snapshot)).apiKey,null,'recreated UUID does not resurrect its removed key');
 });
 
 test('workspace ID and local origin preserve keys across protocol changes but changed ID, region or port clears only that service',async t=>{
  for(const mode of ['workspace','local'] as const){
-  const settings=await createAgentSettings({persistence:memoryPersistence()});t.after(()=>settings.close());
+  const settings=await createAgentSettings({persistence:memoryPersistence(),storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
   const key=mode==='workspace'?'qwen':'ollama',initial=await settings.get();
   const services=edit(initial,key,mode==='workspace'?{platformId:'workspace-cn-beijing',addressInput:'workspace-a'}:{addressInput:'http://localhost:11434'});
   let snapshot=await settings.put(update(initial,{services,selection:{serviceKey:key,modelId:'unknown-model'},actions:[replace(key,'SYNTHETIC_BOUND'),replace('deepseek','SYNTHETIC_UNRELATED')]}));
@@ -103,18 +104,19 @@ test('workspace ID and local origin preserve keys across protocol changes but ch
   }
   snapshot=await settings.put(update(snapshot,{services:edit(snapshot,key,{addressInput:mode==='workspace'?'workspace-b':'http://localhost:11435'})}));
   assert.equal((await acquire(settings,snapshot)).apiKey,null);
-  assert.deepEqual(entry(snapshot,'deepseek').secret,{configured:true,storage:'session'});
+  assert.deepEqual(entry(snapshot,'deepseek').secret,{configured:true,storage:'persistent'});
   snapshot=await settings.put(update(snapshot,{selection:{serviceKey:'deepseek',modelId:'deepseek-flash'}}));
   assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_UNRELATED');
  }
 });
 
 test('mixed multi-key update rolls back RAM and disk when its second persistent encryption fails',async t=>{
- const persistence=memoryPersistence();let encryptions=0;
- const settings=await createAgentSettings({persistence,storage:persistent,secretCodec:{...syntheticCodec(),encrypt(value){if(++encryptions===2)throw Error('SYNTHETIC_PRIVATE_FAILURE');return encode(value);}}});t.after(()=>settings.close());
+ const persistence=memoryPersistence();let encryptions=0,failAt=Infinity;
+ const settings=await createAgentSettings({persistence,storage:persistent,secretCodec:{...syntheticCodec(),encrypt(value){if(++encryptions===failAt)throw Error('SYNTHETIC_PRIVATE_FAILURE');return encode(value);}}});t.after(()=>settings.close());
  const baseline=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_A0'),replace('deepseek','SYNTHETIC_B0'),replace('qwen','SYNTHETIC_C0')]}));
+ encryptions=0;failAt=2;
  const disk=persistence.value,writes=persistence.writes;
- await assert.rejects(settings.put(update(baseline,{actions:[{serviceKey:'openai',action:'remove'},replace('deepseek','SYNTHETIC_B1','persistent'),replace('qwen','SYNTHETIC_C1','persistent')]})),error=>{
+ await assert.rejects(settings.put(update(baseline,{actions:[{serviceKey:'openai',action:'remove'},replace('deepseek','SYNTHETIC_B1'),replace('qwen','SYNTHETIC_C1')]})),error=>{
   assert.equal((error as {code:string}).code,'AGENT_SETTINGS_STORAGE_UNAVAILABLE');assert.doesNotMatch(String(error),/SYNTHETIC/);return true;
  });
  assert.equal(encryptions,2);assert.equal(persistence.writes,writes);assert.deepEqual(persistence.value,disk);assert.deepEqual(await settings.get(),baseline);
@@ -124,11 +126,11 @@ test('mixed multi-key update rolls back RAM and disk when its second persistent 
  }
 });
 
-test('cancelling a queued encrypted collection save discards its late result and every proposed session mutation',async t=>{
- const persistence=memoryPersistence(),entered=deferred<void>(),answer=deferred<string>();
- const settings=await createAgentSettings({persistence,storage:persistent,secretCodec:{...syntheticCodec(),encrypt(){entered.resolve();return answer.promise;}}});t.after(()=>settings.close());
+test('cancelling a queued encrypted collection save discards its late result and every proposed mutation',async t=>{
+ const persistence=memoryPersistence(),entered=deferred<void>(),answer=deferred<string>();let encryptions=0;
+ const settings=await createAgentSettings({persistence,storage:persistent,secretCodec:{...syntheticCodec(),encrypt(value){if(++encryptions<3)return encode(value);entered.resolve();return answer.promise;}}});t.after(()=>settings.close());
  const baseline=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_OLD')]})),disk=persistence.value;
- const controller=new AbortController(),pending=settings.put(update(baseline,{actions:[replace('openai','SYNTHETIC_NEW'),replace('deepseek','SYNTHETIC_PENDING','persistent')]}),{signal:controller.signal});
+ const controller=new AbortController(),pending=settings.put(update(baseline,{actions:[replace('openai','SYNTHETIC_NEW'),replace('deepseek','SYNTHETIC_PENDING')]}),{signal:controller.signal});
  await entered.promise;controller.abort();answer.resolve(encode('SYNTHETIC_LATE_RESULT'));
  await assert.rejects(pending,{code:'AGENT_SETTINGS_CLOSED'});
  assert.deepEqual(await settings.get(),baseline);assert.deepEqual(persistence.value,disk);assert.equal((await acquire(settings,baseline)).apiKey,'SYNTHETIC_OLD');
@@ -137,16 +139,16 @@ test('cancelling a queued encrypted collection save discards its late result and
 test('collection CAS rejects a second queued save before any of its key encryption runs',async t=>{
  const persistence=memoryPersistence(),entered=deferred<void>(),answer=deferred<string>();let encryptions=0;
  const settings=await createAgentSettings({persistence,storage:persistent,secretCodec:{...syntheticCodec(),encrypt(value){encryptions++;if(encryptions===1){entered.resolve();return answer.promise.then(()=>encode(value));}return encode(value);}}});t.after(()=>settings.close());
- const initial=await settings.get(),first=settings.put(update(initial,{selection:selected,actions:[replace('openai','SYNTHETIC_WINNER','persistent')]}));
+ const initial=await settings.get(),first=settings.put(update(initial,{selection:selected,actions:[replace('openai','SYNTHETIC_WINNER')]}));
  await entered.promise;
- const second=settings.put(update(initial,{selection:{serviceKey:'deepseek',modelId:'deepseek-flash'},actions:[replace('deepseek','SYNTHETIC_LOSER','persistent')]}));
+ const second=settings.put(update(initial,{selection:{serviceKey:'deepseek',modelId:'deepseek-flash'},actions:[replace('deepseek','SYNTHETIC_LOSER')]}));
  answer.resolve('release');const saved=await first;
  await assert.rejects(second,{code:'AGENT_SETTINGS_CONFLICT'});assert.equal(encryptions,1);assert.equal(persistence.writes,1);
  assert.deepEqual(await settings.get(),saved);assert.equal((await acquire(settings,saved)).apiKey,'SYNTHETIC_WINNER');
 });
 
 test('durable save failure leaves all replacements and removals unapplied in memory',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const baseline=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_OLD'),replace('deepseek','SYNTHETIC_B')]})),disk=persistence.value;
  persistence.save=async()=>{throw Error('SYNTHETIC_RAW_DISK_FAILURE');};
  await assert.rejects(settings.put(update(baseline,{actions:[replace('openai','SYNTHETIC_NEW'),{serviceKey:'deepseek',action:'remove'}]})),{code:'AGENT_SETTINGS_SAVE_FAILED'});
@@ -154,7 +156,7 @@ test('durable save failure leaves all replacements and removals unapplied in mem
 });
 
 test('custom service, manual model and model ID limits accept the exact boundary and reject the next item atomically',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const initial=await settings.get();let snapshot=await settings.put(update(initial,{services:[...initial.services.map(agentServiceInput),...Array.from({length:10},(_,i)=>custom(i+1))],selection:{serviceKey:customKey(1),modelId:'m'.repeat(200)}}));
  assert.equal(snapshot.services.length,19);assert.equal(testAgentExecution(snapshot).configuration.model.length,200);
  const manual=Array.from({length:50},(_,i)=>i===0?'m'.repeat(200):`manual-${i}`);
@@ -171,7 +173,7 @@ test('custom service, manual model and model ID limits accept the exact boundary
 });
 
 test('the selected custom entry requires a separate saved Mio selection before deletion',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const initial=await settings.get();let snapshot=await settings.put(update(initial,{services:[...initial.services.map(agentServiceInput),custom(1)],selection:{serviceKey:customKey(1),modelId:'manual'},actions:[replace(customKey(1),'SYNTHETIC_SELECTED')]}));
  const removed=snapshot.services.filter(s=>s.serviceKey!==customKey(1)).map(agentServiceInput),disk=persistence.value;
  for(const selection of [snapshot.mioSelection,selected,null])await assert.rejects(settings.put(update(snapshot,{services:removed,selection})),{code:'AGENT_SETTINGS_VALIDATION'});
@@ -181,7 +183,7 @@ test('the selected custom entry requires a separate saved Mio selection before d
 });
 
 test('malformed, duplicate and foreign secret actions cannot change any service in the collection',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>settings.close());
  const snapshot=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_OLD')]})),disk=persistence.value;
  for(const secretActions of [
   [replace('openai','SYNTHETIC_NEW'),replace('openai','SYNTHETIC_DUPLICATE')],
@@ -193,7 +195,9 @@ test('malformed, duplicate and foreign secret actions cannot change any service 
 });
 
 test('credential and whole-collection UTF-8 byte limits accept byte zero and reject byte one without partial writes',async t=>{
- const persistence=memoryPersistence(),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+ // Keep test ciphertext compact so this exercises the input limit separately from the private file limit.
+ const secretCodec:SecretCodec={encrypt:value=>deflateRawSync(value).toString('base64'),decrypt:value=>inflateRawSync(Buffer.from(value,'base64')).toString()};
+ const persistence=memoryPersistence(),settings=await createAgentSettings({persistence,storage:persistent,secretCodec});t.after(()=>settings.close());
  const exactKey='界'.repeat(2730)+'xx';assert.equal(Buffer.byteLength(exactKey),8192);
  let snapshot=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai',exactKey)]}));
  assert.equal((await acquire(settings,snapshot)).apiKey,exactKey);
@@ -213,21 +217,26 @@ test('credential and whole-collection UTF-8 byte limits accept byte zero and rej
  assert.deepEqual(await settings.get(),snapshot);assert.deepEqual(persistence.value,disk);assert.equal(persistence.writes,writes);
 });
 
-test('real private v3 file restarts all persistent service keys while session keys never reach the file',async t=>{
+test('real private v3 file restarts encrypted service keys and unconfigured service metadata',async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-settings-collection-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const persistence=createAgentSettingsFile({directory:path.join(root,'private'),privateRoot:root}),codec=syntheticCodec();
  let settings=await createAgentSettings({persistence,storage:persistent,secretCodec:codec});t.after(()=>settings.close());
- let snapshot=await settings.put(update(await settings.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_DISK_A','persistent'),replace('deepseek','SYNTHETIC_DISK_B','persistent'),replace('qwen','SYNTHETIC_RAM_C')]}));
+ const initial=await settings.get();
+ let snapshot=await settings.put(update(initial,{services:edit(initial,'qwen',{manualModelIds:['synthetic-qwen-model']}),selection:selected,actions:[replace('openai','SYNTHETIC_DISK_A'),replace('deepseek','SYNTHETIC_DISK_B')]}));
  const text=await readFile(path.join(root,'private/settings.json'),'utf8');assert.doesNotMatch(text,/SYNTHETIC_/u);assert.equal(JSON.parse(text).version,3);
+ await settings.close();settings=await createAgentSettings({persistence});snapshot=await settings.get();
+ assert.deepEqual(entry(snapshot,'openai').secret,{configured:false,storage:'none'});assert.equal((await acquire(settings,snapshot)).apiKey,null);
+ assert.equal(await readFile(path.join(root,'private/settings.json'),'utf8'),text,'reading without a vault must preserve existing ciphertext');
  await settings.close();settings=await createAgentSettings({persistence,storage:persistent,secretCodec:codec});snapshot=await settings.get();
  assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_DISK_A');assert.deepEqual(entry(snapshot,'qwen').secret,{configured:false,storage:'none'});
+ assert.deepEqual(entry(snapshot,'qwen').manualModelIds,['synthetic-qwen-model']);
  snapshot=await settings.put(update(snapshot,{selection:{serviceKey:'deepseek',modelId:'deepseek-flash'}}));assert.equal((await acquire(settings,snapshot)).apiKey,'SYNTHETIC_DISK_B');
  assert.equal(agentSettingsSnapshotSchema.safeParse(snapshot).success,true);
 });
 
 test('ciphertext copied between same-URL custom owners or carrying old/wrong plaintext schema fails closed',async t=>{
  const base=memoryPersistence(),writer=await createAgentSettings({persistence:base,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>writer.close());
- const initial=await writer.get();await writer.put(update(initial,{services:[...initial.services.map(agentServiceInput),custom(1),custom(2)],selection:{serviceKey:customKey(2),modelId:'same-model'},actions:[replace(customKey(1),'SYNTHETIC_PRIVATE_A','persistent'),replace(customKey(2),'SYNTHETIC_PRIVATE_B','persistent')]}));
+ const initial=await writer.get();await writer.put(update(initial,{services:[...initial.services.map(agentServiceInput),custom(1),custom(2)],selection:{serviceKey:customKey(2),modelId:'same-model'},actions:[replace(customKey(1),'SYNTHETIC_PRIVATE_A'),replace(customKey(2),'SYNTHETIC_PRIVATE_B')]}));
  const original=agentSettingsEnvelopeSchema.parse(base.value),a=original.services.find(s=>s.serviceKey===customKey(1)),b=original.services.find(s=>s.serviceKey===customKey(2));assert.ok(a?.secret&&b?.secret);
  const plaintext=JSON.parse(decode(b.secret.encrypted)) as Record<string,unknown>;
  const attacks=[
@@ -249,7 +258,7 @@ test('ciphertext copied between same-URL custom owners or carrying old/wrong pla
 
 test('outer private v3 binding/schema corruption is rejected before any decrypt or save',async t=>{
  const base=memoryPersistence(),writer=await createAgentSettings({persistence:base,storage:persistent,secretCodec:syntheticCodec()});t.after(()=>writer.close());
- const saved=await writer.put(update(await writer.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_PRIVATE','persistent')]}));
+ const saved=await writer.put(update(await writer.get(),{selection:selected,actions:[replace('openai','SYNTHETIC_PRIVATE')]}));
  const original=agentSettingsEnvelopeSchema.parse(base.value);
  for(const mutation of [
   (value:Record<string,unknown>)=>{value.version=4;},

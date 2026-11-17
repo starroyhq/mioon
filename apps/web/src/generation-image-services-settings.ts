@@ -15,7 +15,7 @@ import type {ImageSettingsResult} from './image-settings.ts';
 import type {ComfyImageSettingsResult, ComfyImageCheckResult, ComfyConnectorAvailability} from './comfy-image-settings.ts';
 import {settingsNavigationState} from './settings-navigation-state.ts';
 import type {GenerationDomainOutcome, GenerationSaveTicket} from './generation-services-settings.ts';
-import {watchPendingSecretStorage} from './settings-secret-storage.ts';
+import {unavailableSecretStorage, watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 export type GenerationImageDomainKind = 'official' | 'custom' | 'comfy';
 export interface GenerationImageServicesClient {
@@ -30,7 +30,7 @@ type EditableConfiguration<T> = T extends object ? Omit<T, 'enabled' | 'baseUrl'
 type Configuration = EditableConfiguration<ImageSettingsResult['configuration'] | CustomImageConfigurationV2 | ComfyImageSettingsResult['configuration']>;
 export interface GenerationImageDraft {
   id: string; name: string; configuration: Configuration;
-  storage: '' | 'session' | 'persistent'; secretAction: 'keep' | 'remove'; hasKey: boolean; needsKey: boolean;
+  secretAction: 'keep' | 'remove'; hasKey: boolean; needsKey: boolean;
 }
 export interface GenerationImageDomainState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'reconciling' | 'review' | 'blocked' | 'load_error' | 'error' | 'checking';
@@ -93,9 +93,9 @@ function safeSnapshot(kind: GenerationImageDomainKind, value: unknown): Generati
   return copy(result.data);
 }
 function draftsFor(snapshot: GenerationImageSnapshot): GenerationImageDraft[] {
-  if ('connections' in snapshot) return snapshot.connections.map(item => ({id: item.connectionId, name: item.name, configuration: copy(item.configuration), storage: item.secret.storage === 'none' ? '' : item.secret.storage, secretAction: 'keep', hasKey: false, needsKey: false}));
+  if ('connections' in snapshot) return snapshot.connections.map(item => ({id: item.connectionId, name: item.name, configuration: copy(item.configuration), secretAction: 'keep', hasKey: false, needsKey: false}));
   return [{id: 'readiness' in snapshot ? 'image:comfy' : 'image:official', name: '', configuration: copy(snapshot.configuration),
-    storage: 'secret' in snapshot && snapshot.secret.storage !== 'none' ? snapshot.secret.storage : '', secretAction: 'keep', hasKey: false, needsKey: false}];
+    secretAction: 'keep', hasKey: false, needsKey: false}];
 }
 
 /** One owner per file, never one owner per selected panel. State contains only
@@ -106,14 +106,15 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   let probeOwner: string | null = null;
   let pending: AbortController | null = null, checking: AbortController | null = null, availabilityPending: AbortController | null = null;
   const inputs = new Map<string, Pick<HTMLInputElement, 'value'>>();
-  const watchStorage = watchPendingSecretStorage(async signal => {
+  const refreshStorage = async (signal?: AbortSignal) => {
     const before = state.snapshot;
     if (!before || !('storage' in before)) return;
     const next = safeSnapshot(kind, await client.read(signal, 'keychain-poll'));
-    if (signal.aborted || state.snapshot !== before || !('storage' in next)) return;
+    if (!live || !pageVisible || signal?.aborted || state.snapshot !== before || !('storage' in next)) return;
     if (next.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') publish({snapshot: {...before, storage: next.storage}});
-    else if (!state.keychainWaitConfirmed) publish({keychainWaitConfirmed: true});
-  });
+    else if (before.storage.reasonCode !== 'OS_SECRET_STORE_PENDING' || !state.keychainWaitConfirmed) publish({snapshot: {...before, storage: next.storage}, keychainWaitConfirmed: true});
+  };
+  const watchStorage = watchPendingSecretStorage(refreshStorage);
   const storagePending = () => !!state.snapshot && 'storage' in state.snapshot && state.snapshot.storage.reasonCode === 'OS_SECRET_STORE_PENDING';
   const observeStorage = () => watchStorage(live && pageVisible && storagePending());
   const publish = (patch: Partial<GenerationImageDomainState>) => {if (live) {
@@ -148,7 +149,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   function savedProbeTarget(draft: GenerationImageDraft) {
     const saved = savedSecret(draft.id);
     if (draft.secretAction !== 'keep' || draft.needsKey || !saved?.configured || !state.snapshot) return null;
-    if (saved.storage === 'persistent' && (!('storage' in state.snapshot) || !state.snapshot.storage.persistentAvailable)) return null;
+    if (!('storage' in state.snapshot) || !state.snapshot.storage.persistentAvailable) return null;
     if ('connections' in state.snapshot) {
       const saved = state.snapshot.connections.find(item => item.connectionId === draft.id);
       if (!saved) return null;
@@ -160,7 +161,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     return {source: 'saved' as const, configurationRevision: state.snapshot.revision};
   }
   function canProbe(id: string): boolean {
-    if (kind === 'comfy' || !editable() || !client.probe) return false;
+    if (kind === 'comfy' || !editable() || !client.probe || !state.snapshot || !('storage' in state.snapshot) || !state.snapshot.storage.persistentAvailable) return false;
     const draft = state.drafts.find(item => item.id === id);
     if (!draft || draft.secretAction === 'remove') return false;
     if (!inputs.get(id)?.value) return !!savedProbeTarget(draft);
@@ -236,13 +237,13 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
     if (!live || !pageVisible || !documentVisible() || !state.snapshot || busy() || state.recovery || prepared) {values.clear(); throw invalid();}
     if (!changed.length && !state.deleted.length) {values.clear(); return null;}
     const before = copy(state.snapshot), drafts = copy(changed), deleted = [...state.deleted];
+    if ([...values.values()].some(Boolean) && (!('storage' in before) || !before.storage.persistentAvailable)) {values.clear(); throw invalid();}
     let body: string | undefined;
     const secretFor = (draft: GenerationImageDraft) => {
       const value = values.get(draft.id);
       if (draft.needsKey && !value && draft.secretAction !== 'remove') throw invalid();
       if (!value) return {action: draft.secretAction};
-      if (!['session', 'persistent'].includes(draft.storage) || draft.storage === 'persistent' && (!('storage' in before) || !before.storage.persistentAvailable)) throw invalid();
-      return {action: 'replace', storage: draft.storage, value};
+      return {action: 'replace', storage: 'persistent', value};
     };
     try {
       let input: unknown;
@@ -287,6 +288,9 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
           if (!live || page !== pageEpoch || token !== requestEpoch) return 'unknown';
           const code = codeOf(error), rejected = ['UNAUTHORIZED', 'IMAGE_SETTINGS_VALIDATION', 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE', 'IMAGE_SETTINGS_CAPACITY', 'COMFY_SETTINGS_VALIDATION', 'COMFY_ENDPOINT_INVALID', 'COMFY_ENDPOINT_DENIED', 'COMFY_SETTINGS_DESTINATION_DENIED'].includes(code);
           prepared = null;
+          if (code === 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE' && state.snapshot && 'storage' in state.snapshot) {
+            publish({snapshot: {...state.snapshot, storage: unavailableSecretStorage}, phase: 'error', notice: null}); return 'error';
+          }
           if (rejected) {publish({phase: 'error', notice: 'image.settings.error.validation'}); return 'error';}
           publish({phase: 'reconciling', recovery: code.endsWith('_CONFLICT') ? 'conflict' : 'unknown', notice: 'image.settings.notice.review'});
           try {const snapshot = safeSnapshot(kind, await client.read(signal)); if (live && page === pageEpoch && token === requestEpoch) publish({snapshot, phase: 'review'});}
@@ -301,10 +305,11 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
   return {
     getState: () => copy(state), navigation: () => settingsNavigationState({dirty: dirty(), phase: state.phase, recovery: state.recovery}, state.version),
     load: () => read(), reload: () => canInteract() ? read(!!state.snapshot) : Promise.resolve(false), prepareSave, clearKeys, savedSecret, canProbe, checkCredential, interactionAllowed: canInteract,
+    retryStorage() {if (editable()) void refreshStorage().catch(() => {});},
     isDirty(id: string) {const draft = state.drafts.find(item => item.id === id); return !!draft && draftDirty(draft);},
     registerKey(id: string, input: Pick<HTMLInputElement, 'value'> | null) {const previous = inputs.get(id); if (previous && previous !== input) previous.value = ''; if (input) inputs.set(id, input); else inputs.delete(id);},
     keyChanged(id: string) {if (!editable()) return; ++draftVersion; publish({drafts: state.drafts.map(item => item.id === id ? {...item, hasKey: !!inputs.get(id)?.value, needsKey: !!inputs.get(id)?.value} : item), probe: state.probe?.id === id ? null : state.probe});},
-    edit(id: string, patch: Partial<Pick<GenerationImageDraft, 'name' | 'storage' | 'secretAction'>>, configuration: Partial<Pick<Configuration, 'enabled' | 'baseUrl' | 'model'>> = {}) {
+    edit(id: string, patch: Partial<Pick<GenerationImageDraft, 'name' | 'secretAction'>>, configuration: Partial<Pick<Configuration, 'enabled' | 'baseUrl' | 'model'>> = {}) {
       if (!editable()) return false; const draft = state.drafts.find(item => item.id === id); if (!draft) return false;
       if (configuration.baseUrl !== undefined && configuration.baseUrl !== draft.configuration.baseUrl) {clearKeys(id); cancelCheck(); if (kind === 'comfy') configuration = {...configuration, model: ''};}
       if (kind === 'comfy' && configuration.model && !state.check?.checkpoints.includes(configuration.model)) return false;
@@ -313,7 +318,7 @@ export function createGenerationImageServicesOwner(kind: GenerationImageDomainKi
       publish({drafts: state.drafts.map(item => item.id === id ? {...item, ...patch, configuration: {...item.configuration, ...configuration}} : item), check: configuration.baseUrl !== undefined ? null : state.check, probe: state.probe?.id === id ? null : state.probe, notice: 'image.settings.services.staged'}); return true;
     },
     add(name: string): string | null {if (kind !== 'custom' || !editable() || !state.snapshot || state.drafts.length >= CUSTOM_IMAGE_SETTINGS_V2_LIMITS.connections) return null;
-      const id = crypto.randomUUID().toLowerCase(); ++draftVersion; publish({drafts: [...state.drafts, {id, name, configuration: copy(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2), storage: '', secretAction: 'keep', hasKey: false, needsKey: false}], notice: 'image.settings.services.staged'}); return id;},
+      const id = crypto.randomUUID().toLowerCase(); ++draftVersion; publish({drafts: [...state.drafts, {id, name, configuration: copy(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2), secretAction: 'keep', hasKey: false, needsKey: false}], notice: 'image.settings.services.staged'}); return id;},
     remove(id: string, version: number): boolean {if (kind !== 'custom' || !editable() || state.version !== version || !state.drafts.some(item => item.id === id)) return false;
       clearKeys(id); ++draftVersion; const stored = baseline().some(item => item.id === id); publish({drafts: state.drafts.filter(item => item.id !== id), deleted: stored ? [...state.deleted, id] : state.deleted, notice: 'image.settings.services.staged'}); return true;},
     discard() {if (!canInteract() || busy()) return; clearKeys(); ++draftVersion; if (state.snapshot) publish({drafts: draftsFor(state.snapshot), deleted: [], recovery: null, phase: 'ready', notice: null, check: null, probe: null});},

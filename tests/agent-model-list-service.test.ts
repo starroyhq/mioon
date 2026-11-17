@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
+import {AGENT_CREDENTIAL_ACQUIRE, sanitizeAgentSettingsResult} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentModelListService} from '../packages/business/src/agent/model-list-service.ts';
 import {connectionFor} from '../packages/business/src/agent/settings-envelope.ts';
 import {agentServiceInput} from '../packages/contracts/src/agent-connection-settings.ts';
@@ -29,10 +30,10 @@ function cacheStore(){
 }
 async function fixture(t:test.TestContext,fetch:Parameters<typeof createAgentModelListService>[0]['fetch'],cache=cacheStore(),gateway?:TaskGateway){
  let disk:unknown=null,writes=0;
- const owner=await createAgentSettings({persistence:{load:async()=>disk,save:async value=>{disk=structuredClone(value);writes++;}}});
+ const owner=await createTestAgentSettings({persistence:{load:async()=>disk,save:async value=>{disk=structuredClone(value);writes++;}}});
  const models=createAgentModelListService({settings:owner,cache:cache.store,fetch,gateway});
  t.after(async()=>{await models.close();await owner.close();});
- const snapshot=await owner.put({...metadata(await owner.get()),secretActions:[{serviceKey:'openai',action:'replace',storage:'session',value:'SYNTHETIC_A'},{serviceKey:'deepseek',action:'replace',storage:'session',value:'SYNTHETIC_B'}]});
+ const snapshot=await owner.put({...metadata(await owner.get()),secretActions:[{serviceKey:'openai',action:'replace',storage:'persistent',value:'SYNTHETIC_A'},{serviceKey:'deepseek',action:'replace',storage:'persistent',value:'SYNTHETIC_B'}]});
  return {owner,models,cache,snapshot,get writes(){return writes;},get disk(){return structuredClone(disk);}};
 }
 
@@ -60,7 +61,7 @@ test('list purpose cannot loosen the existing inference acquisition witness or c
  assert.equal((await f.owner[AGENT_CREDENTIAL_ACQUIRE](listing)).apiKey,'SYNTHETIC_B');
  await assert.rejects(f.owner[AGENT_CREDENTIAL_ACQUIRE]({...listing,configuration:{...listing.configuration,baseUrl:'https://arbitrary.example.com'}}),{code:'AGENT_SETTINGS_VALIDATION'});
  await assert.rejects(f.owner[AGENT_CREDENTIAL_ACQUIRE]({...listing,configuration:{...listing.configuration,model:'forged'}}),{code:'AGENT_SETTINGS_CONFLICT'});
- const changed=await f.owner.put({...metadata(snapshot),secretActions:[{serviceKey:'deepseek',action:'replace',storage:'session',value:'SYNTHETIC_REPLACED'}]});
+ const changed=await f.owner.put({...metadata(snapshot),secretActions:[{serviceKey:'deepseek',action:'replace',storage:'persistent',value:'SYNTHETIC_REPLACED'}]});
  await assert.rejects(f.owner[AGENT_CREDENTIAL_ACQUIRE](listing),{code:'AGENT_SETTINGS_CONFLICT'});
  assert.equal((await f.owner[AGENT_CREDENTIAL_ACQUIRE](active)).apiKey,'SYNTHETIC_A');assert.notEqual(changed.revision,snapshot.revision);
 });
@@ -100,7 +101,7 @@ test('draft connection test uses the current key without changing settings, and 
  fail=true;
  assert.deepEqual(await f.models.test(draft),{outcome:'failed',reason:'rejected'});
  assert.deepEqual(f.disk,before);assert.equal(f.writes,writes);assert.equal(f.cache.writes,0);
- const changed=await f.models.settings.put({...metadata(f.snapshot),secretActions:[{serviceKey:'openai',action:'replace',storage:'session',value:'SYNTHETIC_INPUT'}]});
+ const changed=await f.models.settings.put({...metadata(f.snapshot),secretActions:[{serviceKey:'openai',action:'replace',storage:'persistent',value:'SYNTHETIC_INPUT'}]});
  fail=false;
  assert.deepEqual(await f.models.test({...request(sanitizeAgentSettingsResult(changed)),model}),{outcome:'success'});
  assert.equal(calls.at(-1)?.key,'SYNTHETIC_INPUT');assert.equal(f.writes,writes+1);
@@ -114,8 +115,8 @@ test('draft connection test rejects a saved key for a changed base, platform, or
  });
  const custom:AgentServiceInput={serviceKey:'00000000-0000-4000-8000-000000000001',presetId:'custom',name:'One',platformId:'custom',protocol:'chat_completions',addressInput:'https://one.example.com/v1',manualModelIds:[]};
  const saved=sanitizeAgentSettingsResult(await f.models.settings.put({...metadata(f.snapshot,[...f.snapshot.services.map(agentServiceInput),custom]),secretActions:[
-  {serviceKey:custom.serviceKey,action:'replace',storage:'session',value:'SYNTHETIC_OLD_CUSTOM'},
-  {serviceKey:'minimax',action:'replace',storage:'session',value:'SYNTHETIC_OLD_MINIMAX'},
+  {serviceKey:custom.serviceKey,action:'replace',storage:'persistent',value:'SYNTHETIC_OLD_CUSTOM'},
+  {serviceKey:'minimax',action:'replace',storage:'persistent',value:'SYNTHETIC_OLD_MINIMAX'},
  ]}));
  const changed=[
   {...request(saved,custom.serviceKey).selection,baseUrl:'https://two.example.com/v1'},
@@ -188,7 +189,7 @@ test('cache reads require no key or network and recompute adaptation from curren
 
 test('an explicitly saved local key is not silently replaced by anonymous discovery',async t=>{
  let calls=0;const f=await fixture(t,async options=>{calls++;assert.equal(options.apiKey,'SYNTHETIC_LOCAL');return {...success(),source:'public_local'};});
- const snapshot=sanitizeAgentSettingsResult(await f.models.settings.put({...metadata(f.snapshot),secretActions:[{serviceKey:'ollama',action:'replace',storage:'session',value:'SYNTHETIC_LOCAL'}]}));
+ const snapshot=sanitizeAgentSettingsResult(await f.models.settings.put({...metadata(f.snapshot),secretActions:[{serviceKey:'ollama',action:'replace',storage:'persistent',value:'SYNTHETIC_LOCAL'}]}));
  await assert.rejects(f.models.list(request(snapshot,'ollama','none'),{selfPort:9999}),{code:'AGENT_SETTINGS_VALIDATION'});assert.equal(calls,0);
  assert.equal((await f.models.list(request(snapshot,'ollama','saved'),{selfPort:9999})).outcome,'success');assert.equal(calls,1);
 });
@@ -257,7 +258,7 @@ test('unrelated collection save and caller cancellation both reject delayed resu
 });
 
 test('legacy projected settings and failed list responses never create cache or change verification',async t=>{
- let writes=0;const owner=await createAgentSettings({persistence:{load:async()=>({version:2,revision:1,configuration:{presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'gpt-4.1-mini',protocol:'chat_completions'},secret:null}),save:async()=>{writes++;}}});
+ let writes=0;const owner=await createTestAgentSettings({persistence:{load:async()=>({version:2,revision:1,configuration:{presetId:'openai',platformId:'global',baseUrl:'https://api.openai.com/v1',model:'gpt-4.1-mini',protocol:'chat_completions'},secret:null}),save:async()=>{writes++;}}});
  const store=cacheStore(),models=createAgentModelListService({settings:owner,cache:store.store,fetch:async()=>success()});t.after(async()=>{await models.close();await owner.close();});
  const snapshot=await owner.get();assert.ok(snapshot.notices.length);await models.list(request(snapshot,'openai','input'));
  assert.equal(store.writes,0);assert.equal(writes,0);assert.deepEqual(await owner.get(),snapshot);

@@ -20,25 +20,25 @@ function nodes(value: unknown): Element[] {return Array.isArray(value) ? value.f
 function invoke(element: Element, method: string, ...args: unknown[]) {const callback = element.props[method]; assert.equal(typeof callback, 'function'); return (callback as (...args: unknown[]) => unknown)(...args);}
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 const flush = async () => {for (let index = 0; index < 6; index++) await new Promise<void>(resolve => setImmediate(resolve));};
-function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']} = {}) {
+function fixture({check, modelsList, write, storage = {persistentAvailable: true, reasonCode: null}, desktop = false}: Partial<VideoSettingsClient> & {storage?: VideoSettingsSnapshotV2['storage']; desktop?: boolean} = {}) {
   const a = newVideoConnection('compatible'), b = newVideoConnection('compatible'); a.name = 'A'; b.name = 'B'; a.baseUrl = b.baseUrl = 'https://api.example.com/v1';
-  let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'session'}})), storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
-  if (storage) {
-    snapshot.storage = storage;
-    snapshot.connections[0]!.secret.storage = 'persistent';
-  }
+  let snapshot: VideoSettingsSnapshotV2 = {revision: 1, connections: [a, b].map(configuration => ({configuration, revision: 1, secret: {configured: true, storage: 'persistent'}})), storage, notice: null};
   const keyA = `video:${a.id}`, keyB = `video:${b.id}`;
   const hooks = new Map<string, Hook[]>(), inputs = new Map<string, {value: string}>(), trees = new Map<string, unknown>(), reports: navigation.SettingsNavigationState[] = [];
   let context = 'domain', cursor = 0, effects: Array<() => void> = [], pageVisible = true, selected = keyA, locale = 'zh-Hans', confirmValue: boolean | Promise<boolean> = true, interaction = true, domain: GenerationServiceDomain;
   const client: VideoSettingsClient = {read: async () => structuredClone(snapshot), write: write ?? (async update => {assert.ok([...inputs.values()].every(input => !input.value)); if (update.action !== 'batch') throw Error('Expected batch'); for (const operation of update.operations) {if (operation.action === 'delete') snapshot.connections = snapshot.connections.filter(view => view.configuration.id !== operation.connectionId); else {const previous = snapshot.connections.find(view => view.configuration.id === operation.configuration.id); snapshot.connections = [...snapshot.connections.filter(view => view.configuration.id !== operation.configuration.id), {configuration: operation.configuration, revision: 2, secret: operation.secret.action === 'replace' ? {configured: true, storage: operation.secret.storage} : previous?.secret ?? {configured: false, storage: 'none'}}];}} snapshot.revision++; return structuredClone(snapshot);}), check, modelsList};
+  const noticeModule = {exports: {} as typeof import('../apps/web/src/SettingsSecretStorageNotice.tsx')};
   const react = {
-    createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {return {type, props: {...props, children}};},
+    createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): unknown {
+      if (type && type === noticeModule.exports.SettingsSecretStorageNotice) return noticeModule.exports.SettingsSecretStorageNotice(props as Parameters<typeof noticeModule.exports.SettingsSecretStorageNotice>[0]);
+      return {type, props: {...props, children}};
+    },
     useRef(initial: unknown) {const list = hooks.get(context)!; const index = cursor++; return (list[index] ??= {value: {current: initial}}).value;},
     useState(initial: unknown) {const list = hooks.get(context)!; const index = cursor++; const hook = list[index] ??= {value: typeof initial === 'function' ? initial() : initial}; return [hook.value, (value: unknown) => {hook.value = typeof value === 'function' ? value(hook.value) : value;}];},
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) {const list = hooks.get(context)!, index = cursor++, old = list[index]; if (!old || !deps || deps.some((value, i) => value !== old.deps?.[i])) effects.push(() => {old?.cleanup?.(); list[index] = {deps, cleanup: callback()};});},
   };
   const source = readFileSync(new URL('../apps/web/src/GenerationVideoServices.tsx', import.meta.url), 'utf8'), module = {exports: {} as typeof import('../apps/web/src/GenerationVideoServices.tsx')};
-  Function('require', 'module', 'exports', transformSync(source, {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
+  const require = (name: string) => {
     if (name === 'react') return {...react, __esModule: true, default: react};
     if (name === './generation-video-services.ts') return sessions;
     if (name === './video-settings.ts') return settings;
@@ -53,11 +53,17 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
     if (name === '@mioon/ui/components/input') return {Input: 'input'};
     if (name === '@mioon/ui/components/textarea') return {Textarea: 'textarea'};
     if (name === './WorkspaceControls.tsx') return {WorkbenchSelect: 'select', WorkbenchTooltip: 'WorkbenchTooltip'};
+    if (name === './desktop-window-client.ts') return {hasDesktopWindowBridge: () => desktop};
+    if (name === './SettingsSecretStorageNotice.tsx') return noticeModule.exports;
     if (name === './VideoProviderSettings.tsx') return {ModelEditor: 'ModelEditor'};
     if (name === './ModelPickerDialog.tsx') return {__esModule: true, default: 'ModelPickerDialog'};
     if (name.endsWith('.css')) return {};
     assert.fail('Unexpected video domain dependency: ' + name);
-  }, module, module.exports);
+  };
+  const transform = (code: string) => transformSync(code, {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code;
+  const notice = readFileSync(new URL('../apps/web/src/SettingsSecretStorageNotice.tsx', import.meta.url), 'utf8');
+  Function('require', 'module', 'exports', transform(notice))(require, noticeModule, noticeModule.exports);
+  Function('require', 'module', 'exports', transform(source))(require, module, module.exports);
   const onNavigationStateChange = (state: navigation.SettingsNavigationState) => reports.push(state), onSelect = (key: string) => {selected = key;};
   function render() {
     context = 'domain'; cursor = 0; effects = []; if (!hooks.has(context)) hooks.set(context, []);
@@ -68,8 +74,10 @@ function fixture({check, modelsList, write, storage}: Partial<VideoSettingsClien
       context = service.key; cursor = 0; effects = []; if (!hooks.has(context)) hooks.set(context, []);
       const content = service.content; assert.ok(element(content)); assert.equal(typeof content.type, 'function');
       const tree = (content.type as (props: Record<string, unknown>) => unknown)(content.props); trees.set(service.key, tree);
-      const input = nodes(tree).find(item => item.props['data-testid'] === 'video-connection-key'); assert.ok(input);
-      const retained = inputs.get(service.key) ?? {value: ''}; inputs.set(service.key, retained); invoke(input, 'ref', retained);
+      const input = nodes(tree).find(item => item.props['data-testid'] === 'video-connection-key');
+      if (input) {
+        const retained = inputs.get(service.key) ?? {value: ''}; inputs.set(service.key, retained); invoke(input, 'ref', retained);
+      } else inputs.delete(service.key);
       for (const effect of effects) effect();
     }
     return domain;
@@ -105,35 +113,49 @@ test('an address edit clears only its own password and old detail callbacks cann
   invoke(f.find(f.keyB, 'video-connection-base-url'), 'onChange', {target: {value: 'https://other.example.com/v1'}}); f.render(); assert.equal(f.inputs.get(f.keyA)!.value, 'synthetic-dom-A'); assert.equal(f.inputs.get(f.keyB)!.value, ''); f.unmount();
 });
 
-test('only a saved persistent video key blocked by system storage displays Keychain guidance', async () => {
-  for (const storage of [
-    {persistentAvailable: false, sessionScope: 'app', reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'},
-    {persistentAvailable: true, sessionScope: 'app', reasonCode: null},
-    {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'},
-  ] as const) {
-    const f = fixture({storage}); await flush(); f.render();
-    const keychain = (key: string) => f.all(key).find(node => node.props['data-testid'] === 'video-key-storage-unavailable');
+test('browser and desktop give one localized reason when safe storage is unavailable, with no key form', async () => {
+  const unavailable = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'} as const;
+  for (const desktop of [false, true]) {
+    const f = fixture({storage: unavailable, desktop}); await flush(); f.render();
     for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
       f.locale(locale);
-      const notice = keychain(f.keyA);
-      if (storage.reasonCode === 'OS_SECRET_STORE_UNAVAILABLE') {
-        const content = nodes(notice);
-        assert.deepEqual(content.find(node => node.type === 'span')?.props.children, [`${locale}:tasks.status.videoSecretStoreWaiting`]);
-        assert.equal(content.find(node => node.type === 'WorkbenchTooltip')?.props.content, `${locale}:tasks.error.videoSecretStore`);
-      } else assert.equal(notice, undefined);
-      assert.equal(keychain(f.keyB), undefined);
-      assert.equal(f.inputs.get(f.keyA)?.value, '');
+      const panel = f.all(f.keyA);
+      assert.ok(!panel.some(node => node.props.type === 'password'));
+      assert.ok(!panel.some(node => node.props['data-testid'] === 'video-connection-storage'));
+      const notice = nodes(f.find(f.keyA, 'video-key-storage-unavailable'));
+      const reason = desktop ? notice.find(node => node.type === 'span') : notice[0];
+      assert.deepEqual(reason?.props.children, [`${locale}:connections.storage.${desktop ? 'unavailableReason' : 'desktopRequired'}`]);
+      assert.equal(notice.filter(node => node.type === 'Button').length, desktop ? 1 : 0);
     }
     f.unmount();
   }
 });
 
+test('desktop write refusal clears the key and retry only refreshes readiness', async () => {
+  let writes = 0;
+  const f = fixture({desktop: true, write: async () => {
+    writes++;
+    throw Object.assign(Error('Private error'), {code: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'});
+  }});
+  await flush(); f.render(); f.type(f.keyA, 'synthetic-credential-only');
+  const ticket = f.domain().prepareSave()!;
+  assert.equal(await ticket.run(), 'error'); ticket.dispose(); f.render();
+  assert.equal(writes, 1);
+  assert.equal(f.inputs.has(f.keyA), false);
+  const retry = nodes(f.find(f.keyA, 'video-key-storage-unavailable')).find(node => node.type === 'Button')!;
+  invoke(retry, 'onClick'); await flush(); f.render();
+  assert.equal(f.inputs.get(f.keyA)?.value, '');
+  assert.equal(writes, 1);
+  assert.doesNotMatch(JSON.stringify(f.reports), /synthetic-credential-only|Private error/);
+  f.unmount();
+});
+
 test('Keychain guidance appears only for authorization that is still pending after 300 ms', async t => {
   t.mock.timers.enable({apis: ['setTimeout']});
-  const pending = {persistentAvailable: false, sessionScope: 'server', reasonCode: 'OS_SECRET_STORE_PENDING'} as const;
-  const ready = {persistentAvailable: true, sessionScope: 'server', reasonCode: null} as const;
+  const pending = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_PENDING'} as const;
+  const ready = {persistentAvailable: true, reasonCode: null} as const;
   for (const releasesQuickly of [true, false]) {
-    const f = fixture({storage: pending}); await flush(); f.render();
+    const f = fixture({storage: pending, desktop: true}); await flush(); f.render();
     const guidance = () => f.all(f.keyA).find(node => node.props['data-testid'] === 'video-keychain-pending');
     assert.equal(guidance(), undefined);
     assert.equal(f.find(f.keyA, 'video-connection-enabled').props.disabled, undefined);

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {createCustomImageSettingsV2} from '../packages/business/src/images/custom-settings-v2.ts';
 import {createCustomImageServicesClient, createCustomImageServicesSession, safeCustomImageServices, customImageServicesDirty} from '../apps/web/src/custom-image-services-settings.ts';
 import type {CustomImageServicesClient, CustomImageServicesSnapshot, CustomImageServicesWrite} from '../apps/web/src/custom-image-services-settings.ts';
@@ -11,7 +12,7 @@ const deferred = <T>() => Promise.withResolvers<T>();
 const configured = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.test/v1', model: 'same-model'};
 async function fixture() {
   let document: unknown = null;
-  const settings = await createCustomImageSettingsV2({persistence: {load: () => structuredClone(document), save: value => {document = structuredClone(value);}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: () => structuredClone(document), save: value => {document = structuredClone(value);}}});
   const calls: CustomImageServicesWrite[] = [];
   const client: CustomImageServicesClient = {read: () => settings.get(), write: input => {
     calls.push(structuredClone(input)); const {action, ...payload} = input;
@@ -25,11 +26,11 @@ async function fixture() {
 test('browser drafts own lowercase UUIDs, custom instances stay independent and model edits retain their key', async t => {
   const f = await fixture(); t.after(async () => {f.session.dispose(); await f.settings.close();});
   assert.equal(f.session.add('First'), true); const first = f.session.getState().draft!.connectionId;
-  assert.match(first, /^[0-9a-f-]{36}$/); f.session.edit({}, configured); f.session.setStorage('session');
+  assert.match(first, /^[0-9a-f-]{36}$/); f.session.edit({}, configured);
   assert.equal(await f.session.save('synthetic-first-only'), true);
   assert.equal(f.calls[0]!.action, 'create'); assert.equal(f.calls[0]!.connectionId, first);
   assert.equal(f.session.add('Second'), true); const second = f.session.getState().draft!.connectionId;
-  assert.notEqual(first, second); f.session.edit({}, configured); f.session.setStorage('session'); assert.equal(await f.session.save('synthetic-second-only'), true);
+  assert.notEqual(first, second); f.session.edit({}, configured); assert.equal(await f.session.save('synthetic-second-only'), true);
   assert.equal(f.session.select(first), true); f.session.edit({}, {model: 'new-model'}); assert.equal(await f.session.save(), true);
   const snapshot = f.session.getState().snapshot!;
   assert.equal(snapshot.connections[0]!.secret.configured, true); assert.equal(snapshot.connections[1]!.configuration.model, 'same-model');
@@ -61,13 +62,13 @@ test('hidden and disposed custom owners refuse edits and late save acknowledgeme
   const f = await fixture(); t.after(async () => {f.session.dispose(); await f.settings.close();});
   const pending = deferred<CustomImageServicesSnapshot>(); let writes = 0;
   const current = createCustomImageServicesSession({client: {read: f.client.read, write: () => {writes++; return pending.promise;}}});
-  await current.load(); current.add('A'); current.edit({}, configured); current.setStorage('session'); const saving = current.save('synthetic-late');
+  await current.load(); current.add('A'); current.edit({}, configured); const saving = current.save('synthetic-late');
   current.setVisible(false); assert.equal(current.edit({name: 'Late edit'}), false); assert.equal(await current.save(), false); current.dispose();
   pending.resolve(await f.settings.get()); assert.equal(await saving, false); assert.equal(writes, 1); assert.equal(current.getState().snapshot, null);
 });
 
 test('custom settings HTTP is bounded, private and redacted, and rejects secret echoes', async () => {
-  const snapshot = {revision: 0, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};
+  const snapshot = {revision: 0, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null};
   const calls: {route: string; init?: RequestInit}[] = [];
   const client = createCustomImageServicesClient({fetchImpl: async (route, init) => {calls.push({route: String(route), init}); return Response.json({ok: true, data: snapshot});}});
   assert.deepEqual(await client.read(), snapshot); assert.equal(calls[0]!.route, '/api/images/custom-settings'); assert.equal(calls[0]!.init?.cache, 'no-store');
@@ -75,13 +76,13 @@ test('custom settings HTTP is bounded, private and redacted, and rejects secret 
   assert.throws(() => safeCustomImageServices({...snapshot, key: 'must-not-enter-state'}), {code: 'INVALID_RESPONSE'});
 });
 
-test('Mio multi-service refusal and session loss guidance render in all four languages', () => {
+test('Mio multi-service refusal and the desktop settings prompt render in all four languages', () => {
   assert.equal(agentTaskErrorKey('IMAGE_SETTINGS_SELECTION_REQUIRED'), 'agent.task.error.imageSelectionRequired');
   for (const locale of LOCALES) {
     assert.ok(translate(locale, agentTaskErrorKey('IMAGE_SETTINGS_SELECTION_REQUIRED')).length > 10);
-    assert.ok(translate(locale, 'connections.sessionLoss').length > 10);
+    assert.ok(translate(locale, 'connections.storage.desktopRequired').length > 0);
   }
-  assert.equal(translate('zh-Hans', 'connections.sessionLoss'), '应用退出后，正在进行的生成没法继续查询结果。');
+  assert.equal(translate('zh-Hans', 'connections.storage.desktopRequired'), '请在桌面应用里配置密钥。');
 });
 
 import {readFileSync} from 'node:fs';
@@ -115,6 +116,7 @@ function uiHarness(client: CustomImageServicesClient, confirm: (value: unknown) 
     '../../../packages/contracts/src/generation-image-settings.ts': {CUSTOM_IMAGE_SETTINGS_V2_LIMITS}, './i18n/I18nProvider.tsx': {useI18n: () => createI18nTestContext('zh-Hans')},
     './workspace-visibility.tsx': {useWorkspaceVisibility: () => true, WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider'},
     './WorkspaceControls.tsx': {WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip'}, './icons.tsx': {__esModule: true, default: 'Icon'},
+    './SettingsSecretStorageNotice.tsx': {SettingsSecretStorageNotice: 'SettingsSecretStorageNotice'},
     './settings-navigation-state.ts': {createSettingsNavigationReporter, closeSettingsAfterPermission}, './custom-image-services-settings.ts': sessions,
   };
   Function('require', 'module', 'exports', transformSync(readFileSync(new URL('../apps/web/src/CustomImageServicesSettings.tsx', import.meta.url), 'utf8'), {loader: 'tsx', format: 'cjs'}).code)((name: string) => {if (name.endsWith('.css')) return {}; assert.ok(Object.hasOwn(imports, name), name); return imports[name];}, module, module.exports);
@@ -131,7 +133,7 @@ test('real custom form keeps passwords out of state, preserves model edits and c
   const originalWrite = f.client.write; let passwordAtWrite = 'unset';
   const client: CustomImageServicesClient = {...f.client, write: input => {passwordAtWrite = (ui.find('custom-image-settings-key').props.ref as {current: {value: string}}).current.value; return originalWrite(input);}};
   const ui = uiHarness(client); t.after(() => ui.unmount()); ui.render(); await flush(); ui.render(); ui.act('custom-image-service-add', 'onClick'); await flush(); ui.render();
-  ui.act('custom-image-settings-base-url', 'onChange', {target: {value: configured.baseUrl}}); ui.act('custom-image-settings-model', 'onChange', {target: {value: configured.model}}); ui.act('custom-image-settings-storage', 'onChange', {target: {value: 'session'}}); ui.render();
+  ui.act('custom-image-settings-base-url', 'onChange', {target: {value: configured.baseUrl}}); ui.act('custom-image-settings-model', 'onChange', {target: {value: configured.model}}); ui.render();
   ui.key('synthetic-dom-key'); ui.render(); ui.act('custom-image-settings-model', 'onChange', {target: {value: 'another-model'}}); ui.render();
   assert.equal((ui.find('custom-image-settings-key').props.ref as {current: {value: string}}).current.value, 'synthetic-dom-key');
   const form = nodes(ui.tree).find(node => node.type === 'form')!; (form.props.onSubmit as (event: {preventDefault(): void}) => void)({preventDefault() {}});

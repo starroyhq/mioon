@@ -7,7 +7,7 @@ import {createDesktopImageSecretCodec,validateDesktopImageSecretPlaintext} from 
 import {createDesktopSecretCodec} from '../apps/desktop/src/secret-store.ts';
 import {createImageSecretBroker, createImageSecretClient} from '../apps/desktop/src/image-secret-broker.ts';
 import {createImageSettings, IMAGE_CREDENTIAL_ACQUIRE} from '../packages/business/src/images/settings.ts';
-import {createCustomImageSettingsV2,customImageCredentialBindingV2,validateCustomImageSettingsV2Envelope} from '../packages/business/src/images/custom-settings-v2.ts';
+import {createCustomImageSettingsV2,customImageCredentialBindingV2} from '../packages/business/src/images/custom-settings-v2.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2,CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../packages/contracts/src/generation-image-settings.ts';
 import type {CustomImageConnectionV2} from '../packages/contracts/src/generation-image-settings.ts';
 import {DEFAULT_CUSTOM_IMAGE_CONFIGURATION, DEFAULT_IMAGE_CONFIGURATION, CUSTOM_IMAGE_SETTINGS_NAMESPACE, IMAGE_SETTINGS_NAMESPACE} from '../packages/contracts/src/image-settings.ts';
@@ -116,7 +116,7 @@ test('private broker/client transports custom keys only after both strict Images
   assert.equal(calls, 1); assert.equal(messages[1]?.ok, false); safe(messages[1]);
 });
 
-for (const platform of ['linux', 'darwin'] as const) test('two utility engines share only an OS codec, persistent bindings stay separate and session keys die with backend engines (' + platform + ')', async t => {
+for (const platform of ['linux', 'darwin'] as const) test('two utility engines share only an OS codec and keep committed bindings separate after vault denial (' + platform + ')', async t => {
   const vault = fakeVault(), pair = connected(vault, platform); t.after(() => pair.close());
   const officialFile = memory(), customFile = memory(), options = {secretCodec: pair.client, storage: pair.client.storage};
   const official = await createImageSettings({persistence: officialFile, ...options} as unknown as ImageSettingsOptions); t.after(() => official.close());
@@ -134,10 +134,12 @@ for (const platform of ['linux', 'darwin'] as const) test('two utility engines s
   const update={expectedRevision:1,connectionId,expectedConfigurationRevision:1,name:'Custom',configuration:config};
   await assert.rejects(async () => custom.put({...update,secret: {action: 'replace', storage: 'persistent', value: SENTINEL}}), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.equal((await custom.get()).connections[0].secret.storage, 'persistent'); assert.deepEqual(officialFile.value, savedOfficial);
-  const session = (await custom.put({...update,secret: {action: 'replace', storage: 'session', value: SENTINEL}})).connections[0];
-  assert.equal(session.secret.storage, 'session'); assert.equal(validateCustomImageSettingsV2Envelope(customFile.value).connections[0].secret, null); safe(customFile.value);
+  const committed = structuredClone(customFile.value);
+  await assert.rejects(custom.put({...update, secret: {action: 'replace', storage: 'session', value: SENTINEL}}),
+    {code: 'IMAGE_SETTINGS_VALIDATION'});
+  assert.deepEqual(customFile.value, committed); safe(customFile.value);
   await custom.close(); custom = await createCustomImageSettingsV2({persistence: customFile, ...options});
-  assert.deepEqual((await custom.get()).connections[0].secret, {configured: false, storage: 'none'});
+  assert.deepEqual((await custom.get()).connections[0].secret, {configured: true, storage: 'persistent'});
 });
 
 test('copied ciphertext from another Images slot or custom recipient never yields its key from a settings engine', async t => {
@@ -159,6 +161,6 @@ test('legacy custom v1 credentials are rejected before OS encryption and legacy 
   let encrypts=0,decrypts=0;vault.encryptString=()=>{encrypts++;throw Error(SENTINEL);};vault.decryptString=()=>{decrypts++;throw Error(SENTINEL);};
   await assert.rejects(codec.encrypt(oldPlaintext),{code:'IMAGE_SETTINGS_VALIDATION'});assert.equal(encrypts,0);
   const persistence=memory();await persistence.save({version:1,namespace:CUSTOM_IMAGE_SETTINGS_NAMESPACE,revision:1,configuration:oldConfiguration,secret:{binding:oldBinding,encrypted:Buffer.from('synthetic-old-cipher').toString('base64')}});
-  const settings=await createCustomImageSettingsV2({persistence,secretCodec:codec,storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null}});t.after(()=>settings.close());
+  const settings=await createCustomImageSettingsV2({persistence,secretCodec:codec,storage:{persistentAvailable:true,reasonCode:null}});t.after(()=>settings.close());
   assert.deepEqual((await settings.get()).connections,[]);assert.equal((await settings.get()).notice,'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET');assert.equal(decrypts,0);
 });

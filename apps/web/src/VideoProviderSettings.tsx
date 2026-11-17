@@ -12,6 +12,7 @@ import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { useWorkspaceVisibility, WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { WorkbenchSelect, WorkbenchTooltip } from './WorkspaceControls.tsx';
+import { SettingsSecretStorageNotice } from './SettingsSecretStorageNotice.tsx';
 import ProviderBrandIcon from './ProviderBrandIcon.tsx';
 import { createSettingsNavigationReporter } from './settings-navigation-state.ts';
 import type { SettingsNavigationState } from './settings-navigation-state.ts';
@@ -83,7 +84,8 @@ export default function VideoProviderSettings({ active, client, onNavigationStat
   const connections = state.snapshot?.connections.filter(item => isVideoCatalogProvider(item.configuration.providerId)) || [];
   const serviceHost = compatibleServiceHost(draft);
   const savedCheckable = Boolean(draft && saved?.secret.configured && sameOrigin(draft.baseUrl, saved.configuration.baseUrl));
-  const canCheck = Boolean(draft?.providerId === 'compatible' && editable && !checking && serviceHost && (hasKey || savedCheckable));
+  const keyWritable = state.snapshot?.storage.persistentAvailable === true;
+  const canCheck = Boolean(keyWritable && draft?.providerId === 'compatible' && editable && !checking && serviceHost && (hasKey || savedCheckable));
   const runCheck = async () => {
     if (!visible.current || !draft || !canCheck) return;
     const checker = client ?? (fallbackClient.current ??= createVideoSettingsClient());
@@ -127,9 +129,9 @@ export default function VideoProviderSettings({ active, client, onNavigationStat
       {draft.providerId === 'wan' && <label>{t('video.providers.workspace')}<Input value={draft.workspaceId} onChange={event => change({ workspaceId: event.target.value })} /></label>}
       <label>{t('video.providers.endpoint')}<output data-testid="video-connection-endpoint">{videoSettingsEndpoint(draft)}</output></label></>}
       <label className="video-check"><input data-testid="video-connection-enabled" type="checkbox" checked={draft.enabled} onChange={event => change({ enabled: event.target.checked })} />{t('video.providers.enabled')}</label>
-      <div className="settings-with-help"><label>{t('video.providers.key')}<Input ref={keyInput} data-testid="video-connection-key" type="password" autoComplete="new-password" onChange={() => { invalidateCheck(); if (!visible.current && keyInput.current) keyInput.current.value = ''; setHasKey(Boolean(keyInput.current?.value)); report(); }} /></label><WorkbenchTooltip content={t('video.providers.keyHint')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.providers.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><p>{t(saved?.secret.configured ? 'video.providers.configured' : 'video.providers.unconfigured')}</p>
-      <label>{t('video.providers.storage')}<WorkbenchSelect data-testid="video-key-storage" value={state.storage} onChange={event => session.current?.setStorage(event.target.value as '' | 'session' | 'persistent')}><option value="">{t('video.providers.chooseStorage')}</option><option value="session">{t('video.providers.session')}</option><option value="persistent" disabled={!state.snapshot?.storage.persistentAvailable}>{t('video.providers.persistent')}</option></WorkbenchSelect></label>
-      <p>{t('connections.sessionLoss')}</p>
+      {keyWritable && <div className="settings-with-help"><label>{t('video.providers.key')}<Input ref={keyInput} data-testid="video-connection-key" type="password" autoComplete="new-password" onChange={() => { invalidateCheck(); if (!visible.current && keyInput.current) keyInput.current.value = ''; setHasKey(Boolean(keyInput.current?.value)); report(); }} /></label><WorkbenchTooltip content={t('video.providers.keyHint')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.providers.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>}
+      <p>{t(saved?.secret.configured ? 'video.providers.configured' : 'video.providers.unconfigured')}</p>
+      <SettingsSecretStorageNotice storage={state.snapshot?.storage} pendingConfirmed={state.keychainWaitConfirmed} disabled={!editable} retry={() => {if (visible.current) session.current?.retryStorage();}} testId="video-key-storage-status" />
       <label className="video-check"><input type="checkbox" checked={state.secretAction === 'remove'} onChange={event => { clearKey(); session.current?.removeKey(event.target.checked); }} />{t('video.providers.removeKey')}</label>
       {draft.providerId === 'compatible' ? <div className="video-compatible-hosts">{serviceHost && <p data-testid="video-compatible-service-host">{t('video.providers.serviceHost', {host: serviceHost})}</p>}<div className="settings-with-help"><label>{t('video.providers.extraHosts')}<Textarea data-testid="video-output-hosts" value={draft.outputHosts.join('\n')} onChange={event => change({ outputHosts: event.target.value.split(/[\n,]+/).map(item => item.trim()).filter(Boolean) })} /></label><WorkbenchTooltip content={t('video.providers.extraHostsHint')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.providers.extraHosts')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>
         <div className="video-compatible-check"><Button type="button" data-testid="video-compatible-check" disabled={!active || !canCheck} onClick={() => { void runCheck(); }}>{t(checking ? 'video.providers.checking' : 'video.providers.check')}</Button><WorkbenchTooltip content={t('video.providers.checkHint')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.providers.check')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>

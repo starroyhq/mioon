@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -77,7 +78,7 @@ test('OpenAI sizes and the official SDK multipart fields preserve the complete i
 
 async function settingsFixture(t:{after(fn:()=>unknown):void}){
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-compatible-')));
-  const options={directory:path.join(root,'video-settings'),privateRoot:root};
+  const options={directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage};
   let settings=await createVideoSettings(options);
   t.after(async()=>{await settings.close();await rm(root,{recursive:true,force:true});});
   return {options,get settings(){return settings;},async reopen(){await settings.close();settings=await createVideoSettings(options);return settings;}};
@@ -85,12 +86,12 @@ async function settingsFixture(t:{after(fn:()=>unknown):void}){
 
 test('a compatible key is bound to its exact base URL; moving the service requires a new key',async t=>{
   const f=await settingsFixture(t),config=configuration();
-  await f.settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
+  await f.settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'persistent'}});
   const binding=f.settings.select(config.id,1,config.models[0]!.id);
   assert.equal(binding.endpoint,BASE);assert.equal(await f.settings.acquire(binding),KEY);
   const moved={...config,baseUrl:'https://other.example.net/v1'};
   await assert.rejects(f.settings.put({action:'save',expectedRevision:1,configuration:moved,secret:{action:'keep'}}),{code:'VIDEO_SETTINGS_CONFLICT'});
-  const saved=await f.settings.put({action:'save',expectedRevision:1,configuration:moved,secret:{action:'replace',value:'synthetic-second-key',storage:'session'}});
+  const saved=await f.settings.put({action:'save',expectedRevision:1,configuration:moved,secret:{action:'replace',value:'synthetic-second-key',storage:'persistent'}});
   const view=saved.connections.find(item=>item.configuration.id===config.id)!;
   assert.equal(view.configuration.baseUrl,'https://other.example.net/v1');
   assert.deepEqual(view.credentials.map(item=>item.endpoint).sort(),[BASE,'https://other.example.net/v1'].sort());
@@ -281,11 +282,11 @@ test('test connection reads /models with the key and maps only the outcome',asyn
 });
 
 test('the check route sends a draft key only to the normalized draft origin and a saved key only to its own origin',async t=>{
-  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-v2-check-'))),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root});
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-v2-check-'))),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   t.after(async()=>{await settings.close();await rm(root,{recursive:true,force:true});});
   const f={settings}, {archived:ignored,...config}=configuration(),official={...config,id:randomUUID(),providerId:'minimax' as const,name:VIDEO_PROVIDER_NAMES.minimax,region:'global',models:defaultVideoModels('minimax')};void ignored;delete (official as {baseUrl?:string}).baseUrl;
-  await f.settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
-  await f.settings.put({action:'save',expectedRevision:1,configuration:official,secret:{action:'replace',value:'synthetic-official',storage:'session'}});
+  await f.settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'persistent'}});
+  await f.settings.put({action:'save',expectedRevision:1,configuration:official,secret:{action:'replace',value:'synthetic-official',storage:'persistent'}});
   const calls:string[]=[],keys:Array<string|null>=[];
   const handler=createVideoHttp({settings:f.settings,checkFetch:(async(input:string|URL|Request,init?:RequestInit)=>{calls.push(String(input));keys.push(new Headers(init?.headers).get('authorization'));return json({},401);}) as typeof fetch});
   const post=async(input:unknown,method='POST')=>{const req=Readable.from([Buffer.from(JSON.stringify(input))]) as unknown as import('node:http').IncomingMessage;req.url='/api/video-providers/compatible-check';req.method=method;req.headers={'content-type':'application/json'};let status=0,body='';const res={setHeader(){},writeHead:(code:number)=>{status=code;},end:(value:string)=>{body=value;},destroy:()=>assert.fail('destroyed')} as unknown as import('node:http').ServerResponse;await handler(req,res,new URL('/api/video-providers/compatible-check','http://localhost'));return {status,data:JSON.parse(body)};};
@@ -311,7 +312,7 @@ test('the web client accepts only the closed check result shape',()=>{
 test('a v2 compatible connection runs end to end: one multipart POST, status, /content download, one decoded version',async t=>{
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-compatible-e2e-'))),video=path.join(root,'fixture.mp4');
   await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=teal:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
-  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root});
+  const bytes=await readFile(video),store=openStore(root),settings=await createVideoSettingsV2({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   const calls:Array<{url:string;method:string;authorization:string|null;body?:string}>=[];
   const videoFetch=(async(input:string|URL|Request,init?:RequestInit)=>{
     const url=String(input),method=init?.method??'GET',authorization=new Headers(init?.headers).get('authorization');
@@ -328,7 +329,7 @@ test('a v2 compatible connection runs end to end: one multipart POST, status, /c
   t.after(async()=>{await worker?.stop();await services.drain();await settings.close();store.close();await rm(root,{recursive:true,force:true});});
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const {archived:legacyArchive,...config}=configuration({outputHosts:['cdn.example.com']});void legacyArchive;
-  await settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'session'}});
+  await settings.put({action:'save',expectedRevision:0,configuration:config,secret:{action:'replace',value:KEY,storage:'persistent'}});
   const project=await services.call('project.create',{name:'Compatible integration'}) as ServiceRow;
   const shot=await services.call('shot.create',{projectId:project.id,title:'Compatible shot',prompt:'Synthetic shapes move.',aspectRatio:'9:16',duration:4,referenceAssetIds:[]}) as ServiceRow;
   const job=await services.call('generation.submit',{shotId:String(shot.id),expectedRevision:Number(shot.revision),requestId:randomUUID(),providerId:'compatible',model:'sora-2',connectionId:config.id,configurationRevision:1,modelEntryId:config.models[0]!.id}) as JobRecord;

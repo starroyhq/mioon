@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -15,14 +16,14 @@ test('ambiguous no-ID discovery never selects a connection and preparation refus
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-g1-routing-')), store = openStore(root);
   const projectId = String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId);
   store.put('projects', {id: projectId, name: 'Synthetic routing fixture'});
-  const settings = await createCustomImageSettingsV2({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => null, save: async () => {}}});
   let services: ReturnType<typeof createImageServices> | undefined;
   t.after(async () => {await services?.drain(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true});});
   const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'same-model'};
   const [a, b] = [randomUUID(), randomUUID()];
   await settings.batch({expectedRevision: 0, operations: [
-    {action: 'create', connectionId: a, name: 'A', configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-key-A'}},
-    {action: 'create', connectionId: b, name: 'B', configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-key-B'}},
+    {action: 'create', connectionId: a, name: 'A', configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-key-A'}},
+    {action: 'create', connectionId: b, name: 'B', configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-key-B'}},
   ]});
   const profiles = listImageProfiles({customSettingsV2: settings}, {includeSettingsRevision: true});
   const custom = profiles.items.filter(item => item.providerId === 'openai-compatible');
@@ -45,14 +46,14 @@ test('ambiguous no-ID discovery never selects a connection and preparation refus
 });
 
 test('a maximum-length service name remains intact while the legacy status label stays valid UTF-16 and bounded', async t => {
-  const settings = await createCustomImageSettingsV2({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => null, save: async () => {}}});
   t.after(() => settings.close());
   const suffix = ' · 需逐次确认', boundary = 120 - suffix.length;
   const name = 'x'.repeat(boundary - 1) + '🙂' + 'y'.repeat(suffix.length - 1);
   assert.equal(name.length, 120);
   await settings.create({expectedRevision: 0, connectionId: randomUUID(), name,
     configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true, baseUrl: 'https://images.example.com/v1', model: 'single-model'},
-    secret: {action: 'replace', storage: 'session', value: 'synthetic-key'}});
+    secret: {action: 'replace', storage: 'persistent', value: 'synthetic-key'}});
   const profiles = imageProfilesResponseSchema.parse(listImageProfiles({customSettingsV2: settings}, {includeSettingsRevision: true}));
   const profile = profiles.items.find(item => item.providerId === 'openai-compatible')!;
   assert.equal(profile.enabled, true); assert.ok(profile.name.length <= 120);
@@ -63,14 +64,14 @@ test('a maximum-length service name remains intact while the legacy status label
 test('different custom models remain valid neutral discovery groups and every old no-ID prepare refuses without writes', async t => {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-g1-model-groups-')), store = openStore(root);
   const projectId = store.projectId; store.put('projects', {id: projectId, name: 'Synthetic model groups'});
-  const settings = await createCustomImageSettingsV2({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => null, save: async () => {}}});
   let services: ReturnType<typeof createImageServices> | undefined;
   t.after(async () => {await services?.drain(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true});});
   const ids = Array.from({length: 10}, () => randomUUID());
   await settings.batch({expectedRevision: 0, operations: ids.map((connectionId, index) => ({action: 'create', connectionId,
     name: `Custom ${index}`, configuration: {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2, enabled: true,
       baseUrl: 'https://images.example.com/v1', model: `different-model-${index}`},
-    secret: {action: 'replace', storage: 'session', value: `synthetic-key-${index}`}}))});
+    secret: {action: 'replace', storage: 'persistent', value: `synthetic-key-${index}`}}))});
   services = createImageServices(store, {customSettingsV2: settings, autoRun: false});
   const profiles = services.handlers['image.profile.list']({includeSettingsRevision: true});
   const parsed = imageProfilesResponseSchema.parse(profiles), custom = parsed.items.filter(item => item.providerId === 'openai-compatible');

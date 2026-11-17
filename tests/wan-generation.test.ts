@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,7 +27,7 @@ function png():Buffer {
 }
 async function fixture(t:TestContext,{legacyWan=false}={}){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-wan-generation-'))),store=openStore(root);
- const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+ const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,secretCodec: createTestSecretCodec(), storage: testSecretStorage});
  const providers=createProviderRegistry({db:store.db,root,env:{}}),calls:Array<{url:string;init:RequestInit}>=[];
  let reply:(url:string,init:RequestInit)=>Response|Promise<Response>=(_url,init)=>json({output:{task_id:'wan-task',task_status:init.method==='POST'?'PENDING':'RUNNING'}});
  const services=createServices(store,providers,{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,23),videoFetch:async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return reply(request.url,request.init);}});
@@ -34,7 +35,7 @@ async function fixture(t:TestContext,{legacyWan=false}={}){
  const models=defaultVideoModels('wan').filter(model=>model.templateId===(legacyWan?'wan27-t2v':'wan30-v1'));
  if(legacyWan)models[0]!.durationResolutionMap=[{duration:[4,5,10],resolution:['720P']}];
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'wan',name:'Wan account',region:'cn-beijing',workspaceId:'test-workspace',enabled:true,archived:false,outputHosts:['output.example'],models};
- await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',value:'synthetic-wan-key',storage:'session'}});
+ await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',value:'synthetic-wan-key',storage:'persistent'}});
  const project=await services.call('project.create',{name:'Wan 3 local images'}) as ServiceRow;
  const shot=await services.call('shot.create',{projectId:project.id,title:'Wan shot',prompt:'Original shot prompt.',aspectRatio:'9:16',duration:4,referenceAssetIds:[]}) as ServiceRow;
  let worker:ReturnType<typeof startWorker>|null=null;
@@ -95,7 +96,7 @@ for(const oldParameters of [undefined,{}, {resolution:'1080P',seed:7}])test(`his
  // This seed is valid on a saved shot but unsupported by Wan; frozen retries must ignore it.
  await f.services.call('shot.update',{requestId:randomUUID(),shotId:f.shot.id,expectedRevision:f.shot.revision,patch:{duration:8,aspectRatio:'16:9',parameters:{seed:4294967295}}});
  const configuration=structuredClone(f.configuration);configuration.models[0]!.durationResolutionMap=[{duration:[5],resolution:['480P']}];
- await f.settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'replace',value:'replacement-synthetic-key',storage:'session'}});
+ await f.settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'replace',value:'replacement-synthetic-key',storage:'persistent'}});
  await f.tick();await f.stop();assert.equal(f.job(created.id).status,'running');assert.deepEqual(f.job(created.id).snapshot,snapshot);
  const firstBody=JSON.parse(String(f.calls[0]!.init.body));assert.equal(firstBody.parameters.duration,4);assert.equal(firstBody.parameters.ratio,'9:16');assert.equal(firstBody.parameters.resolution,oldParameters?.resolution??'720P');
  assert.equal(new Headers(f.calls[0]!.init.headers).get('Authorization'),'Bearer synthetic-wan-key');
@@ -152,7 +153,7 @@ test('Wan first-last frame order is frozen and retry cannot acquire current mode
  const job=await f.services.call('generation.submit',{...f.input(videoInput),parameters:{durationSeconds:5,resolution:'720P'}}) as JobRecord;
  await f.tick();await f.stop();f.services.saveJob(f.job(job.id),{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'Synthetic failure'}});
  const next=structuredClone(f.configuration);next.models[0]!.modelId='wan3.0-video-prime';
- await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:{action:'replace',value:'another-synthetic-key',storage:'session'}});
+ await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:{action:'replace',value:'another-synthetic-key',storage:'persistent'}});
  const retry=await f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}) as JobRecord;
  assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();await f.stop();
  assert.equal(f.calls.length,2);assert.equal(JSON.parse(String(f.calls[1]!.init.body)).model,'wan3.0-video');

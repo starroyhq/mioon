@@ -25,7 +25,7 @@ interface SettingsOverrides {write?(input: unknown, saved: unknown): unknown; re
 const deferred = () => { let resolve!: (value?: unknown) => void, reject!: (error: unknown) => void; const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 const copy = <T>(value: T): T => structuredClone(value);
-const storage = { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' };
+const storage = {persistentAvailable: true, reasonCode: null};
 function snapshot(slot: string): SettingsSnapshot {
   if (slot === 'comfy') return { revision: 0, configuration: { ...copy(DEFAULT_COMFY_IMAGE_CONFIGURATION), enabled: true, baseUrl: 'http://127.0.0.1:8188', model: 'synthetic.safetensors' }, readiness: { checked: false, checkedAt: null } };
   return { revision: 0, configuration: slot === 'official' ? copy(image.DEFAULT_IMAGE_CONFIGURATION) : { ...copy(image.DEFAULT_CUSTOM_IMAGE_CONFIGURATION), baseUrl: 'https://images.example.com/v1', model: 'synthetic-image' }, secret: { configured: false, storage: 'none' }, storage };
@@ -95,6 +95,8 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
     if (name === './AgentTaskPolicy.tsx') return { default: 'AgentTaskPolicy', __esModule: true };
     // The connection test owns its own diagnostic session (agent-connection-test.ts).
     if (name === './AgentConnectionTest.tsx') return { default: 'AgentConnectionTest', __esModule: true };
+    if (name === './desktop-window-client.ts') return {hasDesktopWindowBridge: () => false};
+    if (name === './SettingsSecretStorageNotice.tsx') return {SettingsSecretStorageNotice: 'SettingsSecretStorageNotice'};
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};

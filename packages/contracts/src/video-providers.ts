@@ -81,13 +81,13 @@ export const videoConnectionConfigurationSchema=z.object({
 export type VideoConnectionConfiguration=z.infer<typeof videoConnectionConfigurationSchema>;
 export const videoSecretUpdateSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('keep')}).strict(),z.object({action:z.literal('remove')}).strict(),
- z.object({action:z.literal('replace'),value:z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value),'Invalid API key.'),storage:z.enum(['session','persistent'])}).strict(),
+ z.object({action:z.literal('replace'),value:z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value),'Invalid API key.'),storage:z.literal('persistent')}).strict(),
 ]);
 export type VideoSecretUpdate=z.infer<typeof videoSecretUpdateSchema>;
 export const videoSettingsUpdateSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('save'),expectedRevision:z.number().int().nonnegative(),configuration:videoConnectionConfigurationSchema,secret:videoSecretUpdateSchema}).strict(),
  z.object({action:z.literal('archive'),expectedRevision:z.number().int().nonnegative(),connectionId:z.string().uuid()}).strict(),
- z.object({action:z.literal('restoreCredential'),expectedRevision:z.number().int().nonnegative(),connectionId:z.string().uuid(),credentialRef:z.string().uuid(),secret:z.object({action:z.literal('replace'),value:z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value)),storage:z.enum(['session','persistent'])}).strict()}).strict(),
+ z.object({action:z.literal('restoreCredential'),expectedRevision:z.number().int().nonnegative(),connectionId:z.string().uuid(),credentialRef:z.string().uuid(),secret:z.object({action:z.literal('replace'),value:z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value)),storage:z.literal('persistent')}).strict()}).strict(),
 ]);
 export type VideoSettingsUpdate=z.infer<typeof videoSettingsUpdateSchema>;
 const checkKey=z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value),'Invalid API key.');
@@ -100,11 +100,11 @@ export const compatibleVideoCheckSchema=z.discriminatedUnion('source',[
 export type CompatibleVideoCheck=z.infer<typeof compatibleVideoCheckSchema>;
 export const COMPATIBLE_VIDEO_CHECK_RESULTS=['ok','unauthorized','unsupported','http_error','denied','unreachable'] as const;
 export interface CompatibleVideoCheckResult {result:typeof COMPATIBLE_VIDEO_CHECK_RESULTS[number];httpStatus?:number}
-export interface VideoStorage {persistentAvailable:boolean;sessionScope:'app'|'server';reasonCode:string|null}
-export interface VideoCredentialView {ref:string;region:string;endpoint:string;configured:boolean;storage:'none'|'session'|'persistent'}
+export interface VideoStorage {persistentAvailable:boolean;reasonCode:string|null}
+export interface VideoCredentialView {ref:string;region:string;endpoint:string;configured:boolean;storage:'none'|'persistent'}
 export interface VideoConnectionView {
  configuration:VideoConnectionConfiguration;revision:number;credentialRef:string|null;
- secret:{configured:boolean;storage:'none'|'session'|'persistent'};credentials:VideoCredentialView[];
+ secret:{configured:boolean;storage:'none'|'persistent'};credentials:VideoCredentialView[];
 }
 export interface VideoSettingsSnapshot {revision:number;connections:VideoConnectionView[];storage:VideoStorage}
 export const videoExecutionBindingSchema=z.object({

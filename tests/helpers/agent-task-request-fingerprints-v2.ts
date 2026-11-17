@@ -1,3 +1,4 @@
+import {createTestAgentSettings} from './secret-codec.ts';
 import {putTestAgentConfiguration,testAgentExecution} from './agent-settings-fixture.ts';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
@@ -236,21 +237,21 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   store.put('shots', {id: shotId, projectId, title: 'First shot', prompt: 'Original prompt', referenceAssetIds: [],
     aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 80, y: 100}, orderIndex: 0, revision: 1,
     selectedVersionId: null, createdAt: fixtureTime, updatedAt: fixtureTime});
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const anthropic = AGENT_PRESETS.find(preset => preset.id === 'anthropic')?.platforms.find(platform => platform.id === 'global');
   assert.ok(anthropic);
   const configuration = official ? protocol === 'anthropic_messages' ? {
     presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol,
   } : {...DEFAULT_AGENT_CONFIGURATION, protocol, ...(protocol === 'chat_completions' ? {model: 'gpt-6-luna'} : {})} : {presetId: 'ollama', platformId: 'local', protocol,
     model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
-  // This disposable credential stays only in the real settings session. It is
+  // This disposable credential stays only in the synthetic settings vault. It is
   // deliberately nondeterministic: only the model-facing body is fingerprinted.
-  const sessionSecret = official ? randomUUID() : null;
-  const assertNoSessionSecret = (value: string): void => {
-    assert.ok(sessionSecret === null || !value.includes(sessionSecret), 'Session credentials must not enter request artifacts');
+  const syntheticSecret = official ? randomUUID() : null;
+  const assertNoSyntheticSecret = (value: string): void => {
+    assert.ok(syntheticSecret === null || !value.includes(syntheticSecret), 'Test credentials must not enter request artifacts');
   };
-  await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {
-    action: 'replace', storage: 'session', value: sessionSecret,
+  await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: syntheticSecret === null ? {action: 'remove'} : {
+    action: 'replace', storage: 'persistent', value: syntheticSecret,
   }});
   const authorizations = ports?.createAuthorizations(settings) ?? createTestAuthorizations(() => store, settings);
   await authorizeTestScope(authorizations, 'project_agent');
@@ -259,18 +260,18 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.();
     if (official) {
-      assert.ok(request.apiKey === sessionSecret, 'Official preset must use its synthetic session credential');
+      assert.ok(request.apiKey === syntheticSecret, 'Official preset must use its synthetic credential');
       assert.equal(request.configuration.presetId, protocol === 'anthropic_messages' ? 'anthropic' : 'openai');
       assert.equal(request.configuration.model, configuration.model);
       assert.equal(request.configuration.baseUrl, configuration.baseUrl);
     }
-    assertNoSessionSecret(request.body);
+    assertNoSyntheticSecret(request.body);
     assertRequest(request.body, protocol);
     const run = runtime.journal.list(projectId).find(value => value.status === 'running');
     assert.ok(run);
     const model = runtime.journal.snapshot(run.id).steps.filter(value => value.kind === 'model').at(-1);
     assert.ok(model);
-    assertNoSessionSecret(JSON.stringify(model.request));
+    assertNoSyntheticSecret(JSON.stringify(model.request));
     assert.equal(object(model.request).body, request.body, 'The fingerprint must cover the already durable intent');
     requests.push(request.body);
     intents.push({runId: run.id, stepId: model.id});
@@ -280,7 +281,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   let runtime = createRuntime();
   const runtimes = [runtime];
   return {
-    store, services, tools, requests, assertNoSessionSecret,
+    store, services, tools, requests, assertNoSyntheticSecret,
     get runtime() {return runtime;},
     restart() {runtime.close(); runtime = createRuntime(); runtimes.push(runtime);},
     setScript(value: Script) {script = value;},
@@ -472,7 +473,7 @@ export async function collectTaskRequestFingerprints(harness: TaskRequestFingerp
         assert.ok(f.requests.length > 0, `${protocol}/${scenario} must dispatch a model request`);
         const records = f.requests.map((body, index) => ({scenario, protocol, index: index + 1,
           bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex')}));
-        f.assertNoSessionSecret(JSON.stringify(records));
+        f.assertNoSyntheticSecret(JSON.stringify(records));
         fingerprints.push(...records);
         completed = true;
       } catch (error) {

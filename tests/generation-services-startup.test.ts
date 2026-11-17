@@ -28,7 +28,7 @@ test('production startup recognizes strict old generation files without rewritin
   await writeFile(f.customFile,customBytes,{mode:0o600});await writeFile(f.videoFile,videoBytes,{mode:0o600});
   await writeFile(f.officialFile,officialBytes,{mode:0o600});await writeFile(f.comfyFile,comfyBytes,{mode:0o600});
   validateWorkspaceStorage(f.root);
-  let decrypts=0;const server=await startServer({dataDir:f.root,port:0,comfyModule:'skip',imageSecretCodec:{storage:()=>({persistentAvailable:true,sessionScope:'server',reasonCode:null}),
+  let decrypts=0;const server=await startServer({dataDir:f.root,port:0,comfyModule:'skip',imageSecretCodec:{storage:()=>({persistentAvailable:true,reasonCode:null}),
     async refreshStorage(){},encrypt:()=>assert.fail('No implicit encryption'),decrypt:()=>{decrypts++;return assert.fail('No old key decryption');}}});t.after(()=>server.close());
   const request=async(route:string,input?:unknown)=>{const response=await fetch(server.url+route,{method:input===undefined?'GET':'PUT',headers:{Authorization:`Bearer ${server.token}`,...(input===undefined?{}:{'content-type':'application/json'})},...(input===undefined?{}:{body:JSON.stringify(input)})});assert.equal(response.status,200);return await response.json() as {data:{revision:number;notice:string|null;connections:unknown[]}};};
   for(let i=0;i<2;i++) {assert.equal((await request('/api/images/custom-settings')).data.notice,'LEGACY_CUSTOM_IMAGE_SETTINGS_RESET');assert.equal((await request('/api/video-providers/settings')).data.notice,'VIDEO_SETTINGS_V1_RESET');}

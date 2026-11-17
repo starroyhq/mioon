@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {mkdtemp, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -15,7 +16,7 @@ import type {GenerationVideoState} from '../apps/web/src/generation-video-servic
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 async function fixture(t: {after(fn: () => unknown): void}, override: Partial<VideoSettingsClient> = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-generation-video-page-')));
-  const settings = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root});
+  const settings = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root, secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   const states: GenerationVideoState[] = [], writes: VideoSettingsUpdateV2[] = [], keys = new Map<string, string>(); let reads = 0, clears = 0;
   const client: VideoSettingsClient = {read: async () => {reads++; return override.read ? override.read() : settings.get();}, write: async input => {assert.ok([...keys.values()].every(value => value === ''), 'All key DOMs are cleared before transport begins'); writes.push(structuredClone(input)); return override.write ? override.write(input) : settings.put(input);}};
   const session = createGenerationVideoServicesSession({client, onChange: state => states.push(state)});
@@ -25,7 +26,7 @@ async function fixture(t: {after(fn: () => unknown): void}, override: Partial<Vi
   t.after(async () => {session.dispose(); await settings.close(); await rm(root, {recursive: true, force: true});});
   await session.load(); return {session, settings, states, writes, keys, client, clear, type, prepare, get reads() {return reads;}, get clears() {return clears;}};
 }
-function custom(f: Awaited<ReturnType<typeof fixture>>, name: string) {const key = f.session.add()!; f.session.update(key, {name, baseUrl: 'https://api.example.com/v1', enabled: true}); f.session.setStorage(key, 'session'); return key;}
+function custom(f: Awaited<ReturnType<typeof fixture>>, name: string) {const key = f.session.add()!; f.session.update(key, {name, baseUrl: 'https://api.example.com/v1', enabled: true}); return key;}
 
 test('the request display alone adds the implemented compatible create route while the binding endpoint stays the base URL', () => {
   const draft = newVideoConnection('compatible'); draft.baseUrl = 'https://api.example.com/v1';
@@ -147,7 +148,7 @@ for (const code of ['VIDEO_SETTINGS_CONFLICT', 'VIDEO_SETTINGS_DELETED']) test(`
 
 test('unreadable unknown readback remains blocked with exactly one write and one recovery GET', async t => {
   let recovering = false;
-  const f = await fixture(t, {write: async () => {recovering = true; throw Error('Lost ACK');}, read: async () => {if (recovering) throw Error('Read unavailable'); return {revision: 0, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null};}});
+  const f = await fixture(t, {write: async () => {recovering = true; throw Error('Lost ACK');}, read: async () => {if (recovering) throw Error('Read unavailable'); return {revision: 0, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null};}});
   const a = custom(f, 'A'), ticket = f.prepare()!; assert.equal(await ticket.run(), 'unknown'); ticket.dispose();
   assert.equal(f.reads, 2); assert.equal(f.writes.length, 1); assert.equal(f.session.getState().phase, 'blocked'); assert.equal(f.session.useLatest(), false); assert.throws(f.prepare); assert.equal(f.session.getState().drafts.find(draft => draft.key === a)!.configuration.name, 'A');
 });
@@ -162,7 +163,7 @@ test('capacity and validation failures preserve drafts and are never retried or 
 test('deletion is staged; it clears only its key and is persisted with the remaining dirty service in one batch', async t => {
   const f = await fixture(t), a = custom(f, 'A'), b = custom(f, 'B');
   const first = f.prepare()!; assert.equal(await first.run(), 'saved'); first.dispose();
-  f.session.setStorage(a, 'session'); f.session.setStorage(b, 'session'); f.type(a, 'synthetic-delete-A'); f.type(b, 'synthetic-keep-B'); f.clear(a); assert.equal(f.session.stageDelete(a), true);
+  f.type(a, 'synthetic-delete-A'); f.type(b, 'synthetic-keep-B'); f.clear(a); assert.equal(f.session.stageDelete(a), true);
   assert.equal(f.keys.get(a), ''); assert.equal(f.keys.get(b), 'synthetic-keep-B'); assert.equal(f.writes.length, 1); assert.equal((await f.settings.get()).connections.length, 2);
   const ticket = f.prepare()!; assert.equal(await ticket.run(), 'saved'); ticket.dispose();
   assert.equal(f.writes.length, 2); const update = f.writes[1]!; if (update.action !== 'batch') assert.fail(); assert.equal(update.operations.length, 2); assert.equal(update.operations.filter(operation => operation.action === 'delete').length, 1); assert.equal((await f.settings.get()).connections.length, 1);
@@ -202,21 +203,21 @@ test('page hide and owner disposal reject late accepted write publication withou
   for (const action of ['hide', 'dispose']) {
     const held = deferred<VideoSettingsSnapshotV2>(), f = await fixture(t, {write: () => held.promise}); custom(f, 'A'); const ticket = f.prepare()!, running = ticket.run();
     if (action === 'hide') f.session.setVisible(false); else f.session.dispose(); const count = f.states.length;
-    held.resolve({revision: 1, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null}); assert.equal(await running, 'blocked'); ticket.dispose(); assert.equal(f.states.length, count); assert.equal(f.writes.length, 1);
+    held.resolve({revision: 1, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null}); assert.equal(await running, 'blocked'); ticket.dispose(); assert.equal(f.states.length, count); assert.equal(f.writes.length, 1);
   }
 });
 
 test('invalid success receipts trigger readback and unknown rather than claiming a known no-effect validation error', async t => {
-  const f = await fixture(t, {write: async () => ({revision: 1, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null})}); custom(f, 'A');
+  const f = await fixture(t, {write: async () => ({revision: 1, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null})}); custom(f, 'A');
   const ticket = f.prepare()!; assert.equal(await ticket.run(), 'unknown'); ticket.dispose(); assert.equal(f.reads, 2); assert.equal(f.writes.length, 1); assert.equal(f.session.getState().recovery, 'unknown');
 });
 
 test('configured and available facts differ; disabled models and unavailable vaults do not count a service', async t => {
-  const f = await fixture(t); f.session.update('video:wan', {enabled: true, outputHosts: ['video.example.com']}); f.session.setStorage('video:wan', 'session'); f.type('video:wan', 'synthetic-readiness-key'); const ticket = f.prepare()!; assert.equal(await ticket.run(), 'saved'); ticket.dispose();
+  const f = await fixture(t); f.session.update('video:wan', {enabled: true, outputHosts: ['video.example.com']}); f.type('video:wan', 'synthetic-readiness-key'); const ticket = f.prepare()!; assert.equal(await ticket.run(), 'saved'); ticket.dispose();
   const snapshot = f.session.getState().snapshot!, view = snapshot.connections[0]!;
   assert.equal(generationVideoAvailable(snapshot, view.configuration), true);
   assert.equal(generationVideoAvailable(null, view.configuration), null);
   const disabled = structuredClone(snapshot); disabled.connections[0]!.configuration.models.forEach(model => {model.enabled = false;}); assert.equal(generationVideoAvailable(disabled, view.configuration), false);
-  const persistent = structuredClone(snapshot); persistent.connections[0]!.secret.storage = 'persistent'; assert.equal(generationVideoAvailable(persistent, view.configuration), false);
+  const unavailable = structuredClone(snapshot); unavailable.storage = {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}; assert.equal(generationVideoAvailable(unavailable, view.configuration), false);
   const multi = structuredClone(snapshot); multi.connections[0]!.configuration.models[0]!.enabled = false; assert.equal(generationVideoAvailable(multi, view.configuration), true, 'Any eligible model may make the service ready');
 });
