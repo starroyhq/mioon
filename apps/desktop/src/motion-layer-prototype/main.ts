@@ -7,15 +7,16 @@ import {join, resolve} from 'node:path';
 import {app, screen} from 'electron';
 import {identityForChannel} from '../../identity.ts';
 import {fixture, runTool} from './fixture.ts';
+import {compareLegacyCaptures, hashFrame, verifyCaptures} from './frame-verification.ts';
 import {measurePixelDifferences, measureResources, sparseDistribution} from './measurement.ts';
-import {createMotionWindow, registerMotionScheme} from './render.ts';
+import {createMotionWindow, motionCaptureMarkerHeight, registerMotionScheme} from './render.ts';
 import type {MotionWindow} from './render.ts';
 import {exportMotionVideo} from './export.ts';
 
 const {MIOON_MOTION_PROTOTYPE_ROOT: root, MIOON_MOTION_PROTOTYPE_CHANNEL: channel,
   MIOON_MOTION_PROTOTYPE_FFMPEG: ffmpeg, MIOON_MOTION_PROTOTYPE_FFPROBE: ffprobe,
   MIOON_MOTION_PROTOTYPE_OUTPUT: output, MIOON_MOTION_PROTOTYPE_PREVIEW: preview,
-  MIOON_MOTION_PROTOTYPE_SOFTWARE: software} = process.env;
+  MIOON_MOTION_PROTOTYPE_SOFTWARE: software, MIOON_MOTION_PROTOTYPE_LEGACY: compareLegacy} = process.env;
 
 async function verifyPreviewClock(window: MotionWindow, signal: AbortSignal): Promise<{frame: number; mediaTime: number}> {
   const check = window.window.webContents.executeJavaScript(`(async () => {
@@ -51,10 +52,13 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
   const intermediatePath = join(directory, 'overlay.mkv');
   const outputPath = join(directory, 'composite.mp4');
   const options = {assetsDirectory: join(directory, 'assets'), width, height};
+  // Keep both legacy passes inside the same Electron process and CI job.
+  const legacy = compareLegacy === '1' ? await compareLegacyCaptures({...options, signal}) : undefined;
   const exportWindow = await createMotionWindow({...options, mode: 'export', signal});
   const sampleFrames = [0, 3, 7, 13, 21, 60, 120, 140, 149];
   const samples = new Map<number, Buffer>();
   const digest = createHash('sha256');
+  const frameHashes: string[] = [];
   let resources: ReturnType<typeof measureResources> | undefined;
   let renderMs = 0;
   let framesRendered = 0;
@@ -76,14 +80,16 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
         framesRendered++;
         const expected = samples.get(frame);
         if (expected) assert.ok(rgba.equals(expected), `Frame ${frame} changed between export passes`);
+        frameHashes.push(hashFrame(rgba));
         digest.update(rgba);
         return rgba;
       }},
       ffmpegPath, inputPath, intermediatePath, outputPath, width, height, fps, frames, signal,
-      onChild: resources.observeChild,
+      onStageMeasurement: resources.recordFfmpegStage,
     });
     totalMs = performance.now() - started;
     assert.equal(framesRendered, frames);
+    assert.equal(exportWindow.captureStats.accepted, frames + sampleFrames.length, 'Every exported frame needs a pixel marker');
     assert.ok(exportWindow.window.isDestroyed(), 'Successful export must release its window');
   } finally {
     usage = resources?.finish() ?? {};
@@ -93,6 +99,7 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
   const encoded = await runTool('FFV1 decoded hash', ffmpegPath, ['-v', 'error', '-i', intermediatePath,
     '-map', '0:v:0', '-c:v', 'rawvideo', '-pix_fmt', 'rgba', '-f', 'hash', '-hash', 'sha256', '-']);
   const rgbaSha256 = digest.digest('hex');
+  const frameVerification = await verifyCaptures({...options, signal}, frameHashes, rgbaSha256);
   assert.equal(encoded, `SHA256=${rgbaSha256}`, 'FFV1 intermediate must round-trip all RGBA bytes');
   const encodedMp4 = await runTool('MP4 probe', ffprobePath, ['-v', 'error', '-count_frames', '-select_streams', 'v:0',
     '-show_entries', 'stream=codec_name,width,height,avg_frame_rate,nb_read_frames', '-of', 'json', outputPath]);
@@ -101,7 +108,7 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
 
   // A regular preview surface is bounded by the host display's work area.
   const workArea = screen.getPrimaryDisplay().workAreaSize;
-  const units = Math.min(40, Math.floor(workArea.width / 9), Math.floor(workArea.height / 16));
+  const units = Math.min(40, Math.floor(workArea.width / 9), Math.floor((workArea.height - motionCaptureMarkerHeight) / 16));
   const comparisonSize = {width: 9 * units, height: 16 * units};
   const comparison = {...options, ...comparisonSize};
   const comparisonWindow = await createMotionWindow({...comparison, mode: 'export', signal});
@@ -114,6 +121,7 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
   const previewWindow = await createMotionWindow({...comparison, mode: 'preview', signal});
   const channels: number[] = Array(256).fill(0);
   const pixels: number[] = Array(256).fill(0);
+  const visiblePixels: number[] = Array(256).fill(0);
   let previewClock: Awaited<ReturnType<typeof verifyPreviewClock>>;
   try {
     previewClock = await verifyPreviewClock(previewWindow, signal);
@@ -122,10 +130,21 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
       assert.equal(actual.length, expected.length);
       const nonEmpty = (rgba: Buffer) => rgba.some((byte, index) => index % 4 === 3 && byte !== 0);
       assert.equal(nonEmpty(actual), nonEmpty(expected), `Preview frame ${frame} must preserve layer visibility`);
-      measurePixelDifferences(expected, actual, channels, pixels);
+      measurePixelDifferences(expected, actual, channels, pixels, visiblePixels);
     }
   } finally {
     previewWindow.close();
+  }
+
+  const covered = visiblePixels.reduce((count, value) => count + value, 0);
+  assert.ok(covered > 0, 'Preview comparison must include visible pixels');
+  const meanVisibleDelta = visiblePixels.reduce((sum, count, delta) => sum + count * delta, 0) / covered;
+  const visibleFractionAbove32 = visiblePixels.slice(33).reduce((sum, count) => sum + count, 0) / covered;
+  // Only this fixture at 360×640 has measured tolerances at both 1× and Retina scale.
+  const tolerance = comparisonSize.width === 360 ? {meanVisibleDelta: 45, visibleFractionAbove32: 0.30} : undefined;
+  if (tolerance) {
+    assert.ok(meanVisibleDelta <= tolerance.meanVisibleDelta && visibleFractionAbove32 <= tolerance.visibleFractionAbove32,
+      `Preview exceeds measured tolerance (mean ${meanVisibleDelta}, fraction above 32 ${visibleFractionAbove32})`);
   }
 
   const cancellation = new AbortController();
@@ -161,8 +180,10 @@ async function benchmark(directory: string, ffmpegPath: string, ffprobePath: str
     renderer: software === '1' ? 'software' : 'default',
     gpuFeatures: app.getGPUFeatureStatus(), fixture, renderMs, totalMs, renderFps: frames / (renderMs / 1000), resources: usage,
     repeat: {frames: sampleFrames, byteIdentical: true}, rgbaSha256, ffv1RoundTrip: true,
+    frameVerification: {exportReadback: exportWindow.captureStats, ...frameVerification}, legacy,
     preview: {...comparisonSize, devicePixelRatio: previewWindow.devicePixelRatio, clock: previewClock, frames: sampleFrames, maximumDelta: pixels.reduce((max, count, delta) => count ? delta : max, 0),
-      channelDeltaCounts: sparseDistribution(channels), pixelMaxDeltaCounts: sparseDistribution(pixels)},
+      channelDeltaCounts: sparseDistribution(channels), pixelMaxDeltaCounts: sparseDistribution(pixels),
+      visiblePremultipliedPixelMaxDeltaCounts: sparseDistribution(visiblePixels), meanVisibleDelta, visibleFractionAbove32, tolerance},
     mp4: true, cancellation: {afterFrame: 4, windowClosed: true, ffmpegExited: true, partialOutputsRemoved: true},
   }, null, 2));
 }

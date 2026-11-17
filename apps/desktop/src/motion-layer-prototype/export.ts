@@ -4,6 +4,16 @@ import { isAbsolute } from 'node:path';
 import type { Writable } from 'node:stream';
 import type { MotionWindow } from './render.ts';
 
+export type MotionFfmpegStage = 'intermediate' | 'composite';
+
+export interface MotionFfmpegMeasurement {
+  userSeconds: number;
+  systemSeconds: number;
+  elapsedSeconds: number;
+  peakRssKiB: number;
+  meanCpuPercent: number | null;
+}
+
 interface ExportOptions {
   window: MotionWindow;
   ffmpegPath: string;
@@ -16,7 +26,8 @@ interface ExportOptions {
   frames: number;
   signal?: AbortSignal;
   onFrame?: (frame: number) => void;
-  onChild?: (pid: number) => void;
+  onChild?: (pid: number, stage: MotionFfmpegStage) => void;
+  onStageMeasurement?: (stage: MotionFfmpegStage, result: MotionFfmpegMeasurement) => void;
 }
 
 function writeFrame(stream: Writable, frame: Buffer): Promise<void> {
@@ -25,13 +36,33 @@ function writeFrame(stream: Writable, frame: Buffer): Promise<void> {
   });
 }
 
-async function runFfmpeg(options: ExportOptions, stage: string, args: string[],
+function parseFfmpegMeasurement(stderr: string, stage: MotionFfmpegStage): MotionFfmpegMeasurement {
+  const timings = stderr.match(/^bench: utime=(\d+(?:\.\d+)?)s stime=(\d+(?:\.\d+)?)s rtime=(\d+(?:\.\d+)?)s\s*$/m);
+  const peak = stderr.match(/^bench: maxrss=(\d+)KiB\s*$/m);
+  if (!timings || !peak) throw Error(`Motion prototype FFmpeg ${stage} benchmark statistics missing`);
+  const userSeconds = Number(timings[1]);
+  const systemSeconds = Number(timings[2]);
+  const elapsedSeconds = Number(timings[3]);
+  // FFmpeg 7.1.5 and 9.0.2 print Darwin's byte-valued ru_maxrss with a KiB suffix.
+  const peakRssKiB = Number(peak[1]) / (process.platform === 'darwin' ? 1024 : 1);
+  return {userSeconds, systemSeconds, elapsedSeconds, peakRssKiB,
+    meanCpuPercent: elapsedSeconds > 0 ? 100 * (userSeconds + systemSeconds) / elapsedSeconds : null};
+}
+
+async function runFfmpeg(options: ExportOptions, stage: MotionFfmpegStage, args: string[],
   feed?: (stdin: Writable) => Promise<void>): Promise<void> {
   options.signal?.throwIfAborted();
-  const child = spawn(options.ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', ...args],
+  const measure = options.onStageMeasurement;
+  const diagnostics = measure ? ['-loglevel', 'info', '-nostats', '-benchmark'] : ['-loglevel', 'error'];
+  const child = spawn(options.ffmpegPath, ['-hide_banner', ...diagnostics, '-nostdin', '-y', ...args],
     { stdio: [feed ? 'pipe' : 'ignore', 'ignore', 'pipe'], windowsHide: true });
-  // Drain stderr without keeping diagnostics that may contain the input path.
-  child.stderr?.resume();
+  let stderrTail = '';
+  if (measure) {
+    // Only the trailing numeric benchmark fields leave this collector.
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+      stderrTail = (stderrTail + chunk).slice(-4096);
+    });
+  } else child.stderr?.resume();
   child.stdin?.on('error', () => { /* writeFrame and close report the failure */ });
   let spawnError: Error | undefined;
   let closed = false;
@@ -51,10 +82,11 @@ async function runFfmpeg(options: ExportOptions, stage: string, args: string[],
   };
   options.signal?.addEventListener('abort', stop, { once: true });
   try {
-    if (child.pid !== undefined) options.onChild?.(child.pid);
+    if (child.pid !== undefined) options.onChild?.(child.pid, stage);
     if (options.signal?.aborted) stop();
     await Promise.all(feed && child.stdin ? [done, feed(child.stdin)] : [done]);
     options.signal?.throwIfAborted();
+    if (measure) measure(stage, parseFfmpegMeasurement(stderrTail, stage));
   } finally {
     stop();
     await done.catch(() => {});
@@ -82,7 +114,7 @@ export async function exportMotionVideo(options: ExportOptions): Promise<void> {
       await file.close();
     }
     // FFV1 in Matroska retains every channel, including the straight alpha.
-    await runFfmpeg(options, 'intermediate encode', [
+    await runFfmpeg(options, 'intermediate', [
       '-protocol_whitelist', 'pipe', '-f', 'rawvideo', '-pixel_format', 'rgba',
       '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0',
       '-an', '-c:v', 'ffv1', '-pix_fmt', 'bgra', '-f', 'matroska', intermediatePath,
@@ -99,7 +131,7 @@ export async function exportMotionVideo(options: ExportOptions): Promise<void> {
       stdin.end();
     });
     window.close();
-    await runFfmpeg(options, 'composite encode', [
+    await runFfmpeg(options, 'composite', [
       '-protocol_whitelist', 'file', '-i', inputPath,
       '-protocol_whitelist', 'file', '-i', intermediatePath,
       '-filter_complex', '[0:v][1:v]overlay=alpha=straight:eof_action=pass[v]',

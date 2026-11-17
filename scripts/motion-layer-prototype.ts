@@ -14,10 +14,11 @@ async function main(): Promise<void> {
     channel: {type: 'string'},
     preview: {type: 'boolean'},
     software: {type: 'boolean'},
+    'compare-legacy': {type: 'boolean'},
     output: {type: 'string'},
   }});
-  if (values.channel !== 'development' || (values.preview && values.output)) {
-    throw new Error('Usage: node scripts/motion-layer-prototype.ts --channel=development [--preview | --output=DIR] [--software]');
+  if (values.channel !== 'development' || (values.preview && (values.output || values['compare-legacy']))) {
+    throw new Error('Usage: node scripts/motion-layer-prototype.ts --channel=development [--preview | --output=DIR] [--software] [--compare-legacy]');
   }
   const root = fileURLToPath(new URL('..', import.meta.url));
   const temporary = await mkdtemp(join(await realpath(tmpdir()), 'mioon-motion-layer-'));
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
         env: {...process.env, MIOON_MOTION_PROTOTYPE_CHANNEL: values.channel, MIOON_MOTION_PROTOTYPE_ROOT: temporary,
           MIOON_MOTION_PROTOTYPE_FFMPEG: ffmpeg, MIOON_MOTION_PROTOTYPE_FFPROBE: ffprobe,
           MIOON_MOTION_PROTOTYPE_PREVIEW: values.preview ? '1' : '0',
+          MIOON_MOTION_PROTOTYPE_LEGACY: values['compare-legacy'] ? '1' : '0',
           MIOON_MOTION_PROTOTYPE_SOFTWARE: values.software ? '1' : '0',
           MIOON_MOTION_PROTOTYPE_OUTPUT: values.output ?? ''},
       });

@@ -352,7 +352,7 @@ jobs:
             brew install ffmpeg
           fi
           results="$RUNNER_TEMP/mioon-motion-layer.json"
-          node scripts/motion-layer-prototype.ts --channel=development | tee "$results"
+          node scripts/motion-layer-prototype.ts --channel=development --compare-legacy | tee "$results"
           {
             printf '\n### Motion layer prototype (macOS)\n\n```json\n'
             cat "$results"

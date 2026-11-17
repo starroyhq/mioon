@@ -2,9 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { endianness } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserWindow, protocol, screen, session } from 'electron';
-import type { NativeImage } from 'electron';
+import type { Event, NativeImage, Rectangle } from 'electron';
 import { TIMELINE_SUBTITLE_FONT_SHA256 } from '../../../../packages/contracts/src/timeline-subtitle-profile.ts';
+import { motionCaptureMarkerBits, motionCaptureMarkerCell, motionCaptureMarkerCellSize,
+  motionCaptureMarkerHeight, motionCaptureMarkerWidth } from '../../../web/src/motion-layer-prototype/capture-marker.ts';
+
+export { motionCaptureMarkerHeight };
 
 const scheme = 'mioon-motion';
 const assetOrigin = `${scheme}://prototype`;
@@ -43,12 +48,14 @@ interface MotionWindowOptions {
   fps?: number;
   mode: MotionMode;
   showPreview?: boolean;
+  capture?: 'verified' | 'legacy-double-raf';
   signal?: AbortSignal;
 }
 
 export interface MotionWindow {
   window: BrowserWindow;
   devicePixelRatio: number;
+  readonly captureStats: { accepted: number; rejected: number };
   render(frame: number): Promise<Buffer>;
   close(): void;
 }
@@ -156,7 +163,12 @@ export async function createMotionWindow(options: MotionWindowOptions): Promise<
   const assets = await readAssets(assetsDirectory, mode);
   caller?.throwIfAborted();
 
-  const entry = `${assetOrigin}/index.html?mode=${mode}&width=${width}&height=${height}&fps=${fps}`;
+  const interactive = mode === 'preview' && options.showPreview === true;
+  const legacy = options.capture === 'legacy-double-raf';
+  const verifyCapture = !interactive && !legacy;
+  const captureWidth = verifyCapture ? Math.max(width, motionCaptureMarkerWidth) : width;
+  const captureHeight = verifyCapture ? height + motionCaptureMarkerHeight : height;
+  const entry = `${assetOrigin}/index.html?mode=${mode}&width=${width}&height=${height}&fps=${fps}&marker=${verifyCapture ? 1 : 0}&renderer=${legacy ? 'legacy' : 'canvas'}`;
   const isolated = session.fromPartition(`motion-prototype-${randomUUID()}`, { cache: false });
   const allowed = (url: string) => assets.get(assetPath(url, entry) ?? '');
   isolated.webRequest.onBeforeRequest((details, reply) => reply({ cancel: !allowed(details.url) }));
@@ -171,12 +183,11 @@ export async function createMotionWindow(options: MotionWindowOptions): Promise<
     return assetResponse(request, path.slice(1) as Asset, bytes);
   });
 
-  const interactive = mode === 'preview' && options.showPreview === true;
   const area = screen.getPrimaryDisplay().workAreaSize;
   const fit = interactive ? Math.min(1, area.width * 0.9 / width, area.height * 0.9 / height) : 1;
   const window = new BrowserWindow({
-    width: Math.max(1, Math.round(width * fit)),
-    height: Math.max(1, Math.round(height * fit)),
+    width: Math.max(1, Math.round(captureWidth * fit)),
+    height: Math.max(1, Math.round(captureHeight * fit)),
     useContentSize: true,
     enableLargerThanScreen: true,
     show: false,
@@ -243,30 +254,107 @@ export async function createMotionWindow(options: MotionWindowOptions): Promise<
     throw error;
   }
 
+  const captureStats = { accepted: 0, rejected: 0 };
+  const rect = { x: 0, y: 0, width: captureWidth, height: captureHeight };
+  function readVerified(image: NativeImage, expected: string): Buffer | undefined {
+    const size = image.getSize();
+    const scale = size.width === captureWidth && size.height === captureHeight ? 1 : devicePixelRatio;
+    if (size.width === Math.round(captureWidth * scale) && size.height === Math.round(captureHeight * scale)) {
+      const proofWidth = Math.round(motionCaptureMarkerWidth * scale);
+      const proofTop = Math.round(height * scale);
+      const proof = image.crop({ x: 0, y: proofTop, width: proofWidth, height: size.height - proofTop });
+      const bitmap = proof.toBitmap({ scaleFactor: 1 });
+      const matches = bitmap.length === proofWidth * (size.height - proofTop) * 4 &&
+        [...expected].every((bit, index) => {
+          const { x, y } = motionCaptureMarkerCell(index);
+          const pixelX = Math.floor((x + motionCaptureMarkerCellSize / 2) * scale);
+          const pixelY = Math.floor((height + y + motionCaptureMarkerCellSize / 2) * scale) - proofTop;
+          const offset = (pixelY * proofWidth + pixelX) * 4;
+          const level = bit === '1' ? 255 : 0;
+          return bitmap[offset + 3] === 255 && [0, 1, 2].every(channel => bitmap[offset + channel] === level);
+        });
+      if (matches) {
+        // Return the content of this very image. Crop before Retina resampling to keep the marker outside the result.
+        const content = image.crop({ x: 0, y: 0, width: Math.round(width * scale), height: proofTop });
+        const rgba = rgbaBitmap(content, width, height, scale);
+        captureStats.accepted++;
+        return rgba;
+      }
+    }
+    captureStats.rejected++;
+  }
+
+  async function captureVerified(script: string, expected: string, frame: number): Promise<Buffer> {
+    const label = `frame ${frame} pixel verification`;
+    if (mode === 'export') {
+      let stopListening = () => {};
+      const painted = new Promise<Buffer>((resolve, reject) => {
+        const onPaint = (_event: Event, _dirty: Rectangle, image: NativeImage) => {
+          try {
+            const rgba = readVerified(image, expected);
+            if (rgba) {
+              stopListening();
+              resolve(rgba);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        };
+        stopListening = () => { if (!webContents.isDestroyed()) webContents.off('paint', onPaint); };
+        webContents.on('paint', onPaint);
+      });
+      try {
+        const commit = webContents.executeJavaScript(script).then(() => { webContents.invalidate(); });
+        const [, rgba] = await withDeadline(Promise.all([commit, painted]), signal, label);
+        return rgba;
+      } finally {
+        stopListening();
+      }
+    }
+
+    async function capturePreview(): Promise<Buffer> {
+      await webContents.executeJavaScript(script);
+      for (;;) {
+        signal.throwIfAborted();
+        const image = await webContents.capturePage(rect, { stayHidden: true });
+        const rgba = readVerified(image, expected);
+        if (rgba) return rgba;
+        await delay(8, undefined, { signal });
+      }
+    }
+    return withDeadline(capturePreview(), signal, label);
+  }
+
   let capturing = false;
+  let request = 0;
   return {
     window,
     devicePixelRatio,
     close,
+    get captureStats() { return { ...captureStats }; },
     async render(frame) {
       if (!Number.isSafeInteger(frame) || frame < 0) throw Error('Invalid motion prototype frame');
       if (capturing) throw Error('Motion prototype frames must be captured serially');
       signal.throwIfAborted();
       capturing = true;
       try {
-        await withDeadline(webContents.executeJavaScript(`
+        const ordinal = ++request;
+        const script = `
           (async () => {
             window.motionPrototype.setOverlayOnly(true);
-            if (innerWidth !== ${width} || innerHeight !== ${height}) {
-              throw Error('Motion prototype capture expected ${width}×${height}; got ' + innerWidth + '×' + innerHeight);
+            if (innerWidth !== ${captureWidth} || innerHeight !== ${captureHeight}) {
+              throw Error('Motion prototype capture expected ${captureWidth}×${captureHeight}; got ' + innerWidth + '×' + innerHeight);
             }
-            window.motionPrototype.render(${frame});
-            // Let Chromium submit the committed React frame before copying the surface.
-            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            window.motionPrototype.render(${frame}${verifyCapture ? `, ${ordinal}` : ''});
+            ${verifyCapture ? '' : 'await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));'}
           })()
-        `), signal, 'frame commit');
-        const image = await withDeadline(webContents.capturePage({ x: 0, y: 0, width, height }, { stayHidden: true }),
-          signal, 'frame capture');
+        `;
+        if (verifyCapture) {
+          const expected = motionCaptureMarkerBits(frame, ordinal);
+          return await captureVerified(script, expected, frame);
+        }
+        await withDeadline(webContents.executeJavaScript(script), signal, 'frame commit');
+        const image = await withDeadline(webContents.capturePage(rect, { stayHidden: true }), signal, 'frame capture');
         return rgbaBitmap(image, width, height, devicePixelRatio);
       } catch (error) {
         close();
