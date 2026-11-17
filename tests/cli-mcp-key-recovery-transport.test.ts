@@ -1,3 +1,4 @@
+import {testServerSecretCodecs} from './helpers/secret-codec.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -67,7 +68,7 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
     assert.equal(report.cleanup.allCliReaped, true);
     assert.equal(networkCalls, 0, 'review preparation never reaches a provider');
   });
-  if (business) backend = await startServer({dataDir: path.join(root, 'workspace'), port: 0, token,
+  if (business) backend = await startServer({dataDir: path.join(root, 'workspace'), port: 0, token, ...testServerSecretCodecs(),
     imageNetwork: {lookup() {networkCalls++; throw Error('Unexpected synthetic provider lookup');}, httpsRequest() {networkCalls++; throw Error('Unexpected synthetic provider request');}} as never});
   proxy = http.createServer(async (request: http.IncomingMessage, response: http.ServerResponse) => {
     try {
@@ -213,8 +214,8 @@ test('nested review commits survive real wire loss and exact cross-client replay
   await f.rpc('workspace.settings.set', {expectedRevision: workspace.revision, liveGeneration: true});
   // The existing preparation guard requires a configured slot. This generated
   // fake value stays in this backend session; network adapters reject all I/O.
-  const settings = await f.raw('/api/images/settings', {expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: f.syntheticSecret()}}, 'PUT');
-  assert.equal((settings.secret as {storage?: string}).storage, 'session');
+  const settings = await f.raw('/api/images/settings', {expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'persistent', value: f.syntheticSecret()}}, 'PUT');
+  assert.equal((settings.secret as {storage?: string}).storage, 'persistent');
   let expectedReviews = 0;
   for (const kind of ['CLI', 'MCP']) for (const fault of ['drop', 'truncate', 'bad-review']) await t.test(`${kind}: committed review then ${fault}`, async () => {
     const input = {input: {projectId: project.id, requestId: randomUUID(), name: `Synthetic ${kind} ${fault}`, prompt: 'Only local immutable review metadata', providerId: 'openai', model: IMAGE_MODELS.openai, options: {...IMAGE_FIXED_OPTIONS}}, settingsRevision: settings.revision};

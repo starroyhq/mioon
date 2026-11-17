@@ -11,7 +11,7 @@ import {createCustomImageSettingsV2, validateCustomImageSettingsV2Envelope, vali
 const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const configuration = (patch: Partial<CustomImageConfigurationV2> = {}): CustomImageConfigurationV2 => ({...structuredClone(DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2),
   enabled: true, baseUrl: 'https://images.example.com/v1', model: 'same-model', ...patch});
-const replace = (value: string, storage: 'session' | 'persistent' = 'session') => ({action: 'replace', storage, value});
+const replace = (value: string, storage: 'session' | 'persistent' = 'persistent') => ({action: 'replace', storage, value});
 const create = (expectedRevision = 0, name = 'A', secret: unknown = replace('synthetic-key-A'), config = configuration(), connectionId: string = randomUUID()) => ({expectedRevision, connectionId, name, configuration: config, secret});
 const expected = (item: CustomImageConnectionV2) => ({connectionId: item.connectionId, configurationRevision: item.configurationRevision, configuration: item.configuration});
 const put = (expectedRevision: number, item: CustomImageConnectionV2, patch: Record<string, unknown> = {}) => ({expectedRevision,
@@ -31,15 +31,15 @@ function cipher() {
   decrypt(value: string): string {const bytes = Buffer.from(value, 'base64'), decoder = createDecipheriv('aes-256-gcm', key, bytes.subarray(0, 12));
     decoder.setAuthTag(bytes.subarray(-16)); return Buffer.concat([decoder.update(bytes.subarray(12, -16)), decoder.final()]).toString();}};
 }
-const persistent = {persistentAvailable: true, sessionScope: 'server', reasonCode: null};
+const persistent = {persistentAvailable: true, reasonCode: null};
 
 test('independent v2 defaults are inert and strict; public metadata never contains credentials or tombstones', async t => {
   const persistence = memory(), settings = await createCustomImageSettingsV2({persistence}); t.after(() => settings.close());
-  assert.deepEqual(await settings.get(), {revision: 0, connections: [], storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}, notice: null});
+  assert.deepEqual(await settings.get(), {revision: 0, connections: [], storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}, notice: null});
   assert.equal(persistence.saves, 0); assert.equal(persistence.value, null);
   assert.throws(() => settings.select(), {code: 'IMAGE_SETTINGS_NOT_CONFIGURED'});
   assert.equal('reset' in settings, false);
-  const saved = await settings.create(create()), item = saved.connections[0];
+  const saved = await settings.create(create(0, 'A', {action: 'keep'})), item = saved.connections[0];
   assert.match(item.connectionId, /^[0-9a-f-]{36}$/); assert.equal(item.configurationRevision, 1);
   assert.ok(customImageSettingsV2ResultSchema.safeParse(saved).success);
   assert.equal(customImageSettingsV2ResultSchema.safeParse({...saved, revision: 0}).success, false);
@@ -47,7 +47,7 @@ test('independent v2 defaults are inert and strict; public metadata never contai
   assert.equal(JSON.stringify(persistence.value).includes('synthetic-key'), false);
   assert.equal('deletedConnectionIds' in saved, false);
   for (const invalid of [{...create(1), connectionId: undefined}, {...create(1), connectionId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'}, {...create(1), apiKey: 'synthetic-smuggled'},
-    create(1, ' padded '), create(1, 'A', replace('two words')), create(1, 'A', replace('x'.repeat(4097))),
+    create(1, 'A', replace('synthetic-rejected', 'session')), create(1, ' padded '), create(1, 'A', replace('two words')), create(1, 'A', replace('x'.repeat(4097))),
     create(1, 'A', replace('synthetic-key'), configuration({baseUrl: 'https://images.example.com/v1/'})),
     create(1, 'A', replace('synthetic-key'), DEFAULT_CUSTOM_IMAGE_CONFIGURATION_V2)]) {
     await assert.rejects(settings.create(invalid), {code: 'IMAGE_SETTINGS_VALIDATION'});
@@ -57,7 +57,7 @@ test('independent v2 defaults are inert and strict; public metadata never contai
 });
 
 test('same-model same-revision A/B credentials stay isolated and B saves never invalidate A', async t => {
-  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence}); t.after(() => settings.close());
+  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence, secretCodec: cipher(), storage: persistent}); t.after(() => settings.close());
   const a = (await settings.create(create())).connections[0];
   const b = (await settings.create(create(1, 'B', replace('synthetic-key-B')))).connections[1];
   assert.equal(a.configurationRevision, b.configurationRevision); assert.deepEqual(a.configuration, b.configuration);
@@ -75,7 +75,7 @@ test('same-model same-revision A/B credentials stay isolated and B saves never i
 });
 
 test('one bounded batch publishes all changes once with one collection CAS and per-connection revisions', async t => {
-  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence}); t.after(() => settings.close());
+  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence, secretCodec: cipher(), storage: persistent}); t.after(() => settings.close());
   const {expectedRevision: ignored, ...operation} = create(); void ignored;
   const first = await settings.batch({expectedRevision: 0, operations: [{...operation, action: 'create'}, {...operation, action: 'create', connectionId: randomUUID(), name: 'B', secret: replace('synthetic-key-B')}]});
   assert.equal(persistence.saves, 1); assert.equal(first.revision, 1); assert.equal(first.connections.length, 2);
@@ -93,9 +93,9 @@ test('one bounded batch publishes all changes once with one collection CAS and p
   await assert.rejects(settings.put(put(1, next.connections[0])), {code: 'IMAGE_SETTINGS_CONFLICT'});
 });
 
-for (const storageKind of ['session', 'persistent'] as const) test(`${storageKind}: model changes keep the recipient key while full configuration and revision fences invalidate the old review`, async t => {
+test('model changes keep the recipient key while full configuration and revision fences invalidate the old review', async t => {
   const persistence = memory(), secretCodec = cipher(), settings = await createCustomImageSettingsV2({persistence, secretCodec, storage: persistent}); t.after(() => settings.close());
-  const a = (await settings.create(create(0, 'A', replace('synthetic-key-A', storageKind)))).connections[0];
+  const a = (await settings.create(create(0, 'A', replace('synthetic-key-A')))).connections[0];
   const oldSecret = validateCustomImageSettingsV2Envelope(persistence.value).connections[0].secret;
   const changed = (await settings.put(put(1, a, {configuration: configuration({model: 'different-model'})}))).connections[0];
   assert.equal(changed.configurationRevision, 2); assert.equal(changed.secret.configured, true);
@@ -109,10 +109,10 @@ for (const storageKind of ['session', 'persistent'] as const) test(`${storageKin
   assert.equal((await settings.acquire(expected(renamed))).apiKey, 'synthetic-key-A');
 });
 
-for (const storageKind of ['session', 'persistent'] as const) test(`${storageKind}: changing an address with keep saves and clears only that service's key`, async t => {
+test('changing an address with keep saves and clears only that service key', async t => {
   const persistence = memory(), secretCodec = cipher(), settings = await createCustomImageSettingsV2({persistence, secretCodec, storage: persistent}); t.after(() => settings.close());
-  const a = (await settings.create(create(0, 'A', replace('synthetic-key-A', storageKind)))).connections[0];
-  const b = (await settings.create(create(1, 'B', replace('synthetic-key-B', storageKind)))).connections[1];
+  const a = (await settings.create(create(0, 'A', replace('synthetic-key-A')))).connections[0];
+  const b = (await settings.create(create(1, 'B', replace('synthetic-key-B')))).connections[1];
   const oldSecret = validateCustomImageSettingsV2Envelope(persistence.value).connections[0].secret;
   const changed = await settings.put(put(2, a, {configuration: configuration({baseUrl: 'https://other.example.com/v2'})}));
   const next = changed.connections[0];
@@ -124,7 +124,7 @@ for (const storageKind of ['session', 'persistent'] as const) test(`${storageKin
   assert.throws(() => settings.assertCurrent(expected(next)), {code: 'IMAGE_SETTINGS_NOT_CONFIGURED'});
   assert.deepEqual(changed.connections[1], b); assert.equal(settings.assertCurrent(expected(b)), true);
   assert.equal((await settings.acquire(expected(b))).apiKey, 'synthetic-key-B');
-  const replaced = (await settings.put(put(3, next, {secret: replace('synthetic-new-recipient-key', storageKind)}))).connections[0];
+  const replaced = (await settings.put(put(3, next, {secret: replace('synthetic-new-recipient-key')}))).connections[0];
   assert.equal((await settings.acquire(expected(replaced))).apiKey, 'synthetic-new-recipient-key');
 });
 
@@ -156,7 +156,7 @@ test('persistent credentials bind v2 namespace, provider, UUID, profile and cano
   assert.equal((await foreign.acquire(expected(a))).apiKey, 'synthetic-persistent-A');
 });
 
-test('delete removes persistent ciphertext and sessions, only UUID tombstones remain and deleted UUIDs cannot be reused', async t => {
+test('delete removes persistent ciphertext and only UUID tombstones remain and deleted UUIDs cannot be reused', async t => {
   const persistence = memory(), secretCodec = cipher();
   let settings = await createCustomImageSettingsV2({persistence, secretCodec, storage: persistent}); t.after(() => settings.close());
   const a = (await settings.create(create(0, 'A', replace('synthetic-persistent-A', 'persistent'), configuration(), id(1)))).connections[0];
@@ -174,7 +174,7 @@ test('delete removes persistent ciphertext and sessions, only UUID tombstones re
   await settings.remove(remove(created.revision, b));
   await settings.close(); settings = await createCustomImageSettingsV2({persistence, secretCodec, storage: persistent});
   assert.equal((await settings.get()).connections.length, 1);
-  assert.equal((await settings.acquire(expected(created.connections[1]))).apiKey, null);
+  assert.equal((await settings.acquire(expected(created.connections[1]))).apiKey, 'synthetic-key-C');
   assert.equal(validateCustomImageSettingsV2Envelope(persistence.value).deletedConnectionIds.includes(b.connectionId), true);
 });
 
@@ -208,10 +208,13 @@ test('strict recognized legacy v1 becomes empty v2 plus stable notice without de
   }
 });
 
-test('session-only restart, unavailable codecs and malformed ciphertext never adopt or silently persist another key', async t => {
+test('old empty credential records and unavailable codecs never adopt another key', async t => {
   const persistence = memory(); let settings = await createCustomImageSettingsV2({persistence}); t.after(() => settings.close());
-  const a = (await settings.create(create())).connections[0]; await settings.close();
+  const a = (await settings.create(create(0, 'A', {action: 'keep'}))).connections[0]; await settings.close();
+  const old = persistence.value;
   settings = await createCustomImageSettingsV2({persistence});
+  assert.deepEqual((await settings.get()).connections, [a]);
+  assert.deepEqual(persistence.value, old);
   assert.equal((await settings.acquire(expected(a))).apiKey, null);
   await assert.rejects(settings.put(put(1, a, {secret: replace('synthetic-persistent', 'persistent')})), {code: 'IMAGE_SETTINGS_STORAGE_UNAVAILABLE'});
   assert.equal(persistence.saves, 1);
@@ -222,7 +225,7 @@ test('session-only restart, unavailable codecs and malformed ciphertext never ad
 });
 
 test('bounded collections and envelopes reject duplicate identities, impossible revisions and resource overflow', async t => {
-  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence}); t.after(() => settings.close());
+  const persistence = memory(), settings = await createCustomImageSettingsV2({persistence, secretCodec: cipher(), storage: persistent}); t.after(() => settings.close());
   for (let i = 0; i < CUSTOM_IMAGE_SETTINGS_V2_LIMITS.connections; i++) await settings.create(create(i, `Service ${i}`, {action: 'keep'}));
   await assert.rejects(settings.create(create(10)), {code: 'IMAGE_SETTINGS_CAPACITY'});
   const value = validateCustomImageSettingsV2Envelope(persistence.value), a = value.connections[0];

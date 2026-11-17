@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, realpath, rm} from 'node:fs/promises';
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
+import {mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomBytes, createCipheriv, createDecipheriv} from 'node:crypto';
-import {createVideoSettingsV2} from '../packages/business/src/video/settings-v2.ts';
+import {createVideoSettingsV2, validateVideoSettingsV2Envelope} from '../packages/business/src/video/settings-v2.ts';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
 import {createDesktopVideoSecretCodec} from '../apps/desktop/src/video-secret-store.ts';
 import desktopIdentity from '../apps/desktop/identity.ts';
@@ -14,11 +15,11 @@ import type {VideoSettingsClient, VideoSettingsState} from '../apps/web/src/vide
 
 const FIRST_KEY = 'synthetic-ui-original-video-key';
 const SECOND_KEY = 'synthetic-ui-replacement-video-key';
-const replace = (value: string) => ({action: 'replace' as const, storage: 'session' as const, value});
+const replace = (value: string) => ({action: 'replace' as const, storage: 'persistent' as const, value});
 
 async function fixture(t: {after(callback: () => unknown): void}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-video-credential-ui-')));
-  const options = {directory: path.join(root, 'video-settings'), privateRoot: root};
+  const options = {directory: path.join(root, 'video-settings'), privateRoot: root, secretCodec: createTestSecretCodec(), storage: testSecretStorage};
   let settings = await createVideoSettingsV2(options);
   const configuration = newVideoConnection('minimax'); configuration.enabled = true;
   await settings.put({action: 'save', expectedRevision: 0, configuration, secret: replace(FIRST_KEY)});
@@ -34,26 +35,49 @@ async function fixture(t: {after(callback: () => unknown): void}) {
   };
 }
 
-test('a session restart cannot restore or rebind a frozen task through the v2 UI and performs zero generation HTTP', async t => {
-  const f = await fixture(t); await f.reopen(); let requests = 0;
-  const provider = createConfiguredVideoProvider({root: f.root, binding: f.binding, now: () => Date.UTC(2026, 9, 23), acquireCredential: () => f.settings.acquire(f.binding), fetchImpl: async () => {requests++; throw Error('Unexpected generation HTTP');}});
-  const ui = f.ui(); t.after(() => ui.dispose()); await ui.load(); const saved = ui.getState().snapshot!.connections[0]!;
-  assert.equal(saved.secret.configured, false); assert.equal('restoreCredential' in ui, false); assert.equal('restoreRef' in ui.getState(), false);
-  assert.equal('credentials' in saved, false); assert.equal('credentialRef' in saved, false);
+test('a retired in-memory key remains unavailable to a frozen video task even after persistent replacement', async t => {
+  const f = await fixture(t);
+  const file = path.join(f.root, 'video-settings/settings.json');
+  const old = validateVideoSettingsV2Envelope(JSON.parse(await readFile(file, 'utf8')));
+  old.credentials[0]!.encrypted = null;
+  await writeFile(file, JSON.stringify(old), {mode: 0o600});
+  await f.reopen();
+  let requests = 0;
+  const provider = createConfiguredVideoProvider({root: f.root, binding: f.binding,
+    now: () => Date.UTC(2026, 9, 23), acquireCredential: () => f.settings.acquire(f.binding),
+    fetchImpl: async () => {requests++; return assert.fail('Unexpected generation HTTP');}});
+  const ui = f.ui(); t.after(() => ui.dispose()); await ui.load();
+  assert.deepEqual(ui.getState().snapshot!.connections[0]!.secret, {configured: false, storage: 'none'});
+  const request = {providerId: 'minimax', model: f.binding.model.modelId, prompt: 'Synthetic sunset', aspectRatio: '16:9', duration: 4, parameters: {resolution: '2K'}, referenceAssets: []};
   await assert.rejects(provider.poll('existing-task', {}), {code: 'VIDEO_CREDENTIAL_UNAVAILABLE'});
-  const snapshot = {providerId: 'minimax', model: f.binding.model.modelId, prompt: 'Synthetic sunset', aspectRatio: '16:9', duration: 4, parameters: {resolution: '2K'}, referenceAssets: []};
-  await assert.rejects(provider.submit(snapshot, {requestId: 'frozen-request'}), {code: 'VIDEO_CREDENTIAL_UNAVAILABLE'});
-  assert.equal(requests, 0); assert.equal(ui.setStorage('session'), true); assert.equal(await ui.save(FIRST_KEY), true);
+  await assert.rejects(provider.submit(request, {requestId: 'frozen-request'}), {code: 'VIDEO_CREDENTIAL_UNAVAILABLE'});
+  assert.equal(requests, 0);
+  assert.equal(await ui.save(FIRST_KEY), true);
   const current = f.settings.select(f.configuration.id, 2, f.configuration.models[0]!.id);
-  assert.notEqual(current.credentialRef, f.binding.credentialRef); assert.equal(await f.settings.acquire(current), FIRST_KEY);
+  assert.notEqual(current.credentialRef, f.binding.credentialRef);
+  assert.equal(await f.settings.acquire(current), FIRST_KEY);
   await assert.rejects(f.settings.acquire(f.binding), {code: 'VIDEO_SETTINGS_NOT_CONFIGURED'});
-  await assert.rejects(provider.poll('existing-task', {}), {code: 'VIDEO_CREDENTIAL_UNAVAILABLE'}); assert.equal(requests, 0);
-  assert.deepEqual(f.actions, ['save']); assert.equal(videoSettingsDirty(ui.getState()), false);
+  await assert.rejects(provider.poll('existing-task', {}), {code: 'VIDEO_CREDENTIAL_UNAVAILABLE'});
+  assert.equal(requests, 0);
+  assert.deepEqual(f.actions, ['save']);
+  assert.equal(videoSettingsDirty(ui.getState()), false);
+  assert.doesNotMatch(JSON.stringify(f.states), /synthetic-ui-(?:original|replacement)-video-key/);
+  assert.doesNotMatch(await readFile(file, 'utf8'), /synthetic-ui-(?:original|replacement)-video-key/);
+});
+
+test('persistent video credentials reopen with the same frozen binding and the UI does not expose private references', async t => {
+  const f = await fixture(t); await f.reopen();
+  const ui = f.ui(); t.after(() => ui.dispose()); await ui.load(); const saved = ui.getState().snapshot!.connections[0]!;
+  assert.deepEqual(saved.secret, {configured: true, storage: 'persistent'});
+  assert.equal('restoreCredential' in ui, false); assert.equal('restoreRef' in ui.getState(), false);
+  assert.equal('credentials' in saved, false); assert.equal('credentialRef' in saved, false);
+  assert.equal(await f.settings.acquire(f.binding), FIRST_KEY);
+  assert.deepEqual(f.actions, []);
   assert.doesNotMatch(JSON.stringify(f.states), /synthetic-ui-(?:original|replacement)-video-key/);
   assert.doesNotMatch(await readFile(path.join(f.root, 'video-settings/settings.json'), 'utf8'), /synthetic-ui-(?:original|replacement)-video-key/);
 });
 
-test('an unavailable OS vault never falls back silently or restores the old persistent reference', async t => {
+test('unavailable OS storage never falls back and keeps the old persistent reference', async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-video-vault-ui-'))), key = randomBytes(32);
   let available = true, encryptions = 0, decryptions = 0;
   const encrypt = (value: string) => {encryptions++; const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv); return Buffer.concat([iv, cipher.update(value), cipher.final(), cipher.getAuthTag()]);};
@@ -73,16 +97,14 @@ test('an unavailable OS vault never falls back silently or restores the old pers
   const states: VideoSettingsState[] = [], actions: string[] = [];
   const ui = createVideoSettingsSession({client: {read: () => settings.get(), write: input => {actions.push(input.action); return settings.put(input);}}, onChange: state => states.push(state)});
   t.after(() => ui.dispose()); await ui.load();
-  assert.equal(ui.getState().snapshot!.storage.persistentAvailable, false); assert.equal(ui.setStorage('persistent'), false);
+  assert.equal(ui.getState().snapshot!.storage.persistentAvailable, false);
   assert.equal(await ui.save(SECOND_KEY), false); assert.deepEqual(actions, []);
-  assert.equal(ui.setStorage('session'), true); assert.equal(await ui.save(), true, 'A keep-only save is a no-op, not a plaintext fallback');
+  assert.equal(await ui.save(), true, 'A keep-only save is a no-op');
   assert.deepEqual(ui.getState().snapshot!.connections[0]!.secret, {configured: true, storage: 'persistent'});
-  assert.equal(ui.getState().snapshot!.revision, 1); await assert.rejects(settings.acquire(binding), {code: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'});
-  ui.setStorage('session'); assert.equal(await ui.save(SECOND_KEY), true);
-  const current = settings.select(configuration.id, 2, configuration.models[0]!.id);
-  assert.notEqual(current.credentialRef, binding.credentialRef); assert.equal(await settings.acquire(current), SECOND_KEY);
+  assert.equal(ui.getState().snapshot!.revision, 1);
   await assert.rejects(settings.acquire(binding), {code: 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'});
-  assert.deepEqual({encryptions, decryptions}, availableCalls); assert.deepEqual(actions, ['save', 'save']);
+  assert.deepEqual({encryptions, decryptions}, availableCalls);
+  assert.deepEqual(actions, ['save']);
   assert.doesNotMatch(JSON.stringify(states), /synthetic-ui-(?:original|replacement)-video-key/);
 });
 
@@ -114,7 +136,7 @@ test('multiple custom services retain isolated keys and UI selection never expos
 for (const code of ['VIDEO_SETTINGS_CONFLICT', 'NETWORK']) test('replacement '+code+' preserves non-secret drafts and never repeats the write', async t => {
   const f = await fixture(t); await f.reopen(); let writes = 0;
   const ui = f.ui({...f.client, write: async () => {writes++; throw Object.assign(new Error('Synthetic raw failure'), {code});}}); t.after(() => ui.dispose()); await ui.load();
-  const models = f.configuration.models.map(model => ({...model, name: 'Retained recovery draft'})); ui.update({models}); ui.setStorage('session');
+  const models = f.configuration.models.map(model => ({...model, name: 'Retained recovery draft'})); ui.update({models});
   assert.equal(await ui.save(SECOND_KEY), false); assert.equal(writes, 1); assert.deepEqual(ui.getState().draft!.models, models);
   assert.equal(ui.getState().phase, 'review'); assert.equal(ui.getState().recovery, code === 'NETWORK' ? 'unknown' : 'conflict');
   assert.equal(await ui.save(SECOND_KEY), false); assert.equal(writes, 1); assert.doesNotMatch(JSON.stringify(f.states), /synthetic-ui-replacement-video-key|Synthetic raw failure/);

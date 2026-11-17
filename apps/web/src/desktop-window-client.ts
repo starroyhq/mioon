@@ -5,10 +5,14 @@ export type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSl
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const failure = () => new Error('桌面窗口身份尚未得到有效确认，请保留当前窗口。');
 
+export function hasDesktopWindowBridge(host: unknown = globalThis): host is Record<'__mioonProjectWindow', unknown> {
+  return record(host) && Object.hasOwn(host, '__mioonProjectWindow');
+}
+
 /** A missing preload means Web. A present but invalid preload never falls back
  * to mounting App, and query strings cannot choose the native renderer role. */
 export function readDesktopWindowBridge(host: unknown = globalThis): ProjectWindowBridge | null {
-  if (!record(host) || !Object.hasOwn(host, '__mioonProjectWindow')) return null;
+  if (!hasDesktopWindowBridge(host)) return null;
   const source: unknown = host.__mioonProjectWindow;
   if (!record(source) || !['context', 'openProject', 'publishLocatorStatus', 'requestLocatorAction', 'requestProjectEntry', 'showProjects', 'showSettings', 'closeSettings', 'editorStatus', 'subscribe'].every(key => typeof source[key] === 'function')) throw failure();
   const { context, openProject, cancelOpen, publishLocatorStatus, requestLocatorAction, requestProjectEntry, showProjects, showSettings, closeSettings, editorStatus, subscribe } = source;

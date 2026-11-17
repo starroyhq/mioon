@@ -122,7 +122,7 @@ async function projectReport(protocol: AgentProtocol, options: MioStorageReportO
     if (options.officialPresets !== false) {
       const anthropic = AGENT_PRESETS.find(preset => preset.id === 'anthropic')!.platforms.find(platform => platform.id === 'global')!;
       const configuration = protocol === 'anthropic_messages' ? {presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol} : {...DEFAULT_AGENT_CONFIGURATION, protocol};
-      await putTestAgentConfiguration(f.settings,{expectedRevision: (await f.settings.get()).revision, configuration, secret: {action: 'replace', storage: 'session', value: randomUUID()}});
+      await putTestAgentConfiguration(f.settings,{expectedRevision: (await f.settings.get()).revision, configuration, secret: {action: 'replace', storage: 'persistent', value: randomUUID()}});
       await authorizeTestScope(f.authorizations, 'project_agent');
     }
     const execute = f.tools.execute;

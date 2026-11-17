@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
@@ -66,7 +67,7 @@ function network(bytes: Buffer, barrier: {boundary?: Boundary; entered: ReturnTy
 async function fixture(t: test.TestContext, {withB = true, autoRun = true, boundary}: {withB?: boolean; autoRun?: boolean; boundary?: Boundary} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-service-reviews-')), store = openStore(root);
   let persisted: unknown = null;
-  const settings = await createCustomImageSettingsV2({persistence: {load: () => structuredClone(persisted), save: value => {persisted = structuredClone(value);}}});
+  const settings = await createCustomImageSettingsV2({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: () => structuredClone(persisted), save: value => {persisted = structuredClone(value);}}});
   const barrier = {boundary, entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>()};
   const acquisitions: Array<{connectionId: string; configurationRevision: number; configuration: CustomImageConfigurationV2}> = [];
   let acquisitionAttempts = 0;
@@ -85,7 +86,7 @@ async function fixture(t: test.TestContext, {withB = true, autoRun = true, bound
   const projectId = store.projectId, a = randomUUID(), b = randomUUID();
   const item = (id: string): CustomImageConnectionV2 => {const found = settings.readCurrent().connections.find(entry => entry.connectionId === id); assert.ok(found); return found;};
   async function add(id: string, key: string) {
-    return settings.create({expectedRevision: (await settings.get()).revision, connectionId: id, name: 'Same service label', configuration: configuration(), secret: {action: 'replace', storage: 'session', value: key}});
+    return settings.create({expectedRevision: (await settings.get()).revision, connectionId: id, name: 'Same service label', configuration: configuration(), secret: {action: 'replace', storage: 'persistent', value: key}});
   }
   await add(a, KEY_A); if (withB) await add(b, KEY_B);
   const input = (patch: Partial<Generation> = {}): Generation => imageSchemas['image.generate'].parse({projectId, requestId: randomUUID(), name: 'Exact service output', providerId: 'openai-compatible',

@@ -523,7 +523,7 @@ async function start(projectsToRestore?: readonly RestartProject[]): Promise<Des
     const backendId = randomUUID(), nativeAudioIdentity = createNativeAudioPreviewSigningIdentity(backendId);
     let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
-      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined), agentSettings,
+      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined, identity.channel), agentSettings,
       projectCatalog: {modulePath: path.join(app.getAppPath(), 'project-catalog.cjs'), createChannel: () => new MessageChannelMain()},
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
       videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }),

@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import type {RequestOptions} from 'node:https';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 interface TestNetwork {created:number;posts:number;lookups:number;hostname?:unknown;options?:RequestOptions&{hostname:string;path:string;headers:Record<string,string>};payload?:string;lookup:(hostname?:unknown,options?:unknown)=>unknown;httpsRequest:(options:RequestOptions&{hostname:string;path:string;headers:Record<string,string>},callback:(response:Readable)=>void)=>EventEmitter}
@@ -20,10 +21,10 @@ let pngBytes: Buffer<ArrayBufferLike>;
 async function body() { pngBytes ??= await renderMockImagePng(); return Buffer.from(JSON.stringify({data: [{b64_json: pngBytes.toString('base64')}]})); }
 async function settingsFixture(t: test.TestContext, {official = false, save}:{official?:boolean;save?:(value:unknown)=>unknown} = {}) {
   let stored: unknown = null;
-  const settings = await (official ? createImageSettings : createCustomImageSettings)({persistence: {load: async () => stored, save: async value => { await save?.(value); stored = structuredClone(value); }}});
+  const settings = await (official ? createImageSettings : createCustomImageSettings)({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => stored, save: async value => { await save?.(value); stored = structuredClone(value); }}});
   t.after(() => settings.close());
   await settings.put({expectedRevision: 0, configuration: official ? {...DEFAULT_IMAGE_CONFIGURATION, enabled: true} : configuration,
-    secret: {action: 'replace', storage: 'session', value: official ? officialKey : key}});
+    secret: {action: 'replace', storage: 'persistent', value: official ? officialKey : key}});
   return {settings, read: () => stored};
 }
 function network({responseBody = Buffer.from('{}'), onEnd, onConnect}:{responseBody?:Buffer;onEnd?:()=>unknown;onConnect?:()=>unknown} = {}) {
@@ -115,7 +116,7 @@ test('config/revision changed while DNS resolves blocks final durable fence and 
   const {settings} = await settingsFixture(t), entered = deferred(), release = deferred(), state = network(); let fences = 0;
   const pending = generate(settings, {...state, lookup: (hostname: unknown) => { assert.equal(hostname, 'custom-images.example'); entered.resolve!(); return release.promise; }}, {beforeDispatch: () => fences++});
   await entered.promise;
-  await settings.put({expectedRevision: 1, configuration: {...configuration, baseUrl: 'https://changed.example/v1', model: 'changed-model'}, secret: {action: 'replace', storage: 'session', value: 'synthetic-replacement-key'}});
+  await settings.put({expectedRevision: 1, configuration: {...configuration, baseUrl: 'https://changed.example/v1', model: 'changed-model'}, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-replacement-key'}});
   release.resolve!(answers);
   await assert.rejects(pending, {code: 'IMAGE_DISPATCH_BLOCKED', dispatched: false, outcomeUnknown: false});
   assert.equal(state.options!.hostname, 'custom-images.example'); assert.equal(state.posts, 0); assert.equal(fences, 0);

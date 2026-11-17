@@ -10,6 +10,7 @@ import {mock} from 'node:test';
 import {openStore} from '../../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './secret-codec.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME, agentTaskToolNamesForGroup} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
@@ -115,7 +116,8 @@ const equivalentRuns = (remaining: number, growth: number): number | null => gro
 async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport['scenario'], options: ContextReportOptions): Promise<ContextProtocolReport> {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-harness-context-report-'));
   const store = openStore(root);
-  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const createSettings = scenario.officialPresets ? createTestAgentSettings : createAgentSettings;
+  const settings = await createSettings({persistence: {load: async () => null, save: async () => {}}});
   let services:ReturnType<typeof createServices>|undefined;
   let tools: ReturnType<typeof createAgentTaskTools> | undefined;
   let runtime: ReturnType<typeof createAgentTaskRuntime> | undefined;
@@ -127,9 +129,9 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const anthropic = AGENT_PRESETS.find(preset => preset.id === 'anthropic')?.platforms.find(platform => platform.id === 'global');
     assert.ok(anthropic);
     const configuration = scenario.officialPresets ? protocol === 'anthropic_messages' ? {presetId: 'anthropic', platformId: anthropic.id, baseUrl: anthropic.baseUrl, model: anthropic.model, protocol} : {...DEFAULT_AGENT_CONFIGURATION, protocol} : {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
-    const sessionSecret = scenario.officialPresets ? randomUUID() : null;
-    const noSecret = (value: string) => assert.ok(sessionSecret === null || !value.includes(sessionSecret), 'Session credentials must not enter measurement artifacts');
-    await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {action: 'replace', storage: 'session', value: sessionSecret}});
+    const syntheticKey = scenario.officialPresets ? randomUUID() : null;
+    const noSecret = (value: string) => assert.ok(syntheticKey === null || !value.includes(syntheticKey), 'Credentials must not enter measurement artifacts');
+    await putTestAgentConfiguration(settings,{expectedRevision: 0, configuration, secret: syntheticKey === null ? {action: 'remove'} : {action: 'replace', storage: 'persistent', value: syntheticKey}});
     const authorizations = createTestAuthorizations(() => store, settings);
     await authorizeTestScope(authorizations, 'project_agent');
     const baseTools = createAgentTaskTools({store, services});
@@ -158,7 +160,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       request.beforeSubmit?.();
       const body = record(JSON.parse(request.body));
       noSecret(request.body);
-      if (scenario.officialPresets) assert.ok(request.apiKey === sessionSecret, 'Official measurement must use its in-memory session credential');
+      if (scenario.officialPresets) assert.ok(request.apiKey === syntheticKey, 'Official measurement must use its synthetic credential');
       const index = requests.length + 1;
       requestStarts.set(index, Date.now());
       requests.push({index, bytes: Buffer.byteLength(request.body), toolCount: Array.isArray(body.tools) ? body.tools.length : 0, ...(scenario.cachePrefixReport && protocol === 'anthropic_messages' ? {cachePrefix: reportAnthropicPrefixes(request.body, previousBody, {virtualBreakpoints: scenario.virtualCacheBoundaries})} : {})});

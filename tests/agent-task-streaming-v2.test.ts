@@ -1,5 +1,4 @@
 import {putTestAgentConfiguration,testAgentExecution} from './helpers/agent-settings-fixture.ts';
-import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,8 +27,9 @@ async function fixture(t:TestContext,protocol:Protocol='responses'){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-streaming-v2-')),store=openStore(root),services=createServices(store,new Map());
  assert.ok(isProjectStore(store),'Ordinary streaming exercises the native project kernel');
  const projectId=String(object(await services.call('project.create',{name:'Streaming test'})).id);
- const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();
- await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:defaultTestAgentConfiguration(protocol),secret:{action:'replace',storage:'session',value:'SYNTHETIC_LOCAL_TEST_ONLY'}});
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
+ // The offline gateway needs no API key. Using a local service isolates streaming timers from the vault deadline.
+ await putTestAgentConfiguration(settings,{expectedRevision:0,configuration:{presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},secret:{action:'remove'}});
  const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
  const tools=createAgentTaskTools({store,services}),requests:TaskModelRequest[]=[];
  let script:TaskGateway=async function*(){yield {type:'done',output:output(protocol,'Complete')};};

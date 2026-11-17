@@ -93,22 +93,22 @@ both increments. Agent/video settings and credentials cannot enable Images.
 ## Dedicated settings and secret boundary
 
 The settings engine is the backend/desktop utility's owner of the Images
-configuration, revision and session credentials. It does not reuse a Mio/video
+configuration, revision and credentials. It does not reuse a Mio/video
 key or discover an environment key. The official service remains fixed; the
 custom v2 collection accepts a separately validated base URL for each UUID.
 
-- Web mode supports only explicit session storage. Here a session is one backend
-  process lifetime, not one browser tab or login: browser reload does not clear
-  the key, but backend shutdown/restart does. The nonsecret settings survive.
+- The standalone browser can read settings. When the backend has no system
+  credential store, key entry is unavailable and the services are unconfigured.
+  Use the desktop app to enter a key.
 - Electron main supplies a narrow OS codec over the owned utility channel. Only
   fixed `status`, `encrypt` and `decrypt` messages for official Images v1 and
   custom Images v2 namespaces and their exact bindings are accepted. Old custom
   v1 settings recognition grants no old-key encryption or decryption capability.
   Main does not own another
   Images settings engine. The renderer/preload has no decryption API or arbitrary secret proxy.
-- Persistent storage requires the user's explicit choice and available secure
-  OS storage. Unavailable storage and Linux `basic_text` fail closed; there is
-  no plaintext-file fallback. Session-only storage must be selected explicitly.
+- Saving a key requires available secure OS storage. When the store is
+  unavailable or Linux uses `basic_text`, the app explains the problem and
+  offers to retry the storage check.
 - Current macOS storage uses asynchronous `safeStorage` methods; Linux keeps
   its strong-keyring branch. Neither can turn a failed credential operation into
   another service's key or an automatic POST. The historical synchronous-codec
@@ -117,9 +117,11 @@ custom v2 collection accepts a separately validated base URL for each UUID.
   [separately](IMAGE-COMPATIBLE.md#inherited-desktop-keychain-limitation); those
   results are not native acceptance of this codec or the v2 settings change.
 - The dedicated private settings envelope contains nonsecret configuration and,
-  only for persistent storage, OS-encrypted credential bytes. It uses the existing
-  ownership, symlink, bounded-file and atomic-publication protections. Plaintext
-  credentials are never saved to project SQLite, prompts, chat or logs.
+  when a key has been saved, OS-encrypted credential bytes. It uses the existing
+  ownership, symlink, bounded-file and atomic-publication protections. Legacy
+  envelopes with no ciphertext open as unconfigured and retain their nonsecret
+  settings and revision. Plaintext credentials are never saved to project SQLite,
+  prompts, chat or logs.
 - The API key field is write-only. Read results contain only `configured` and
   storage metadata; no key echo or secret-bearing errors. The UI clears unsaved
   key input on hiding, leaving or changing projects, and clears it at submission.
@@ -146,18 +148,17 @@ compressed content and is limited to 16 KiB; credential input is 1–4096 non-wh
 bytes. URLs accept no query arguments.
 
 - `GET /api/images/settings` returns
-  `{revision,configuration,secret:{configured,storage},storage:{persistentAvailable,sessionScope,reasonCode}}`.
+  `{revision,configuration,secret:{configured,storage},storage:{persistentAvailable,reasonCode}}`.
 - `configuration` has exactly
   `{enabled,providerId,profileId,baseUrl,model,options}` with the preset above.
 - `PUT /api/images/settings` takes exactly
   `{expectedRevision,configuration,secret}`. `expectedRevision` is a nonnegative
   safe integer. `secret` is exactly `{action:"keep"}`, `{action:"remove"}`, or
-  `{action:"replace",storage:"session"|"persistent",value:"..."}`. Do not put a
+  `{action:"replace",storage:"persistent",value:"..."}`. Do not put a
   real credential in an agent prompt, shell command, fixture or documentation.
-- Returned secret `storage` is `none`, `session` or `persistent`.
-  `sessionScope` in the implemented server/desktop route is `server`.
+- Returned secret `storage` is `none` or `persistent`.
   `reasonCode` is `null` when persistent storage is available, otherwise
-  `WEB_SESSION_ONLY`, `OS_SECRET_STORE_PENDING`, `OS_SECRET_STORE_UNAVAILABLE`
+  `OS_SECRET_STORE_PENDING`, `OS_SECRET_STORE_UNAVAILABLE`
   or `LINUX_BASIC_TEXT`. A pending Keychain operation leaves committed
   configuration readable while persistent-key actions wait for availability.
 
@@ -170,9 +171,8 @@ The exact shapes and a keyless example are in
 [custom settings](IMAGE-COMPATIBLE.md#exact-private-settings-contract).
 Strictly valid legacy custom v1 files read as empty v2 plus a reset notice,
 without writing or decrypting old keys. Explicit saving replaces that file;
-unsafe, corrupt and unknown versions are refused. Session-only storage warns
-that exiting the application prevents continued result queries. No historical
-key restoration API is provided.
+unsafe, corrupt and unknown versions are refused. No historical key restoration
+API is provided.
 
 Schemas: `packages/contracts/src/image-settings.ts` and
 `generation-image-settings.ts`. Implementation:

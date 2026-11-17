@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -68,8 +69,8 @@ function network({body = Buffer.from('{}'), onEnd, onConnect}: NetworkOptions = 
   return state;
 }
 async function settingsFixture(t: import('node:test').TestContext) {
-  let stored: Record<string, unknown> | null = null; const settings = await createImageSettings({persistence: {load: async () => stored, save: async (value: Record<string, unknown>) => { stored = structuredClone(value); }}} as never);
-  t.after(() => settings.close()); await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: key}});
+  let stored: Record<string, unknown> | null = null; const settings = await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => stored, save: async (value: Record<string, unknown>) => { stored = structuredClone(value); }}} as never);
+  t.after(() => settings.close()); await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'persistent', value: key}});
   return {settings, persisted: () => stored};
 }
 
@@ -196,9 +197,9 @@ test('official edit gateway revalidates credential namespace/revision/configurat
     const state = network(), wrapped = {...settings, [IMAGE_CREDENTIAL_ACQUIRE]: async () => value};
     await assert.rejects(createLiveImageGateway({settings: wrapped, ...state} as never).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')})); assert.equal(state.lookups, 0); assert.equal(state.posts, 0);
   }
-  let stored: unknown = null; const custom = await createCustomImageSettings({persistence: {load: async () => stored, save: async value => { stored = value; }}}); t.after(() => custom.close());
+  let stored: unknown = null; const custom = await createCustomImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence: {load: async () => stored, save: async value => { stored = value; }}}); t.after(() => custom.close());
   const configuration = {...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://custom.example/v1', model: 'custom-model'};
-  await custom.put({expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'session', value: 'synthetic-custom-key'}});
+  await custom.put({expectedRevision: 0, configuration, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-custom-key'}});
   const state = network(); await assert.rejects(createLiveImageGateway({settings: custom, ...state} as never).generate(input(bytes), {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')}));
   await assert.rejects(createCompatibleImageGateway({settings: custom, ...state} as unknown as Parameters<typeof createCompatibleImageGateway>[0]).generate({...input(bytes), providerId: 'openai-compatible', model: 'custom-model'}, {sourceBytes: bytes, configuration, settingsRevision: 1, beforeDispatch: () => assert.fail('No fence')}));
   assert.equal(state.lookups, 0);

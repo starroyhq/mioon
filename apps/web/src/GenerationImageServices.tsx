@@ -12,7 +12,7 @@ import {useI18n} from './i18n/I18nProvider.tsx';
 import {WorkbenchSelect, WorkbenchTooltip} from './WorkspaceControls.tsx';
 import ModelPickerDialog from './ModelPickerDialog.tsx';
 import {useSettingsServicesPanel} from './SettingsServicesLayout.tsx';
-import {imageStorageReason} from './ImageSettings.tsx';
+import {SettingsSecretStorageNotice} from './SettingsSecretStorageNotice.tsx';
 import {comfyConnectorAvailabilityDescriptor, comfyImageCheckDescriptor} from './comfy-image-settings.ts';
 import {createGenerationImageServicesOwner} from './generation-image-services-settings.ts';
 import type {GenerationImageDomainKind, GenerationImageDomainState, GenerationImageServicesClient, GenerationImageServicesOwner} from './generation-image-services-settings.ts';
@@ -62,7 +62,7 @@ function useImageDomain(kind: GenerationImageDomainKind, options: GenerationImag
     const secret = owner.savedSecret(id), storage = snapshot && 'storage' in snapshot ? snapshot.storage : null;
     const available = !snapshot || kind === 'comfy' && !state.availability ? null : !!stored?.configuration.enabled && (kind === 'comfy'
       ? 'readiness' in snapshot && snapshot.readiness.checked && state.availability?.state === 'available'
-      : !!secret?.configured && (secret.storage === 'session' || !!storage?.persistentAvailable));
+      : !!secret?.configured && !!storage?.persistentAvailable);
     return {key: kind === 'custom' ? `image:${id}` : id, label: kind === 'custom' ? draft!.name : t(kind === 'official' ? 'image.settings.official' : 'image.settings.comfy'),
       providerId: kind === 'official' ? 'openai' : kind === 'custom' ? 'openai-compatible' : 'comfy-local', kind: 'image' as const, custom: kind === 'custom', configured, available, dirty: owner.isDirty(id),
       content: <GenerationImageServiceDetail key={id} id={id} kind={kind} owner={owner} state={state} onSelect={key => current.current.onSelect?.(key)} />};
@@ -111,7 +111,6 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
   const draft = state.drafts.find(item => item.id === id), busy = ['loading', 'saving', 'reconciling', 'checking'].includes(state.phase);
   const editable = visibility.active && !busy && !state.recovery, snapshot = state.snapshot, secret = owner.savedSecret(id);
   const storage = snapshot && 'storage' in snapshot ? snapshot.storage : null;
-  const storagePending = storage?.reasonCode === 'OS_SECRET_STORE_PENDING';
   const probe = state.probe?.id === id ? state.probe : null;
   const listing = probe?.operation === 'models' ? probe.result : null;
   const pickerStatus = !listing ? 'loading' : listing.result === 'ok'
@@ -168,7 +167,7 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
     </> : <>
       {kind === 'custom' && <><div className="settings-with-help"><Label htmlFor={`${prefix}-model`}>{t('image.settings.model')}</Label><WorkbenchTooltip content={t('image.settings.compatibility')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.model')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><Input id={`${prefix}-model`} data-testid={`${prefix}-model`} value={draft.configuration.model} maxLength={120} disabled={!editable} autoComplete="off" autoCapitalize="none" spellCheck={false} onChange={event => edit({}, {model: event.target.value})} /></>}
       <div className="image-settings-fixed">{destination && <span>{destination}</span>}<span>{draft.configuration.model || t('image.settings.modelEmpty')}</span><span>{t('image.settings.fixedOutput')}</span></div>
-      <div className="settings-with-help"><Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><WorkbenchTooltip content={t('image.settings.keyHelp')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><Input ref={inputRef} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={4096} disabled={!editable || draft.secretAction === 'remove'} onChange={() => {if (usable()) owner.keyChanged(id);}} />
+      {storage?.persistentAvailable && <><div className="settings-with-help"><Label htmlFor={`${prefix}-key`}>{t('image.settings.key')}</Label><WorkbenchTooltip content={t('image.settings.keyHelp')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.key')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><Input ref={inputRef} id={`${prefix}-key`} data-testid={`${prefix}-key`} type="password" autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={4096} disabled={!editable || draft.secretAction === 'remove'} onChange={() => {if (usable()) owner.keyChanged(id);}} />
       <div className="image-generation-actions">
         <Button type="button" data-testid={`${prefix}-key-check`} disabled={!probeable} onClick={() => {if (usable()) void owner.checkCredential(id, 'check');}}>{t('settings.draftKey.check')}</Button>
         <Button type="button" data-testid={`${prefix}-model-list`} disabled={!probeable} onClick={event => openPicker(event.currentTarget)}>{t('settings.draftKey.list')}</Button>
@@ -183,9 +182,8 @@ function GenerationImageServiceDetail({id, kind, owner, state, onSelect}: {id: s
           : pickerStatus === 'ready' && kind === 'official' ? t('settings.modelPicker.officialModel') : undefined}
         items={pickerItems} returnedModelCount={listing?.models?.length}
         triggerRef={pickerTrigger} onClose={closePicker} onAdd={chooseModel} />}
-      <div className="settings-with-help"><Label htmlFor={`${prefix}-storage`}>{t('image.settings.keyStorage')}</Label><WorkbenchTooltip content={t('connections.sessionLoss')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('image.settings.keyStorage')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div><WorkbenchSelect id={`${prefix}-storage`} data-testid={`${prefix}-storage`} value={draft.storage} disabled={!editable || draft.secretAction === 'remove'} onChange={event => {if (event.target.value === 'session' || event.target.value === 'persistent') edit({storage: event.target.value});}}><option value="" disabled>{t('image.settings.storageChoose')}</option><option value="session">{t('image.settings.storageSession')}</option><option value="persistent" disabled={!storage?.persistentAvailable}>{t('connections.storage.persistent')}</option></WorkbenchSelect>
-      {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}
-      {(!storagePending || state.keychainWaitConfirmed) && <p className="image-settings-help" role={storagePending ? 'status' : undefined}>{imageStorageReason(storage, t)}</p>}
+      {draft.needsKey && !draft.hasKey && <p role="status">{t('image.settings.notice.keyCleared')}</p>}</>}
+      <SettingsSecretStorageNotice storage={storage} pendingConfirmed={state.keychainWaitConfirmed} disabled={!editable} retry={() => {if (usable()) owner.retryStorage();}} testId={`${prefix}-storage-status`} />
       {secret?.configured && <Button type="button" disabled={!editable} aria-pressed={draft.secretAction === 'remove'} onClick={() => edit({secretAction: draft.secretAction === 'remove' ? 'keep' : 'remove'})}>{t(draft.secretAction === 'remove' ? 'image.settings.undoRemove' : 'image.settings.removeKey')}</Button>}
     </>}
     <div className="settings-with-help"><Label className="generation-image-enable" htmlFor={`${prefix}-enabled`}><Switch id={`${prefix}-enabled`} data-testid={`${prefix}-enabled`} checked={draft.configuration.enabled} disabled={!editable} onCheckedChange={enabled => edit({}, {enabled})} /><span>{t(kind === 'official' ? 'image.settings.enableOpenai' : kind === 'custom' ? 'image.settings.enableCustom' : 'connections.comfy.enable')}</span></Label><WorkbenchTooltip content={t(kind === 'comfy' ? 'connections.comfy.enableScope' : 'image.settings.enableScope')}><Button type="button" variant="ghost" size="icon-sm" aria-label={t('redesign.shell.help')}><Icon name="info" size={14} /></Button></WorkbenchTooltip></div>

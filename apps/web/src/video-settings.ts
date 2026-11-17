@@ -7,6 +7,7 @@ import type {VideoConnectionConfigurationV2, VideoConnectionViewV2, VideoModelsL
 import {draftServiceProbeResultSchema} from '../../../packages/contracts/src/draft-service-probe.ts';
 import type {DraftServiceProbeResult} from '../../../packages/contracts/src/draft-service-probe.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
+import {unavailableSecretStorage, watchPendingSecretStorage} from './settings-secret-storage.ts';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -99,7 +100,7 @@ export function createVideoSettingsClient({ fetchImpl = globalThis.fetch, timeou
 export interface VideoSettingsState {
   phase: 'loading' | 'ready' | 'saving' | 'saved' | 'error' | 'load_error' | 'review' | 'blocked' | 'reconciling';
   snapshot: VideoSettingsSnapshotV2 | null; draft: VideoConnectionConfigurationV2 | null; baseline: VideoConnectionConfigurationV2 | null;
-  secretAction: 'keep' | 'remove'; storage: '' | 'session' | 'persistent'; recovery: 'conflict' | 'unknown' | null; notice: MessageKey | null;
+  secretAction: 'keep' | 'remove'; keychainWaitConfirmed: boolean; recovery: 'conflict' | 'unknown' | null; notice: MessageKey | null;
 }
 export function videoDraftProbeInput(
   operation: VideoModelsListInput['operation'],
@@ -116,7 +117,7 @@ export function videoDraftProbeInput(
     return parsed.success ? parsed.data : null;
   }
   if (action !== 'keep' || !saved?.secret.configured || saved.configuration.id !== configuration.id
-    || saved.secret.storage === 'persistent' && !persistentAvailable) return null;
+    || !persistentAvailable) return null;
   const original = saved.configuration;
   try {
     if (original.providerId !== providerId || original.region !== region || original.workspaceId !== workspaceId
@@ -125,21 +126,32 @@ export function videoDraftProbeInput(
   return {...target, source: 'saved', connectionId: configuration.id, configurationRevision: saved.revision};
 }
 
-export const initialVideoSettingsState = (): VideoSettingsState => ({ phase: 'loading', snapshot: null, draft: null, baseline: null, secretAction: 'keep', storage: '', recovery: null, notice: null });
+export const initialVideoSettingsState = (): VideoSettingsState => ({ phase: 'loading', snapshot: null, draft: null, baseline: null, secretAction: 'keep', keychainWaitConfirmed: false, recovery: null, notice: null });
 export const videoSettingsBusy = (state: VideoSettingsState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const videoSettingsDirty = (state: VideoSettingsState): boolean => Boolean(state.draft && (JSON.stringify(state.draft) !== JSON.stringify(state.baseline) || state.secretAction !== 'keep'));
 export const videoSettingsCanSave = (state: VideoSettingsState): boolean => Boolean(state.draft && state.snapshot && !videoSettingsBusy(state) && !state.recovery && state.phase !== 'blocked');
-const credentialStorage = (storage: string | undefined): VideoSettingsState['storage'] => storage === 'persistent' || storage === 'session' ? storage : '';
 export function newVideoConnection(providerId: VideoProviderId): VideoConnectionConfigurationV2 {
   if (providerId === 'runway' || !isVideoCatalogProvider(providerId)) throw fail('VIDEO_SETTINGS_VALIDATION');
   return { id: crypto.randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: VIDEO_REGIONS[providerId][0]!, workspaceId: '', enabled: false, outputHosts: [], models: defaultVideoModels(providerId).filter(model => providerId !== 'wan' || model.templateId === 'wan30-v1'), ...(providerId === 'compatible' ? { baseUrl: '' } : {}) };
 }
 export function createVideoSettingsSession({ client = createVideoSettingsClient(), onChange = () => {} }: { client?: VideoSettingsClient; onChange?: (state: VideoSettingsState) => void } = {}) {
   let state = initialVideoSettingsState(), live = true, visible = true, epoch = 0, pending: AbortController | null = null;
-  const emit = (patch: Partial<VideoSettingsState>) => { if (!live) return; state = { ...state, ...patch }; onChange(clone(state)); };
+  const refreshStorage = async (signal?: AbortSignal) => {
+    const before = state.snapshot; if (!before) return;
+    const {storage} = safeVideoSettings(await client.read(signal, 'keychain-poll'));
+    if (!live || !visible || signal?.aborted || state.snapshot !== before) return;
+    emit({snapshot: {...before, storage}, keychainWaitConfirmed: storage.reasonCode === 'OS_SECRET_STORE_PENDING'});
+  };
+  const watchStorage = watchPendingSecretStorage(refreshStorage);
+  const observeStorage = () => watchStorage(live && visible && state.snapshot?.storage.reasonCode === 'OS_SECRET_STORE_PENDING');
+  const emit = (patch: Partial<VideoSettingsState>) => { if (!live) return;
+    state = { ...state, ...patch };
+    if (state.snapshot?.storage.reasonCode !== 'OS_SECRET_STORE_PENDING') state.keychainWaitConfirmed = false;
+    observeStorage(); onChange(clone(state));
+  };
   const owned = (token: number) => live && token === epoch;
   const editable = () => live && visible && !videoSettingsBusy(state);
-  const choose = (input: VideoConnectionConfigurationV2 | null) => { const configuration = input && isVideoCatalogProvider(input.providerId) ? input : null; const saved = state.snapshot?.connections.find(item => item.configuration.id === configuration?.id); emit({ draft: clone(configuration), baseline: clone(configuration), secretAction: 'keep', storage: credentialStorage(saved?.secret.storage), phase: 'ready', recovery: null, notice: null }); };
+  const choose = (input: VideoConnectionConfigurationV2 | null) => { const configuration = input && isVideoCatalogProvider(input.providerId) ? input : null; emit({ draft: clone(configuration), baseline: clone(configuration), secretAction: 'keep', phase: 'ready', recovery: null, notice: null }); };
   async function read(recover = false): Promise<boolean> {
     if (!live || videoSettingsBusy(state) && state.phase !== 'loading') return false;
     pending?.abort(); pending = new AbortController(); const token = ++epoch;
@@ -153,12 +165,13 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
   }
   async function save(value = ''): Promise<boolean> {
     if (!editable() || !videoSettingsCanSave(state) || !state.draft || !state.snapshot) return false;
+    if (value && !state.snapshot.storage.persistentAvailable) return false;
     const configuration = clone(state.draft), expectedRevision = state.snapshot.revision;
     // A typed base URL is saved in its normalized form (lower-case host, no trailing slash).
     if (configuration.providerId === 'compatible') { try { configuration.baseUrl = normalizeCompatibleVideoBaseUrl(configuration.baseUrl); } catch { emit({ phase: 'error', notice: 'video.providers.baseUrlInvalid' }); return false; } }
-    const secret = value ? { action: 'replace' as const, value, storage: state.storage } : { action: state.secretAction };
+    const secret = value ? { action: 'replace' as const, value, storage: 'persistent' } : { action: state.secretAction };
     const parsed = videoSettingsUpdateV2Schema.safeParse({ action: 'save', expectedRevision, configuration, secret });
-    if (!parsed.success || parsed.data.action !== 'save' || value && state.storage === 'persistent' && !state.snapshot.storage.persistentAvailable) { emit({ phase: 'error', notice: 'video.providers.invalid' }); return false; }
+    if (!parsed.success || parsed.data.action !== 'save') { emit({ phase: 'error', notice: 'video.providers.invalid' }); return false; }
     pending?.abort(); pending = new AbortController(); const token = ++epoch;
     emit({ phase: 'saving', secretAction: 'keep', notice: null });
     // The credential remains only in this one transport call; no state or retry body retains it.
@@ -166,12 +179,13 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
       if (snapshot.revision !== expectedRevision && snapshot.revision !== expectedRevision + 1) throw fail('INVALID_RESPONSE');
       const accepted = snapshot.connections.find(item => item.configuration.id === configuration.id); if (!accepted) throw fail('INVALID_RESPONSE');
       if (JSON.stringify(accepted.configuration) !== JSON.stringify(parsed.data.configuration)) throw fail('INVALID_RESPONSE');
-      emit({ snapshot, draft: clone(accepted.configuration), baseline: clone(accepted.configuration), storage: credentialStorage(accepted.secret.storage), phase: 'saved', recovery: null, notice: 'video.providers.saved' }); return true;
+      emit({ snapshot, draft: clone(accepted.configuration), baseline: clone(accepted.configuration), phase: 'saved', recovery: null, notice: 'video.providers.saved' }); return true;
     } catch (error) { return recoverWrite(error, token); }
   }
   async function recoverWrite(error: unknown, token: number): Promise<boolean> {
     if (!owned(token)) return false; const code = errorCode(error);
-    if (['VIDEO_SETTINGS_VALIDATION', 'UNAUTHORIZED', 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE', 'VIDEO_SETTINGS_CAPACITY'].includes(code)) { emit({ phase: 'error', notice: code === 'VIDEO_SETTINGS_CAPACITY' ? 'video.providers.capacity' : 'video.providers.invalid' }); return false; }
+    if (code === 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE' && state.snapshot) {emit({snapshot: {...state.snapshot, storage: unavailableSecretStorage}, phase: 'error', notice: null}); return false;}
+    if (['VIDEO_SETTINGS_VALIDATION', 'UNAUTHORIZED', 'VIDEO_SETTINGS_CAPACITY'].includes(code)) { emit({ phase: 'error', notice: code === 'VIDEO_SETTINGS_CAPACITY' ? 'video.providers.capacity' : 'video.providers.invalid' }); return false; }
     const recovery = code === 'VIDEO_SETTINGS_CONFLICT' || code === 'VIDEO_SETTINGS_DELETED' ? 'conflict' : 'unknown'; emit({ phase: 'reconciling', recovery, notice: recovery === 'conflict' ? 'video.providers.conflict' : 'video.providers.unknown' });
     try { const snapshot = safeVideoSettings(await client.read(pending!.signal)); if (owned(token)) emit({ snapshot, phase: 'review' }); }
     catch { if (owned(token)) emit({ phase: 'blocked' }); } return false;
@@ -194,13 +208,13 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
     select(id: string) { if (!editable() || videoSettingsDirty(state) || state.recovery) return false; const found = state.snapshot?.connections.find(item => item.configuration.id === id); if (!found || !isVideoCatalogProvider(found.configuration.providerId)) return false; choose(found.configuration); return true; },
     add(providerId: VideoProviderId) { if (!editable() || videoSettingsDirty(state) || state.recovery || !isVideoCatalogProvider(providerId)) return false; const existing = providerId === 'compatible' ? undefined : state.snapshot?.connections.find(item => item.configuration.providerId === providerId); choose(existing?.configuration || newVideoConnection(providerId)); if (!existing) emit({ baseline: null }); return true; },
     update(patch: Partial<VideoConnectionConfigurationV2>) { if (!editable() || state.recovery || !state.draft) return false; emit({ draft: { ...state.draft, ...clone(patch), id: state.draft.id, providerId: state.draft.providerId } }); return true; },
-    setStorage(storage: '' | 'session' | 'persistent') { if (!editable() || storage === 'persistent' && !state.snapshot?.storage.persistentAvailable) return false; emit({ storage }); return true; },
+    retryStorage() {if (editable()) void refreshStorage().catch(() => {});},
     removeKey(remove: boolean) { if (!editable()) return false; emit({ secretAction: remove ? 'remove' : 'keep' }); return true; },
     discard() { if (!editable() || state.recovery) return false; choose(state.baseline); return true; },
     useLatest() { if (!editable() || !state.snapshot || state.phase === 'blocked') return false; choose(state.snapshot.connections.find(item => item.configuration.id === state.draft?.id)?.configuration || null); return true; },
     acknowledge() { if (!editable() || state.phase !== 'review') return false; emit({ recovery: null, phase: 'ready', notice: null }); return true; },
-    setVisible(value: boolean) { visible = value; },
-    dispose() { live = false; ++epoch; pending?.abort(); state = initialVideoSettingsState(); },
+    setVisible(value: boolean) {visible = value; observeStorage(); if (!visible && state.keychainWaitConfirmed) emit({keychainWaitConfirmed: false});},
+    dispose() {live = false; watchStorage(false); ++epoch; pending?.abort(); state = initialVideoSettingsState();},
   };
 }
 export type VideoSettingsSession = ReturnType<typeof createVideoSettingsSession>;

@@ -6,11 +6,10 @@ import {validateCustomImageSecretPlaintextV2} from '@mioon/business/images/custo
 import {IMAGE_SETTINGS_NAMESPACE} from '../../../packages/contracts/src/image-settings.ts';
 import {CUSTOM_IMAGE_SETTINGS_V2_NAMESPACE} from '../../../packages/contracts/src/generation-image-settings.ts';
 
-/** Images-only session scope; images configuration/revision stay in the utility. */
+/** Images configuration and revision stay in the utility. */
 export type ImageSecretReasonCode = 'OS_SECRET_STORE_PENDING' | 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null;
 export interface ImageSecretStorage {
   readonly persistentAvailable: boolean;
-  readonly sessionScope: 'server';
   readonly reasonCode: ImageSecretReasonCode;
 }
 export interface ImageSecretCodec {
@@ -38,7 +37,7 @@ export function validateDesktopImageSecretPlaintext(plaintext: unknown): void {
   } catch {throw imageSettingsError('IMAGE_SETTINGS_CORRUPT');}
 }
 
-// Main owns only an OS codec. Images configuration, revision and session keys
+// Main owns only an OS codec. Images configuration and revision
 // belong to the utility's dedicated Images settings engine, not to Agent main.
 export function createDesktopImageSecretCodec({safeStorage, appId, platform = process.platform, timeout}: {
   safeStorage: DesktopSafeStorage; appId: string; platform?: NodeJS.Platform; timeout?: number;
@@ -50,7 +49,7 @@ export function createDesktopImageSecretCodec({safeStorage, appId, platform = pr
   }
   catch { throw imageSettingsError('IMAGE_SETTINGS_STORAGE_UNAVAILABLE'); }
   const storage = async (options?: SecretOperationOptions): Promise<ImageSecretStorage> =>
-    ({...await codec.refreshStorage(options), sessionScope: 'server'});
+    codec.refreshStorage(options);
   return Object.freeze({
     storage,
     async encrypt(plaintext: string, options?: SecretOperationOptions): Promise<string> {

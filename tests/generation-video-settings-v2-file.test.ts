@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chmod, link, mkdtemp, readFile, realpath, rename, rm, stat, symlink, unlink, utimes, writeFile} from 'node:fs/promises';
@@ -22,8 +23,8 @@ async function fixture(t: {after(fn: () => unknown): void}, withLegacy = true) {
   t.after(() => rm(root, {recursive: true, force: true}));
   const file = path.join(options.directory, 'settings.json'), configuration = legacy();
   if (withLegacy) {
-    const settings = await createVideoSettings(options);
-    await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', value: OLD_KEY, storage: 'session'}});
+    const settings = await createVideoSettings({...options, secretCodec: createTestSecretCodec(), storage: testSecretStorage});
+    await settings.put({action: 'save', expectedRevision: 0, configuration, secret: {action: 'replace', value: OLD_KEY, storage: 'persistent'}});
     await settings.close();
   }
   return {root, file, options, configuration};

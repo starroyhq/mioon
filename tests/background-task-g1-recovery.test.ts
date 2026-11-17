@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -24,7 +25,7 @@ import {serverAppDirectories} from '../apps/server/src/project-host/directories.
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import type {ProjectHostRuntime} from '../apps/server/src/project-host/host.ts';
 
-const secret = {action: 'replace', storage: 'session', value: 'synthetic-original-video-key'} as const;
+const secret = {action: 'replace', storage: 'persistent', value: 'synthetic-original-video-key'} as const;
 const configuration = (): VideoConnectionConfigurationV2 => ({id: 'abcdef12-0000-4000-8000-000000000003', name: VIDEO_PROVIDER_NAMES.minimax,
   providerId: 'minimax', region: 'global', workspaceId: '', enabled: true, outputHosts: ['output.example.com'], models: defaultVideoModels('minimax')});
 const object = (value: unknown): Record<string, unknown> => {assert.ok(value && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;};
@@ -40,7 +41,7 @@ interface Runtime extends ProjectHostRuntime {
 for (const status of ['queued', 'running', 'submission_unknown'] as const) test(`v1 video reset pauses the original ${status} task and releases its S3 lease without a replacement request`, async t => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 's3-g1-recovery-'))), dataDir = path.join(root, 'app');
   const library = openAppLibrary({dataDir}), directories = serverAppDirectories(dataDir), env = {};
-  const application = createProjectServiceApplication(library, undefined, env), options = {directory: path.join(dataDir, 'video-settings'), privateRoot: dataDir};
+  const application = createProjectServiceApplication(library, undefined, env), options = {directory: path.join(dataDir, 'video-settings'), privateRoot: dataDir, secretCodec: createTestSecretCodec(), storage: testSecretStorage};
   let settings: VideoGenerationSettings & {close(): Promise<void>} = await createVideoSettings(options), recovery = false, requests = 0;
   const background = createBackgroundCoordinator({index: library.taskIndex, inbox: library.inbox, assertMutationAllowed: application.assertMutationAllowed, checkIntervalMs: 20});
   const manager = createProjectHostManager<Runtime>({directories, registry: library.registry, taskIndex: library.taskIndex,
@@ -109,7 +110,7 @@ for (const status of ['queued', 'running', 'submission_unknown'] as const) test(
 });
 
 test('missing video history has an unforgeable internal classification while malformed and tampered bindings keep the public invalid error', async t => {
-  const root = await realpath(await mkdtemp(path.join(tmpdir(), 's3-g1-binding-'))), settings = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root});
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 's3-g1-binding-'))), settings = await createVideoSettingsV2({directory: path.join(root, 'video-settings'), privateRoot: root, secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   t.after(async () => {await settings.close(); await rm(root, {recursive: true, force: true});});
   const current = configuration(); await settings.put({action: 'save', expectedRevision: 0, configuration: current, secret});
   const binding = settings.select(current.id, 1, current.models[0]!.id), before = await readFile(path.join(root, 'video-settings', 'settings.json'), 'utf8');

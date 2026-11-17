@@ -7,7 +7,7 @@ import {videoConnectionConfigurationV2Schema} from '../packages/contracts/src/ge
 import type {VideoSettingsSnapshotV2, VideoSettingsUpdateV2} from '../packages/contracts/src/generation-video-settings.ts';
 import { validateCatalogs, catalogs } from '../packages/i18n/src/index.ts';
 
-const initial = (): VideoSettingsSnapshotV2 => ({ revision: 0, connections: [], storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, notice: null });
+const initial = (): VideoSettingsSnapshotV2 => ({revision: 0, connections: [], storage: {persistentAvailable: true, reasonCode: null}, notice: null});
 function fixture(overrides: Partial<VideoSettingsClient> = {}) {
   let snapshot = initial(); const writes: VideoSettingsUpdateV2[] = [], states: unknown[] = []; let reads = 0;
   const client: VideoSettingsClient = {
@@ -44,18 +44,22 @@ test('video settings transport uses private no-store GET/PUT and rejects secret 
   const calls: RequestInit[] = [];
   const client = createVideoSettingsClient({ fetchImpl: (async (url, options) => { assert.equal(url, '/api/video-providers/settings'); calls.push(options!); return Response.json({ ok: true, data: initial() }); }) as typeof fetch });
   await client.read();
-  await client.write({ action: 'save', expectedRevision: 0, configuration: newVideoConnection('wan'), secret: { action: 'replace', value: 'synthetic-video-key', storage: 'session' } });
+  await client.write({ action: 'save', expectedRevision: 0, configuration: newVideoConnection('wan'), secret: { action: 'replace', value: 'synthetic-video-key', storage: 'persistent' } });
   assert.deepEqual(calls.map(call => [call.method, call.cache, call.credentials]), [['GET', 'no-store', 'same-origin'], ['PUT', 'no-store', 'same-origin']]);
   assert.throws(() => safeVideoSettings({ ...initial(), apiKey: 'synthetic-video-key' }));
-  const connection = { configuration: newVideoConnection('wan'), revision: 1, secret: { configured: true, storage: 'session', value: 'synthetic-video-key' } };
+  const connection = { configuration: newVideoConnection('wan'), revision: 1, secret: { configured: true, storage: 'persistent', value: 'synthetic-video-key' } };
   assert.throws(() => safeVideoSettings({ ...initial(), connections: [connection] }));
 });
 
-test('video credentials require explicit storage and never enter session state', async () => {
+test('video credentials require secure storage and never enter settings state', async () => {
+  const blocked = fixture({read: async () => ({...initial(), storage: {persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE'}})});
+  await blocked.session.load(); blocked.session.add('wan');
+  assert.equal(await blocked.session.save('synthetic-video-key'), false);
+  assert.equal(blocked.writes.length, 0);
+  blocked.session.dispose();
   const f = fixture(); await f.session.load(); f.session.add('wan');
   assert.equal(videoSettingsDirty(f.session.getState()), true);
-  assert.equal(await f.session.save('synthetic-video-key'), false); assert.equal(f.writes.length, 0);
-  assert.equal(f.session.setStorage('persistent'), false); f.session.setStorage('session');
+
   assert.equal(await f.session.save('synthetic-video-key'), true);
   assert.equal(f.writes.length, 1); assert.equal(f.session.getState().snapshot?.connections[0]?.secret.configured, true);
   assert.doesNotMatch(JSON.stringify(f.states), /synthetic-video-key/);
@@ -79,7 +83,7 @@ test('dirty connection switching, hidden saves and template mismatches fail clos
 test('CAS conflicts and ambiguous saves reconcile once, retain drafts and never retry', async () => {
   for (const code of ['VIDEO_SETTINGS_CONFLICT', 'NETWORK']) {
     const f = fixture({ write: async () => { throw Object.assign(Error('never-reflect-raw-error'), { code }); } });
-    await f.session.load(); f.session.add('wan'); f.session.update({ enabled: true }); f.session.setStorage('session');
+    await f.session.load(); f.session.add('wan'); f.session.update({ enabled: true });
     assert.equal(await f.session.save('synthetic-video-key'), false);
     const state = f.session.getState(); assert.equal(state.phase, 'review'); assert.equal(state.draft?.enabled, true);
     assert.equal(state.recovery, code === 'NETWORK' ? 'unknown' : 'conflict'); assert.equal(videoSettingsCanSave(state), false);

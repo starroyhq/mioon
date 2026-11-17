@@ -270,11 +270,11 @@ export async function saveToolConfig(file: string, config: ToolPaths): Promise<v
   writePrivateFileAtomic(file, JSON.stringify({ ffmpeg: config.ffmpeg, ffprobe: config.ffprobe }, null, 2) + '\n', { maxBytes: CONFIG_MAX_BYTES });
 }
 
-export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths, storageHelper?: string): Record<string, string> {
+export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths, storageHelper?: string, channel: DesktopChannel = 'development'): Record<string, string> {
   // Never inherit Node injection options or unrelated credentials into the utility.
   const result: Record<string, string> = {};
   for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR', 'MIOON_COMFY_MODULE',
-    ...providerEnvironmentKeys]) {
+    ...(channel === 'development' ? providerEnvironmentKeys : [])]) {
     const value = env[key];
     if (typeof value === 'string') result[key] = value;
   }

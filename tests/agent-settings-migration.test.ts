@@ -18,7 +18,7 @@ import type {BinaryLike} from 'node:crypto';
 import type {WithImplicitCoercion} from 'node:buffer';
 
 const KEY = 'SYNTHETIC_MIGRATION_KEY_NEVER_LIVE';
-const persistent = {persistentAvailable:true, sessionScope:'app', reasonCode:null} as const;
+const persistent = {persistentAvailable:true, reasonCode:null} as const;
 const locked = {...persistent, persistentAvailable:false, reasonCode:'OS_SECRET_STORE_UNAVAILABLE'} as const;
 const cc = () => ({...DEFAULT_AGENT_CONFIGURATION,model:'gpt-4.1-mini',protocol:'chat_completions' as const});
 const responses = () => ({...cc(), baseUrl:'https://api.openai.com/v1', protocol:'responses' as const});
@@ -178,15 +178,18 @@ test('a valid legacy key is not read, and explicit replacement creates the new s
   assert.equal(JSON.stringify(stored).includes(KEY), false);
 });
 
-test('protocol/model-only session edits keep the key, but full configuration and execution witness gate acquisition', async t => {
-  const persistence = memory(null), settings = await createAgentSettings({persistence}); t.after(() => settings.close());
-  const first = await save(settings, 0, cc(), {action:'replace', storage:'session', value:KEY});
+test('protocol/model-only edits keep the key, but full configuration and execution witness gate acquisition', async t => {
+  const persistence = memory(null), vault = codec(), settings = await createAgentSettings({persistence, secretCodec:vault, storage:persistent}); t.after(() => settings.close());
+  const first = await save(settings, 0, cc(), {action:'replace', storage:'persistent', value:KEY});
+  const ciphertext = parseCurrentEnvelope(persistence.value).services.find(service => service.serviceKey === 'openai')?.secret?.encrypted;
+  assert.ok(ciphertext);
   const changed = await save(settings, 1, responses()); assert.equal((await acquire(settings, changed)).apiKey, KEY);
   await assert.rejects(acquire(settings, first), {code:'AGENT_SETTINGS_CONFLICT'});
   await assert.rejects(settings[AGENT_CREDENTIAL_ACQUIRE]({...testAgentCredential(changed), configuration:cc()}), {code:'AGENT_SETTINGS_CONFLICT'});
   const newModel = await save(settings, 2, {...responses(), model:'gpt-4.1-mini-2025-04-14'});
   assert.equal((await acquire(settings, newModel)).apiKey, KEY);
-  assert.ok(parseCurrentEnvelope(persistence.value).services.every(service => service.secret === null)); assert.equal(JSON.stringify(persistence.value).includes(KEY), false);
+  assert.equal(parseCurrentEnvelope(persistence.value).services.find(service => service.serviceKey === 'openai')?.secret?.encrypted, ciphertext);
+  assert.equal(vault.encryptions, 1); assert.equal(JSON.stringify(persistence.value).includes(KEY), false);
 });
 
 test('explicit Messages changes retain newly bound v3 ciphertext across restart while stale acquisition fails', async t => {

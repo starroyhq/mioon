@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -29,17 +30,17 @@ async function foreignProject(t: test.TestContext){
 }
 async function fixture(t: test.TestContext,{autoRun=false,generate,beforeSubmit}: {autoRun?:boolean;generate?:(input: unknown,options: {configuration:unknown;beforeDispatch():void})=>Promise<{bytes:Buffer}>;beforeSubmit?:()=>void}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-custom-image-business-')),customPersistence=memory(),officialPersistence=memory();
- let store=(openStore(root) as TypedStore),customSettings=await createCustomImageSettings({persistence:customPersistence}),settings=await createImageSettings({persistence:officialPersistence}),services: TypedServices,calls: { input: unknown; configuration: unknown; }[]=[];
+ let store=(openStore(root) as TypedStore),customSettings=await createCustomImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:customPersistence}),settings=await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:officialPersistence}),services: TypedServices,calls: { input: unknown; configuration: unknown; }[]=[];
  const gateway={generate:async(input: unknown,options: { configuration: unknown; beforeDispatch: () => void; })=>{calls.push({input:structuredClone(input),configuration:structuredClone(options.configuration)});beforeSubmit?.();options.beforeDispatch();return generate?generate(input,options):{bytes:await renderMockImagePng()};}};
  const create=()=>(createServices(store,new Map(),{env:{},imageOptions:{autoRun,settings,customSettings,customGateway:gateway as unknown as import('../packages/business/src/images/gateway.ts').Gateways,liveGateway:gateway as unknown as import('../packages/business/src/images/gateway.ts').Gateways}}) as TypedServices);
  services=create();
  await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const project=await services.call('project.create',{name:'Custom local fixture'}),other=await foreignProject(t);
  const f={root,project,other,calls,get store(){return store;},get services(){return services;},get customSettings(){return customSettings;},get settings(){return settings;},call:<O extends string>(operation: O,input: unknown)=>services.call(operation,input),input:(patch?: {}|undefined)=>generation(project.id,patch),
- async configure(configuration=config(),secret: {action:string;storage?:string;value?:string}={action:'replace',storage:'session',value:'custom-synthetic-secret'}){const old=await customSettings.get();return customSettings.put({expectedRevision:old.revision,configuration,secret});},
+ async configure(configuration=config(),secret: {action:string;storage?:string;value?:string}={action:'replace',storage:'persistent',value:'custom-synthetic-secret'}){const old=await customSettings.get();return customSettings.put({expectedRevision:old.revision,configuration,secret});},
  async prepare(input: { projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; name: string; providerId: string; model: string; prompt: string; options: { size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }; },settingsRevision?: unknown){settingsRevision??=(await customSettings.get()).revision;return services.call('image.review.prepare',{input,settingsRevision});},
  approve:async (review: {projectId: unknown; id: unknown})=>services.imageApproval(reviewInput(review)),
- async restart(){await services.drain();await settings.close();await customSettings.close();store.close();store=(openStore(root) as TypedStore);customSettings=await createCustomImageSettings({persistence:customPersistence});settings=await createImageSettings({persistence:officialPersistence});services=create();},
+ async restart(){await services.drain();await settings.close();await customSettings.close();store.close();store=(openStore(root) as TypedStore);customSettings=await createCustomImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:customPersistence});settings=await createImageSettings({secretCodec: createTestSecretCodec(), storage: testSecretStorage, persistence:officialPersistence});services=create();},
  async settled(id: unknown,state='succeeded'){const end=Date.now()+10000;while(Date.now()<end){const value=await services.call('image.task.get',{projectId:project.id,taskId:id});if(value.state===state)return value;if(['failed','outcome_unknown','local_result_error','succeeded'].includes(value.state))assert.fail(JSON.stringify(value));await pause(5);}assert.fail('Synthetic image did not settle');}
  };
  t.after(async()=>{await services.drain();await settings.close();await customSettings.close();store.close();rmSync(root,{recursive:true,force:true});});
@@ -70,7 +71,7 @@ test('destination or model changes invalidate unapproved review while exact hist
 test('accepted custom ACK survives settings changes and recreated backend without new acquisition or execution',async t=>{
  const f=await fixture(t),input=f.input(),review=await f.prepare(input),ack=await f.approve(review);
  const raw=f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId)!.response;
- await f.configure(config({baseUrl:'https://other.example.com/v2'}));await f.restart();
+ await f.configure(config({baseUrl:'https://other.example.com/v2'}), {action:'remove'});await f.restart();
  assert.equal((await f.customSettings.get()).secret.configured,false);
  assert.equal((await f.call('image.task.get',{projectId:f.project.id,taskId:ack.id})).state,'interrupted_before_dispatch');
  const before=imageRows(f.store.db);assert.deepEqual(await f.approve(review),ack);assert.deepEqual(await f.call('image.request.get',{projectId:f.project.id,requestId:input.requestId}),{projectId:f.project.id,requestId:input.requestId,operation:'image.generate',response:ack});
@@ -79,7 +80,7 @@ test('accepted custom ACK survives settings changes and recreated backend withou
 });
 
 test('new custom source version reuses managed image lineage without changing official version or prior receipt',async t=>{
- const f=await fixture(t,{autoRun:true});await f.settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'session',value:'official-synthetic-secret'}});
+ const f=await fixture(t,{autoRun:true});await f.settings.put({expectedRevision:0,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled:true},secret:{action:'replace',storage:'persistent',value:'official-synthetic-secret'}});
  const official=f.input({providerId:'openai',model:IMAGE_MODELS.openai}),firstReview=await f.prepare(official,1),firstAck=await f.approve(firstReview),first=await f.settled(firstAck.id);
  const originalVersion=f.store.db.prepare('SELECT data FROM image_versions WHERE id=?').get(first.versionId)!.data,originalReceipt=f.store.db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(official.requestId)!.response;
  const asset=JSON.parse(f.store.db.prepare('SELECT data FROM assets WHERE id=?').get(JSON.parse(originalVersion as string).assetId)!.data as string),bytes=readFileSync(mediaFixturePath(f.root,asset));

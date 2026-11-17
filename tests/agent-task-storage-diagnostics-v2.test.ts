@@ -18,7 +18,7 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
@@ -109,7 +109,7 @@ test('real server and management client doctor return only safe aggregate storag
 });
 
 test('storage and client schemas reject inconsistent counters, inventories, permissions and unknown tables', async t => {
-  const f = temporary(t), valid = readMioStorage(f.store.db), settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const f = temporary(t), valid = readMioStorage(f.store.db), settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   t.after(() => settings.close());
   const report = {version: 1, projectId:f.projectId,settings: await settings.get(), policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: {revision: 0, scopes: []},
     catalog: {count: 1, valid: true, issues: []}, verification: 'not_tested'};
@@ -140,9 +140,9 @@ test('storage and client schemas reject inconsistent counters, inventories, perm
 });
 
 async function runtimeFixture(t: TestContext, injected?: {code: string; message: string}) {
-  const f = temporary(t), services = createServices(f.store, new Map()), settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const f = temporary(t), services = createServices(f.store, new Map()), settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const initial = await settings.get();
-  await putTestAgentConfiguration(settings,{expectedRevision: initial.revision, configuration: defaultTestAgentConfiguration('chat_completions'), secret: {action: 'replace', storage: 'session', value: 'SYNTHETIC_STORAGE_FIXTURE_ONLY'}});
+  await putTestAgentConfiguration(settings,{expectedRevision: initial.revision, configuration: defaultTestAgentConfiguration('chat_completions'), secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_STORAGE_FIXTURE_ONLY'}});
   const authorizations = createTestAuthorizations(() => ({...f.store}), settings); await authorizeTestScope(authorizations, 'project_agent');
   const tools = createAgentTaskTools({store: f.store, services}), source = createAgentTaskJournal(f.store);
   const journal = injected ? {...source, performControl(input: Parameters<typeof source.performControl>[0], apply: Parameters<typeof source.performControl>[1]) {

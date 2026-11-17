@@ -281,13 +281,13 @@ duration uses `durationSeconds: -1`; adaptive output uses `aspectRatio:
 row accepts the same object with up to 30 images and no `prompt`; see
 [Seedance 2.5 connections](#seedance-25-connections-reviewed-2026-10-30).
 
-Enter the API key, choose its storage scope and explicitly enable the connection.
+Enter the API key and explicitly enable the connection.
 New submissions check the enabled connection and its exact model and credential.
 The UI still requires a paid confirmation. Existing tasks keep their frozen
 binding for querying, downloading and explicit retry; a retry is a new paid
 attempt and needs confirmation.
-Web keys last for the backend lifetime. Desktop can use the existing supported OS
-encrypted storage; unavailable secure storage has no plaintext fallback. Settings
+Keys are saved through the system vault. In an ordinary browser without a
+secure-store backend, configure keys in the desktop app. Settings
 reads disclose only configuration and storage status. Video keys are isolated from
 Agent and Images credentials and never enter jobs, versions, logs or backups.
 For Vidu, Kling and Wan, configure independently reviewed exact output hostnames
@@ -422,9 +422,8 @@ macOS/Windows nor live-provider acceptance is established. The evidence label st
 `offline-tested-not-live`; local configured/enabled status is not model access,
 pricing or output certification.
 
-Web secrets are session-only for the backend lifetime. Electron supports
-explicit OS-encrypted persistence through a narrow Images-only main-process
-codec, without renderer/preload decryption or plaintext fallback. Agent/video
+Images keys are saved through a narrow OS-encrypted main-process codec. In an
+ordinary browser without that codec, configure keys in the desktop app. Agent/video
 keys and environment flags cannot enable Images. Saving settings grants no
 request approval. Each visible paid-generation/review button confirms the exact
 project, prompt, selected model/fixed options and destination for at most one POST at
@@ -476,7 +475,7 @@ New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblan
 
 ### Required server settings
 
-Supply the corresponding server key for each environment-configured adapter. Connections configured in [Generation Services](GENERATION-SERVICES.md) each have their own enabled state. Paid generation still follows the applicable confirmation flow. Image input requires approved reference hashes, and output-host and regional checks remain enforced.
+For development only, pass the corresponding provider environment variables to Mioon Dev. The standalone source service requires explicit `MIOON_DEVELOPMENT_PROVIDER_ENV=1`; use a separate development data directory. Ordinary Web and official desktop runtimes do not use those environment credentials. Connections configured in [Generation Services](GENERATION-SERVICES.md) each have their own enabled state. Paid generation still follows the applicable confirmation flow. Image input requires approved reference hashes, and output-host and regional checks remain enforced.
 
 | ID | Credential name | Approved-image checksum list | Additional settings |
 | --- | --- | --- | --- |

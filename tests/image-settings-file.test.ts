@@ -1,3 +1,4 @@
+import {createTestSecretCodec, testSecretStorage} from './helpers/secret-codec.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -33,11 +34,11 @@ test('image updates preserve independent Agent envelope bytes and neither adopt 
   const f = await fixture(t), agentDirectory = path.join(f.root, 'agent-settings'), agentFile = path.join(agentDirectory, 'settings.json');
   const original = JSON.stringify({version: 2, revision: 8, configuration: DEFAULT_AGENT_CONFIGURATION, secret: {binding: 'agent-only', encrypted: 'c3ludGhldGlj'}}) + '\n';
   await mkdir(agentDirectory, {mode: 0o700}); await writeFile(agentFile, original, {mode: 0o600});
-  const settings = await createImageSettings({persistence: f.persistence});
+  const settings = await createImageSettings({persistence: f.persistence, secretCodec: createTestSecretCodec(), storage: testSecretStorage});
   assert.equal((await settings.get()).secret.configured, false);
-  await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'session', value: 'synthetic-image-isolated'}});
+  await settings.put({expectedRevision: 0, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: true}, secret: {action: 'replace', storage: 'persistent', value: 'synthetic-image-isolated'}});
   assert.equal(await readFile(agentFile, 'utf8'), original);
-  assert.equal((await f.persistence.load())!.secret, null);
+  assert.ok((await f.persistence.load())!.secret?.encrypted);
   await settings.close();
   const wrongFile = createImageSettingsFile({directory: agentDirectory, privateRoot: f.root});
   await assert.rejects(wrongFile.load(), {code: 'IMAGE_SETTINGS_CORRUPT'});

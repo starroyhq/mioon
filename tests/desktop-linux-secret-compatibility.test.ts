@@ -19,8 +19,8 @@ const syncCodec = (options: LinuxCodecOptions): SyncCodec => createLinuxDesktopS
 const SECRET = 'synthetic-linux-credential-never-live';
 const DEVELOPMENT = 'app.starroy.mioon.dev';
 const PRODUCTION = 'app.starroy.mioon';
-const AVAILABLE = { persistentAvailable: true, sessionScope: 'app' as const, reasonCode: null };
-const UNAVAILABLE = { persistentAvailable: false, sessionScope: 'app' as const, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' as const };
+const AVAILABLE = { persistentAvailable: true, reasonCode: null };
+const UNAVAILABLE = { persistentAvailable: false, reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' as const };
 
 // Synthetic, in-memory crypto only. These tests do not open a native keyring,
 // read existing credentials/settings, or certify native Linux integration.

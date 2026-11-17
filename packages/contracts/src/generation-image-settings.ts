@@ -27,13 +27,13 @@ export function isCompleteCustomImageConfigurationV2(value: CustomImageConfigura
 }
 export const customImageSecretUpdateV2Schema = z.discriminatedUnion('action', [
   z.object({action: z.literal('keep')}).strict(), z.object({action: z.literal('remove')}).strict(),
-  z.object({action: z.literal('replace'), storage: z.enum(['session', 'persistent']),
+  z.object({action: z.literal('replace'), storage: z.literal('persistent'),
     value: z.string().min(1).max(CUSTOM_IMAGE_SETTINGS_V2_LIMITS.secretBytes).regex(/^[\x21-\x7e]+$/)}).strict(),
 ]);
-export const customImageStorageV2Schema = z.object({persistentAvailable: z.boolean(), sessionScope: z.enum(['app', 'server']),
-  reasonCode: z.enum(['WEB_SESSION_ONLY', 'OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable()}).strict()
+export const customImageStorageV2Schema = z.object({persistentAvailable: z.boolean(),
+  reasonCode: z.enum(['OS_SECRET_STORE_UNAVAILABLE', 'OS_SECRET_STORE_PENDING', 'LINUX_BASIC_TEXT']).nullable()}).strict()
   .refine(value => value.persistentAvailable === (value.reasonCode === null), 'Inconsistent storage capabilities');
-const secretState = z.object({configured: z.boolean(), storage: z.enum(['none', 'session', 'persistent'])}).strict()
+const secretState = z.object({configured: z.boolean(), storage: z.enum(['none', 'persistent'])}).strict()
   .refine(value => value.configured === (value.storage !== 'none'), 'Inconsistent credential state');
 export const customImageConnectionV2Schema = z.object({connectionId: customImageConnectionIdV2Schema, name,
   configurationRevision: positiveRevision, configuration: customImageConfigurationV2Schema, secret: secretState}).strict()
