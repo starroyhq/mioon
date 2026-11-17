@@ -18,6 +18,12 @@ import * as imageCompatible from '../packages/contracts/src/image-compatible.ts'
 type Node = {type: unknown; props: Record<string, unknown> & {children?: unknown[]}};
 type Hook = {value?: unknown; deps?: readonly unknown[]; cleanup?: () => void; effect?: () => void | (() => void)};
 const nodes = (value: unknown): Node[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'props' in value ? [value as Node, ...nodes((value as Node).props.children)] : [];
+function textContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textContent).join('');
+  if (value && typeof value === 'object' && 'props' in value) return textContent((value as Node).props.children);
+  return '';
+}
 const flush = async () => {for (let n = 0; n < 40; n++) await Promise.resolve();};
 
 /** The component retention harness follows existing settings tests. Real browser
@@ -66,16 +72,17 @@ function harness(client: GenerationImageServicesClient, confirm: () => Promise<b
     });
     return domain;
   };
-  const find = (id: string) => {const item = trees.flat().find(node => node.props['data-testid'] === id); assert.ok(item, id); return item;};
+  const get = (id: string) => trees.flat().find(node => node.props['data-testid'] === id);
+  const find = (id: string) => {const item = get(id); assert.ok(item, id); return item;};
   const picker = () => trees.flat().find(node => node.type === 'ModelPickerDialog')?.props as
     Parameters<typeof ModelPickerDialog>[0] | undefined;
-  const fetchModels = (prefix: string) => {
-    const button = find(`${prefix}-model-list`);
+  const click = (id: string) => {
+    const button = find(id);
     assert.equal(button.props.disabled, false);
     (button.props.onClick as (event: {currentTarget: unknown}) => void)({currentTarget: button});
     render();
   };
-  return {render, find, picker, fetchModels, fields, elements: () => trees.flat(), domain: () => domain, select(key: string) {selected = key; return render();}, locale(value: i18n.Locale) {locale = value; return render();},
+  return {render, get, find, picker, click, fetchModels: (prefix: string) => click(`${prefix}-model-list`), fields, elements: () => trees.flat(), domain: () => domain, select(key: string) {selected = key; return render();}, locale(value: i18n.Locale) {locale = value; return render();},
     visible(value: boolean) {visible = value; return render();}, key(id: string, value: string) {fields.get(id)!.value = value; (find(id).props.onChange as () => void)(); render();},
     lock(value: boolean) {allowed = !value;},
     replayOwnerEffects() {const ownerHooks = scopes.get('owner') ?? []; for (const hook of ownerHooks) hook.cleanup?.(); for (const hook of ownerHooks) if (hook.effect) hook.cleanup = hook.effect() || undefined;},
@@ -179,9 +186,9 @@ test('image Check and Get models use the current password input and put safe res
 
   ui.fetchModels(id);
   assert.equal(ui.picker()?.status, 'loading');
-  assert.equal(ui.picker()?.usesDraftKey, true);
+  assert.equal(ui.picker()?.usesDraftKey, undefined);
   assert.deepEqual(ui.picker()?.items, [{id: 'same-model', added: true, unavailable: false}]);
-  assert.equal(probes[1]?.request.operation, 'models');
+  assert.deepEqual(probes[1]?.request, {operation:'models',baseUrl:'https://images.example/v1',credential:{source:'draft',value:'synthetic-q21-draft'}});
   ui.select(b.key);
   assert.equal(probes[1]?.signal?.aborted, true);
   finish?.({result:'ok',models:[{id:'model-a'}]}); await flush(); ui.render();
@@ -211,6 +218,7 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   const picker = ui.picker()!;
   assert.equal(picker.status, 'ready');
   assert.equal(picker.mode, 'single');
+  assert.equal(picker.unavailableLabel, 'ID 格式不支持');
   assert.deepEqual(picker.items, [
     {id: 'same-model', added: true, unavailable: false},
     {id: 'model-a', added: false, unavailable: false},
@@ -242,30 +250,77 @@ test('custom image picker replaces just one staged model, rejects stale and inva
   assert.equal(saved.find(item => item.connectionId === id)?.secret.configured, true);
 });
 
-test('official image picker pins the fixed model first whether or not discovery includes it', async () => {
-  const fixedModel = DEFAULT_IMAGE_CONFIGURATION.model;
-  let models: Array<{id: string}> = [];
-  const ui = harness({
+function officialHarness(probe: NonNullable<GenerationImageServicesClient['probe']>) {
+  return harness({
     read: async () => ({revision: 1, configuration: DEFAULT_IMAGE_CONFIGURATION, secret: {configured: true, storage: 'session'},
       storage: {persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY'}}),
-    probe: async () => ({result: 'ok', models}),
-    write: async () => assert.fail('Fixed model discovery is read-only'),
+    probe,
+    write: async () => assert.fail('Checking the fixed model is read-only'),
   }, undefined, 'official');
-  try {
-    ui.render(); await flush(); ui.render(); ui.select('image:official');
-    for (const returnedIds of [['other-model'], ['other-model', fixedModel], []]) {
-      models = returnedIds.map(id => ({id}));
-      ui.fetchModels('image-official'); await flush(); ui.render();
-      const picker = ui.picker()!;
-      assert.equal(picker.status, returnedIds.length ? 'ready' : 'empty');
-      assert.equal(picker.mode, 'single');
-      if (returnedIds.length) assert.match(picker.statusMessage ?? '', /固定/);
-      assert.deepEqual(picker.items, [
-        {id: fixedModel, added: true, unavailable: false},
-        ...returnedIds.filter(id => id !== fixedModel).map(id => ({id, added: false, unavailable: true})),
-      ]);
-      picker.onAdd(['other-model']); picker.onClose(); ui.render();
-      assert.equal(ui.domain().navigation.dirty, false);
-    }
-  } finally {ui.unmount();}
+}
+
+test('official image check reports exact fixed-model membership and existing failures inline, without a picker', async t => {
+  const fixedModel = DEFAULT_IMAGE_CONFIGURATION.model;
+  let response: unknown;
+  const requests: unknown[] = [];
+  const ui = officialHarness(async request => {requests.push(request); return response;});
+  t.after(ui.unmount);
+  ui.render(); await flush(); ui.select('image:official');
+
+  const action = 'image-official-key-check', result = 'image-official-probe-result';
+  const actions = ui.elements().find(item => item.props.className === 'image-generation-actions');
+  assert.deepEqual(nodes(actions).filter(item => item.type === 'Button').map(item => item.props['data-testid']), [action]);
+  assert.equal(textContent(ui.find(action)), i18n.translate('zh-Hans', 'settings.draftKey.check'));
+  assert.equal(ui.get('image-official-model-list'), undefined);
+  assert.equal(ui.get(result), undefined);
+
+  const cases = [
+    {response: {result: 'ok', models: [{id: 'other-model'}, {id: fixedModel}]}, role: 'status', text: `密钥可用 · ${fixedModel}`},
+    {response: {result: 'ok', models: [{id: `${fixedModel}-preview`}]}, role: 'alert', text: `此密钥的模型列表中没有 ${fixedModel}`},
+    {response: {result: 'ok', models: []}, role: 'alert', text: `此密钥的模型列表中没有 ${fixedModel}`},
+    {response: {result: 'unauthorized', httpStatus: 401}, role: 'alert', text: i18n.translate('zh-Hans', 'settings.draftKey.unauthorized')},
+    {response: {result: 'unsupported'}, role: 'alert', text: i18n.translate('zh-Hans', 'settings.draftKey.listUnsupported')},
+    {response: {result: 'unreachable'}, role: 'alert', text: i18n.translate('zh-Hans', 'settings.draftKey.failed')},
+  ];
+  for (const outcome of cases) {
+    response = outcome.response;
+    ui.click(action);
+    assert.equal(ui.find(action).props.disabled, true);
+    assert.equal(ui.get(result), undefined);
+    assert.equal(ui.picker(), undefined);
+    await flush(); ui.render();
+    assert.equal(ui.find(result).props.role, outcome.role);
+    assert.equal(textContent(ui.find(result)), outcome.text);
+    assert.equal(ui.picker(), undefined);
+    assert.equal(ui.domain().navigation.dirty, false);
+    assert.equal(textContent(ui.find(action)), outcome.role === 'status' ? i18n.translate('zh-Hans', 'settings.draftKey.check') : '重新检查');
+  }
+  assert.deepEqual(requests, cases.map(() => ({operation: 'models', credential: {source: 'saved', configurationRevision: 1}})));
+});
+
+test('official image check clears the previous result on key edits and ignores a reply after leaving the detail', async t => {
+  const pending: Array<{request: unknown; signal?: AbortSignal; resolve: (result: unknown) => void}> = [];
+  const ui = officialHarness((request, signal) => new Promise(resolve => pending.push({request, signal, resolve})));
+  t.after(ui.unmount);
+  ui.render(); await flush(); ui.select('image:official');
+
+  const fixedModel = DEFAULT_IMAGE_CONFIGURATION.model;
+  const report = {result: 'ok', models: [{id: fixedModel}]};
+  ui.key('image-official-key', 'synthetic-image-first');
+  ui.click('image-official-key-check');
+  assert.deepEqual(pending[0]!.request, {operation: 'models', credential: {source: 'draft', value: 'synthetic-image-first'}});
+  pending[0]!.resolve(report);
+  await flush(); ui.render();
+  assert.equal(textContent(ui.find('image-official-probe-result')), `密钥可用 · ${fixedModel}`);
+
+  ui.key('image-official-key', 'synthetic-image-second');
+  assert.equal(ui.get('image-official-probe-result'), undefined);
+  ui.click('image-official-key-check');
+  assert.deepEqual(pending[1]!.request, {operation: 'models', credential: {source: 'draft', value: 'synthetic-image-second'}});
+  ui.select('general');
+  assert.equal(pending[1]!.signal?.aborted, true);
+  pending[1]!.resolve(report);
+  await flush(); ui.select('image:official');
+  assert.equal(ui.get('image-official-probe-result'), undefined);
+  assert.equal(ui.picker(), undefined);
 });
