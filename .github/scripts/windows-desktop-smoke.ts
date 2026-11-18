@@ -293,8 +293,23 @@ async function runTitleBarScreenshots(options: SmokeArguments & {screenshots: st
       try {reportInfo = await services.inspect(resultFile);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
       if (!reportInfo.file || !canonical(resultFile, reportInfo) || reportInfo.size < 1 || reportInfo.size > maximumReportBytes) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');
       let report: unknown;
-      try {report = JSON.parse(await services.read(resultFile)) as unknown;} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
-      const validated = validateWindowsTitleBarScreenshot(report, scenario);
+      let reportText: string | undefined;
+      try {
+        reportText = await services.read(resultFile);
+        if (reportText.length > maximumReportBytes) reportText = undefined;
+        report = reportText === undefined ? undefined : JSON.parse(reportText) as unknown;
+      } catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
+      let validated: WindowsTitleBarScreenshot;
+      try {validated = validateWindowsTitleBarScreenshot(report, scenario);} catch (error) {
+        // Fixed app records only: the raw report is already path-free evidence.
+        if (reportText !== undefined && (report as Record<string, unknown>)?.ok === false &&
+            exactKeys(report as Record<string, unknown>, ['ok', 'error'])) {
+          try {await services.write(paths.join(directory, `${scenario.name}.invalid.json`), {schemaVersion: 1,
+            scope: 'windows-titlebar-screenshots', ok: false, scenarios: [...scenarios]});}
+          catch { /* The main smoke evidence still records the fixed failure code. */ }
+        }
+        throw error;
+      }
       let pngInfo: FileObservation;
       try {pngInfo = await services.inspect(pngFile);} catch {fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');}
       if (!pngInfo.file || !canonical(pngFile, pngInfo) || pngInfo.size !== validated.screenshot.bytes) fail('WINDOWS_SMOKE_SCREENSHOT_INVALID');

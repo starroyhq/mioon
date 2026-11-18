@@ -20,6 +20,8 @@ export interface WindowsTitleBarScreenshotOptions {
   theme: 'light' | 'dark';
   maximized: boolean;
   scale: number;
+  /** Re-reads authenticated appearance so native chrome follows the new theme. */
+  refreshAppearance(): void;
 }
 interface TitleBarFacts {
   frame: string | null;
@@ -123,7 +125,7 @@ async function capture(window: BrowserWindow, title: string): Promise<{png: Buff
 }
 /** Runs one screenshot scenario, writes the fixed PNG and a fixed JSON record,
  * then returns so the caller can quit the application. */
-export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale}: WindowsTitleBarScreenshotOptions): Promise<void> {
+export async function runWindowsTitleBarScreenshot({app, getWindow, output, screenshot, scenario, theme, maximized, scale, refreshAppearance}: WindowsTitleBarScreenshotOptions): Promise<void> {
   const window = getWindow();
   assert.ok(window && !window.isDestroyed(), 'The screenshot launcher window must be live');
   assert.ok((WINDOWS_TITLEBAR_SCENARIOS as readonly string[]).includes(scenario), 'Unknown Windows title bar screenshot scenario');
@@ -132,6 +134,10 @@ export async function runWindowsTitleBarScreenshot({app, getWindow, output, scre
   assert.equal(process.arch, 'x64');
   await launcherReady(window);
   await applyTheme(window, theme);
+  // The saved preference is authoritative only after the window appearance reads
+  // it back; that callback also repaints the system caption overlay colors.
+  refreshAppearance();
+  await new Promise(resolve => setTimeout(resolve, 300));
   if (maximized) await maximize(window);
   await settle(window);
   const facts = await readFacts(window);

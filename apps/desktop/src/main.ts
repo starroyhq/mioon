@@ -1596,7 +1596,8 @@ else {
           scenario: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCENARIO ?? '',
           theme: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_THEME === 'light' ? 'light' : 'dark',
           maximized: process.env.MIOON_DESKTOP_WINDOWS_SMOKE_MAXIMIZED === '1',
-          scale: Number(process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCALE ?? '1') });
+          scale: Number(process.env.MIOON_DESKTOP_WINDOWS_SMOKE_SCALE ?? '1'),
+          refreshAppearance: () => windowContext?.appearance?.refresh() });
       } else if (windowsPackageSmoke) {
         const { runWindowsSmoke } = await import('./windows-smoke-checks.ts');
         await runWindowsSmoke({ app, getWindow: () => win, getSession: () => activeSession, getReady: () => ready, paths, report, safeStorage, output });

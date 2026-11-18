@@ -224,6 +224,7 @@ jobs:
           name: windows-titlebar-screenshots
           path: |
             artifacts/windows-development/screenshots/*.png
+            artifacts/windows-development/screenshots/*.json
             artifacts/windows-development/screenshots.json
           retention-days: 7
           if-no-files-found: warn
