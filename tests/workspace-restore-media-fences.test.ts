@@ -14,6 +14,7 @@ import {renderTimeline} from '../packages/business/src/timeline-media.ts';
 import {inspectTimelineExportCapability,assertTimelineExportCapability} from '../packages/business/src/timeline-export-capabilities.ts';
 import {verifySubtitleFontResource} from '../packages/business/src/subtitle-resources.ts';
 import {probeTimelineSource,prepareTimelineInputs} from '../packages/business/src/timeline-sources.ts';
+import {defaultTimelineSegmentConcurrency} from './helpers/timeline-segment-concurrency.ts';
 
 const codes=['PROJECT_STORE_UNVERIFIED'];
 const restriction=(code=codes[0])=>Object.assign(Error('Synthetic revoked media owner.'),{code});
@@ -43,6 +44,10 @@ async function fixture(t: test.TestContext){
 }
 function observe(t: test.TestContext,callback?: { (event: { type: string; }): void; (event: { type: string; }): void; (event: { type: string; }): void; (event: { type: string; }): void; (event: { type: string; }): void; (event: { type: string; }): void; (arg0: MediaProcessEvent): void; }|undefined){const events: MediaProcessEvent[]=[],off=onMediaProcess(event=>{events.push(event);callback?.(event);});t.after(off);return events;}
 const started=(events: MediaProcessEvent[])=>events.filter((event)=>event.type==='started');
+// The fixture plans two one-frame segments on one track. A render starts up to
+// the machine's default concurrency of them before the first child exits.
+const plannedSegments=2;
+const segmentWave=Math.min(plannedSegments,defaultTimelineSegmentConcurrency());
 function timeline(root: string,{subtitles=false}={}){
  const asset: {id:string;mimeType:string;path:string;duration:number;hasVideo:boolean;hasAudio:boolean;audioStreamIndex:number;relativePath?:string;sha256?:string}={id:randomUUID(),mimeType:'audio/wav',path:path.join(root,'synthetic.wav'),duration:1,hasVideo:false,hasAudio:true,audioStreamIndex:0};
  const track={id:randomUUID(),kind:'audio',orderIndex:0,hidden:false,muted:false};
@@ -125,36 +130,42 @@ test('capability expiry after listing does not launch proof or remap restriction
 });
 
 for(const stopAfter of [1,2,3] as const)test(`timeline expiry after child ${stopAfter} prevents every later segment/concat/probe`,async t=>{
- const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let live=true,exited=0;
- const events=observe(t,(event: { type: string; })=>{if(event.type==='exited'&&++exited===stopAfter)live=false;}),expected=restriction();
+ const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let live=true,exited=0,revokedAt=-1;
+ const events=observe(t,(event: { type: string; })=>{if(event.type==='exited'&&++exited===stopAfter){live=false;revokedAt=events.length;}}),expected=restriction();
  await assert.rejects(renderTimeline((snapshot as unknown as Parameters<typeof renderTimeline>[0]),assets,destination.file,{beforeEffect(){destination.check();if(!live)throw expected;}}),error=>error===expected);
- assert.equal(started(events).length,stopAfter);assert.equal(started(events).some((event)=>event.kind==='ffprobe'),false);
+ // The first wave of concurrent segments starts before the fence can flip; a
+ // higher-core runner legitimately has more children in flight at that point.
+ assert.equal(started(events).length,Math.max(stopAfter,segmentWave));
+ assert.equal(events.slice(revokedAt).some((event)=>event.type==='started'),false);
+ assert.equal(started(events).some((event)=>event.kind==='ffprobe'),false);
  assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')),false);
 });
 
 test('revoked timeline cleanup preserves replaced output inode and unknown nested children',async t=>{
- const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let live=true,work!:string;
+ const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let live=true,revokedAt=-1,work!:string;
  const expected=restriction(codes[3]),events=observe(t,(event: { type: string; })=>{
   if(event.type!=='exited'||!live)return;
   work=path.join(root,readdirSync(root).find(name=>name.startsWith('.timeline-render-'))!);
   const segment=path.join(work,'segment-000.mov');unlinkSync(segment);writeFileSync(segment,'replacement-must-survive');
-  mkdirSync(path.join(work,'unknown'));writeFileSync(path.join(work,'unknown','keep'),'foreign-child');live=false;
+  mkdirSync(path.join(work,'unknown'));writeFileSync(path.join(work,'unknown','keep'),'foreign-child');live=false;revokedAt=events.length;
  });
  await assert.rejects(renderTimeline((snapshot as unknown as Parameters<typeof renderTimeline>[0]),assets,destination.file,{beforeEffect(){destination.check();if(!live)throw expected;}}),error=>error===expected);
- assert.equal(started(events).length,1);assert.equal(await readFile(path.join((work as unknown as Parameters<typeof path.join>[0]),'segment-000.mov'),'utf8'),'replacement-must-survive');
+ assert.equal(started(events).length,segmentWave);assert.equal(events.slice(revokedAt).some((event)=>event.type==='started'),false);
+ assert.equal(await readFile(path.join((work as unknown as Parameters<typeof path.join>[0]),'segment-000.mov'),'utf8'),'replacement-must-survive');
  assert.equal(await readFile(path.join((work as unknown as Parameters<typeof path.join>[0]),'unknown','keep'),'utf8'),'foreign-child');
  assert.deepEqual((await readdir(work)).sort(),['segment-000.mov','unknown']);
 });
 
 test('timeline cleanup never follows a replaced work directory',async t=>{
- const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let work!:string,moved!:string,live=true;
+ const root=await fixture(t),{snapshot,assets}=timeline(root),destination=await output(t,root);let work!:string,moved!:string,live=true,revokedAt=-1;
  const expected=restriction(),events=observe(t,(event: { type: string; })=>{
   if(event.type!=='exited'||!live)return;
   work=path.join(root,readdirSync(root).find(name=>name.startsWith('.timeline-render-'))!);moved=work+'-moved';renameSync(work,moved);
-  mkdirSync(work);writeFileSync(path.join(work,'keep'),'replacement-directory');live=false;
+  mkdirSync(work);writeFileSync(path.join(work,'keep'),'replacement-directory');live=false;revokedAt=events.length;
  });
  await assert.rejects(renderTimeline((snapshot as unknown as Parameters<typeof renderTimeline>[0]),assets,destination.file,{beforeEffect(){if(!live)throw expected;}}),error=>error===expected);
- assert.equal(started(events).length,1);assert.equal(await readFile(path.join((work as unknown as Parameters<typeof path.join>[0]),'keep'),'utf8'),'replacement-directory');
+ assert.equal(started(events).length,segmentWave);assert.equal(events.slice(revokedAt).some((event)=>event.type==='started'),false);
+ assert.equal(await readFile(path.join((work as unknown as Parameters<typeof path.join>[0]),'keep'),'utf8'),'replacement-directory');
  assert.equal(await readFile(path.join((moved as unknown as Parameters<typeof path.join>[0]),'segment-000.mov'),'utf8'),'synthetic-owned-output');
 });
 
